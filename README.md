@@ -22,10 +22,12 @@ We aim for a pragmatic approach by reusing most of the tooling that made Twake m
 
 Requires maven 3.9.6 + and JDK 21
 
+First compile [Twake mail backend](https://github.com/linagora/tmail-backend) as this project depends on some of its snapshots.
+
 In order to compile the application, run:
 
 ```bash
-mvn clean install --am --pl :twake-calendar-side-service-app -DskipTests
+mvn clean install
 ```
 
 Then run it with:
