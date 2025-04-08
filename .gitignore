@@ -1,0 +1,5 @@
+target/
+dependency-reduced-pom.xml
+.m2
+test-run.log
+build
