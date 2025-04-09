@@ -50,9 +50,14 @@ public class MemoryOpenPaaSUserDAO implements OpenPaaSUserDAO {
 
     @Override
     public Mono<OpenPaaSUser> add(Username username) {
+        return add(username, username.asString(), username.asString());
+    }
+
+    @Override
+    public Mono<OpenPaaSUser> add(Username username, String firstName, String lastName) {
         OpenPaaSId id = new OpenPaaSId(UUID.randomUUID().toString());
 
-        return Mono.fromCallable(() -> hashMap.computeIfAbsent(username, name -> new OpenPaaSUser(name, id, name.asString(), name.asString())))
+        return Mono.fromCallable(() -> hashMap.computeIfAbsent(username, name -> new OpenPaaSUser(name, id, firstName, lastName)))
             .filter(result -> result.id().equals(id))
             .switchIfEmpty(Mono.error(() -> new IllegalStateException(username.asString() + " already exist")));
     }

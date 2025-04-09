@@ -30,5 +30,7 @@ public interface OpenPaaSUserDAO {
 
     Mono<OpenPaaSUser> add(Username username);
 
+    Mono<OpenPaaSUser> add(Username username, String firstName, String lastName);
+
     Flux<OpenPaaSUser> list();
 }

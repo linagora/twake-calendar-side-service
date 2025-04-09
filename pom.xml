@@ -40,6 +40,7 @@
         <module>calendar-rest-api</module>
         <module>storage-api</module>
         <module>storage-mongodb</module>
+        <module>calendar-webadmin</module>
     </modules>
 
     <properties>
