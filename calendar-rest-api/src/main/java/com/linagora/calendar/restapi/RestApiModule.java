@@ -22,7 +22,6 @@ import java.io.FileNotFoundException;
 import java.net.URL;
 import java.util.Set;
 
-import com.linagora.calendar.restapi.routes.ProfileUpdateRoute;
 import jakarta.inject.Named;
 
 import org.apache.commons.configuration2.ex.ConfigurationException;
@@ -53,6 +52,7 @@ import com.linagora.calendar.restapi.routes.JwtSigner;
 import com.linagora.calendar.restapi.routes.LogoRoute;
 import com.linagora.calendar.restapi.routes.PeopleSearchRoute;
 import com.linagora.calendar.restapi.routes.ProfileAvatarRoute;
+import com.linagora.calendar.restapi.routes.ProfileUpdateRoute;
 import com.linagora.calendar.restapi.routes.ThemeRoute;
 import com.linagora.calendar.restapi.routes.UserProfileRoute;
 import com.linagora.calendar.restapi.routes.UserRoute;
