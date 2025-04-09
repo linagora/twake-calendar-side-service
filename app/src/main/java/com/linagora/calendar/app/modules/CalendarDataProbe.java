@@ -26,8 +26,10 @@ import org.apache.james.domainlist.api.DomainList;
 import org.apache.james.user.api.UsersRepository;
 import org.apache.james.utils.GuiceProbe;
 
+import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 
 public class CalendarDataProbe implements GuiceProbe {
@@ -56,17 +58,19 @@ public class CalendarDataProbe implements GuiceProbe {
     public OpenPaaSId addUser(Username username, String password) {
         try {
             usersRepository.addUser(username, password);
-            return usersDAO.add(username).block().id();
+            return usersDAO.add(username).map(OpenPaaSUser::id).block();
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
 
     public OpenPaaSId domainId(Domain domain) {
-        return domainDAO.retrieve(domain).block().id();
+        return domainDAO.retrieve(domain)
+            .map(OpenPaaSDomain::id).block();
     }
 
     public OpenPaaSId userId(Username username) {
-        return usersDAO.retrieve(username).block().id();
+        return usersDAO.retrieve(username)
+            .map(OpenPaaSUser::id).block();
     }
 }
