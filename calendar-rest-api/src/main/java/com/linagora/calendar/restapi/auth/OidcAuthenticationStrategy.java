@@ -73,13 +73,17 @@ public class OidcAuthenticationStrategy implements AuthenticationStrategy {
             .filter(header -> header.startsWith(AUTHORIZATION_HEADER_PREFIX))
             .map(header -> header.substring(AUTHORIZATION_HEADER_PREFIX.length()))
             .filter(token -> !token.startsWith("eyJ")) // Heuristic for detecting JWT
-            .flatMap(token -> Mono.from(metricFactory.decoratePublisherWithTimerMetric("userinfo-lookup",
-                    checkTokenClient.userInfo(userInfoURL, token))))
-            .map(x -> x.claimByPropertyName(configuration.getOidcClaim())
-                .orElseThrow(() -> new UnauthorizedException("Invalid OIDC token: userinfo needs to include " + configuration.getOidcClaim() + " claim")))
-            .flatMap(username -> provisionUserIfNeed(Username.of(username)))
+            .flatMap(this::correspondingUsername)
             .map(Throwing.function(sessionProvider::createSession))
             .onErrorResume(UserInfoCheckException.class, e -> Mono.error(new UnauthorizedException("Invalid OIDC token: userinfo failed", e)));
+    }
+
+    private Mono<Username> correspondingUsername(String token) {
+        return Mono.from(metricFactory.decoratePublisherWithTimerMetric("userinfo-lookup",
+                checkTokenClient.userInfo(userInfoURL, token)))
+            .map(x -> x.claimByPropertyName(configuration.getOidcClaim())
+                .orElseThrow(() -> new UnauthorizedException("Invalid OIDC token: userinfo needs to include " + configuration.getOidcClaim() + " claim")))
+            .flatMap(username -> provisionUserIfNeed(Username.of(username)));
     }
 
     @Override
@@ -94,8 +98,8 @@ public class OidcAuthenticationStrategy implements AuthenticationStrategy {
     private Mono<Username> provisionUserIfNeed(Username username) {
         return userDAO.retrieve(username)
             .switchIfEmpty(Mono.defer(() -> userDAO.add(username))
-                .doOnNext(created -> LOGGER.info("Created user: {}", username)))
-            .doOnError(error -> LOGGER.error("Failed to provisioning user: {}", username, error))
+                .doOnNext(created -> LOGGER.info("Created user: {}", username.asString())))
+            .doOnError(error -> LOGGER.error("Failed to provisioning user: {}", username.asString(), error))
             .thenReturn(username);
     }
 }
