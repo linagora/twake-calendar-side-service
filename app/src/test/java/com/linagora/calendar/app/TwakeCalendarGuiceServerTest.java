@@ -274,6 +274,18 @@ class TwakeCalendarGuiceServerTest  {
     }
 
     @Test
+    void shouldRejectProfileUpdate(TwakeCalendarGuiceServer server) {
+        targetRestAPI(server);
+
+        given()
+            .auth().basic(USERNAME.asString(), "notGood")
+        .when()
+            .put("/api/user/profile")
+        .then()
+            .statusCode(405);
+    }
+
+    @Test
     void shouldRejectWhenNoAuth(TwakeCalendarGuiceServer server) {
         targetRestAPI(server);
 

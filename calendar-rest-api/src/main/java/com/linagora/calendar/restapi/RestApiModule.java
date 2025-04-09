@@ -22,6 +22,7 @@ import java.io.FileNotFoundException;
 import java.net.URL;
 import java.util.Set;
 
+import com.linagora.calendar.restapi.routes.ProfileUpdateRoute;
 import jakarta.inject.Named;
 
 import org.apache.commons.configuration2.ex.ConfigurationException;
@@ -75,6 +76,7 @@ public class RestApiModule extends AbstractModule {
         routes.addBinding().to(ConfigurationRoute.class);
         routes.addBinding().to(PeopleSearchRoute.class);
         routes.addBinding().to(ProfileAvatarRoute.class);
+        routes.addBinding().to(ProfileUpdateRoute.class);
         routes.addBinding().to(UserRoute.class);
         routes.addBinding().to(UserProfileRoute.class);
         routes.addBinding().to(UsersRoute.class);
