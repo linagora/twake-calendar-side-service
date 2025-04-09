@@ -34,30 +34,37 @@ import org.apache.james.jwt.DefaultCheckTokenClient;
 import org.apache.james.jwt.userinfo.UserInfoCheckException;
 import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.metrics.api.MetricFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.restapi.RestApiConfiguration;
+import com.linagora.calendar.storage.OpenPaaSUserDAO;
 
 import reactor.core.publisher.Mono;
 import reactor.netty.http.server.HttpServerRequest;
 
 public class OidcAuthenticationStrategy implements AuthenticationStrategy {
+    private static final Logger LOGGER = LoggerFactory.getLogger(OidcAuthenticationStrategy.class);
 
     private final DefaultCheckTokenClient checkTokenClient;
     private final SimpleSessionProvider sessionProvider;
     private final MetricFactory metricFactory;
     private final URL userInfoURL;
     private final RestApiConfiguration configuration;
+    private final OpenPaaSUserDAO userDAO;
 
     @Inject
     public OidcAuthenticationStrategy(SimpleSessionProvider sessionProvider, RestApiConfiguration configuration,
-                                      @Named("userInfo") URL userInfoURL, MetricFactory metricFactory) {
+                                      @Named("userInfo") URL userInfoURL, MetricFactory metricFactory,
+                                      OpenPaaSUserDAO userDAO) {
         this.sessionProvider = sessionProvider;
         this.metricFactory = metricFactory;
         this.checkTokenClient = new DefaultCheckTokenClient();
         this.configuration = configuration;
         this.userInfoURL = userInfoURL;
+        this.userDAO = userDAO;
     }
 
     @Override
@@ -66,13 +73,17 @@ public class OidcAuthenticationStrategy implements AuthenticationStrategy {
             .filter(header -> header.startsWith(AUTHORIZATION_HEADER_PREFIX))
             .map(header -> header.substring(AUTHORIZATION_HEADER_PREFIX.length()))
             .filter(token -> !token.startsWith("eyJ")) // Heuristic for detecting JWT
-            .flatMap(token -> Mono.from(metricFactory.decoratePublisherWithTimerMetric("userinfo-lookup",
-                    checkTokenClient.userInfo(userInfoURL, token))))
-            .map(x -> x.claimByPropertyName(configuration.getOidcClaim())
-                .orElseThrow(() -> new UnauthorizedException("Invalid OIDC token: userinfo needs to include email claim")))
-            .map(Username::of)
+            .flatMap(this::correspondingUsername)
             .map(Throwing.function(sessionProvider::createSession))
             .onErrorResume(UserInfoCheckException.class, e -> Mono.error(new UnauthorizedException("Invalid OIDC token: userinfo failed", e)));
+    }
+
+    private Mono<Username> correspondingUsername(String token) {
+        return Mono.from(metricFactory.decoratePublisherWithTimerMetric("userinfo-lookup",
+                checkTokenClient.userInfo(userInfoURL, token)))
+            .map(x -> x.claimByPropertyName(configuration.getOidcClaim())
+                .orElseThrow(() -> new UnauthorizedException("Invalid OIDC token: userinfo needs to include " + configuration.getOidcClaim() + " claim")))
+            .flatMap(username -> provisionUserIfNeed(Username.of(username)));
     }
 
     @Override
@@ -82,5 +93,13 @@ public class OidcAuthenticationStrategy implements AuthenticationStrategy {
             ImmutableMap.of("realm", "twake_calendar",
                 "error", "invalid_token",
                 "scope", "openid profile email"));
+    }
+
+    private Mono<Username> provisionUserIfNeed(Username username) {
+        return userDAO.retrieve(username)
+            .switchIfEmpty(Mono.defer(() -> userDAO.add(username))
+                .doOnNext(created -> LOGGER.info("Created user: {}", username.asString())))
+            .doOnError(error -> LOGGER.error("Failed to provisioning user: {}", username.asString(), error))
+            .thenReturn(username);
     }
 }
