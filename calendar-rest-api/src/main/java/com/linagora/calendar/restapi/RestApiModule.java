@@ -40,7 +40,6 @@ import com.google.inject.Scopes;
 import com.google.inject.Singleton;
 import com.google.inject.multibindings.Multibinder;
 import com.google.inject.multibindings.ProvidesIntoSet;
-import com.linagora.calendar.restapi.api.ConfigurationEntryResolver;
 import com.linagora.calendar.restapi.auth.BasicAuthenticationStrategy;
 import com.linagora.calendar.restapi.auth.JwtAuthenticationStrategy;
 import com.linagora.calendar.restapi.auth.OidcAuthenticationStrategy;
@@ -57,9 +56,10 @@ import com.linagora.calendar.restapi.routes.ThemeRoute;
 import com.linagora.calendar.restapi.routes.UserProfileRoute;
 import com.linagora.calendar.restapi.routes.UserRoute;
 import com.linagora.calendar.restapi.routes.UsersRoute;
+import com.linagora.calendar.restapi.routes.configuration.ConfigurationEntryResolver;
 import com.linagora.calendar.restapi.routes.configuration.ConstantConfigurationEntryResolver;
 import com.linagora.calendar.restapi.routes.configuration.FileConfigurationEntryResolver;
-import com.linagora.calendar.restapi.routes.configuration.MongoConfigurationEntryResolver;
+import com.linagora.calendar.restapi.routes.configuration.StoredConfigurationEntryResolver;
 
 public class RestApiModule extends AbstractModule {
     @Override
@@ -89,7 +89,7 @@ public class RestApiModule extends AbstractModule {
         Multibinder<ConfigurationEntryResolver> configurationEntryResolvers = Multibinder.newSetBinder(binder(), ConfigurationEntryResolver.class);
         configurationEntryResolvers.addBinding().to(FileConfigurationEntryResolver.class);
         configurationEntryResolvers.addBinding().to(ConstantConfigurationEntryResolver.class);
-        configurationEntryResolvers.addBinding().to(MongoConfigurationEntryResolver.class);
+        configurationEntryResolvers.addBinding().to(StoredConfigurationEntryResolver.class);
     }
 
     @Provides

@@ -51,8 +51,8 @@ import com.linagora.calendar.app.modules.MemoryAutoCompleteModule;
 import com.linagora.calendar.app.modules.MemoryUserModule;
 import com.linagora.calendar.app.modules.OpenSearchClientModule;
 import com.linagora.calendar.restapi.RestApiModule;
-import com.linagora.calendar.storage.MemoryOpenPaaSDAOModule;
-import com.linagora.calendar.storage.mongodb.MongoDBModule;
+import com.linagora.calendar.storage.MemoryStorageModule;
+import com.linagora.calendar.storage.mongodb.MongoDBStorageModule;
 import com.linagora.calendar.webadmin.CalendarRoutesModule;
 import com.linagora.tmail.james.jmap.module.OSContactAutoCompleteModule;
 
@@ -112,8 +112,8 @@ public class TwakeCalendarMain {
 
     private static Module chooseDb(TwakeCalendarConfiguration.DbChoice autoCompleteChoice) {
         return switch (autoCompleteChoice) {
-            case MEMORY -> new MemoryOpenPaaSDAOModule();
-            case MONGODB -> new MongoDBModule();
+            case MEMORY -> new MemoryStorageModule();
+            case MONGODB -> new MongoDBStorageModule();
         };
     }
 

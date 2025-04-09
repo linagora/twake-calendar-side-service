@@ -28,11 +28,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableTable;
 import com.google.common.collect.Sets;
-import com.linagora.calendar.restapi.api.ConfigurationDocument;
-import com.linagora.calendar.restapi.api.ConfigurationEntryResolver;
-import com.linagora.calendar.restapi.api.ConfigurationEntryResolver.Entry;
-import com.linagora.calendar.restapi.api.ConfigurationKey;
-import com.linagora.calendar.restapi.api.ModuleName;
+import com.linagora.calendar.storage.configuration.ConfigurationEntry;
+import com.linagora.calendar.storage.configuration.ConfigurationKey;
+import com.linagora.calendar.storage.configuration.EntryIdentifier;
+import com.linagora.calendar.storage.configuration.ModuleName;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -47,19 +46,19 @@ public class ConfigurationResolver {
         this.fallbackConfigurationEntryResolver = fallbackConfigurationEntryResolver;
     }
 
-    public Mono<ConfigurationDocument> resolve(Set<ConfigurationEntryResolver.EntryIdentifier> request, MailboxSession session) {
+    public Mono<ConfigurationDocument> resolve(Set<EntryIdentifier> request, MailboxSession session) {
         return Flux.fromIterable(resolvers)
             .concatMap(resolver -> resolver.resolve(request, session))
-            .collect(ImmutableTable.toImmutableTable(Entry::moduleName, Entry::configurationKey, Entry::node))
+            .collect(ImmutableTable.toImmutableTable(ConfigurationEntry::moduleName, ConfigurationEntry::configurationKey, ConfigurationEntry::node))
             .flatMap(resolved -> {
-                Set<ConfigurationEntryResolver.EntryIdentifier> resolvedIds = resolved.cellSet().stream()
-                    .map(cell -> new ConfigurationEntryResolver.EntryIdentifier(cell.getRowKey(), cell.getColumnKey()))
+                Set<EntryIdentifier> resolvedIds = resolved.cellSet().stream()
+                    .map(cell -> new EntryIdentifier(cell.getRowKey(), cell.getColumnKey()))
                     .collect(ImmutableSet.toImmutableSet());
-                Set<ConfigurationEntryResolver.EntryIdentifier> toBeResolved = Sets.difference(request, resolvedIds);
+                Set<EntryIdentifier> toBeResolved = Sets.difference(request, resolvedIds);
 
                 return Flux.fromIterable(toBeResolved)
-                    .flatMap(id -> fallbackConfigurationEntryResolver.resolve(id.moduleName(), id.configurationKey(), session).map(json -> new Entry(id.moduleName(), id.configurationKey(), json)), 4)
-                    .collect(ImmutableTable.toImmutableTable(Entry::moduleName, Entry::configurationKey, Entry::node))
+                    .flatMap(id -> fallbackConfigurationEntryResolver.resolve(id.moduleName(), id.configurationKey(), session).map(json -> new ConfigurationEntry(id.moduleName(), id.configurationKey(), json)), 4)
+                    .collect(ImmutableTable.toImmutableTable(ConfigurationEntry::moduleName, ConfigurationEntry::configurationKey, ConfigurationEntry::node))
                     .map(fallback -> ImmutableTable.<ModuleName, ConfigurationKey, JsonNode>builder().putAll(resolved).putAll(fallback).build());
             })
             .map(ConfigurationDocument::new);
@@ -69,7 +68,7 @@ public class ConfigurationResolver {
         // Returns only explicitly implemented configuration resolvers
         return Flux.fromIterable(resolvers)
             .flatMap(resolver -> resolver.resolveAll(session))
-            .collect(ImmutableTable.toImmutableTable(Entry::moduleName, Entry::configurationKey, Entry::node))
+            .collect(ImmutableTable.toImmutableTable(ConfigurationEntry::moduleName, ConfigurationEntry::configurationKey, ConfigurationEntry::node))
             .map(ConfigurationDocument::new);
     }
 }

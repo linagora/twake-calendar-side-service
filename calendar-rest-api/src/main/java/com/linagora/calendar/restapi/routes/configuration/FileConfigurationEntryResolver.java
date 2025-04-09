@@ -34,9 +34,10 @@ import com.google.common.collect.ImmutableTable;
 import com.google.common.collect.Sets;
 import com.google.common.collect.Table;
 import com.linagora.calendar.restapi.RestApiConfiguration;
-import com.linagora.calendar.restapi.api.ConfigurationEntryResolver;
-import com.linagora.calendar.restapi.api.ConfigurationKey;
-import com.linagora.calendar.restapi.api.ModuleName;
+import com.linagora.calendar.storage.configuration.ConfigurationEntry;
+import com.linagora.calendar.storage.configuration.ConfigurationKey;
+import com.linagora.calendar.storage.configuration.EntryIdentifier;
+import com.linagora.calendar.storage.configuration.ModuleName;
 
 import reactor.core.publisher.Flux;
 
@@ -107,9 +108,9 @@ public class FileConfigurationEntryResolver implements ConfigurationEntryResolve
     }
 
     @Override
-    public Flux<Entry> resolve(Set<EntryIdentifier> ids, MailboxSession session) {
+    public Flux<ConfigurationEntry> resolve(Set<EntryIdentifier> ids, MailboxSession session) {
         return Flux.fromIterable(Sets.intersection(ids, KEYS))
-            .map(id -> new Entry(id.moduleName(), id.configurationKey(), TABLE.get(id.moduleName(), id.configurationKey()).apply(configuration)));
+            .map(id -> new ConfigurationEntry(id.moduleName(), id.configurationKey(), TABLE.get(id.moduleName(), id.configurationKey()).apply(configuration)));
     }
 
     @Override

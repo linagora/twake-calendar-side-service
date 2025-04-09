@@ -16,32 +16,24 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.restapi.api;
+package com.linagora.calendar.restapi.routes.configuration;
 
 import java.util.Set;
 
 import org.apache.james.mailbox.MailboxSession;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import com.linagora.calendar.storage.configuration.ConfigurationEntry;
+import com.linagora.calendar.storage.configuration.EntryIdentifier;
 
 import reactor.core.publisher.Flux;
 
 public interface ConfigurationEntryResolver {
-    record EntryIdentifier(ModuleName moduleName, ConfigurationKey configurationKey) {
 
-    }
+    Flux<ConfigurationEntry> resolve(Set<EntryIdentifier> ids, MailboxSession session);
 
-    record Entry(ModuleName moduleName, ConfigurationKey configurationKey, JsonNode node) {
-
-    }
-
-    Flux<Entry> resolve(Set<EntryIdentifier> ids, MailboxSession session);
-
-    default Flux<Entry> resolveAll(MailboxSession session) {
+    default Flux<ConfigurationEntry> resolveAll(MailboxSession session) {
         return resolve(entryIdentifiers(), session);
     }
 
     Set<EntryIdentifier> entryIdentifiers();
-
-
 }

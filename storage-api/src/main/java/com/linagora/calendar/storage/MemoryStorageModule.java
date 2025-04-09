@@ -32,8 +32,10 @@ import com.google.inject.Provides;
 import com.google.inject.Scopes;
 import com.google.inject.Singleton;
 import com.google.inject.multibindings.ProvidesIntoSet;
+import com.linagora.calendar.storage.configuration.FakeUserConfigurationDAO;
+import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
 
-public class MemoryOpenPaaSDAOModule extends AbstractModule {
+public class MemoryStorageModule extends AbstractModule {
     @Override
     protected void configure() {
         bind(MemoryOpenPaaSUserDAO.class).in(Scopes.SINGLETON);
@@ -44,6 +46,8 @@ public class MemoryOpenPaaSDAOModule extends AbstractModule {
 
         bind(OpenPaaSDomainList.class).in(Scopes.SINGLETON);
         bind(DomainList.class).to(OpenPaaSDomainList.class);
+
+        bind(UserConfigurationDAO.class).to(FakeUserConfigurationDAO.class);
     }
 
     @Provides
