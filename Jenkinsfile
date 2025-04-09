@@ -16,7 +16,9 @@ pipeline {
             steps {
                 sh 'mkdir .build'
                 dir(".build") {
-                    sh 'git clone git@github.com:linagora/tmail-backend.git'
+                    withCredentials([gitUsernamePassword(credentialsId: 'github')]) {
+                        sh 'git clone https://github.com/linagora/twake-calendar-side-service.git'
+                    }
                     dir("tmail-backend") {
                         sh 'git submodule init'
                         sh 'git submodule update'
