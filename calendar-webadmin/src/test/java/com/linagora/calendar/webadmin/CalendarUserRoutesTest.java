@@ -152,7 +152,7 @@ class CalendarUserRoutesTest {
     }
 
     @Test
-    void headUserByEmailShouldReturn204WhenUserExists() {
+    void headUserByEmailShouldReturn200WhenUserExists() {
         userDAO.add(Username.of("james@linagora.com"), "James", "Bond").block();
 
         given()
@@ -160,11 +160,11 @@ class CalendarUserRoutesTest {
         .when()
             .head()
         .then()
-            .statusCode(204);
+            .statusCode(200);
     }
 
     @Test
-    void headUserByIdShouldReturn204WhenUserExists() {
+    void headUserByIdShouldReturn200WhenUserExists() {
         OpenPaaSUser user = userDAO.add(Username.of("james@linagora.com"), "James", "Bond").block();
 
         given()
@@ -172,7 +172,7 @@ class CalendarUserRoutesTest {
         .when()
             .head()
         .then()
-            .statusCode(204);
+            .statusCode(200);
     }
 
     @Test

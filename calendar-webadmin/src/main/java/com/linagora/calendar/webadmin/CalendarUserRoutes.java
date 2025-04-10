@@ -52,6 +52,27 @@ public class CalendarUserRoutes implements Routes {
         }
     }
 
+    public enum Identifier {
+        EMAIL,
+        ID
+    }
+
+    public record HeadUserRequest(Identifier identifier, String value) {
+        public static HeadUserRequest fromRequest(Request request) {
+            String email = request.queryParams("email");
+            String id = request.queryParams("id");
+
+            // only one of the two should be set
+            if (StringUtils.isEmpty(email) == StringUtils.isEmpty(id)) {
+                throw Spark.halt(HttpStatus.BAD_REQUEST_400);
+            } else if (StringUtils.isNotEmpty(email)) {
+                return new HeadUserRequest(Identifier.EMAIL, email);
+            } else {
+                return new HeadUserRequest(Identifier.ID, id);
+            }
+        }
+    }
+
     public static final String BASE_PATH = "/registeredUsers";
 
     private final OpenPaaSUserDAO userDAO;
@@ -147,14 +168,11 @@ public class CalendarUserRoutes implements Routes {
     }
 
     private String headUser(Request request, Response response) {
-        String email = request.queryParams("email");
-        String id = request.queryParams("id");
-
-        validateHeadUserRequest(email, id);
+        HeadUserRequest headUserRequest = HeadUserRequest.fromRequest(request);
 
         try {
-            if (exists(email, id)) {
-                response.status(HttpStatus.NO_CONTENT_204);
+            if (userExists(headUserRequest)) {
+                response.status(HttpStatus.OK_200);
             } else {
                 response.status(HttpStatus.NOT_FOUND_404);
             }
@@ -169,18 +187,11 @@ public class CalendarUserRoutes implements Routes {
         }
     }
 
-    private boolean exists(String email, String id) {
-        if (StringUtils.isNotEmpty(email)) {
-            return userDAO.retrieve(Username.of(email)).blockOptional().isPresent();
+    private boolean userExists(HeadUserRequest headUserRequest) {
+        if (Identifier.EMAIL.equals(headUserRequest.identifier())) {
+            return userDAO.retrieve(Username.of(headUserRequest.value())).blockOptional().isPresent();
         } else {
-            return userDAO.retrieve(new OpenPaaSId(id)).blockOptional().isPresent();
-        }
-    }
-
-    private void validateHeadUserRequest(String email, String id) {
-        // only one of the two should be set
-        if (StringUtils.isEmpty(email) == StringUtils.isEmpty(id)) {
-            throw Spark.halt(HttpStatus.BAD_REQUEST_400);
+            return userDAO.retrieve(new OpenPaaSId(headUserRequest.value())).blockOptional().isPresent();
         }
     }
 }
