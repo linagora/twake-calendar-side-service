@@ -136,7 +136,7 @@ class CalendarUserRoutesTest {
     }
 
     @Test
-    void postUserShouldReturn400WhenDuplicateEmails() {
+    void postUserShouldReturn409WhenDuplicateEmails() {
         userDAO.add(Username.of("james@linagora.com"), "James", "Bond").block();
 
         given()
@@ -144,9 +144,9 @@ class CalendarUserRoutesTest {
         .when()
             .post()
         .then()
-            .statusCode(400)
+            .statusCode(409)
             .contentType(ContentType.JSON)
-            .body("statusCode", is(HttpStatus.BAD_REQUEST_400))
+            .body("statusCode", is(HttpStatus.CONFLICT_409))
             .body("type", is("InvalidArgument"))
             .body("message", is("james@linagora.com already exist"));
     }

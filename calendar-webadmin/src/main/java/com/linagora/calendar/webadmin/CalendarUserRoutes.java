@@ -33,6 +33,7 @@ import org.apache.james.webadmin.utils.JsonTransformer;
 import org.eclipse.jetty.http.HttpStatus;
 
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 
 import spark.Request;
@@ -41,7 +42,15 @@ import spark.Service;
 import spark.Spark;
 
 public class CalendarUserRoutes implements Routes {
-    public record CalendarUserDTO(String email, String firstname, String lastname, String id) {}
+    public record CalendarUserDTO(String email, String firstname, String lastname, String id) {
+        public static CalendarUserDTO fromDomainObject(OpenPaaSUser user) {
+            return new CalendarUserDTO(
+                user.username().asString(),
+                user.firstname(),
+                user.lastname(),
+                user.id().value());
+        }
+    }
 
     public static final String BASE_PATH = "/registeredUsers";
 
@@ -73,12 +82,7 @@ public class CalendarUserRoutes implements Routes {
     private List<CalendarUserDTO> getUsers(Request request, Response response) {
         try {
             return userDAO.list()
-                .map(user -> new CalendarUserDTO(
-                    user.username().asString(),
-                    user.firstname(),
-                    user.lastname(),
-                    user.id().value()
-                ))
+                .map(CalendarUserDTO::fromDomainObject)
                 .collectList()
                 .block();
         } catch (Exception e) {
@@ -102,7 +106,7 @@ public class CalendarUserRoutes implements Routes {
             return Constants.EMPTY_BODY;
         } catch (IllegalStateException e) {
             throw ErrorResponder.builder()
-                .statusCode(HttpStatus.BAD_REQUEST_400)
+                .statusCode(HttpStatus.CONFLICT_409)
                 .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
                 .message(e.getMessage())
                 .haltError();
@@ -148,15 +152,8 @@ public class CalendarUserRoutes implements Routes {
 
         validateHeadUserRequest(email, id);
 
-        boolean exists;
         try {
-            if (StringUtils.isNotEmpty(email)) {
-                exists = userDAO.retrieve(Username.of(email)).blockOptional().isPresent();
-            } else {
-                exists = userDAO.retrieve(new OpenPaaSId(id)).blockOptional().isPresent();
-            }
-
-            if (exists) {
+            if (exists(email, id)) {
                 response.status(HttpStatus.NO_CONTENT_204);
             } else {
                 response.status(HttpStatus.NOT_FOUND_404);
@@ -172,12 +169,17 @@ public class CalendarUserRoutes implements Routes {
         }
     }
 
-    private void validateHeadUserRequest(String email, String id) {
-        if (StringUtils.isEmpty(email) && StringUtils.isEmpty(id)) {
-            throw Spark.halt(HttpStatus.BAD_REQUEST_400);
+    private boolean exists(String email, String id) {
+        if (StringUtils.isNotEmpty(email)) {
+            return userDAO.retrieve(Username.of(email)).blockOptional().isPresent();
+        } else {
+            return userDAO.retrieve(new OpenPaaSId(id)).blockOptional().isPresent();
         }
+    }
 
-        if (!StringUtils.isEmpty(email) && !StringUtils.isEmpty(id)) {
+    private void validateHeadUserRequest(String email, String id) {
+        // only one of the two should be set
+        if (StringUtils.isEmpty(email) == StringUtils.isEmpty(id)) {
             throw Spark.halt(HttpStatus.BAD_REQUEST_400);
         }
     }
