@@ -16,21 +16,17 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage;
+package com.linagora.calendar.webadmin;
 
-import org.apache.james.core.Username;
+import org.apache.james.webadmin.Routes;
 
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
+import com.google.inject.AbstractModule;
+import com.google.inject.multibindings.Multibinder;
 
-public interface OpenPaaSUserDAO {
-    Mono<OpenPaaSUser> retrieve(OpenPaaSId id);
-
-    Mono<OpenPaaSUser> retrieve(Username username);
-
-    Mono<OpenPaaSUser> add(Username username);
-
-    Mono<OpenPaaSUser> add(Username username, String firstName, String lastName);
-
-    Flux<OpenPaaSUser> list();
+public class CalendarRoutesModule extends AbstractModule {
+    @Override
+    protected void configure() {
+        Multibinder<Routes> routesMultibinder = Multibinder.newSetBinder(binder(), Routes.class);
+        routesMultibinder.addBinding().to(CalendarUserRoutes.class);
+    }
 }

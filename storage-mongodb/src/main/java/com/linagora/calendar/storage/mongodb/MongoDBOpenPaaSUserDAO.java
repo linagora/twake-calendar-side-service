@@ -70,11 +70,16 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
 
     @Override
     public Mono<OpenPaaSUser> add(Username username) {
+        return add(username, username.asString(), username.asString());
+    }
+
+    @Override
+    public Mono<OpenPaaSUser> add(Username username, String firstName, String lastName) {
         return domainDAO.retrieve(username.getDomainPart().get())
             .switchIfEmpty(Mono.error(() -> new IllegalStateException(username.getDomainPart().get().asString() + " does not exist")))
             .map(domain -> new Document()
-                .append("firstname", username.asString())
-                .append("lastname", username.asString())
+                .append("firstname", firstName)
+                .append("lastname", lastName)
                 .append("password", "secret")
                 .append("email", username.asString()) // not part of OpenPaaS datamodel but helps solve concurrency
                 .append("domains",  List.of(new Document("domain_id", new ObjectId(domain.id().value()))))
@@ -83,7 +88,7 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
                     .append("emails", List.of(username.asString())))))
             .flatMap(document -> Mono.from(database.getCollection(COLLECTION).insertOne(document)))
             .map(InsertOneResult::getInsertedId)
-            .map(id -> new OpenPaaSUser(username, new OpenPaaSId(id.asObjectId().getValue().toHexString()), username.asString(), username.asString()))
+            .map(id -> new OpenPaaSUser(username, new OpenPaaSId(id.asObjectId().getValue().toHexString()), firstName, lastName))
             .onErrorResume(e -> {
                 if (e.getMessage().contains("E11000 duplicate key error collection")) {
                     return Mono.error(new IllegalStateException(username.asString() + " already exists"));

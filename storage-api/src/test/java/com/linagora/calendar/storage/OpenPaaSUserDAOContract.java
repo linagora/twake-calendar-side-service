@@ -72,6 +72,13 @@ public interface OpenPaaSUserDAOContract {
     }
 
     @Test
+    default void addWithNameShouldWork() {
+        OpenPaaSUser actual = testee().add(USERNAME, "James", "Bond").block();
+
+        assertThat(testee().retrieve(USERNAME).block()).isEqualTo(actual);
+    }
+
+    @Test
     default void addShouldThrowWhenCalledTwice() {
         testee().add(USERNAME).block();
 
