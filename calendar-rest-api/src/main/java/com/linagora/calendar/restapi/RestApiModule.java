@@ -52,6 +52,7 @@ import com.linagora.calendar.restapi.routes.JwtSigner;
 import com.linagora.calendar.restapi.routes.LogoRoute;
 import com.linagora.calendar.restapi.routes.PeopleSearchRoute;
 import com.linagora.calendar.restapi.routes.ProfileAvatarRoute;
+import com.linagora.calendar.restapi.routes.ProfileUpdateRoute;
 import com.linagora.calendar.restapi.routes.ThemeRoute;
 import com.linagora.calendar.restapi.routes.UserProfileRoute;
 import com.linagora.calendar.restapi.routes.UserRoute;
@@ -75,6 +76,7 @@ public class RestApiModule extends AbstractModule {
         routes.addBinding().to(ConfigurationRoute.class);
         routes.addBinding().to(PeopleSearchRoute.class);
         routes.addBinding().to(ProfileAvatarRoute.class);
+        routes.addBinding().to(ProfileUpdateRoute.class);
         routes.addBinding().to(UserRoute.class);
         routes.addBinding().to(UserProfileRoute.class);
         routes.addBinding().to(UsersRoute.class);
