@@ -143,6 +143,19 @@ class TwakeCalendarGuiceServerTest  {
     }
 
     @Test
+    void shouldExposeWebAdminCalendar() {
+        String body = given()
+        .when()
+            .get("/registeredUsers")
+        .then()
+            .extract()
+            .body()
+            .asString();
+
+        assertThat(body).contains("btellier@linagora.com");
+    }
+
+    @Test
     void shouldExposeMetrics() {
         String body = given()
         .when()

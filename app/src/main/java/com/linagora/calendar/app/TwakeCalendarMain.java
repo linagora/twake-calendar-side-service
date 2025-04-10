@@ -53,12 +53,14 @@ import com.linagora.calendar.app.modules.OpenSearchClientModule;
 import com.linagora.calendar.restapi.RestApiModule;
 import com.linagora.calendar.storage.MemoryOpenPaaSDAOModule;
 import com.linagora.calendar.storage.mongodb.MongoDBModule;
+import com.linagora.calendar.webadmin.CalendarRoutesModule;
 import com.linagora.tmail.james.jmap.module.OSContactAutoCompleteModule;
 
 public class TwakeCalendarMain {
     public static final Module WEBADMIN = Modules.combine(
         new WebAdminServerModule(),
         new NoJwtModule(),
+        new CalendarRoutesModule(),
         binder -> Multibinder.newSetBinder(binder, Routes.class).addBinding().to(MetricsRoutes.class),
         binder -> Multibinder.newSetBinder(binder, Routes.class).addBinding().to(DomainsRoutes.class),
         binder -> Multibinder.newSetBinder(binder, Routes.class).addBinding().to(UserRoutes.class),
