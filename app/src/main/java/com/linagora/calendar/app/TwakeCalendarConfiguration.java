@@ -135,17 +135,17 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
         }
     }
 
-    enum UserChoice {
+    public enum UserChoice {
         LDAP,
         MEMORY
     }
 
-    enum DbChoice {
+    public enum DbChoice {
         MONGODB,
         MEMORY
     }
 
-    enum AutoCompleteChoice {
+    public enum AutoCompleteChoice {
         OPENSEARCH,
         MEMORY
     }
