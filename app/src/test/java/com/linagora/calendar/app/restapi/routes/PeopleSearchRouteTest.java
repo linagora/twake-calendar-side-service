@@ -183,8 +183,33 @@ public class PeopleSearchRouteTest {
             .asString();
 
         assertThatJson(response)
-            .inPath("[0].objectType")
-            .isEqualTo("user");
+            .whenIgnoringPaths("[0].id")
+            .isEqualTo("""
+                [
+                    {
+                        "id": "2f18b89b-f112-3c4c-9e9f-2cdbff80bd0e",
+                        "objectType": "user",
+                        "names": [
+                            {
+                                "displayName": "naruto hokage",
+                                "type": "default"
+                            }
+                        ],
+                        "emailAddresses": [
+                            {
+                                "value": "naruto@open-paas.ltd",
+                                "type": "Work"
+                            }
+                        ],
+                        "phoneNumbers": [],
+                        "photos": [
+                            {
+                                "url": "https://twcalendar.linagora.com/api/avatars?email=naruto@open-paas.ltd",
+                                "type": "default"
+                            }
+                        ]
+                    }
+                ]""");
     }
 
     @Test
