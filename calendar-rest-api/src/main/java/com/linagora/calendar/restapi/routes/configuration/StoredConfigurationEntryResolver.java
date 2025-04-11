@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.restapi.routes.configuration;
 
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 
@@ -36,13 +38,15 @@ import com.google.common.collect.ImmutableTable;
 import com.google.common.collect.Sets;
 import com.google.common.collect.Table;
 import com.linagora.calendar.restapi.RestApiConfiguration;
-import com.linagora.calendar.restapi.api.ConfigurationEntryResolver;
-import com.linagora.calendar.restapi.api.ConfigurationKey;
-import com.linagora.calendar.restapi.api.ModuleName;
+import com.linagora.calendar.storage.configuration.ConfigurationEntry;
+import com.linagora.calendar.storage.configuration.ConfigurationKey;
+import com.linagora.calendar.storage.configuration.EntryIdentifier;
+import com.linagora.calendar.storage.configuration.ModuleName;
+import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
 
 import reactor.core.publisher.Flux;
 
-public class MongoConfigurationEntryResolver implements ConfigurationEntryResolver {
+public class StoredConfigurationEntryResolver implements ConfigurationEntryResolver {
 
     public static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -60,7 +64,7 @@ public class MongoConfigurationEntryResolver implements ConfigurationEntryResolv
     }
 
     private static Function<RestApiConfiguration, JsonNode> defaultBusinessHours() {
-        return Throwing.function(configuration -> configuration.getDefaultBusinessHours());
+        return Throwing.function(RestApiConfiguration::getDefaultBusinessHours);
     }
 
     private static final Table<ModuleName, ConfigurationKey, Function<RestApiConfiguration, JsonNode>> TABLE = ImmutableTable.<ModuleName, ConfigurationKey, Function<RestApiConfiguration, JsonNode>>builder()
@@ -78,17 +82,26 @@ public class MongoConfigurationEntryResolver implements ConfigurationEntryResolv
         .collect(ImmutableSet.toImmutableSet());
 
     private final RestApiConfiguration configuration;
+    private final UserConfigurationDAO userConfigurationDAO;
 
     @Inject
-    public MongoConfigurationEntryResolver(RestApiConfiguration configuration) {
+    public StoredConfigurationEntryResolver(RestApiConfiguration configuration, UserConfigurationDAO userConfigurationDAO) {
         this.configuration = configuration;
+        this.userConfigurationDAO = userConfigurationDAO;
     }
 
     @Override
-    public Flux<Entry> resolve(Set<EntryIdentifier> ids, MailboxSession session) {
-        // TODO attempt to read Mongo user config first prior falling back to conf
-        return Flux.fromIterable(Sets.intersection(ids, KEYS))
-            .map(id -> new Entry(id.moduleName(), id.configurationKey(), TABLE.get(id.moduleName(), id.configurationKey()).apply(configuration)));
+    public Flux<ConfigurationEntry> resolve(Set<EntryIdentifier> ids, MailboxSession session) {
+        return userConfigurationDAO.retrieveConfiguration(session)
+            .collectMap(e -> new EntryIdentifier(e.moduleName(), e.configurationKey()), e -> e)
+            .flatMapMany(userConfiguration -> Flux.fromIterable(Sets.intersection(ids, KEYS))
+                .map(resolveSpecificEntry(userConfiguration)));
+    }
+
+    private Function<EntryIdentifier, ConfigurationEntry> resolveSpecificEntry(Map<EntryIdentifier, ConfigurationEntry> userConfigurationEntries) {
+        return id -> Optional.ofNullable(userConfigurationEntries.get(id))
+            .orElseGet(() -> new ConfigurationEntry(id.moduleName(), id.configurationKey(),
+                TABLE.get(id.moduleName(), id.configurationKey()).apply(configuration)));
     }
 
     @Override

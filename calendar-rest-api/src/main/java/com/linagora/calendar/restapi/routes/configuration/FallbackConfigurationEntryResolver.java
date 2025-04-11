@@ -28,9 +28,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.restapi.RestApiConfiguration;
-import com.linagora.calendar.restapi.api.ConfigurationKey;
-import com.linagora.calendar.restapi.api.ModuleName;
 import com.linagora.calendar.restapi.routes.JwtSigner;
+import com.linagora.calendar.storage.configuration.ConfigurationKey;
+import com.linagora.calendar.storage.configuration.ModuleName;
 
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpHeaderNames;

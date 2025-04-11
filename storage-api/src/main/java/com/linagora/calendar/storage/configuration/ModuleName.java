@@ -16,8 +16,8 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.restapi.api;
+package com.linagora.calendar.storage.configuration;
 
-public record ConfigurationKey(String value) {
+public record ModuleName(String name) {
 
 }

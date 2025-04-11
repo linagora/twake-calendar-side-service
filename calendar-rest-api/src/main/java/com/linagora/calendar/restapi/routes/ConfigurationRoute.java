@@ -33,11 +33,11 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableSet;
-import com.linagora.calendar.restapi.api.ConfigurationDocument;
-import com.linagora.calendar.restapi.api.ConfigurationEntryResolver;
-import com.linagora.calendar.restapi.api.ConfigurationKey;
-import com.linagora.calendar.restapi.api.ModuleName;
+import com.linagora.calendar.restapi.routes.configuration.ConfigurationDocument;
 import com.linagora.calendar.restapi.routes.configuration.ConfigurationResolver;
+import com.linagora.calendar.storage.configuration.ConfigurationKey;
+import com.linagora.calendar.storage.configuration.EntryIdentifier;
+import com.linagora.calendar.storage.configuration.ModuleName;
 
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -58,10 +58,10 @@ public class ConfigurationRoute extends CalendarRoute {
             this.keys = keys;
         }
 
-        Set<ConfigurationEntryResolver.EntryIdentifier> asConfigurationKeys() {
+        Set<EntryIdentifier> asConfigurationKeys() {
             ModuleName moduleName = new ModuleName(name);
             return keys.stream()
-                .map(key -> new ConfigurationEntryResolver.EntryIdentifier(moduleName, new ConfigurationKey(key)))
+                .map(key -> new EntryIdentifier(moduleName, new ConfigurationKey(key)))
                 .collect(ImmutableSet.toImmutableSet());
         }
     }
