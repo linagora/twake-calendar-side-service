@@ -23,7 +23,7 @@ import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 
-import java.net.URI;
+import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
@@ -35,9 +35,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
-import org.mockserver.integration.ClientAndServer;
 
-import com.github.fge.lambdas.Throwing;
 import com.google.inject.name.Names;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
@@ -55,15 +53,8 @@ import net.javacrumbs.jsonunit.core.Option;
 public class PeopleSearchRouteTest {
 
     private static final String DOMAIN = "open-paas.ltd";
-    private static final String USERINFO_TOKEN_URI_PATH = "/oauth2/userinfo";
     private static final String PASSWORD = "secret";
     private static final Username USERNAME = Username.fromLocalPartWithDomain("bob", DOMAIN);
-
-    private static final ClientAndServer mockServer = ClientAndServer.startClientAndServer(0);
-
-    private static URL getUserInfoTokenEndpoint() {
-        return Throwing.supplier(() -> URI.create(String.format("http://127.0.0.1:%s%s", mockServer.getLocalPort(), USERINFO_TOKEN_URI_PATH)).toURL()).get();
-    }
 
     @RegisterExtension
     static TwakeCalendarExtension twakeCalendarExtension = new TwakeCalendarExtension(
@@ -72,11 +63,16 @@ public class PeopleSearchRouteTest {
             .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY),
         binder -> binder.bind(URL.class).annotatedWith(Names.named("userInfo"))
-            .toProvider(PeopleSearchRouteTest::getUserInfoTokenEndpoint));
+            .toProvider(() -> {
+                try {
+                    return new URL("https://neven.to.be.called.com");
+                } catch (MalformedURLException e) {
+                    throw new RuntimeException(e);
+                }
+            }));
 
     @AfterAll
     static void afterAll() {
-        mockServer.stop();
         RestAssured.reset();
     }
 
