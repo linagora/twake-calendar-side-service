@@ -50,7 +50,6 @@ import com.linagora.calendar.restapi.routes.JwtRoutes;
 import com.linagora.calendar.restapi.routes.JwtSigner;
 import com.linagora.calendar.restapi.routes.LogoRoute;
 import com.linagora.calendar.restapi.routes.PeopleSearchRoute;
-import com.linagora.calendar.restapi.routes.PeopleSearcher;
 import com.linagora.calendar.restapi.routes.ProfileAvatarRoute;
 import com.linagora.calendar.restapi.routes.ProfileUpdateRoute;
 import com.linagora.calendar.restapi.routes.ThemeRoute;
@@ -91,10 +90,6 @@ public class RestApiModule extends AbstractModule {
         configurationEntryResolvers.addBinding().to(FileConfigurationEntryResolver.class);
         configurationEntryResolvers.addBinding().to(ConstantConfigurationEntryResolver.class);
         configurationEntryResolvers.addBinding().to(StoredConfigurationEntryResolver.class);
-
-        Multibinder<PeopleSearcher> peopleSearchers = Multibinder.newSetBinder(binder(), PeopleSearcher.class);
-        peopleSearchers.addBinding().to(PeopleSearcher.PeopleContactSearcher.class);
-        peopleSearchers.addBinding().to(PeopleSearcher.PeopleUserSearcher.class);
     }
 
     @Provides

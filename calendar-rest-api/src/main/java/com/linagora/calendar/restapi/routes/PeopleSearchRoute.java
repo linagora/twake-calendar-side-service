@@ -18,18 +18,16 @@
 
 package com.linagora.calendar.restapi.routes;
 
-import java.util.Comparator;
 import java.util.List;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
 
 import jakarta.inject.Inject;
 
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang3.tuple.Pair;
 import org.apache.james.core.Username;
 import org.apache.james.jmap.Endpoint;
+import org.apache.james.jmap.api.model.AccountId;
 import org.apache.james.jmap.http.Authenticator;
 import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.metrics.api.MetricFactory;
@@ -44,7 +42,9 @@ import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.restapi.RestApiConfiguration;
+import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.tmail.james.jmap.contact.EmailAddressContact;
+import com.linagora.tmail.james.jmap.contact.EmailAddressContactSearchEngine;
 
 import io.netty.handler.codec.http.HttpMethod;
 import reactor.core.publisher.Flux;
@@ -56,6 +56,10 @@ public class PeopleSearchRoute extends CalendarRoute {
     public static final int MAX_RESULTS_LIMIT = 256;
 
     public static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    public enum ObjectType {
+        USER, CONTACT
+    }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     record SearchRequestDTO(@JsonProperty("q") String query,
@@ -100,17 +104,18 @@ public class PeopleSearchRoute extends CalendarRoute {
     }
 
     private final RestApiConfiguration configuration;
-    private final List<PeopleSearcher> peopleSearchers;
+    private final EmailAddressContactSearchEngine contactSearchEngine;
+    private final OpenPaaSUserDAO userDAO;
 
     @Inject
     public PeopleSearchRoute(Authenticator authenticator, MetricFactory metricFactory,
                              RestApiConfiguration configuration,
-                             Set<PeopleSearcher> peopleSearchers) {
+                             EmailAddressContactSearchEngine contactSearchEngine,
+                             OpenPaaSUserDAO userDAO) {
         super(authenticator, metricFactory);
         this.configuration = configuration;
-        this.peopleSearchers = peopleSearchers.stream()
-            .sorted(Comparator.comparingInt(PeopleSearcher::priority).reversed())
-            .toList();
+        this.contactSearchEngine = contactSearchEngine;
+        this.userDAO = userDAO;
     }
 
     @Override
@@ -124,7 +129,6 @@ public class PeopleSearchRoute extends CalendarRoute {
             .map(Throwing.function(bytes -> OBJECT_MAPPER.readValue(bytes, SearchRequestDTO.class)))
             .map(validateRequest())
             .flatMapMany(requestDTO -> searchPeople(session.getUser(), requestDTO.query, requestDTO.objectTypes, requestDTO.limit))
-            .map(mapToResponseDTO())
             .collectList()
             .map(Throwing.function(OBJECT_MAPPER::writeValueAsBytes))
             .flatMap(bytes -> res.status(200)
@@ -141,23 +145,30 @@ public class PeopleSearchRoute extends CalendarRoute {
         };
     }
 
-    public Flux<Pair<EmailAddressContact, String>> searchPeople(Username username, String query, List<String> objectTypesFilter, int limit) {
-        return Flux.fromIterable(peopleSearchers)
-            .filter(searcher -> CollectionUtils.isEmpty(objectTypesFilter) || objectTypesFilter.contains(searcher.objectType()))
-            .concatMap(searcher -> Flux.defer(() -> searcher.search(username, query, limit))
-                .map(emailAddressContact -> Pair.of(emailAddressContact, searcher.objectType())))
-            .take(limit);
+    public Flux<ResponseDTO> searchPeople(Username username, String query, List<String> objectTypesFilter, int limit) {
+        return Flux.from(contactSearchEngine.autoComplete(AccountId.fromString(username.asString()), query, limit))
+            .flatMap(contact -> getObjectType(contact, objectTypesFilter)
+                .map(objectType -> mapToResponseDTO(objectType).apply(contact)));
     }
 
-    private Function<Pair<EmailAddressContact, String>, ResponseDTO> mapToResponseDTO() {
-        return pair -> {
-            EmailAddressContact contact = pair.getLeft();
-            String objectType = pair.getRight();
-            return new ResponseDTO(contact.id().toString(),
-                contact.fields().address().asString(),
-                contact.fields().fullName(),
-                configuration.getSelfUrl().toString() + "/api/avatars?email=" + contact.fields().address().asString(),
-                objectType);
-        };
+    private Mono<ObjectType> getObjectType(EmailAddressContact contact, List<String> objectTypesFilter) {
+        if (CollectionUtils.isEmpty(objectTypesFilter) || objectTypesFilter.contains(ObjectType.USER.name().toLowerCase())) {
+            return getObjectType(contact);
+        }
+        return Mono.just(ObjectType.CONTACT);
+    }
+
+    private Mono<ObjectType> getObjectType(EmailAddressContact contact) {
+        return userDAO.retrieve(Username.fromMailAddress(contact.fields().address()))
+            .map(user -> ObjectType.USER)
+            .switchIfEmpty(Mono.just(ObjectType.CONTACT));
+    }
+
+    private Function<EmailAddressContact, ResponseDTO> mapToResponseDTO(ObjectType objectType) {
+        return contact -> new ResponseDTO(contact.id().toString(),
+            contact.fields().address().asString(),
+            contact.fields().fullName(),
+            configuration.getSelfUrl().toString() + "/api/avatars?email=" + contact.fields().address().asString(),
+            objectType.name().toLowerCase());
     }
 }

@@ -166,6 +166,58 @@ public class PeopleSearchRouteTest {
     }
 
     @Test
+    void shouldReturnUserObjectTypeWhenUserTypeIsIncludedInFilter(TwakeCalendarGuiceServer server) {
+        String username = "naruto@" + DOMAIN;
+        addUser(server, Username.of(username), "naruto", "hokage");
+        addContact(server, username, "naruto", "hokage");
+
+        String response = given()
+            .body("""
+                {
+                  "q" : "naruto",
+                  "objectTypes" : [ "user", "group", "contact", "ldap" ],
+                  "limit" : 10
+                }""")
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response)
+            .inPath("[0].objectType")
+            .isEqualTo("user");
+    }
+
+    @Test
+    void shouldReturnContactObjectTypeWhenUserTypeIsExcludedInFilter(TwakeCalendarGuiceServer server) {
+        String username = "naruto@" + DOMAIN;
+        addUser(server, Username.of(username), "naruto", "hokage");
+        addContact(server, username, "naruto", "hokage");
+
+        String response = given()
+            .body("""
+                {
+                  "q" : "naruto",
+                  "objectTypes" : [ "contact" ],
+                  "limit" : 10
+                }""")
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response)
+            .inPath("[0].objectType")
+            .isEqualTo("contact");
+    }
+
+    @Test
     void shouldRespectLimitParameter(TwakeCalendarGuiceServer server) {
         addContact(server, "naruto@domain.tld", "naruto", "hokage");
         addContact(server, "sasuke@domain.tld", "sasuke", "uchiha");
@@ -189,202 +241,6 @@ public class PeopleSearchRouteTest {
         assertThatJson(response)
             .isArray()
             .hasSize(1);
-    }
-
-    @Test
-    void shouldRespectObjectTypesFilter(TwakeCalendarGuiceServer server) {
-        addContact(server, "naruto@domain.tld", "naruto", "hokage");
-        addContact(server, "sasuke@domain.tld", "sasuke", "uchiha");
-        addContact(server, "sasuke-clone@domain.tld", "sasuke", "clone");
-
-        String response = given()
-            .body("""
-                {
-                  "q" : "sasuke",
-                  "objectTypes" : [ "user" ],
-                  "limit" : 10
-                }""")
-        .when()
-            .post()
-        .then()
-            .statusCode(HttpStatus.SC_OK)
-            .extract()
-            .body()
-            .asString();
-
-        assertThatJson(response)
-            .isArray()
-            .hasSize(0);
-    }
-
-    @Test
-    void shouldReturnAllMatchingUsers(TwakeCalendarGuiceServer server) {
-        addUser(server, Username.fromLocalPartWithDomain("naruto", DOMAIN), "naruto", "hokage");
-        addUser(server, Username.fromLocalPartWithDomain("sasuke", DOMAIN), "sasuke", "uchiha");
-        addUser(server, Username.fromLocalPartWithDomain("sasuke-clone", DOMAIN), "sasuke", "clone");
-
-        String response = given()
-            .auth().preemptive().basic(USERNAME.asString(), PASSWORD)
-            .body("""
-                {
-                  "q" : "sasuke",
-                  "objectTypes" : [ "user", "group", "contact", "ldap" ],
-                  "limit" : 10
-                }""")
-        .when()
-            .post()
-        .then()
-            .statusCode(HttpStatus.SC_OK)
-            .extract()
-            .body()
-            .asString();
-
-        assertThatJson(response)
-            .withOptions(Option.IGNORING_ARRAY_ORDER)
-            .isEqualTo("""
-                [
-                  {
-                    id: "${json-unit.ignore}",
-                    objectType: "user",
-                    names: [ { displayName: "sasuke clone", type: "default" } ],
-                    photos: [
-                      {
-                        url: "https://twcalendar.linagora.com/api/avatars?email=sasuke-clone@open-paas.ltd",
-                        type: "default"
-                      }
-                    ],
-                    emailAddresses: [
-                      {
-                        value: "sasuke-clone@open-paas.ltd",
-                        type: "Work"
-                      }
-                    ],
-                    phoneNumbers: []
-                  },
-                  {
-                    id: "${json-unit.ignore}",
-                    objectType: "user",
-                    names: [ { displayName: "sasuke uchiha", type: "default" } ],
-                    photos: [
-                      {
-                        url: "https://twcalendar.linagora.com/api/avatars?email=sasuke@open-paas.ltd",
-                        type: "default"
-                      }
-                    ],
-                    emailAddresses: [ { value: "sasuke@open-paas.ltd", type: "Work" } ],
-                    phoneNumbers: []
-                  }
-                ]""");
-    }
-
-    @Test
-    void shouldMatchWhenQueryIsInFirstNameOrLastName(TwakeCalendarGuiceServer server) {
-        String query = "ninja";
-        addUser(server, Username.fromLocalPartWithDomain("kakashi1", DOMAIN), query, "hatake");
-        addUser(server, Username.fromLocalPartWithDomain("kakashi2", DOMAIN), "hokage", query);
-        addUser(server, Username.fromLocalPartWithDomain("kakashi3", DOMAIN), "naruto", "hokage");
-
-        String response = given()
-            .body("""
-                {
-                  "q": "%s",
-                  "objectTypes": ["user"],
-                  "limit": 10
-                }""".formatted(query))
-        .when()
-            .post()
-        .then()
-            .statusCode(HttpStatus.SC_OK)
-            .extract()
-            .body()
-            .asString();
-
-        assertThatJson(response)
-            .withOptions(Option.IGNORING_ARRAY_ORDER)
-            .isEqualTo("""
-                [
-                    {
-                      id: "${json-unit.ignore}",
-                      objectType: "user",
-                      names: [ { displayName: "hokage %s", type: "default" } ],
-                      emailAddresses: [ { value: "kakashi2@open-paas.ltd", type: "Work" } ],
-                      phoneNumbers: [],
-                      photos: [
-                        {
-                          url: "https://twcalendar.linagora.com/api/avatars?email=kakashi2@open-paas.ltd",
-                          type: "default"
-                        }
-                      ]
-                    },
-                    {
-                      id: "${json-unit.ignore}",
-                      objectType: "user",
-                      names: [ { displayName: "%s hatake", type: "default" } ],
-                      emailAddresses: [ { value: "kakashi1@open-paas.ltd", type: "Work" } ],
-                      phoneNumbers: [],
-                      photos: [
-                        {
-                          url: "https://twcalendar.linagora.com/api/avatars?email=kakashi1@open-paas.ltd",
-                          type: "default"
-                        }
-                      ]
-                    }
-                ]""".formatted(query, query));
-    }
-
-
-    @Test
-    void shouldReturnMixedUsersAndContactsWhenMatchingQuery(TwakeCalendarGuiceServer server) {
-        addContact(server, "naruto@domain.tld", "naruto", "hokage");
-        addContact(server, "sasuke-clone@domain.tld", "sasuke", "clone");
-        addUser(server, Username.fromLocalPartWithDomain("sasuke", DOMAIN), "sasuke", "uchiha");
-
-        String response = given()
-            .body("""
-                {
-                  "q" : "sasuke",
-                  "objectTypes" : [ "user", "contact" ],
-                  "limit" : 10
-                }""")
-        .when()
-            .post()
-        .then()
-            .statusCode(HttpStatus.SC_OK)
-            .extract()
-            .body()
-            .asString();
-
-        assertThatJson(response)
-            .withOptions(Option.IGNORING_ARRAY_ORDER)
-            .isEqualTo("""
-                [
-                   {
-                     id: "${json-unit.ignore}",
-                     objectType: "contact",
-                     names: [ { displayName: "sasuke clone", type: "default" } ],
-                     photos: [
-                       {
-                         url: "https://twcalendar.linagora.com/api/avatars?email=sasuke-clone@domain.tld",
-                         type: "default"
-                       }
-                     ],
-                     emailAddresses: [ { value: "sasuke-clone@domain.tld", type: "Work" } ],
-                     phoneNumbers: []
-                   },
-                   {
-                     id: "${json-unit.ignore}",
-                     objectType: "user",
-                     names: [ { displayName: "sasuke uchiha", type: "default" } ],
-                     photos: [
-                       {
-                         url: "https://twcalendar.linagora.com/api/avatars?email=sasuke@open-paas.ltd",
-                         type: "default"
-                       }
-                     ],
-                     emailAddresses: [ { value: "sasuke@open-paas.ltd", type: "Work" } ],
-                     phoneNumbers: []
-                   }
-                 ]""");
     }
 
     @Test
