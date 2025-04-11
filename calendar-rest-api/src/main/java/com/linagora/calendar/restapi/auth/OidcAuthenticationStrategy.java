@@ -21,10 +21,15 @@ package com.linagora.calendar.restapi.auth;
 import static org.apache.james.jmap.http.JWTAuthenticationStrategy.AUTHORIZATION_HEADER_PREFIX;
 
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.Username;
 import org.apache.james.jmap.exceptions.UnauthorizedException;
 import org.apache.james.jmap.http.AuthenticationChallenge;
@@ -37,16 +42,26 @@ import org.apache.james.metrics.api.MetricFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.fge.lambdas.Throwing;
+import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.io.BaseEncoding;
+import com.ibm.icu.impl.Pair;
 import com.linagora.calendar.restapi.RestApiConfiguration;
+import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 
 import reactor.core.publisher.Mono;
 import reactor.netty.http.server.HttpServerRequest;
 
 public class OidcAuthenticationStrategy implements AuthenticationStrategy {
+
     private static final Logger LOGGER = LoggerFactory.getLogger(OidcAuthenticationStrategy.class);
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final String FIRSTNAME_PROPERTY = "given_name";
+    private static final String SURNAME_PROPERTY = "family_name";
 
     private final DefaultCheckTokenClient checkTokenClient;
     private final SimpleSessionProvider sessionProvider;
@@ -83,7 +98,7 @@ public class OidcAuthenticationStrategy implements AuthenticationStrategy {
                 checkTokenClient.userInfo(userInfoURL, token)))
             .map(x -> x.claimByPropertyName(configuration.getOidcClaim())
                 .orElseThrow(() -> new UnauthorizedException("Invalid OIDC token: userinfo needs to include " + configuration.getOidcClaim() + " claim")))
-            .flatMap(username -> provisionUserIfNeed(Username.of(username)));
+            .flatMap(username -> provisionUserIfNeed(Username.of(username), parseFirstnameAndSurnameFromToken(token)));
     }
 
     @Override
@@ -95,11 +110,40 @@ public class OidcAuthenticationStrategy implements AuthenticationStrategy {
                 "scope", "openid profile email"));
     }
 
-    private Mono<Username> provisionUserIfNeed(Username username) {
+    private Mono<Username> provisionUserIfNeed(Username username, Optional<Pair<String, String>> firstnameAndSurnameOpt) {
+        Mono<OpenPaaSUser> createPublisher = Mono.justOrEmpty(firstnameAndSurnameOpt)
+            .flatMap(name -> userDAO.add(username, name.first, name.second))
+            .switchIfEmpty(Mono.defer(() -> userDAO.add(username)))
+            .doOnNext(u -> LOGGER.info("Created user: {}", username.asString()));
+
         return userDAO.retrieve(username)
-            .switchIfEmpty(Mono.defer(() -> userDAO.add(username))
-                .doOnNext(created -> LOGGER.info("Created user: {}", username.asString())))
+            .switchIfEmpty(createPublisher)
             .doOnError(error -> LOGGER.error("Failed to provisioning user: {}", username.asString(), error))
             .thenReturn(username);
+    }
+
+    private Optional<Pair<String, String>> parseFirstnameAndSurnameFromToken(String jwtToken) {
+        List<String> parts = Splitter.on('.')
+            .trimResults()
+            .omitEmptyStrings()
+            .splitToList(jwtToken);
+        if (parts.size() < 2) {
+            return Optional.empty();
+        }
+
+        try {
+            String payloadJson = new String(BaseEncoding.base64Url().decode(parts.get(1)), StandardCharsets.UTF_8);
+            Map<String, Object> payloadMap = MAPPER.readValue(payloadJson, new TypeReference<>() {});
+            String givenName = (String) payloadMap.get(FIRSTNAME_PROPERTY);
+            String familyName = (String) payloadMap.get(SURNAME_PROPERTY);
+
+            if (givenName == null && familyName == null) {
+                return Optional.empty();
+            }
+            return Optional.of(Pair.of(StringUtils.defaultIfEmpty(givenName, StringUtils.EMPTY),
+                StringUtils.defaultIfEmpty(familyName, StringUtils.EMPTY)));
+        } catch (Exception ignored) {
+            return Optional.empty();
+        }
     }
 }
