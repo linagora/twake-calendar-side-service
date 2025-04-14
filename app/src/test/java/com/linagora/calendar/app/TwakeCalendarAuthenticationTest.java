@@ -26,10 +26,7 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.util.Base64;
-import java.util.Map;
 import java.util.UUID;
-import java.util.stream.Stream;
 
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
@@ -38,18 +35,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.junit.jupiter.params.provider.MethodSource;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.mockserver.integration.ClientAndServer;
 import org.mockserver.model.HttpRequest;
 import org.mockserver.model.HttpResponse;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.fge.lambdas.Throwing;
-import com.google.common.collect.ImmutableMap;
 import com.google.inject.name.Names;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.restapi.RestApiServerProbe;
@@ -178,33 +170,26 @@ public class TwakeCalendarAuthenticationTest {
         "'', Doe",
         "John, Doe"
     })
-    void shouldProvisionUserWithFirstnameAndSurnameWhenTheyArePresentInToken(String firstname, String lastname, TwakeCalendarGuiceServer server) throws JsonProcessingException {
+    void shouldProvisionUserWithFirstnameAndSurnameWhenTheyArePresentInUserInfoResponse(String firstname, String lastname, TwakeCalendarGuiceServer server) throws JsonProcessingException {
         String emailClaimValue = UUID.randomUUID() + "@" + DOMAIN;
         Username username = Username.of(emailClaimValue);
 
         assertThat(server.getProbe(CalendarDataProbe.class).userId(username)).isNull();
 
-        // Fake JWT: header.payload.signature
-        Map<String, Object> claims = ImmutableMap.of(
-            "email", emailClaimValue,
-            "active", true,
-            "given_name", firstname,
-            "family_name", lastname);
-
-        String payload = Base64.getUrlEncoder().withoutPadding().encodeToString(new ObjectMapper().writeValueAsBytes(claims));
-
-        String fakeToken = "header." + payload + ".signature";
         String activeResponse = """
             {
-                "email": "%s",
-                "active": true
-            }""".formatted(emailClaimValue);
+              "email" : "%s",
+              "active" : true,
+              "given_name" : "%s",
+              "family_name" : "%s"
+            }""".formatted(emailClaimValue, firstname, lastname);
+
         updateMockerServerSpecifications(activeResponse, 200);
 
         given()
-            .header("Authorization", "Bearer " + fakeToken)
+            .header("Authorization", "Bearer " + "fakeToken")
         .when()
-            .get("/api/themes/anything")
+            .get("/api/themes/anything").prettyPeek()
         .then()
             .statusCode(200);
 
@@ -214,36 +199,26 @@ public class TwakeCalendarAuthenticationTest {
         assertThat(openPaaSUser.lastname()).isEqualTo(lastname);
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {
-        "{\"email\": \"test-user@domain.com\", \"active\": true}",
-        "{}",
-        "not-a-json",
-        "%%%bad_base64%%%",
-        "onlypayload"
-    })
-    void shouldProvisionUserWithDefaultFirstnameAndSurnameWhenTheyAreAbsentInToken(String payload, TwakeCalendarGuiceServer server) {
+    @Test
+    void shouldProvisionUserWithDefaultFirstnameAndSurnameWhenTheyAreAbsentInUserInfoResponse(TwakeCalendarGuiceServer server) {
         String emailClaimValue = UUID.randomUUID() + "@" + DOMAIN;
         Username username = Username.of(emailClaimValue);
 
         assertThat(server.getProbe(CalendarDataProbe.class).userId(username)).isNull();
 
-        // Fake JWT: header.payload.signature
-        String payloadEncode = Base64.getUrlEncoder().withoutPadding().encodeToString(payload.getBytes(StandardCharsets.UTF_8));
-
-        String fakeToken = "header." + payloadEncode + ".signature";
         String activeResponse = """
             {
                 "email": "%s",
                 "active": true
             }""".formatted(emailClaimValue);
+
         updateMockerServerSpecifications(activeResponse, 200);
 
         given()
-            .header("Authorization", "Bearer " + fakeToken)
-            .when()
+            .header("Authorization", "Bearer " + "fakeToken")
+        .when()
             .get("/api/themes/anything")
-            .then()
+        .then()
             .statusCode(200);
 
         OpenPaaSUser openPaaSUser = server.getProbe(CalendarDataProbe.class).getUser(username);

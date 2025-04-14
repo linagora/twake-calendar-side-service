@@ -21,9 +21,6 @@ package com.linagora.calendar.restapi.auth;
 import static org.apache.james.jmap.http.JWTAuthenticationStrategy.AUTHORIZATION_HEADER_PREFIX;
 
 import java.net.URL;
-import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 import jakarta.inject.Inject;
@@ -37,17 +34,14 @@ import org.apache.james.jmap.http.AuthenticationScheme;
 import org.apache.james.jmap.http.AuthenticationStrategy;
 import org.apache.james.jwt.DefaultCheckTokenClient;
 import org.apache.james.jwt.userinfo.UserInfoCheckException;
+import org.apache.james.jwt.userinfo.UserinfoResponse;
 import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.metrics.api.MetricFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.fge.lambdas.Throwing;
-import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.io.BaseEncoding;
 import com.ibm.icu.impl.Pair;
 import com.linagora.calendar.restapi.RestApiConfiguration;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -59,7 +53,6 @@ import reactor.netty.http.server.HttpServerRequest;
 public class OidcAuthenticationStrategy implements AuthenticationStrategy {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(OidcAuthenticationStrategy.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final String FIRSTNAME_PROPERTY = "given_name";
     private static final String SURNAME_PROPERTY = "family_name";
 
@@ -96,9 +89,9 @@ public class OidcAuthenticationStrategy implements AuthenticationStrategy {
     private Mono<Username> correspondingUsername(String token) {
         return Mono.from(metricFactory.decoratePublisherWithTimerMetric("userinfo-lookup",
                 checkTokenClient.userInfo(userInfoURL, token)))
-            .map(x -> x.claimByPropertyName(configuration.getOidcClaim())
-                .orElseThrow(() -> new UnauthorizedException("Invalid OIDC token: userinfo needs to include " + configuration.getOidcClaim() + " claim")))
-            .flatMap(username -> provisionUserIfNeed(Username.of(username), parseFirstnameAndSurnameFromToken(token)));
+            .flatMap(userInfoResponse -> Mono.justOrEmpty(userInfoResponse.claimByPropertyName(configuration.getOidcClaim()))
+                .switchIfEmpty(Mono.error(new UnauthorizedException("Invalid OIDC token: userinfo needs to include " + configuration.getOidcClaim() + " claim")))
+                .flatMap(username -> provisionUserIfNeed(Username.of(username), parseFirstnameAndSurnameFromToken(userInfoResponse))));
     }
 
     @Override
@@ -122,28 +115,14 @@ public class OidcAuthenticationStrategy implements AuthenticationStrategy {
             .thenReturn(username);
     }
 
-    private Optional<Pair<String, String>> parseFirstnameAndSurnameFromToken(String jwtToken) {
-        List<String> parts = Splitter.on('.')
-            .trimResults()
-            .omitEmptyStrings()
-            .splitToList(jwtToken);
-        if (parts.size() < 2) {
+    private Optional<Pair<String, String>> parseFirstnameAndSurnameFromToken(UserinfoResponse userinfoResponse) {
+        Optional<String> firstname = userinfoResponse.claimByPropertyName(FIRSTNAME_PROPERTY);
+        Optional<String> surname = userinfoResponse.claimByPropertyName(SURNAME_PROPERTY);
+
+        if (firstname.isEmpty() && surname.isEmpty()) {
             return Optional.empty();
         }
 
-        try {
-            String payloadJson = new String(BaseEncoding.base64Url().decode(parts.get(1)), StandardCharsets.UTF_8);
-            Map<String, Object> payloadMap = MAPPER.readValue(payloadJson, new TypeReference<>() {});
-            String givenName = (String) payloadMap.get(FIRSTNAME_PROPERTY);
-            String familyName = (String) payloadMap.get(SURNAME_PROPERTY);
-
-            if (givenName == null && familyName == null) {
-                return Optional.empty();
-            }
-            return Optional.of(Pair.of(StringUtils.defaultIfEmpty(givenName, StringUtils.EMPTY),
-                StringUtils.defaultIfEmpty(familyName, StringUtils.EMPTY)));
-        } catch (Exception ignored) {
-            return Optional.empty();
-        }
+        return Optional.of(Pair.of(firstname.orElse(StringUtils.EMPTY), surname.orElse(StringUtils.EMPTY)));
     }
 }
