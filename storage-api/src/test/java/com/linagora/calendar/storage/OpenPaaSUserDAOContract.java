@@ -22,10 +22,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
-import java.util.UUID;
 
 import org.apache.james.core.Username;
 import org.junit.jupiter.api.Test;
+
+import com.linagora.calendar.storage.exception.UserConflictException;
+import com.linagora.calendar.storage.exception.UserNotFoundException;
 
 public interface OpenPaaSUserDAOContract {
 
@@ -84,7 +86,7 @@ public interface OpenPaaSUserDAOContract {
         testee().add(USERNAME).block();
 
         assertThatThrownBy(() -> testee().add(USERNAME).block())
-            .isInstanceOf(IllegalStateException.class);
+            .isInstanceOf(UserConflictException.class);
     }
 
     @Test
@@ -98,7 +100,7 @@ public interface OpenPaaSUserDAOContract {
     @Test
     default void updateShouldThrowWhenUserIdNotExist() {
         assertThatThrownBy(() -> testee().update(new OpenPaaSId("67f8d26905faf173b5e693a0"), USERNAME_2, "James2", "Bond2").block())
-            .isInstanceOf(IllegalStateException.class);
+            .isInstanceOf(UserNotFoundException.class);
 
     }
 
@@ -107,7 +109,7 @@ public interface OpenPaaSUserDAOContract {
         testee().add(USERNAME, "James", "Bond").block();
         OpenPaaSUser user2 = testee().add(USERNAME_2, "James2", "Bond2").block();
         assertThatThrownBy(() -> testee().update(user2.id(), USERNAME, "James2", "Bond2").block())
-            .isInstanceOf(IllegalStateException.class);
+            .isInstanceOf(UserConflictException.class);
 
     }
 

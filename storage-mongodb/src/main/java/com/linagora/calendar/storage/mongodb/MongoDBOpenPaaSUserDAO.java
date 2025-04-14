@@ -29,6 +29,9 @@ import org.bson.types.ObjectId;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.exception.DomainNotFoundException;
+import com.linagora.calendar.storage.exception.UserConflictException;
+import com.linagora.calendar.storage.exception.UserNotFoundException;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
 import com.mongodb.client.result.InsertOneResult;
@@ -77,7 +80,7 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
     @Override
     public Mono<OpenPaaSUser> add(Username username, String firstName, String lastName) {
         return domainDAO.retrieve(username.getDomainPart().get())
-            .switchIfEmpty(Mono.error(() -> new IllegalStateException(username.getDomainPart().get().asString() + " does not exist")))
+            .switchIfEmpty(Mono.error(() -> new DomainNotFoundException(username.getDomainPart().get())))
             .map(domain -> new Document()
                 .append("firstname", firstName)
                 .append("lastname", lastName)
@@ -92,7 +95,7 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
             .map(id -> new OpenPaaSUser(username, new OpenPaaSId(id.asObjectId().getValue().toHexString()), firstName, lastName))
             .onErrorResume(e -> {
                 if (e.getMessage().contains("E11000 duplicate key error collection")) {
-                    return Mono.error(new IllegalStateException(username.asString() + " already exists"));
+                    return Mono.error(new UserConflictException(username));
                 }
                 return Mono.error(e);
             });
@@ -101,7 +104,7 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
     @Override
     public Mono<Void> update(OpenPaaSId id, Username newUsername, String newFirstname, String newLastname) {
         return domainDAO.retrieve(newUsername.getDomainPart().get())
-            .switchIfEmpty(Mono.error(() -> new IllegalStateException("Domain does not exist")))
+            .switchIfEmpty(Mono.error(() -> new DomainNotFoundException(newUsername.getDomainPart().get())))
             .flatMap(domain -> Mono.from(database.getCollection(COLLECTION).updateOne(
                     Filters.eq("_id", new ObjectId(id.value())),
                     Updates.combine(
@@ -115,14 +118,14 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
                     )))
                 .flatMap(result -> {
                     if (result.getMatchedCount() == 0) {
-                        return Mono.error(new IllegalStateException("User with id " + id.value() + " not found"));
+                        return Mono.error(new UserNotFoundException(id));
                     }
                     return Mono.empty();
                 })
                 .then()
                 .onErrorResume(e -> {
                     if (e.getMessage().contains("E11000 duplicate key error collection")) {
-                        return Mono.error(new IllegalStateException(newUsername.asString() + " already exists"));
+                        return Mono.error(new UserConflictException(newUsername));
                     }
                     return Mono.error(e);
                 })

@@ -35,6 +35,9 @@ import org.eclipse.jetty.http.HttpStatus;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.exception.DomainNotFoundException;
+import com.linagora.calendar.storage.exception.UserConflictException;
+import com.linagora.calendar.storage.exception.UserNotFoundException;
 
 import spark.Request;
 import spark.Response;
@@ -98,6 +101,8 @@ public class CalendarUserRoutes implements Routes {
         service.post(BASE_PATH, this::addUser, jsonTransformer);
 
         service.head(BASE_PATH, this::headUser);
+
+        service.patch(BASE_PATH, this::updateUser, jsonTransformer);
     }
 
     private List<CalendarUserDTO> getUsers(Request request, Response response) {
@@ -125,7 +130,13 @@ public class CalendarUserRoutes implements Routes {
             userDAO.add(username, dto.firstname(), dto.lastname()).block();
             response.status(HttpStatus.CREATED_201);
             return Constants.EMPTY_BODY;
-        } catch (IllegalStateException e) {
+        } catch (DomainNotFoundException e) {
+            throw ErrorResponder.builder()
+                .statusCode(HttpStatus.NOT_FOUND_404)
+                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                .message(e.getMessage())
+                .haltError();
+        } catch (UserConflictException e) {
             throw ErrorResponder.builder()
                 .statusCode(HttpStatus.CONFLICT_409)
                 .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
@@ -192,6 +203,57 @@ public class CalendarUserRoutes implements Routes {
             return userDAO.retrieve(Username.of(headUserRequest.value())).blockOptional().isPresent();
         } else {
             return userDAO.retrieve(new OpenPaaSId(headUserRequest.value())).blockOptional().isPresent();
+        }
+    }
+
+    private String updateUser(Request request, Response response) throws JsonExtractException {
+        String id = request.queryParams("id");
+        CalendarUserDTO dto = jsonExtractor.parse(request.body());
+
+        validateUpdateUserRequest(id, dto);
+
+        try {
+            OpenPaaSId openPaaSId = new OpenPaaSId(id);
+            userDAO.update(openPaaSId, Username.of(dto.email()), dto.firstname(), dto.lastname()).block();
+            response.status(HttpStatus.NO_CONTENT_204);
+            return Constants.EMPTY_BODY;
+        } catch (DomainNotFoundException | UserNotFoundException e) {
+            throw ErrorResponder.builder()
+                .statusCode(HttpStatus.NOT_FOUND_404)
+                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                .message(e.getMessage())
+                .haltError();
+        } catch (UserConflictException e) {
+            throw ErrorResponder.builder()
+                .statusCode(HttpStatus.CONFLICT_409)
+                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                .message(e.getMessage())
+                .haltError();
+        } catch (Exception e) {
+            throw ErrorResponder.builder()
+                .statusCode(HttpStatus.INTERNAL_SERVER_ERROR_500)
+                .type(ErrorResponder.ErrorType.SERVER_ERROR)
+                .message("Error while updating user with id '%s'".formatted(id))
+                .cause(e)
+                .haltError();
+        }
+    }
+
+    private void validateUpdateUserRequest(String id, CalendarUserDTO dto) {
+        if (StringUtils.isEmpty(id)) {
+            throw ErrorResponder.builder()
+                .statusCode(HttpStatus.BAD_REQUEST_400)
+                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                .message("Missing 'id' query parameter")
+                .haltError();
+        }
+
+        if (StringUtils.isEmpty(dto.email()) || StringUtils.isEmpty(dto.firstname()) || StringUtils.isEmpty(dto.lastname())) {
+            throw ErrorResponder.builder()
+                .statusCode(HttpStatus.BAD_REQUEST_400)
+                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                .message("Missing one or more required fields: email, firstname, lastname")
+                .haltError();
         }
     }
 }

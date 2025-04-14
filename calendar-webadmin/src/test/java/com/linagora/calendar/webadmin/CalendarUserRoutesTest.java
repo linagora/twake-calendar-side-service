@@ -23,6 +23,8 @@ import static io.restassured.RestAssured.when;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.is;
 
+import java.util.UUID;
+
 import org.apache.james.core.Username;
 import org.apache.james.webadmin.WebAdminServer;
 import org.apache.james.webadmin.WebAdminUtils;
@@ -148,7 +150,7 @@ class CalendarUserRoutesTest {
             .contentType(ContentType.JSON)
             .body("statusCode", is(HttpStatus.CONFLICT_409))
             .body("type", is("InvalidArgument"))
-            .body("message", is("james@linagora.com already exist"));
+            .body("message", is("james@linagora.com already exists"));
     }
 
     @Test
@@ -202,5 +204,81 @@ class CalendarUserRoutesTest {
             .head()
         .then()
             .statusCode(400);
+    }
+
+    @Test
+    void patchUserShouldUpdateUser() {
+        OpenPaaSUser original = userDAO.add(Username.of("james@linagora.com"), "James", "Bond").block();
+
+        given()
+            .queryParam("id", original.id().value())
+            .body("{\"email\":\"james2@linagora.com\",\"firstname\":\"James2\",\"lastname\":\"Bond2\"}")
+        .when()
+            .patch()
+        .then()
+            .statusCode(204);
+
+        when()
+            .get()
+            .then()
+            .statusCode(200)
+            .body("[0].email", equalTo("james2@linagora.com"))
+            .body("[0].firstname", equalTo("James2"))
+            .body("[0].lastname", equalTo("Bond2"))
+            .body("[0].id", equalTo(original.id().value()));
+    }
+
+    @Test
+    void patchUserShouldReturn400WhenIdMissing() {
+        given()
+            .body("{\"email\":\"jbond@linagora.com\",\"firstname\":\"James\",\"lastname\":\"Bond\"}")
+        .when()
+            .patch()
+        .then()
+            .statusCode(400)
+            .body("message", equalTo("Missing 'id' query parameter"));
+    }
+
+    @Test
+    void patchUserShouldReturn400WhenRequiredFieldsMissing() {
+        OpenPaaSUser user = userDAO.add(Username.of("james@linagora.com"), "James", "Bond").block();
+
+        given()
+            .queryParam("id", user.id().value())
+            .body("{\"firstname\":\"James2\",\"lastname\":\"Bond2\"}")
+        .when()
+            .patch()
+        .then()
+            .statusCode(400)
+            .body("message", equalTo("Missing one or more required fields: email, firstname, lastname"));
+    }
+
+    @Test
+    void patchUserShouldReturn409WhenUpdatingToExistingEmail() {
+        userDAO.add(Username.of("user1@linagora.com"), "User", "One").block();
+        OpenPaaSUser user2 = userDAO.add(Username.of("user2@linagora.com"), "User", "Two").block();
+
+        given()
+            .queryParam("id", user2.id().value())
+            .body("{\"email\":\"user1@linagora.com\",\"firstname\":\"User\",\"lastname\":\"Two\"}")
+        .when()
+            .patch()
+        .then()
+            .statusCode(409)
+            .body("message", equalTo("user1@linagora.com already exists"));
+    }
+
+    @Test
+    void patchUserShouldReturn409WhenUserNotFound() {
+        String nonExistingId = UUID.randomUUID().toString();
+
+        given()
+            .queryParam("id", nonExistingId)
+            .body("{\"email\":\"new@linagora.com\",\"firstname\":\"Updated\",\"lastname\":\"User\"}")
+        .when()
+            .patch()
+        .then()
+            .statusCode(404)
+            .body("message", equalTo("User with id " + nonExistingId + " not found"));
     }
 }
