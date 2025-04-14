@@ -189,7 +189,7 @@ public class TwakeCalendarAuthenticationTest {
         given()
             .header("Authorization", "Bearer " + "fakeToken")
         .when()
-            .get("/api/themes/anything").prettyPeek()
+            .get("/api/themes/anything")
         .then()
             .statusCode(200);
 
