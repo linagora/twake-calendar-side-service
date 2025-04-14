@@ -36,7 +36,6 @@ import com.linagora.calendar.storage.DomainConfiguration;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSDomainList;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
-import com.linagora.calendar.storage.configuration.FakeUserConfigurationDAO;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
@@ -52,7 +51,7 @@ public class MongoDBStorageModule extends AbstractModule {
         bind(OpenPaaSDomainList.class).in(Scopes.SINGLETON);
         bind(DomainList.class).to(OpenPaaSDomainList.class);
 
-        bind(UserConfigurationDAO.class).to(FakeUserConfigurationDAO.class);
+        bind(UserConfigurationDAO.class).to(MongoDBUserConfigurationDAO.class);
     }
 
     @Provides

@@ -26,7 +26,7 @@ import com.linagora.calendar.storage.OpenPaaSUserDAOContract;
 
 public class MongoDBOpenPaaSUserDAOTest implements OpenPaaSUserDAOContract {
     @RegisterExtension
-    DockerMongoDBExtension mongo = new DockerMongoDBExtension();
+    static DockerMongoDBExtension mongo = new DockerMongoDBExtension();
 
     private MongoDBOpenPaaSUserDAO mongoDBOpenPaaSUserDAO;
 

@@ -70,7 +70,7 @@ class MongoTest {
     private OpenPaaSId userId;
 
     @RegisterExtension
-    DockerMongoDBExtension mongo = new DockerMongoDBExtension();
+    static DockerMongoDBExtension mongo = new DockerMongoDBExtension();
     @RegisterExtension
     TwakeCalendarExtension twakeCalendarExtension = new TwakeCalendarExtension(TwakeCalendarConfiguration.builder()
         .configurationFromClasspath()
