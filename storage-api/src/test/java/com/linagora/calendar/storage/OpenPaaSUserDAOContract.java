@@ -22,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
+import java.util.UUID;
 
 import org.apache.james.core.Username;
 import org.junit.jupiter.api.Test;
@@ -84,6 +85,30 @@ public interface OpenPaaSUserDAOContract {
 
         assertThatThrownBy(() -> testee().add(USERNAME).block())
             .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    default void updateShouldWork() {
+        OpenPaaSUser user = testee().add(USERNAME, "James", "Bond").block();
+        testee().update(user.id(), USERNAME_2, "James2", "Bond2").block();
+
+        assertThat(testee().retrieve(user.id()).block()).isEqualTo(new OpenPaaSUser(USERNAME_2, user.id(), "James2", "Bond2"));
+    }
+
+    @Test
+    default void updateShouldThrowWhenUserIdNotExist() {
+        assertThatThrownBy(() -> testee().update(new OpenPaaSId("67f8d26905faf173b5e693a0"), USERNAME_2, "James2", "Bond2").block())
+            .isInstanceOf(IllegalStateException.class);
+
+    }
+
+    @Test
+    default void updateShouldThrowWhenUsernameDuplicate() {
+        testee().add(USERNAME, "James", "Bond").block();
+        OpenPaaSUser user2 = testee().add(USERNAME_2, "James2", "Bond2").block();
+        assertThatThrownBy(() -> testee().update(user2.id(), USERNAME, "James2", "Bond2").block())
+            .isInstanceOf(IllegalStateException.class);
+
     }
 
     @Test

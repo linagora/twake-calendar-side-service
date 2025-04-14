@@ -20,7 +20,6 @@ package com.linagora.calendar.storage;
 
 import static org.apache.james.util.ReactorUtils.publishIfPresent;
 
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -31,20 +30,18 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 public class MemoryOpenPaaSUserDAO implements OpenPaaSUserDAO {
-    private final ConcurrentHashMap<Username, OpenPaaSUser> hashMap = new ConcurrentHashMap();
+    private final ConcurrentHashMap<OpenPaaSId, OpenPaaSUser> hashMap = new ConcurrentHashMap();
+    private final ConcurrentHashMap<Username, OpenPaaSId> usernameIndex = new ConcurrentHashMap<>();
 
     @Override
     public Mono<OpenPaaSUser> retrieve(OpenPaaSId id) {
-        return Mono.fromCallable(() -> hashMap.entrySet().stream()
-            .map(Map.Entry::getValue)
-            .filter(entry -> entry.id().equals(id))
-            .findAny())
+        return Mono.fromCallable(() -> Optional.ofNullable(hashMap.get(id)))
             .handle(publishIfPresent());
     }
 
     @Override
     public Mono<OpenPaaSUser> retrieve(Username username) {
-        return Mono.fromCallable(() -> Optional.ofNullable(hashMap.get(username)))
+        return Mono.fromCallable(() -> Optional.ofNullable(usernameIndex.get(username)).map(hashMap::get))
             .handle(publishIfPresent());
     }
 
@@ -56,10 +53,43 @@ public class MemoryOpenPaaSUserDAO implements OpenPaaSUserDAO {
     @Override
     public Mono<OpenPaaSUser> add(Username username, String firstName, String lastName) {
         OpenPaaSId id = new OpenPaaSId(UUID.randomUUID().toString());
+        OpenPaaSUser newUser = new OpenPaaSUser(username, id, firstName, lastName);
 
-        return Mono.fromCallable(() -> hashMap.computeIfAbsent(username, name -> new OpenPaaSUser(name, id, firstName, lastName)))
-            .filter(result -> result.id().equals(id))
-            .switchIfEmpty(Mono.error(() -> new IllegalStateException(username.asString() + " already exist")));
+        return Mono.fromCallable(() -> {
+            OpenPaaSId computedId = usernameIndex.computeIfAbsent(username, name -> {
+                hashMap.put(id, newUser);
+                return id;
+            });
+
+            if (computedId.equals(id)) {
+                return newUser;
+            } else {
+                throw new IllegalStateException(username.asString() + " already exists");
+            }
+        });
+    }
+
+    @Override
+    public Mono<Void> update(OpenPaaSId id, Username newUsername, String newFirstname, String newLastname) {
+        return Mono.fromRunnable(() -> {
+            OpenPaaSUser user = hashMap.computeIfPresent(id, (identifier, currentUser) -> {
+                if (newUsername.equals(currentUser.username())) {
+                    return new OpenPaaSUser(newUsername, id, newFirstname, newLastname);
+                } else {
+                    OpenPaaSId computedId = usernameIndex.computeIfAbsent(newUsername, name -> id);
+                    if (computedId.equals(id)) {
+                        usernameIndex.remove(currentUser.username());
+                        return new OpenPaaSUser(newUsername, id, newFirstname, newLastname);
+                    } else {
+                        throw new IllegalStateException(newUsername.asString() + " already exists");
+                    }
+                }
+            });
+
+            if (user == null) {
+                throw new IllegalStateException("User with id " + id.value() + " not found");
+            }
+        });
     }
 
     @Override
