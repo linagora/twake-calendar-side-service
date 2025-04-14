@@ -213,7 +213,7 @@ public class PeopleSearchRouteTest {
     }
 
     @Test
-    void shouldReturnContactObjectTypeWhenUserTypeIsExcludedInFilter(TwakeCalendarGuiceServer server) {
+    void shouldNotReturnUserObjectTypeWhenUserTypeIsExcludedInFilter(TwakeCalendarGuiceServer server) {
         String username = "naruto@" + DOMAIN;
         addUser(server, Username.of(username), "naruto", "hokage");
         addContact(server, username, "naruto", "hokage");
