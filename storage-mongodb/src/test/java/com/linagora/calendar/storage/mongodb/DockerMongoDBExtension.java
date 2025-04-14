@@ -18,10 +18,12 @@
 
 package com.linagora.calendar.storage.mongodb;
 
-import java.util.Optional;
+import java.util.List;
 
 import org.bson.Document;
+import org.junit.jupiter.api.extension.AfterAllCallback;
 import org.junit.jupiter.api.extension.AfterEachCallback;
+import org.junit.jupiter.api.extension.BeforeAllCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.testcontainers.containers.MongoDBContainer;
 
@@ -29,36 +31,50 @@ import com.mongodb.reactivestreams.client.MongoDatabase;
 
 import reactor.core.publisher.Mono;
 
-public class DockerMongoDBExtension implements AfterEachCallback {
+public class DockerMongoDBExtension implements BeforeAllCallback, AfterAllCallback, AfterEachCallback {
     public static final MongoDBContainer mongoDBContainer = new MongoDBContainer("mongo:4.0.10");
+    public static final List<String> CLEANUP_COLLECTIONS = List.of("domains", "users");
+
     private static MongoDBConfiguration mongoDBConfiguration;
 
-    static {
+    private final List<String> cleanupCollections;
+
+    public DockerMongoDBExtension(List<String> cleanupCollections) {
+        this.cleanupCollections = cleanupCollections;
+    }
+
+    public DockerMongoDBExtension() {
+        this(CLEANUP_COLLECTIONS);
+    }
+
+    @Override
+    public void beforeAll(ExtensionContext extensionContext) throws Exception {
         mongoDBContainer.start();
         init();
+    }
+
+    @Override
+    public void afterAll(ExtensionContext extensionContext) throws Exception {
+        mongoDBContainer.stop();
+    }
+
+    @Override
+    public void afterEach(ExtensionContext extensionContext) {
+        for (String collection : cleanupCollections) {
+            Mono.from(db.getCollection(collection).deleteMany(new Document())).block();
+        }
     }
 
     private static MongoDatabase db;
 
     static void init() {
-        mongoDBContainer.start();
         mongoDBConfiguration = new MongoDBConfiguration(mongoDBContainer.getConnectionString(), "esn_docker");
         db = MongoDBConnectionFactory.instantiateDB(mongoDBConfiguration);
         MongoDBCollectionFactory.initialize(db);
     }
 
-    MongoDatabase openDatabaseConnection() {
-        return db;
-    }
-
     public static MongoDBConfiguration getMongoDBConfiguration() {
         return mongoDBConfiguration;
-    }
-
-    @Override
-    public void afterEach(ExtensionContext extensionContext) {
-        Mono.from(db.getCollection("domains").deleteMany(new Document())).block();
-        Mono.from(db.getCollection("users").deleteMany(new Document())).block();
     }
 
     public MongoDatabase getDb() {

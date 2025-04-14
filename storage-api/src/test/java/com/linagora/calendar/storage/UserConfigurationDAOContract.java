@@ -16,19 +16,20 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage.mongodb;
+package com.linagora.calendar.storage;
 
-import org.junit.jupiter.api.extension.RegisterExtension;
+import org.apache.james.core.Domain;
+import org.apache.james.core.Username;
+import org.apache.james.mailbox.MailboxSession;
 
-import com.linagora.calendar.storage.OpenPaaSDomainDAO;
-import com.linagora.calendar.storage.OpenPaaSDomainDAOContract;
+import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
 
-public class MongoDBOpenPaaSDomainDAOTest implements OpenPaaSDomainDAOContract {
-    @RegisterExtension
-    static DockerMongoDBExtension mongo = new DockerMongoDBExtension();
+public interface UserConfigurationDAOContract {
+    Domain DOMAIN = Domain.of("domain.tld");
+    Username USERNAME = Username.fromLocalPartWithDomain("user", DOMAIN);
+    Username USERNAME_2 = Username.fromLocalPartWithDomain("username", DOMAIN);
+    MailboxSession MAILBOX_SESSION = MailboxSessionUtil.create(USERNAME);
+    MailboxSession MAILBOX_SESSION_2 = MailboxSessionUtil.create(USERNAME_2);
 
-    @Override
-    public OpenPaaSDomainDAO testee() {
-        return new MongoDBOpenPaaSDomainDAO(mongo.getDb());
-    }
+    UserConfigurationDAO testee();
 }

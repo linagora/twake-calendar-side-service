@@ -16,19 +16,39 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage.mongodb;
+package com.linagora.calendar.storage;
 
-import org.junit.jupiter.api.extension.RegisterExtension;
+import java.util.ArrayList;
+import java.util.Locale;
+import java.util.Optional;
+import java.util.concurrent.ThreadLocalRandom;
 
-import com.linagora.calendar.storage.OpenPaaSDomainDAO;
-import com.linagora.calendar.storage.OpenPaaSDomainDAOContract;
+import org.apache.james.core.Username;
+import org.apache.james.mailbox.MailboxSession;
+import org.apache.james.mailbox.model.MailboxConstants;
 
-public class MongoDBOpenPaaSDomainDAOTest implements OpenPaaSDomainDAOContract {
-    @RegisterExtension
-    static DockerMongoDBExtension mongo = new DockerMongoDBExtension();
+import com.google.common.annotations.VisibleForTesting;
 
-    @Override
-    public OpenPaaSDomainDAO testee() {
-        return new MongoDBOpenPaaSDomainDAO(mongo.getDb());
+public class MailboxSessionUtil {
+    public static MailboxSession create(Username username) {
+        return create(username, MailboxConstants.FOLDER_DELIMITER);
+    }
+
+    public static MailboxSession create(Username username, char folderDelimiter) {
+        return create(username, MailboxSession.SessionId.of(ThreadLocalRandom.current().nextLong()), folderDelimiter);
+    }
+
+    @VisibleForTesting
+    public static MailboxSession create(Username username, MailboxSession.SessionId sessionId,
+                                        char folderDelimiter) {
+        ArrayList<Locale> locales = new ArrayList<>();
+
+        return new MailboxSession(
+            sessionId,
+            username,
+            Optional.of(username),
+            locales,
+            folderDelimiter,
+            MailboxSession.SessionType.User);
     }
 }

@@ -22,4 +22,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 public record ConfigurationEntry(ModuleName moduleName, ConfigurationKey configurationKey, JsonNode node) {
 
+    public static ConfigurationEntry of(String moduleName, String configurationKey, JsonNode node) {
+        return new ConfigurationEntry(new ModuleName(moduleName), new ConfigurationKey(configurationKey), node);
+    }
 }
