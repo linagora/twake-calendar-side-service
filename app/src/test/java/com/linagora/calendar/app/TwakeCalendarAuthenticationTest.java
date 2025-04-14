@@ -34,15 +34,18 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockserver.integration.ClientAndServer;
 import org.mockserver.model.HttpRequest;
 import org.mockserver.model.HttpResponse;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.github.fge.lambdas.Throwing;
 import com.google.inject.name.Names;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.restapi.RestApiServerProbe;
-import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.OpenPaaSUser;
 
 import io.restassured.RestAssured;
 import io.restassured.builder.RequestSpecBuilder;
@@ -158,6 +161,70 @@ public class TwakeCalendarAuthenticationTest {
         .get("/api/themes/anything")
             .then()
             .statusCode(200);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "'', ''",
+        "John, ''",
+        "'', Doe",
+        "John, Doe"
+    })
+    void shouldProvisionUserWithFirstnameAndSurnameWhenTheyArePresentInUserInfoResponse(String firstname, String lastname, TwakeCalendarGuiceServer server) throws JsonProcessingException {
+        String emailClaimValue = UUID.randomUUID() + "@" + DOMAIN;
+        Username username = Username.of(emailClaimValue);
+
+        assertThat(server.getProbe(CalendarDataProbe.class).userId(username)).isNull();
+
+        String activeResponse = """
+            {
+              "email" : "%s",
+              "active" : true,
+              "given_name" : "%s",
+              "family_name" : "%s"
+            }""".formatted(emailClaimValue, firstname, lastname);
+
+        updateMockerServerSpecifications(activeResponse, 200);
+
+        given()
+            .header("Authorization", "Bearer " + "fakeToken")
+        .when()
+            .get("/api/themes/anything")
+        .then()
+            .statusCode(200);
+
+        OpenPaaSUser openPaaSUser = server.getProbe(CalendarDataProbe.class).getUser(username);
+        assertThat(openPaaSUser).isNotNull();
+        assertThat(openPaaSUser.firstname()).isEqualTo(firstname);
+        assertThat(openPaaSUser.lastname()).isEqualTo(lastname);
+    }
+
+    @Test
+    void shouldProvisionUserWithDefaultFirstnameAndSurnameWhenTheyAreAbsentInUserInfoResponse(TwakeCalendarGuiceServer server) {
+        String emailClaimValue = UUID.randomUUID() + "@" + DOMAIN;
+        Username username = Username.of(emailClaimValue);
+
+        assertThat(server.getProbe(CalendarDataProbe.class).userId(username)).isNull();
+
+        String activeResponse = """
+            {
+                "email": "%s",
+                "active": true
+            }""".formatted(emailClaimValue);
+
+        updateMockerServerSpecifications(activeResponse, 200);
+
+        given()
+            .header("Authorization", "Bearer " + "fakeToken")
+        .when()
+            .get("/api/themes/anything")
+        .then()
+            .statusCode(200);
+
+        OpenPaaSUser openPaaSUser = server.getProbe(CalendarDataProbe.class).getUser(username);
+        assertThat(openPaaSUser).isNotNull();
+        assertThat(openPaaSUser.firstname()).isEqualTo(username.asString());
+        assertThat(openPaaSUser.lastname()).isEqualTo(username.asString());
     }
 
 }

@@ -82,4 +82,8 @@ public class CalendarDataProbe implements GuiceProbe {
         return usersDAO.retrieve(username)
             .map(OpenPaaSUser::id).block();
     }
+
+    public OpenPaaSUser getUser(Username username) {
+        return usersDAO.retrieve(username).block();
+    }
 }
