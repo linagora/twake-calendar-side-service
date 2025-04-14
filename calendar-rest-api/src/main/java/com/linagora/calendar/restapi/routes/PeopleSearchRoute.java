@@ -19,16 +19,20 @@
 package com.linagora.calendar.restapi.routes;
 
 import java.util.List;
+import java.util.function.Function;
+import java.util.function.UnaryOperator;
 
 import jakarta.inject.Inject;
 
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.james.core.Username;
 import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.api.model.AccountId;
 import org.apache.james.jmap.http.Authenticator;
 import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.metrics.api.MetricFactory;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -38,6 +42,8 @@ import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.restapi.RestApiConfiguration;
+import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.tmail.james.jmap.contact.EmailAddressContact;
 import com.linagora.tmail.james.jmap.contact.EmailAddressContactSearchEngine;
 
 import io.netty.handler.codec.http.HttpMethod;
@@ -47,46 +53,27 @@ import reactor.netty.http.server.HttpServerRequest;
 import reactor.netty.http.server.HttpServerResponse;
 
 public class PeopleSearchRoute extends CalendarRoute {
+    public static final int MAX_RESULTS_LIMIT = 256;
 
     public static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    static class SearchRequestDTO {
-        private final String q;
-        private final List<String> objectTypes; // ignored
-        private final int limit;
-
-        @JsonCreator
-        public SearchRequestDTO(@JsonProperty("q") String q,
-                                @JsonProperty("objectTypes") List<String> objectTypes,
-                                @JsonProperty("limit") int limit) {
-            this.q = q;
-            this.objectTypes = objectTypes;
-            this.limit = limit;
-        }
+    public enum ObjectType {
+        USER, CONTACT
     }
 
-    public static class ResponseDTO {
-        private final String id;
-        private final String emailAddress;
-        private final String displayName;
-        private final String photoUrl;
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record SearchRequestDTO(@JsonProperty("q") String query,
+                            @JsonProperty("objectTypes") List<String> objectTypes,
+                            @JsonProperty("limit") int limit) {
+    }
 
-        public ResponseDTO(String id, String emailAddress, String displayName, String photoUrl) {
-            this.id = id;
-            this.emailAddress = emailAddress;
-            this.displayName = displayName;
-            this.photoUrl = photoUrl;
-        }
+    public record ResponseDTO(String id,
+                              @JsonIgnore String emailAddress,
+                              @JsonIgnore String displayName,
+                              @JsonIgnore String photoUrl,
+                              String objectType) {
 
-        public String getId() {
-            return id;
-        }
-
-        public String getObjectType() {
-            return "contact";
-        }
-
+        @JsonProperty("emailAddresses")
         public List<JsonNode> getEmailAddresses() {
             ObjectNode objectNode = OBJECT_MAPPER.createObjectNode();
             objectNode.put("value", emailAddress);
@@ -94,10 +81,12 @@ public class PeopleSearchRoute extends CalendarRoute {
             return ImmutableList.of(objectNode);
         }
 
+        @JsonProperty("phoneNumbers")
         public List<String> getPhoneNumbers() {
             return ImmutableList.of();
         }
 
+        @JsonProperty("names")
         public List<JsonNode> getNames() {
             ObjectNode objectNode = OBJECT_MAPPER.createObjectNode();
             objectNode.put("displayName", displayName);
@@ -105,6 +94,7 @@ public class PeopleSearchRoute extends CalendarRoute {
             return ImmutableList.of(objectNode);
         }
 
+        @JsonProperty("photos")
         public List<JsonNode> getPhotos() {
             ObjectNode objectNode = OBJECT_MAPPER.createObjectNode();
             objectNode.put("url", photoUrl);
@@ -113,16 +103,19 @@ public class PeopleSearchRoute extends CalendarRoute {
         }
     }
 
-    private final EmailAddressContactSearchEngine searchEngine;
     private final RestApiConfiguration configuration;
+    private final EmailAddressContactSearchEngine contactSearchEngine;
+    private final OpenPaaSUserDAO userDAO;
 
     @Inject
     public PeopleSearchRoute(Authenticator authenticator, MetricFactory metricFactory,
-                             EmailAddressContactSearchEngine searchEngine,
-                             RestApiConfiguration configuration) {
+                             RestApiConfiguration configuration,
+                             EmailAddressContactSearchEngine contactSearchEngine,
+                             OpenPaaSUserDAO userDAO) {
         super(authenticator, metricFactory);
-        this.searchEngine = searchEngine;
         this.configuration = configuration;
+        this.contactSearchEngine = contactSearchEngine;
+        this.userDAO = userDAO;
     }
 
     @Override
@@ -134,20 +127,48 @@ public class PeopleSearchRoute extends CalendarRoute {
     Mono<Void> handleRequest(HttpServerRequest req, HttpServerResponse res, MailboxSession session) {
         return req.receive().aggregate().asByteArray()
             .map(Throwing.function(bytes -> OBJECT_MAPPER.readValue(bytes, SearchRequestDTO.class)))
-            .flatMapMany(requestDTO -> {
-                Preconditions.checkArgument(requestDTO.limit < 256, "Maximum limit allowed: 256. Got " + requestDTO.limit);
-
-                return Flux.from(searchEngine.autoComplete(AccountId.fromString(session.getUser().asString()), requestDTO.q, requestDTO.limit));
-            })
-            .map(contact -> new ResponseDTO(contact.id().toString(),
-                contact.fields().address().asString(),
-                contact.fields().fullName(),
-                configuration.getSelfUrl().toString() + "/api/avatars?email=" + contact.fields().address().asString()))
+            .map(validateRequest())
+            .flatMapMany(requestDTO -> searchPeople(session.getUser(), requestDTO.query, requestDTO.objectTypes, requestDTO.limit))
             .collectList()
             .map(Throwing.function(OBJECT_MAPPER::writeValueAsBytes))
             .flatMap(bytes -> res.status(200)
                 .header("Content-Type", "application/json;charset=utf-8")
                 .sendByteArray(Mono.just(bytes))
                 .then());
+    }
+
+    private UnaryOperator<SearchRequestDTO> validateRequest() {
+        return requestDTO -> {
+            Preconditions.checkArgument(requestDTO.limit > 0, "Limit must be greater than 0");
+            Preconditions.checkArgument(requestDTO.limit <= MAX_RESULTS_LIMIT, "Maximum limit allowed: " + MAX_RESULTS_LIMIT + ", but got: " + requestDTO.limit);
+            return requestDTO;
+        };
+    }
+
+    public Flux<ResponseDTO> searchPeople(Username username, String query, List<String> objectTypesFilter, int limit) {
+        return Flux.from(contactSearchEngine.autoComplete(AccountId.fromString(username.asString()), query, limit))
+            .flatMap(contact -> getObjectType(contact, objectTypesFilter)
+                .map(objectType -> mapToResponseDTO(objectType).apply(contact)));
+    }
+
+    private Mono<ObjectType> getObjectType(EmailAddressContact contact, List<String> objectTypesFilter) {
+        if (CollectionUtils.isEmpty(objectTypesFilter) || objectTypesFilter.contains(ObjectType.USER.name().toLowerCase())) {
+            return getObjectType(contact);
+        }
+        return Mono.just(ObjectType.CONTACT);
+    }
+
+    private Mono<ObjectType> getObjectType(EmailAddressContact contact) {
+        return userDAO.retrieve(Username.fromMailAddress(contact.fields().address()))
+            .map(user -> ObjectType.USER)
+            .switchIfEmpty(Mono.just(ObjectType.CONTACT));
+    }
+
+    private Function<EmailAddressContact, ResponseDTO> mapToResponseDTO(ObjectType objectType) {
+        return contact -> new ResponseDTO(contact.id().toString(),
+            contact.fields().address().asString(),
+            contact.fields().fullName(),
+            configuration.getSelfUrl().toString() + "/api/avatars?email=" + contact.fields().address().asString(),
+            objectType.name().toLowerCase());
     }
 }

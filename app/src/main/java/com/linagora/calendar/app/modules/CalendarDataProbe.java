@@ -64,6 +64,15 @@ public class CalendarDataProbe implements GuiceProbe {
         }
     }
 
+    public OpenPaaSId addUser(Username username, String password, String firstName, String lastName) {
+        try {
+            usersRepository.addUser(username, password);
+            return usersDAO.add(username, firstName, lastName).map(OpenPaaSUser::id).block();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     public OpenPaaSId domainId(Domain domain) {
         return domainDAO.retrieve(domain)
             .map(OpenPaaSDomain::id).block();
