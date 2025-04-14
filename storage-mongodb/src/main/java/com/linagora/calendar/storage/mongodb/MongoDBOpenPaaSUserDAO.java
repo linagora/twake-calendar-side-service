@@ -30,6 +30,7 @@ import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Updates;
 import com.mongodb.client.result.InsertOneResult;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
@@ -95,6 +96,37 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
                 }
                 return Mono.error(e);
             });
+    }
+
+    @Override
+    public Mono<Void> update(OpenPaaSId id, Username newUsername, String newFirstname, String newLastname) {
+        return domainDAO.retrieve(newUsername.getDomainPart().get())
+            .switchIfEmpty(Mono.error(() -> new IllegalStateException("Domain does not exist")))
+            .flatMap(domain -> Mono.from(database.getCollection(COLLECTION).updateOne(
+                    Filters.eq("_id", new ObjectId(id.value())),
+                    Updates.combine(
+                        Updates.set("firstname", newFirstname),
+                        Updates.set("lastname", newLastname),
+                        Updates.set("email", newUsername.asString()),
+                        Updates.set("domains", List.of(new Document("domain_id", new ObjectId(domain.id().value())))),
+                        Updates.set("accounts", List.of(new Document()
+                            .append("type", "email")
+                            .append("emails", List.of(newUsername.asString()))))
+                    )))
+                .flatMap(result -> {
+                    if (result.getMatchedCount() == 0) {
+                        return Mono.error(new IllegalStateException("User with id " + id.value() + " not found"));
+                    }
+                    return Mono.empty();
+                })
+                .then()
+                .onErrorResume(e -> {
+                    if (e.getMessage().contains("E11000 duplicate key error collection")) {
+                        return Mono.error(new IllegalStateException(newUsername.asString() + " already exists"));
+                    }
+                    return Mono.error(e);
+                })
+            );
     }
 
     @Override
