@@ -26,6 +26,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.james.core.Username;
 
+import com.linagora.calendar.storage.exception.UserConflictException;
+import com.linagora.calendar.storage.exception.UserNotFoundException;
+
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -64,7 +67,7 @@ public class MemoryOpenPaaSUserDAO implements OpenPaaSUserDAO {
             if (computedId.equals(id)) {
                 return newUser;
             } else {
-                throw new IllegalStateException(username.asString() + " already exists");
+                throw new UserConflictException(username);
             }
         });
     }
@@ -81,13 +84,13 @@ public class MemoryOpenPaaSUserDAO implements OpenPaaSUserDAO {
                         usernameIndex.remove(currentUser.username());
                         return new OpenPaaSUser(newUsername, id, newFirstname, newLastname);
                     } else {
-                        throw new IllegalStateException(newUsername.asString() + " already exists");
+                        throw new UserConflictException(newUsername);
                     }
                 }
             });
 
             if (user == null) {
-                throw new IllegalStateException("User with id " + id.value() + " not found");
+                throw new UserNotFoundException(id);
             }
         });
     }
