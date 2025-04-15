@@ -19,14 +19,15 @@
 package com.linagora.calendar.storage.mongodb;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
-import org.apache.james.core.Domain;
-import org.apache.james.core.Username;
 import org.apache.james.mailbox.MailboxSession;
 import org.bson.Document;
 import org.bson.conversions.Bson;
@@ -37,14 +38,15 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSId;
-import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.configuration.ConfigurationEntry;
 import com.linagora.calendar.storage.configuration.ConfigurationKey;
 import com.linagora.calendar.storage.configuration.ModuleName;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
+import com.linagora.calendar.storage.exception.DomainNotFoundException;
+import com.linagora.calendar.storage.exception.UserNotFoundException;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.UpdateOptions;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
 import reactor.core.publisher.Flux;
@@ -59,6 +61,22 @@ public class MongoDBUserConfigurationDAO implements UserConfigurationDAO {
 
         public UserConfigurationDeserializeException(String message) {
             super(message);
+        }
+    }
+
+    public static class UserConfigurationSerializeException extends RuntimeException {
+        public UserConfigurationSerializeException(String message, Throwable cause) {
+            super(message, cause);
+        }
+
+        public UserConfigurationSerializeException(String message) {
+            super(message);
+        }
+    }
+
+    private record CombineId(String domainId, String userId) {
+        public static CombineId of(OpenPaaSId domainId, OpenPaaSId userId) {
+            return new CombineId(domainId.value(), userId.value());
         }
     }
 
@@ -87,34 +105,52 @@ public class MongoDBUserConfigurationDAO implements UserConfigurationDAO {
 
     @Override
     public Mono<Void> persistConfiguration(Set<ConfigurationEntry> configurationEntries, MailboxSession userSession) {
-        // TODO ISSUE-27 https://github.com/linagora/twake-calendar-side-service/issues/27
-        return Mono.error(new UnsupportedOperationException("Not implemented yet"));
+        return getCombineId(userSession)
+            .flatMap(combineId -> upsertUserConfiguration(combineId, convertToDocument(configurationEntries)))
+            .doOnError(error -> LOGGER.error("Failed to persist configuration for user: " + userSession.getUser().asString(), error));
+    }
+
+    private Mono<Void> upsertUserConfiguration(CombineId combineId, Document modules) {
+        Document filter = new Document()
+            .append(FIELD_DOMAIN_ID, new ObjectId(combineId.domainId()))
+            .append(FIELD_USER_ID, new ObjectId(combineId.userId()));
+
+        Document update = new Document("$set", new Document(FIELD_MODULES, modules.get(FIELD_MODULES)));
+
+        return Mono.from(database.getCollection(COLLECTION)
+                .updateOne(filter, update, new UpdateOptions().upsert(true)))
+            .then();
     }
 
     @Override
     public Flux<ConfigurationEntry> retrieveConfiguration(MailboxSession mailboxSession) {
-        Username username = mailboxSession.getUser();
-        Domain domain = username.getDomainPart().orElseThrow(() -> new IllegalArgumentException("Invalid username " + username));
-        Mono<OpenPaaSUser> openPaaSUserMono = userDAO.retrieve(username);
-        Mono<OpenPaaSDomain> openPaaSDomainMono = domainDAO.retrieve(domain);
-
-        return Mono.zip(openPaaSDomainMono, openPaaSUserMono)
-            .flatMap(tuple -> getModulesByDomainId(tuple.getT1().id(), tuple.getT2().id()))
+        return getCombineId(mailboxSession)
+            .flatMap(this::getModulesByDomainId)
             .map(MongoDBUserConfigurationDAO::toConfigurationEntry)
             .flatMapMany(Flux::fromIterable)
             .doOnError(error -> LOGGER.error("Failed to retrieve configuration for user: " + mailboxSession.getUser().asString(), error));
     }
 
-    private Mono<Document> getModulesByDomainId(OpenPaaSId domainId, OpenPaaSId userId) {
-        Bson domainFilter = Filters.eq(FIELD_DOMAIN_ID, new ObjectId(domainId.value()));
-        Bson userFilter = Filters.eq(FIELD_USER_ID, new ObjectId(userId.value()));
+    private Mono<CombineId> getCombineId(MailboxSession mailboxSession) {
+        return Mono.zip(
+                domainDAO.retrieve(mailboxSession.getUser().getDomainPart()
+                    .orElseThrow(() -> new IllegalArgumentException("Invalid username " + mailboxSession.getUser())))
+                    .switchIfEmpty(Mono.error(new DomainNotFoundException(mailboxSession.getUser().getDomainPart().get()))),
+                userDAO.retrieve(mailboxSession.getUser())
+                    .switchIfEmpty(Mono.error(new UserNotFoundException(mailboxSession.getUser()))))
+            .map(tuple -> CombineId.of(tuple.getT1().id(), tuple.getT2().id()));
+    }
+
+    private Mono<Document> getModulesByDomainId(CombineId combineId) {
+        Bson domainFilter = Filters.eq(FIELD_DOMAIN_ID, new ObjectId(combineId.domainId()));
+        Bson userFilter = Filters.eq(FIELD_USER_ID, new ObjectId(combineId.userId()));
 
         return Mono.from(database.getCollection(COLLECTION)
             .find(Filters.and(domainFilter, userFilter))
             .first());
     }
 
-    private static List<ConfigurationEntry> toConfigurationEntry(Document document) {
+    public static List<ConfigurationEntry> toConfigurationEntry(Document document) {
         try {
             return document.getList(FIELD_MODULES, Document.class).stream()
                 .flatMap(moduleDocument -> {
@@ -137,24 +173,27 @@ public class MongoDBUserConfigurationDAO implements UserConfigurationDAO {
     private static ModuleName getModuleName(Document document) {
         return Optional.ofNullable(document.getString(PROPERTY_NAME))
             .map(ModuleName::new)
-            .orElseThrow(() -> new UserConfigurationDeserializeException("Module name is missing"));
+            .orElseThrow(() -> new UserConfigurationDeserializeException("Module name is missing. Document: " + document.toJson()));
     }
 
     private static List<Document> getConfigurationDocuments(Document document) {
         return Optional.ofNullable(document.getList(PROPERTY_CONFIGURATIONS, Document.class))
-            .orElseThrow(() -> new UserConfigurationDeserializeException("Configurations component is missing"));
+            .orElseThrow(() -> new UserConfigurationDeserializeException("Configurations component is missing. Document: " + document.toJson()));
     }
 
     private static ConfigurationKey getConfigurationKey(Document document) {
         return Optional.ofNullable(document.getString(PROPERTY_NAME))
             .map(ConfigurationKey::new)
-            .orElseThrow(() -> new UserConfigurationDeserializeException("Configuration key is missing"));
+            .orElseThrow(() -> new UserConfigurationDeserializeException("Configuration key is missing. Document: " + document.toJson()));
     }
 
     private static JsonNode getConfigurationValue(Document document) {
+        if (!document.containsKey(PROPERTY_VALUE)) {
+            throw new UserConfigurationDeserializeException("Configuration value is missing. Document: " + document.toJson());
+        }
         return Optional.ofNullable(document.get(PROPERTY_VALUE))
             .map(MongoDBUserConfigurationDAO::toJsonNode)
-            .orElseThrow(() -> new UserConfigurationDeserializeException("Configuration value is missing"));
+            .orElse(null);
     }
 
     private static JsonNode toJsonNode(Object value) throws UserConfigurationDeserializeException {
@@ -167,4 +206,48 @@ public class MongoDBUserConfigurationDAO implements UserConfigurationDAO {
             throw new UserConfigurationDeserializeException("Failed to convert value to JsonNode: " + value, e);
         }
     }
+
+    public static Document convertToDocument(Set<ConfigurationEntry> configurationEntries) {
+        Map<String, List<Document>> groupedByModule = configurationEntries.stream()
+            .collect(Collectors.groupingBy(entry -> entry.moduleName().name(),
+                Collectors.mapping(entry ->
+                        new Document(PROPERTY_NAME, entry.configurationKey().value())
+                            .append(PROPERTY_VALUE, jsonNodeToBsonValue(entry.node())),
+                    Collectors.toList())));
+
+        List<Document> modules = groupedByModule.entrySet().stream()
+            .map(entry -> new Document(PROPERTY_NAME, entry.getKey())
+                .append(PROPERTY_CONFIGURATIONS, entry.getValue()))
+            .toList();
+
+        return new Document(FIELD_MODULES, modules);
+    }
+
+    private static Object jsonNodeToBsonValue(JsonNode node) {
+        if (node == null) {
+            return null;
+        }
+        try {
+            if (node.isValueNode()) {
+                return switch (node.getNodeType()) {
+                    case STRING -> node.textValue();
+                    case BOOLEAN -> node.booleanValue();
+                    case NUMBER -> node.numberValue();
+                    case NULL -> null;
+                    default -> throw new IllegalArgumentException("Unsupported value type: " + node.getNodeType());
+                };
+            } else if (node.isArray()) {
+                return StreamSupport.stream(node.spliterator(), false)
+                    .map(MongoDBUserConfigurationDAO::jsonNodeToBsonValue)
+                    .toList();
+            } else if (node.isObject()) {
+                return Document.parse(node.toString());
+            } else {
+                return Document.parse(MAPPER.writeValueAsString(node));
+            }
+        } catch (Exception e) {
+            throw new UserConfigurationSerializeException("Failed to convert JsonNode to BSON value: " + node, e);
+        }
+    }
+
 }
