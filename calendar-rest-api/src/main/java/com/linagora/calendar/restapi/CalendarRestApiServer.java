@@ -76,9 +76,12 @@ public class CalendarRestApiServer implements Startable  {
             .handle((request, response) -> Mono.from(handleVersionRoute(request)
                 .handleRequest(request, response))
                 .onErrorResume(e -> {
-                    if (e instanceof IllegalArgumentException) {
+                    if (e instanceof IllegalArgumentException illegalArgumentException) {
                         LOGGER.info("Invalid request {} {}", request.method(), request.uri(), e);
-                        return response.status(BAD_REQUEST).send();
+                        return response.status(BAD_REQUEST)
+                            .header("Content-Type", "application/json; charset=utf-8")
+                            .sendByteArray(Mono.fromCallable(() -> ErrorResponse.of(illegalArgumentException).serializeAsBytes()))
+                            .then();
                     }
                     if (e instanceof UnauthorizedException) {
                         LOGGER.info("Wrong authentication", e);

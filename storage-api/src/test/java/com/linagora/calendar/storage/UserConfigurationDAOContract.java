@@ -95,7 +95,6 @@ public interface UserConfigurationDAOContract {
 
         testee().persistConfiguration(updatedConfig, MAILBOX_SESSION).block();
 
-        // Expect: chỉ còn entry mới
         List<ConfigurationEntry> actual = testee().retrieveConfiguration(MAILBOX_SESSION).collectList().block();
 
         assertThat(actual)
@@ -150,7 +149,7 @@ public interface UserConfigurationDAOContract {
 
     @Test
     default void persistConfigurationShouldThrowWhenUserDoesNotExist() {
-        MailboxSession nonExistentSession = MailboxSessionUtil.create(Username.fromLocalPartWithDomain("username"+ UUID.randomUUID(), DOMAIN));
+        MailboxSession nonExistentSession = MailboxSessionUtil.create(Username.fromLocalPartWithDomain("username" + UUID.randomUUID(), DOMAIN));
 
         Set<ConfigurationEntry> config = Set.of(ConfigurationEntry.of("core", "language", new TextNode("vi")));
 

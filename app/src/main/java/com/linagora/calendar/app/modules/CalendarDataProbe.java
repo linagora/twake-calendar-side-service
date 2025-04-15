@@ -18,11 +18,14 @@
 
 package com.linagora.calendar.app.modules;
 
+import java.util.List;
+
 import jakarta.inject.Inject;
 
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
 import org.apache.james.domainlist.api.DomainList;
+import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.user.api.UsersRepository;
 import org.apache.james.utils.GuiceProbe;
 
@@ -31,19 +34,27 @@ import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.configuration.ConfigurationEntry;
+import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
 
 public class CalendarDataProbe implements GuiceProbe {
     private final UsersRepository usersRepository;
     private final DomainList domainList;
     private final OpenPaaSUserDAO usersDAO;
     private final OpenPaaSDomainDAO domainDAO;
+    private final UserConfigurationDAO userConfigurationDAO;
 
     @Inject
-    public CalendarDataProbe(UsersRepository usersRepository, DomainList domainList, OpenPaaSUserDAO usersDAO, OpenPaaSDomainDAO domainDAO) {
+    public CalendarDataProbe(UsersRepository usersRepository,
+                             DomainList domainList,
+                             OpenPaaSUserDAO usersDAO,
+                             OpenPaaSDomainDAO domainDAO,
+                             UserConfigurationDAO userConfigurationDAO) {
         this.usersRepository = usersRepository;
         this.domainList = domainList;
         this.usersDAO = usersDAO;
         this.domainDAO = domainDAO;
+        this.userConfigurationDAO = userConfigurationDAO;
     }
 
     public CalendarDataProbe addDomain(Domain domain) {
@@ -85,5 +96,9 @@ public class CalendarDataProbe implements GuiceProbe {
 
     public OpenPaaSUser getUser(Username username) {
         return usersDAO.retrieve(username).block();
+    }
+
+    public List<ConfigurationEntry> retrieveConfiguration(MailboxSession session) {
+        return userConfigurationDAO.retrieveConfiguration(session).collectList().block();
     }
 }
