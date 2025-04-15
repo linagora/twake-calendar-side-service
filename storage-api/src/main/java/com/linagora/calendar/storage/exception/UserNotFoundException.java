@@ -18,10 +18,16 @@
 
 package com.linagora.calendar.storage.exception;
 
+import org.apache.james.core.Username;
+
 import com.linagora.calendar.storage.OpenPaaSId;
 
 public class UserNotFoundException extends RuntimeException {
     public UserNotFoundException(OpenPaaSId id) {
         super("User with id " + id.value() + " not found");
+    }
+
+    public UserNotFoundException(Username username) {
+        super("User with username " + username.asString() + " not found");
     }
 }

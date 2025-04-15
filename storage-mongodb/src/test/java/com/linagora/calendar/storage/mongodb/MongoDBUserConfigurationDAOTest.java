@@ -18,18 +18,20 @@
 
 package com.linagora.calendar.storage.mongodb;
 
-import static com.linagora.calendar.storage.mongodb.MongoDBUserConfigurationDAO.MAPPER;
+import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
+import static net.javacrumbs.jsonunit.core.Option.IGNORING_ARRAY_ORDER;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
+import java.util.Comparator;
 import java.util.List;
-import java.util.UUID;
+import java.util.Set;
 
-import org.apache.james.core.Username;
 import org.bson.Document;
 import org.bson.types.ObjectId;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -37,9 +39,9 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.BooleanNode;
+import com.fasterxml.jackson.databind.node.LongNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import com.google.common.collect.ImmutableMap;
-import com.linagora.calendar.storage.MailboxSessionUtil;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.UserConfigurationDAOContract;
@@ -69,6 +71,7 @@ public class MongoDBUserConfigurationDAOTest implements UserConfigurationDAOCont
         userConfigurationDAO = new MongoDBUserConfigurationDAO(mongo.getDb(), userDAO, domainDAO);
         openPaaSDomain = domainDAO.add(DOMAIN).block();
         openPaaSUser = userDAO.add(USERNAME).block();
+        userDAO.add(USERNAME_2).block();
     }
 
     @AfterEach
@@ -224,14 +227,6 @@ public class MongoDBUserConfigurationDAOTest implements UserConfigurationDAOCont
             .contains(ConfigurationEntry.of("linagora.esn.unifiedinbox", "useEmailLinks", BooleanNode.TRUE));
     }
 
-    @Test
-    void retrieveShouldReturnEmptyWhenUserNotFound() {
-        List<ConfigurationEntry> actual = testee().retrieveConfiguration(MailboxSessionUtil.create(Username.fromLocalPartWithDomain(UUID.randomUUID().toString(), DOMAIN)))
-            .collectList().block();
-
-        assertThat(actual).isEmpty();
-    }
-
     @ParameterizedTest
     @ValueSource(strings = {
         "[{\"name\": \"core\" }]",  // Missing configurations
@@ -263,45 +258,104 @@ public class MongoDBUserConfigurationDAOTest implements UserConfigurationDAOCont
             .isInstanceOf(UserConfigurationDeserializeException.class);
     }
 
-    @Test
-    void retrieveShouldReturnOnlyOwnerUserAConfiguration() {
-        String userAConfig = """
-            [
+    @Nested
+    class DocumentConverter {
+        @Test
+        void convertToDocumentShouldSuccess() {
+            Set<ConfigurationEntry> configurationEntries = Set.of(
+                ConfigurationEntry.of("linagora.esn.unifiedinbox", "booleanNode", BooleanNode.TRUE),
+                ConfigurationEntry.of("linagora.esn.unifiedinbox", "nullNode", null),
+                ConfigurationEntry.of("linagora.esn", "emptyStringNode", toJsonNode("{}")),
+                ConfigurationEntry.of("core", "textNode", new TextNode("vi")),
+                ConfigurationEntry.of("core", "numberNode", new LongNode(123456789)),
+                ConfigurationEntry.of("core", "objectNode", toJsonNode("""
                 {
-                    "name": "moduleA",
-                    "configurations": [
-                        { "name": "settingA1", "value": "A1" }
-                    ]
-                }
-            ]""";
+                    "timeZone": "America/Adak",
+                    "use24hourFormat": true
+                }""")),
+                ConfigurationEntry.of("core", "arrayNode", toJsonNode("""
+                 [ { "daysOfWeek": [1,2,3,4,5,6], "start": "9:0", "end": "17:0" } ]
+                """)));
 
-        String userBConfig = """
-            [
+            Document document = MongoDBUserConfigurationDAO.convertToDocument(configurationEntries);
+            assertThatJson(document.toJson())
+                .withOptions(IGNORING_ARRAY_ORDER)
+                .inPath("modules")
+                .isEqualTo("""
+                [
+                      {
+                        configurations: [
+                          {
+                            name: "textNode",
+                            value: "vi"
+                          },
+                          {
+                            name: "numberNode",
+                            value: 123456789
+                          },
+                          {
+                            name: "objectNode",
+                            value: {
+                              timeZone: "America/Adak",
+                              use24hourFormat: true
+                            }
+                          },
+                          {
+                            name: "arrayNode",
+                            value: [
+                              {
+                                daysOfWeek: [ 1, 2, 3, 4, 5, 6 ],
+                                end: "17:0",
+                                start: "9:0"
+                              }
+                            ]
+                          }
+                        ],
+                        name: "core"
+                      },
+                      {
+                        configurations: [ { name: "emptyStringNode", value: {} } ],
+                        name: "linagora.esn"
+                      },
+                      {
+                        configurations: [
+                          {
+                            name: "nullNode",
+                            value: null
+                          },
+                          {
+                            name: "booleanNode",
+                            value: true
+                          }
+                        ],
+                        name: "linagora.esn.unifiedinbox"
+                      }
+                    ]""");
+        }
+
+        @Test
+        void toConfigurationEntryShouldReturnCorrectConfigurationEntry() {
+            Set<ConfigurationEntry> originalEntries = Set.of(
+                ConfigurationEntry.of("linagora.esn.unifiedinbox", "booleanNode", BooleanNode.TRUE),
+                ConfigurationEntry.of("linagora.esn.unifiedinbox", "nullNode", null),
+                ConfigurationEntry.of("linagora.esn", "emptyStringNode", toJsonNode("{}")),
+                ConfigurationEntry.of("core", "textNode", new TextNode("vi")),
+                ConfigurationEntry.of("core", "numberNode", new LongNode(123456789)),
+                ConfigurationEntry.of("core", "objectNode", toJsonNode("""
                 {
-                    "name": "moduleB",
-                    "configurations": [
-                        { "name": "settingB1", "value": "B1" }
-                    ]
-                }
-            ]""";
+                    "timeZone": "America/Adak",
+                    "use24hourFormat": true
+                }""")),
+                ConfigurationEntry.of("core", "arrayNode", toJsonNode("""
+                 [ { "daysOfWeek": [1,2,3,4,5,6], "start": "9:0", "end": "17:0" } ]
+                """)));
 
-        OpenPaaSUser userB = userDAO.add(USERNAME_2).block();
+            Document document = MongoDBUserConfigurationDAO.convertToDocument(originalEntries);
 
-        insertUserConfiguration(mongo.getDb(), openPaaSDomain.id().value(), openPaaSUser.id().value(), userAConfig);
-        insertUserConfiguration(mongo.getDb(), openPaaSDomain.id().value(), userB.id().value(), userBConfig);
-
-        List<ConfigurationEntry> actual = testee().retrieveConfiguration(MAILBOX_SESSION).collectList().block();
-
-        assertThat(actual)
-            .containsExactly(ConfigurationEntry.of("moduleA", "settingA1", new TextNode("A1")))
-            .doesNotContain(ConfigurationEntry.of("moduleB", "settingB1", new TextNode("B1")));
-    }
-
-    private JsonNode toJsonNode(String json) {
-        try {
-            return MAPPER.readTree(json);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to deserialize JSON", e);
+            List<ConfigurationEntry> configurationEntry = MongoDBUserConfigurationDAO.toConfigurationEntry(document);
+            assertThat(configurationEntry)
+                .usingElementComparator(Comparator.comparing(Object::toString))
+                .containsExactlyInAnyOrderElementsOf(originalEntries);
         }
     }
 
