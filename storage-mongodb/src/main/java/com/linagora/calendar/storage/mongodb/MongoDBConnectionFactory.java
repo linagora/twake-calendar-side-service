@@ -18,11 +18,21 @@
 
 package com.linagora.calendar.storage.mongodb;
 
+import org.apache.james.metrics.api.MetricFactory;
+
+import com.mongodb.ConnectionString;
+import com.mongodb.MongoClientSettings;
 import com.mongodb.reactivestreams.client.MongoClients;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
 public class MongoDBConnectionFactory {
-    public static MongoDatabase instantiateDB(MongoDBConfiguration configuration) {
-        return MongoClients.create(configuration.mongoURL()).getDatabase(configuration.database());
+    public static MongoDatabase instantiateDB(MongoDBConfiguration configuration,
+                                              MetricFactory metricFactory) {
+        MongoClientSettings settings = MongoClientSettings.builder()
+            .applyConnectionString(new ConnectionString(configuration.mongoURL()))
+            .addCommandListener(new MongoCommandMetricsListener(metricFactory))
+            .build();
+
+        return MongoClients.create(settings).getDatabase(configuration.database());
     }
 }
