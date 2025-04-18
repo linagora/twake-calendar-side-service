@@ -22,6 +22,7 @@ import java.io.FileNotFoundException;
 
 import org.apache.james.core.Domain;
 import org.apache.james.domainlist.api.DomainList;
+import org.apache.james.metrics.api.MetricFactory;
 import org.apache.james.utils.InitializationOperation;
 import org.apache.james.utils.InitilizationOperationBuilder;
 import org.apache.james.utils.PropertiesProvider;
@@ -83,7 +84,7 @@ public class MongoDBStorageModule extends AbstractModule {
 
     @Provides
     @Singleton
-    MongoDatabase dataBase(MongoDBConfiguration configuration) {
-        return MongoDBConnectionFactory.instantiateDB(configuration);
+    MongoDatabase dataBase(MongoDBConfiguration configuration, MetricFactory metricFactory) {
+        return MongoDBConnectionFactory.instantiateDB(configuration, metricFactory);
     }
 }

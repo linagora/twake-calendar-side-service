@@ -21,7 +21,6 @@ package com.linagora.calendar.app;
 import static io.restassured.RestAssured.given;
 import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
-import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.net.URI;
@@ -36,12 +35,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.mockserver.integration.ClientAndServer;
-import org.mockserver.model.HttpRequest;
-import org.mockserver.model.HttpResponse;
 
 import com.google.inject.name.Names;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
-import com.linagora.calendar.app.modules.MemoryAutoCompleteModule;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.mongodb.DockerMongoDBExtension;
@@ -77,7 +73,7 @@ class MongoTest {
         .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
         .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB),
         binder -> binder.bind(URL.class).annotatedWith(Names.named("userInfo")).toProvider(MongoTest::getUserInfoTokenEndpoint),
-        binder -> binder.bind(MongoDBConfiguration.class).toProvider(() -> mongo.getMongoDBConfiguration()));
+        binder -> binder.bind(MongoDBConfiguration.class).toProvider(DockerMongoDBExtension::getMongoDBConfiguration));
 
     @BeforeEach
     void setUp(TwakeCalendarGuiceServer server) {
@@ -107,6 +103,22 @@ class MongoTest {
         .then()
             .statusCode(302)
             .header("Location", "https://twcalendar.linagora.com/api/avatars?email=btellier@linagora.com");
+    }
+
+    @Test
+    void webadminShouldExposeMongodbMetric(TwakeCalendarGuiceServer server) {
+        String response = given(new RequestSpecBuilder()
+            .setConfig(newConfig().encoderConfig(encoderConfig().defaultContentCharset(StandardCharsets.UTF_8)))
+            .setPort(server.getProbe(WebAdminGuiceProbe.class).getWebAdminPort().getValue())
+            .build())
+        .when()
+            .get("/metrics")
+        .then()
+            .statusCode(200)
+            .extract()
+            .body().asString();
+
+        assertThat(response).contains("mongodb_command_");
     }
 
     private static void targetRestAPI(TwakeCalendarGuiceServer server) {

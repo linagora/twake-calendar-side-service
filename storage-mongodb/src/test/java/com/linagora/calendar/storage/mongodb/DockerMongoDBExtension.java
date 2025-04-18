@@ -20,6 +20,7 @@ package com.linagora.calendar.storage.mongodb;
 
 import java.util.List;
 
+import org.apache.james.metrics.tests.RecordingMetricFactory;
 import org.bson.Document;
 import org.junit.jupiter.api.extension.AfterAllCallback;
 import org.junit.jupiter.api.extension.AfterEachCallback;
@@ -69,7 +70,7 @@ public class DockerMongoDBExtension implements BeforeAllCallback, AfterAllCallba
 
     static void init() {
         mongoDBConfiguration = new MongoDBConfiguration(mongoDBContainer.getConnectionString(), "esn_docker");
-        db = MongoDBConnectionFactory.instantiateDB(mongoDBConfiguration);
+        db = MongoDBConnectionFactory.instantiateDB(mongoDBConfiguration, new RecordingMetricFactory());
         MongoDBCollectionFactory.initialize(db);
     }
 
