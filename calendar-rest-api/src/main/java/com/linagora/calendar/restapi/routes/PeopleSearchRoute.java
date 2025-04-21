@@ -61,6 +61,10 @@ public class PeopleSearchRoute extends CalendarRoute {
         USER, CONTACT
     }
 
+    record UserLookupResult(ObjectType objectType, String id) {
+
+    }
+
     @JsonIgnoreProperties(ignoreUnknown = true)
     record SearchRequestDTO(@JsonProperty("q") String query,
                             @JsonProperty("objectTypes") List<String> objectTypes,
@@ -151,24 +155,24 @@ public class PeopleSearchRoute extends CalendarRoute {
                 .map(objectType -> mapToResponseDTO(objectType).apply(contact)));
     }
 
-    private Mono<ObjectType> getObjectType(EmailAddressContact contact, List<String> objectTypesFilter) {
+    private Mono<UserLookupResult> getObjectType(EmailAddressContact contact, List<String> objectTypesFilter) {
         if (CollectionUtils.isEmpty(objectTypesFilter) || objectTypesFilter.contains(ObjectType.USER.name().toLowerCase())) {
             return getObjectType(contact);
         }
-        return Mono.just(ObjectType.CONTACT);
+        return Mono.just(new UserLookupResult(ObjectType.CONTACT, contact.id().toString()));
     }
 
-    private Mono<ObjectType> getObjectType(EmailAddressContact contact) {
+    private Mono<UserLookupResult> getObjectType(EmailAddressContact contact) {
         return userDAO.retrieve(Username.fromMailAddress(contact.fields().address()))
-            .map(user -> ObjectType.USER)
-            .switchIfEmpty(Mono.just(ObjectType.CONTACT));
+            .map(user -> new UserLookupResult(ObjectType.USER, user.id().value()))
+            .switchIfEmpty(Mono.just(new UserLookupResult(ObjectType.CONTACT, contact.id().toString())));
     }
 
-    private Function<EmailAddressContact, ResponseDTO> mapToResponseDTO(ObjectType objectType) {
-        return contact -> new ResponseDTO(contact.id().toString(),
+    private Function<EmailAddressContact, ResponseDTO> mapToResponseDTO(UserLookupResult userLookupResult) {
+        return contact -> new ResponseDTO(userLookupResult.id(),
             contact.fields().address().asString(),
             contact.fields().fullName(),
             configuration.getSelfUrl().toString() + "/api/avatars?email=" + contact.fields().address().asString(),
-            objectType.name().toLowerCase());
+            userLookupResult.objectType().name().toLowerCase());
     }
 }
