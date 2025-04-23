@@ -241,7 +241,7 @@ public class RestApiConfiguration {
             .map(s -> Splitter.on(',').splitToList(s));
         Optional<Duration> jwtValidity = Optional.ofNullable(configuration.getString("jwt.key.validity", null))
             .map(Duration::parse);
-        Optional<URL> oidcIntrospectionUrl = Optional.ofNullable(configuration.getString("oidc.userInfo.url", null))
+        Optional<URL> oidcUserInfoUrl = Optional.ofNullable(configuration.getString("oidc.userInfo.url", null))
             .map(Throwing.function(URL::new));
         Optional<String> oidcIntrospectionClaim = Optional.ofNullable(configuration.getString("oidc.claim", null));
         Optional<Boolean> calendarSharingEnabled = Optional.ofNullable(configuration.getBoolean("calendar.sharing.enabled", null));
@@ -263,7 +263,7 @@ public class RestApiConfiguration {
             .jwtPublicPath(jwtPublicKey)
             .jwtPrivatePath(jwtPrivateKey)
             .jwtValidity(jwtValidity)
-            .oidcUserInfoUrl(oidcIntrospectionUrl)
+            .oidcUserInfoUrl(oidcUserInfoUrl)
             .oidcClaim(oidcIntrospectionClaim)
             .enableCalendarSharing(calendarSharingEnabled)
             .sharingAddressbookEnabled(sharingAddressbookEnabled)
@@ -308,7 +308,7 @@ public class RestApiConfiguration {
     private final String jwtPrivatePath;
     private final List<String> jwtPublicPath;
     private final Duration jwtValidity;
-    private final URL oidcIntrospectionUrl;
+    private final URL oidcUserInfoUrl;
     private final String oidcClaim;
     private final boolean calendarSharingEnabled;
     private final boolean sharingContactsEnabled;
@@ -320,7 +320,7 @@ public class RestApiConfiguration {
 
     @VisibleForTesting
     RestApiConfiguration(Optional<Port> port, URL calendarSpaUrl, URL selfUrl, URL openpaasBackendURL, URL davURL, URL visioURL, boolean openpaasBackendTrustAllCerts,
-                         String jwtPrivatePath, List<String> jwtPublicPath, Duration jwtValidity, URL oidcIntrospectionUrl,
+                         String jwtPrivatePath, List<String> jwtPublicPath, Duration jwtValidity, URL oidcUserInfoUrl,
                          String oidcIntrospectionClaim, boolean calendarSharingENabled, boolean sharingCalendarEnabled, boolean domainMembersAddressbookEnabled,
                          String defaultLanguage, String defaultTimezone, boolean defaultUse24hFormat, JsonNode defaultBusinessHours) {
         this.port = port;
@@ -333,7 +333,7 @@ public class RestApiConfiguration {
         this.jwtPrivatePath = jwtPrivatePath;
         this.jwtPublicPath = jwtPublicPath;
         this.jwtValidity = jwtValidity;
-        this.oidcIntrospectionUrl = oidcIntrospectionUrl;
+        this.oidcUserInfoUrl = oidcUserInfoUrl;
         this.oidcClaim = oidcIntrospectionClaim;
         this.calendarSharingEnabled = calendarSharingENabled;
         this.sharingContactsEnabled = sharingCalendarEnabled;
@@ -372,8 +372,8 @@ public class RestApiConfiguration {
         return jwtValidity;
     }
 
-    public URL getOidcIntrospectionUrl() {
-        return oidcIntrospectionUrl;
+    public URL getOidcUserInfoUrl() {
+        return oidcUserInfoUrl;
     }
 
     public String getOidcClaim() {

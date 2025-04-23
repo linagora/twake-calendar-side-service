@@ -33,7 +33,9 @@ import com.google.inject.Provides;
 import com.google.inject.Scopes;
 import com.google.inject.Singleton;
 import com.google.inject.multibindings.ProvidesIntoSet;
+import com.linagora.calendar.storage.CaffeineOIDCTokenCache;
 import com.linagora.calendar.storage.DomainConfiguration;
+import com.linagora.calendar.storage.OIDCTokenCache;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSDomainList;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
@@ -53,6 +55,8 @@ public class MongoDBStorageModule extends AbstractModule {
         bind(DomainList.class).to(OpenPaaSDomainList.class);
 
         bind(UserConfigurationDAO.class).to(MongoDBUserConfigurationDAO.class);
+
+        bind(OIDCTokenCache.class).to(CaffeineOIDCTokenCache.class);
     }
 
     @Provides

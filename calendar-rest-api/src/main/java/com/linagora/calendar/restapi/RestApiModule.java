@@ -43,6 +43,7 @@ import com.google.inject.multibindings.ProvidesIntoSet;
 import com.linagora.calendar.restapi.auth.BasicAuthenticationStrategy;
 import com.linagora.calendar.restapi.auth.JwtAuthenticationStrategy;
 import com.linagora.calendar.restapi.auth.OidcAuthenticationStrategy;
+import com.linagora.calendar.restapi.auth.UserTokenInfoResolver;
 import com.linagora.calendar.restapi.routes.AvatarRoute;
 import com.linagora.calendar.restapi.routes.ConfigurationRoute;
 import com.linagora.calendar.restapi.routes.DomainRoute;
@@ -61,6 +62,7 @@ import com.linagora.calendar.restapi.routes.configuration.ConfigurationEntryReso
 import com.linagora.calendar.restapi.routes.configuration.ConstantConfigurationEntryResolver;
 import com.linagora.calendar.restapi.routes.configuration.FileConfigurationEntryResolver;
 import com.linagora.calendar.restapi.routes.configuration.StoredConfigurationEntryResolver;
+import com.linagora.calendar.storage.TokenInfoResolver;
 
 public class RestApiModule extends AbstractModule {
     @Override
@@ -92,6 +94,8 @@ public class RestApiModule extends AbstractModule {
         configurationEntryResolvers.addBinding().to(FileConfigurationEntryResolver.class);
         configurationEntryResolvers.addBinding().to(ConstantConfigurationEntryResolver.class);
         configurationEntryResolvers.addBinding().to(StoredConfigurationEntryResolver.class);
+
+        bind(TokenInfoResolver.class).to(UserTokenInfoResolver.class);
     }
 
     @Provides
@@ -119,8 +123,8 @@ public class RestApiModule extends AbstractModule {
 
     @Provides
     @Named("userInfo")
-    URL provideIntrospectionEndpoint(RestApiConfiguration configuration) {
-        return configuration.getOidcIntrospectionUrl();
+    URL provideUserInfoEndpoint(RestApiConfiguration configuration) {
+        return configuration.getOidcUserInfoUrl();
     }
 
     @Provides
