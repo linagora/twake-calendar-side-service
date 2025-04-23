@@ -28,5 +28,6 @@ public class CalendarRoutesModule extends AbstractModule {
     protected void configure() {
         Multibinder<Routes> routesMultibinder = Multibinder.newSetBinder(binder(), Routes.class);
         routesMultibinder.addBinding().to(CalendarUserRoutes.class);
+        routesMultibinder.addBinding().to(CalendarChannelLogoutRoutes.class);
     }
 }
