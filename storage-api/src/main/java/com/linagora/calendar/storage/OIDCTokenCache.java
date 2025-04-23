@@ -18,15 +18,14 @@
 
 package com.linagora.calendar.storage;
 
-import org.apache.james.core.Username;
-
 import com.linagora.calendar.storage.model.Sid;
 import com.linagora.calendar.storage.model.Token;
+import com.linagora.calendar.storage.model.TokenInfo;
 
 import reactor.core.publisher.Mono;
 
 public interface OIDCTokenCache {
     Mono<Void> invalidate(Sid sid);
 
-    Mono<Username> associatedUsername(Token token);
+    Mono<TokenInfo> associatedInformation(Token token);
 }

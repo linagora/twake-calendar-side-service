@@ -27,6 +27,7 @@ import java.util.Optional;
 
 import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.james.jwt.introspection.IntrospectionEndpoint;
 import org.apache.james.util.Port;
 import org.apache.james.utils.PropertiesProvider;
 
@@ -40,6 +41,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
+import com.linagora.calendar.storage.model.Aud;
 
 public class RestApiConfiguration {
 
@@ -64,7 +66,9 @@ public class RestApiConfiguration {
         private Optional<Boolean> sharingAddressbookEnabled = Optional.empty();
         private Optional<Boolean> domainMembersAddressbookEnabled = Optional.empty();
         private Optional<URL> oidcUserInfoUrl = Optional.empty();
+        private Optional<IntrospectionEndpoint> oidcIntrospectionEndpoint = Optional.empty();
         private Optional<String> oidcIntrospectionClaim = Optional.empty();
+        private Optional<Aud> oidcAudience = Optional.empty();
         private Optional<String> defaultLanguage = Optional.empty();
         private Optional<String> defaultTimezone = Optional.empty();
         private Optional<JsonNode> defaultBusinessHours = Optional.empty();
@@ -169,8 +173,18 @@ public class RestApiConfiguration {
             return this;
         }
 
+        public Builder oidcIntrospectionEndpoint(Optional<IntrospectionEndpoint> endpoint) {
+            this.oidcIntrospectionEndpoint = endpoint;
+            return this;
+        }
+
         public Builder oidcClaim(Optional<String> claim) {
             this.oidcIntrospectionClaim = claim;
+            return this;
+        }
+
+        public Builder oidcAudience(Optional<Aud> aud) {
+            this.oidcAudience = aud;
             return this;
         }
 
@@ -189,7 +203,9 @@ public class RestApiConfiguration {
                     jwtPublicPath.orElse(ImmutableList.of("classpath://jwt_publickey")),
                     jwtValidity.orElse(Duration.ofHours(12)),
                     oidcUserInfoUrl.orElse(new URL("http://keycloak:8080/auth/realms/oidc/protocol/openid-connect/userInfo")),
+                    oidcIntrospectionEndpoint.orElse(new IntrospectionEndpoint(new URL("http://keycloak:8080/auth/realms/oidc/protocol/openid-connect/introspect"), Optional.empty())),
                     oidcIntrospectionClaim.orElse("email"),
+                    oidcAudience.orElse(new Aud("tcalendar")),
                     sharingCalendarEnabled.orElse(true),
                     sharingAddressbookEnabled.orElse(true),
                     domainMembersAddressbookEnabled.orElse(true),
@@ -243,6 +259,10 @@ public class RestApiConfiguration {
             .map(Duration::parse);
         Optional<URL> oidcUserInfoUrl = Optional.ofNullable(configuration.getString("oidc.userInfo.url", null))
             .map(Throwing.function(URL::new));
+        Optional<URL> oidcIntrospectUrl = Optional.ofNullable(configuration.getString("oidc.introspect.url", null))
+            .map(Throwing.function(URL::new));
+        Optional<String> oidcIntrospectCreds = Optional.ofNullable(configuration.getString("oidc.introspect.credentials", null));
+        Optional<Aud> oidcAudience = Optional.ofNullable(configuration.getString("oidc.audience", null)).map(Aud::new);
         Optional<String> oidcIntrospectionClaim = Optional.ofNullable(configuration.getString("oidc.claim", null));
         Optional<Boolean> calendarSharingEnabled = Optional.ofNullable(configuration.getBoolean("calendar.sharing.enabled", null));
         Optional<Boolean> sharingAddressbookEnabled = Optional.ofNullable(configuration.getBoolean("contacts.sharing.enabled", null));
@@ -251,6 +271,8 @@ public class RestApiConfiguration {
         Optional<String> defaultLanguage = Optional.ofNullable(configuration.getString("default.language", null));
         Optional<String> defaultTimezone = Optional.ofNullable(configuration.getString("default.timezone", null));
         ArrayNode arrayNode = readWorkingHours(configuration);
+
+        Optional<IntrospectionEndpoint> introspectionEndpoint = oidcIntrospectUrl.map(url -> new IntrospectionEndpoint(url, oidcIntrospectCreds));
 
         return RestApiConfiguration.builder()
             .port(port)
@@ -265,6 +287,8 @@ public class RestApiConfiguration {
             .jwtValidity(jwtValidity)
             .oidcUserInfoUrl(oidcUserInfoUrl)
             .oidcClaim(oidcIntrospectionClaim)
+            .oidcIntrospectionEndpoint(introspectionEndpoint)
+            .oidcAudience(oidcAudience)
             .enableCalendarSharing(calendarSharingEnabled)
             .sharingAddressbookEnabled(sharingAddressbookEnabled)
             .domainMembersAddressbookEnabled(domainMembersAddressbookEnabled)
@@ -309,7 +333,9 @@ public class RestApiConfiguration {
     private final List<String> jwtPublicPath;
     private final Duration jwtValidity;
     private final URL oidcUserInfoUrl;
+    private final IntrospectionEndpoint introspectionEndpoint;
     private final String oidcClaim;
+    private final Aud aud;
     private final boolean calendarSharingEnabled;
     private final boolean sharingContactsEnabled;
     private final boolean domainMembersAddressbookEnabled;
@@ -320,8 +346,8 @@ public class RestApiConfiguration {
 
     @VisibleForTesting
     RestApiConfiguration(Optional<Port> port, URL calendarSpaUrl, URL selfUrl, URL openpaasBackendURL, URL davURL, URL visioURL, boolean openpaasBackendTrustAllCerts,
-                         String jwtPrivatePath, List<String> jwtPublicPath, Duration jwtValidity, URL oidcUserInfoUrl,
-                         String oidcIntrospectionClaim, boolean calendarSharingENabled, boolean sharingCalendarEnabled, boolean domainMembersAddressbookEnabled,
+                         String jwtPrivatePath, List<String> jwtPublicPath, Duration jwtValidity, URL oidcUserInfoUrl, IntrospectionEndpoint introspectionEndpoint,
+                         String oidcIntrospectionClaim, Aud aud, boolean calendarSharingENabled, boolean sharingCalendarEnabled, boolean domainMembersAddressbookEnabled,
                          String defaultLanguage, String defaultTimezone, boolean defaultUse24hFormat, JsonNode defaultBusinessHours) {
         this.port = port;
         this.calendarSpaUrl = calendarSpaUrl;
@@ -334,7 +360,9 @@ public class RestApiConfiguration {
         this.jwtPublicPath = jwtPublicPath;
         this.jwtValidity = jwtValidity;
         this.oidcUserInfoUrl = oidcUserInfoUrl;
+        this.introspectionEndpoint = introspectionEndpoint;
         this.oidcClaim = oidcIntrospectionClaim;
+        this.aud = aud;
         this.calendarSharingEnabled = calendarSharingENabled;
         this.sharingContactsEnabled = sharingCalendarEnabled;
         this.domainMembersAddressbookEnabled = domainMembersAddressbookEnabled;
@@ -418,5 +446,13 @@ public class RestApiConfiguration {
 
     public boolean isDefaultUse24hFormat() {
         return defaultUse24hFormat;
+    }
+
+    public IntrospectionEndpoint getIntrospectionEndpoint() {
+        return introspectionEndpoint;
+    }
+
+    public Aud getAud() {
+        return aud;
     }
 }

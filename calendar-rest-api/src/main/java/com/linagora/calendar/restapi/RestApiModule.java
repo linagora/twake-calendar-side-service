@@ -28,6 +28,7 @@ import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.james.jmap.JMAPRoutes;
 import org.apache.james.jmap.http.AuthenticationStrategy;
 import org.apache.james.jmap.http.Authenticator;
+import org.apache.james.jwt.introspection.IntrospectionEndpoint;
 import org.apache.james.metrics.api.MetricFactory;
 import org.apache.james.utils.GuiceProbe;
 import org.apache.james.utils.InitializationOperation;
@@ -43,7 +44,7 @@ import com.google.inject.multibindings.ProvidesIntoSet;
 import com.linagora.calendar.restapi.auth.BasicAuthenticationStrategy;
 import com.linagora.calendar.restapi.auth.JwtAuthenticationStrategy;
 import com.linagora.calendar.restapi.auth.OidcAuthenticationStrategy;
-import com.linagora.calendar.restapi.auth.UserTokenInfoResolver;
+import com.linagora.calendar.restapi.auth.OidcEndpointsInfoResolver;
 import com.linagora.calendar.restapi.routes.AvatarRoute;
 import com.linagora.calendar.restapi.routes.ConfigurationRoute;
 import com.linagora.calendar.restapi.routes.DomainRoute;
@@ -63,6 +64,7 @@ import com.linagora.calendar.restapi.routes.configuration.ConstantConfigurationE
 import com.linagora.calendar.restapi.routes.configuration.FileConfigurationEntryResolver;
 import com.linagora.calendar.restapi.routes.configuration.StoredConfigurationEntryResolver;
 import com.linagora.calendar.storage.TokenInfoResolver;
+import com.linagora.calendar.storage.model.Aud;
 
 public class RestApiModule extends AbstractModule {
     @Override
@@ -95,7 +97,7 @@ public class RestApiModule extends AbstractModule {
         configurationEntryResolvers.addBinding().to(ConstantConfigurationEntryResolver.class);
         configurationEntryResolvers.addBinding().to(StoredConfigurationEntryResolver.class);
 
-        bind(TokenInfoResolver.class).to(UserTokenInfoResolver.class);
+        bind(TokenInfoResolver.class).to(OidcEndpointsInfoResolver.class);
     }
 
     @Provides
@@ -125,6 +127,16 @@ public class RestApiModule extends AbstractModule {
     @Named("userInfo")
     URL provideUserInfoEndpoint(RestApiConfiguration configuration) {
         return configuration.getOidcUserInfoUrl();
+    }
+
+    @Provides
+    IntrospectionEndpoint provideIntrospectionEndpoint(RestApiConfiguration configuration) {
+        return configuration.getIntrospectionEndpoint();
+    }
+
+    @Provides
+    Aud provideAudience(RestApiConfiguration configuration) {
+        return configuration.getAud();
     }
 
     @Provides

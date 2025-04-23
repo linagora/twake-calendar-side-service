@@ -37,27 +37,27 @@ import com.google.common.collect.SetMultimap;
 import com.linagora.calendar.storage.configuration.OIDCTokenCacheConfiguration;
 import com.linagora.calendar.storage.model.Sid;
 import com.linagora.calendar.storage.model.Token;
+import com.linagora.calendar.storage.model.TokenInfo;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 public class CaffeineOIDCTokenCache implements OIDCTokenCache {
-    record CacheEntry(Username username, Optional<Sid> maybeSid) {}
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CaffeineOIDCTokenCache.class);
     private static final long DEFAULT_TOKEN_CACHE_MAX_SIZE = 10_000;
 
-    private final AsyncLoadingCache<Token, CacheEntry> cacheToken;
+    private final AsyncLoadingCache<Token, TokenInfo> cacheToken;
     private final SetMultimap<Sid, Token> sidToTokens = Multimaps.synchronizedSetMultimap(HashMultimap.create());
 
     @Inject
     public CaffeineOIDCTokenCache(TokenInfoResolver tokenInfoResolver, OIDCTokenCacheConfiguration configuration) {
-        AsyncCacheLoader<Token, CacheEntry> cacheLoader = (token, executor) -> tokenInfoResolver.apply(token)
+        AsyncCacheLoader<Token, TokenInfo> cacheLoader = (token, executor) -> tokenInfoResolver.apply(token)
             .map(tokenInfo -> {
                 tokenInfo.sid().ifPresentOrElse(sidValue -> sidToTokens.put(sidValue, token),
                     () -> LOGGER.warn("Token {} of user {} does not have a sid, this will break backchannel logout. Please review OIDC configuration.", token.value(), tokenInfo.email()));
-                return new CacheEntry(Username.of(tokenInfo.email()), tokenInfo.sid());
+                return tokenInfo;
             })
             .subscribeOn(Schedulers.fromExecutor(executor))
             .toFuture();
@@ -65,9 +65,9 @@ public class CaffeineOIDCTokenCache implements OIDCTokenCache {
         cacheToken = Caffeine.newBuilder()
             .expireAfterWrite(configuration.expiration())
             .maximumSize(configuration.tokenCacheMaxSize().orElse(DEFAULT_TOKEN_CACHE_MAX_SIZE))
-            .removalListener((Token token, CacheEntry cacheEntry, RemovalCause cause) -> {
-                if (cause.wasEvicted() && cacheEntry != null) {
-                    cacheEntry.maybeSid().ifPresent(sid -> sidToTokens.remove(sid, token));
+            .removalListener((Token token, TokenInfo tokenInfo, RemovalCause cause) -> {
+                if (cause.wasEvicted() && tokenInfo != null) {
+                    tokenInfo.sid().ifPresent(sid -> sidToTokens.remove(sid, token));
                 }
             })
             .buildAsync(cacheLoader);
@@ -83,14 +83,14 @@ public class CaffeineOIDCTokenCache implements OIDCTokenCache {
     }
 
     @Override
-    public Mono<Username> associatedUsername(Token token) {
-        return Mono.fromFuture(cacheToken.get(token))
-            .map(CacheEntry::username);
+    public Mono<TokenInfo> associatedInformation(Token token) {
+        return Mono.fromFuture(cacheToken.get(token));
     }
 
     @VisibleForTesting
     Optional<Username> getUsernameFromCache(Token token) {
         return Optional.ofNullable(cacheToken.synchronous().getIfPresent(token))
-            .map(CacheEntry::username);
+            .map(TokenInfo::email)
+            .map(Username::of);
     }
 }
