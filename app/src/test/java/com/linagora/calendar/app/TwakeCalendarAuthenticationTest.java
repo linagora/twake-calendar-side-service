@@ -88,9 +88,9 @@ public class TwakeCalendarAuthenticationTest {
         mockServer.reset();
     }
 
-    private void updateMockerServerSpecifications(String response, int statusResponse) {
+    private void updateMockerServerSpecifications(String path, String response, int statusResponse) {
         mockServer
-            .when(HttpRequest.request().withPath(USERINFO_TOKEN_URI_PATH))
+            .when(HttpRequest.request().withPath(path))
             .respond(HttpResponse.response().withStatusCode(statusResponse)
                 .withHeader("Content-Type", "application/json")
                 .withBody(response, StandardCharsets.UTF_8));
@@ -106,19 +106,14 @@ public class TwakeCalendarAuthenticationTest {
 
         String activeResponse = """
             {
-                "exp": 1652868271,
-                "nbf": 0,
-                "iat": 1652867971,
-                "jti": "41ee3cc3-b908-4870-bff2-34b895b9fadf",
-                "aud": "account",
-                "typ": "Bearer",
-                "acr": "1",
-                "scope": "email",
-                "email": "%s",
-                "active": true
+              "sub": "twake-calendar-dev",
+              "email": "%s",
+              "family_name": "twake-calendar-dev",
+              "sid": "dT/8+UDx1lWp1bRZkdhbS1i6ZfYhf8+bWAZQs8p0T/c",
+              "name": "twake-calendar-dev"
             }""".formatted(emailClaimValue);
 
-        updateMockerServerSpecifications(activeResponse, 200);
+        updateMockerServerSpecifications(USERINFO_TOKEN_URI_PATH, activeResponse, 200);
 
         given()
             .header("Authorization", "Bearer oidc_opac_token")
@@ -141,19 +136,14 @@ public class TwakeCalendarAuthenticationTest {
 
         String activeResponse = """
             {
-                "exp": 1652868271,
-                "nbf": 0,
-                "iat": 1652867971,
-                "jti": "41ee3cc3-b908-4870-bff2-34b895b9fadf",
-                "aud": "account",
-                "typ": "Bearer",
-                "acr": "1",
-                "scope": "email",
-                "email": "%s",
-                "active": true
+              "sub": "twake-calendar-dev",
+              "email": "%s",
+              "family_name": "twake-calendar-dev",
+              "sid": "dT/8+UDx1lWp1bRZkdhbS1i6ZfYhf8+bWAZQs8p0T/c",
+              "name": "twake-calendar-dev"
             }""".formatted(emailClaimValue);
 
-        updateMockerServerSpecifications(activeResponse, 200);
+        updateMockerServerSpecifications(USERINFO_TOKEN_URI_PATH, activeResponse, 200);
 
         given()
             .header("Authorization", "Bearer oidc_opac_token")
@@ -179,12 +169,11 @@ public class TwakeCalendarAuthenticationTest {
         String activeResponse = """
             {
               "email" : "%s",
-              "active" : true,
               "given_name" : "%s",
               "family_name" : "%s"
             }""".formatted(emailClaimValue, firstname, lastname);
 
-        updateMockerServerSpecifications(activeResponse, 200);
+        updateMockerServerSpecifications(USERINFO_TOKEN_URI_PATH, activeResponse, 200);
 
         given()
             .header("Authorization", "Bearer " + "fakeToken")
@@ -208,11 +197,10 @@ public class TwakeCalendarAuthenticationTest {
 
         String activeResponse = """
             {
-                "email": "%s",
-                "active": true
+                "email": "%s"
             }""".formatted(emailClaimValue);
 
-        updateMockerServerSpecifications(activeResponse, 200);
+        updateMockerServerSpecifications(USERINFO_TOKEN_URI_PATH, activeResponse, 200);
 
         given()
             .header("Authorization", "Bearer " + "fakeToken")

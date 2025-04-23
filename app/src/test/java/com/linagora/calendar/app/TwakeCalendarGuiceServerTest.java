@@ -44,6 +44,7 @@ import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.app.modules.MemoryAutoCompleteModule;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.OpenPaaSId;
+
 import io.restassured.RestAssured;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.http.ContentType;
@@ -52,7 +53,7 @@ class TwakeCalendarGuiceServerTest  {
     public static final Domain DOMAIN = Domain.of("linagora.com");
     public static final String PASSWORD = "secret";
     public static final Username USERNAME = Username.of("btellier@linagora.com");
-    private static final String USERINFO_TOKEN_URI_PATH = "/token/introspect";
+    private static final String USERINFO_TOKEN_URI_PATH = "/token/userinfo";
 
     private static ClientAndServer mockServer = ClientAndServer.startClientAndServer(0);
 
@@ -228,19 +229,15 @@ class TwakeCalendarGuiceServerTest  {
     @Test
     void shouldAuthenticateWithOidc(TwakeCalendarGuiceServer server) {
         targetRestAPI(server);
-        String activeResponse = "{" +
-            "    \"exp\": 1652868271," +
-            "    \"nbf\": 0," +
-            "    \"iat\": 1652867971," +
-            "    \"jti\": \"41ee3cc3-b908-4870-bff2-34b895b9fadf\"," +
-            "    \"aud\": \"account\"," +
-            "    \"typ\": \"Bearer\"," +
-            "    \"acr\": \"1\"," +
-            "    \"scope\": \"email\"," +
-            "    \"email\": \"btellier@linagora.com\"," +
-            "    \"active\": true" +
+
+        String userInfoResponse = "{" +
+            "  \"sub\": \"btellier\"," +
+            "  \"email\": \"btellier@linagora.com\"," +
+            "  \"family_name\": \"btellier\"," +
+            "  \"sid\": \"dT/8+UDx1lWp1bRZkdhbS1i6ZfYhf8+bWAZQs8p0T/c\"," +
+            "  \"name\": \"btellier\"" +
             "}";
-        updateMockerServerSpecifications(activeResponse, 200);
+        updateMockerServerSpecifications(USERINFO_TOKEN_URI_PATH, userInfoResponse, 200);
 
         given()
             .header("Authorization", "Bearer oidc_opac_token")
@@ -896,9 +893,9 @@ class TwakeCalendarGuiceServerTest  {
             .build();
     }
 
-    private void updateMockerServerSpecifications(String response, int statusResponse) {
+    private void updateMockerServerSpecifications(String path, String response, int statusResponse) {
         mockServer
-            .when(HttpRequest.request().withPath(USERINFO_TOKEN_URI_PATH))
+            .when(HttpRequest.request().withPath(path))
             .respond(HttpResponse.response().withStatusCode(statusResponse)
                 .withHeader("Content-Type", "application/json")
                 .withBody(response, StandardCharsets.UTF_8));
