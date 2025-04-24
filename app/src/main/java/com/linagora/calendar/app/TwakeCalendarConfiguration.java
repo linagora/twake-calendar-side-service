@@ -34,13 +34,15 @@ import org.apache.james.utils.PropertiesProvider;
 import com.github.fge.lambdas.Throwing;
 
 public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, JamesDirectoriesProvider directories,
-                                         UserChoice userChoice, DbChoice dbChoice, AutoCompleteChoice autoCompleteChoice) implements Configuration {
+                                         UserChoice userChoice, DbChoice dbChoice, AutoCompleteChoice autoCompleteChoice,
+                                         OIDCTokenStorageChoice oidcTokenStorageChoice) implements Configuration {
     public static class Builder {
         private Optional<String> rootDirectory;
         private Optional<ConfigurationPath> configurationPath;
         private Optional<UserChoice> userChoice;
         private Optional<DbChoice> dbChoice;
         private Optional<AutoCompleteChoice> autoCompleteChoice;
+        private Optional<OIDCTokenStorageChoice> oidcTokenStorageChoice;
 
         private Builder() {
             rootDirectory = Optional.empty();
@@ -48,6 +50,7 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
             userChoice = Optional.empty();
             dbChoice = Optional.empty();
             autoCompleteChoice = Optional.empty();
+            oidcTokenStorageChoice = Optional.empty();
         }
 
         public Builder workingDirectory(String path) {
@@ -72,6 +75,11 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
 
         public Builder autoCompleteChoice(AutoCompleteChoice choice) {
             autoCompleteChoice = Optional.of(choice);
+            return this;
+        }
+
+        public Builder oidcTokenStorageChoice(OIDCTokenStorageChoice choice) {
+            oidcTokenStorageChoice = Optional.of(choice);
             return this;
         }
 
@@ -126,12 +134,22 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                 }
             }));
 
+            OIDCTokenStorageChoice oidcTokenStorageChoice =  this.oidcTokenStorageChoice.orElseGet(Throwing.supplier(() -> {
+                try {
+                    propertiesProvider.getConfiguration("redis");
+                    return OIDCTokenStorageChoice.REDIS;
+                } catch (FileNotFoundException e) {
+                    return OIDCTokenStorageChoice.MEMORY;
+                }
+            }));
+
             return new TwakeCalendarConfiguration(
                 configurationPath,
                 directories,
                 userChoice,
                 dbChoice,
-                autoCompleteChoice);
+                autoCompleteChoice,
+                oidcTokenStorageChoice);
         }
     }
 
@@ -147,6 +165,11 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
 
     public enum AutoCompleteChoice {
         OPENSEARCH,
+        MEMORY
+    }
+
+    public enum OIDCTokenStorageChoice {
+        REDIS,
         MEMORY
     }
 

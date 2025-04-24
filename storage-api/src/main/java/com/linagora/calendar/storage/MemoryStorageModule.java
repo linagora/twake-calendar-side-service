@@ -48,8 +48,6 @@ public class MemoryStorageModule extends AbstractModule {
         bind(DomainList.class).to(OpenPaaSDomainList.class);
 
         bind(UserConfigurationDAO.class).to(MemoryUserConfigurationDAO.class);
-
-        bind(OIDCTokenCache.class).to(CaffeineOIDCTokenCache.class);
     }
 
     @Provides

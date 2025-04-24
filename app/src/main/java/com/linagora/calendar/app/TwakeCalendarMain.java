@@ -41,7 +41,9 @@ import org.apache.james.webadmin.dropwizard.MetricsRoutes;
 import org.apache.james.webadmin.routes.DomainsRoutes;
 import org.apache.james.webadmin.routes.UserRoutes;
 
+import com.google.inject.AbstractModule;
 import com.google.inject.Module;
+import com.google.inject.Scopes;
 import com.google.inject.TypeLiteral;
 import com.google.inject.multibindings.MapBinder;
 import com.google.inject.multibindings.Multibinder;
@@ -51,9 +53,12 @@ import com.linagora.calendar.app.modules.MemoryAutoCompleteModule;
 import com.linagora.calendar.app.modules.MemoryUserModule;
 import com.linagora.calendar.app.modules.OpenSearchClientModule;
 import com.linagora.calendar.restapi.RestApiModule;
+import com.linagora.calendar.storage.CaffeineOIDCTokenCache;
 import com.linagora.calendar.storage.MemoryStorageModule;
+import com.linagora.calendar.storage.OIDCTokenCache;
 import com.linagora.calendar.storage.OIDCTokenCacheConfigurationModule;
 import com.linagora.calendar.storage.mongodb.MongoDBStorageModule;
+import com.linagora.calendar.storage.redis.RedisStorageModule;
 import com.linagora.calendar.webadmin.CalendarRoutesModule;
 import com.linagora.tmail.james.jmap.module.OSContactAutoCompleteModule;
 
@@ -94,10 +99,10 @@ public class TwakeCalendarMain {
         return TwakeCalendarGuiceServer.forConfiguration(configuration)
             .combineWith(Modules.combine(
                 new DNSServiceModule(),
-                new OIDCTokenCacheConfigurationModule(),
                 chooseDb(configuration.dbChoice()),
                 chooseAutoComplete(configuration.autoCompleteChoice()),
                 chooseUsersModule(configuration.userChoice()),
+                chooseOIDCTokenStorage(configuration.oidcTokenStorageChoice()),
                 new RestApiModule(),
                 new TaskManagerModule(),
                 WEBADMIN));
@@ -124,5 +129,19 @@ public class TwakeCalendarMain {
             case MEMORY -> new MemoryUserModule();
             case LDAP -> Modules.override(new MemoryUserModule()).with(new LdapUsersRepositoryModule());
         };
+    }
+
+    public static Module chooseOIDCTokenStorage(TwakeCalendarConfiguration.OIDCTokenStorageChoice oidcTokenStorageChoice) {
+        return Modules.combine(new OIDCTokenCacheConfigurationModule(),
+            switch (oidcTokenStorageChoice) {
+                case MEMORY -> new AbstractModule() {
+                    @Override
+                    protected void configure() {
+                        bind(CaffeineOIDCTokenCache.class).in(Scopes.SINGLETON);
+                        bind(OIDCTokenCache.class).to(CaffeineOIDCTokenCache.class);
+                    }
+                };
+                case REDIS -> new RedisStorageModule();
+            });
     }
 }
