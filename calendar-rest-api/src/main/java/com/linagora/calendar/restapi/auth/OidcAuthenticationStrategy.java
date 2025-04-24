@@ -67,7 +67,7 @@ public class OidcAuthenticationStrategy implements AuthenticationStrategy {
             .map(Token::new)
             .flatMap(oidcTokenCache::associatedInformation)
             .<TokenInfo>handle((tokenInfo, sink) -> {
-                if (!tokenInfo.aud().equals(aud)) {
+                if (!tokenInfo.aud().contains(aud)) {
                     sink.error(new UnauthorizedException("Wrong audience. Expected " + aud.value() + " got " + tokenInfo.aud()));
                     return;
                 }
