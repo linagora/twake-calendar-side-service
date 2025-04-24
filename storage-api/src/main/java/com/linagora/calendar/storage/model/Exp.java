@@ -18,8 +18,5 @@
 
 package com.linagora.calendar.storage.model;
 
-import java.time.Instant;
-import java.util.Optional;
-
-public record TokenInfo(String email, Optional<Sid> sid, Instant exp, Aud aud) {
+public record Exp(String value) {
 }

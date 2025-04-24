@@ -27,9 +27,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.Duration;
+import java.util.Optional;
 
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
+import org.apache.james.jwt.introspection.IntrospectionEndpoint;
 import org.apache.james.util.Port;
 import org.apache.james.utils.WebAdminGuiceProbe;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,6 +43,7 @@ import org.mockserver.integration.ClientAndServer;
 import org.mockserver.model.HttpRequest;
 import org.mockserver.model.HttpResponse;
 
+import com.github.fge.lambdas.Throwing;
 import com.google.inject.name.Names;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.app.modules.MemoryAutoCompleteModule;
@@ -54,6 +59,7 @@ class TwakeCalendarGuiceServerTest  {
     public static final String PASSWORD = "secret";
     public static final Username USERNAME = Username.of("btellier@linagora.com");
     private static final String USERINFO_TOKEN_URI_PATH = "/token/userinfo";
+    private static final String INTROSPECT_TOKEN_URI_PATH = "/oauth2/introspect";
 
     private static ClientAndServer mockServer = ClientAndServer.startClientAndServer(0);
 
@@ -65,6 +71,10 @@ class TwakeCalendarGuiceServerTest  {
         }
     }
 
+    private static URL getInrospectTokenEndpoint() {
+        return Throwing.supplier(() -> URI.create(String.format("http://127.0.0.1:%s%s", mockServer.getLocalPort(), INTROSPECT_TOKEN_URI_PATH)).toURL()).get();
+    }
+
     private OpenPaaSId userId;
 
     @RegisterExtension
@@ -73,7 +83,8 @@ class TwakeCalendarGuiceServerTest  {
             .configurationFromClasspath()
             .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY),
-        binder -> binder.bind(URL.class).annotatedWith(Names.named("userInfo")).toProvider(TwakeCalendarGuiceServerTest::getUserInfoTokenEndpoint));
+        binder -> binder.bind(URL.class).annotatedWith(Names.named("userInfo")).toProvider(TwakeCalendarGuiceServerTest::getUserInfoTokenEndpoint),
+        binder -> binder.bind(IntrospectionEndpoint.class).toProvider(() -> new IntrospectionEndpoint(getInrospectTokenEndpoint(), Optional.empty())));
 
     @BeforeEach
     void setUp(TwakeCalendarGuiceServer server) {
@@ -238,6 +249,20 @@ class TwakeCalendarGuiceServerTest  {
             "  \"name\": \"btellier\"" +
             "}";
         updateMockerServerSpecifications(USERINFO_TOKEN_URI_PATH, userInfoResponse, 200);
+
+
+        updateMockerServerSpecifications(INTROSPECT_TOKEN_URI_PATH, """
+            {
+                "exp": %d,
+                "scope": "openid email profile",
+                "client_id": "tcalendar",
+                "active": true,
+                "aud": "tcalendar",
+                "sub": "twake-calendar-dev",
+                "sid": "dT/8+UDx1lWp1bRZkdhbS1i6ZfYhf8+bWAZQs8p0T/c",
+                "iss": "https://sso.linagora.com"
+              }
+              """.formatted(Clock.systemUTC().instant().plus(Duration.ofHours(1)).getEpochSecond()), 200);
 
         given()
             .header("Authorization", "Bearer oidc_opac_token")

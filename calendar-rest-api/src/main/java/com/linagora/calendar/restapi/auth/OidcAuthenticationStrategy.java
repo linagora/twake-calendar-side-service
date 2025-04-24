@@ -20,19 +20,25 @@ package com.linagora.calendar.restapi.auth;
 
 import static org.apache.james.jmap.http.JWTAuthenticationStrategy.AUTHORIZATION_HEADER_PREFIX;
 
+import java.time.Clock;
+
 import jakarta.inject.Inject;
 
+import org.apache.james.core.Username;
 import org.apache.james.jmap.exceptions.UnauthorizedException;
 import org.apache.james.jmap.http.AuthenticationChallenge;
 import org.apache.james.jmap.http.AuthenticationScheme;
 import org.apache.james.jmap.http.AuthenticationStrategy;
+import org.apache.james.jwt.introspection.TokenIntrospectionException;
 import org.apache.james.jwt.userinfo.UserInfoCheckException;
 import org.apache.james.mailbox.MailboxSession;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.storage.OIDCTokenCache;
+import com.linagora.calendar.storage.model.Aud;
 import com.linagora.calendar.storage.model.Token;
+import com.linagora.calendar.storage.model.TokenInfo;
 
 import reactor.core.publisher.Mono;
 import reactor.netty.http.server.HttpServerRequest;
@@ -41,11 +47,15 @@ public class OidcAuthenticationStrategy implements AuthenticationStrategy {
 
     private final SimpleSessionProvider sessionProvider;
     private final OIDCTokenCache oidcTokenCache;
+    private final Clock clock;
+    private final Aud aud;
 
     @Inject
-    public OidcAuthenticationStrategy(SimpleSessionProvider sessionProvider, OIDCTokenCache oidcTokenCache) {
+    public OidcAuthenticationStrategy(SimpleSessionProvider sessionProvider, OIDCTokenCache oidcTokenCache, Clock clock, Aud aud) {
         this.sessionProvider = sessionProvider;
         this.oidcTokenCache = oidcTokenCache;
+        this.clock = clock;
+        this.aud = aud;
     }
 
     @Override
@@ -55,10 +65,29 @@ public class OidcAuthenticationStrategy implements AuthenticationStrategy {
             .map(header -> header.substring(AUTHORIZATION_HEADER_PREFIX.length()))
             .filter(token -> !token.startsWith("eyJ")) // Heuristic for detecting JWT
             .map(Token::new)
-            .flatMap(oidcTokenCache::associatedUsername)
+            .flatMap(oidcTokenCache::associatedInformation)
+            .<TokenInfo>handle((tokenInfo, sink) -> {
+                if (!tokenInfo.aud().equals(aud)) {
+                    sink.error(new UnauthorizedException("Wrong audience. Expected " + aud.value() + " got " + tokenInfo.aud()));
+                    return;
+                }
+                if (clock.instant().isAfter(tokenInfo.exp())) {
+                    sink.error(new UnauthorizedException("Expired token"));
+                    return;
+                }
+
+                sink.next(tokenInfo);
+            })
+            .map(tokenInfo -> Username.of(tokenInfo.email()))
             .map(Throwing.function(sessionProvider::createSession))
-            .onErrorResume(UserInfoCheckException.class,
-                e -> Mono.error(new UnauthorizedException("Invalid OIDC token", e)));
+            .onErrorResume(this::handleOidcError);
+    }
+
+    private Mono<MailboxSession> handleOidcError(Throwable error) {
+        if (error instanceof TokenIntrospectionException || error instanceof UserInfoCheckException) {
+            return Mono.error(new UnauthorizedException("Invalid OIDC token", error));
+        }
+        return Mono.error(error);
     }
 
     @Override
