@@ -15,23 +15,42 @@
  *  PURPOSE. See the GNU Affero General Public License for          *
  *  more details.                                                   *
  ********************************************************************/
+package com.linagora.calendar.storage.redis;
 
-package com.linagora.calendar.storage.model;
+import org.apache.james.backends.redis.RedisClusterExtension;
+import org.apache.james.backends.redis.RedisConfiguration;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-import java.time.Instant;
-import java.util.List;
-import java.util.Optional;
+public class RedisClusterOIDCTokenCacheTest extends RedisOIDCTokenCacheContract {
 
-import com.google.common.base.MoreObjects;
+    @RegisterExtension
+    static RedisClusterExtension redisClusterExtension = new RedisClusterExtension();
 
-public record TokenInfo(String email, Optional<Sid> sid, Instant exp, List<Aud> aud) {
+    private static RedisClusterExtension.RedisClusterContainer redisClusterContainer;
+    private RedisConfiguration redisConfiguration;
 
-    public String asString() {
-        return MoreObjects.toStringHelper(this)
-            .add("email", email)
-            .add("sid", Optional.ofNullable(sid).flatMap(sidValue -> sidValue.map(Sid::value)).orElse(null))
-            .add("exp", exp)
-            .add("aud", Optional.ofNullable(aud).orElseGet(List::of).stream().map(Aud::value).toList())
-            .toString();
+    @BeforeAll
+    static void setUp(RedisClusterExtension.RedisClusterContainer container) {
+        redisClusterContainer = container;
+    }
+
+    @AfterEach
+    void tearDown() {
+        redisClusterContainer.unPauseOne();
+    }
+
+    @Override
+    public RedisConfiguration redisConfiguration() {
+        if (redisConfiguration == null) {
+            redisConfiguration = redisClusterContainer.getRedisConfiguration();
+        }
+        return redisConfiguration;
+    }
+
+    @Override
+    public void pauseRedis() {
+        redisClusterContainer.unPauseOne();
     }
 }
