@@ -27,8 +27,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -50,14 +50,15 @@ public abstract class OIDCTokenCacheContract {
     static final String SID_STRING = "sid-1";
     static final Token TOKEN = new Token("token-1");
     static final Sid SID = new Sid(SID_STRING);
-    public static final Aud AUD = new Aud("tcalendar");
-    static final TokenInfo TOKEN_INFO = new TokenInfo(EMAIL, Optional.of(SID), Clock.systemUTC().instant().plus(Duration.ofMinutes(1)), AUD);
+    static final Aud AUD = new Aud("tcalendar");
+    static final Instant EXPIRES_AT = Instant.now().plus(Duration.ofMinutes(1));
+    static final TokenInfo TOKEN_INFO = new TokenInfo(EMAIL, Optional.of(SID), EXPIRES_AT, AUD);
 
     static final String EMAIL_2 = "user2@example.com";
     static final String SID_STRING_2 = "sid-2";
     static final Token TOKEN_2 = new Token("token-2");
     static final Sid SID_2 = new Sid(SID_STRING_2);
-    static final TokenInfo TOKEN_INFO_2 = new TokenInfo(EMAIL_2, Optional.of(SID_2), Clock.systemUTC().instant().plus(Duration.ofMinutes(1)), AUD);
+    static final TokenInfo TOKEN_INFO_2 = new TokenInfo(EMAIL_2, Optional.of(SID_2), EXPIRES_AT, AUD);
 
     protected TokenInfoResolver tokenInfoResolver = mock(TokenInfoResolver.class);
 
@@ -97,8 +98,8 @@ public abstract class OIDCTokenCacheContract {
 
     @Test
     public void invalidateShouldRemoveAllTokensForSid() {
-        TokenInfo tokenInfo1 = new TokenInfo(EMAIL, Optional.of(SID), Clock.systemUTC().instant().plus(Duration.ofMinutes(1)), AUD);
-        TokenInfo tokenInfo2 = new TokenInfo(EMAIL_2, Optional.of(SID), Clock.systemUTC().instant().plus(Duration.ofMinutes(1)), AUD);
+        TokenInfo tokenInfo1 = new TokenInfo(EMAIL, Optional.of(SID), EXPIRES_AT, AUD);
+        TokenInfo tokenInfo2 = new TokenInfo(EMAIL_2, Optional.of(SID), EXPIRES_AT, AUD);
 
         mockTokenInfoResolverSuccess(TOKEN, tokenInfo1);
         mockTokenInfoResolverSuccess(TOKEN_2, tokenInfo2);
@@ -179,7 +180,7 @@ public abstract class OIDCTokenCacheContract {
     @Test
     public void associatedUsernameShouldCachedWhenAbsentSidInTokenInfo() {
         Token token = new Token("token-" + UUID.randomUUID());
-        mockTokenInfoResolverSuccess(token, new TokenInfo(EMAIL, Optional.empty(), Clock.systemUTC().instant().plus(Duration.ofMinutes(1)), AUD));
+        mockTokenInfoResolverSuccess(token, new TokenInfo(EMAIL, Optional.empty(), EXPIRES_AT, AUD));
 
         for (int i = 0; i < 5; i++) {
             testee().associatedInformation(token).block();

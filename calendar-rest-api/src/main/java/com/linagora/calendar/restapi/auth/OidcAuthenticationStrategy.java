@@ -29,6 +29,7 @@ import org.apache.james.jmap.exceptions.UnauthorizedException;
 import org.apache.james.jmap.http.AuthenticationChallenge;
 import org.apache.james.jmap.http.AuthenticationScheme;
 import org.apache.james.jmap.http.AuthenticationStrategy;
+import org.apache.james.jwt.introspection.TokenIntrospectionException;
 import org.apache.james.jwt.userinfo.UserInfoCheckException;
 import org.apache.james.mailbox.MailboxSession;
 
@@ -79,8 +80,14 @@ public class OidcAuthenticationStrategy implements AuthenticationStrategy {
             })
             .map(tokenInfo -> Username.of(tokenInfo.email()))
             .map(Throwing.function(sessionProvider::createSession))
-            .onErrorResume(UserInfoCheckException.class,
-                e -> Mono.error(new UnauthorizedException("Invalid OIDC token", e)));
+            .onErrorResume(this::handleOidcError);
+    }
+
+    private Mono<MailboxSession> handleOidcError(Throwable error) {
+        if (error instanceof TokenIntrospectionException || error instanceof UserInfoCheckException) {
+            return Mono.error(new UnauthorizedException("Invalid OIDC token", error));
+        }
+        return Mono.error(error);
     }
 
     @Override

@@ -30,6 +30,7 @@ import org.apache.james.core.Username;
 import org.apache.james.jmap.exceptions.UnauthorizedException;
 import org.apache.james.jwt.DefaultCheckTokenClient;
 import org.apache.james.jwt.introspection.IntrospectionEndpoint;
+import org.apache.james.jwt.introspection.TokenIntrospectionResponse;
 import org.apache.james.jwt.userinfo.UserinfoResponse;
 import org.apache.james.metrics.api.MetricFactory;
 import org.slf4j.Logger;
@@ -82,17 +83,24 @@ public class OidcEndpointsInfoResolver implements TokenInfoResolver {
             Mono.from(metricFactory.decoratePublisherWithTimerMetric("userinfo-lookup", checkTokenClient.userInfo(userInfoURL, token.value()))),
             Mono.from(metricFactory.decoratePublisherWithTimerMetric("introspection-lookup", checkTokenClient.introspect(introspectionEndpoint, token.value()))))
             .flatMap(tokenInfos -> {
-                Username sub = Username.of(tokenInfos.getT1().claimByPropertyName(configuration.getOidcClaim())
+                UserinfoResponse userInfo = tokenInfos.getT1();
+                TokenIntrospectionResponse introspectInfo = tokenInfos.getT2();
+
+                Username sub = Username.of(userInfo.claimByPropertyName(configuration.getOidcClaim())
                     .orElseThrow(() -> new UnauthorizedException("Invalid OIDC token: userinfo needs to include " + configuration.getOidcClaim() + " claim")));
 
-                return provisionUserIfNeed(sub, parseFirstnameAndSurnameFromToken(tokenInfos.getT1()))
-                    .thenReturn(new TokenInfo(
-                        sub.asString(),
-                        tokenInfos.getT1().claimByPropertyName(SID_PROPERTY).map(Sid::new)
-                            .or(() -> tokenInfos.getT2().claimByPropertyName(SID_PROPERTY).map(Sid::new)),
-                        Instant.ofEpochSecond(tokenInfos.getT2().exp().orElseThrow(() -> new UnauthorizedException("Only accepting tokens that expires"))),
-                        tokenInfos.getT2().aud().map(Aud::new).orElseThrow(() -> new UnauthorizedException("Audience is required"))));
+                return provisionUserIfNeed(sub, parseFirstnameAndSurnameFromToken(userInfo))
+                    .thenReturn(toTokenInfo(sub, userInfo, introspectInfo));
             });
+    }
+
+    private TokenInfo toTokenInfo(Username username, UserinfoResponse userinfoResponse, TokenIntrospectionResponse introspectionResponse) {
+        return new TokenInfo(
+            username.asString(),
+            userinfoResponse.claimByPropertyName(SID_PROPERTY).map(Sid::new)
+                .or(() -> introspectionResponse.claimByPropertyName(SID_PROPERTY).map(Sid::new)),
+            Instant.ofEpochSecond(introspectionResponse.exp().orElseThrow(() -> new UnauthorizedException("Expiration claim ('exp') is required in the token"))),
+            introspectionResponse.aud().map(Aud::new).orElseThrow(() -> new UnauthorizedException("Audience claim ('aud') is required in the token")));
     }
 
     private Mono<Username> provisionUserIfNeed(Username username, Optional<Pair<String, String>> firstnameAndSurnameOpt) {

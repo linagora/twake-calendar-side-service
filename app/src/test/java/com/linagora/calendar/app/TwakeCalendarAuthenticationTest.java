@@ -44,6 +44,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.mockserver.integration.ClientAndServer;
 import org.mockserver.model.HttpRequest;
 import org.mockserver.model.HttpResponse;
+import org.mockserver.verify.VerificationTimes;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.github.fge.lambdas.Throwing;
@@ -60,6 +61,7 @@ class TwakeCalendarAuthenticationTest {
     private static final String DOMAIN = "open-paas.ltd";
     private static final String USERINFO_TOKEN_URI_PATH = "/oauth2/userinfo";
     private static final String INTROSPECT_TOKEN_URI_PATH = "/oauth2/introspect";
+    private static final long TOKEN_EXPIRATION_TIME = Clock.systemUTC().instant().plus(Duration.ofHours(1)).getEpochSecond();
 
     private static final ClientAndServer mockServer = ClientAndServer.startClientAndServer(0);
 
@@ -107,14 +109,12 @@ class TwakeCalendarAuthenticationTest {
                 .withBody(response, StandardCharsets.UTF_8));
     }
 
-    @Test
-    void shouldProvisionUserWhenAuthenticateWithOidcAndUserDoesNotExist(TwakeCalendarGuiceServer server) {
-        String emailClaimValue = UUID.randomUUID() + "@" + DOMAIN;
-        Username username = Username.of(emailClaimValue);
+    private void updateMockServerTokenInfoResponse(String emailClaimValue) {
+        updateMockServerUserInfoResponse(emailClaimValue);
+        updateMockServerIntrospectionResponse();
+    }
 
-        assertThat(server.getProbe(CalendarDataProbe.class)
-            .userId(username)).isNull();
-
+    private void updateMockServerUserInfoResponse(String emailClaimValue) {
         updateMockerServerSpecifications(USERINFO_TOKEN_URI_PATH, """
             {
               "sub": "twake-calendar-dev",
@@ -123,7 +123,9 @@ class TwakeCalendarAuthenticationTest {
               "sid": "dT/8+UDx1lWp1bRZkdhbS1i6ZfYhf8+bWAZQs8p0T/c",
               "name": "twake-calendar-dev"
             }""".formatted(emailClaimValue), 200);
+    }
 
+    private void updateMockServerIntrospectionResponse() {
         updateMockerServerSpecifications(INTROSPECT_TOKEN_URI_PATH, """
             {
                 "exp": %d,
@@ -134,8 +136,18 @@ class TwakeCalendarAuthenticationTest {
                 "sub": "twake-calendar-dev",
                 "sid": "dT/8+UDx1lWp1bRZkdhbS1i6ZfYhf8+bWAZQs8p0T/c",
                 "iss": "https://sso.linagora.com"
-              }
-              """.formatted(Clock.systemUTC().instant().plus(Duration.ofHours(1)).getEpochSecond()), 200);
+              }""".formatted(TOKEN_EXPIRATION_TIME), 200);
+    }
+
+    @Test
+    void shouldProvisionUserWhenAuthenticateWithOidcAndUserDoesNotExist(TwakeCalendarGuiceServer server) {
+        String emailClaimValue = UUID.randomUUID() + "@" + DOMAIN;
+        Username username = Username.of(emailClaimValue);
+
+        assertThat(server.getProbe(CalendarDataProbe.class)
+            .userId(username)).isNull();
+
+        updateMockServerTokenInfoResponse(emailClaimValue);
 
         given()
             .header("Authorization", "Bearer oidc_opac_token")
@@ -156,29 +168,7 @@ class TwakeCalendarAuthenticationTest {
         server.getProbe(CalendarDataProbe.class)
             .addUser(username, "password");
 
-        String activeResponse = """
-            {
-              "sub": "twake-calendar-dev",
-              "email": "%s",
-              "family_name": "twake-calendar-dev",
-              "sid": "dT/8+UDx1lWp1bRZkdhbS1i6ZfYhf8+bWAZQs8p0T/c",
-              "name": "twake-calendar-dev"
-            }""".formatted(emailClaimValue);
-
-        updateMockerServerSpecifications(INTROSPECT_TOKEN_URI_PATH, """
-            {
-                "exp": %d,
-                "scope": "openid email profile",
-                "client_id": "tcalendar",
-                "active": true,
-                "aud": "tcalendar",
-                "sub": "twake-calendar-dev",
-                "sid": "dT/8+UDx1lWp1bRZkdhbS1i6ZfYhf8+bWAZQs8p0T/c",
-                "iss": "https://sso.linagora.com"
-              }
-              """.formatted(Clock.systemUTC().instant().plus(Duration.ofHours(1)).getEpochSecond()), 200);
-
-        updateMockerServerSpecifications(USERINFO_TOKEN_URI_PATH, activeResponse, 200);
+        updateMockServerTokenInfoResponse(emailClaimValue);
 
         given()
             .header("Authorization", "Bearer oidc_opac_token")
@@ -189,18 +179,11 @@ class TwakeCalendarAuthenticationTest {
     }
 
     @Test
-    void shouldRejectOutdatedToken(TwakeCalendarGuiceServer server) {
+    void shouldRejectOutdatedToken() {
         String emailClaimValue = UUID.randomUUID() + "@" + DOMAIN;
+        updateMockServerUserInfoResponse(emailClaimValue);
 
-        String activeResponse = """
-            {
-              "sub": "twake-calendar-dev",
-              "email": "%s",
-              "family_name": "twake-calendar-dev",
-              "sid": "dT/8+UDx1lWp1bRZkdhbS1i6ZfYhf8+bWAZQs8p0T/c",
-              "name": "twake-calendar-dev"
-            }""".formatted(emailClaimValue);
-
+        long expiredTime = Clock.systemUTC().instant().minus(Duration.ofHours(1)).getEpochSecond();
         updateMockerServerSpecifications(INTROSPECT_TOKEN_URI_PATH, """
             {
                 "exp": %d,
@@ -211,10 +194,7 @@ class TwakeCalendarAuthenticationTest {
                 "sub": "twake-calendar-dev",
                 "sid": "dT/8+UDx1lWp1bRZkdhbS1i6ZfYhf8+bWAZQs8p0T/c",
                 "iss": "https://sso.linagora.com"
-              }
-              """.formatted(Clock.systemUTC().instant().minus(Duration.ofHours(1)).getEpochSecond()), 200);
-
-        updateMockerServerSpecifications(USERINFO_TOKEN_URI_PATH, activeResponse, 200);
+              }""".formatted(expiredTime), 200);
 
         given()
             .header("Authorization", "Bearer oidc_opac_token")
@@ -225,17 +205,9 @@ class TwakeCalendarAuthenticationTest {
     }
 
     @Test
-    void shouldRejectBadAudience(TwakeCalendarGuiceServer server) {
+    void shouldRejectBadAudience() {
         String emailClaimValue = UUID.randomUUID() + "@" + DOMAIN;
-
-        String activeResponse = """
-            {
-              "sub": "twake-calendar-dev",
-              "email": "%s",
-              "family_name": "twake-calendar-dev",
-              "sid": "dT/8+UDx1lWp1bRZkdhbS1i6ZfYhf8+bWAZQs8p0T/c",
-              "name": "twake-calendar-dev"
-            }""".formatted(emailClaimValue);
+        updateMockServerUserInfoResponse(emailClaimValue);
 
         updateMockerServerSpecifications(INTROSPECT_TOKEN_URI_PATH, """
             {
@@ -247,10 +219,8 @@ class TwakeCalendarAuthenticationTest {
                 "sub": "twake-calendar-dev",
                 "sid": "dT/8+UDx1lWp1bRZkdhbS1i6ZfYhf8+bWAZQs8p0T/c",
                 "iss": "https://sso.linagora.com"
-              }
-              """.formatted(Clock.systemUTC().instant().plus(Duration.ofHours(1)).getEpochSecond()), 200);
+              }""".formatted(TOKEN_EXPIRATION_TIME), 200);
 
-        updateMockerServerSpecifications(USERINFO_TOKEN_URI_PATH, activeResponse, 200);
 
         given()
             .header("Authorization", "Bearer oidc_opac_token")
@@ -261,10 +231,10 @@ class TwakeCalendarAuthenticationTest {
     }
 
     @Test
-    void shouldAcceptNoSidInUserInfo(TwakeCalendarGuiceServer server) {
+    void shouldAcceptNoSidInUserInfo() {
         String emailClaimValue = UUID.randomUUID() + "@" + DOMAIN;
 
-        String activeResponse = """
+        String activeResponseNoSid = """
             {
               "sub": "twake-calendar-dev",
               "email": "%s",
@@ -272,20 +242,8 @@ class TwakeCalendarAuthenticationTest {
               "name": "twake-calendar-dev"
             }""".formatted(emailClaimValue);
 
-        updateMockerServerSpecifications(INTROSPECT_TOKEN_URI_PATH, """
-            {
-                "exp": %d,
-                "scope": "openid email profile",
-                "client_id": "tcalendar",
-                "active": true,
-                "aud": "tcalendar",
-                "sub": "twake-calendar-dev",
-                "sid": "dT/8+UDx1lWp1bRZkdhbS1i6ZfYhf8+bWAZQs8p0T/c",
-                "iss": "https://sso.linagora.com"
-              }
-              """.formatted(Clock.systemUTC().instant().plus(Duration.ofHours(1)).getEpochSecond()), 200);
-
-        updateMockerServerSpecifications(USERINFO_TOKEN_URI_PATH, activeResponse, 200);
+        updateMockerServerSpecifications(USERINFO_TOKEN_URI_PATH, activeResponseNoSid, 200);
+        updateMockServerIntrospectionResponse();
 
         given()
             .header("Authorization", "Bearer oidc_opac_token")
@@ -296,17 +254,10 @@ class TwakeCalendarAuthenticationTest {
     }
 
     @Test
-    void shouldAcceptNoSidInIntrospection(TwakeCalendarGuiceServer server) {
+    void shouldAcceptNoSidInIntrospection() {
         String emailClaimValue = UUID.randomUUID() + "@" + DOMAIN;
 
-        String activeResponse = """
-            {
-              "sub": "twake-calendar-dev",
-              "email": "%s",
-              "family_name": "twake-calendar-dev",
-              "sid": "dT/8+UDx1lWp1bRZkdhbS1i6ZfYhf8+bWAZQs8p0T/c",
-              "name": "twake-calendar-dev"
-            }""".formatted(emailClaimValue);
+        updateMockServerUserInfoResponse(emailClaimValue);
 
         updateMockerServerSpecifications(INTROSPECT_TOKEN_URI_PATH, """
             {
@@ -317,10 +268,7 @@ class TwakeCalendarAuthenticationTest {
                 "aud": "tcalendar",
                 "sub": "twake-calendar-dev",
                 "iss": "https://sso.linagora.com"
-              }
-              """.formatted(Clock.systemUTC().instant().plus(Duration.ofHours(1)).getEpochSecond()), 200);
-
-        updateMockerServerSpecifications(USERINFO_TOKEN_URI_PATH, activeResponse, 200);
+              }""".formatted(TOKEN_EXPIRATION_TIME), 200);
 
         given()
             .header("Authorization", "Bearer oidc_opac_token")
@@ -331,16 +279,8 @@ class TwakeCalendarAuthenticationTest {
     }
 
     @Test
-    void shouldTolerateNoSid(TwakeCalendarGuiceServer server) {
+    void shouldTolerateNoSid() {
         String emailClaimValue = UUID.randomUUID() + "@" + DOMAIN;
-
-        String activeResponse = """
-            {
-              "sub": "twake-calendar-dev",
-              "email": "%s",
-              "family_name": "twake-calendar-dev",
-              "name": "twake-calendar-dev"
-            }""".formatted(emailClaimValue);
 
         updateMockerServerSpecifications(INTROSPECT_TOKEN_URI_PATH, """
             {
@@ -351,10 +291,15 @@ class TwakeCalendarAuthenticationTest {
                 "aud": "tcalendar",
                 "sub": "twake-calendar-dev",
                 "iss": "https://sso.linagora.com"
-              }
-              """.formatted(Clock.systemUTC().instant().plus(Duration.ofHours(1)).getEpochSecond()), 200);
+              }""".formatted(TOKEN_EXPIRATION_TIME), 200);
 
-        updateMockerServerSpecifications(USERINFO_TOKEN_URI_PATH, activeResponse, 200);
+        updateMockerServerSpecifications(USERINFO_TOKEN_URI_PATH, """
+            {
+              "sub": "twake-calendar-dev",
+              "email": "%s",
+              "family_name": "twake-calendar-dev",
+              "name": "twake-calendar-dev"
+            }""".formatted(emailClaimValue), 200);
 
         given()
             .header("Authorization", "Bearer oidc_opac_token")
@@ -365,44 +310,65 @@ class TwakeCalendarAuthenticationTest {
     }
 
     @Test
-    void shouldCacheResponse(TwakeCalendarGuiceServer server) {
+    void shouldCacheResponse() {
         String emailClaimValue = UUID.randomUUID() + "@" + DOMAIN;
-        String activeResponse = """
-            {
-              "sub": "twake-calendar-dev",
-              "email": "%s",
-              "family_name": "twake-calendar-dev",
-              "name": "twake-calendar-dev"
-            }""".formatted(emailClaimValue);
-        updateMockerServerSpecifications(INTROSPECT_TOKEN_URI_PATH, """
-            {
-                "exp": %d,
-                "scope": "openid email profile",
-                "client_id": "tcalendar",
-                "active": true,
-                "aud": "tcalendar",
-                "sub": "twake-calendar-dev",
-                "iss": "https://sso.linagora.com"
-              }
-              """.formatted(Clock.systemUTC().instant().plus(Duration.ofHours(1)).getEpochSecond()), 200);
-        updateMockerServerSpecifications(USERINFO_TOKEN_URI_PATH, activeResponse, 200);
-        with()
-            .header("Authorization", "Bearer oidc_opac_token")
+        updateMockServerTokenInfoResponse(emailClaimValue);
+
+        for (int i = 0; i < 3; i++) {
+            with()
+                .header("Authorization", "Bearer oidc_opac_token")
+                .get("/api/themes/anything")
+            .then()
+                .statusCode(200);
+        }
+
+        mockServer.verify(HttpRequest.request().withPath(USERINFO_TOKEN_URI_PATH),
+            VerificationTimes.exactly(1));
+
+        mockServer.verify(HttpRequest.request().withPath(USERINFO_TOKEN_URI_PATH),
+            VerificationTimes.exactly(1));
+    }
+    @Test
+    void shouldNotShareCacheAcrossDifferentOidcTokens() {
+        updateMockServerIntrospectionResponse();
+
+        String email1 = "email1@" + DOMAIN;
+        updateMockServerUserInfoResponse(email1);
+        String token1 = "Bearer token1";
+
+        given()
+            .header("Authorization", token1)
+            .when()
             .get("/api/themes/anything")
         .then()
             .statusCode(200);
 
-        updateMockerServerSpecifications(USERINFO_TOKEN_URI_PATH, activeResponse, 401); // not called
+        String email2 = "email2@" + DOMAIN;
+        updateMockServerUserInfoResponse(email2);
+
+        String token2 = "Bearer token2";
         given()
-            .header("Authorization", "Bearer oidc_opac_token")
+            .header("Authorization", token2)
         .when()
             .get("/api/themes/anything")
         .then()
             .statusCode(200);
+
+        mockServer.verify(
+            HttpRequest.request()
+                .withPath(USERINFO_TOKEN_URI_PATH)
+                .withHeader("Authorization", token1),
+            VerificationTimes.exactly(1));
+
+        mockServer.verify(
+            HttpRequest.request()
+                .withPath(USERINFO_TOKEN_URI_PATH)
+                .withHeader("Authorization", token2),
+            VerificationTimes.exactly(1));
     }
 
     @Test
-    void shouldRejectWhenUserInfoFails(TwakeCalendarGuiceServer server) {
+    void shouldRejectWhenUserInfoFails() {
         updateMockerServerSpecifications(INTROSPECT_TOKEN_URI_PATH, """
             {
                 "exp": %d,
@@ -412,10 +378,23 @@ class TwakeCalendarAuthenticationTest {
                 "aud": "tcalendar",
                 "sub": "twake-calendar-dev",
                 "iss": "https://sso.linagora.com"
-              }
-              """.formatted(Clock.systemUTC().instant().plus(Duration.ofHours(1)).getEpochSecond()), 200);
+              }""".formatted(TOKEN_EXPIRATION_TIME), 200);
 
         updateMockerServerSpecifications(USERINFO_TOKEN_URI_PATH, "activeResponse", 401);
+
+        given()
+            .header("Authorization", "Bearer oidc_opac_token")
+        .when()
+            .get("/api/themes/anything")
+        .then()
+            .statusCode(401);
+    }
+
+    @Test
+    void shouldRejectWhenIntrospectionFails() {
+        String emailClaimValue = UUID.randomUUID() + "@" + DOMAIN;
+        updateMockServerUserInfoResponse(emailClaimValue);
+        updateMockerServerSpecifications(INTROSPECT_TOKEN_URI_PATH, "", 401);
 
         given()
             .header("Authorization", "Bearer oidc_opac_token")
@@ -446,19 +425,7 @@ class TwakeCalendarAuthenticationTest {
             }""".formatted(emailClaimValue, firstname, lastname);
 
         updateMockerServerSpecifications(USERINFO_TOKEN_URI_PATH, activeResponse, 200);
-
-        updateMockerServerSpecifications(INTROSPECT_TOKEN_URI_PATH, """
-            {
-                "exp": %d,
-                "scope": "openid email profile",
-                "client_id": "tcalendar",
-                "active": true,
-                "aud": "tcalendar",
-                "sub": "twake-calendar-dev",
-                "sid": "dT/8+UDx1lWp1bRZkdhbS1i6ZfYhf8+bWAZQs8p0T/c",
-                "iss": "https://sso.linagora.com"
-              }
-              """.formatted(Clock.systemUTC().instant().plus(Duration.ofHours(1)).getEpochSecond()), 200);
+        updateMockServerIntrospectionResponse();
 
         given()
             .header("Authorization", "Bearer " + "fakeToken")
@@ -486,19 +453,7 @@ class TwakeCalendarAuthenticationTest {
             }""".formatted(emailClaimValue);
 
         updateMockerServerSpecifications(USERINFO_TOKEN_URI_PATH, activeResponse, 200);
-
-        updateMockerServerSpecifications(INTROSPECT_TOKEN_URI_PATH, """
-            {
-                "exp": %d,
-                "scope": "openid email profile",
-                "client_id": "tcalendar",
-                "active": true,
-                "aud": "tcalendar",
-                "sub": "twake-calendar-dev",
-                "sid": "dT/8+UDx1lWp1bRZkdhbS1i6ZfYhf8+bWAZQs8p0T/c",
-                "iss": "https://sso.linagora.com"
-              }
-              """.formatted(Clock.systemUTC().instant().plus(Duration.ofHours(1)).getEpochSecond()), 200);
+        updateMockServerIntrospectionResponse();
 
         given()
             .header("Authorization", "Bearer " + "fakeToken")
