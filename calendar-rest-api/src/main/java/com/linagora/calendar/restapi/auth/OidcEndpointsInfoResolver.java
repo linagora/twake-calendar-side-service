@@ -20,6 +20,7 @@ package com.linagora.calendar.restapi.auth;
 
 import java.net.URL;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import jakarta.inject.Inject;
@@ -33,9 +34,12 @@ import org.apache.james.jwt.introspection.IntrospectionEndpoint;
 import org.apache.james.jwt.introspection.TokenIntrospectionResponse;
 import org.apache.james.jwt.userinfo.UserinfoResponse;
 import org.apache.james.metrics.api.MetricFactory;
+import org.apache.james.util.streams.Iterators;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.ImmutableList;
 import com.ibm.icu.impl.Pair;
 import com.linagora.calendar.restapi.RestApiConfiguration;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -100,7 +104,18 @@ public class OidcEndpointsInfoResolver implements TokenInfoResolver {
             userinfoResponse.claimByPropertyName(SID_PROPERTY).map(Sid::new)
                 .or(() -> introspectionResponse.claimByPropertyName(SID_PROPERTY).map(Sid::new)),
             Instant.ofEpochSecond(introspectionResponse.exp().orElseThrow(() -> new UnauthorizedException("Expiration claim ('exp') is required in the token"))),
-            introspectionResponse.aud().map(Aud::new).orElseThrow(() -> new UnauthorizedException("Audience claim ('aud') is required in the token")));
+            extractAudience(introspectionResponse));
+    }
+
+    private static List<Aud> extractAudience(TokenIntrospectionResponse introspectionResponse) {
+        JsonNode audJson = introspectionResponse.json().get("aud");
+        if (audJson.isArray()) {
+            return Iterators.toStream(audJson.iterator())
+                .map(JsonNode::asText)
+                .map(Aud::new)
+                .toList();
+        }
+        return ImmutableList.of(new Aud(audJson.asText()));
     }
 
     private Mono<Username> provisionUserIfNeed(Username username, Optional<Pair<String, String>> firstnameAndSurnameOpt) {

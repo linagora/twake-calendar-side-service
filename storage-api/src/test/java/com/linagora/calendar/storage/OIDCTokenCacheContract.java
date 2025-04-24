@@ -29,6 +29,7 @@ import static org.mockito.Mockito.when;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -37,6 +38,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.storage.model.Aud;
 import com.linagora.calendar.storage.model.Sid;
 import com.linagora.calendar.storage.model.Token;
@@ -50,7 +52,7 @@ public abstract class OIDCTokenCacheContract {
     static final String SID_STRING = "sid-1";
     static final Token TOKEN = new Token("token-1");
     static final Sid SID = new Sid(SID_STRING);
-    static final Aud AUD = new Aud("tcalendar");
+    static final List<Aud> AUD = ImmutableList.of(new Aud("tcalendar"));
     static final Instant EXPIRES_AT = Instant.now().plus(Duration.ofMinutes(1));
     static final TokenInfo TOKEN_INFO = new TokenInfo(EMAIL, Optional.of(SID), EXPIRES_AT, AUD);
 
