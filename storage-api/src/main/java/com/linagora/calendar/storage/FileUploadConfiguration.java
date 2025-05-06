@@ -28,6 +28,8 @@ public record FileUploadConfiguration(Duration fileExpiration) {
     public static final String UPLOADED_FILE_EXPIRATION = "upload.expiration";
     public static final Duration DEFAULT_EXPIRATION = Duration.ofMinutes(60);
 
+    public static final FileUploadConfiguration DEFAULT = new FileUploadConfiguration(DEFAULT_EXPIRATION);
+
     public static FileUploadConfiguration parse(Configuration configuration) {
         return new FileUploadConfiguration(
             Optional.ofNullable(configuration.getString(UPLOADED_FILE_EXPIRATION))

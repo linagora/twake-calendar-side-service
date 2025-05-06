@@ -25,7 +25,7 @@ public class MemoryUploadedFileDAOTest implements UploadedFileDAOContract {
 
     @BeforeEach
     void setUp() {
-        testee = new MemoryUploadedFileDAO();
+        testee = new MemoryUploadedFileDAO(FileUploadConfiguration.DEFAULT);
     }
 
     @Override

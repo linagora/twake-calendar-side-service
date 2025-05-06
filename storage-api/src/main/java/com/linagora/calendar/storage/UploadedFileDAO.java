@@ -27,11 +27,11 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 public interface UploadedFileDAO {
-    Mono<UploadedFile> getFile(OpenPaaSId id);
+    Mono<UploadedFile> getFile(Username username, OpenPaaSId id);
 
-    Mono<OpenPaaSId> saveFile(Upload upload);
+    Mono<OpenPaaSId> saveFile(Username username, Upload upload);
 
-    Mono<Void> deleteFile(OpenPaaSId id);
+    Mono<Void> deleteFile(Username username, OpenPaaSId id);
 
     Flux<UploadedFile> listFiles(Username username);
 }

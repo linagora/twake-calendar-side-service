@@ -20,6 +20,7 @@ package com.linagora.calendar.storage;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
@@ -42,44 +43,44 @@ public interface UploadedFileDAOContract {
     @Test
     default void getFileShouldWork() {
         Instant created = Instant.now();
-        Upload upload = new Upload(USER_1, FILE_NAME, created, (long) DATA.length, DATA);
-        OpenPaaSId id = testee().saveFile(upload).block();
+        Upload upload = new Upload(FILE_NAME, created, (long) DATA.length, DATA);
+        OpenPaaSId id = testee().saveFile(USER_1, upload).block();
 
-        UploadedFile actual = testee().getFile(id).block();
-        assertThat(actual).isEqualTo(UploadedFile.fromUpload(id, upload));
+        UploadedFile actual = testee().getFile(USER_1, id).block();
+        assertThat(actual).isEqualTo(UploadedFile.fromUpload(USER_1, id, upload));
     }
 
     @Test
     default void getFileShouldReturnEmptyWhenFileDoesNotExist() {
-        assertThat(testee().getFile(new OpenPaaSId("non-existent-id")).blockOptional()).isEmpty();
+        assertThat(testee().getFile(USER_1, new OpenPaaSId("non-existent-id")).blockOptional()).isEmpty();
     }
 
     @Test
     default void deleteFileShouldWork() {
         Instant created = Instant.now();
-        Upload upload = new Upload(USER_1, FILE_NAME, created, (long) DATA.length, DATA);
-        OpenPaaSId id = testee().saveFile(upload).block();
+        Upload upload = new Upload(FILE_NAME, created, (long) DATA.length, DATA);
+        OpenPaaSId id = testee().saveFile(USER_1, upload).block();
 
-        testee().deleteFile(id).block();
+        testee().deleteFile(USER_1, id).block();
 
-        assertThat(testee().getFile(id).blockOptional()).isEmpty();
+        assertThat(testee().getFile(USER_1, id).blockOptional()).isEmpty();
     }
 
     @Test
     default void listFilesShouldReturnOnlyFilesOfGivenUser() {
         Instant now = Instant.now();
-        Upload upload1 = new Upload(USER_1, "file1", now, (long) DATA.length, DATA);
-        Upload upload2 = new Upload(USER_2, "file2", now, (long) DATA_2.length, DATA_2);
-        Upload upload3 = new Upload(USER_1, "file3", now, (long) DATA_2.length, DATA_2);
+        Upload upload1 = new Upload("file1", now, (long) DATA.length, DATA);
+        Upload upload2 = new Upload("file2", now, (long) DATA_2.length, DATA_2);
+        Upload upload3 = new Upload("file3", now, (long) DATA_2.length, DATA_2);
 
-        OpenPaaSId id1 = testee().saveFile(upload1).block();
-        OpenPaaSId id2 = testee().saveFile(upload2).block();
-        OpenPaaSId id3 = testee().saveFile(upload3).block();
+        OpenPaaSId id1 = testee().saveFile(USER_1, upload1).block();
+        OpenPaaSId id2 = testee().saveFile(USER_2, upload2).block();
+        OpenPaaSId id3 = testee().saveFile(USER_1, upload3).block();
 
         List<UploadedFile> files = testee().listFiles(USER_1).collectList().block();
         assertThat(files).containsExactlyInAnyOrder(
-            UploadedFile.fromUpload(id1, upload1),
-            UploadedFile.fromUpload(id3, upload3)
+            UploadedFile.fromUpload(USER_1, id1, upload1),
+            UploadedFile.fromUpload(USER_1, id3, upload3)
         );
     }
 
@@ -87,5 +88,85 @@ public interface UploadedFileDAOContract {
     default void listFilesShouldReturnEmptyWhenNoFiles() {
         List<UploadedFile> files = testee().listFiles(USER_1).collectList().block();
         assertThat(files).isEmpty();
+    }
+
+    @Test
+    default void user1CannotReadUploadOfUser2() {
+        Instant now = Instant.now();
+        Upload upload = new Upload(FILE_NAME, now, (long) DATA.length, DATA);
+        OpenPaaSId id = testee().saveFile(USER_2, upload).block();
+
+        assertThat(testee().getFile(USER_1, id).blockOptional()).isEmpty();
+    }
+
+    @Test
+    default void user1ICannotDeleteUploadOfUser2() {
+        Instant now = Instant.now();
+        Upload upload = new Upload(FILE_NAME, now, (long) DATA.length, DATA);
+        OpenPaaSId id = testee().saveFile(USER_2, upload).block();
+
+        testee().deleteFile(USER_1, id).block();
+
+        assertThat(testee().getFile(USER_2, id).blockOptional()).isPresent();
+    }
+
+    @Test
+    default void deleteShouldBeIdempotent() {
+        Instant now = Instant.now();
+        Upload upload = new Upload(FILE_NAME, now, (long) DATA.length, DATA);
+        OpenPaaSId id = testee().saveFile(USER_1, upload).block();
+
+        testee().deleteFile(USER_1, id).block();
+        testee().deleteFile(USER_1, id).block(); // second delete should not throw
+
+        assertThat(testee().getFile(USER_1, id).blockOptional()).isEmpty();
+    }
+
+    @Test
+    default void deletedFilesShouldNotBeListed() {
+        Instant now = Instant.now();
+        Upload upload = new Upload("file1", now, (long) DATA.length, DATA);
+        OpenPaaSId id = testee().saveFile(USER_1, upload).block();
+
+        testee().deleteFile(USER_1, id).block();
+
+        List<UploadedFile> files = testee().listFiles(USER_1).collectList().block();
+        assertThat(files).doesNotContain(UploadedFile.fromUpload(USER_1, id, upload));
+    }
+
+    @Test
+    default void uploadSameFileTwiceShouldGenerateDifferentIds() {
+        Instant now = Instant.now();
+        Upload upload = new Upload(FILE_NAME, now, (long) DATA.length, DATA);
+
+        OpenPaaSId id1 = testee().saveFile(USER_1, upload).block();
+        OpenPaaSId id2 = testee().saveFile(USER_1, upload).block();
+
+        assertThat(id1).isNotEqualTo(id2);
+    }
+
+    @Test
+    default void expiredFilesCannotBeGet() {
+        Instant instant = Instant.now().minus(FileUploadConfiguration.DEFAULT_EXPIRATION.plus(Duration.ofMinutes(1)));
+        Upload upload = new Upload(FILE_NAME, instant, (long) DATA.length, DATA);
+
+        OpenPaaSId id = testee().saveFile(USER_1, upload).block();
+
+        assertThat(testee().getFile(USER_1, id).blockOptional()).isEmpty();
+    }
+
+    @Test
+    default void expiredFilesCannotBeListed() {
+        Instant instant = Instant.now().minus(FileUploadConfiguration.DEFAULT_EXPIRATION.plus(Duration.ofMinutes(1)));
+        Upload expiredUpload = new Upload("expired", instant, (long) DATA.length, DATA);
+        Upload validUpload = new Upload("valid", Instant.now(), (long) DATA.length, DATA);
+
+        OpenPaaSId expiredId = testee().saveFile(USER_1, expiredUpload).block();
+        OpenPaaSId validId = testee().saveFile(USER_1, validUpload).block();
+
+        List<UploadedFile> files = testee().listFiles(USER_1).collectList().block();
+
+        assertThat(files)
+            .containsExactly(UploadedFile.fromUpload(USER_1, validId, validUpload));
     }
 }

@@ -20,7 +20,5 @@ package com.linagora.calendar.storage.model;
 
 import java.time.Instant;
 
-import org.apache.james.core.Username;
-
-public record Upload(Username username, String fileName, Instant created, Long size, byte[] data) {
+public record Upload(String fileName, Instant created, Long size, byte[] data) {
 }

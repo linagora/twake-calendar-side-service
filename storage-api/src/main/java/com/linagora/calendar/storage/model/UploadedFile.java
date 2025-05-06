@@ -25,10 +25,10 @@ import org.apache.james.core.Username;
 import com.linagora.calendar.storage.OpenPaaSId;
 
 public record UploadedFile(OpenPaaSId id, Username username, String fileName, Instant created, Long size, byte[] data) {
-    public static UploadedFile fromUpload(OpenPaaSId id, Upload upload) {
+    public static UploadedFile fromUpload(Username username, OpenPaaSId id, Upload upload) {
         return new UploadedFile(
             id,
-            upload.username(),
+            username,
             upload.fileName(),
             upload.created(),
             upload.size(),

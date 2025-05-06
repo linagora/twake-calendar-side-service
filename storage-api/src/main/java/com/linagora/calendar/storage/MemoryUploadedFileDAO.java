@@ -18,12 +18,17 @@
 
 package com.linagora.calendar.storage;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
+
+import jakarta.inject.Inject;
 
 import org.apache.james.core.Username;
 
+import com.google.common.collect.HashBasedTable;
+import com.google.common.collect.Table;
 import com.linagora.calendar.storage.model.Upload;
 import com.linagora.calendar.storage.model.UploadedFile;
 
@@ -31,32 +36,44 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 public class MemoryUploadedFileDAO implements UploadedFileDAO {
+    private final Table<Username, OpenPaaSId, UploadedFile> table = HashBasedTable.create();
+    private final Duration fileExpiration;
 
-    private final Map<OpenPaaSId, UploadedFile> storage = new ConcurrentHashMap<>();
-
-    @Override
-    public Mono<UploadedFile> getFile(OpenPaaSId id) {
-        return Mono.justOrEmpty(storage.get(id));
+    @Inject
+    public MemoryUploadedFileDAO(FileUploadConfiguration configuration) {
+        this.fileExpiration = configuration.fileExpiration();
     }
 
     @Override
-    public Mono<OpenPaaSId> saveFile(Upload upload) {
+    public Mono<UploadedFile> getFile(Username username, OpenPaaSId id) {
+        return Mono.fromCallable(() -> table.get(username, id))
+            .filter(this::notExpired);
+    }
+
+    @Override
+    public Mono<OpenPaaSId> saveFile(Username username, Upload upload) {
         return Mono.fromCallable(() -> {
             OpenPaaSId id = new OpenPaaSId(UUID.randomUUID().toString());
-            storage.put(id, UploadedFile.fromUpload(id, upload));
+            table.put(username, id, UploadedFile.fromUpload(username, id, upload));
             return id;
         });
     }
 
     @Override
-    public Mono<Void> deleteFile(OpenPaaSId id) {
-        return Mono.fromRunnable(() -> storage.remove(id));
+    public Mono<Void> deleteFile(Username username, OpenPaaSId id) {
+        return Mono.fromRunnable(() -> table.remove(username, id));
     }
 
     @Override
     public Flux<UploadedFile> listFiles(Username username) {
-        return Flux.fromIterable(storage.values())
-            .filter(file -> file.username().equals(username));
+        Map<OpenPaaSId, UploadedFile> userFiles = table.row(username);
+        return Flux.fromIterable(userFiles.values())
+            .filter(this::notExpired);
+    }
+
+    private boolean notExpired(UploadedFile file) {
+        Instant now = Instant.now();
+        return file.created().plus(fileExpiration).isAfter(now);
     }
 }
 
