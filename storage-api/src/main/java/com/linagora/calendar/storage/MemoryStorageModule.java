@@ -48,6 +48,8 @@ public class MemoryStorageModule extends AbstractModule {
         bind(DomainList.class).to(OpenPaaSDomainList.class);
 
         bind(UserConfigurationDAO.class).to(MemoryUserConfigurationDAO.class);
+
+        bind(UploadedFileDAO.class).to(MemoryUploadedFileDAO.class);
     }
 
     @Provides

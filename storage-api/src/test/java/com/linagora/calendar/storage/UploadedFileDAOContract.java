@@ -62,8 +62,7 @@ public interface UploadedFileDAOContract {
 
         testee().deleteFile(id).block();
 
-        UploadedFile actual = testee().getFile(id).block();
-        assertThat(actual).isNull();
+        assertThat(testee().getFile(id).blockOptional()).isEmpty();
     }
 
     @Test

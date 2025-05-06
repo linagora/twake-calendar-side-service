@@ -25,7 +25,7 @@ import org.apache.commons.configuration2.Configuration;
 import org.apache.james.util.DurationParser;
 
 public record FileUploadConfiguration(Duration fileExpiration) {
-    public static final String UPLOADED_FILE_EXPIRATION = "uploadedFile.expiration";
+    public static final String UPLOADED_FILE_EXPIRATION = "upload.expiration";
     public static final Duration DEFAULT_EXPIRATION = Duration.ofMinutes(60);
 
     public static FileUploadConfiguration parse(Configuration configuration) {
