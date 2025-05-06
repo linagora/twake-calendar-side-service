@@ -35,20 +35,20 @@ import org.testcontainers.containers.ContainerState;
 
 import com.linagora.calendar.storage.OpenPaaSUser;
 
-public class DockerOpenPaasExtensionTest {
+public class SabreDavExtensionTest {
 
     @RegisterExtension
-    static DockerOpenPaasExtension dockerOpenPaasExtension = new DockerOpenPaasExtension(DockerOpenPaasSetup.SINGLETON);
+    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
 
     @Test
     void allServersShouldStartSuccessfully() {
-       assertTrue(dockerOpenPaasExtension.dockerOpenPaasSetup().getAllContainers()
+       assertTrue(sabreDavExtension.dockerSabreDavSetup().getAllContainers()
            .stream().allMatch(ContainerState::isRunning));
     }
 
     @Test
     void newTestUserShouldSucceed() {
-        OpenPaaSUser user = dockerOpenPaasExtension.newTestUser();
+        OpenPaaSUser user = sabreDavExtension.newTestUser();
         assertThat(user.username()).isNotNull();
         assertThat(user.id()).isNotNull();
     }

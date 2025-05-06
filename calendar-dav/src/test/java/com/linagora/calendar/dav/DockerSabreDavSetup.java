@@ -37,19 +37,17 @@ import org.testcontainers.utility.MountableFile;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
 
-public class DockerOpenPaasSetup {
-    public static final DockerOpenPaasSetup SINGLETON = new DockerOpenPaasSetup();
+public class DockerSabreDavSetup {
+    public static final DockerSabreDavSetup SINGLETON = new DockerSabreDavSetup();
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(DockerOpenPaasSetup.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(DockerSabreDavSetup.class);
 
     public enum DockerService {
         MOCK_ESN("esn", 1080),
         RABBITMQ("rabbitmq", 5672),
         RABBITMQ_ADMIN("rabbitmq", 15672),
         SABRE_DAV("sabre_dav", 80),
-        MONGO("mongo", 27017),
-        ELASTICSEARCH("elasticsearch", 9200),
-        REDIS("redis", 6379);
+        MONGO("mongo", 27017);
 
         private final String serviceName;
         private final Integer port;
@@ -73,20 +71,19 @@ public class DockerOpenPaasSetup {
     private static final boolean TRUST_ALL_SSL_CERTS = true;
 
     private final ComposeContainer environment;
-    private OpenPaaSProvisioningService openPaaSProvisioningService;
+    private SabreDavProvisioningService sabreDavProvisioningService;
 
     {
-        MountableFile mountableFile = MountableFile.forClasspathResource("docker-openpaas-setup.yml");
+        MountableFile mountableFile = MountableFile.forClasspathResource("docker-sabre-dav-setup.yml");
         environment = new ComposeContainer(new File(mountableFile.getFilesystemPath()))
             .withExposedService(DockerService.MOCK_ESN.serviceName(), DockerService.MOCK_ESN.port())
             .withExposedService(DockerService.RABBITMQ.serviceName(), DockerService.RABBITMQ.port())
             .withExposedService(DockerService.RABBITMQ_ADMIN.serviceName(), DockerService.RABBITMQ_ADMIN.port())
             .withExposedService(DockerService.SABRE_DAV.serviceName(), DockerService.SABRE_DAV.port())
             .withExposedService(DockerService.MONGO.serviceName(), DockerService.MONGO.port())
-            .withExposedService(DockerService.ELASTICSEARCH.serviceName(), DockerService.ELASTICSEARCH.port())
-            .withExposedService(DockerService.REDIS.serviceName(), DockerService.REDIS.port())
-            .waitingFor("sabre_dav", Wait.forLogMessage(".*ready to handle connections.*", 1)
-                .withStartupTimeout(Duration.ofMinutes(3)));
+            .withLogConsumer(DockerService.RABBITMQ.serviceName(), frame -> LOGGER.info("[SABRE_DAV] " + frame.getUtf8String()))
+            .waitingFor(DockerService.SABRE_DAV.serviceName(), Wait.forLogMessage(".*ready to handle connections.*", 1)
+                .withStartupTimeout(Duration.ofMinutes(5)));
     }
 
     public void start() {
@@ -94,7 +91,7 @@ public class DockerOpenPaasSetup {
         for (DockerService dockerService : DockerService.values()) {
             LOGGER.debug("Started service: {} with mapping port: {}", dockerService.serviceName(), getPort(dockerService));
         }
-        openPaaSProvisioningService = new OpenPaaSProvisioningService(getMongoDbIpAddress().toString());
+        sabreDavProvisioningService = new SabreDavProvisioningService(getMongoDbIpAddress().toString());
     }
 
     public void stop() {
@@ -145,25 +142,15 @@ public class DockerOpenPaasSetup {
             .build()).get();
     }
 
-    public ContainerState getElasticsearchContainer() {
-        return environment.getContainerByServiceName(DockerService.ELASTICSEARCH.serviceName()).orElseThrow();
-    }
-
-    public ContainerState getRedisContainer() {
-        return environment.getContainerByServiceName(DockerService.REDIS.serviceName()).orElseThrow();
-    }
-
     public List<ContainerState> getAllContainers() {
         return List.of(getRabbitMqContainer(),
             getSabreDavContainer(),
-            getMongoDBContainer(),
-            getElasticsearchContainer(),
-            getRedisContainer());
+            getMongoDBContainer());
     }
 
-    public OpenPaaSProvisioningService getOpenPaaSProvisioningService() {
-        Preconditions.checkNotNull(openPaaSProvisioningService, "OpenPaas Provisioning Service not initialized");
-        return openPaaSProvisioningService;
+    public SabreDavProvisioningService getOpenPaaSProvisioningService() {
+        Preconditions.checkNotNull(sabreDavProvisioningService, "OpenPaas Provisioning Service not initialized");
+        return sabreDavProvisioningService;
     }
 
     public String getHost(DockerService dockerService) {

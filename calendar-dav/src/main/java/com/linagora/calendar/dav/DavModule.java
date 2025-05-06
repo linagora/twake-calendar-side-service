@@ -27,22 +27,18 @@ import org.apache.james.utils.PropertiesProvider;
 
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
-import com.google.inject.Scopes;
+import com.google.inject.Singleton;
 
 public class DavModule extends AbstractModule {
 
-    @Override
-    protected void configure() {
-        bind(DavConfiguration.class).in(Scopes.SINGLETON);
-        bind(CalDavClient.class).in(Scopes.SINGLETON);
-    }
-
+    @Singleton
     @Provides
     public DavConfiguration provideDavConfiguration(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
         return DavConfiguration.from(propertiesProvider.getConfiguration("configuration"));
     }
 
     @Provides
+    @Singleton
     public CalDavClient provideCalDavClient(DavConfiguration configuration) throws SSLException {
         return new CalDavClient(configuration);
     }

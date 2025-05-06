@@ -37,17 +37,17 @@ import com.linagora.calendar.storage.OpenPaaSUser;
 public class CalDavClientTest {
 
     @RegisterExtension
-    static DockerOpenPaasExtension dockerOpenPaasExtension = new DockerOpenPaasExtension(DockerOpenPaasSetup.SINGLETON);
+    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
 
     private CalDavClient testee;
 
     @BeforeEach
     void setupEach() throws Exception {
-        testee = new CalDavClient(dockerOpenPaasExtension.dockerOpenPaasSetup().davConfiguration());
+        testee = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration());
     }
 
     private OpenPaaSUser openPaaSUser() {
-        return dockerOpenPaasExtension.newTestUser();
+        return sabreDavExtension.newTestUser();
     }
 
     @Test

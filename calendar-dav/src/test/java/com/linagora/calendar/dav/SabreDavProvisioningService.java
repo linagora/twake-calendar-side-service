@@ -41,14 +41,14 @@ import com.mongodb.reactivestreams.client.MongoDatabase;
 
 import reactor.core.publisher.Mono;
 
-public class OpenPaaSProvisioningService {
+public class SabreDavProvisioningService {
     public static final String DOMAIN = "open-paas.org";
     public static final String DATABASE = "esn_docker";
 
     private final MongoDBOpenPaaSDomainDAO domainDAO;
     private final MongoDBOpenPaaSUserDAO userDAO;
 
-    public OpenPaaSProvisioningService(String mongoUri) {
+    public SabreDavProvisioningService(String mongoUri) {
         MongoClient mongoClient = MongoClients.create(mongoUri);
         MongoDatabase database = mongoClient.getDatabase(DATABASE);
         domainDAO = new MongoDBOpenPaaSDomainDAO(database);
