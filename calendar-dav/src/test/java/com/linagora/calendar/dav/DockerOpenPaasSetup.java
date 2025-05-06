@@ -1,0 +1,184 @@
+/****************************************************************
+ * Licensed to the Apache Software Foundation (ASF) under one   *
+ * or more contributor license agreements.  See the NOTICE file *
+ * distributed with this work for additional information        *
+ * regarding copyright ownership.  The ASF licenses this file   *
+ * to you under the Apache License, Version 2.0 (the            *
+ * "License"); you may not use this file except in compliance   *
+ * with the License.  You may obtain a copy of the License at   *
+ *                                                              *
+ *   http://www.apache.org/licenses/LICENSE-2.0                 *
+ *                                                              *
+ * Unless required by applicable law or agreed to in writing,   *
+ * software distributed under the License is distributed on an  *
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY       *
+ * KIND, either express or implied.  See the License for the    *
+ * specific language governing permissions and limitations      *
+ * under the License.                                           *
+ ****************************************************************/
+
+package com.linagora.calendar.dav;
+
+import java.io.File;
+import java.net.URI;
+import java.time.Duration;
+import java.util.List;
+import java.util.Optional;
+
+import org.apache.http.auth.UsernamePasswordCredentials;
+import org.apache.http.client.utils.URIBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.testcontainers.containers.ComposeContainer;
+import org.testcontainers.containers.ContainerState;
+import org.testcontainers.containers.wait.strategy.Wait;
+import org.testcontainers.utility.MountableFile;
+
+import com.github.fge.lambdas.Throwing;
+import com.google.common.base.Preconditions;
+
+public class DockerOpenPaasSetup {
+    public static final DockerOpenPaasSetup SINGLETON = new DockerOpenPaasSetup();
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(DockerOpenPaasSetup.class);
+
+    public enum DockerService {
+        MOCK_ESN("esn", 1080),
+        RABBITMQ("rabbitmq", 5672),
+        RABBITMQ_ADMIN("rabbitmq", 15672),
+        SABRE_DAV("sabre_dav", 80),
+        MONGO("mongo", 27017),
+        ELASTICSEARCH("elasticsearch", 9200),
+        REDIS("redis", 6379);
+
+        private final String serviceName;
+        private final Integer port;
+
+        DockerService(String serviceName, Integer port) {
+            this.serviceName = serviceName;
+            this.port = port;
+        }
+
+        public String serviceName() {
+            return serviceName;
+        }
+
+        public Integer port() {
+            return port;
+        }
+    }
+
+    public static final String DAV_ADMIN = "admin";
+    public static final String DAV_ADMIN_PASSWORD = "secret123";
+    private static final boolean TRUST_ALL_SSL_CERTS = true;
+
+    private final ComposeContainer environment;
+    private OpenPaaSProvisioningService openPaaSProvisioningService;
+
+    {
+        MountableFile mountableFile = MountableFile.forClasspathResource("docker-openpaas-setup.yml");
+        environment = new ComposeContainer(new File(mountableFile.getFilesystemPath()))
+            .withExposedService(DockerService.MOCK_ESN.serviceName(), DockerService.MOCK_ESN.port())
+            .withExposedService(DockerService.RABBITMQ.serviceName(), DockerService.RABBITMQ.port())
+            .withExposedService(DockerService.RABBITMQ_ADMIN.serviceName(), DockerService.RABBITMQ_ADMIN.port())
+            .withExposedService(DockerService.SABRE_DAV.serviceName(), DockerService.SABRE_DAV.port())
+            .withExposedService(DockerService.MONGO.serviceName(), DockerService.MONGO.port())
+            .withExposedService(DockerService.ELASTICSEARCH.serviceName(), DockerService.ELASTICSEARCH.port())
+            .withExposedService(DockerService.REDIS.serviceName(), DockerService.REDIS.port())
+            .waitingFor("sabre_dav", Wait.forLogMessage(".*ready to handle connections.*", 1)
+                .withStartupTimeout(Duration.ofMinutes(3)));
+    }
+
+    public void start() {
+        environment.start();
+        for (DockerService dockerService : DockerService.values()) {
+            LOGGER.debug("Started service: {} with mapping port: {}", dockerService.serviceName(), getPort(dockerService));
+        }
+        openPaaSProvisioningService = new OpenPaaSProvisioningService(getMongoDbIpAddress().toString());
+    }
+
+    public void stop() {
+        environment.stop();
+    }
+
+    public ContainerState getRabbitMqContainer() {
+        return environment.getContainerByServiceName(DockerService.RABBITMQ.serviceName()).orElseThrow();
+    }
+
+    public URI rabbitMqUri() {
+        return Throwing.supplier(() -> new URIBuilder()
+            .setScheme("amqp")
+            .setHost(getHost(DockerService.RABBITMQ))
+            .setPort(getPort(DockerService.RABBITMQ))
+            .build()).get();
+    }
+
+    public URI rabbitMqManagementUri() {
+        return Throwing.supplier(() -> new URIBuilder()
+            .setScheme("http")
+            .setHost(getHost(DockerService.RABBITMQ_ADMIN))
+            .setPort(getPort(DockerService.RABBITMQ_ADMIN))
+            .build()).get();
+    }
+
+    public ContainerState getSabreDavContainer() {
+        return environment.getContainerByServiceName(DockerService.SABRE_DAV.serviceName()).orElseThrow();
+    }
+
+    public URI getSabreDavURI() {
+        return Throwing.supplier(() -> new URIBuilder()
+            .setScheme("http")
+            .setHost(getHost(DockerService.SABRE_DAV))
+            .setPort(getPort(DockerService.SABRE_DAV))
+            .build()).get();
+    }
+
+    public ContainerState getMongoDBContainer() {
+        return environment.getContainerByServiceName(DockerService.MONGO.serviceName()).orElseThrow();
+    }
+
+    public URI getMongoDbIpAddress() {
+        return Throwing.supplier(() -> new URIBuilder()
+            .setScheme("mongodb")
+            .setHost(getHost(DockerService.MONGO))
+            .setPort(getPort(DockerService.MONGO))
+            .build()).get();
+    }
+
+    public ContainerState getElasticsearchContainer() {
+        return environment.getContainerByServiceName(DockerService.ELASTICSEARCH.serviceName()).orElseThrow();
+    }
+
+    public ContainerState getRedisContainer() {
+        return environment.getContainerByServiceName(DockerService.REDIS.serviceName()).orElseThrow();
+    }
+
+    public List<ContainerState> getAllContainers() {
+        return List.of(getRabbitMqContainer(),
+            getSabreDavContainer(),
+            getMongoDBContainer(),
+            getElasticsearchContainer(),
+            getRedisContainer());
+    }
+
+    public OpenPaaSProvisioningService getOpenPaaSProvisioningService() {
+        Preconditions.checkNotNull(openPaaSProvisioningService, "OpenPaas Provisioning Service not initialized");
+        return openPaaSProvisioningService;
+    }
+
+    public String getHost(DockerService dockerService) {
+        return environment.getServiceHost(dockerService.serviceName(), dockerService.port());
+    }
+
+    public Integer getPort(DockerService dockerService) {
+        return environment.getServicePort(dockerService.serviceName(), dockerService.port());
+    }
+
+    public DavConfiguration davConfiguration() {
+        return new DavConfiguration(
+            new UsernamePasswordCredentials(DAV_ADMIN, DAV_ADMIN_PASSWORD),
+            getSabreDavURI(),
+            Optional.of(TRUST_ALL_SSL_CERTS),
+            Optional.empty());
+    }
+}
