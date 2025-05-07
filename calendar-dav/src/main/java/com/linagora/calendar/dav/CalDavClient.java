@@ -27,6 +27,8 @@ import org.apache.http.HttpStatus;
 import org.apache.james.core.Username;
 import org.apache.james.mailbox.MailboxSession;
 
+import com.linagora.calendar.storage.CalendarURL;
+
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
@@ -35,8 +37,8 @@ import reactor.core.publisher.Mono;
 public class CalDavClient extends DavClient {
 
     public static class CalDavExportException extends DavClientException {
-        public CalDavExportException(CalendarUrlPath urlPath, Username username, String davResponse) {
-            super("Failed to export calendar. URL: " + urlPath.path() + ", User: " + username.asString() +
+        public CalDavExportException(CalendarURL calendarUrl, Username username, String davResponse) {
+            super("Failed to export calendar. URL: " + calendarUrl.asUri() + ", User: " + username.asString() +
                 "\nDav Response: " + davResponse);
         }
     }
@@ -52,17 +54,17 @@ public class CalDavClient extends DavClient {
             .add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username));
     }
 
-    public Mono<byte[]> export(CalendarUrlPath urlPath, MailboxSession session) {
+    public Mono<byte[]> export(CalendarURL calendarURL, MailboxSession session) {
         return client.headers(headers -> addHeaders(session.getUser().asString()).apply(headers))
             .request(HttpMethod.GET)
-            .uri(urlPath.path() + "?export")
+            .uri(calendarURL.asUri() + "?export")
             .responseSingle((response, byteBufMono) -> {
                 if (response.status().code() == HttpStatus.SC_OK) {
                     return byteBufMono.asByteArray();
                 } else {
                     return byteBufMono
                         .asString(StandardCharsets.UTF_8)
-                        .flatMap(errorBody -> Mono.error(new CalDavExportException(urlPath, session.getUser(), "Response status: " + response.status().code() + " - " + errorBody)));
+                        .flatMap(errorBody -> Mono.error(new CalDavExportException(calendarURL, session.getUser(), "Response status: " + response.status().code() + " - " + errorBody)));
                 }
             });
     }

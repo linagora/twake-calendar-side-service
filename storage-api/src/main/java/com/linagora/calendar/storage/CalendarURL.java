@@ -16,20 +16,18 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.dav;
+package com.linagora.calendar.storage;
 
 import java.net.URI;
 
-import com.linagora.calendar.storage.OpenPaaSId;
-
-public record CalendarUrlPath(URI path) {
+public record CalendarURL(OpenPaaSId base, OpenPaaSId calendarId) {
     public static final String CALENDAR_URL_PATH_PREFIX = "/calendars";
 
-    public static CalendarUrlPath from(OpenPaaSId id) {
-        return new CalendarUrlPath(URI.create(CALENDAR_URL_PATH_PREFIX + "/" + id.value() + "/" + id.value()));
+    public static CalendarURL from(OpenPaaSId id) {
+        return new CalendarURL(id, id);
     }
 
-    public String asString() {
-        return path.toString();
+    public URI asUri() {
+        return URI.create(CALENDAR_URL_PATH_PREFIX + "/" + base.value() + "/" + calendarId.value());
     }
 }

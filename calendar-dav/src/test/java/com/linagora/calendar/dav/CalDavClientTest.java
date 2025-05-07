@@ -21,7 +21,6 @@ package com.linagora.calendar.dav;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 import static com.linagora.calendar.dav.CalDavClient.CalDavExportException;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
@@ -30,6 +29,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.MailboxSessionUtil;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -53,7 +53,7 @@ public class CalDavClientTest {
     @Test
     void exportShouldSucceed() {
         OpenPaaSUser openPaaSUser = openPaaSUser();
-        String exportPayloadAsString = testee.export(CalendarUrlPath.from(openPaaSUser.id()), MailboxSessionUtil.create(openPaaSUser.username()))
+        String exportPayloadAsString = testee.export(CalendarURL.from(openPaaSUser.id()), MailboxSessionUtil.create(openPaaSUser.username()))
             .map(bytes -> StringUtils.trim(new String(bytes, StandardCharsets.UTF_8)))
             .block();
 
@@ -65,7 +65,7 @@ public class CalDavClientTest {
     void exportShouldThrowWhenInvalidPath() {
         OpenPaaSUser openPaaSUser = openPaaSUser();
 
-        CalendarUrlPath invalidUrlPath = new CalendarUrlPath(URI.create("/invalid/calendars/" + openPaaSUser.id().value() + "/" + openPaaSUser.id().value()));
+        CalendarURL invalidUrlPath = new CalendarURL(openPaaSUser.id(), new OpenPaaSId("invalid"));
 
         assertThatThrownBy(() -> testee.export(invalidUrlPath, MailboxSessionUtil.create(openPaaSUser.username())).block())
             .isInstanceOf(CalDavExportException.class)
@@ -76,9 +76,9 @@ public class CalDavClientTest {
     void exportShouldThrowWhenNotFound() {
         OpenPaaSUser openPaaSUser = openPaaSUser();
 
-        CalendarUrlPath notFoundCalendarUrlPath = CalendarUrlPath.from(new OpenPaaSId(UUID.randomUUID().toString()));
+        CalendarURL notFoundCalendarURL = CalendarURL.from(new OpenPaaSId(UUID.randomUUID().toString()));
 
-        assertThatThrownBy(() -> testee.export(notFoundCalendarUrlPath, MailboxSessionUtil.create(openPaaSUser.username())).block())
+        assertThatThrownBy(() -> testee.export(notFoundCalendarURL, MailboxSessionUtil.create(openPaaSUser.username())).block())
             .isInstanceOf(CalDavExportException.class)
             .hasMessageContaining("Failed to export calendar");
     }
@@ -88,9 +88,9 @@ public class CalDavClientTest {
         OpenPaaSUser openPaaSUser1 = openPaaSUser();
         OpenPaaSUser openPaaSUser2 = openPaaSUser();
 
-        CalendarUrlPath notBelongingCalendarUrlPath = CalendarUrlPath.from(openPaaSUser1.id());
+        CalendarURL notBelongingCalendarURL = CalendarURL.from(openPaaSUser1.id());
 
-        assertThatThrownBy(() -> testee.export(notBelongingCalendarUrlPath, MailboxSessionUtil.create(openPaaSUser2.username())).block())
+        assertThatThrownBy(() -> testee.export(notBelongingCalendarURL, MailboxSessionUtil.create(openPaaSUser2.username())).block())
             .isInstanceOf(CalDavExportException.class)
             .hasMessageContaining("Failed to export calendar");
     }
