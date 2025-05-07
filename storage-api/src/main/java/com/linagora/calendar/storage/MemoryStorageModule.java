@@ -33,6 +33,8 @@ import com.google.inject.Scopes;
 import com.google.inject.Singleton;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
+import com.linagora.calendar.storage.secretlink.MemorySecretLinkStore;
+import com.linagora.calendar.storage.secretlink.SecretLinkStore;
 
 public class MemoryStorageModule extends AbstractModule {
     @Override
@@ -51,6 +53,9 @@ public class MemoryStorageModule extends AbstractModule {
 
         bind(MemoryUploadedFileDAO.class).in(Scopes.SINGLETON);
         bind(UploadedFileDAO.class).to(MemoryUploadedFileDAO.class);
+
+        bind(MemorySecretLinkStore.class).in(Scopes.SINGLETON);
+        bind(SecretLinkStore.class).to(MemorySecretLinkStore.class);
     }
 
     @Provides
