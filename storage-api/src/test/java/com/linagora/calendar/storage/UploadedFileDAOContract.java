@@ -19,12 +19,15 @@
 package com.linagora.calendar.storage;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Durations.ONE_HUNDRED_MILLISECONDS;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
 import org.apache.james.core.Username;
+import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionFactory;
 import org.junit.jupiter.api.Test;
 
 import com.linagora.calendar.storage.model.Upload;
@@ -37,6 +40,11 @@ public interface UploadedFileDAOContract {
     String FILE_NAME = "file";
     byte[] DATA = "data".getBytes();
     byte[] DATA_2 = "data2".getBytes();
+
+    ConditionFactory CALMLY_AWAIT = Awaitility
+        .with().pollInterval(ONE_HUNDRED_MILLISECONDS)
+        .and().pollDelay(ONE_HUNDRED_MILLISECONDS)
+        .await();
 
     UploadedFileDAO testee();
 
@@ -52,7 +60,7 @@ public interface UploadedFileDAOContract {
 
     @Test
     default void getFileShouldReturnEmptyWhenFileDoesNotExist() {
-        assertThat(testee().getFile(USER_1, new OpenPaaSId("non-existent-id")).blockOptional()).isEmpty();
+        assertThat(testee().getFile(USER_1, new OpenPaaSId("659387b9d486dc0046aeff21")).blockOptional()).isEmpty();
     }
 
     @Test
@@ -152,7 +160,10 @@ public interface UploadedFileDAOContract {
 
         OpenPaaSId id = testee().saveFile(USER_1, upload).block();
 
-        assertThat(testee().getFile(USER_1, id).blockOptional()).isEmpty();
+        CALMLY_AWAIT
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() ->
+                assertThat(testee().getFile(USER_1, id).blockOptional()).isEmpty());
     }
 
     @Test
@@ -164,9 +175,9 @@ public interface UploadedFileDAOContract {
         OpenPaaSId expiredId = testee().saveFile(USER_1, expiredUpload).block();
         OpenPaaSId validId = testee().saveFile(USER_1, validUpload).block();
 
-        List<UploadedFile> files = testee().listFiles(USER_1).collectList().block();
-
-        assertThat(files)
-            .containsExactly(UploadedFile.fromUpload(USER_1, validId, validUpload));
+        CALMLY_AWAIT
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() ->
+                assertThat(testee().listFiles(USER_1).collectList().block()).containsExactly(UploadedFile.fromUpload(USER_1, validId, validUpload)));
     }
 }

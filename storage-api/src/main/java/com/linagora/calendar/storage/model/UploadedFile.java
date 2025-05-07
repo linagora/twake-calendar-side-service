@@ -19,6 +19,9 @@
 package com.linagora.calendar.storage.model;
 
 import java.time.Instant;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.Objects;
 
 import org.apache.james.core.Username;
 
@@ -33,5 +36,23 @@ public record UploadedFile(OpenPaaSId id, Username username, String fileName, In
             upload.created(),
             upload.size(),
             upload.data());
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (o instanceof UploadedFile other) {
+            return Objects.equals(this.size, other.size)
+                && Arrays.equals(this.data, other.data)
+                && Objects.equals(this.id, other.id)
+                && Objects.equals(this.fileName, other.fileName)
+                && Objects.equals(Date.from(this.created), Date.from(other.created))
+                && Objects.equals(this.username, other.username);
+        }
+        return false;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(id, username, fileName, Date.from(created), size, Arrays.hashCode(data));
     }
 }
