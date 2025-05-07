@@ -37,6 +37,7 @@
 
     <modules>
         <module>app</module>
+        <module>calendar-dav</module>
         <module>calendar-rest-api</module>
         <module>calendar-webadmin</module>
         <module>storage-api</module>
@@ -52,6 +53,11 @@
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>${project.groupId}</groupId>
+                <artifactId>calendar-dav</artifactId>
+                <version>${project.version}</version>
+            </dependency>
             <dependency>
                 <groupId>${project.groupId}</groupId>
                 <artifactId>calendar-rest-api</artifactId>
