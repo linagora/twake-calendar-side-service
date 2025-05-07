@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.storage.secretlink;
 
+import jakarta.inject.Inject;
+
 import org.apache.james.core.Username;
 import org.apache.james.mailbox.MailboxSession;
 
@@ -33,6 +35,7 @@ public class MemorySecretLinkStore implements SecretLinkStore {
     private final Table<Username, CalendarURL, SecretLinkToken> store = Tables.synchronizedTable(HashBasedTable.create());
     private final SecretLinkPermissionChecker permissionChecker;
 
+    @Inject
     public MemorySecretLinkStore(SecretLinkPermissionChecker permissionChecker) {
         this.permissionChecker = permissionChecker;
     }

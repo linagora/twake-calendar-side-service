@@ -18,6 +18,13 @@
 
 package com.linagora.calendar.storage;
 
+import org.apache.commons.lang3.StringUtils;
+
+import com.google.common.base.Preconditions;
+
 public record OpenPaaSId(String value) {
 
+    public OpenPaaSId {
+        Preconditions.checkArgument(StringUtils.isNotEmpty(value), "OpenPaaSId must not be empty");
+    }
 }

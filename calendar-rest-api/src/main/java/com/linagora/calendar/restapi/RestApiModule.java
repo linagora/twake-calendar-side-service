@@ -54,6 +54,7 @@ import com.linagora.calendar.restapi.routes.LogoRoute;
 import com.linagora.calendar.restapi.routes.PeopleSearchRoute;
 import com.linagora.calendar.restapi.routes.ProfileAvatarRoute;
 import com.linagora.calendar.restapi.routes.ProfileUpdateRoute;
+import com.linagora.calendar.restapi.routes.SecretLinkRoute;
 import com.linagora.calendar.restapi.routes.ThemeRoute;
 import com.linagora.calendar.restapi.routes.UserConfigurationsRoute;
 import com.linagora.calendar.restapi.routes.UserProfileRoute;
@@ -65,6 +66,8 @@ import com.linagora.calendar.restapi.routes.configuration.FileConfigurationEntry
 import com.linagora.calendar.restapi.routes.configuration.StoredConfigurationEntryResolver;
 import com.linagora.calendar.storage.TokenInfoResolver;
 import com.linagora.calendar.storage.model.Aud;
+import com.linagora.calendar.storage.secretlink.SecretLinkPermissionChecker;
+import com.linagora.calendar.storage.secretlink.SecretLinkPermissionChecker.NoopPermissionChecker;
 
 public class RestApiModule extends AbstractModule {
     @Override
@@ -86,6 +89,7 @@ public class RestApiModule extends AbstractModule {
         routes.addBinding().to(UserProfileRoute.class);
         routes.addBinding().to(UsersRoute.class);
         routes.addBinding().to(UserConfigurationsRoute.class);
+        routes.addBinding().to(SecretLinkRoute.class);
 
         Multibinder<AuthenticationStrategy> authenticationStrategies = Multibinder.newSetBinder(binder(), AuthenticationStrategy.class);
         authenticationStrategies.addBinding().to(BasicAuthenticationStrategy.class);
@@ -98,6 +102,9 @@ public class RestApiModule extends AbstractModule {
         configurationEntryResolvers.addBinding().to(StoredConfigurationEntryResolver.class);
 
         bind(TokenInfoResolver.class).to(OidcEndpointsInfoResolver.class);
+
+        bind(NoopPermissionChecker.class).toInstance(new NoopPermissionChecker());
+        bind(SecretLinkPermissionChecker.class).to(NoopPermissionChecker.class);
     }
 
     @Provides

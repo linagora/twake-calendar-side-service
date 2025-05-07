@@ -20,11 +20,18 @@ package com.linagora.calendar.storage;
 
 import java.net.URI;
 
+import com.google.common.base.Preconditions;
+
 public record CalendarURL(OpenPaaSId base, OpenPaaSId calendarId) {
     public static final String CALENDAR_URL_PATH_PREFIX = "/calendars";
 
     public static CalendarURL from(OpenPaaSId id) {
         return new CalendarURL(id, id);
+    }
+
+    public CalendarURL {
+        Preconditions.checkArgument(base != null, "baseCalendarId must not be null");
+        Preconditions.checkArgument(calendarId != null, "calendarId must not be null");
     }
 
     public URI asUri() {

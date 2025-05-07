@@ -36,12 +36,15 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.mockserver.integration.ClientAndServer;
 
+import com.google.inject.Scopes;
 import com.google.inject.name.Names;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.mongodb.DockerMongoDBExtension;
 import com.linagora.calendar.storage.mongodb.MongoDBConfiguration;
+import com.linagora.calendar.storage.secretlink.MemorySecretLinkStore;
+import com.linagora.calendar.storage.secretlink.SecretLinkStore;
 
 import io.restassured.RestAssured;
 import io.restassured.builder.RequestSpecBuilder;
@@ -73,7 +76,11 @@ class MongoTest {
         .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
         .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB),
         binder -> binder.bind(URL.class).annotatedWith(Names.named("userInfo")).toProvider(MongoTest::getUserInfoTokenEndpoint),
-        binder -> binder.bind(MongoDBConfiguration.class).toProvider(DockerMongoDBExtension::getMongoDBConfiguration));
+        binder -> binder.bind(MongoDBConfiguration.class).toProvider(DockerMongoDBExtension::getMongoDBConfiguration),
+        binder -> {
+            binder.bind(MemorySecretLinkStore.class).in(Scopes.SINGLETON); // TODO ISSUE-41
+            binder.bind(SecretLinkStore.class).to(MemorySecretLinkStore.class);
+        });
 
     @BeforeEach
     void setUp(TwakeCalendarGuiceServer server) {
