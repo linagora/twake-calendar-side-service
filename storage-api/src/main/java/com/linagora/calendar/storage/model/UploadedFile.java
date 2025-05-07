@@ -32,7 +32,6 @@ public record UploadedFile(OpenPaaSId id, Username username, String fileName, In
             upload.fileName(),
             upload.created(),
             upload.size(),
-            upload.data()
-        );
+            upload.data());
     }
 }

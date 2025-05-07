@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.storage;
 
+import java.time.Clock;
+
 import org.junit.jupiter.api.BeforeEach;
 
 public class MemoryUploadedFileDAOTest implements UploadedFileDAOContract {
@@ -25,7 +27,7 @@ public class MemoryUploadedFileDAOTest implements UploadedFileDAOContract {
 
     @BeforeEach
     void setUp() {
-        testee = new MemoryUploadedFileDAO(FileUploadConfiguration.DEFAULT);
+        testee = new MemoryUploadedFileDAO(Clock.systemUTC(), FileUploadConfiguration.DEFAULT);
     }
 
     @Override

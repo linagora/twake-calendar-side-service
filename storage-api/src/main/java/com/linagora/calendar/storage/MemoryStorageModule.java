@@ -49,6 +49,7 @@ public class MemoryStorageModule extends AbstractModule {
 
         bind(UserConfigurationDAO.class).to(MemoryUserConfigurationDAO.class);
 
+        bind(MemoryUploadedFileDAO.class).in(Scopes.SINGLETON);
         bind(UploadedFileDAO.class).to(MemoryUploadedFileDAO.class);
     }
 

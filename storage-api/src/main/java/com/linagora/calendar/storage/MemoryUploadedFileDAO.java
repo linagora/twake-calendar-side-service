@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.storage;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
@@ -37,17 +38,19 @@ import reactor.core.publisher.Mono;
 
 public class MemoryUploadedFileDAO implements UploadedFileDAO {
     private final Table<Username, OpenPaaSId, UploadedFile> table = HashBasedTable.create();
+    private final Clock clock;
     private final Duration fileExpiration;
 
     @Inject
-    public MemoryUploadedFileDAO(FileUploadConfiguration configuration) {
+    public MemoryUploadedFileDAO(Clock clock, FileUploadConfiguration configuration) {
+        this.clock = clock;
         this.fileExpiration = configuration.fileExpiration();
     }
 
     @Override
     public Mono<UploadedFile> getFile(Username username, OpenPaaSId id) {
         return Mono.fromCallable(() -> table.get(username, id))
-            .filter(this::notExpired);
+            .filter(uploadedFile -> notExpired(uploadedFile, clock.instant()));
     }
 
     @Override
@@ -67,12 +70,12 @@ public class MemoryUploadedFileDAO implements UploadedFileDAO {
     @Override
     public Flux<UploadedFile> listFiles(Username username) {
         Map<OpenPaaSId, UploadedFile> userFiles = table.row(username);
+        Instant now = clock.instant();
         return Flux.fromIterable(userFiles.values())
-            .filter(this::notExpired);
+            .filter(uploadedFile -> notExpired(uploadedFile, now));
     }
 
-    private boolean notExpired(UploadedFile file) {
-        Instant now = Instant.now();
+    private boolean notExpired(UploadedFile file, Instant now) {
         return file.created().plus(fileExpiration).isAfter(now);
     }
 }
