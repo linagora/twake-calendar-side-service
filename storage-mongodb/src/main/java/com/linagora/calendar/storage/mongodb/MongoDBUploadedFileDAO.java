@@ -45,7 +45,7 @@ import reactor.core.publisher.Mono;
 
 public class MongoDBUploadedFileDAO implements UploadedFileDAO {
 
-    public static final String COLLECTION = "uploaded_files";
+    public static final String COLLECTION = "twake_calendar_uploaded_files";
 
     private final MongoCollection<Document> collection;
 
