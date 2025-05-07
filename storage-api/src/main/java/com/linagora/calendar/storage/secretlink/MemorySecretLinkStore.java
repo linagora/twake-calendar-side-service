@@ -23,14 +23,14 @@ import org.apache.james.mailbox.MailboxSession;
 
 import com.google.common.collect.HashBasedTable;
 import com.google.common.collect.Table;
+import com.google.common.collect.Tables;
 import com.linagora.calendar.storage.CalendarURL;
 
 import reactor.core.publisher.Mono;
 
 public class MemorySecretLinkStore implements SecretLinkStore {
 
-    private final Table<Username, CalendarURL, SecretLinkToken> store = HashBasedTable.create();
-
+    private final Table<Username, CalendarURL, SecretLinkToken> store = Tables.synchronizedTable(HashBasedTable.create());
     private final SecretLinkPermissionChecker permissionChecker;
 
     public MemorySecretLinkStore(SecretLinkPermissionChecker permissionChecker) {

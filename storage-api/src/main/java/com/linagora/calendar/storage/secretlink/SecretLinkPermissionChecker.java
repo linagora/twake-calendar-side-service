@@ -26,7 +26,7 @@ import reactor.core.publisher.Mono;
 
 public interface SecretLinkPermissionChecker {
 
-    class UnsafeSecretLinkPermissionChecker implements SecretLinkPermissionChecker {
+    class NoopPermissionChecker implements SecretLinkPermissionChecker {
         @Override
         public Mono<Boolean> verifyPermissions(CalendarURL url, MailboxSession session) {
             return Mono.just(true);
