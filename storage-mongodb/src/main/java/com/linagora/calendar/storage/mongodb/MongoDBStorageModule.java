@@ -39,6 +39,7 @@ import com.linagora.calendar.storage.OIDCTokenCache;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSDomainList;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.UploadedFileDAO;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
@@ -57,6 +58,9 @@ public class MongoDBStorageModule extends AbstractModule {
         bind(UserConfigurationDAO.class).to(MongoDBUserConfigurationDAO.class);
 
         bind(OIDCTokenCache.class).to(CaffeineOIDCTokenCache.class);
+
+        bind(MongoDBUploadedFileDAO.class).in(Scopes.SINGLETON);
+        bind(UploadedFileDAO.class).to(MongoDBUploadedFileDAO.class);
     }
 
     @Provides

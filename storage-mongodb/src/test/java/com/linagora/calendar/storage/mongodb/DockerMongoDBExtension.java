@@ -33,8 +33,9 @@ import com.mongodb.reactivestreams.client.MongoDatabase;
 import reactor.core.publisher.Mono;
 
 public class DockerMongoDBExtension implements BeforeAllCallback, AfterAllCallback, AfterEachCallback {
-    public static final MongoDBContainer mongoDBContainer = new MongoDBContainer("mongo:4.0.10");
-    public static final List<String> CLEANUP_COLLECTIONS = List.of("domains", "users");
+    public static final MongoDBContainer mongoDBContainer = new MongoDBContainer("mongo:4.0.10")
+        .withCommand("--setParameter", "ttlMonitorSleepSecs=5");
+    public static final List<String> CLEANUP_COLLECTIONS = List.of(MongoDBOpenPaaSDomainDAO.COLLECTION, MongoDBOpenPaaSUserDAO.COLLECTION, MongoDBUploadedFileDAO.COLLECTION);
 
     private static MongoDBConfiguration mongoDBConfiguration;
 
