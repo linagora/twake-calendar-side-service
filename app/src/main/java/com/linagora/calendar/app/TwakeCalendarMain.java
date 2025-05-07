@@ -54,6 +54,7 @@ import com.linagora.calendar.app.modules.MemoryUserModule;
 import com.linagora.calendar.app.modules.OpenSearchClientModule;
 import com.linagora.calendar.restapi.RestApiModule;
 import com.linagora.calendar.storage.CaffeineOIDCTokenCache;
+import com.linagora.calendar.storage.FileUploadConfigurationModule;
 import com.linagora.calendar.storage.MemoryStorageModule;
 import com.linagora.calendar.storage.OIDCTokenCache;
 import com.linagora.calendar.storage.OIDCTokenCacheConfigurationModule;
@@ -103,6 +104,7 @@ public class TwakeCalendarMain {
                 chooseAutoComplete(configuration.autoCompleteChoice()),
                 chooseUsersModule(configuration.userChoice()),
                 chooseOIDCTokenStorage(configuration.oidcTokenStorageChoice()),
+                new FileUploadConfigurationModule(),
                 new RestApiModule(),
                 new TaskManagerModule(),
                 WEBADMIN));

@@ -63,16 +63,6 @@ public class MemoryStorageModule extends AbstractModule {
         }
     }
 
-    @Provides
-    @Singleton
-    FileUploadConfiguration fileUploadConfiguration(PropertiesProvider propertiesProvider) throws Exception {
-        try {
-            return FileUploadConfiguration.parse(propertiesProvider.getConfiguration("configuration"));
-        } catch (FileNotFoundException e) {
-            return FileUploadConfiguration.DEFAULT;
-        }
-    }
-
     @ProvidesIntoSet
     InitializationOperation addDomains(DomainConfiguration domainConfiguration, OpenPaaSDomainList domainList) {
         return InitilizationOperationBuilder
