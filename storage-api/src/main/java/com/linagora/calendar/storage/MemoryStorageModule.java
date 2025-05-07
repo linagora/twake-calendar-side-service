@@ -48,6 +48,9 @@ public class MemoryStorageModule extends AbstractModule {
         bind(DomainList.class).to(OpenPaaSDomainList.class);
 
         bind(UserConfigurationDAO.class).to(MemoryUserConfigurationDAO.class);
+
+        bind(MemoryUploadedFileDAO.class).in(Scopes.SINGLETON);
+        bind(UploadedFileDAO.class).to(MemoryUploadedFileDAO.class);
     }
 
     @Provides
@@ -57,6 +60,16 @@ public class MemoryStorageModule extends AbstractModule {
             return DomainConfiguration.parseConfiguration(propertiesProvider.getConfiguration("configuration"));
         } catch (FileNotFoundException e) {
             return new DomainConfiguration(ImmutableList.of(Domain.of("linagora.com")));
+        }
+    }
+
+    @Provides
+    @Singleton
+    FileUploadConfiguration fileUploadConfiguration(PropertiesProvider propertiesProvider) throws Exception {
+        try {
+            return FileUploadConfiguration.parse(propertiesProvider.getConfiguration("configuration"));
+        } catch (FileNotFoundException e) {
+            return FileUploadConfiguration.DEFAULT;
         }
     }
 
