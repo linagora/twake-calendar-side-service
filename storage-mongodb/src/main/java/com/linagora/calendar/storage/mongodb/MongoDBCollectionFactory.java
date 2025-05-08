@@ -21,6 +21,7 @@ package com.linagora.calendar.storage.mongodb;
 import org.bson.Document;
 
 import com.mongodb.client.model.IndexOptions;
+import com.mongodb.client.model.Indexes;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
 import reactor.core.publisher.Flux;
@@ -30,10 +31,12 @@ public class MongoDBCollectionFactory {
 
     public static final String USERS = "users";
     public static final String DOMAINS = "domains";
+    public static final String SECRETLINKS = MongoDBSecretLinkStore.COLLECTION;
 
     public static void initialize(MongoDatabase database) {
         createUsersCollection(database);
         createDomainsCollection(database);
+        createSecretLinksCollection(database);
     }
 
     private static void createUsersCollection(MongoDatabase database) {
@@ -55,6 +58,19 @@ public class MongoDBCollectionFactory {
 
         Mono.from(database.getCollection(DOMAINS)
             .createIndex(new Document("name", 1), new IndexOptions().unique(true)))
+            .block();
+    }
+
+    private static void createSecretLinksCollection(MongoDatabase database) {
+        if (!collectionExists(database, SECRETLINKS)) {
+            Mono.from(database.createCollection(SECRETLINKS))
+                .block();
+        }
+
+        Mono.from(database.getCollection(SECRETLINKS)
+                .createIndex(Indexes.ascending(MongoDBSecretLinkStore.FIELD_USER_ID,
+                    MongoDBSecretLinkStore.FIELD_CALENDAR_HOME_ID,
+                    MongoDBSecretLinkStore.FIELD_CALENDAR_ID), new IndexOptions().unique(true)))
             .block();
     }
 
