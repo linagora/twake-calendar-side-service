@@ -18,7 +18,26 @@
 
 package com.linagora.calendar.storage.model;
 
-import java.time.Instant;
+public enum MimeType {
+    TEXT_CALENDAR("text/calendar"),
+    TEXT_VCARD("text/vcard");
 
-public record Upload(String fileName, MimeType mimeType, Instant created, Long size, byte[] data) {
+    private final String type;
+
+    MimeType(String type) {
+        this.type = type;
+    }
+
+    public String getType() {
+        return type;
+    }
+
+    public static MimeType fromType(String type) {
+        for (MimeType mimeType : MimeType.values()) {
+            if (mimeType.getType().equalsIgnoreCase(type)) {
+                return mimeType;
+            }
+        }
+        throw new IllegalArgumentException("Unknown MIME type: " + type);
+    }
 }

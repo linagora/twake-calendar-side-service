@@ -34,6 +34,7 @@ import org.bson.types.ObjectId;
 import com.linagora.calendar.storage.FileUploadConfiguration;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.UploadedFileDAO;
+import com.linagora.calendar.storage.model.MimeType;
 import com.linagora.calendar.storage.model.Upload;
 import com.linagora.calendar.storage.model.UploadedFile;
 import com.mongodb.client.model.IndexOptions;
@@ -74,6 +75,7 @@ public class MongoDBUploadedFileDAO implements UploadedFileDAO {
         Document doc = new Document()
             .append("username", username.asString())
             .append("fileName", upload.fileName())
+            .append("mimeType", upload.mimeType().getType())
             .append("created", upload.created())
             .append("size", upload.size())
             .append("data", upload.data());
@@ -102,6 +104,7 @@ public class MongoDBUploadedFileDAO implements UploadedFileDAO {
             new OpenPaaSId(doc.getObjectId("_id").toHexString()),
             Username.of(doc.getString("username")),
             doc.getString("fileName"),
+            MimeType.fromType(doc.getString("mimeType")),
             doc.get("created", Date.class).toInstant(),
             doc.getLong("size"),
             doc.get("data", Binary.class).getData()
