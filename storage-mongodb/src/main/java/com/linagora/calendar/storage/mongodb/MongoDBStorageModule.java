@@ -41,6 +41,7 @@ import com.linagora.calendar.storage.OpenPaaSDomainList;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.UploadedFileDAO;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
+import com.linagora.calendar.storage.secretlink.SecretLinkStore;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
 public class MongoDBStorageModule extends AbstractModule {
@@ -61,6 +62,9 @@ public class MongoDBStorageModule extends AbstractModule {
 
         bind(MongoDBUploadedFileDAO.class).in(Scopes.SINGLETON);
         bind(UploadedFileDAO.class).to(MongoDBUploadedFileDAO.class);
+
+        bind(MongoDBSecretLinkStore.class).in(Scopes.SINGLETON);
+        bind(SecretLinkStore.class).to(MongoDBSecretLinkStore.class);
     }
 
     @Provides
