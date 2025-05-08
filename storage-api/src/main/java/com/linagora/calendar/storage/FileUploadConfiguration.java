@@ -24,15 +24,19 @@ import java.util.Optional;
 import org.apache.commons.configuration2.Configuration;
 import org.apache.james.util.DurationParser;
 
-public record FileUploadConfiguration(Duration fileExpiration) {
+public record FileUploadConfiguration(Duration fileExpiration, Long userTotalLimit) {
     public static final String UPLOADED_FILE_EXPIRATION = "upload.expiration";
+    public static final String UPLOAD_USER_TOTAL_LIMIT = "upload.user.total.limit";
     public static final Duration DEFAULT_EXPIRATION = Duration.ofMinutes(60);
+    public static final Long DEFAULT_USER_TOTAL_LIMIT = 50L;   //MB
 
-    public static final FileUploadConfiguration DEFAULT = new FileUploadConfiguration(DEFAULT_EXPIRATION);
+    public static final FileUploadConfiguration DEFAULT = new FileUploadConfiguration(DEFAULT_EXPIRATION, DEFAULT_USER_TOTAL_LIMIT);
 
     public static FileUploadConfiguration parse(Configuration configuration) {
         return new FileUploadConfiguration(
             Optional.ofNullable(configuration.getString(UPLOADED_FILE_EXPIRATION))
-                .map(DurationParser::parse).orElse(DEFAULT_EXPIRATION));
+                .map(DurationParser::parse).orElse(DEFAULT_EXPIRATION),
+            Optional.ofNullable(configuration.getString(UPLOAD_USER_TOTAL_LIMIT))
+                .map(Long::parseLong).orElse(DEFAULT_USER_TOTAL_LIMIT));
     }
 }
