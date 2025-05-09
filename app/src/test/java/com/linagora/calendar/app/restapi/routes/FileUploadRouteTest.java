@@ -22,10 +22,14 @@ import static io.restassured.RestAssured.given;
 import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.equalTo;
 
 import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.Arrays;
+import java.util.List;
 
 import org.apache.http.HttpStatus;
 import org.apache.james.core.Domain;
@@ -41,8 +45,10 @@ import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.restapi.RestApiServerProbe;
+import com.linagora.calendar.storage.FileUploadConfiguration;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.model.MimeType;
+import com.linagora.calendar.storage.model.Upload;
 import com.linagora.calendar.storage.model.UploadedFile;
 
 import io.restassured.RestAssured;
@@ -63,8 +69,9 @@ public class FileUploadRouteTest {
             .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY),
         binder -> binder.bind(URL.class).annotatedWith(Names.named("userInfo"))
-            .toProvider(() -> Throwing.supplier(() -> new URI("https://neven.to.be.called.com").toURL()).get())
-    );
+            .toProvider(() -> Throwing.supplier(() -> new URI("https://neven.to.be.called.com").toURL()).get()),
+        binder -> binder.bind(FileUploadConfiguration.class).toProvider(() ->
+            new FileUploadConfiguration(FileUploadConfiguration.DEFAULT_EXPIRATION, 3L)));
 
     @BeforeEach
     void setup(TwakeCalendarGuiceServer server) {
@@ -141,7 +148,154 @@ public class FileUploadRouteTest {
     }
 
     @Test
-    void shouldRemoveOldFilesIfNeeded(TwakeCalendarGuiceServer server) {
+    void shouldRejectWhenNameIsMissing() {
+        byte[] content = "data".getBytes(StandardCharsets.UTF_8);
+
+        given()
+            .queryParam("size", content.length)
+            .queryParam("mimetype", MimeType.TEXT_CALENDAR.getType())
+            .body(content)
+        .when()
+            .post("/api/files")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @Test
+    void shouldRejectWhenSizeIsMissing() {
+        byte[] content = "data".getBytes(StandardCharsets.UTF_8);
+
+        given()
+            .queryParam("name", "data.txt")
+            .queryParam("mimetype", MimeType.TEXT_CALENDAR.getType())
+            .body(content)
+        .when()
+            .post("/api/files")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @Test
+    void shouldRejectWhenSizeIsInvalid() {
+        byte[] content = "data".getBytes(StandardCharsets.UTF_8);
+
+        given()
+            .queryParam("name", "data.txt")
+            .queryParam("size", "invalid")
+            .queryParam("mimetype", MimeType.TEXT_CALENDAR.getType())
+            .body(content)
+        .when()
+            .post("/api/files")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @Test
+    void shouldRejectWhenActualSizeIsLargerThanDeclared() {
+        byte[] content = "0123456789".getBytes(StandardCharsets.UTF_8); // 10 bytes
+        int declaredSize = 5;
+
+        given()
+            .queryParam("name", "oversize.txt")
+            .queryParam("size", declaredSize)
+            .queryParam("mimetype", MimeType.TEXT_CALENDAR.getType())
+            .body(content)
+        .when()
+            .post("/api/files")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.code", equalTo(400))
+            .body("error.message", equalTo("Bad request"))
+            .body("error.details", equalTo("Real size is greater than declared size"));
+    }
+
+    @Test
+    void shouldDeleteOldFilesWhenOverUserLimit(TwakeCalendarGuiceServer server) {
+        byte[] small = new byte[1024 * 1024]; // 1MB
+        Arrays.fill(small, (byte) 'c');
+
+        Instant now = Instant.now();
+
+        OpenPaaSId old1Id = server.getProbe(CalendarDataProbe.class).saveUploadedFile(USERNAME,
+            new Upload("old1.txt", MimeType.TEXT_CALENDAR, now, (long) small.length, small));
+
+        OpenPaaSId old2Id = server.getProbe(CalendarDataProbe.class).saveUploadedFile(USERNAME,
+            new Upload("old2.txt", MimeType.TEXT_CALENDAR, now.plusSeconds(10), (long) small.length, small));
+
+        OpenPaaSId old3Id = server.getProbe(CalendarDataProbe.class).saveUploadedFile(USERNAME,
+            new Upload("old3.txt", MimeType.TEXT_CALENDAR, now.plusSeconds(20), (long) small.length, small));
+
+        byte[] newFile = new byte[2 * 1024 * 1024];  // 2MB
+        Arrays.fill(newFile, (byte) 'c');
+
+        String newFileId = given()
+            .queryParam("name", "new.txt")
+            .queryParam("size", newFile.length)
+            .queryParam("mimetype", MimeType.TEXT_CALENDAR.getType())
+            .body(newFile)
+        .when()
+            .post("/api/files")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED)
+            .extract()
+            .body()
+            .jsonPath()
+            .getString("_id");
+
+        List<UploadedFile> files = server.getProbe(CalendarDataProbe.class).listUploadedFiles(USERNAME);
+        assertThat(files).hasSize(2);
+
+        assertThat(files).anySatisfy(file -> {
+            assertThat(file.id().value()).isEqualTo(newFileId);
+            assertThat(file.fileName()).isEqualTo("new.txt");
+        });
+
+        assertThat(files).anySatisfy(file -> {
+            assertThat(file.id()).isEqualTo(old3Id);
+            assertThat(file.fileName()).isEqualTo("old3.txt");
+        });
+    }
+
+    @Test
+    void shouldNotDeleteAnyFileWhenEnoughSpace(TwakeCalendarGuiceServer server) {
+        byte[] small = new byte[1024 * 1024]; // 1MB
+        Arrays.fill(small, (byte) 'c');
+
+        Instant now = Instant.now();
+
+        OpenPaaSId old1Id = server.getProbe(CalendarDataProbe.class).saveUploadedFile(USERNAME,
+            new Upload("old1.txt", MimeType.TEXT_CALENDAR, now, (long) small.length, small));
+
+        OpenPaaSId old2Id = server.getProbe(CalendarDataProbe.class).saveUploadedFile(USERNAME,
+            new Upload("old2.txt", MimeType.TEXT_CALENDAR, now.plusSeconds(10), (long) small.length, small));
+
+        byte[] newFile = new byte[1024 * 1024]; // 1MB
+        Arrays.fill(newFile, (byte) 'c');
+
+        String newFileId = given()
+            .queryParam("name", "new.txt")
+            .queryParam("size", newFile.length)
+            .queryParam("mimetype", MimeType.TEXT_CALENDAR.getType())
+            .body(newFile)
+        .when()
+            .post("/api/files")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED)
+            .extract()
+            .body()
+            .jsonPath()
+            .getString("_id");
+
+        List<UploadedFile> files = server.getProbe(CalendarDataProbe.class).listUploadedFiles(USERNAME);
+        assertThat(files).hasSize(3);
+
+        assertThat(files).anySatisfy(file -> {
+            assertThat(file.id().value()).isEqualTo(newFileId);
+            assertThat(file.fileName()).isEqualTo("new.txt");
+        });
+
+        assertThat(files).anyMatch(file -> file.id().equals(old1Id));
+        assertThat(files).anyMatch(file -> file.id().equals(old2Id));
     }
 }
 

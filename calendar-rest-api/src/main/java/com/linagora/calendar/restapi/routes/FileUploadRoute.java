@@ -20,7 +20,6 @@ package com.linagora.calendar.restapi.routes;
 
 import java.io.IOException;
 import java.time.Clock;
-import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 
@@ -50,6 +49,7 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 import reactor.netty.http.server.HttpServerRequest;
 import reactor.netty.http.server.HttpServerResponse;
 
@@ -93,32 +93,24 @@ public class FileUploadRoute extends CalendarRoute {
 
     @Override
     Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response, MailboxSession session) {
-        Username username = session.getUser();
-
         QueryStringDecoder queryStringDecoder = new QueryStringDecoder(request.uri());
         String fileName = extractFileName(queryStringDecoder);
         long fileSize = extractFileSize(queryStringDecoder);
         MimeType mimeType = extractMimeType(queryStringDecoder);
 
-        Instant created = clock.instant();
-
-        return ensureSpaceForUpload(username, fileSize)
+        return ensureSpaceForUpload(session.getUser(), fileSize)
             .then(Mono.fromCallable(() -> ReactorUtils.toInputStream(request.receive().asByteBuffer())))
             .map(inputStream -> new LimitedInputStream(inputStream, fileSize) {
                 @Override
                 protected void raiseError(long pSizeMax, long pCount) {
-                    throw new RuntimeException("Over size");
+                    throw new IllegalArgumentException("Real size is greater than declared size");
                 }
-            }).map(this::getBytes)
-            .flatMap(data -> fileDAO.saveFile(username, new Upload(fileName, mimeType, created, fileSize, data))
-                .map(UploadResponse::new))
-            .map(uploadResponse -> {
-                try {
-                    return OBJECT_MAPPER.writeValueAsBytes(uploadResponse);
-                } catch (Exception e) {
-                    throw new RuntimeException("Failed to serialize response", e);
-                }
-            }).flatMap(bytes -> response.status(201)
+            }).flatMap(inputStream -> Mono.fromCallable(() -> getBytes(inputStream))
+                .subscribeOn(Schedulers.boundedElastic()))
+            .flatMap(data -> fileDAO.saveFile(session.getUser(), new Upload(fileName, mimeType, clock.instant(), (long) data.length, data)))
+            .map(UploadResponse::new)
+            .map(this::toJsonBytes)
+            .flatMap(bytes -> response.status(201)
                 .header("Content-Type", "application/json;charset=utf-8")
                 .sendByteArray(Mono.just(bytes))
                 .then());
@@ -129,6 +121,14 @@ public class FileUploadRoute extends CalendarRoute {
             return IOUtils.toByteArray(inputStream);
         } catch (IOException e) {
             throw new ObjectStoreIOException("IOException occurred", e);
+        }
+    }
+
+    private byte[] toJsonBytes(UploadResponse uploadResponse) {
+        try {
+            return OBJECT_MAPPER.writeValueAsBytes(uploadResponse);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to serialize response", e);
         }
     }
 

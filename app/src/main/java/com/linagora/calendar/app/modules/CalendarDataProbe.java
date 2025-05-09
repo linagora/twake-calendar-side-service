@@ -37,6 +37,7 @@ import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.UploadedFileDAO;
 import com.linagora.calendar.storage.configuration.ConfigurationEntry;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
+import com.linagora.calendar.storage.model.Upload;
 import com.linagora.calendar.storage.model.UploadedFile;
 
 public class CalendarDataProbe implements GuiceProbe {
@@ -105,6 +106,10 @@ public class CalendarDataProbe implements GuiceProbe {
 
     public List<ConfigurationEntry> retrieveConfiguration(MailboxSession session) {
         return userConfigurationDAO.retrieveConfiguration(session).collectList().block();
+    }
+
+    public OpenPaaSId saveUploadedFile(Username username, Upload upload) {
+        return uploadedFileDAO.saveFile(username, upload).block();
     }
 
     public UploadedFile getUploadedFile(Username username, OpenPaaSId id) {
