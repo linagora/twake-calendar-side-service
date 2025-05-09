@@ -297,5 +297,24 @@ public class FileUploadRouteTest {
         assertThat(files).anyMatch(file -> file.id().equals(old1Id));
         assertThat(files).anyMatch(file -> file.id().equals(old2Id));
     }
+
+    @Test
+    void shouldRejectUploadWhenFileSizeExceedsUserLimit(TwakeCalendarGuiceServer server) {
+        byte[] tooBigFile = new byte[4 * 1024 * 1024]; // 4MB
+        Arrays.fill(tooBigFile, (byte) 'c');
+
+        given()
+            .queryParam("name", "too-big.txt")
+            .queryParam("size", tooBigFile.length)
+            .queryParam("mimetype", UploadableMimeType.TEXT_CALENDAR.getType())
+            .body(tooBigFile)
+        .when()
+            .post("/api/files")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.code", equalTo(400))
+            .body("error.message", equalTo("Bad request"))
+            .body("error.details", equalTo("File size exceeds user total upload limit"));
+    }
 }
 

@@ -113,15 +113,12 @@ public class FileUploadRoute extends CalendarRoute {
         long fileSize = extractFileSize(queryStringDecoder);
         UploadableMimeType mimeType = extractMimeType(queryStringDecoder);
 
+        if (fileSize > userTotalLimitInBytes) {
+            throw new IllegalArgumentException("File size exceeds user total upload limit");
+        }
+
         return ensureSpaceForUpload(session.getUser(), fileSize)
-            .then(Mono.fromCallable(() -> ReactorUtils.toInputStream(request.receive().asByteBuffer())))
-            .map(inputStream -> new LimitedInputStream(inputStream, fileSize) {
-                @Override
-                protected void raiseError(long pSizeMax, long pCount) {
-                    throw new IllegalArgumentException("Real size is greater than declared size");
-                }
-            }).flatMap(inputStream -> Mono.fromCallable(() -> getBytes(inputStream))
-                .subscribeOn(Schedulers.boundedElastic()))
+            .then(getUploadedData(request, fileSize))
             .flatMap(data -> fileDAO.saveFile(session.getUser(), new Upload(fileName, mimeType, clock.instant(), (long) data.length, data)))
             .map(UploadResponse::new)
             .map(this::toJsonBytes)
@@ -129,6 +126,17 @@ public class FileUploadRoute extends CalendarRoute {
                 .header("Content-Type", "application/json;charset=utf-8")
                 .sendByteArray(Mono.just(bytes))
                 .then());
+    }
+
+    private Mono<byte[]> getUploadedData(HttpServerRequest request, long fileSize) {
+        return Mono.fromCallable(() -> ReactorUtils.toInputStream(request.receive().asByteBuffer()))
+            .map(inputStream -> new LimitedInputStream(inputStream, fileSize) {
+                @Override
+                protected void raiseError(long pSizeMax, long pCount) {
+                    throw new IllegalArgumentException("Real size is greater than declared size");
+                }
+            }).flatMap(inputStream -> Mono.fromCallable(() -> getBytes(inputStream))
+                .subscribeOn(Schedulers.boundedElastic()));
     }
 
     private byte[] getBytes(LimitedInputStream inputStream) {
