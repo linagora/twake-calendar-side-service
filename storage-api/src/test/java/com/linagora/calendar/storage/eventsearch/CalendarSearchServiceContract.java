@@ -55,7 +55,7 @@ public interface CalendarSearchServiceContract {
     default void indexThenSearchShouldReturnTheEvent() {
         EventFields event = EventFields.builder()
             .uid(generateEventUid())
-            .title("Sprint planning meeting")
+            .summary("Sprint planning meeting")
             .calendarURL(generateCalendarURL())
             .build();
 
@@ -75,7 +75,7 @@ public interface CalendarSearchServiceContract {
     default void indexMultipleTimesWithSameEventFieldsShouldNotCauseError() {
         EventFields event = EventFields.builder()
             .uid(generateEventUid())
-            .title("Sprint planning meeting")
+            .summary("Sprint planning meeting")
             .calendarURL(generateCalendarURL())
             .build();
 
@@ -97,7 +97,7 @@ public interface CalendarSearchServiceContract {
     default void updateShouldNotThrowWhenEventIndexDoesNotExist() {
         EventFields event = EventFields.builder()
             .uid(generateEventUid())
-            .title("Initial")
+            .summary("Initial")
             .calendarURL(generateCalendarURL())
             .build();
 
@@ -111,13 +111,13 @@ public interface CalendarSearchServiceContract {
         CalendarURL calendarURL = generateCalendarURL();
         EventFields original = EventFields.builder()
             .uid(eventUid)
-            .title("Old Title")
+            .summary("Old Title")
             .calendarURL(calendarURL)
             .build();
 
         EventFields updated = EventFields.builder()
             .uid(eventUid)
-            .title("Updated Title")
+            .summary("Updated Title")
             .calendarURL(calendarURL)
             .build();
 
@@ -128,7 +128,7 @@ public interface CalendarSearchServiceContract {
             .collectList().block();
 
         assertThat(result).extracting(EventFields::uid).containsExactly(eventUid);
-        assertThat(result).extracting(EventFields::title).containsExactly("Updated Title");
+        assertThat(result).extracting(EventFields::summary).containsExactly("Updated Title");
     }
 
     @Test
@@ -137,7 +137,7 @@ public interface CalendarSearchServiceContract {
         CalendarURL calendarURL = generateCalendarURL();
         EventFields initial = EventFields.builder()
             .uid(eventUid)
-            .title("Initial title")
+            .summary("Initial summary")
             .location("Initial location")
             .description("Initial description")
             .clazz("PRIVATE")
@@ -158,7 +158,7 @@ public interface CalendarSearchServiceContract {
 
         EventFields updated = EventFields.builder()
             .uid(eventUid)
-            .title("Updated title")
+            .summary("Updated summary")
             .location("Updated location")
             .description("Updated description")
             .clazz("CONFIDENTIAL")
@@ -191,13 +191,13 @@ public interface CalendarSearchServiceContract {
         EventUid eventUid = generateEventUid();
         EventFields event = EventFields.builder()
             .uid(eventUid)
-            .title("Original")
+            .summary("Original")
             .calendarURL(generateCalendarURL())
             .build();
 
         EventFields updated = EventFields.builder()
             .uid(eventUid)
-            .title("Updated")
+            .summary("Updated")
             .calendarURL(generateCalendarURL())
             .build();
 
@@ -220,19 +220,19 @@ public interface CalendarSearchServiceContract {
         EventUid eventUid2 = generateEventUid();
         EventFields event1 = EventFields.builder()
             .uid(eventUid)
-            .title("Keep Me")
+            .summary("Keep Me")
             .calendarURL(generateCalendarURL())
             .build();
 
         EventFields event2 = EventFields.builder()
             .uid(eventUid2)
-            .title("Change Me")
+            .summary("Change Me")
             .calendarURL(generateCalendarURL())
             .build();
 
         EventFields updated2 = EventFields.builder()
             .uid(eventUid2)
-            .title("Changed")
+            .summary("Changed")
             .calendarURL(generateCalendarURL())
             .build();
 
@@ -241,7 +241,7 @@ public interface CalendarSearchServiceContract {
         testee().update(accountId, updated2).block();
 
         List<String> results = testee().search(accountId, simpleQuery("Keep"))
-            .map(EventFields::title)
+            .map(EventFields::summary)
             .collectList().block();
 
         assertThat(results).containsExactly("Keep Me");
@@ -251,7 +251,7 @@ public interface CalendarSearchServiceContract {
     default void updateSameEventMultipleTimesShouldNotFail() {
         EventFields event = EventFields.builder()
             .uid(generateEventUid())
-            .title("Stable")
+            .summary("Stable")
             .calendarURL(generateCalendarURL())
             .build();
 
@@ -273,7 +273,7 @@ public interface CalendarSearchServiceContract {
     default void deleteShouldRemoveExistingEvent() {
         EventFields event = EventFields.builder()
             .uid(generateEventUid())
-            .title("Stable")
+            .summary("Stable")
             .calendarURL(generateCalendarURL())
             .build();
 
@@ -281,7 +281,7 @@ public interface CalendarSearchServiceContract {
 
         testee().delete(accountId, event.uid()).block();
 
-        List<EventFields> results = testee().search(accountId, simpleQuery(event.title()))
+        List<EventFields> results = testee().search(accountId, simpleQuery(event.summary()))
             .collectList().block();
 
         assertThat(results).isEmpty();
@@ -297,7 +297,7 @@ public interface CalendarSearchServiceContract {
     default void deleteShouldNotAffectOtherAccountEvents() {
         EventFields event = EventFields.builder()
             .uid(generateEventUid())
-            .title("Team lunch")
+            .summary("Team lunch")
             .calendarURL(generateCalendarURL())
             .build();
 
@@ -305,7 +305,7 @@ public interface CalendarSearchServiceContract {
 
         testee().delete(accountId, event.uid()).block();
 
-        List<EventFields> results = testee().search(accountId2, simpleQuery(event.title()))
+        List<EventFields> results = testee().search(accountId2, simpleQuery(event.summary()))
             .collectList().block();
 
         assertThat(results).extracting(EventFields::uid).containsExactly(event.uid());
@@ -315,13 +315,13 @@ public interface CalendarSearchServiceContract {
     default void deleteShouldNotRemoveOtherEvents() {
         EventFields event1 = EventFields.builder()
             .uid(generateEventUid())
-            .title("Team lunch")
+            .summary("Team lunch")
             .calendarURL(generateCalendarURL())
             .build();
 
         EventFields event2 = EventFields.builder()
             .uid(generateEventUid())
-            .title("Team dinner")
+            .summary("Team dinner")
             .calendarURL(generateCalendarURL())
             .build();
 
@@ -346,7 +346,7 @@ public interface CalendarSearchServiceContract {
 
         EventFields event = EventFields.builder()
             .uid(generateEventUid())
-            .title("Quarterly Review")
+            .summary("Quarterly Review")
             .location("Conference Room B")
             .description("Review of Q1 results and planning")
             .clazz("PUBLIC")
@@ -377,7 +377,7 @@ public interface CalendarSearchServiceContract {
     default void searchShouldReturnEmptyWhenKeywordNoMatch() {
         EventFields event = EventFields.builder()
             .uid(generateEventUid())
-            .title("Team lunch")
+            .summary("Team lunch")
             .calendarURL(generateCalendarURL())
             .build();
 
@@ -398,55 +398,55 @@ public interface CalendarSearchServiceContract {
 
         EventFields titleMatch = EventFields.builder()
             .uid(new EventUid(UUID.randomUUID().toString()))
-            .title("Team lunch " + keyword)
+            .summary("Team lunch " + keyword)
             .calendarURL(calendarURL)
             .build();
 
         EventFields descriptionMatch = EventFields.builder()
             .uid(new EventUid(UUID.randomUUID().toString()))
-            .title(UUID.randomUUID().toString())
+            .summary(UUID.randomUUID().toString())
             .description("Team lunch " + keyword)
             .calendarURL(calendarURL)
             .build();
 
         EventFields locationMatch = EventFields.builder()
             .uid(new EventUid(UUID.randomUUID().toString()))
-            .title(UUID.randomUUID().toString())
+            .summary(UUID.randomUUID().toString())
             .location("Team lunch " + keyword)
             .calendarURL(calendarURL)
             .build();
 
         EventFields organizerCNMatch = EventFields.builder()
             .uid(new EventUid(UUID.randomUUID().toString()))
-            .title(UUID.randomUUID().toString())
+            .summary(UUID.randomUUID().toString())
             .organizer(Person.of("Bob", UUID.randomUUID() + "@domain.tld"))
             .calendarURL(calendarURL)
             .build();
 
         EventFields organizerEmailMatch = EventFields.builder()
             .uid(new EventUid(UUID.randomUUID().toString()))
-            .title(UUID.randomUUID().toString())
+            .summary(UUID.randomUUID().toString())
             .organizer(Person.of(UUID.randomUUID().toString(), keyword + "@domain.tld"))
             .calendarURL(calendarURL)
             .build();
 
         EventFields attendeeCNMatch = EventFields.builder()
             .uid(new EventUid(UUID.randomUUID().toString()))
-            .title(UUID.randomUUID().toString())
+            .summary(UUID.randomUUID().toString())
             .attendees(List.of(Person.of("Bob", UUID.randomUUID() + "@domain.tld")))
             .calendarURL(calendarURL)
             .build();
 
         EventFields attendeeEmailMatch = EventFields.builder()
             .uid(new EventUid(UUID.randomUUID().toString()))
-            .title(UUID.randomUUID().toString())
+            .summary(UUID.randomUUID().toString())
             .attendees(List.of(Person.of(UUID.randomUUID().toString(), keyword + "@domain.tld")))
             .calendarURL(calendarURL)
             .build();
 
         EventFields attendeeCNMatchMultiple = EventFields.builder()
             .uid(new EventUid(UUID.randomUUID().toString()))
-            .title(UUID.randomUUID().toString())
+            .summary(UUID.randomUUID().toString())
             .attendees(List.of(Person.of("Bob", UUID.randomUUID() + "@domain.tld"),
                 Person.of("Alice", UUID.randomUUID() + "@domain.tld")))
             .calendarURL(calendarURL)
@@ -454,14 +454,14 @@ public interface CalendarSearchServiceContract {
 
         EventFields attendeeEmailMatchMultiple = EventFields.builder()
             .uid(new EventUid(UUID.randomUUID().toString()))
-            .title(UUID.randomUUID().toString())
+            .summary(UUID.randomUUID().toString())
             .attendees(List.of(Person.of(UUID.randomUUID().toString(), keyword + "@domain.tld"),
                 Person.of("Alice", UUID.randomUUID() + "@domain.tld")))
             .calendarURL(calendarURL)
             .build();
 
         return Stream.of(
-            Arguments.of(titleMatch, "title match"),
+            Arguments.of(titleMatch, "summary match"),
             Arguments.of(descriptionMatch, "description match"),
             Arguments.of(locationMatch, "location match"),
             Arguments.of(organizerCNMatch, "organizer common name match"),
@@ -488,7 +488,7 @@ public interface CalendarSearchServiceContract {
     default void searchShouldReturnEmptyWhenNoMatchWithDifferentAccount() {
         EventFields event = EventFields.builder()
             .uid(generateEventUid())
-            .title("Team lunch")
+            .summary("Team lunch")
             .calendarURL(generateCalendarURL())
             .build();
 
@@ -507,13 +507,13 @@ public interface CalendarSearchServiceContract {
     default void searchShouldReturnAllEventsWhenKeywordIsEmpty() {
         EventFields event1 = EventFields.builder()
             .uid(generateEventUid())
-            .title("Team lunch")
+            .summary("Team lunch")
             .calendarURL(generateCalendarURL())
             .build();
 
         EventFields event2 = EventFields.builder()
             .uid(generateEventUid())
-            .title("Project Planning")
+            .summary("Project Planning")
             .calendarURL(generateCalendarURL())
             .build();
 
@@ -540,7 +540,7 @@ public interface CalendarSearchServiceContract {
         List<EventFields> events = IntStream.range(0, 5)
             .mapToObj(i -> EventFields.builder()
                 .uid(new EventUid(eventPrefix + i))
-                .title("Sync " + i)
+                .summary("Sync " + i)
                 .calendarURL(calendarURL)
                 .start(Instant.now().plus(i, ChronoUnit.MINUTES))
                 .build())
@@ -568,7 +568,7 @@ public interface CalendarSearchServiceContract {
         List<EventFields> events = IntStream.range(1, 6)
             .mapToObj(i -> EventFields.builder()
                 .uid(new EventUid(eventPrefix + i))
-                .title("Daily standup  + " + i)
+                .summary("Daily standup  + " + i)
                 .start(now.plus(i, ChronoUnit.HOURS))
                 .calendarURL(calendarURL)
                 .build())
@@ -593,7 +593,7 @@ public interface CalendarSearchServiceContract {
     default void searchShouldReturnEmptyWhenOffsetExceedsMatchingResults() {
         EventFields event = EventFields.builder()
             .uid(generateEventUid())
-            .title("Team meeting")
+            .summary("Team meeting")
             .calendarURL(generateCalendarURL())
             .build();
 
@@ -617,7 +617,7 @@ public interface CalendarSearchServiceContract {
     default void searchShouldBeCaseInsensitive() {
         EventFields event = EventFields.builder()
             .uid(generateEventUid())
-            .title("PlanNing Session")
+            .summary("PlanNing Session")
             .calendarURL(generateCalendarURL())
             .build();
 
@@ -637,13 +637,13 @@ public interface CalendarSearchServiceContract {
         CalendarURL calendarURL = generateCalendarURL();
         EventFields event1 = EventFields.builder()
             .uid(generateEventUid())
-            .title("Meeting A")
+            .summary("Meeting A")
             .calendarURL(calendarURL)
             .build();
 
         EventFields event2 = EventFields.builder()
             .uid(generateEventUid())
-            .title("Meeting B")
+            .summary("Meeting B")
             .calendarURL(generateCalendarURL())
             .build();
 
@@ -670,19 +670,19 @@ public interface CalendarSearchServiceContract {
 
         EventFields event1 = EventFields.builder()
             .uid(generateEventUid())
-            .title("Team Sync")
+            .summary("Team Sync")
             .calendarURL(calendarURL1)
             .build();
 
         EventFields event2 = EventFields.builder()
             .uid(generateEventUid())
-            .title("Team Marketing")
+            .summary("Team Marketing")
             .calendarURL(calendarURL2)
             .build();
 
         EventFields event3 = EventFields.builder()
             .uid(new EventUid("event-3"))
-            .title("Product Launch")
+            .summary("Product Launch")
             .calendarURL(calendarURL1)
             .build();
 
@@ -711,14 +711,14 @@ public interface CalendarSearchServiceContract {
 
         EventFields event1 = EventFields.builder()
             .uid(generateEventUid())
-            .title("Team Sync")
+            .summary("Team Sync")
             .organizer(organizer1)
             .calendarURL(calendarURL)
             .build();
 
         EventFields event2 = EventFields.builder()
             .uid(generateEventUid())
-            .title("Team Marketing")
+            .summary("Team Marketing")
             .organizer(organizer2)
             .calendarURL(calendarURL)
             .build();
@@ -740,27 +740,128 @@ public interface CalendarSearchServiceContract {
     }
 
     @Test
-    default void searchShouldFilterByAttendeesWhenProvided() throws AddressException {
-        EventFields.Person attendee1 = EventFields.Person.of("Charlie", "charlie@domain.tld");
-        EventFields.Person attendee2 = EventFields.Person.of("David", "david@domain.tld");
+    default void searchShouldReturnEventsMatchingAnyOrganizerInList() throws Exception {
+        Person organizer1 = Person.of("Alice", "alice@domain.tld");
+        Person organizer2 = Person.of("Bob", "bob@domain.tld");
+        Person organizer3 = Person.of("Charlie", "charlie@domain.tld");
 
         EventFields event1 = EventFields.builder()
             .uid(generateEventUid())
-            .title("Project Kick-off")
-            .attendees(List.of(attendee1, attendee2))
+            .summary("Event A")
+            .organizer(organizer1)
             .calendarURL(generateCalendarURL())
             .build();
 
         EventFields event2 = EventFields.builder()
             .uid(generateEventUid())
-            .title("Daily Sync")
+            .summary("Event B")
+            .organizer(organizer2)
+            .calendarURL(generateCalendarURL())
+            .build();
+
+        EventFields event3 = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("Event C")
+            .organizer(organizer3)
+            .calendarURL(generateCalendarURL())
+            .build();
+
+        testee().index(accountId, event1).block();
+        testee().index(accountId, event2).block();
+        testee().index(accountId, event3).block();
+
+        EventSearchQuery query = EventSearchQuery.builder()
+            .query("Event")
+            .organizers(
+                new MailAddress("alice@domain.tld"),
+                new MailAddress("bob@domain.tld"))
+            .build();
+
+        List<EventUid> result = testee().search(accountId, query)
+            .map(EventFields::uid)
+            .collectList().block();
+
+        assertThat(result).containsExactlyInAnyOrder(event1.uid(), event2.uid())
+            .doesNotContain(event3.uid());
+    }
+
+    @Test
+    default void searchShouldReturnEventsMatchingOrganizerAndAnyAttendeeInList() throws Exception {
+        Person organizer1 = Person.of("Alice", "alice@domain.tld");
+        Person organizer2 = Person.of("Bob", "bob@domain.tld");
+
+        Person attendee1 = Person.of("Charlie", "charlie@domain.tld");
+        Person attendee2 = Person.of("Dave", "dave@domain.tld");
+        Person attendee3 = Person.of("Eve", "eve@domain.tld");
+
+        EventFields event1 = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("Mix Match A")
+            .organizer(organizer1)
+            .attendees(List.of(attendee1))
+            .calendarURL(generateCalendarURL())
+            .build();
+
+        EventFields event2 = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("Mix Match B")
+            .organizer(organizer2)
             .attendees(List.of(attendee2))
             .calendarURL(generateCalendarURL())
             .build();
 
         EventFields event3 = EventFields.builder()
             .uid(generateEventUid())
-            .title("Weekly Sync")
+            .summary("Mix Match C")
+            .organizer(organizer1)
+            .attendees(List.of(attendee3))
+            .calendarURL(generateCalendarURL())
+            .build();
+
+        testee().index(accountId, event1).block();
+        testee().index(accountId, event2).block();
+        testee().index(accountId, event3).block();
+
+        EventSearchQuery query = EventSearchQuery.builder()
+            .query("Mix")
+            .organizers(new MailAddress("alice@domain.tld"))
+            .attendees(
+                new MailAddress("charlie@domain.tld"),
+                new MailAddress("dave@domain.tld"))
+            .build();
+
+        List<EventUid> result = testee().search(accountId, query)
+            .map(EventFields::uid)
+            .collectList().block();
+
+        // Only event1 matches both:
+        // organizer = Alice
+        // attendee = Charlie or Dave
+        assertThat(result).containsExactly(event1.uid());
+    }
+
+    @Test
+    default void searchShouldFilterByAttendeesWhenProvided() throws AddressException {
+        EventFields.Person attendee1 = EventFields.Person.of("Charlie", "charlie@domain.tld");
+        EventFields.Person attendee2 = EventFields.Person.of("David", "david@domain.tld");
+
+        EventFields event1 = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("Project Kick-off")
+            .attendees(List.of(attendee1, attendee2))
+            .calendarURL(generateCalendarURL())
+            .build();
+
+        EventFields event2 = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("Daily Sync")
+            .attendees(List.of(attendee2))
+            .calendarURL(generateCalendarURL())
+            .build();
+
+        EventFields event3 = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("Weekly Sync")
             .attendees(List.of(attendee1))
             .calendarURL(generateCalendarURL())
             .build();
@@ -796,7 +897,7 @@ public interface CalendarSearchServiceContract {
 
         EventFields event = EventFields.builder()
             .uid(generateEventUid())
-            .title("Team Sync")
+            .summary("Team Sync")
             .calendarURL(calendarURL1)
             .build();
 
@@ -818,7 +919,7 @@ public interface CalendarSearchServiceContract {
     default void searchShouldReturnEmptyWhenOptionalFiltersDontMatch() throws Exception {
         EventFields event = EventFields.builder()
             .uid(generateEventUid())
-            .title("Planning")
+            .summary("Planning")
             .organizer(Person.of("Alice", "alice@domain.tld"))
             .attendees(List.of(Person.of("Bob", "bob@domain.tld")))
             .calendarURL(generateCalendarURL())
@@ -847,7 +948,7 @@ public interface CalendarSearchServiceContract {
 
         EventFields event1 = EventFields.builder()
             .uid(generateEventUid())
-            .title("Weekly Sync")
+            .summary("Weekly Sync")
             .organizer(organizer)
             .attendees(List.of(attendee))
             .calendarURL(generateCalendarURL())
@@ -855,7 +956,7 @@ public interface CalendarSearchServiceContract {
 
         EventFields event2 = EventFields.builder()
             .uid(generateEventUid())
-            .title("Weekly Sync")
+            .summary("Weekly Sync")
             .organizer(organizer)
             .attendees(List.of())
             .calendarURL(generateCalendarURL())
@@ -884,7 +985,7 @@ public interface CalendarSearchServiceContract {
 
         EventFields event = EventFields.builder()
             .uid(generateEventUid())
-            .title("Weekly")
+            .summary("Weekly")
             .organizer(person)
             .attendees(List.of(person))
             .calendarURL(generateCalendarURL())
@@ -907,7 +1008,7 @@ public interface CalendarSearchServiceContract {
 
         EventFields event = EventFields.builder()
             .uid(generateEventUid())
-            .title("Budget")
+            .summary("Budget")
             .organizer(organizer)
             .calendarURL(generateCalendarURL())
             .build();
@@ -927,7 +1028,7 @@ public interface CalendarSearchServiceContract {
     default void searchShouldNotThrowWhenOptionalFieldsAreNull() throws AddressException {
         EventFields event = EventFields.builder()
             .uid(generateEventUid())
-            .title("Planning")
+            .summary("Planning")
             .description(null)
             .location(null)
             .organizer(Person.of(null, "a@b.c"))

@@ -30,7 +30,7 @@ import com.google.common.base.Preconditions;
 import com.linagora.calendar.storage.CalendarURL;
 
 public record EventFields(EventUid uid,
-                          String title, // summary
+                          String summary,
                           String location,
                           String description,
                           String clazz,
@@ -58,10 +58,6 @@ public record EventFields(EventUid uid,
         }
     }
 
-    enum EventClass {
-        PUBLIC, PRIVATE
-    }
-
     public EventFields {
         Preconditions.checkNotNull(uid, "uid must not be null");
         Preconditions.checkNotNull(calendarURL, "calendarURL must not be null");
@@ -73,7 +69,7 @@ public record EventFields(EventUid uid,
 
     public static class Builder {
         private EventUid uid;
-        private String title;
+        private String summary;
         private String location;
         private String description;
         private String clazz;
@@ -94,8 +90,8 @@ public record EventFields(EventUid uid,
             return this;
         }
 
-        public Builder title(String title) {
-            this.title = title;
+        public Builder summary(String summary) {
+            this.summary = summary;
             return this;
         }
 
@@ -182,7 +178,7 @@ public record EventFields(EventUid uid,
         public EventFields build() {
             return new EventFields(
                 uid,
-                title,
+                summary,
                 location,
                 description,
                 clazz,

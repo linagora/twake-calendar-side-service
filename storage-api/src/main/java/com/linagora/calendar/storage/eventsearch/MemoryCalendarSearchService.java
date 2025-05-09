@@ -20,6 +20,7 @@ package com.linagora.calendar.storage.eventsearch;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Predicate;
 
@@ -81,7 +82,7 @@ public class MemoryCalendarSearchService implements CalendarSearchService {
             return true;
         }
 
-        return StringUtils.containsIgnoreCase(event.title(), keyword) ||
+        return StringUtils.containsIgnoreCase(event.summary(), keyword) ||
             StringUtils.containsIgnoreCase(event.description(), keyword) ||
             StringUtils.containsIgnoreCase(event.location(), keyword) ||
             Optional.ofNullable(event.organizer()).filter(matchesPerson(keyword)).isPresent() ||
@@ -102,12 +103,12 @@ public class MemoryCalendarSearchService implements CalendarSearchService {
 
     private boolean matchesOrganizers(EventFields event, List<MailAddress> organizers) {
         return organizers.stream()
-            .anyMatch(organizer -> StringUtils.equalsIgnoreCase(organizer.asString(), event.organizer().email().asString()));
+            .anyMatch(organizer -> Objects.equals(organizer, event.organizer().email()));
     }
 
     private boolean matchesAttendees(EventFields event, List<MailAddress> attendees) {
         return event.attendees().stream()
             .anyMatch(attendee -> attendees.stream()
-                .anyMatch(attendeeMail -> StringUtils.equalsIgnoreCase(attendeeMail.asString(), attendee.email().asString())));
+                .anyMatch(attendeeMail -> Objects.equals(attendeeMail, attendee.email())));
     }
 }
