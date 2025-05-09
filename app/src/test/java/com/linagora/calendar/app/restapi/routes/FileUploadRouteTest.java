@@ -47,8 +47,8 @@ import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.FileUploadConfiguration;
 import com.linagora.calendar.storage.OpenPaaSId;
-import com.linagora.calendar.storage.model.MimeType;
 import com.linagora.calendar.storage.model.Upload;
+import com.linagora.calendar.storage.model.UploadableMimeType;
 import com.linagora.calendar.storage.model.UploadedFile;
 
 import io.restassured.RestAssured;
@@ -71,7 +71,7 @@ public class FileUploadRouteTest {
         binder -> binder.bind(URL.class).annotatedWith(Names.named("userInfo"))
             .toProvider(() -> Throwing.supplier(() -> new URI("https://neven.to.be.called.com").toURL()).get()),
         binder -> binder.bind(FileUploadConfiguration.class).toProvider(() ->
-            new FileUploadConfiguration(FileUploadConfiguration.DEFAULT_EXPIRATION, 3L)));
+            new FileUploadConfiguration(FileUploadConfiguration.DEFAULT_EXPIRATION, 3L * 1024 * 1024)));
 
     @BeforeEach
     void setup(TwakeCalendarGuiceServer server) {
@@ -99,7 +99,7 @@ public class FileUploadRouteTest {
         String id = given()
             .queryParam("name", "calendar.ics")
             .queryParam("size", content.length)
-            .queryParam("mimetype", MimeType.TEXT_CALENDAR.getType())
+            .queryParam("mimetype", UploadableMimeType.TEXT_CALENDAR.getType())
             .body(content)
         .when()
             .post("/api/files")
@@ -113,7 +113,7 @@ public class FileUploadRouteTest {
 
         UploadedFile file = server.getProbe(CalendarDataProbe.class).getUploadedFile(USERNAME, new OpenPaaSId(id));
         assertThat(file.fileName()).isEqualTo("calendar.ics");
-        assertThat(file.mimeType()).isEqualTo(MimeType.TEXT_CALENDAR);
+        assertThat(file.uploadableMimeType()).isEqualTo(UploadableMimeType.TEXT_CALENDAR);
         assertThat(file.size()).isEqualTo(content.length);
         assertThat(file.data()).isEqualTo(content);
     }
@@ -153,7 +153,7 @@ public class FileUploadRouteTest {
 
         given()
             .queryParam("size", content.length)
-            .queryParam("mimetype", MimeType.TEXT_CALENDAR.getType())
+            .queryParam("mimetype", UploadableMimeType.TEXT_CALENDAR.getType())
             .body(content)
         .when()
             .post("/api/files")
@@ -167,7 +167,7 @@ public class FileUploadRouteTest {
 
         given()
             .queryParam("name", "data.txt")
-            .queryParam("mimetype", MimeType.TEXT_CALENDAR.getType())
+            .queryParam("mimetype", UploadableMimeType.TEXT_CALENDAR.getType())
             .body(content)
         .when()
             .post("/api/files")
@@ -182,7 +182,7 @@ public class FileUploadRouteTest {
         given()
             .queryParam("name", "data.txt")
             .queryParam("size", "invalid")
-            .queryParam("mimetype", MimeType.TEXT_CALENDAR.getType())
+            .queryParam("mimetype", UploadableMimeType.TEXT_CALENDAR.getType())
             .body(content)
         .when()
             .post("/api/files")
@@ -198,7 +198,7 @@ public class FileUploadRouteTest {
         given()
             .queryParam("name", "oversize.txt")
             .queryParam("size", declaredSize)
-            .queryParam("mimetype", MimeType.TEXT_CALENDAR.getType())
+            .queryParam("mimetype", UploadableMimeType.TEXT_CALENDAR.getType())
             .body(content)
         .when()
             .post("/api/files")
@@ -217,13 +217,13 @@ public class FileUploadRouteTest {
         Instant now = Instant.now();
 
         OpenPaaSId old1Id = server.getProbe(CalendarDataProbe.class).saveUploadedFile(USERNAME,
-            new Upload("old1.txt", MimeType.TEXT_CALENDAR, now, (long) small.length, small));
+            new Upload("old1.txt", UploadableMimeType.TEXT_CALENDAR, now, (long) small.length, small));
 
         OpenPaaSId old2Id = server.getProbe(CalendarDataProbe.class).saveUploadedFile(USERNAME,
-            new Upload("old2.txt", MimeType.TEXT_CALENDAR, now.plusSeconds(10), (long) small.length, small));
+            new Upload("old2.txt", UploadableMimeType.TEXT_CALENDAR, now.plusSeconds(10), (long) small.length, small));
 
         OpenPaaSId old3Id = server.getProbe(CalendarDataProbe.class).saveUploadedFile(USERNAME,
-            new Upload("old3.txt", MimeType.TEXT_CALENDAR, now.plusSeconds(20), (long) small.length, small));
+            new Upload("old3.txt", UploadableMimeType.TEXT_CALENDAR, now.plusSeconds(20), (long) small.length, small));
 
         byte[] newFile = new byte[2 * 1024 * 1024];  // 2MB
         Arrays.fill(newFile, (byte) 'c');
@@ -231,7 +231,7 @@ public class FileUploadRouteTest {
         String newFileId = given()
             .queryParam("name", "new.txt")
             .queryParam("size", newFile.length)
-            .queryParam("mimetype", MimeType.TEXT_CALENDAR.getType())
+            .queryParam("mimetype", UploadableMimeType.TEXT_CALENDAR.getType())
             .body(newFile)
         .when()
             .post("/api/files")
@@ -264,10 +264,10 @@ public class FileUploadRouteTest {
         Instant now = Instant.now();
 
         OpenPaaSId old1Id = server.getProbe(CalendarDataProbe.class).saveUploadedFile(USERNAME,
-            new Upload("old1.txt", MimeType.TEXT_CALENDAR, now, (long) small.length, small));
+            new Upload("old1.txt", UploadableMimeType.TEXT_CALENDAR, now, (long) small.length, small));
 
         OpenPaaSId old2Id = server.getProbe(CalendarDataProbe.class).saveUploadedFile(USERNAME,
-            new Upload("old2.txt", MimeType.TEXT_CALENDAR, now.plusSeconds(10), (long) small.length, small));
+            new Upload("old2.txt", UploadableMimeType.TEXT_CALENDAR, now.plusSeconds(10), (long) small.length, small));
 
         byte[] newFile = new byte[1024 * 1024]; // 1MB
         Arrays.fill(newFile, (byte) 'c');
@@ -275,7 +275,7 @@ public class FileUploadRouteTest {
         String newFileId = given()
             .queryParam("name", "new.txt")
             .queryParam("size", newFile.length)
-            .queryParam("mimetype", MimeType.TEXT_CALENDAR.getType())
+            .queryParam("mimetype", UploadableMimeType.TEXT_CALENDAR.getType())
             .body(newFile)
         .when()
             .post("/api/files")

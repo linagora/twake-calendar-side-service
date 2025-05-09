@@ -37,12 +37,11 @@ import org.apache.james.util.ReactorUtils;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.storage.FileUploadConfiguration;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.UploadedFileDAO;
-import com.linagora.calendar.storage.model.MimeType;
 import com.linagora.calendar.storage.model.Upload;
+import com.linagora.calendar.storage.model.UploadableMimeType;
 import com.linagora.calendar.storage.model.UploadedFile;
 
 import io.netty.handler.codec.http.HttpMethod;
@@ -68,6 +67,22 @@ public class FileUploadRoute extends CalendarRoute {
         }
     }
 
+    static class AccumulatedSize {
+        private long value;
+
+        public AccumulatedSize() {
+            this.value = 0;
+        }
+
+        public long getValue() {
+            return value;
+        }
+
+        public void add(long size) {
+            value += size;
+        }
+    }
+
     public static final String NAME_PARAM = "name";
     public static final String SIZE_PARAM = "size";
     public static final String MIME_TYPE_PARAM = "mimetype";
@@ -76,14 +91,14 @@ public class FileUploadRoute extends CalendarRoute {
 
     private final UploadedFileDAO fileDAO;
     private final Clock clock;
-    private final Long userTotalLimit;
+    private final Long userTotalLimitInBytes;
 
     @Inject
     public FileUploadRoute(Authenticator authenticator, MetricFactory metricFactory, UploadedFileDAO fileDAO, Clock clock, FileUploadConfiguration configuration) {
         super(authenticator, metricFactory);
         this.fileDAO = fileDAO;
         this.clock = clock;
-        this.userTotalLimit = configuration.userTotalLimit();
+        this.userTotalLimitInBytes = configuration.userTotalLimit();
     }
 
     @Override
@@ -96,7 +111,7 @@ public class FileUploadRoute extends CalendarRoute {
         QueryStringDecoder queryStringDecoder = new QueryStringDecoder(request.uri());
         String fileName = extractFileName(queryStringDecoder);
         long fileSize = extractFileSize(queryStringDecoder);
-        MimeType mimeType = extractMimeType(queryStringDecoder);
+        UploadableMimeType mimeType = extractMimeType(queryStringDecoder);
 
         return ensureSpaceForUpload(session.getUser(), fileSize)
             .then(Mono.fromCallable(() -> ReactorUtils.toInputStream(request.receive().asByteBuffer())))
@@ -154,23 +169,21 @@ public class FileUploadRoute extends CalendarRoute {
         }
     }
 
-    private MimeType extractMimeType(QueryStringDecoder queryStringDecoder) {
+    private UploadableMimeType extractMimeType(QueryStringDecoder queryStringDecoder) {
         return queryStringDecoder.parameters().getOrDefault(MIME_TYPE_PARAM, List.of())
             .stream()
             .findAny()
             .filter(s -> !s.isBlank())
-            .map(MimeType::fromType)
+            .map(UploadableMimeType::fromType)
             .orElseThrow(() -> new IllegalArgumentException("Missing mimetype param"));
     }
 
     private Mono<Void> ensureSpaceForUpload(Username username, long incomingFileSizeInBytes) {
-        long userLimitInBytes = userTotalLimit * 1024 * 1024;
-
         return fileDAO.listFiles(username)
             .collectList()
             .flatMap(files -> {
                 long totalUsed = files.stream().mapToLong(UploadedFile::size).sum();
-                long required = incomingFileSizeInBytes - (userLimitInBytes - totalUsed);
+                long required = incomingFileSizeInBytes - (userTotalLimitInBytes - totalUsed);
 
                 if (required <= 0) {
                     return Mono.empty();
@@ -189,15 +202,15 @@ public class FileUploadRoute extends CalendarRoute {
     }
 
     private List<UploadedFile> getDeletedList(List<UploadedFile> sorted, long required) {
-        ImmutableList.Builder<UploadedFile> builder = new ImmutableList.Builder<>();
-        long accumulated = 0;
-        for (UploadedFile file : sorted) {
-            if (accumulated >= required) {
-                break;
-            }
-            builder.add(file);
-            accumulated += file.size();
-        }
-        return builder.build();
+        AccumulatedSize accumulatedSize = new AccumulatedSize();
+
+        return sorted.stream()
+            .takeWhile(file -> {
+                if (accumulatedSize.getValue() >= required) {
+                    return false;
+                }
+                accumulatedSize.add(file.size());
+                return true;
+            }).toList();
     }
 }

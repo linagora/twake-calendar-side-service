@@ -18,13 +18,13 @@
 
 package com.linagora.calendar.storage.model;
 
-public enum MimeType {
+public enum UploadableMimeType {
     TEXT_CALENDAR("text/calendar"),
     TEXT_VCARD("text/vcard");
 
     private final String type;
 
-    MimeType(String type) {
+    UploadableMimeType(String type) {
         this.type = type;
     }
 
@@ -32,10 +32,10 @@ public enum MimeType {
         return type;
     }
 
-    public static MimeType fromType(String type) {
-        for (MimeType mimeType : MimeType.values()) {
-            if (mimeType.getType().equalsIgnoreCase(type)) {
-                return mimeType;
+    public static UploadableMimeType fromType(String type) {
+        for (UploadableMimeType uploadableMimeType : UploadableMimeType.values()) {
+            if (uploadableMimeType.getType().equalsIgnoreCase(type)) {
+                return uploadableMimeType;
             }
         }
         throw new IllegalArgumentException("Unknown MIME type: " + type);

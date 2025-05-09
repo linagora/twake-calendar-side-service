@@ -20,5 +20,5 @@ package com.linagora.calendar.storage.model;
 
 import java.time.Instant;
 
-public record Upload(String fileName, MimeType mimeType, Instant created, Long size, byte[] data) {
+public record Upload(String fileName, UploadableMimeType uploadableMimeType, Instant created, Long size, byte[] data) {
 }
