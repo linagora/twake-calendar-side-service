@@ -1,0 +1,198 @@
+/********************************************************************
+ *  As a subpart of Twake Mail, this file is edited by Linagora.    *
+ *                                                                  *
+ *  https://twake-mail.com/                                         *
+ *  https://linagora.com                                            *
+ *                                                                  *
+ *  This file is subject to The Affero Gnu Public License           *
+ *  version 3.                                                      *
+ *                                                                  *
+ *  https://www.gnu.org/licenses/agpl-3.0.en.html                   *
+ *                                                                  *
+ *  This program is distributed in the hope that it will be         *
+ *  useful, but WITHOUT ANY WARRANTY; without even the implied      *
+ *  warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR         *
+ *  PURPOSE. See the GNU Affero General Public License for          *
+ *  more details.                                                   *
+ ********************************************************************/
+
+package com.linagora.calendar.storage.eventsearch;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+
+import jakarta.mail.internet.AddressException;
+
+import org.apache.james.core.MailAddress;
+
+import com.google.common.base.Preconditions;
+import com.linagora.calendar.storage.CalendarURL;
+
+public record EventFields(EventUid uid,
+                          String summary,
+                          String location,
+                          String description,
+                          String clazz,
+                          Instant start,
+                          Instant end,
+                          Instant dtStamp,
+                          Boolean allDay,
+                          Boolean hasResources,
+                          Boolean isRecurrentMaster,
+                          Integer durationInDays,
+                          Person organizer,
+                          List<Person> attendees,
+                          List<Person> resources,
+                          CalendarURL calendarURL) {
+
+
+    public record Person(String cn, MailAddress email) {
+
+        public static Person of(String cn, String email) throws AddressException {
+            return new Person(cn, new MailAddress(email));
+        }
+
+        public Person {
+            Preconditions.checkNotNull(email, "email must not be null");
+        }
+    }
+
+    public EventFields {
+        Preconditions.checkNotNull(uid, "uid must not be null");
+        Preconditions.checkNotNull(calendarURL, "calendarURL must not be null");
+    }
+
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public static class Builder {
+        private EventUid uid;
+        private String summary;
+        private String location;
+        private String description;
+        private String clazz;
+        private Instant start;
+        private Instant end;
+        private Instant dtStamp;
+        private Boolean allDay;
+        private Boolean hasResources;
+        private Boolean isRecurrentMaster;
+        private Integer durationInDays = 1;
+        private EventFields.Person organizer;
+        private List<EventFields.Person> attendees = new ArrayList<>();
+        private List<EventFields.Person> resources = new ArrayList<>();
+        private CalendarURL calendarURL;
+
+        public Builder uid(EventUid uid) {
+            this.uid = uid;
+            return this;
+        }
+
+        public Builder summary(String summary) {
+            this.summary = summary;
+            return this;
+        }
+
+        public Builder location(String location) {
+            this.location = location;
+            return this;
+        }
+
+        public Builder description(String description) {
+            this.description = description;
+            return this;
+        }
+
+        public Builder clazz(String clazz) {
+            this.clazz = clazz;
+            return this;
+        }
+
+        public Builder start(Instant start) {
+            this.start = start;
+            return this;
+        }
+
+        public Builder end(Instant end) {
+            this.end = end;
+            return this;
+        }
+
+        public Builder dtStamp(Instant dtStamp) {
+            this.dtStamp = dtStamp;
+            return this;
+        }
+
+        public Builder allDay(boolean allDay) {
+            this.allDay = allDay;
+            return this;
+        }
+
+        public Builder hasResources(boolean hasResources) {
+            this.hasResources = hasResources;
+            return this;
+        }
+
+        public Builder isRecurrentMaster(boolean isRecurrentMaster) {
+            this.isRecurrentMaster = isRecurrentMaster;
+            return this;
+        }
+
+        public Builder durationInDays(int durationInDays) {
+            this.durationInDays = durationInDays;
+            return this;
+        }
+
+        public Builder organizer(EventFields.Person organizer) {
+            this.organizer = organizer;
+            return this;
+        }
+
+        public Builder attendees(List<EventFields.Person> attendees) {
+            this.attendees = attendees;
+            return this;
+        }
+
+        public Builder addAttendee(EventFields.Person attendee) {
+            this.attendees.add(attendee);
+            return this;
+        }
+
+        public Builder resources(List<EventFields.Person> resources) {
+            this.resources = resources;
+            return this;
+        }
+
+        public Builder addResource(EventFields.Person resource) {
+            this.resources.add(resource);
+            return this;
+        }
+
+        public Builder calendarURL(CalendarURL calendarURL) {
+            this.calendarURL = calendarURL;
+            return this;
+        }
+
+        public EventFields build() {
+            return new EventFields(
+                uid,
+                summary,
+                location,
+                description,
+                clazz,
+                start,
+                end,
+                dtStamp,
+                allDay,
+                hasResources,
+                isRecurrentMaster,
+                durationInDays,
+                organizer,
+                attendees,
+                resources,
+                calendarURL);
+        }
+    }
+}
