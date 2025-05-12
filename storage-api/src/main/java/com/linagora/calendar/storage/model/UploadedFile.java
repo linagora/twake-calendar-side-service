@@ -20,19 +20,19 @@ package com.linagora.calendar.storage.model;
 
 import java.time.Instant;
 import java.util.Arrays;
-import java.util.Date;
 import java.util.Objects;
 
 import org.apache.james.core.Username;
 
 import com.linagora.calendar.storage.OpenPaaSId;
 
-public record UploadedFile(OpenPaaSId id, Username username, String fileName, Instant created, Long size, byte[] data) {
+public record UploadedFile(OpenPaaSId id, Username username, String fileName, UploadableMimeType uploadableMimeType, Instant created, Long size, byte[] data) {
     public static UploadedFile fromUpload(Username username, OpenPaaSId id, Upload upload) {
         return new UploadedFile(
             id,
             username,
             upload.fileName(),
+            upload.uploadableMimeType(),
             upload.created(),
             upload.size(),
             upload.data());
@@ -45,14 +45,15 @@ public record UploadedFile(OpenPaaSId id, Username username, String fileName, In
                 && Arrays.equals(this.data, other.data)
                 && Objects.equals(this.id, other.id)
                 && Objects.equals(this.fileName, other.fileName)
-                && Objects.equals(Date.from(this.created), Date.from(other.created))
-                && Objects.equals(this.username, other.username);
+                && Objects.equals(this.created, other.created)
+                && Objects.equals(this.username, other.username)
+                && Objects.equals(this.uploadableMimeType, other.uploadableMimeType);
         }
         return false;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, username, fileName, Date.from(created), size, Arrays.hashCode(data));
+        return Objects.hash(id, username, fileName, uploadableMimeType, created, size, Arrays.hashCode(data));
     }
 }

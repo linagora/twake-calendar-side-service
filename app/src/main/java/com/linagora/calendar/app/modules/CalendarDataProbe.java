@@ -34,8 +34,11 @@ import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.UploadedFileDAO;
 import com.linagora.calendar.storage.configuration.ConfigurationEntry;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
+import com.linagora.calendar.storage.model.Upload;
+import com.linagora.calendar.storage.model.UploadedFile;
 
 public class CalendarDataProbe implements GuiceProbe {
     private final UsersRepository usersRepository;
@@ -43,18 +46,21 @@ public class CalendarDataProbe implements GuiceProbe {
     private final OpenPaaSUserDAO usersDAO;
     private final OpenPaaSDomainDAO domainDAO;
     private final UserConfigurationDAO userConfigurationDAO;
+    private final UploadedFileDAO uploadedFileDAO;
 
     @Inject
     public CalendarDataProbe(UsersRepository usersRepository,
                              DomainList domainList,
                              OpenPaaSUserDAO usersDAO,
                              OpenPaaSDomainDAO domainDAO,
-                             UserConfigurationDAO userConfigurationDAO) {
+                             UserConfigurationDAO userConfigurationDAO,
+                             UploadedFileDAO uploadedFileDAO) {
         this.usersRepository = usersRepository;
         this.domainList = domainList;
         this.usersDAO = usersDAO;
         this.domainDAO = domainDAO;
         this.userConfigurationDAO = userConfigurationDAO;
+        this.uploadedFileDAO = uploadedFileDAO;
     }
 
     public CalendarDataProbe addDomain(Domain domain) {
@@ -100,5 +106,17 @@ public class CalendarDataProbe implements GuiceProbe {
 
     public List<ConfigurationEntry> retrieveConfiguration(MailboxSession session) {
         return userConfigurationDAO.retrieveConfiguration(session).collectList().block();
+    }
+
+    public OpenPaaSId saveUploadedFile(Username username, Upload upload) {
+        return uploadedFileDAO.saveFile(username, upload).block();
+    }
+
+    public UploadedFile getUploadedFile(Username username, OpenPaaSId id) {
+        return uploadedFileDAO.getFile(username, id).block();
+    }
+
+    public List<UploadedFile> listUploadedFiles(Username username) {
+        return uploadedFileDAO.listFiles(username).collectList().block();
     }
 }
