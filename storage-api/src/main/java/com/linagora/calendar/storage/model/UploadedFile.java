@@ -20,7 +20,6 @@ package com.linagora.calendar.storage.model;
 
 import java.time.Instant;
 import java.util.Arrays;
-import java.util.Date;
 import java.util.Objects;
 
 import org.apache.james.core.Username;
@@ -46,7 +45,7 @@ public record UploadedFile(OpenPaaSId id, Username username, String fileName, Up
                 && Arrays.equals(this.data, other.data)
                 && Objects.equals(this.id, other.id)
                 && Objects.equals(this.fileName, other.fileName)
-                && Objects.equals(Date.from(this.created), Date.from(other.created))
+                && Objects.equals(this.created, other.created)
                 && Objects.equals(this.username, other.username)
                 && Objects.equals(this.uploadableMimeType, other.uploadableMimeType);
         }
@@ -55,6 +54,6 @@ public record UploadedFile(OpenPaaSId id, Username username, String fileName, Up
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, username, fileName, uploadableMimeType, Date.from(created), size, Arrays.hashCode(data));
+        return Objects.hash(id, username, fileName, uploadableMimeType, created, size, Arrays.hashCode(data));
     }
 }

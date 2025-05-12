@@ -20,6 +20,7 @@ package com.linagora.calendar.restapi.routes;
 
 import java.io.IOException;
 import java.time.Clock;
+import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.List;
 
@@ -119,7 +120,7 @@ public class FileUploadRoute extends CalendarRoute {
 
         return ensureSpaceForUpload(session.getUser(), fileSize)
             .then(getUploadedData(request, fileSize))
-            .flatMap(data -> fileDAO.saveFile(session.getUser(), new Upload(fileName, mimeType, clock.instant(), (long) data.length, data)))
+            .flatMap(data -> fileDAO.saveFile(session.getUser(), new Upload(fileName, mimeType, clock.instant().truncatedTo(ChronoUnit.MILLIS), (long) data.length, data)))
             .map(UploadResponse::new)
             .map(this::toJsonBytes)
             .flatMap(bytes -> response.status(201)
