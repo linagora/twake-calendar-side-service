@@ -53,6 +53,7 @@ import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
+import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.redis.DockerRedisExtension;
 
@@ -88,6 +89,7 @@ public class TwakeCalendarOidcAuthenticationRedisTest {
             .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY)
             .oidcTokenStorageChoice(TwakeCalendarConfiguration.OIDCTokenStorageChoice.REDIS),
+        DavModuleTestHelper.BY_PASS_MODULE,
         binder -> binder.bind(URL.class).annotatedWith(Names.named("userInfo"))
             .toProvider(TwakeCalendarOidcAuthenticationRedisTest::getUserInfoTokenEndpoint),
         binder -> binder.bind(IntrospectionEndpoint.class)

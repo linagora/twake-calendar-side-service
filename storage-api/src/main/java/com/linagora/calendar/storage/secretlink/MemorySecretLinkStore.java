@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.storage.secretlink;
 
+import java.util.Map;
+
 import jakarta.inject.Inject;
 
 import org.apache.james.core.Username;
@@ -28,6 +30,7 @@ import com.google.common.collect.Table;
 import com.google.common.collect.Tables;
 import com.linagora.calendar.storage.CalendarURL;
 
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 public class MemorySecretLinkStore implements SecretLinkStore {
@@ -56,4 +59,13 @@ public class MemorySecretLinkStore implements SecretLinkStore {
             .then(Mono.defer(() -> Mono.justOrEmpty(store.get(session.getUser(), url))))
             .switchIfEmpty(generateSecretLink(url, session));
     }
+
+    @Override
+    public Mono<Username> checkSecretLink(CalendarURL url, SecretLinkToken token) {
+        return Flux.fromIterable(store.column(url).entrySet())
+            .filter(entry -> entry.getValue().equals(token))
+            .map(Map.Entry::getKey)
+            .next();
+    }
+
 }

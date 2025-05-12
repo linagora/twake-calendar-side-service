@@ -19,10 +19,14 @@
 
 package com.linagora.calendar.dav;
 
-import java.io.File;
+import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 import org.apache.http.auth.UsernamePasswordCredentials;
@@ -32,10 +36,10 @@ import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.ComposeContainer;
 import org.testcontainers.containers.ContainerState;
 import org.testcontainers.containers.wait.strategy.Wait;
-import org.testcontainers.utility.MountableFile;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
+import com.linagora.calendar.storage.mongodb.MongoDBConfiguration;
 
 public class DockerSabreDavSetup {
     public static final DockerSabreDavSetup SINGLETON = new DockerSabreDavSetup();
@@ -73,17 +77,24 @@ public class DockerSabreDavSetup {
     private final ComposeContainer environment;
     private SabreDavProvisioningService sabreDavProvisioningService;
 
-    {
-        MountableFile mountableFile = MountableFile.forClasspathResource("docker-sabre-dav-setup.yml");
-        environment = new ComposeContainer(new File(mountableFile.getFilesystemPath()))
-            .withExposedService(DockerService.MOCK_ESN.serviceName(), DockerService.MOCK_ESN.port())
-            .withExposedService(DockerService.RABBITMQ.serviceName(), DockerService.RABBITMQ.port())
-            .withExposedService(DockerService.RABBITMQ_ADMIN.serviceName(), DockerService.RABBITMQ_ADMIN.port())
-            .withExposedService(DockerService.SABRE_DAV.serviceName(), DockerService.SABRE_DAV.port())
-            .withExposedService(DockerService.MONGO.serviceName(), DockerService.MONGO.port())
-            .withLogConsumer(DockerService.RABBITMQ.serviceName(), frame -> LOGGER.info("[SABRE_DAV] " + frame.getUtf8String()))
-            .waitingFor(DockerService.SABRE_DAV.serviceName(), Wait.forLogMessage(".*ready to handle connections.*", 1)
-                .withStartupTimeout(Duration.ofMinutes(5)));
+    public DockerSabreDavSetup() {
+        try {
+            Path parentDirectory = Files.createTempDirectory("davIntegrationTests");
+            Path dockerfilePath = Files.createTempFile(parentDirectory, "docker-sabre-dav-setup.yml", "");
+            Files.copy(Objects.requireNonNull(DockerSabreDavSetup.class.getResourceAsStream("/" + "docker-sabre-dav-setup.yml")), dockerfilePath, StandardCopyOption.REPLACE_EXISTING);
+
+            this.environment = new ComposeContainer(dockerfilePath.toFile())
+                .withExposedService(DockerService.MOCK_ESN.serviceName(), DockerService.MOCK_ESN.port())
+                .withExposedService(DockerService.RABBITMQ.serviceName(), DockerService.RABBITMQ.port())
+                .withExposedService(DockerService.RABBITMQ_ADMIN.serviceName(), DockerService.RABBITMQ_ADMIN.port())
+                .withExposedService(DockerService.SABRE_DAV.serviceName(), DockerService.SABRE_DAV.port())
+                .withExposedService(DockerService.MONGO.serviceName(), DockerService.MONGO.port())
+                .withLogConsumer(DockerService.RABBITMQ.serviceName(), frame -> LOGGER.info("[SABRE_DAV] " + frame.getUtf8String()))
+                .waitingFor(DockerService.SABRE_DAV.serviceName(), Wait.forLogMessage(".*ready to handle connections.*", 1)
+                    .withStartupTimeout(Duration.ofMinutes(5)));
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to load or create temporary docker-compose file", e);
+        }
     }
 
     public void start() {
@@ -167,5 +178,9 @@ public class DockerSabreDavSetup {
             getSabreDavURI(),
             Optional.of(TRUST_ALL_SSL_CERTS),
             Optional.empty());
+    }
+
+    public MongoDBConfiguration mongoDBConfiguration() {
+        return new MongoDBConfiguration(getMongoDbIpAddress().toString(), SabreDavProvisioningService.DATABASE);
     }
 }
