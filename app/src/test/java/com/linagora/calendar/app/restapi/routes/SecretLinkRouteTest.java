@@ -141,7 +141,7 @@ public class SecretLinkRouteTest {
             .jsonPath()
             .getString("secretLink");
 
-        assertThat(secretLink).startsWith(SECRET_LINK_BASE_URL + "/calendars/" + pairCalendarId + "?token=");
+        assertThat(secretLink).startsWith(SECRET_LINK_BASE_URL + "/api/calendars/" + pairCalendarId + "/calendar.ics?token=");
     }
 
     @Test
