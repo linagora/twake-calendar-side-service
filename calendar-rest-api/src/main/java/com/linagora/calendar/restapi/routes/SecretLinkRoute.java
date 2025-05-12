@@ -107,7 +107,7 @@ public class SecretLinkRoute extends CalendarRoute {
 
     private URI buildSecretLinkURL(SecretLinkToken token, CalendarURL calendarURL) throws URISyntaxException {
         return new URIBuilder(secretLinkBaseUrl.toURI())
-            .setPath(StringUtils.removeEnd(secretLinkBaseUrl.getPath(), "/") + calendarURL.asUri())
+            .setPath(StringUtils.removeEnd(secretLinkBaseUrl.getPath(), "/") + "/api" + calendarURL.asUri() + "/calendar.ics")
             .addParameter("token", token.value())
             .build();
     }
