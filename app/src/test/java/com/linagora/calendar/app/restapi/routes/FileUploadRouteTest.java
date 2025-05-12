@@ -44,6 +44,7 @@ import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
+import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.FileUploadConfiguration;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -68,8 +69,7 @@ public class FileUploadRouteTest {
             .configurationFromClasspath()
             .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY),
-        binder -> binder.bind(URL.class).annotatedWith(Names.named("userInfo"))
-            .toProvider(() -> Throwing.supplier(() -> new URI("https://neven.to.be.called.com").toURL()).get()),
+        DavModuleTestHelper.BY_PASS_MODULE,
         binder -> binder.bind(FileUploadConfiguration.class).toProvider(() ->
             new FileUploadConfiguration(FileUploadConfiguration.DEFAULT_EXPIRATION, 3L * 1024 * 1024)));
 
