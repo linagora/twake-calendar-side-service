@@ -331,7 +331,7 @@ public class DownloadCalendarRouteTest {
             .setBasePath("")
             .setAuth(basicAuthScheme)
             .build())
-            .get(String.format("/api/calendars/%s/%s/secret-link", calendarId, calendarId))
+            .get(String.format("/calendar/api/calendars/%s/%s/secret-link", calendarId, calendarId))
         .then()
             .statusCode(HttpStatus.SC_OK)
             .contentType(JSON)

@@ -107,7 +107,7 @@ public class SecretLinkRouteTest {
     }
 
     private String getPath(String calendarId) {
-        return String.format("/api/calendars/%s/%s/secret-link", calendarId, calendarId);
+        return String.format("/calendar/api/calendars/%s/%s/secret-link", calendarId, calendarId);
     }
 
     @Test
@@ -130,7 +130,7 @@ public class SecretLinkRouteTest {
     @ValueSource(strings = {"123/456", "111/111"})
     void shouldReturnSecretLinkValueWithExpectedFormat(String pairCalendarId) {
         String secretLink = when()
-            .get(String.format("/api/calendars/%s/secret-link", pairCalendarId))
+            .get(String.format("/calendar/api/calendars/%s/secret-link", pairCalendarId))
         .then()
             .statusCode(HttpStatus.SC_OK)
             .contentType(JSON)
