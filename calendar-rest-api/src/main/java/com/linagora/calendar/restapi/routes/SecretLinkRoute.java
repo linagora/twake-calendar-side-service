@@ -72,7 +72,7 @@ public class SecretLinkRoute extends CalendarRoute {
 
     @Override
     Endpoint endpoint() {
-        return new Endpoint(HttpMethod.GET, "/api/calendars/{calendarHomeId}/{calendarId}/secret-link");
+        return new Endpoint(HttpMethod.GET, "/calendar/api/calendars/{calendarHomeId}/{calendarId}/secret-link");
     }
 
     @Override
