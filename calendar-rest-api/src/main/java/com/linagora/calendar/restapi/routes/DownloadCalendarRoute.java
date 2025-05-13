@@ -38,6 +38,7 @@ import org.apache.james.metrics.api.MetricFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.base.CharMatcher;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.restapi.ErrorResponse;
@@ -62,7 +63,10 @@ public class DownloadCalendarRoute implements JMAPRoutes {
     private static final String CONTENT_TYPE_ICS = "text/calendar; charset=utf-8";
     private static final String CONTENT_TYPE_JSON = "application/json; charset=utf-8";
     private static final String CONTENT_DISPOSITION = "attachment; filename=calendar.ics";
-    private static final String SAFE_PATTERN = "^[a-zA-Z0-9_-]+$";
+    private static final CharMatcher SAFE_TOKEN_MATCHER = CharMatcher.inRange('a', 'z')
+        .or(CharMatcher.inRange('A', 'Z'))
+        .or(CharMatcher.inRange('0', '9'))
+        .or(CharMatcher.anyOf("_-"));
 
     private final MetricFactory metricFactory;
     private final SecretLinkStore secretLinkStore;
@@ -128,7 +132,8 @@ public class DownloadCalendarRoute implements JMAPRoutes {
         return new QueryStringDecoder(request.uri()).parameters().getOrDefault(TOKEN_PARAM, List.of())
             .stream()
             .map(tokenValue -> {
-                Preconditions.checkArgument(StringUtils.trim(tokenValue).matches(SAFE_PATTERN), "Invalid token: only letters, digits, hyphen, and underscore are allowed.");
+                Preconditions.checkArgument(SAFE_TOKEN_MATCHER.matchesAllOf(StringUtils.trim(tokenValue)),
+                    "Invalid token: only letters, digits, hyphen, and underscore are allowed.");
                 return new SecretLinkToken(tokenValue);
             })
             .findAny();
