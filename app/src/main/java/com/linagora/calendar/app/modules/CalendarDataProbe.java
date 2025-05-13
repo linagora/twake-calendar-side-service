@@ -29,6 +29,8 @@ import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.user.api.UsersRepository;
 import org.apache.james.utils.GuiceProbe;
 
+import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -47,6 +49,7 @@ public class CalendarDataProbe implements GuiceProbe {
     private final OpenPaaSDomainDAO domainDAO;
     private final UserConfigurationDAO userConfigurationDAO;
     private final UploadedFileDAO uploadedFileDAO;
+    private final CalDavClient calDavClient;
 
     @Inject
     public CalendarDataProbe(UsersRepository usersRepository,
@@ -54,13 +57,15 @@ public class CalendarDataProbe implements GuiceProbe {
                              OpenPaaSUserDAO usersDAO,
                              OpenPaaSDomainDAO domainDAO,
                              UserConfigurationDAO userConfigurationDAO,
-                             UploadedFileDAO uploadedFileDAO) {
+                             UploadedFileDAO uploadedFileDAO,
+                             CalDavClient calDavClient) {
         this.usersRepository = usersRepository;
         this.domainList = domainList;
         this.usersDAO = usersDAO;
         this.domainDAO = domainDAO;
         this.userConfigurationDAO = userConfigurationDAO;
         this.uploadedFileDAO = uploadedFileDAO;
+        this.calDavClient = calDavClient;
     }
 
     public CalendarDataProbe addDomain(Domain domain) {
@@ -126,5 +131,9 @@ public class CalendarDataProbe implements GuiceProbe {
 
     public List<UploadedFile> listUploadedFiles(Username username) {
         return uploadedFileDAO.listFiles(username).collectList().block();
+    }
+
+    public byte[] exportCalendarFromCalDav(CalendarURL calendarURL, MailboxSession mailboxSession) {
+        return calDavClient.export(calendarURL, mailboxSession).block();
     }
 }
