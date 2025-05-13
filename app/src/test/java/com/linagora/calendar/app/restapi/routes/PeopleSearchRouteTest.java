@@ -23,8 +23,6 @@ import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 
-import java.net.MalformedURLException;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
@@ -36,7 +34,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
-import com.google.inject.name.Names;
+import com.linagora.calendar.app.AppTestHelper;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
@@ -62,14 +60,7 @@ public class PeopleSearchRouteTest {
             .configurationFromClasspath()
             .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY),
-        binder -> binder.bind(URL.class).annotatedWith(Names.named("userInfo"))
-            .toProvider(() -> {
-                try {
-                    return new URL("https://neven.to.be.called.com");
-                } catch (MalformedURLException e) {
-                    throw new RuntimeException(e);
-                }
-            }));
+        AppTestHelper.BY_PASS_MODULE);
 
     @AfterAll
     static void afterAll() {

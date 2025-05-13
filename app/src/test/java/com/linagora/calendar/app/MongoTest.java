@@ -38,6 +38,7 @@ import org.mockserver.integration.ClientAndServer;
 
 import com.google.inject.name.Names;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
+import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.mongodb.DockerMongoDBExtension;
@@ -72,6 +73,7 @@ class MongoTest {
         .configurationFromClasspath()
         .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
         .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB),
+        DavModuleTestHelper.BY_PASS_MODULE,
         binder -> binder.bind(URL.class).annotatedWith(Names.named("userInfo")).toProvider(MongoTest::getUserInfoTokenEndpoint),
         binder -> binder.bind(MongoDBConfiguration.class).toProvider(DockerMongoDBExtension::getMongoDBConfiguration));
 

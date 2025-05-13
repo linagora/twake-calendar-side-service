@@ -47,6 +47,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Module;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
+import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 
 import io.restassured.RestAssured;
@@ -84,6 +85,7 @@ class LdapTest {
             .configurationFromClasspath()
             .userChoice(TwakeCalendarConfiguration.UserChoice.LDAP)
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY),
+        DavModuleTestHelper.BY_PASS_MODULE,
         ldapModule());
 
     @BeforeEach

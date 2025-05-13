@@ -22,11 +22,13 @@ import java.util.function.Function;
 
 import jakarta.inject.Inject;
 
+import org.apache.james.core.Username;
 import org.apache.james.mailbox.MailboxSession;
 import org.bson.Document;
 import org.bson.conversions.Bson;
 import org.bson.types.ObjectId;
 
+import com.google.common.base.Preconditions;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -94,6 +96,21 @@ public class MongoDBSecretLinkStore implements SecretLinkStore {
             .flatMap(userId -> getSecretLinkDocument(url, userId))
             .map(document -> new SecretLinkToken(document.getString(FIELD_TOKEN)))
             .switchIfEmpty(generateSecretLink(url, session));
+    }
+
+    @Override
+    public Mono<Username> checkSecretLink(CalendarURL url, SecretLinkToken token) {
+        Preconditions.checkArgument(token != null, "token must not be null");
+        Preconditions.checkArgument(url != null, "url must not be null");
+        return Mono.from(database.getCollection(COLLECTION)
+            .find(Filters.and(
+                Filters.eq(FIELD_TOKEN, token.value()),
+                Filters.eq(FIELD_CALENDAR_HOME_ID, url.base().value()),
+                Filters.eq(FIELD_CALENDAR_ID, url.calendarId().value())))
+            .first())
+            .map(document -> new OpenPaaSId(document.getObjectId(FIELD_USER_ID).toHexString()))
+            .flatMap(userDAO::retrieve)
+            .map(OpenPaaSUser::username);
     }
 
     private Mono<Document> getSecretLinkDocument(CalendarURL url, OpenPaaSId userId) {

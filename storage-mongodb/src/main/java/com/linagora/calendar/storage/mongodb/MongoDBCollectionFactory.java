@@ -72,6 +72,12 @@ public class MongoDBCollectionFactory {
                     MongoDBSecretLinkStore.FIELD_CALENDAR_HOME_ID,
                     MongoDBSecretLinkStore.FIELD_CALENDAR_ID), new IndexOptions().unique(true)))
             .block();
+
+        Mono.from(database.getCollection(SECRETLINKS)
+                .createIndex(Indexes.ascending(MongoDBSecretLinkStore.FIELD_TOKEN,
+                    MongoDBSecretLinkStore.FIELD_CALENDAR_HOME_ID,
+                    MongoDBSecretLinkStore.FIELD_CALENDAR_ID), new IndexOptions().unique(true)))
+            .block();
     }
 
     private static boolean collectionExists(MongoDatabase database, String collectionName) {

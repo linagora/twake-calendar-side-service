@@ -101,4 +101,24 @@ public interface SecretLinkStoreContract {
         assertThatThrownBy(() -> testee().generateSecretLink(CALENDAR_URL, SESSION).block())
             .isInstanceOf(SecretLinkPermissionException.class);
     }
+
+    @Test
+    default void checkSecretLinkValidShouldReturnUsernameWhenTokenCheck() {
+        SecretLinkToken secretLinkToken = testee().getSecretLink(CALENDAR_URL, SESSION).block();
+        assertThat(testee().checkSecretLink(CALENDAR_URL, secretLinkToken).block()).isEqualTo(USERNAME);
+    }
+
+    @Test
+    default void checkSecretLinkValidShouldReturnEmptyWhenTokenCheckInvalid() {
+        assertThat(testee().checkSecretLink(CALENDAR_URL, new SecretLinkToken(UUID.randomUUID().toString())).blockOptional())
+            .isEmpty();
+    }
+
+
+    @Test
+    default void checkSecretLinkShouldReturnEmptyWhenURLDoesNotMatch() {
+        SecretLinkToken secretLinkToken = testee().getSecretLink(CALENDAR_URL, SESSION).block();
+        assertThat(testee().checkSecretLink(CALENDAR_URL_2, secretLinkToken).blockOptional()).isEmpty();
+    }
+
 }

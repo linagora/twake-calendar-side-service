@@ -30,8 +30,10 @@ import static com.linagora.calendar.dav.DockerSabreDavSetup.DockerService.MOCK_E
 import static com.linagora.calendar.dav.DockerSabreDavSetup.DockerService.RABBITMQ_ADMIN;
 import static org.mockserver.model.Parameter.param;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.lang3.StringUtils;
@@ -48,7 +50,6 @@ import org.mockserver.model.HttpResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.shaded.org.awaitility.Awaitility;
-import org.testcontainers.utility.MountableFile;
 
 import com.linagora.calendar.storage.OpenPaaSUser;
 
@@ -123,7 +124,9 @@ public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup) impleme
                     headers.add("Content-Type", "application/json");
                 });
 
-            Path definitionFilePath = Paths.get(MountableFile.forClasspathResource("rabbitmq-definitions.json").getFilesystemPath());
+            Path parentDirectory = Files.createTempDirectory("davIntegrationTests");
+            Path definitionFilePath = Files.createTempFile(parentDirectory, "rabbitmq-definitions.json", "");
+            Files.copy(Objects.requireNonNull(SabreDavExtension.class.getResourceAsStream("/" + "rabbitmq-definitions.json")), definitionFilePath, StandardCopyOption.REPLACE_EXISTING);
 
             httpClient.post()
                 .uri("/api/definitions")

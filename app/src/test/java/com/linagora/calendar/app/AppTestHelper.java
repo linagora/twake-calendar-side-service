@@ -16,20 +16,37 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage.secretlink;
+package com.linagora.calendar.app;
 
-import org.apache.james.core.Username;
-import org.apache.james.mailbox.MailboxSession;
+import java.net.MalformedURLException;
+import java.net.URL;
 
-import com.linagora.calendar.storage.CalendarURL;
+import com.google.inject.AbstractModule;
+import com.google.inject.Module;
+import com.google.inject.name.Names;
+import com.linagora.calendar.dav.DavModuleTestHelper;
 
-import reactor.core.publisher.Mono;
+public class AppTestHelper {
 
-public interface SecretLinkStore {
+    public static final Module BY_PASS_MODULE = new AbstractModule() {
+        @Override
+        protected void configure() {
+            install(OIDC_BY_PASS_MODULE);
+            install(DavModuleTestHelper.BY_PASS_MODULE);
+        }
+    };
 
-    Mono<SecretLinkToken> generateSecretLink(CalendarURL url, MailboxSession session);
-
-    Mono<SecretLinkToken> getSecretLink(CalendarURL url, MailboxSession session);
-
-    Mono<Username> checkSecretLink(CalendarURL url, SecretLinkToken token);
+    public static final Module OIDC_BY_PASS_MODULE = new AbstractModule() {
+        @Override
+        protected void configure() {
+            bind(URL.class).annotatedWith(Names.named("userInfo"))
+                .toProvider(() -> {
+                    try {
+                        return new URL("https://neven.to.be.called.com");
+                    } catch (MalformedURLException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+        }
+    };
 }

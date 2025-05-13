@@ -26,7 +26,6 @@ import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.net.URI;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.function.Supplier;
 
@@ -42,7 +41,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mockito;
 
 import com.github.fge.lambdas.Throwing;
-import com.google.inject.name.Names;
+import com.linagora.calendar.app.AppTestHelper;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
@@ -72,8 +71,7 @@ public class SecretLinkRouteTest {
             .configurationFromClasspath()
             .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY),
-        binder -> binder.bind(URL.class).annotatedWith(Names.named("userInfo"))
-            .toProvider(() -> Throwing.supplier(() -> new URI("https://neven.to.be.called.com").toURL()).get()),
+        AppTestHelper.BY_PASS_MODULE,
         binder -> {
             Mockito.doReturn(Throwing.supplier(() -> URI.create(SECRET_LINK_BASE_URL).toURL()).get())
                 .when(spyRestApiConfiguration).getSelfUrl();
