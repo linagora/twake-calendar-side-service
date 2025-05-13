@@ -43,7 +43,7 @@ class DavConfigurationTest {
     @Test
     void fromShouldReturnTheConfigurationWhenAllParametersAreGiven() throws URISyntaxException {
         PropertiesConfiguration configuration = new PropertiesConfiguration();
-        configuration.addProperty("dav.api.uri", "http://localhost:8080");
+        configuration.addProperty("dav.url", "http://localhost:8080");
         configuration.addProperty("dav.admin.user", "jhon_doe");
         configuration.addProperty("dav.admin.password", "123");
         configuration.addProperty("dav.rest.client.trust.all.ssl.certs", "true");
@@ -67,13 +67,13 @@ class DavConfigurationTest {
 
         assertThatThrownBy(() -> DavConfiguration.from(configuration))
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessage("dav.api.uri should not be empty");
+            .hasMessage("dav.url should not be empty");
     }
 
     @Test
     void fromShouldThrowWhenCardDavAdminUserNotConfigured() {
         PropertiesConfiguration configuration = new PropertiesConfiguration();
-        configuration.addProperty("dav.api.uri", "http://localhost:8080");
+        configuration.addProperty("dav.url", "http://localhost:8080");
         configuration.addProperty("dav.admin.password", "123");
         configuration.addProperty("dav.rest.client.trust.all.ssl.certs", "true");
         configuration.addProperty("dav.rest.client.response.timeout", "500");
