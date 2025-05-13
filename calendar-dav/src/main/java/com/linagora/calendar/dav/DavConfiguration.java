@@ -33,7 +33,7 @@ public record DavConfiguration(UsernamePasswordCredentials adminCredential,
                                Optional<Boolean> trustAllSslCerts,
                                Optional<Duration> responseTimeout) {
     static final boolean CLIENT_TRUST_ALL_SSL_CERTS_DISABLED = false;
-    static final String DAV_API_URI_PROPERTY = "dav.api.uri";
+    static final String DAV_API_URI_PROPERTY = "dav.url";
     static final String DAV_ADMIN_USER_PROPERTY = "dav.admin.user";
     static final String DAV_ADMIN_PASSWORD_PROPERTY = "dav.admin.password";
     static final String DAV_REST_CLIENT_TRUST_ALL_SSL_CERTS_PROPERTY = "dav.rest.client.trust.all.ssl.certs";
