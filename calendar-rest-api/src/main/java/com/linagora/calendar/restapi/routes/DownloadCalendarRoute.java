@@ -112,9 +112,10 @@ public class DownloadCalendarRoute implements JMAPRoutes {
                 }
 
                 if (exception instanceof ForbiddenException) {
-                    LOGGER.warn("Forbidden access attempt: {}", exception.getMessage());
+                    LOGGER.warn("Forbidden access attempt", exception);
                     return doOnForbidden(response);
                 }
+                LOGGER.error("Unexpected error", exception);
                 return doOnError(response);
             });
     }
