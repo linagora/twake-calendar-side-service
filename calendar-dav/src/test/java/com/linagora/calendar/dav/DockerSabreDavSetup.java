@@ -31,6 +31,8 @@ import java.util.Optional;
 
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.http.client.utils.URIBuilder;
+import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
+import org.apache.james.metrics.tests.RecordingMetricFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.ComposeContainer;
@@ -40,6 +42,8 @@ import org.testcontainers.containers.wait.strategy.Wait;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.storage.mongodb.MongoDBConfiguration;
+import com.linagora.calendar.storage.mongodb.MongoDBConnectionFactory;
+import com.mongodb.reactivestreams.client.MongoDatabase;
 
 public class DockerSabreDavSetup {
     public static final DockerSabreDavSetup SINGLETON = new DockerSabreDavSetup();
@@ -182,5 +186,24 @@ public class DockerSabreDavSetup {
 
     public MongoDBConfiguration mongoDBConfiguration() {
         return new MongoDBConfiguration(getMongoDbIpAddress().toString(), SabreDavProvisioningService.DATABASE);
+    }
+
+    public MongoDatabase getMongoDB() {
+        return MongoDBConnectionFactory.instantiateDB(mongoDBConfiguration(), new RecordingMetricFactory());
+    }
+
+    public RabbitMQConfiguration rabbitMQConfiguration() {
+        return RabbitMQConfiguration.builder()
+            .amqpUri(rabbitMqUri())
+            .managementUri(rabbitMqManagementUri())
+            .managementCredentials(new RabbitMQConfiguration.ManagementCredentials("calendar", "calendar".toCharArray()))
+            .maxRetries(3)
+            .minDelayInMs(10)
+            .connectionTimeoutInMs(100)
+            .channelRpcTimeoutInMs(100)
+            .handshakeTimeoutInMs(100)
+            .shutdownTimeoutInMs(100)
+            .networkRecoveryIntervalInMs(100)
+            .build();
     }
 }

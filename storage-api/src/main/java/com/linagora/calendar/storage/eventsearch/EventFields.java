@@ -19,6 +19,7 @@
 package com.linagora.calendar.storage.eventsearch;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -76,14 +77,16 @@ public record EventFields(EventUid uid,
         private Instant start;
         private Instant end;
         private Instant dtStamp;
-        private Boolean allDay;
-        private Boolean hasResources;
+        private Boolean allDay = false;
         private Boolean isRecurrentMaster;
-        private Integer durationInDays = 1;
         private EventFields.Person organizer;
         private List<EventFields.Person> attendees = new ArrayList<>();
         private List<EventFields.Person> resources = new ArrayList<>();
         private CalendarURL calendarURL;
+
+        public Builder uid(String uid) {
+            return uid(new EventUid(uid));
+        }
 
         public Builder uid(EventUid uid) {
             this.uid = uid;
@@ -130,18 +133,8 @@ public record EventFields(EventUid uid,
             return this;
         }
 
-        public Builder hasResources(boolean hasResources) {
-            this.hasResources = hasResources;
-            return this;
-        }
-
         public Builder isRecurrentMaster(boolean isRecurrentMaster) {
             this.isRecurrentMaster = isRecurrentMaster;
-            return this;
-        }
-
-        public Builder durationInDays(int durationInDays) {
-            this.durationInDays = durationInDays;
             return this;
         }
 
@@ -175,6 +168,17 @@ public record EventFields(EventUid uid,
             return this;
         }
 
+        int calculateDurationInDays() {
+            if (start == null || end == null || !end.isAfter(start)) {
+                return 0;
+            }
+            return (int) ChronoUnit.DAYS.between(start, end);
+        }
+
+        boolean calculateHasResources() {
+            return resources != null && !resources.isEmpty();
+        }
+
         public EventFields build() {
             return new EventFields(
                 uid,
@@ -186,13 +190,14 @@ public record EventFields(EventUid uid,
                 end,
                 dtStamp,
                 allDay,
-                hasResources,
+                calculateHasResources(),
                 isRecurrentMaster,
-                durationInDays,
+                calculateDurationInDays(),
                 organizer,
                 attendees,
                 resources,
                 calendarURL);
         }
     }
+
 }
