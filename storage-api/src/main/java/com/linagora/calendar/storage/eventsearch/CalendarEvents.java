@@ -35,6 +35,11 @@ public record CalendarEvents(EventUid eventUid,
         return new CalendarEvents(uid, calendarURL, ImmutableSet.copyOf(eventFields));
     }
 
+    public static CalendarEvents of(Set<EventFields> eventFields) {
+        EventFields sample = eventFields.iterator().next();
+        return new CalendarEvents(sample.uid(), sample.calendarURL(), ImmutableSet.copyOf(eventFields));
+    }
+
     public CalendarEvents {
         Validate.notNull(eventUid, "eventUid must not be null");
         Validate.notNull(calendarURL, "calendarURL must not be null");
