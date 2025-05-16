@@ -18,9 +18,11 @@
 
 package com.linagora.calendar.app.restapi.routes;
 
+import static com.linagora.calendar.app.AppTestHelper.BY_PASS_MODULE;
 import static io.restassured.RestAssured.given;
 import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
+import static org.apache.james.backends.rabbitmq.RabbitMQExtension.IsolationPolicy.WEAK;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 
@@ -30,9 +32,11 @@ import java.util.Arrays;
 import java.util.List;
 
 import org.apache.http.HttpStatus;
+import org.apache.james.backends.rabbitmq.RabbitMQExtension;
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
@@ -60,11 +64,17 @@ public class FileUploadRouteTest {
     private static final Username USERNAME = Username.fromLocalPartWithDomain("bob", DOMAIN);
 
     @RegisterExtension
+    @Order(1)
+    private static RabbitMQExtension rabbitMQExtension = RabbitMQExtension.singletonRabbitMQ()
+        .isolationPolicy(WEAK);
+
+    @RegisterExtension
     static TwakeCalendarExtension extension = new TwakeCalendarExtension(
         TwakeCalendarConfiguration.builder()
             .configurationFromClasspath()
             .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY),
+        BY_PASS_MODULE.apply(rabbitMQExtension),
         DavModuleTestHelper.BY_PASS_MODULE,
         binder -> binder.bind(FileUploadConfiguration.class).toProvider(() ->
             new FileUploadConfiguration(FileUploadConfiguration.DEFAULT_EXPIRATION, 3L * 1024 * 1024)));

@@ -23,6 +23,7 @@ import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
 import static io.restassured.http.ContentType.JSON;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
+import static org.apache.james.backends.rabbitmq.RabbitMQExtension.IsolationPolicy.WEAK;
 import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
 
 import java.nio.charset.StandardCharsets;
@@ -30,10 +31,12 @@ import java.util.Comparator;
 import java.util.List;
 
 import org.apache.http.HttpStatus;
+import org.apache.james.backends.rabbitmq.RabbitMQExtension;
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -64,12 +67,18 @@ public class UserConfigurationRouteTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @RegisterExtension
+    @Order(1)
+    private static RabbitMQExtension rabbitMQExtension = RabbitMQExtension.singletonRabbitMQ()
+        .isolationPolicy(WEAK);
+
+    @RegisterExtension
+    @Order(2)
     static TwakeCalendarExtension twakeCalendarExtension = new TwakeCalendarExtension(
         TwakeCalendarConfiguration.builder()
             .configurationFromClasspath()
             .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY),
-        AppTestHelper.BY_PASS_MODULE);
+        AppTestHelper.BY_PASS_MODULE.apply(rabbitMQExtension));
 
     @AfterAll
     static void afterAll() {

@@ -45,6 +45,8 @@ import com.linagora.calendar.storage.mongodb.MongoDBConfiguration;
 import com.linagora.calendar.storage.mongodb.MongoDBConnectionFactory;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
+import reactor.netty.http.client.HttpClient;
+
 public class DockerSabreDavSetup {
     public static final DockerSabreDavSetup SINGLETON = new DockerSabreDavSetup();
 
@@ -205,5 +207,14 @@ public class DockerSabreDavSetup {
             .shutdownTimeoutInMs(100)
             .networkRecoveryIntervalInMs(100)
             .build();
+    }
+
+    public HttpClient rabbitmqAdminHttpclient() {
+        return HttpClient.create()
+            .baseUrl(rabbitMqManagementUri().toString())
+            .headers(headers -> {
+                headers.add("Authorization", "Basic Y2FsZW5kYXI6Y2FsZW5kYXI="); // "calendar:calendar"
+                headers.add("Content-Type", "application/json");
+            });
     }
 }

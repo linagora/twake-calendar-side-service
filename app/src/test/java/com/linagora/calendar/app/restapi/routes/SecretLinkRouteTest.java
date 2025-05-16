@@ -23,6 +23,7 @@ import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
 import static io.restassured.http.ContentType.JSON;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
+import static org.apache.james.backends.rabbitmq.RabbitMQExtension.IsolationPolicy.WEAK;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.net.URI;
@@ -30,10 +31,12 @@ import java.nio.charset.StandardCharsets;
 import java.util.function.Supplier;
 
 import org.apache.http.HttpStatus;
+import org.apache.james.backends.rabbitmq.RabbitMQExtension;
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -66,12 +69,18 @@ public class SecretLinkRouteTest {
     private static final RestApiConfiguration spyRestApiConfiguration = Mockito.spy(initialRestApiConfiguration);
 
     @RegisterExtension
+    @Order(1)
+    private static RabbitMQExtension rabbitMQExtension = RabbitMQExtension.singletonRabbitMQ()
+        .isolationPolicy(WEAK);
+
+    @RegisterExtension
+    @Order(2)
     static TwakeCalendarExtension twakeCalendarExtension = new TwakeCalendarExtension(
         TwakeCalendarConfiguration.builder()
             .configurationFromClasspath()
             .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY),
-        AppTestHelper.BY_PASS_MODULE,
+        AppTestHelper.BY_PASS_MODULE.apply(rabbitMQExtension),
         binder -> {
             Mockito.doReturn(Throwing.supplier(() -> URI.create(SECRET_LINK_BASE_URL).toURL()).get())
                 .when(spyRestApiConfiguration).getSelfUrl();

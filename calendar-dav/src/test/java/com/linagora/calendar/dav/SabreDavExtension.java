@@ -27,7 +27,6 @@
 package com.linagora.calendar.dav;
 
 import static com.linagora.calendar.dav.DockerSabreDavSetup.DockerService.MOCK_ESN;
-import static com.linagora.calendar.dav.DockerSabreDavSetup.DockerService.RABBITMQ_ADMIN;
 import static org.mockserver.model.Parameter.param;
 
 import java.nio.file.Files;
@@ -55,7 +54,6 @@ import com.linagora.calendar.storage.OpenPaaSUser;
 
 import reactor.core.publisher.Mono;
 import reactor.netty.ByteBufFlux;
-import reactor.netty.http.client.HttpClient;
 
 public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup) implements BeforeAllCallback, AfterAllCallback, ParameterResolver {
 
@@ -113,22 +111,11 @@ public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup) impleme
 
     private boolean importRabbitMQDefinitions() {
         try {
-            HttpClient httpClient = HttpClient.create()
-                .baseUrl(String.format(
-                    "http://%s:%s",
-                    dockerSabreDavSetup.getHost(RABBITMQ_ADMIN),
-                    dockerSabreDavSetup.getPort(RABBITMQ_ADMIN)
-                ))
-                .headers(headers -> {
-                    headers.add("Authorization", "Basic Y2FsZW5kYXI6Y2FsZW5kYXI="); // "calendar:calendar"
-                    headers.add("Content-Type", "application/json");
-                });
-
             Path parentDirectory = Files.createTempDirectory("davIntegrationTests");
             Path definitionFilePath = Files.createTempFile(parentDirectory, "rabbitmq-definitions.json", "");
             Files.copy(Objects.requireNonNull(SabreDavExtension.class.getResourceAsStream("/" + "rabbitmq-definitions.json")), definitionFilePath, StandardCopyOption.REPLACE_EXISTING);
 
-            httpClient.post()
+            dockerSabreDavSetup.rabbitmqAdminHttpclient().post()
                 .uri("/api/definitions")
                 .send(ByteBufFlux.fromPath(definitionFilePath))
                 .responseSingle((res, bytes) -> {

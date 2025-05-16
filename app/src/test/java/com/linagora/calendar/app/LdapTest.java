@@ -23,32 +23,28 @@ import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static net.javacrumbs.jsonunit.core.Option.IGNORING_ARRAY_ORDER;
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.apache.james.backends.rabbitmq.RabbitMQExtension.IsolationPolicy.WEAK;
 
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 
 import org.apache.commons.configuration2.BaseHierarchicalConfiguration;
 import org.apache.commons.configuration2.HierarchicalConfiguration;
 import org.apache.commons.configuration2.plist.PropertyListConfiguration;
 import org.apache.commons.configuration2.tree.ImmutableNode;
+import org.apache.james.backends.rabbitmq.RabbitMQExtension;
 import org.apache.james.core.Domain;
-import org.apache.james.core.Username;
 import org.apache.james.server.core.configuration.ConfigurationProvider;
 import org.apache.james.user.ldap.DockerLdapSingleton;
-import org.apache.james.user.ldap.LdapRepositoryConfiguration;
 import org.apache.james.user.ldap.LdapGenericContainer;
 import org.apache.james.util.Port;
 import org.apache.james.utils.WebAdminGuiceProbe;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
-import com.google.common.collect.ImmutableList;
 import com.google.inject.Module;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
-import com.linagora.calendar.dav.DavModuleTestHelper;
-import com.linagora.calendar.restapi.RestApiServerProbe;
 
 import io.restassured.RestAssured;
 import io.restassured.builder.RequestSpecBuilder;
@@ -78,14 +74,19 @@ class LdapTest {
         configuration.addProperty("enableVirtualHosting", true);
         return configuration;
     }
+    @RegisterExtension
+    @Order(1)
+    private static RabbitMQExtension rabbitMQExtension = RabbitMQExtension.singletonRabbitMQ()
+        .isolationPolicy(WEAK);
 
     @RegisterExtension
+    @Order(2)
     static TwakeCalendarExtension twakeCalendarExtension = new TwakeCalendarExtension(
         TwakeCalendarConfiguration.builder()
             .configurationFromClasspath()
             .userChoice(TwakeCalendarConfiguration.UserChoice.LDAP)
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY),
-        DavModuleTestHelper.BY_PASS_MODULE,
+        AppTestHelper.BY_PASS_MODULE.apply(rabbitMQExtension),
         ldapModule());
 
     @BeforeEach
@@ -126,6 +127,12 @@ class LdapTest {
                     {
                         "componentName": "Guice application lifecycle",
                         "escapedComponentName": "Guice%20application%20lifecycle",
+                        "status": "healthy",
+                        "cause": null
+                    },
+                    {
+                        "componentName": "RabbitMQ backend",
+                        "escapedComponentName": "RabbitMQ%20backend",
                         "status": "healthy",
                         "cause": null
                     }

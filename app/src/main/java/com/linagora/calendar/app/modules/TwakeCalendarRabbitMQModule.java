@@ -16,42 +16,35 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.dav;
-
-import java.io.FileNotFoundException;
-
-import javax.net.ssl.SSLException;
+package com.linagora.calendar.app.modules;
 
 import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.james.modules.queue.rabbitmq.RabbitMQModule;
+import org.apache.james.utils.InitializationOperation;
+import org.apache.james.utils.InitilizationOperationBuilder;
 import org.apache.james.utils.PropertiesProvider;
 
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
-import com.google.inject.Singleton;
-import com.linagora.calendar.dav.amqp.DavCalendarEventModule;
+import com.google.inject.multibindings.ProvidesIntoSet;
+import com.linagora.calendar.app.modules.ScheduledReconnectionHandler.ScheduledReconnectionHandlerConfiguration;
 
-public class DavModule extends AbstractModule {
+public class TwakeCalendarRabbitMQModule extends AbstractModule {
 
     @Override
     protected void configure() {
-        install(new DavCalendarEventModule());
-    }
-
-    @Singleton
-    @Provides
-    public DavConfiguration provideDavConfiguration(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
-        return DavConfiguration.from(propertiesProvider.getConfiguration("configuration"));
+        install(new RabbitMQModule());
     }
 
     @Provides
-    @Singleton
-    public CalDavClient provideCalDavClient(DavConfiguration configuration) throws SSLException {
-        return new CalDavClient(configuration);
+    ScheduledReconnectionHandlerConfiguration configuration(PropertiesProvider propertiesProvider) throws ConfigurationException {
+        return ScheduledReconnectionHandlerConfiguration.parse(propertiesProvider);
     }
 
-    @Provides
-    @Singleton
-    public CardDavClient provideCardDavClient(DavConfiguration configuration) throws SSLException {
-        return new CardDavClient(configuration);
+    @ProvidesIntoSet
+    InitializationOperation start(ScheduledReconnectionHandler scheduledReconnectionHandler) {
+        return InitilizationOperationBuilder
+            .forClass(ScheduledReconnectionHandler.class)
+            .init(scheduledReconnectionHandler::start);
     }
 }

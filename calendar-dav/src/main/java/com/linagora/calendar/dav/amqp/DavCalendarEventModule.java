@@ -31,9 +31,12 @@ import org.apache.james.utils.PropertiesProvider;
 
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
+import com.google.inject.Scopes;
 import com.google.inject.Singleton;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.google.inject.name.Named;
+import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
+import com.linagora.calendar.storage.eventsearch.MemoryCalendarSearchService;
 
 public class DavCalendarEventModule extends AbstractModule {
     public static final String INJECT_KEY_DAV = "dav";
@@ -42,13 +45,21 @@ public class DavCalendarEventModule extends AbstractModule {
     private static final String QUEUES_QUORUM_BYPASS_PROPERTY = "dav.queues.quorum.bypass";
     private static final boolean QUEUES_QUORUM_BYPASS_DEFAULT = false;
 
+    @Override
+    protected void configure() {
+        bind(DavCalendarEventConsumer.class).in(Scopes.SINGLETON);
+
+        // TODO refactor when Opensearch https://github.com/linagora/twake-calendar-side-service/issues/69
+        bind(MemoryCalendarSearchService.class).in(Scopes.SINGLETON);
+        bind(CalendarSearchService.class).to(MemoryCalendarSearchService.class);
+    }
+
     @Provides
     @Singleton
     @Named(INJECT_KEY_DAV)
     public Supplier<QueueArguments.Builder> provideQueueArgumentsBuilder(RabbitMQConfiguration rabbitMQConfiguration,
                                                                          PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
-        boolean quorumQueuesByPass = propertiesProvider.getConfiguration("configuration")
-            .getBoolean(QUEUES_QUORUM_BYPASS_PROPERTY, QUEUES_QUORUM_BYPASS_DEFAULT);
+        boolean quorumQueuesByPass = getQuorumQueuesByPass(propertiesProvider);
         if (quorumQueuesByPass) {
             return rabbitMQConfiguration::workQueueArgumentsBuilder;
         }
@@ -57,6 +68,15 @@ public class DavCalendarEventModule extends AbstractModule {
                 .classicQueueVersion(2);
         }
         return QueueArguments::builder;
+    }
+
+    private boolean getQuorumQueuesByPass(PropertiesProvider propertiesProvider) throws ConfigurationException {
+        try {
+            return propertiesProvider.getConfiguration("configuration")
+                .getBoolean(QUEUES_QUORUM_BYPASS_PROPERTY, QUEUES_QUORUM_BYPASS_DEFAULT);
+        } catch (FileNotFoundException e) {
+            return QUEUES_QUORUM_BYPASS_DEFAULT;
+        }
     }
 
     @ProvidesIntoSet
