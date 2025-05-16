@@ -18,16 +18,28 @@
 
 package com.linagora.calendar.storage.eventsearch;
 
-import org.apache.james.vacation.api.AccountId;
+import java.util.Set;
 
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
+import org.apache.commons.lang3.Validate;
 
-public interface CalendarSearchService {
+import com.google.common.collect.ImmutableSet;
+import com.linagora.calendar.storage.CalendarURL;
 
-    Mono<Void> index(AccountId accountId, CalendarEvents fields);
+public record CalendarEvents(EventUid eventUid,
+                             CalendarURL calendarURL,
+                             Set<EventFields> events) {
 
-    Mono<Void> delete(AccountId accountId, EventUid eventUid);
+    public static CalendarEvents of(EventFields... eventFields) {
+        EventUid uid = eventFields[0].uid();
+        CalendarURL calendarURL = eventFields[0].calendarURL();
+        return new CalendarEvents(uid, calendarURL, ImmutableSet.copyOf(eventFields));
+    }
 
-    Flux<EventFields> search(AccountId accountId, EventSearchQuery query);
+    public CalendarEvents {
+        Validate.notNull(eventUid, "eventUid must not be null");
+        Validate.notNull(calendarURL, "calendarURL must not be null");
+        Validate.notEmpty(events, "events must not be null or empty");
+        Validate.isTrue(events.stream().allMatch(e -> e.uid().equals(eventUid)), "All EventFields must have the same EventUid");
+        Validate.isTrue(events.stream().allMatch(e -> e.calendarURL().equals(calendarURL)), "All EventFields must have the same CalendarURL");
+    }
 }

@@ -38,16 +38,11 @@ import reactor.core.publisher.Mono;
 
 public class MemoryCalendarSearchService implements CalendarSearchService {
 
-    private final Table<AccountId, EventUid, EventFields> indexStore = Tables.synchronizedTable(HashBasedTable.create());
+    private final Table<AccountId, EventUid, CalendarEvents> indexStore = Tables.synchronizedTable(HashBasedTable.create());
 
     @Override
-    public Mono<Void> index(AccountId accountId, EventFields fields) {
-        return Mono.fromRunnable(() -> indexStore.put(accountId, fields.uid(), fields));
-    }
-
-    @Override
-    public Mono<Void> update(AccountId accountId, EventFields updatedFields) {
-        return index(accountId, updatedFields);
+    public Mono<Void> index(AccountId accountId, CalendarEvents calendarEvents) {
+        return Mono.fromRunnable(() -> indexStore.put(accountId, calendarEvents.eventUid(), calendarEvents));
     }
 
     @Override
@@ -58,6 +53,7 @@ public class MemoryCalendarSearchService implements CalendarSearchService {
     @Override
     public Flux<EventFields> search(AccountId accountId, EventSearchQuery query) {
         return Flux.fromIterable(indexStore.row(accountId).values())
+            .flatMapIterable(CalendarEvents::events)
             .filter(event -> matchesQuery(event, query))
             .sort(Comparator.comparing(EventFields::start, Comparator.nullsLast(Comparator.naturalOrder())))
             .skip(query.offset())
