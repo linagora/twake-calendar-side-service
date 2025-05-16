@@ -30,6 +30,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
@@ -61,7 +62,7 @@ public class DavCalendarEventConsumer implements Closeable, Startable {
     private static final Logger LOGGER = LoggerFactory.getLogger(DavCalendarEventConsumer.class);
     private static final boolean REQUEUE_ON_NACK = true;
 
-    enum Queue {
+    public enum Queue {
         ADD("calendar:event:created", "tcalendar:event:created", "tcalendar:event:created-dead-letter"),
         UPDATE("calendar:event:updated", "tcalendar:event:updated", "tcalendar:event:updated-dead-letter"),
         DELETE("calendar:event:deleted", "tcalendar:event:deleted", "tcalendar:event:deleted-dead-letter"),
@@ -79,6 +80,10 @@ public class DavCalendarEventConsumer implements Closeable, Startable {
             this.queueName = queueName;
             this.deadLetter = deadLetter;
         }
+
+        public String queueName() {
+            return queueName;
+        }
     }
 
     private final ReceiverProvider receiverProvider;
@@ -88,6 +93,7 @@ public class DavCalendarEventConsumer implements Closeable, Startable {
     private final Map<Queue, Disposable> consumeDisposableMap;
 
     @Inject
+    @Singleton
     public DavCalendarEventConsumer(ReactorRabbitMQChannelPool channelPool,
                                     CalendarSearchService calendarSearchService,
                                     OpenPaaSUserDAO openPaaSUserDAO,
