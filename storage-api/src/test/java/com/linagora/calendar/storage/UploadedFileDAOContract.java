@@ -32,8 +32,8 @@ import org.awaitility.core.ConditionFactory;
 import org.junit.jupiter.api.Test;
 
 import com.linagora.calendar.storage.model.Upload;
-import com.linagora.calendar.storage.model.UploadableMimeType;
 import com.linagora.calendar.storage.model.UploadedFile;
+import com.linagora.calendar.storage.model.UploadedMimeType;
 
 public interface UploadedFileDAOContract {
 
@@ -53,7 +53,7 @@ public interface UploadedFileDAOContract {
     @Test
     default void getFileShouldWork() {
         Instant created = Instant.now().truncatedTo(ChronoUnit.MILLIS);
-        Upload upload = new Upload(FILE_NAME, UploadableMimeType.TEXT_CALENDAR, created, (long) DATA.length, DATA);
+        Upload upload = new Upload(FILE_NAME, UploadedMimeType.TEXT_CALENDAR, created, (long) DATA.length, DATA);
         OpenPaaSId id = testee().saveFile(USER_1, upload).block();
 
         UploadedFile actual = testee().getFile(USER_1, id).block();
@@ -68,7 +68,7 @@ public interface UploadedFileDAOContract {
     @Test
     default void deleteFileShouldWork() {
         Instant created = Instant.now().truncatedTo(ChronoUnit.MILLIS);
-        Upload upload = new Upload(FILE_NAME, UploadableMimeType.TEXT_CALENDAR, created, (long) DATA.length, DATA);
+        Upload upload = new Upload(FILE_NAME, UploadedMimeType.TEXT_CALENDAR, created, (long) DATA.length, DATA);
         OpenPaaSId id = testee().saveFile(USER_1, upload).block();
 
         testee().deleteFile(USER_1, id).block();
@@ -79,9 +79,9 @@ public interface UploadedFileDAOContract {
     @Test
     default void listFilesShouldReturnOnlyFilesOfGivenUser() {
         Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
-        Upload upload1 = new Upload("file1", UploadableMimeType.TEXT_CALENDAR, now, (long) DATA.length, DATA);
-        Upload upload2 = new Upload("file2", UploadableMimeType.TEXT_CALENDAR, now, (long) DATA_2.length, DATA_2);
-        Upload upload3 = new Upload("file3", UploadableMimeType.TEXT_CALENDAR, now, (long) DATA_2.length, DATA_2);
+        Upload upload1 = new Upload("file1", UploadedMimeType.TEXT_CALENDAR, now, (long) DATA.length, DATA);
+        Upload upload2 = new Upload("file2", UploadedMimeType.TEXT_CALENDAR, now, (long) DATA_2.length, DATA_2);
+        Upload upload3 = new Upload("file3", UploadedMimeType.TEXT_CALENDAR, now, (long) DATA_2.length, DATA_2);
 
         OpenPaaSId id1 = testee().saveFile(USER_1, upload1).block();
         OpenPaaSId id2 = testee().saveFile(USER_2, upload2).block();
@@ -103,7 +103,7 @@ public interface UploadedFileDAOContract {
     @Test
     default void user1CannotReadUploadOfUser2() {
         Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
-        Upload upload = new Upload(FILE_NAME, UploadableMimeType.TEXT_CALENDAR, now, (long) DATA.length, DATA);
+        Upload upload = new Upload(FILE_NAME, UploadedMimeType.TEXT_CALENDAR, now, (long) DATA.length, DATA);
         OpenPaaSId id = testee().saveFile(USER_2, upload).block();
 
         assertThat(testee().getFile(USER_1, id).blockOptional()).isEmpty();
@@ -112,7 +112,7 @@ public interface UploadedFileDAOContract {
     @Test
     default void user1ICannotDeleteUploadOfUser2() {
         Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
-        Upload upload = new Upload(FILE_NAME, UploadableMimeType.TEXT_CALENDAR, now, (long) DATA.length, DATA);
+        Upload upload = new Upload(FILE_NAME, UploadedMimeType.TEXT_CALENDAR, now, (long) DATA.length, DATA);
         OpenPaaSId id = testee().saveFile(USER_2, upload).block();
 
         testee().deleteFile(USER_1, id).block();
@@ -123,7 +123,7 @@ public interface UploadedFileDAOContract {
     @Test
     default void deleteShouldBeIdempotent() {
         Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
-        Upload upload = new Upload(FILE_NAME, UploadableMimeType.TEXT_CALENDAR, now, (long) DATA.length, DATA);
+        Upload upload = new Upload(FILE_NAME, UploadedMimeType.TEXT_CALENDAR, now, (long) DATA.length, DATA);
         OpenPaaSId id = testee().saveFile(USER_1, upload).block();
 
         testee().deleteFile(USER_1, id).block();
@@ -135,7 +135,7 @@ public interface UploadedFileDAOContract {
     @Test
     default void deletedFilesShouldNotBeListed() {
         Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
-        Upload upload = new Upload("file1", UploadableMimeType.TEXT_CALENDAR, now, (long) DATA.length, DATA);
+        Upload upload = new Upload("file1", UploadedMimeType.TEXT_CALENDAR, now, (long) DATA.length, DATA);
         OpenPaaSId id = testee().saveFile(USER_1, upload).block();
 
         testee().deleteFile(USER_1, id).block();
@@ -147,7 +147,7 @@ public interface UploadedFileDAOContract {
     @Test
     default void uploadSameFileTwiceShouldGenerateDifferentIds() {
         Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
-        Upload upload = new Upload(FILE_NAME, UploadableMimeType.TEXT_CALENDAR, now, (long) DATA.length, DATA);
+        Upload upload = new Upload(FILE_NAME, UploadedMimeType.TEXT_CALENDAR, now, (long) DATA.length, DATA);
 
         OpenPaaSId id1 = testee().saveFile(USER_1, upload).block();
         OpenPaaSId id2 = testee().saveFile(USER_1, upload).block();
@@ -158,7 +158,7 @@ public interface UploadedFileDAOContract {
     @Test
     default void expiredFilesCannotBeGet() {
         Instant instant = Instant.now().truncatedTo(ChronoUnit.MILLIS).minus(FileUploadConfiguration.DEFAULT_EXPIRATION.plus(Duration.ofMinutes(1)));
-        Upload upload = new Upload(FILE_NAME, UploadableMimeType.TEXT_CALENDAR, instant, (long) DATA.length, DATA);
+        Upload upload = new Upload(FILE_NAME, UploadedMimeType.TEXT_CALENDAR, instant, (long) DATA.length, DATA);
 
         OpenPaaSId id = testee().saveFile(USER_1, upload).block();
 
@@ -171,8 +171,8 @@ public interface UploadedFileDAOContract {
     @Test
     default void expiredFilesCannotBeListed() {
         Instant instant = Instant.now().truncatedTo(ChronoUnit.MILLIS).minus(FileUploadConfiguration.DEFAULT_EXPIRATION.plus(Duration.ofMinutes(1)));
-        Upload expiredUpload = new Upload("expired", UploadableMimeType.TEXT_CALENDAR, instant, (long) DATA.length, DATA);
-        Upload validUpload = new Upload("valid", UploadableMimeType.TEXT_CALENDAR, Instant.now().truncatedTo(ChronoUnit.MILLIS), (long) DATA.length, DATA);
+        Upload expiredUpload = new Upload("expired", UploadedMimeType.TEXT_CALENDAR, instant, (long) DATA.length, DATA);
+        Upload validUpload = new Upload("valid", UploadedMimeType.TEXT_CALENDAR, Instant.now().truncatedTo(ChronoUnit.MILLIS), (long) DATA.length, DATA);
 
         OpenPaaSId expiredId = testee().saveFile(USER_1, expiredUpload).block();
         OpenPaaSId validId = testee().saveFile(USER_1, validUpload).block();

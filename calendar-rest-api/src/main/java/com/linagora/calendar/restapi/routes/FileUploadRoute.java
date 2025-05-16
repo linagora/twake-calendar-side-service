@@ -42,8 +42,8 @@ import com.linagora.calendar.storage.FileUploadConfiguration;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.UploadedFileDAO;
 import com.linagora.calendar.storage.model.Upload;
-import com.linagora.calendar.storage.model.UploadableMimeType;
 import com.linagora.calendar.storage.model.UploadedFile;
+import com.linagora.calendar.storage.model.UploadedMimeType;
 
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.QueryStringDecoder;
@@ -112,7 +112,7 @@ public class FileUploadRoute extends CalendarRoute {
         QueryStringDecoder queryStringDecoder = new QueryStringDecoder(request.uri());
         String fileName = extractFileName(queryStringDecoder);
         long fileSize = extractFileSize(queryStringDecoder);
-        UploadableMimeType mimeType = extractMimeType(queryStringDecoder);
+        UploadedMimeType mimeType = extractMimeType(queryStringDecoder);
 
         if (fileSize > userTotalLimitInBytes) {
             throw new IllegalArgumentException("File size exceeds user total upload limit");
@@ -178,12 +178,12 @@ public class FileUploadRoute extends CalendarRoute {
         }
     }
 
-    private UploadableMimeType extractMimeType(QueryStringDecoder queryStringDecoder) {
+    private UploadedMimeType extractMimeType(QueryStringDecoder queryStringDecoder) {
         return queryStringDecoder.parameters().getOrDefault(MIME_TYPE_PARAM, List.of())
             .stream()
             .findAny()
             .filter(s -> !s.isBlank())
-            .map(UploadableMimeType::fromType)
+            .map(UploadedMimeType::fromType)
             .orElseThrow(() -> new IllegalArgumentException("Missing mimetype param"));
     }
 

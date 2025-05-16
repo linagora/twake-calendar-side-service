@@ -1,0 +1,406 @@
+/********************************************************************
+ *  As a subpart of Twake Mail, this file is edited by Linagora.    *
+ *                                                                  *
+ *  https://twake-mail.com/                                         *
+ *  https://linagora.com                                            *
+ *                                                                  *
+ *  This file is subject to The Affero Gnu Public License           *
+ *  version 3.                                                      *
+ *                                                                  *
+ *  https://www.gnu.org/licenses/agpl-3.0.en.html                   *
+ *                                                                  *
+ *  This program is distributed in the hope that it will be         *
+ *  useful, but WITHOUT ANY WARRANTY; without even the implied      *
+ *  warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR         *
+ *  PURPOSE. See the GNU Affero General Public License for          *
+ *  more details.                                                   *
+ ********************************************************************/
+
+package com.linagora.calendar.app.restapi.routes;
+
+import static io.restassured.RestAssured.given;
+import static io.restassured.config.EncoderConfig.encoderConfig;
+import static io.restassured.config.RestAssuredConfig.newConfig;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Durations.ONE_HUNDRED_MILLISECONDS;
+import static org.hamcrest.Matchers.equalTo;
+
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.UUID;
+
+import org.apache.http.HttpStatus;
+import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionFactory;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
+
+import com.linagora.calendar.app.TwakeCalendarConfiguration;
+import com.linagora.calendar.app.TwakeCalendarExtension;
+import com.linagora.calendar.app.TwakeCalendarGuiceServer;
+import com.linagora.calendar.app.modules.CalendarDataProbe;
+import com.linagora.calendar.dav.CalendarUtil;
+import com.linagora.calendar.dav.DavConfiguration;
+import com.linagora.calendar.dav.DockerSabreDavSetup;
+import com.linagora.calendar.dav.SabreDavExtension;
+import com.linagora.calendar.restapi.RestApiServerProbe;
+import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.MailboxSessionUtil;
+import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.OpenPaaSUser;
+import com.linagora.calendar.storage.model.Upload;
+import com.linagora.calendar.storage.model.UploadedMimeType;
+import com.linagora.calendar.storage.mongodb.MongoDBConfiguration;
+
+import io.restassured.RestAssured;
+import io.restassured.authentication.PreemptiveBasicAuthScheme;
+import io.restassured.builder.RequestSpecBuilder;
+import io.restassured.http.ContentType;
+import net.fortuna.ical4j.model.Calendar;
+import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.Property;
+import net.fortuna.ical4j.model.component.CalendarComponent;
+
+public class ImportRouteTest {
+
+    private static final String PASSWORD = "secret";
+
+    ConditionFactory CALMLY_AWAIT = Awaitility
+        .with().pollInterval(ONE_HUNDRED_MILLISECONDS)
+        .and().pollDelay(ONE_HUNDRED_MILLISECONDS)
+        .await();
+
+    @RegisterExtension
+    @Order(1)
+    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+
+    @RegisterExtension
+    @Order(2)
+    static TwakeCalendarExtension extension = new TwakeCalendarExtension(
+        TwakeCalendarConfiguration.builder()
+            .configurationFromClasspath()
+            .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
+            .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB),
+        binder -> {
+            binder.bind(DavConfiguration.class).toInstance(sabreDavExtension.dockerSabreDavSetup().davConfiguration());
+            binder.bind(MongoDBConfiguration.class).toInstance(sabreDavExtension.dockerSabreDavSetup().mongoDBConfiguration());
+        });
+
+    private OpenPaaSUser openPaaSUser;
+
+    @BeforeEach
+    void setup(TwakeCalendarGuiceServer server) {
+        this.openPaaSUser = sabreDavExtension.newTestUser();
+
+        server.getProbe(CalendarDataProbe.class).addDomain(openPaaSUser.username().getDomainPart().get());
+        server.getProbe(CalendarDataProbe.class).addUserToRepository(openPaaSUser.username(), PASSWORD);
+
+        PreemptiveBasicAuthScheme auth = new PreemptiveBasicAuthScheme();
+        auth.setUserName(openPaaSUser.username().asString());
+        auth.setPassword(PASSWORD);
+
+        RestAssured.requestSpecification = new RequestSpecBuilder()
+            .setPort(server.getProbe(RestApiServerProbe.class).getPort().getValue())
+            .setAuth(auth)
+            .setBasePath("")
+            .setAccept(ContentType.JSON)
+            .setContentType(ContentType.JSON)
+            .setConfig(newConfig().encoderConfig(encoderConfig().defaultContentCharset(StandardCharsets.UTF_8)))
+            .build();
+    }
+
+    @Test
+    void shouldImportSuccessfully(TwakeCalendarGuiceServer server) {
+        String uid = UUID.randomUUID().toString();
+        byte[] ics = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            TRANSP:OPAQUE
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250102T120000Z
+            DTEND:20250102T130000Z
+            SUMMARY:Test Event
+            ORGANIZER;CN=john doe:mailto:%s
+            ATTENDEE;PARTSTAT=accepted;RSVP=false;ROLE=chair;CUTYPE=individual:mailto:%s
+            DESCRIPTION:This is a test event
+            LOCATION:office
+            CLASS:PUBLIC
+            BEGIN:VALARM
+            TRIGGER:-PT5M
+            ACTION:EMAIL
+            ATTENDEE:mailto:%s
+            SUMMARY:test
+            DESCRIPTION:This is an automatic alarm
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """
+            .formatted(uid, openPaaSUser.username().asString(), openPaaSUser.username().asString(), openPaaSUser.username().asString())
+            .getBytes(StandardCharsets.UTF_8);
+
+        OpenPaaSId fileId = server.getProbe(CalendarDataProbe.class).saveUploadedFile(openPaaSUser.username(),
+            new Upload("abc.ics", UploadedMimeType.TEXT_CALENDAR, Instant.now(), (long) ics.length, ics));
+
+        String requestBody = """
+            {
+                "fileId": "%s",
+                "target": "/calendars/%s/%s.json"
+            }
+            """.formatted(fileId.value(), openPaaSUser.id().value(), openPaaSUser.id().value());
+
+        // To trigger calendar directory activation
+        server.getProbe(CalendarDataProbe.class).exportCalendarFromCalDav(new CalendarURL(openPaaSUser.id(), openPaaSUser.id()), MailboxSessionUtil.create(openPaaSUser.username()));
+
+        given()
+            .body(requestBody)
+        .when()
+            .post("/api/import")
+        .then()
+            .statusCode(HttpStatus.SC_ACCEPTED);
+
+        CALMLY_AWAIT
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> {
+                Calendar actual = CalendarUtil.parseIcs(
+                    server.getProbe(CalendarDataProbe.class).exportCalendarFromCalDav(new CalendarURL(openPaaSUser.id(), openPaaSUser.id()), MailboxSessionUtil.create(openPaaSUser.username())));
+
+                assertThat(actual.getComponent(Component.VEVENT).get().getProperty(Property.UID).get().getValue()).isEqualTo(uid);
+            });
+    }
+
+    @Test
+    void shouldImportMultipleEventsSuccessfully(TwakeCalendarGuiceServer server) {
+        String uid1 = UUID.randomUUID().toString();
+        String uid2 = UUID.randomUUID().toString();
+        byte[] ics = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250102T120000Z
+            DTEND:20250102T130000Z
+            SUMMARY:First Event
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250103T120000Z
+            DTEND:20250103T130000Z
+            SUMMARY:Second Event
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uid1, uid2).getBytes(StandardCharsets.UTF_8);
+
+        OpenPaaSId fileId = server.getProbe(CalendarDataProbe.class).saveUploadedFile(openPaaSUser.username(),
+            new Upload("multi.ics", UploadedMimeType.TEXT_CALENDAR, Instant.now(), (long) ics.length, ics));
+
+        String requestBody = """
+        {
+            "fileId": "%s",
+            "target": "/calendars/%s/%s.json"
+        }
+        """.formatted(fileId.value(), openPaaSUser.id().value(), openPaaSUser.id().value());
+
+        // To trigger calendar directory activation
+        server.getProbe(CalendarDataProbe.class).exportCalendarFromCalDav(new CalendarURL(openPaaSUser.id(), openPaaSUser.id()), MailboxSessionUtil.create(openPaaSUser.username()));
+
+        given()
+            .body(requestBody)
+        .when()
+            .post("/api/import")
+        .then()
+            .statusCode(HttpStatus.SC_ACCEPTED);
+
+        CALMLY_AWAIT.atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> {
+                Calendar actual = CalendarUtil.parseIcs(server.getProbe(CalendarDataProbe.class)
+                    .exportCalendarFromCalDav(new CalendarURL(openPaaSUser.id(), openPaaSUser.id()), MailboxSessionUtil.create(openPaaSUser.username())));
+
+                assertThat(actual.getComponents(Component.VEVENT))
+                    .anySatisfy(component -> assertThat(((CalendarComponent) component).getProperty(Property.UID).get().getValue()).isEqualTo(uid1))
+                    .anySatisfy(component -> assertThat(((CalendarComponent) component).getProperty(Property.UID).get().getValue()).isEqualTo(uid2));
+            });
+    }
+
+    @Test
+    void shouldImportRecurringEventsSuccessfully(TwakeCalendarGuiceServer server) {
+        String uid1 = UUID.randomUUID().toString();
+        String uid2 = UUID.randomUUID().toString();
+        String username = openPaaSUser.username().asString();
+        byte[] ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            CALSCALE:GREGORIAN
+            PRODID:-//SabreDAV//SabreDAV 3.2.2//EN
+            X-WR-CALNAME:#default
+            BEGIN:VTIMEZONE
+            TZID:Asia/Saigon
+            BEGIN:STANDARD
+            TZOFFSETFROM:+0700
+            TZOFFSETTO:+0700
+            TZNAME:WIB
+            DTSTART:19700101T000000
+            END:STANDARD
+            END:VTIMEZONE
+            BEGIN:VEVENT
+            UID:%s
+            TRANSP:OPAQUE
+            DTSTART;TZID=Asia/Saigon:20250514T130000
+            DTEND;TZID=Asia/Saigon:20250514T133000
+            CLASS:PUBLIC
+            SUMMARY:recur222
+            RRULE:FREQ=DAILY;COUNT=3
+            ORGANIZER;CN=John1 Doe1:mailto:%s
+            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:%s
+            DTSTAMP:20250515T073930Z
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:%s
+            TRANSP:OPAQUE
+            DTSTART;TZID=Asia/Saigon:20250515T120000
+            DTEND;TZID=Asia/Saigon:20250515T123000
+            CLASS:PUBLIC
+            SUMMARY:recur222
+            ORGANIZER;CN=John1 Doe1:mailto:%s
+            DTSTAMP:20250515T073930Z
+            RECURRENCE-ID:20250515T060000Z
+            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;CN=John1
+              Doe1:mailto:%s
+            SEQUENCE:1
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:%s
+            TRANSP:OPAQUE
+            DTSTART;TZID=Asia/Saigon:20250513T140000
+            DTEND;TZID=Asia/Saigon:20250513T143000
+            CLASS:PUBLIC
+            SUMMARY:test555
+            ORGANIZER;CN=John1 Doe1:mailto:%s
+            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:%s
+            DTSTAMP:20250515T074016Z
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uid1, username, username, uid1, username, username, uid2, username, username)
+            .getBytes(StandardCharsets.UTF_8);
+
+        OpenPaaSId fileId = server.getProbe(CalendarDataProbe.class).saveUploadedFile(openPaaSUser.username(),
+            new Upload("multi.ics", UploadedMimeType.TEXT_CALENDAR, Instant.now(), (long) ics.length, ics));
+
+        String requestBody = """
+        {
+            "fileId": "%s",
+            "target": "/calendars/%s/%s.json"
+        }
+        """.formatted(fileId.value(), openPaaSUser.id().value(), openPaaSUser.id().value());
+
+        // To trigger calendar directory activation
+        server.getProbe(CalendarDataProbe.class).exportCalendarFromCalDav(new CalendarURL(openPaaSUser.id(), openPaaSUser.id()), MailboxSessionUtil.create(openPaaSUser.username()));
+
+        given()
+            .body(requestBody)
+            .when()
+            .post("/api/import")
+            .then()
+            .statusCode(HttpStatus.SC_ACCEPTED);
+
+        CALMLY_AWAIT.atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> {
+                Calendar actual = CalendarUtil.parseIcs(server.getProbe(CalendarDataProbe.class)
+                    .exportCalendarFromCalDav(new CalendarURL(openPaaSUser.id(), openPaaSUser.id()), MailboxSessionUtil.create(openPaaSUser.username())));
+
+                assertThat(actual.getComponents(Component.VEVENT))
+                    .anySatisfy(component -> {
+                        assertThat(((CalendarComponent) component).getProperty(Property.UID).get().getValue()).isEqualTo(uid1);
+                        assertThat(((CalendarComponent) component).getProperty(Property.RRULE)).isNotEmpty();
+                    })
+                    .anySatisfy(component -> {
+                        assertThat(((CalendarComponent) component).getProperty(Property.UID).get().getValue()).isEqualTo(uid1);
+                        assertThat(((CalendarComponent) component).getProperty(Property.RECURRENCE_ID)).isNotEmpty();
+                    })
+                    .anySatisfy(component -> assertThat(((CalendarComponent) component).getProperty(Property.UID).get().getValue()).isEqualTo(uid2));
+            });
+    }
+
+    @Test
+    void shouldReturnErrorWhenFileIdDoesNotExist() {
+        String requestBody = """
+            {
+                "fileId": "659387b9d486dc0046aeff21",
+                "target": "/calendars/%s/calendarId.json"
+            }
+            """.formatted(openPaaSUser.id().value());
+
+        given()
+            .body(requestBody)
+        .when()
+            .post("/api/import")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.code", equalTo(400))
+            .body("error.message", equalTo("Bad request"))
+            .body("error.details", equalTo("Uploaded file not found"));
+    }
+
+    @Test
+    void shouldReturnErrorWhenTargetIsInvalid() {
+        String requestBody = """
+        {
+            "fileId": "659387b9d486dc0046aeff21",
+            "target": "/invalid/path"
+        }
+        """;
+
+        given()
+            .body(requestBody)
+        .when()
+            .post("/api/import")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.code", equalTo(400))
+            .body("error.message", equalTo("Bad request"))
+            .body("error.details", equalTo("Invalid target path"));
+    }
+
+    @Test
+    void shouldReturnErrorWhenFileIdFieldIsMissing() {
+        String requestBody = """
+            {
+                "target": "/calendars/%s/calendarId.json"
+            }
+            """.formatted(openPaaSUser.id().value());
+
+        given()
+            .body(requestBody)
+        .when()
+            .post("/api/import")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.code", equalTo(400))
+            .body("error.message", equalTo("Bad request"))
+            .body("error.details", equalTo("fileId must be present"));
+    }
+
+    @Test
+    void shouldReturnErrorWhenTargetFieldIsMissing() {
+        String requestBody = """
+            {
+                "fileId": "659387b9d486dc0046aeff21"
+            }
+            """;
+
+        given()
+            .body(requestBody)
+        .when()
+            .post("/api/import")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.code", equalTo(400))
+            .body("error.message", equalTo("Bad request"))
+            .body("error.details", equalTo("target must be present"));
+    }
+}
+
