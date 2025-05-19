@@ -35,6 +35,7 @@ import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
@@ -322,6 +323,97 @@ public class ImportRouteTest {
                         assertThat(((CalendarComponent) component).getProperty(Property.RECURRENCE_ID)).isNotEmpty();
                     })
                     .anySatisfy(component -> assertThat(((CalendarComponent) component).getProperty(Property.UID).get().getValue()).isEqualTo(uid2));
+            });
+    }
+
+    @Test
+    void shouldImportVcardSuccessfully(TwakeCalendarGuiceServer server) {
+        String addressBook = "collected";
+        String vcardUid = UUID.randomUUID().toString();
+        byte[] vcard = """
+            BEGIN:VCARD
+            VERSION:4.0
+            UID:%s
+            FN:John Doe
+            EMAIL;TYPE=Work:john.doe@example.com
+            END:VCARD
+            """.formatted(vcardUid).getBytes(StandardCharsets.UTF_8);
+
+        OpenPaaSId fileId = server.getProbe(CalendarDataProbe.class).saveUploadedFile(openPaaSUser.username(),
+            new Upload("contact.vcf", UploadedMimeType.TEXT_VCARD, Instant.now(), (long) vcard.length, vcard));
+
+        String requestBody = """
+        {
+            "fileId": "%s",
+            "target": "/addressbooks/%s/%s.json"
+        }
+        """.formatted(fileId.value(), openPaaSUser.id().value(), addressBook);
+
+        given()
+            .body(requestBody)
+        .when()
+            .post("/api/import")
+        .then()
+            .statusCode(HttpStatus.SC_ACCEPTED);
+
+        CALMLY_AWAIT.atMost(Duration.ofSeconds(10))
+            .ignoreExceptions()
+            .untilAsserted(() -> {
+                String contact = new String(server.getProbe(CalendarDataProbe.class)
+                    .exportContactFromCardDav(openPaaSUser.username(), openPaaSUser.id(), addressBook),
+                    StandardCharsets.UTF_8);
+                assertThat(contact).contains("EMAIL;TYPE=Work:john.doe@example.com");
+            });
+    }
+
+    @Test
+    void shouldImportMultipleVcardsSuccessfully(TwakeCalendarGuiceServer server) {
+        String addressBook = "collected";
+        String vcardUid1 = UUID.randomUUID().toString();
+        String vcardUid2 = UUID.randomUUID().toString();
+        byte[] vcard = """
+            BEGIN:VCARD
+            VERSION:4.0
+            UID:%s
+            FN:John Doe
+            EMAIL;TYPE=Work:john.doe@example.com
+            END:VCARD
+            BEGIN:VCARD
+            VERSION:4.0
+            UID:%s
+            FN:John Doe 2
+            EMAIL;TYPE=Work:john.doe2@example.com
+            END:VCARD
+            """.formatted(vcardUid1, vcardUid2).getBytes(StandardCharsets.UTF_8);
+
+        OpenPaaSId fileId = server.getProbe(CalendarDataProbe.class).saveUploadedFile(openPaaSUser.username(),
+            new Upload("contacts.vcf", UploadedMimeType.TEXT_VCARD, Instant.now(), (long) vcard.length, vcard));
+
+        // To trigger address book activation
+        server.getProbe(CalendarDataProbe.class).exportContactFromCardDav(openPaaSUser.username(), openPaaSUser.id(), addressBook);
+
+        String requestBody = """
+        {
+            "fileId": "%s",
+            "target": "/addressbooks/%s/%s.json"
+        }
+        """.formatted(fileId.value(), openPaaSUser.id().value(), addressBook);
+
+        given()
+            .body(requestBody)
+        .when()
+            .post("/api/import")
+        .then()
+            .statusCode(HttpStatus.SC_ACCEPTED);
+
+        CALMLY_AWAIT.atMost(Duration.ofSeconds(10))
+            .ignoreExceptions()
+            .untilAsserted(() -> {
+                String contact = new String(server.getProbe(CalendarDataProbe.class)
+                    .exportContactFromCardDav(openPaaSUser.username(), openPaaSUser.id(), addressBook),
+                    StandardCharsets.UTF_8);
+                assertThat(contact).contains("EMAIL;TYPE=Work:john.doe@example.com");
+                assertThat(contact).contains("EMAIL;TYPE=Work:john.doe2@example.com");
             });
     }
 

@@ -140,6 +140,11 @@
                 <version>2.2.2</version>
                 <scope>test</scope>
             </dependency>
+            <dependency>
+                <groupId>com.googlecode.ez-vcard</groupId>
+                <artifactId>ez-vcard</artifactId>
+                <version>0.12.1</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
