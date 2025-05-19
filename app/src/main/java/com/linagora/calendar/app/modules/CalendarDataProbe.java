@@ -30,6 +30,7 @@ import org.apache.james.user.api.UsersRepository;
 import org.apache.james.utils.GuiceProbe;
 
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
@@ -50,6 +51,7 @@ public class CalendarDataProbe implements GuiceProbe {
     private final UserConfigurationDAO userConfigurationDAO;
     private final UploadedFileDAO uploadedFileDAO;
     private final CalDavClient calDavClient;
+    private final CardDavClient cardDavClient;
 
     @Inject
     public CalendarDataProbe(UsersRepository usersRepository,
@@ -58,7 +60,7 @@ public class CalendarDataProbe implements GuiceProbe {
                              OpenPaaSDomainDAO domainDAO,
                              UserConfigurationDAO userConfigurationDAO,
                              UploadedFileDAO uploadedFileDAO,
-                             CalDavClient calDavClient) {
+                             CalDavClient calDavClient, CardDavClient cardDavClient) {
         this.usersRepository = usersRepository;
         this.domainList = domainList;
         this.usersDAO = usersDAO;
@@ -66,6 +68,7 @@ public class CalendarDataProbe implements GuiceProbe {
         this.userConfigurationDAO = userConfigurationDAO;
         this.uploadedFileDAO = uploadedFileDAO;
         this.calDavClient = calDavClient;
+        this.cardDavClient = cardDavClient;
     }
 
     public CalendarDataProbe addDomain(Domain domain) {
@@ -135,5 +138,9 @@ public class CalendarDataProbe implements GuiceProbe {
 
     public byte[] exportCalendarFromCalDav(CalendarURL calendarURL, MailboxSession mailboxSession) {
         return calDavClient.export(calendarURL, mailboxSession).block();
+    }
+
+    public byte[] exportContactFromCardDav(Username username, OpenPaaSId userId, String addressBook) {
+        return cardDavClient.exportContact(username, userId, addressBook).block();
     }
 }

@@ -42,4 +42,10 @@ public class DavModule extends AbstractModule {
     public CalDavClient provideCalDavClient(DavConfiguration configuration) throws SSLException {
         return new CalDavClient(configuration);
     }
+
+    @Provides
+    @Singleton
+    public CardDavClient provideCardDavClient(DavConfiguration configuration) throws SSLException {
+        return new CardDavClient(configuration);
+    }
 }
