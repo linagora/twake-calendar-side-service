@@ -120,7 +120,7 @@ public class ImportRoute extends CalendarRoute {
             throw new IllegalArgumentException("Invalid target path");
         }
         String baseId = parts[2];
-        String childId = parts[3].replace(".json", "");       // could either be a calendarId or an addressBook
+        String davCollectionId = parts[3].replace(".json", "");
 
         return fileDAO.getFile(session.getUser(), new OpenPaaSId(request.fileId))
             .switchIfEmpty(Mono.error(new IllegalArgumentException("Uploaded file not found")))
@@ -128,14 +128,14 @@ public class ImportRoute extends CalendarRoute {
                 UploadedMimeType mimeType = uploadedFile.uploadedMimeType();
                 return switch (mimeType) {
                     case TEXT_CALENDAR -> {
-                        importIcs(uploadedFile, new CalendarURL(new OpenPaaSId(baseId), new OpenPaaSId(childId)), session.getUser())
+                        importIcs(uploadedFile, new CalendarURL(new OpenPaaSId(baseId), new OpenPaaSId(davCollectionId)), session.getUser())
                             .then(Mono.fromRunnable(() -> LOGGER.info("ICS with fileId {} are imported successfully", request.fileId)))
                             .doOnError(ex -> LOGGER.error("Error during ICS import with fileId {}", request.fileId, ex))
                             .subscribe();
                         yield Mono.empty();
                     }
                     case TEXT_VCARD -> {
-                        importVcards(uploadedFile, new OpenPaaSId(baseId), childId, session.getUser())
+                        importVcards(uploadedFile, new OpenPaaSId(baseId), davCollectionId, session.getUser())
                             .then(Mono.fromRunnable(() -> LOGGER.info("VCARDs with fileId {} are imported successfully", request.fileId)))
                             .doOnError(ex -> LOGGER.error("Error during VCARDs import with fileId {}", request.fileId, ex))
                             .subscribe();
