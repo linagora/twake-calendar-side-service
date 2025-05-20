@@ -166,7 +166,7 @@ public class ImportRoute extends CalendarRoute {
         return Mono.fromCallable(() -> Ezvcard.parse(new String(uploadedFile.data(), StandardCharsets.UTF_8)).all())
             .subscribeOn(Schedulers.boundedElastic())
             .flatMapMany(Flux::fromIterable)
-            .concatMap(vcard -> {
+            .flatMap(vcard -> {
                 String vcardUid = UUID.randomUUID().toString();
                 vcard.setUid(new Uid(vcardUid));
                 String vcardString = Ezvcard.write(vcard)

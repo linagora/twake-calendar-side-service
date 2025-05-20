@@ -35,6 +35,7 @@ import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
@@ -350,9 +351,9 @@ public class ImportRouteTest {
 
         given()
             .body(requestBody)
-            .when()
+        .when()
             .post("/api/import")
-            .then()
+        .then()
             .statusCode(HttpStatus.SC_ACCEPTED);
 
         CALMLY_AWAIT.atMost(Duration.ofSeconds(10))
@@ -388,6 +389,9 @@ public class ImportRouteTest {
         OpenPaaSId fileId = server.getProbe(CalendarDataProbe.class).saveUploadedFile(openPaaSUser.username(),
             new Upload("contacts.vcf", UploadedMimeType.TEXT_VCARD, Instant.now(), (long) vcard.length, vcard));
 
+        // To trigger address book activation
+        server.getProbe(CalendarDataProbe.class).exportContactFromCardDav(openPaaSUser.username(), openPaaSUser.id(), addressBook);
+
         String requestBody = """
         {
             "fileId": "%s",
@@ -397,9 +401,9 @@ public class ImportRouteTest {
 
         given()
             .body(requestBody)
-            .when()
+        .when()
             .post("/api/import")
-            .then()
+        .then()
             .statusCode(HttpStatus.SC_ACCEPTED);
 
         CALMLY_AWAIT.atMost(Duration.ofSeconds(10))
