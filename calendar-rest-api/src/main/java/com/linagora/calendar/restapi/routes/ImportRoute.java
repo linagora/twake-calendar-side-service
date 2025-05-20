@@ -173,7 +173,7 @@ public class ImportRoute extends CalendarRoute {
                     .prodId(false)
                     .go();
                 return cardDavClient.createContact(username, userId, addressBook, vcardUid, vcardString.getBytes(StandardCharsets.UTF_8));
-            })
+            }, DEFAULT_CONCURRENCY)
             .then();
     }
 }
