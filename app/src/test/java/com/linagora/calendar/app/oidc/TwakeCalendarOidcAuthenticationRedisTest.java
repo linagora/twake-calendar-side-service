@@ -21,6 +21,7 @@ package com.linagora.calendar.app.oidc;
 import static io.restassured.RestAssured.given;
 import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
+import static org.apache.james.backends.rabbitmq.RabbitMQExtension.IsolationPolicy.WEAK;
 
 import java.net.URI;
 import java.net.URL;
@@ -29,6 +30,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.Optional;
 
+import org.apache.james.backends.rabbitmq.RabbitMQExtension;
 import org.apache.james.backends.redis.RedisConfiguration;
 import org.apache.james.backends.redis.StandaloneRedisConfiguration;
 import org.apache.james.core.Domain;
@@ -81,7 +83,12 @@ public class TwakeCalendarOidcAuthenticationRedisTest {
     @RegisterExtension
     static DockerRedisExtension dockerExtension = new DockerRedisExtension();
 
+    @RegisterExtension
     @Order(2)
+    private static RabbitMQExtension rabbitMQExtension = RabbitMQExtension.singletonRabbitMQ()
+        .isolationPolicy(WEAK);
+
+    @Order(3)
     @RegisterExtension
     static TwakeCalendarExtension twakeCalendarExtension = new TwakeCalendarExtension(
         TwakeCalendarConfiguration.builder()
@@ -90,6 +97,7 @@ public class TwakeCalendarOidcAuthenticationRedisTest {
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY)
             .oidcTokenStorageChoice(TwakeCalendarConfiguration.OIDCTokenStorageChoice.REDIS),
         DavModuleTestHelper.BY_PASS_MODULE,
+        DavModuleTestHelper.RABBITMQ_MODULE.apply(rabbitMQExtension),
         binder -> binder.bind(URL.class).annotatedWith(Names.named("userInfo"))
             .toProvider(TwakeCalendarOidcAuthenticationRedisTest::getUserInfoTokenEndpoint),
         binder -> binder.bind(IntrospectionEndpoint.class)

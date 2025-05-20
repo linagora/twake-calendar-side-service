@@ -38,12 +38,13 @@ import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import com.linagora.calendar.app.AppTestHelper;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.CalendarUtil;
-import com.linagora.calendar.dav.DavConfiguration;
+import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiServerProbe;
@@ -53,7 +54,6 @@ import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.model.Upload;
 import com.linagora.calendar.storage.model.UploadedMimeType;
-import com.linagora.calendar.storage.mongodb.MongoDBConfiguration;
 
 import io.restassured.RestAssured;
 import io.restassured.authentication.PreemptiveBasicAuthScheme;
@@ -84,10 +84,8 @@ public class ImportRouteTest {
             .configurationFromClasspath()
             .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB),
-        binder -> {
-            binder.bind(DavConfiguration.class).toInstance(sabreDavExtension.dockerSabreDavSetup().davConfiguration());
-            binder.bind(MongoDBConfiguration.class).toInstance(sabreDavExtension.dockerSabreDavSetup().mongoDBConfiguration());
-        });
+        AppTestHelper.OIDC_BY_PASS_MODULE,
+        DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension));
 
     private OpenPaaSUser openPaaSUser;
 

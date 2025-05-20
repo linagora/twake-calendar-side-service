@@ -18,8 +18,13 @@
 
 package com.linagora.calendar.app;
 
+import static com.linagora.calendar.dav.DavModuleTestHelper.RABBITMQ_MODULE;
+
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.function.Function;
+
+import org.apache.james.backends.rabbitmq.RabbitMQExtension;
 
 import com.google.inject.AbstractModule;
 import com.google.inject.Module;
@@ -28,11 +33,12 @@ import com.linagora.calendar.dav.DavModuleTestHelper;
 
 public class AppTestHelper {
 
-    public static final Module BY_PASS_MODULE = new AbstractModule() {
+    public static final Function<RabbitMQExtension, Module> BY_PASS_MODULE = rabbitMQExtension -> new AbstractModule() {
         @Override
         protected void configure() {
             install(OIDC_BY_PASS_MODULE);
             install(DavModuleTestHelper.BY_PASS_MODULE);
+            install(RABBITMQ_MODULE.apply(rabbitMQExtension));
         }
     };
 

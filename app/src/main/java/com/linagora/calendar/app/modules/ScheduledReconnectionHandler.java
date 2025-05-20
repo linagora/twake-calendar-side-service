@@ -203,7 +203,7 @@ public class ScheduledReconnectionHandler implements Startable {
     }
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ScheduledReconnectionHandler.class);
-    private static final Duration DELAY_START = Duration.ofSeconds(30);
+    private static final Duration DELAY_START = DurationParser.parse(System.getProperty("scheduled.consumer.reconnection.delayStartUp", "30s"));
 
     private final Set<SimpleConnectionPool.ReconnectionHandler> reconnectionHandlers;
     private final RabbitMQManagementAPI mqManagementAPI;

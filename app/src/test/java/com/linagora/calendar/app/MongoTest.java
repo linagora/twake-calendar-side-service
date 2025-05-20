@@ -39,10 +39,10 @@ import org.mockserver.integration.ClientAndServer;
 import com.google.inject.name.Names;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.DavModuleTestHelper;
+import com.linagora.calendar.dav.DockerSabreDavSetup;
+import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.OpenPaaSId;
-import com.linagora.calendar.storage.mongodb.DockerMongoDBExtension;
-import com.linagora.calendar.storage.mongodb.MongoDBConfiguration;
 
 import io.restassured.RestAssured;
 import io.restassured.builder.RequestSpecBuilder;
@@ -67,15 +67,16 @@ class MongoTest {
     private OpenPaaSId userId;
 
     @RegisterExtension
-    static DockerMongoDBExtension mongo = new DockerMongoDBExtension();
+    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+
     @RegisterExtension
     TwakeCalendarExtension twakeCalendarExtension = new TwakeCalendarExtension(TwakeCalendarConfiguration.builder()
         .configurationFromClasspath()
         .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
         .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB),
-        DavModuleTestHelper.BY_PASS_MODULE,
-        binder -> binder.bind(URL.class).annotatedWith(Names.named("userInfo")).toProvider(MongoTest::getUserInfoTokenEndpoint),
-        binder -> binder.bind(MongoDBConfiguration.class).toProvider(DockerMongoDBExtension::getMongoDBConfiguration));
+        DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
+        binder -> binder.bind(URL.class).annotatedWith(Names.named("userInfo"))
+            .toProvider(MongoTest::getUserInfoTokenEndpoint));
 
     @BeforeEach
     void setUp(TwakeCalendarGuiceServer server) {

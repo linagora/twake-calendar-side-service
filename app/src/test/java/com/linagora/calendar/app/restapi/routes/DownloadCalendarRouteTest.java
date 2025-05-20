@@ -47,14 +47,13 @@ import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
-import com.linagora.calendar.dav.DavConfiguration;
+import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiConfiguration;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
-import com.linagora.calendar.storage.mongodb.MongoDBConfiguration;
 
 import io.netty.handler.codec.http.QueryStringDecoder;
 import io.restassured.RestAssured;
@@ -83,12 +82,11 @@ public class DownloadCalendarRouteTest {
             .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB),
         AppTestHelper.OIDC_BY_PASS_MODULE,
+        DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
         binder -> {
             Mockito.doReturn(Throwing.supplier(() -> URI.create(SECRET_LINK_BASE_URL).toURL()).get())
                 .when(spyRestApiConfiguration).getSelfUrl();
             binder.bind(RestApiConfiguration.class).toInstance(spyRestApiConfiguration);
-            binder.bind(DavConfiguration.class).toInstance(sabreDavExtension.dockerSabreDavSetup().davConfiguration());
-            binder.bind(MongoDBConfiguration.class).toInstance(sabreDavExtension.dockerSabreDavSetup().mongoDBConfiguration());
         });
 
     @AfterAll

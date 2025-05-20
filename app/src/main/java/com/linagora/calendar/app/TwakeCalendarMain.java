@@ -52,6 +52,7 @@ import com.google.inject.util.Modules;
 import com.linagora.calendar.app.modules.MemoryAutoCompleteModule;
 import com.linagora.calendar.app.modules.MemoryUserModule;
 import com.linagora.calendar.app.modules.OpenSearchClientModule;
+import com.linagora.calendar.app.modules.TwakeCalendarRabbitMQModule;
 import com.linagora.calendar.dav.DavModule;
 import com.linagora.calendar.restapi.RestApiModule;
 import com.linagora.calendar.storage.CaffeineOIDCTokenCache;
@@ -109,6 +110,7 @@ public class TwakeCalendarMain {
                 new RestApiModule(),
                 new TaskManagerModule(),
                 new DavModule(),
+                new TwakeCalendarRabbitMQModule(),
                 WEBADMIN));
     }
 
