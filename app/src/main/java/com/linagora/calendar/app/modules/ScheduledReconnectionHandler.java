@@ -31,10 +31,10 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
-import jakarta.annotation.PreDestroy;
-
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.SSLContext;
+
+import jakarta.annotation.PreDestroy;
 
 import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.configuration2.ex.ConfigurationException;
@@ -73,6 +73,9 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
+/**
+ * This class is based on the implementation from {@code com.linagora.tmail.ScheduledReconnectionHandler}.
+ */
 public class ScheduledReconnectionHandler implements Startable {
     public record ScheduledReconnectionHandlerConfiguration(boolean enabled, Duration interval) {
         public static final boolean ENABLED = true;
@@ -200,6 +203,7 @@ public class ScheduledReconnectionHandler implements Startable {
     }
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ScheduledReconnectionHandler.class);
+    private static final Duration DELAY_START = Duration.ofSeconds(30);
 
     private final Set<SimpleConnectionPool.ReconnectionHandler> reconnectionHandlers;
     private final RabbitMQManagementAPI mqManagementAPI;
@@ -231,8 +235,11 @@ public class ScheduledReconnectionHandler implements Startable {
     }
 
     public void start() {
-        if (!config.enabled()) return;
-        disposable = Flux.interval(config.interval())
+        if (!config.enabled()) {
+            return;
+        }
+        disposable = Mono.delay(DELAY_START)
+            .thenMany(Flux.interval(config.interval()))
             .filter(any -> restartNeeded())
             .concatMap(any -> restart())
             .onErrorResume(e -> {

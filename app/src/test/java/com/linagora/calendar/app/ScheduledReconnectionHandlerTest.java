@@ -21,6 +21,7 @@ package com.linagora.calendar.app;
 import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
@@ -55,7 +56,7 @@ public class ScheduledReconnectionHandlerTest {
         .with()
         .pollDelay(Duration.ofMillis(500))
         .await();
-    private final ConditionFactory awaitAtMost = calmlyAwait.atMost(20, TimeUnit.SECONDS);
+    private final ConditionFactory awaitAtMost = calmlyAwait.atMost(30, TimeUnit.SECONDS);
 
     static class ScheduledReconnectionHandlerProbe implements GuiceProbe {
         private final ScheduledReconnectionHandler scheduledReconnectionHandler;
@@ -102,21 +103,36 @@ public class ScheduledReconnectionHandlerTest {
         });
 
     @Test
-    void shouldMonitorQueues(TwakeCalendarGuiceServer server) {
-        ScheduledReconnectionHandlerProbe probe = server.getProbe(ScheduledReconnectionHandlerProbe.class);
+    void shouldRestartDavCalendarEventConsumerWhenConsumerDisconnected(TwakeCalendarGuiceServer server) {
+        RabbitMQManagementAPI rabbitMQManagementAPI = RabbitMQManagementAPI.from(sabreDavExtension.dockerSabreDavSetup().rabbitMQConfiguration());
 
-        assertThat(probe.getQueuesToMonitor())
+        awaitAtMost
+            .untilAsserted(() -> assertThat(rabbitMQManagementAPI.queueDetails("/", "tcalendar:event:created")
+                .consumerDetails()).hasSize(1));
+
+        String consumerNameTag = rabbitMQManagementAPI.queueDetails("/", "tcalendar:event:created").consumerDetails().getFirst().tag();
+
+        // try to close the consumer
+        System.out.println("close consumer");
+        server.getProbe(ScheduledReconnectionHandlerProbe.class).davCalendarEventConsumer.close();
+
+        // then ReconnectionHandler will restart the consumer
+        awaitAtMost
+            .untilAsserted(() -> {
+                List<RabbitMQManagementAPI.ConsumerDetails> consumerDetails = rabbitMQManagementAPI.queueDetails("/", "tcalendar:event:created")
+                    .consumerDetails();
+                assertThat(consumerDetails).hasSize(1);
+                assertThat(consumerDetails.getFirst().tag()).isNotEqualTo(consumerNameTag);
+            } );
+    }
+
+    @Test
+    void shouldMonitorDavCalendarEventQueues(TwakeCalendarGuiceServer server) {
+        assertThat(server.getProbe(ScheduledReconnectionHandlerProbe.class).getQueuesToMonitor())
             .contains("tcalendar:event:created",
                 "tcalendar:event:updated",
                 "tcalendar:event:deleted",
                 "tcalendar:event:cancel",
                 "tcalendar:event:request");
-        RabbitMQManagementAPI rabbitMQManagementAPI = RabbitMQManagementAPI.from(sabreDavExtension.dockerSabreDavSetup().rabbitMQConfiguration());
-
-        probe.davCalendarEventConsumer.close();
-
-        awaitAtMost
-            .untilAsserted(() -> assertThat(rabbitMQManagementAPI.queueDetails("/", "tcalendar:event:created")
-                .consumerDetails()).hasSizeGreaterThan(0));
     }
 }
