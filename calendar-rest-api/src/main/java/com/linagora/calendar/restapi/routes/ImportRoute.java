@@ -43,7 +43,6 @@ import com.linagora.calendar.dav.CalendarUtil;
 import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
-import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.UploadedFileDAO;
 import com.linagora.calendar.storage.model.UploadedFile;
 import com.linagora.calendar.storage.model.UploadedMimeType;
@@ -83,17 +82,15 @@ public class ImportRoute extends CalendarRoute {
     private static final Logger LOGGER = LoggerFactory.getLogger(ImportRoute.class);
 
     private final UploadedFileDAO fileDAO;
-    private final OpenPaaSUserDAO userDAO;
     private final CalDavClient calDavClient;
     private final CardDavClient cardDavClient;
 
     @Inject
     public ImportRoute(Authenticator authenticator, MetricFactory metricFactory,
-                       UploadedFileDAO fileDAO, OpenPaaSUserDAO userDAO,
-                       CalDavClient calDavClient, CardDavClient cardDavClient) {
+                       UploadedFileDAO fileDAO, CalDavClient calDavClient,
+                       CardDavClient cardDavClient) {
         super(authenticator, metricFactory);
         this.fileDAO = fileDAO;
-        this.userDAO = userDAO;
         this.calDavClient = calDavClient;
         this.cardDavClient = cardDavClient;
     }
