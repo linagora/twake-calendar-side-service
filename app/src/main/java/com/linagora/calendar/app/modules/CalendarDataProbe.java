@@ -28,6 +28,7 @@ import org.apache.james.domainlist.api.DomainList;
 import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.user.api.UsersRepository;
 import org.apache.james.utils.GuiceProbe;
+import org.apache.james.vacation.api.AccountId;
 
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CardDavClient;
@@ -40,6 +41,8 @@ import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.UploadedFileDAO;
 import com.linagora.calendar.storage.configuration.ConfigurationEntry;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
+import com.linagora.calendar.storage.eventsearch.CalendarEvents;
+import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
 import com.linagora.calendar.storage.model.Upload;
 import com.linagora.calendar.storage.model.UploadedFile;
 
@@ -52,6 +55,7 @@ public class CalendarDataProbe implements GuiceProbe {
     private final UploadedFileDAO uploadedFileDAO;
     private final CalDavClient calDavClient;
     private final CardDavClient cardDavClient;
+    private final CalendarSearchService calendarSearchService;
 
     @Inject
     public CalendarDataProbe(UsersRepository usersRepository,
@@ -60,7 +64,9 @@ public class CalendarDataProbe implements GuiceProbe {
                              OpenPaaSDomainDAO domainDAO,
                              UserConfigurationDAO userConfigurationDAO,
                              UploadedFileDAO uploadedFileDAO,
-                             CalDavClient calDavClient, CardDavClient cardDavClient) {
+                             CalDavClient calDavClient,
+                             CardDavClient cardDavClient,
+                             CalendarSearchService calendarSearchService) {
         this.usersRepository = usersRepository;
         this.domainList = domainList;
         this.usersDAO = usersDAO;
@@ -69,6 +75,7 @@ public class CalendarDataProbe implements GuiceProbe {
         this.uploadedFileDAO = uploadedFileDAO;
         this.calDavClient = calDavClient;
         this.cardDavClient = cardDavClient;
+        this.calendarSearchService = calendarSearchService;
     }
 
     public CalendarDataProbe addDomain(Domain domain) {
@@ -142,5 +149,9 @@ public class CalendarDataProbe implements GuiceProbe {
 
     public byte[] exportContactFromCardDav(Username username, OpenPaaSId userId, String addressBook) {
         return cardDavClient.exportContact(username, userId, addressBook).block();
+    }
+
+    public void indexCalendar(Username username, CalendarEvents calendarEvents) {
+        calendarSearchService.index(AccountId.fromUsername(username), calendarEvents).block();
     }
 }

@@ -33,6 +33,8 @@ import com.google.inject.Scopes;
 import com.google.inject.Singleton;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
+import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
+import com.linagora.calendar.storage.eventsearch.MemoryCalendarSearchService;
 import com.linagora.calendar.storage.secretlink.MemorySecretLinkStore;
 import com.linagora.calendar.storage.secretlink.SecretLinkStore;
 
@@ -56,6 +58,9 @@ public class MemoryStorageModule extends AbstractModule {
 
         bind(MemorySecretLinkStore.class).in(Scopes.SINGLETON);
         bind(SecretLinkStore.class).to(MemorySecretLinkStore.class);
+
+        bind(MemoryCalendarSearchService.class).in(Scopes.SINGLETON);
+        bind(CalendarSearchService.class).to(MemoryCalendarSearchService.class);
     }
 
     @Provides

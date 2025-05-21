@@ -68,6 +68,11 @@ public record EventSearchQuery(String query,
             return this;
         }
 
+        public Builder calendars(List<CalendarURL> calendars) {
+            this.calendars = Optional.of(calendars);
+            return this;
+        }
+
         public Builder organizers(List<MailAddress> organizers) {
             this.organizers = Optional.of(organizers);
             return this;
