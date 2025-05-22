@@ -610,7 +610,7 @@ public class DavCalendarEventConsumerTest {
     private EventSearchQuery simpleQuery(String query) {
         return new EventSearchQuery(query, Optional.empty(),
             Optional.empty(), Optional.empty(),
-            Integer.MAX_VALUE, 0);
+            EventSearchQuery.MAX_LIMIT, 0);
     }
 
     private String getSampleCalendar(String eventUid) {
