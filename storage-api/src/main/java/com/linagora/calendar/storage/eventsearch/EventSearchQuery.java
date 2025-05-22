@@ -36,6 +36,7 @@ public record EventSearchQuery(String query,
 
     public static final int DEFAULT_LIMIT = 10;
     public static final int OFFSET_INITIAL = 0;
+    public static final int MAX_LIMIT = 256;
 
     public static Builder builder() {
         return new Builder();
@@ -48,6 +49,7 @@ public record EventSearchQuery(String query,
         Preconditions.checkNotNull(attendees, "attendees must not be null");
         Preconditions.checkArgument(limit > 0, "limit must be positive");
         Preconditions.checkArgument(offset >= 0, "offset must be non-negative");
+        Preconditions.checkArgument(limit <= MAX_LIMIT, "limit must be less than or equal to " + MAX_LIMIT);
     }
 
     public static class Builder {

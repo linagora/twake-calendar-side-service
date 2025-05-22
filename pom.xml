@@ -43,6 +43,7 @@
         <module>storage-api</module>
         <module>storage-mongodb</module>
         <module>storage-redis</module>
+        <module>storage-opensearch</module>
     </modules>
 
     <properties>
@@ -102,6 +103,11 @@
                 <artifactId>calendar-storage-redis</artifactId>
                 <version>${project.version}</version>
                 <type>test-jar</type>
+            </dependency>
+            <dependency>
+                <groupId>${project.groupId}</groupId>
+                <artifactId>calendar-storage-opensearch</artifactId>
+                <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>${project.groupId}</groupId>
