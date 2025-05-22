@@ -19,15 +19,16 @@
 package com.linagora.calendar.app.restapi.routes;
 
 import static io.restassured.RestAssured.given;
+import static io.restassured.RestAssured.request;
 import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
 import static org.hamcrest.Matchers.equalTo;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.util.List;
 
 import org.apache.james.core.Domain;
+import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -81,6 +82,7 @@ public interface CalendarSearchRouteContract {
         EventFields event = EventFields.builder()
             .uid("event-1")
             .summary("Title 1")
+            .location("office")
             .description("note 1")
             .start(Instant.parse("2025-04-19T11:00:00Z"))
             .end(Instant.parse("2025-04-19T11:30:00Z"))
@@ -88,9 +90,8 @@ public interface CalendarSearchRouteContract {
             .allDay(true)
             .isRecurrentMaster(true)
             .organizer(EventFields.Person.of("organizer", organizerEmail))
-            .attendees(List.of(
-                EventFields.Person.of("attendee", attendeeEmail)
-            ))
+            .addAttendee(EventFields.Person.of("attendee", attendeeEmail))
+            .addResource(new EventFields.Person("resource 1", new MailAddress("resource1@linagora.com")))
             .calendarURL(new CalendarURL(new OpenPaaSId(userId), new OpenPaaSId(calendarId)))
             .dtStamp(Instant.parse("2025-04-18T07:47:48Z"))
             .build();
@@ -107,9 +108,7 @@ public interface CalendarSearchRouteContract {
             .allDay(true)
             .isRecurrentMaster(true)
             .organizer(EventFields.Person.of("organizer", organizerEmail))
-            .attendees(List.of(
-                EventFields.Person.of("attendee", attendeeEmail)
-            ))
+            .addAttendee(EventFields.Person.of("attendee", attendeeEmail))
             .calendarURL(new CalendarURL(new OpenPaaSId(userId), new OpenPaaSId(calendarId)))
             .dtStamp(Instant.parse("2025-04-18T07:47:48Z"))
             .build();
@@ -125,9 +124,7 @@ public interface CalendarSearchRouteContract {
             .allDay(true)
             .isRecurrentMaster(true)
             .organizer(EventFields.Person.of("organizer", "wrong@linagora.com"))
-            .attendees(List.of(
-                EventFields.Person.of("attendee", attendeeEmail)
-            ))
+            .addAttendee(EventFields.Person.of("attendee", attendeeEmail))
             .calendarURL(new CalendarURL(new OpenPaaSId(userId), new OpenPaaSId(calendarId)))
             .dtStamp(Instant.parse("2025-04-18T07:47:48Z"))
             .build();
@@ -143,9 +140,7 @@ public interface CalendarSearchRouteContract {
             .allDay(true)
             .isRecurrentMaster(true)
             .organizer(EventFields.Person.of("organizer", organizerEmail))
-            .attendees(List.of(
-                EventFields.Person.of("attendee", "wrong@linagora.com")
-            ))
+            .addAttendee(EventFields.Person.of("attendee", "wrong@linagora.com"))
             .calendarURL(new CalendarURL(new OpenPaaSId(userId), new OpenPaaSId(calendarId)))
             .dtStamp(Instant.parse("2025-04-18T07:47:48Z"))
             .build();
@@ -161,9 +156,7 @@ public interface CalendarSearchRouteContract {
             .allDay(true)
             .isRecurrentMaster(true)
             .organizer(EventFields.Person.of("organizer", organizerEmail))
-            .attendees(List.of(
-                EventFields.Person.of("attendee", attendeeEmail)
-            ))
+            .addAttendee(EventFields.Person.of("attendee", attendeeEmail))
             .calendarURL(new CalendarURL(new OpenPaaSId(userId), new OpenPaaSId("not-existed")))
             .dtStamp(Instant.parse("2025-04-18T07:47:48Z"))
             .build();
@@ -195,9 +188,12 @@ public interface CalendarSearchRouteContract {
             .body("_embedded.events[0]._links.self.href", equalTo("/calendars/" + userId + "/" + calendarId + "/" + "event-1" + ".ics"))
             .body("_embedded.events[0].data.uid", equalTo("event-1"))
             .body("_embedded.events[0].data.summary", equalTo("Title 1"))
+            .body("_embedded.events[0].data.location", equalTo("office"))
             .body("_embedded.events[0].data.description", equalTo("note 1"))
             .body("_embedded.events[0].data.organizer.email", equalTo(organizerEmail))
             .body("_embedded.events[0].data.attendees[0].email", equalTo(attendeeEmail))
+            .body("_embedded.events[0].data.resources[0].cn", equalTo("resource 1"))
+            .body("_embedded.events[0].data.resources[0].email", equalTo("resource1@linagora.com"))
             .body("_embedded.events[0].data.start", equalTo("2025-04-19T11:00:00Z"))
             .body("_embedded.events[0].data.end", equalTo("2025-04-19T11:30:00Z"))
             .body("_embedded.events[0].data.class", equalTo("PUBLIC"))
@@ -226,7 +222,7 @@ public interface CalendarSearchRouteContract {
                 .allDay(false)
                 .isRecurrentMaster(false)
                 .organizer(EventFields.Person.of("organizer", organizerEmail))
-                .attendees(List.of(EventFields.Person.of("attendee", attendeeEmail)))
+                .addAttendee(EventFields.Person.of("attendee", attendeeEmail))
                 .calendarURL(new CalendarURL(new OpenPaaSId(userId), new OpenPaaSId(calendarId)))
                 .dtStamp(Instant.parse("2025-04-18T0" + i + ":47:48Z"))
                 .build();
@@ -293,9 +289,7 @@ public interface CalendarSearchRouteContract {
             .allDay(true)
             .isRecurrentMaster(true)
             .organizer(EventFields.Person.of("organizer", organizerEmail))
-            .attendees(List.of(
-                EventFields.Person.of("attendee", attendeeEmail)
-            ))
+            .addAttendee(EventFields.Person.of("attendee", attendeeEmail))
             .calendarURL(new CalendarURL(new OpenPaaSId(userId), new OpenPaaSId(calendarId)))
             .dtStamp(Instant.parse("2025-04-18T07:47:48Z"))
             .build();
@@ -486,6 +480,30 @@ public interface CalendarSearchRouteContract {
     }
 
     @Test
+    default void shouldReturn400WhenLimitIsNegative(TwakeCalendarGuiceServer server) {
+        String userId = "6053022c9da5ef001f430b43";
+        String calendarId = "6053022c9da5ef001f430b43";
+
+        String requestBody = """
+        {
+            "calendars": [
+                { "userId": "%s", "calendarId": "%s" }
+            ],
+            "query": "test"
+        }
+        """.formatted(userId, calendarId);
+
+        given()
+            .body(requestBody)
+            .post("/calendar/api/events/search?limit=-1&offset=0")
+            .then()
+            .statusCode(400)
+            .body("error.code", equalTo(400))
+            .body("error.message", equalTo("Bad request"))
+            .body("error.details", equalTo("limit param must be positive"));
+    }
+
+    @Test
     default void shouldReturn400WhenOffsetIsInvalid(TwakeCalendarGuiceServer server) {
         String userId = "6053022c9da5ef001f430b43";
         String calendarId = "6053022c9da5ef001f430b43";
@@ -507,6 +525,30 @@ public interface CalendarSearchRouteContract {
             .body("error.code", equalTo(400))
             .body("error.message", equalTo("Bad request"))
             .body("error.details", equalTo("Invalid offset param: invalid"));
+    }
+
+    @Test
+    default void shouldReturn400WhenOffsetIsNegative(TwakeCalendarGuiceServer server) {
+        String userId = "6053022c9da5ef001f430b43";
+        String calendarId = "6053022c9da5ef001f430b43";
+
+        String requestBody = """
+        {
+            "calendars": [
+                { "userId": "%s", "calendarId": "%s" }
+            ],
+            "query": "test"
+        }
+        """.formatted(userId, calendarId);
+
+        given()
+            .body(requestBody)
+            .post("/calendar/api/events/search?limit=10&offset=-1")
+            .then()
+            .statusCode(400)
+            .body("error.code", equalTo(400))
+            .body("error.message", equalTo("Bad request"))
+            .body("error.details", equalTo("offset param must be non-negative"));
     }
 }
 

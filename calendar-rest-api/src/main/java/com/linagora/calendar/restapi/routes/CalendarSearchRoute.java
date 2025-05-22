@@ -53,12 +53,8 @@ import reactor.netty.http.server.HttpServerResponse;
 
 public class CalendarSearchRoute extends CalendarRoute {
 
-    public static class SearchRequest {
-        public final List<CalendarRef> calendars;
-        public final String query;
-        public final List<String> organizers;
-        public final List<String> attendees;
-
+    public record SearchRequest(List<CalendarRef> calendars, String query, List<String> organizers,
+                                List<String> attendees) {
         @JsonCreator
         public SearchRequest(@JsonProperty("calendars") List<CalendarRef> calendars,
                              @JsonProperty("query") String query,
@@ -70,10 +66,7 @@ public class CalendarSearchRoute extends CalendarRoute {
             this.attendees = attendees;
         }
 
-        public static class CalendarRef {
-            public final String userId;
-            public final String calendarId;
-
+        public record CalendarRef(String userId, String calendarId) {
             @JsonCreator
             public CalendarRef(@JsonProperty("userId") String userId,
                                @JsonProperty("calendarId") String calendarId) {
@@ -83,14 +76,9 @@ public class CalendarSearchRoute extends CalendarRoute {
         }
     }
 
-    public static class SearchResponse {
-        @JsonProperty("_links")
-        public final Links links;
-        @JsonProperty("_total_hits")
-        public final int totalHits;
-        @JsonProperty("_embedded")
-        public final Embedded embedded;
-
+    public record SearchResponse(@JsonProperty("_links") CalendarSearchRoute.SearchResponse.Links links,
+                                 @JsonProperty("_total_hits") int totalHits,
+                                 @JsonProperty("_embedded") CalendarSearchRoute.SearchResponse.Embedded embedded) {
         public SearchResponse(Links links, int totalHits, Embedded embedded) {
             this.links = links;
             this.totalHits = totalHits;
@@ -106,39 +94,26 @@ public class CalendarSearchRoute extends CalendarRoute {
                 new Embedded(eventResources));
         }
 
-        public static class Links {
-            @JsonProperty("self")
-            public final Link self;
-
+        public record Links(@JsonProperty("self") Link self) {
             public Links(Link self) {
                 this.self = self;
             }
         }
 
-        public static class Link {
-            @JsonProperty("href")
-            public final String href;
-
+        public record Link(@JsonProperty("href") String href) {
             public Link(String href) {
                 this.href = href;
             }
         }
 
-        public static class Embedded {
-            @JsonProperty("events")
-            public final List<EventResource> events;
-
+        public record Embedded(@JsonProperty("events") List<EventResource> events) {
             public Embedded(List<EventResource> events) {
                 this.events = events;
             }
         }
 
-        public static class EventResource {
-            @JsonProperty("_links")
-            public final Links links;
-            @JsonProperty("data")
-            public final Data data;
-
+        public record EventResource(@JsonProperty("_links") Links links,
+                                    @JsonProperty("data") SearchResponse.EventResource.Data data) {
             public EventResource(Links links, Data data) {
                 this.links = links;
                 this.data = data;
@@ -152,29 +127,18 @@ public class CalendarSearchRoute extends CalendarRoute {
                     Data.from(event, userId, calendarId));
             }
 
-            public static class Data {
-                public final String uid;
-                public final String summary;
-                public final String description;
-                public final String start;
-                public final String end;
-                @JsonProperty("class")
-                public final String clazz;
-                public final Boolean allDay;
-                public final Boolean hasResources;
-                public final Integer durationInDays;
-                public final Boolean isRecurrentMaster;
-                public final List<Attendee> attendees;
-                public final Organizer organizer;
-                public final String userId;
-                public final String calendarId;
-                public final String dtstamp;
-
-                public Data(String uid, String summary, String description, String start, String end, String clazz,
+            public record Data(String uid, String summary, String location, String description, String start, String end,
+                               @JsonProperty("class") String clazz, Boolean allDay, Boolean hasResources,
+                               Integer durationInDays, Boolean isRecurrentMaster, List<Attendee> attendees,
+                               EventResource.Data.Organizer organizer, List<Resource> resources, String userId,
+                               String calendarId, String dtstamp) {
+                public Data(String uid, String summary, String location, String description, String start, String end, String clazz,
                             Boolean allDay, Boolean hasResources, Integer durationInDays, Boolean isRecurrentMaster,
-                            List<Attendee> attendees, Organizer organizer, String userId, String calendarId, String dtstamp) {
+                            List<Attendee> attendees, Organizer organizer, List<Resource> resources, String userId,
+                            String calendarId, String dtstamp) {
                     this.uid = uid;
                     this.summary = summary;
+                    this.location = location;
                     this.description = description;
                     this.start = start;
                     this.end = end;
@@ -185,6 +149,7 @@ public class CalendarSearchRoute extends CalendarRoute {
                     this.isRecurrentMaster = isRecurrentMaster;
                     this.attendees = attendees;
                     this.organizer = organizer;
+                    this.resources = resources;
                     this.userId = userId;
                     this.calendarId = calendarId;
                     this.dtstamp = dtstamp;
@@ -195,9 +160,13 @@ public class CalendarSearchRoute extends CalendarRoute {
                         .map(person -> new Attendee(person.email().asString(), person.cn()))
                         .collect(Collectors.toList());
                     Organizer organizer = new Organizer(event.organizer().email().asString(), event.organizer().cn());
+                    List<Resource> resources = event.resources().stream()
+                        .map(resource -> new Resource(resource.email().asString(), resource.cn()))
+                        .toList();
 
                     return new Data(event.uid().value(),
                         event.summary(),
+                        event.location(),
                         event.description(),
                         ISO_INSTANT.format(event.start()),
                         ISO_INSTANT.format(event.end()),
@@ -208,29 +177,19 @@ public class CalendarSearchRoute extends CalendarRoute {
                         event.isRecurrentMaster(),
                         attendees,
                         organizer,
+                        resources,
                         userId,
                         calendarId,
                         ISO_INSTANT.format(event.dtStamp()));
                 }
 
-                public static class Attendee {
-                    public final String email;
-                    public final String cn;
-
-                    public Attendee(String email, String cn) {
-                        this.email = email;
-                        this.cn = cn;
-                    }
+                public record Attendee(String email, String cn) {
                 }
 
-                public static class Organizer {
-                    public final String email;
-                    public final String cn;
+                public record Organizer(String email, String cn) {
+                }
 
-                    public Organizer(String email, String cn) {
-                        this.email = email;
-                        this.cn = cn;
-                    }
+                public record Resource(String email, String cn) {
                 }
             }
         }
@@ -292,7 +251,11 @@ public class CalendarSearchRoute extends CalendarRoute {
             .findAny()
             .map(s -> {
                 try {
-                    return Integer.parseInt(s);
+                    int i = Integer.parseInt(s);
+                    if (i <= 0) {
+                        throw new IllegalArgumentException("limit param must be positive");
+                    }
+                    return i;
                 } catch (NumberFormatException e) {
                     throw new IllegalArgumentException("Invalid limit param: " + s);
                 }
@@ -306,7 +269,11 @@ public class CalendarSearchRoute extends CalendarRoute {
             .findAny()
             .map(s -> {
                 try {
-                    return Integer.parseInt(s);
+                    int i = Integer.parseInt(s);
+                    if (i < 0) {
+                        throw new IllegalArgumentException("offset param must be non-negative");
+                    }
+                    return i;
                 } catch (NumberFormatException e) {
                     throw new IllegalArgumentException("Invalid offset param: " + s);
                 }
