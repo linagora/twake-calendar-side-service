@@ -270,7 +270,7 @@ public class CalendarSearchRoute extends CalendarRoute {
                     .query(extractQuery(searchRequest))
                     .limit(limit)
                     .offset(offset);
-                extractCalendars(searchRequest).ifPresent(queryBuilder::calendars);
+                extractCalendarUrls(searchRequest).ifPresent(queryBuilder::calendars);
                 extractOrganizers(searchRequest).ifPresent(queryBuilder::organizers);
                 extractAttendees(searchRequest).ifPresent(queryBuilder::attendees);
                 EventSearchQuery query = queryBuilder.build();
@@ -321,7 +321,7 @@ public class CalendarSearchRoute extends CalendarRoute {
         }
     }
 
-    private Optional<List<CalendarURL>> extractCalendars(SearchRequest searchRequest) {
+    private Optional<List<CalendarURL>> extractCalendarUrls(SearchRequest searchRequest) {
         return Optional.ofNullable(searchRequest.calendars)
             .filter(calendars -> !calendars.isEmpty())
             .map(calendars -> calendars.stream()

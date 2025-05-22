@@ -18,30 +18,22 @@
 
 package com.linagora.calendar.app.restapi.routes;
 
-import static com.linagora.calendar.app.AppTestHelper.BY_PASS_MODULE;
 import static io.restassured.RestAssured.given;
 import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
-import static org.apache.james.backends.rabbitmq.RabbitMQExtension.IsolationPolicy.WEAK;
 import static org.hamcrest.Matchers.equalTo;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 
-import org.apache.james.backends.rabbitmq.RabbitMQExtension;
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.RegisterExtension;
 
-import com.linagora.calendar.app.TwakeCalendarConfiguration;
-import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
-import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -53,28 +45,14 @@ import io.restassured.authentication.PreemptiveBasicAuthScheme;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.http.ContentType;
 
-public class CalendarSearchRouteTest {
+public interface CalendarSearchRouteContract {
 
-    private static final String DOMAIN = "open-paas.ltd";
-    private static final String PASSWORD = "secret";
-    private static final Username USERNAME = Username.fromLocalPartWithDomain("bob", DOMAIN);
-
-    @RegisterExtension
-    @Order(1)
-    private static RabbitMQExtension rabbitMQExtension = RabbitMQExtension.singletonRabbitMQ()
-        .isolationPolicy(WEAK);
-
-    @RegisterExtension
-    static TwakeCalendarExtension extension = new TwakeCalendarExtension(
-        TwakeCalendarConfiguration.builder()
-            .configurationFromClasspath()
-            .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
-            .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY),
-        BY_PASS_MODULE.apply(rabbitMQExtension),
-        DavModuleTestHelper.BY_PASS_MODULE);
+    String DOMAIN = "open-paas.ltd";
+    String PASSWORD = "secret";
+    Username USERNAME = Username.fromLocalPartWithDomain("bob", DOMAIN);
 
     @BeforeEach
-    void setup(TwakeCalendarGuiceServer server) {
+    default void setup(TwakeCalendarGuiceServer server) {
         server.getProbe(CalendarDataProbe.class).addDomain(Domain.of(DOMAIN));
         server.getProbe(CalendarDataProbe.class).addUser(USERNAME, PASSWORD);
 
@@ -93,7 +71,7 @@ public class CalendarSearchRouteTest {
     }
 
     @Test
-    void shouldSearchCalendarSuccessfully(TwakeCalendarGuiceServer server) throws Exception {
+    default void shouldSearchCalendarSuccessfully(TwakeCalendarGuiceServer server) throws Exception {
         String userId = "6053022c9da5ef001f430b43";
         String calendarId = "6053022c9da5ef001f430b43";
         String organizerEmail = "organizer@linagora.com";
@@ -231,7 +209,7 @@ public class CalendarSearchRouteTest {
     }
 
     @Test
-    void shouldReturnResultsBasedOnLimitAndOffset(TwakeCalendarGuiceServer server) throws Exception {
+    default void shouldReturnResultsBasedOnLimitAndOffset(TwakeCalendarGuiceServer server) throws Exception {
         String userId = "6053022c9da5ef001f430b43";
         String calendarId = "6053022c9da5ef001f430b43";
         String organizerEmail = "organizer@linagora.com";
@@ -297,7 +275,55 @@ public class CalendarSearchRouteTest {
     }
 
     @Test
-    void shouldReturn400WhenQueryFieldIsMissing(TwakeCalendarGuiceServer server) {
+    default void shouldNotReturnResultsFromUnauthorizedCalendars(TwakeCalendarGuiceServer server) throws Exception {
+        Username alice = Username.fromLocalPartWithDomain("alice", DOMAIN);
+        String userId = "6053022c9da5ef001f430b43";
+        String calendarId = "6053022c9da5ef001f430b43";
+        String organizerEmail = "organizer@linagora.com";
+        String attendeeEmail = "attendee@linagora.com";
+
+        // Match all search criteria
+        EventFields event = EventFields.builder()
+            .uid("event-1")
+            .summary("Title 1")
+            .description("note 1")
+            .start(Instant.parse("2025-04-19T11:00:00Z"))
+            .end(Instant.parse("2025-04-19T11:30:00Z"))
+            .clazz("PUBLIC")
+            .allDay(true)
+            .isRecurrentMaster(true)
+            .organizer(EventFields.Person.of("organizer", organizerEmail))
+            .attendees(List.of(
+                EventFields.Person.of("attendee", attendeeEmail)
+            ))
+            .calendarURL(new CalendarURL(new OpenPaaSId(userId), new OpenPaaSId(calendarId)))
+            .dtStamp(Instant.parse("2025-04-18T07:47:48Z"))
+            .build();
+
+        server.getProbe(CalendarDataProbe.class).indexCalendar(alice, CalendarEvents.of(event));
+
+        String requestBody = """
+            {
+                "calendars": [
+                    { "userId": "%s", "calendarId": "%s" }
+                ],
+                "query": "note",
+                "organizers": [ "%s" ],
+                "attendees": [ "%s" ]
+            }
+            """.formatted(userId, calendarId, organizerEmail, attendeeEmail);
+
+        given()
+            .body(requestBody)
+            .post("/calendar/api/events/search")
+            .then()
+            .statusCode(200)
+            .contentType(ContentType.JSON)
+            .body("_total_hits", equalTo(0));
+    }
+
+    @Test
+    default void shouldReturn400WhenQueryFieldIsMissing(TwakeCalendarGuiceServer server) {
         String userId = "6053022c9da5ef001f430b43";
         String calendarId = "6053022c9da5ef001f430b43";
         String organizerEmail = "organizer@linagora.com";
@@ -324,7 +350,7 @@ public class CalendarSearchRouteTest {
     }
 
     @Test
-    void shouldReturn200WhenOnlyQueryFieldIsPresent(TwakeCalendarGuiceServer server) {
+    default void shouldReturn200WhenOnlyQueryFieldIsPresent(TwakeCalendarGuiceServer server) {
         String requestBody = """
             {
                 "query": "note"
@@ -340,7 +366,7 @@ public class CalendarSearchRouteTest {
     }
 
     @Test
-    void shouldReturn400WhenOrganizerEmailIsInvalid(TwakeCalendarGuiceServer server) {
+    default void shouldReturn400WhenOrganizerEmailIsInvalid(TwakeCalendarGuiceServer server) {
         String userId = "6053022c9da5ef001f430b43";
         String calendarId = "6053022c9da5ef001f430b43";
 
@@ -365,7 +391,7 @@ public class CalendarSearchRouteTest {
     }
 
     @Test
-    void shouldReturn400WhenAttendeeEmailIsInvalid(TwakeCalendarGuiceServer server) {
+    default void shouldReturn400WhenAttendeeEmailIsInvalid(TwakeCalendarGuiceServer server) {
         String userId = "6053022c9da5ef001f430b43";
         String calendarId = "6053022c9da5ef001f430b43";
 
@@ -390,7 +416,7 @@ public class CalendarSearchRouteTest {
     }
 
     @Test
-    void shouldReturn400WhenUserIdIsMissing(TwakeCalendarGuiceServer server) {
+    default void shouldReturn400WhenUserIdIsMissing(TwakeCalendarGuiceServer server) {
         String calendarId = "6053022c9da5ef001f430b43";
 
         String requestBody = """
@@ -413,7 +439,7 @@ public class CalendarSearchRouteTest {
     }
 
     @Test
-    void shouldReturn400WhenCalendarIdIsMissing(TwakeCalendarGuiceServer server) {
+    default void shouldReturn400WhenCalendarIdIsMissing(TwakeCalendarGuiceServer server) {
         String userId = "6053022c9da5ef001f430b43";
 
         String requestBody = """
@@ -436,7 +462,7 @@ public class CalendarSearchRouteTest {
     }
 
     @Test
-    void shouldReturn400WhenLimitIsInvalid(TwakeCalendarGuiceServer server) {
+    default void shouldReturn400WhenLimitIsInvalid(TwakeCalendarGuiceServer server) {
         String userId = "6053022c9da5ef001f430b43";
         String calendarId = "6053022c9da5ef001f430b43";
 
@@ -460,7 +486,7 @@ public class CalendarSearchRouteTest {
     }
 
     @Test
-    void shouldReturn400WhenOffsetIsInvalid(TwakeCalendarGuiceServer server) {
+    default void shouldReturn400WhenOffsetIsInvalid(TwakeCalendarGuiceServer server) {
         String userId = "6053022c9da5ef001f430b43";
         String calendarId = "6053022c9da5ef001f430b43";
 
