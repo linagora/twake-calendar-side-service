@@ -99,4 +99,11 @@ public class MongoDBStorageModule extends AbstractModule {
     MongoDatabase dataBase(MongoDBConfiguration configuration, MetricFactory metricFactory) {
         return MongoDBConnectionFactory.instantiateDB(configuration, metricFactory);
     }
+
+    @ProvidesIntoSet
+    InitializationOperation createCollectionsAndIndexes(MongoDBCollectionInitializer instance) {
+        return InitilizationOperationBuilder
+            .forClass(MongoDBCollectionInitializer.class)
+            .init(instance::start);
+    }
 }
