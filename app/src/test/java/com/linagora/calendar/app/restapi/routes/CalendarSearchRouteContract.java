@@ -35,6 +35,7 @@ import org.junit.jupiter.api.Test;
 
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
+import com.linagora.calendar.dav.SabreDavProvisioningService;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -48,7 +49,7 @@ import io.restassured.http.ContentType;
 
 public interface CalendarSearchRouteContract {
 
-    String DOMAIN = "open-paas.ltd";
+    String DOMAIN = SabreDavProvisioningService.DOMAIN;
     String PASSWORD = "secret";
     Username USERNAME = Username.fromLocalPartWithDomain("bob", DOMAIN);
 
@@ -214,7 +215,7 @@ public interface CalendarSearchRouteContract {
         for (int i = 1; i <= 5; i++) {
             EventFields event = EventFields.builder()
                 .uid("event-" + i)
-                .summary("Event " + i)
+                .summary("Event" + i)
                 .description("note " + i)
                 .start(Instant.parse("2025-04-19T1" + i + ":00:00Z"))
                 .end(Instant.parse("2025-04-19T1" + i + ":30:00Z"))

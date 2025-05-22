@@ -35,8 +35,6 @@ import com.google.inject.Scopes;
 import com.google.inject.Singleton;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.google.inject.name.Named;
-import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
-import com.linagora.calendar.storage.eventsearch.MemoryCalendarSearchService;
 
 public class DavCalendarEventModule extends AbstractModule {
     public static final String INJECT_KEY_DAV = "dav";
@@ -48,10 +46,6 @@ public class DavCalendarEventModule extends AbstractModule {
     @Override
     protected void configure() {
         bind(DavCalendarEventConsumer.class).in(Scopes.SINGLETON);
-
-        // TODO refactor when Opensearch https://github.com/linagora/twake-calendar-side-service/issues/69
-        bind(MemoryCalendarSearchService.class).in(Scopes.SINGLETON);
-        bind(CalendarSearchService.class).to(MemoryCalendarSearchService.class);
     }
 
     @Provides
