@@ -22,8 +22,12 @@ import static com.linagora.calendar.dav.DavModuleTestHelper.RABBITMQ_MODULE;
 
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.time.Duration;
+import java.util.Optional;
 import java.util.function.Function;
 
+import org.apache.james.backends.opensearch.DockerOpenSearchExtension;
+import org.apache.james.backends.opensearch.OpenSearchConfiguration;
 import org.apache.james.backends.rabbitmq.RabbitMQExtension;
 
 import com.google.inject.AbstractModule;
@@ -55,4 +59,16 @@ public class AppTestHelper {
                 });
         }
     };
+
+    public static final Function<DockerOpenSearchExtension, Module> OPENSEARCH_TEST_MODULE = dockerOpenSearchExtension ->
+        new AbstractModule() {
+            @Override
+            protected void configure() {
+                bind(OpenSearchConfiguration.class)
+                    .toInstance(OpenSearchConfiguration.builder()
+                    .addHost(dockerOpenSearchExtension.getDockerOpenSearch().getHttpHost())
+                    .requestTimeout(Optional.of(Duration.ofSeconds(5)))
+                    .build());
+            }
+        };
 }

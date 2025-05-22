@@ -31,12 +31,23 @@ import org.apache.james.vacation.api.AccountId;
 import com.google.common.collect.HashBasedTable;
 import com.google.common.collect.Table;
 import com.google.common.collect.Tables;
+import com.google.inject.AbstractModule;
+import com.google.inject.Module;
+import com.google.inject.Scopes;
 import com.linagora.calendar.storage.CalendarURL;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 public class MemoryCalendarSearchService implements CalendarSearchService {
+
+    public static Module MODULE = new AbstractModule() {
+        @Override
+        protected void configure() {
+            bind(MemoryCalendarSearchService.class).in(Scopes.SINGLETON);
+            bind(CalendarSearchService.class).to(MemoryCalendarSearchService.class);
+        }
+    };
 
     private final Table<AccountId, EventUid, CalendarEvents> indexStore = Tables.synchronizedTable(HashBasedTable.create());
 

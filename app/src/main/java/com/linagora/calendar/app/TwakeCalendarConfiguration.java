@@ -35,7 +35,8 @@ import com.github.fge.lambdas.Throwing;
 
 public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, JamesDirectoriesProvider directories,
                                          UserChoice userChoice, DbChoice dbChoice, AutoCompleteChoice autoCompleteChoice,
-                                         OIDCTokenStorageChoice oidcTokenStorageChoice) implements Configuration {
+                                         OIDCTokenStorageChoice oidcTokenStorageChoice,
+                                         CalendarEventSearchChoice calendarEventSearchChoice) implements Configuration {
     public static class Builder {
         private Optional<String> rootDirectory;
         private Optional<ConfigurationPath> configurationPath;
@@ -43,6 +44,7 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
         private Optional<DbChoice> dbChoice;
         private Optional<AutoCompleteChoice> autoCompleteChoice;
         private Optional<OIDCTokenStorageChoice> oidcTokenStorageChoice;
+        private Optional<CalendarEventSearchChoice> calendarEventSearchChoice;
 
         private Builder() {
             rootDirectory = Optional.empty();
@@ -51,6 +53,7 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
             dbChoice = Optional.empty();
             autoCompleteChoice = Optional.empty();
             oidcTokenStorageChoice = Optional.empty();
+            calendarEventSearchChoice = Optional.empty();
         }
 
         public Builder workingDirectory(String path) {
@@ -80,6 +83,11 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
 
         public Builder oidcTokenStorageChoice(OIDCTokenStorageChoice choice) {
             oidcTokenStorageChoice = Optional.of(choice);
+            return this;
+        }
+
+        public Builder calendarEventSearchChoice(CalendarEventSearchChoice choice) {
+            calendarEventSearchChoice = Optional.of(choice);
             return this;
         }
 
@@ -143,13 +151,23 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                 }
             }));
 
+            CalendarEventSearchChoice calendarEventSearchChoice = this.calendarEventSearchChoice.orElseGet(Throwing.supplier(() -> {
+                try {
+                    propertiesProvider.getConfiguration("opensearch");
+                    return CalendarEventSearchChoice.OPENSEARCH;
+                } catch (FileNotFoundException e) {
+                    return CalendarEventSearchChoice.MEMORY;
+                }
+            }));
+
             return new TwakeCalendarConfiguration(
                 configurationPath,
                 directories,
                 userChoice,
                 dbChoice,
                 autoCompleteChoice,
-                oidcTokenStorageChoice);
+                oidcTokenStorageChoice,
+                calendarEventSearchChoice);
         }
     }
 
@@ -170,6 +188,11 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
 
     public enum OIDCTokenStorageChoice {
         REDIS,
+        MEMORY
+    }
+
+    public enum CalendarEventSearchChoice {
+        OPENSEARCH,
         MEMORY
     }
 

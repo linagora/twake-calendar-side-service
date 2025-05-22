@@ -41,6 +41,7 @@ import org.apache.james.webadmin.dropwizard.MetricsRoutes;
 import org.apache.james.webadmin.routes.DomainsRoutes;
 import org.apache.james.webadmin.routes.UserRoutes;
 
+import com.google.common.collect.ImmutableList;
 import com.google.inject.AbstractModule;
 import com.google.inject.Module;
 import com.google.inject.Scopes;
@@ -60,7 +61,9 @@ import com.linagora.calendar.storage.FileUploadConfigurationModule;
 import com.linagora.calendar.storage.MemoryStorageModule;
 import com.linagora.calendar.storage.OIDCTokenCache;
 import com.linagora.calendar.storage.OIDCTokenCacheConfigurationModule;
+import com.linagora.calendar.storage.eventsearch.MemoryCalendarSearchService;
 import com.linagora.calendar.storage.mongodb.MongoDBStorageModule;
+import com.linagora.calendar.storage.opensearch.OpensearchCalendarSearchModule;
 import com.linagora.calendar.storage.redis.RedisStorageModule;
 import com.linagora.calendar.webadmin.CalendarRoutesModule;
 import com.linagora.tmail.james.jmap.module.OSContactAutoCompleteModule;
@@ -103,7 +106,8 @@ public class TwakeCalendarMain {
             .combineWith(Modules.combine(
                 new DNSServiceModule(),
                 chooseDb(configuration.dbChoice()),
-                chooseAutoComplete(configuration.autoCompleteChoice()),
+                chooseAutoComplete(configuration.autoCompleteChoice())
+                    .calendarEventSearch(configuration.calendarEventSearchChoice()),
                 chooseUsersModule(configuration.userChoice()),
                 chooseOIDCTokenStorage(configuration.oidcTokenStorageChoice()),
                 new FileUploadConfigurationModule(),
@@ -114,12 +118,40 @@ public class TwakeCalendarMain {
                 WEBADMIN));
     }
 
-    private static Module chooseAutoComplete(TwakeCalendarConfiguration.AutoCompleteChoice autoCompleteChoice) {
-        return switch (autoCompleteChoice) {
-            case MEMORY -> new MemoryAutoCompleteModule();
-            case OPENSEARCH -> Modules.override(new MemoryAutoCompleteModule())
-                .with(new OpenSearchClientModule(), new OSContactAutoCompleteModule(),
-                    new OpenSearchMailboxConfigurationModule());
+    @FunctionalInterface
+    private interface RequireCalendarEventSearchModule {
+        Module calendarEventSearch(TwakeCalendarConfiguration.CalendarEventSearchChoice calendarEventSearchChoice);
+    }
+
+    private static RequireCalendarEventSearchModule chooseAutoComplete(TwakeCalendarConfiguration.AutoCompleteChoice autoCompleteChoice) {
+        return calendarEventSearchChoice -> {
+
+            boolean useOpenSearch = autoCompleteChoice == TwakeCalendarConfiguration.AutoCompleteChoice.OPENSEARCH
+                || calendarEventSearchChoice == TwakeCalendarConfiguration.CalendarEventSearchChoice.OPENSEARCH;
+
+            ImmutableList.Builder<Module> modules = ImmutableList.builder();
+
+            if (useOpenSearch) {
+                modules.add(new OpenSearchClientModule());
+            }
+
+            switch (autoCompleteChoice) {
+                case MEMORY -> modules.add(new MemoryAutoCompleteModule());
+                case OPENSEARCH -> modules.add(Modules.override(new MemoryAutoCompleteModule())
+                    .with(new OSContactAutoCompleteModule(), new OpenSearchMailboxConfigurationModule()));
+            }
+
+            switch (calendarEventSearchChoice) {
+                case MEMORY -> modules.add(MemoryCalendarSearchService.MODULE);
+                case OPENSEARCH -> {
+                    modules.add(new OpensearchCalendarSearchModule());
+                    if (autoCompleteChoice == TwakeCalendarConfiguration.AutoCompleteChoice.MEMORY) {
+                        modules.add(OpensearchCalendarSearchModule.OPEN_SEARCH_CONFIGURATION_MODULE);
+                    }
+                }
+            }
+
+            return Modules.combine(modules.build());
         };
     }
 

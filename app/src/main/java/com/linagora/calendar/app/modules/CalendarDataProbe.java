@@ -18,7 +18,11 @@
 
 package com.linagora.calendar.app.modules;
 
+import static com.linagora.calendar.storage.eventsearch.EventSearchQuery.MAX_LIMIT;
+import static org.awaitility.Durations.ONE_HUNDRED_MILLISECONDS;
+
 import java.util.List;
+import java.util.Optional;
 
 import jakarta.inject.Inject;
 
@@ -30,6 +34,9 @@ import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.user.api.UsersRepository;
 import org.apache.james.utils.GuiceProbe;
 import org.apache.james.vacation.api.AccountId;
+import org.awaitility.Awaitility;
+import org.awaitility.Durations;
+import org.awaitility.core.ConditionFactory;
 
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CardDavClient;
@@ -44,10 +51,17 @@ import com.linagora.calendar.storage.configuration.ConfigurationEntry;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
 import com.linagora.calendar.storage.eventsearch.CalendarEvents;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
+import com.linagora.calendar.storage.eventsearch.EventSearchQuery;
 import com.linagora.calendar.storage.model.Upload;
 import com.linagora.calendar.storage.model.UploadedFile;
 
 public class CalendarDataProbe implements GuiceProbe {
+    private static final ConditionFactory CALMLY_AWAIT = Awaitility
+        .with().pollInterval(ONE_HUNDRED_MILLISECONDS)
+        .and().pollDelay(ONE_HUNDRED_MILLISECONDS)
+        .await()
+        .atMost(Durations.TEN_SECONDS);
+
     private final UsersRepository usersRepository;
     private final DomainList domainList;
     private final OpenPaaSUserDAO usersDAO;
@@ -156,6 +170,13 @@ public class CalendarDataProbe implements GuiceProbe {
     }
 
     public void indexCalendar(Username username, CalendarEvents calendarEvents) {
-        calendarSearchService.index(AccountId.fromUsername(username), calendarEvents).block();
+        AccountId accountId = AccountId.fromUsername(username);
+        calendarSearchService.index(accountId, calendarEvents).block();
+
+        CALMLY_AWAIT.until(() -> !calendarSearchService.search(accountId,
+                new EventSearchQuery(calendarEvents.events().iterator().next().summary(), Optional.empty(),
+                    Optional.empty(), Optional.empty(),
+                    MAX_LIMIT, 0))
+            .collectList().block().isEmpty());
     }
 }
