@@ -29,8 +29,8 @@ import reactor.core.publisher.Mono;
 
 public class MongoDBCollectionFactory {
 
-    public static final String USERS = "users";
-    public static final String DOMAINS = "domains";
+    public static final String USERS = MongoDBOpenPaaSUserDAO.COLLECTION;
+    public static final String DOMAINS = MongoDBOpenPaaSDomainDAO.COLLECTION;
     public static final String SECRETLINKS = MongoDBSecretLinkStore.COLLECTION;
 
     public static void initialize(MongoDatabase database) {
@@ -46,7 +46,10 @@ public class MongoDBCollectionFactory {
         }
 
         Mono.from(database.getCollection(USERS)
-            .createIndex(new Document("email", 1), new IndexOptions().unique(true)))
+                .createIndex(new Document("email", 1),
+                    new IndexOptions()
+                        .unique(true)
+                        .partialFilterExpression(new Document("email", new Document("$exists", true)))))
             .block();
     }
 
