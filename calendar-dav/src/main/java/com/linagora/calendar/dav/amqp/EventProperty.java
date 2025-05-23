@@ -32,6 +32,8 @@ import jakarta.mail.internet.AddressException;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.MailAddress;
+import org.apache.james.mime4j.dom.address.Mailbox;
+import org.apache.james.mime4j.field.address.LenientAddressParser;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Preconditions;
@@ -180,7 +182,10 @@ public class EventProperty {
 
     static final Function<String, MailAddress> calAddressToMailAddress = (String calAddress) -> {
         try {
-            return new MailAddress(StringUtils.remove(calAddress, "mailto:"));
+            return switch (LenientAddressParser.DEFAULT.parseAddress(StringUtils.remove(calAddress, "mailto:"))) {
+                case Mailbox mailbox -> new MailAddress(mailbox.getAddress());
+                case null, default -> throw new CalendarEventDeserializeException("Unable to parse mail address from calendar address: " + calAddress);
+            };
         } catch (AddressException e) {
             throw new CalendarEventDeserializeException("Unable to parse mail address from calendar address", e);
         }
