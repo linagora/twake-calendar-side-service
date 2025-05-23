@@ -50,7 +50,6 @@ public class MongoDBSecretLinkStore implements SecretLinkStore {
     public static final String FIELD_CALENDAR_ID = "calendarId";
     public static final String FIELD_TOKEN = "token";
 
-
     private final MongoDatabase database;
     private final SecretLinkPermissionChecker permissionChecker;
     private final MongoDBOpenPaaSUserDAO userDAO;

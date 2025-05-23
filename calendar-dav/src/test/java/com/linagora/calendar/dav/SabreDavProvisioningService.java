@@ -59,7 +59,8 @@ public class SabreDavProvisioningService {
 
     public Mono<OpenPaaSUser> createUser() {
         UUID randomUUID = UUID.randomUUID();
-        return createUser(Username.fromLocalPartWithDomain("user_" + randomUUID, DOMAIN));
+        return createDomainIfAbsent(Domain.of(DOMAIN))
+            .then(createUser(Username.fromLocalPartWithDomain("user_" + randomUUID, DOMAIN)));
     }
 
     public Mono<OpenPaaSUser> createUser(Username username) {
