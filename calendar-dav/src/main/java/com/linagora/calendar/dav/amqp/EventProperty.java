@@ -18,13 +18,17 @@
 
 package com.linagora.calendar.dav.amqp;
 
+import static java.time.ZoneOffset.UTC;
+
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.Optional;
 import java.util.function.Function;
 
@@ -38,6 +42,8 @@ import org.apache.james.mime4j.field.address.LenientAddressParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.storage.eventsearch.EventUid;
+
+import net.fortuna.ical4j.model.TimeZone;
 
 public class EventProperty {
 
@@ -115,7 +121,7 @@ public class EventProperty {
 
     public static class DtStampProperty extends EventProperty {
         private static final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy'-'MM'-'dd'T'HH':'mm[':'ss[X]]")
-            .withZone(ZoneOffset.UTC);
+            .withZone(UTC);
 
         private final Instant dtStamp;
 
@@ -146,11 +152,15 @@ public class EventProperty {
                 case "date" -> LocalDate.from(DateTimeFormatter.ISO_LOCAL_DATE.parse(value)).atStartOfDay()
                     .toInstant(ZoneOffset.UTC);
                 case "date-time" -> {
-                    ZoneId zoneId = Optional.ofNullable(attributes.get("tzid"))
-                        .map(JsonNode::asText)
-                        .map(ZoneId::of)
-                        .orElse(UTC);
-                    yield ZonedDateTime.of(LocalDateTime.parse(value), zoneId).toInstant();
+                    try {
+                        yield OffsetDateTime.parse(value).toInstant();
+                    } catch (DateTimeParseException e1) {
+                        ZoneId zoneId = Optional.ofNullable(attributes.get("tzid"))
+                            .map(JsonNode::asText)
+                            .map(text -> TimeZone.getTimeZone(text).toZoneId())
+                            .orElse(UTC);
+                        yield ZonedDateTime.of(LocalDateTime.parse(value), zoneId).toInstant();
+                    }
                 }
                 default -> throw new CalendarEventDeserializeException("Invalid date format: " + valueType);
             };
