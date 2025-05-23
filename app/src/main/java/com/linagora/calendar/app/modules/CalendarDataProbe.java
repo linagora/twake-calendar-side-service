@@ -22,6 +22,7 @@ import java.util.List;
 
 import jakarta.inject.Inject;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
 import org.apache.james.domainlist.api.DomainList;
@@ -76,6 +77,9 @@ public class CalendarDataProbe implements GuiceProbe {
             domainList.addDomain(domain);
             return this;
         } catch (Exception e) {
+            if (StringUtils.contains(e.getMessage(), "already exists")) {
+                return this;
+            }
             throw new RuntimeException(e);
         }
     }

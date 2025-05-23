@@ -32,11 +32,14 @@ import static org.mockserver.model.Parameter.param;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.lang3.StringUtils;
+import org.bson.Document;
 import org.junit.jupiter.api.extension.AfterAllCallback;
+import org.junit.jupiter.api.extension.AfterEachCallback;
 import org.junit.jupiter.api.extension.BeforeAllCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.extension.ParameterContext;
@@ -51,13 +54,25 @@ import org.slf4j.LoggerFactory;
 import org.testcontainers.shaded.org.awaitility.Awaitility;
 
 import com.linagora.calendar.storage.OpenPaaSUser;
+import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
+import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
+import com.linagora.calendar.storage.mongodb.MongoDBSecretLinkStore;
+import com.linagora.calendar.storage.mongodb.MongoDBUploadedFileDAO;
+import com.mongodb.reactivestreams.client.MongoDatabase;
 
 import reactor.core.publisher.Mono;
 import reactor.netty.ByteBufFlux;
 
-public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup) implements BeforeAllCallback, AfterAllCallback, ParameterResolver {
+public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup) implements BeforeAllCallback, AfterAllCallback,
+    AfterEachCallback, ParameterResolver {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(SabreDavExtension.class);
+    private static final List<String> CLEANUP_COLLECTIONS = List.of(
+        MongoDBOpenPaaSDomainDAO.COLLECTION,
+        MongoDBOpenPaaSUserDAO.COLLECTION,
+        MongoDBUploadedFileDAO.COLLECTION,
+        MongoDBSecretLinkStore.COLLECTION);
+
     private static MockServerClient mockServerClient;
 
     @Override
@@ -76,6 +91,14 @@ public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup) impleme
     }
 
     @Override
+    public void afterEach(ExtensionContext extensionContext) throws Exception {
+        MongoDatabase mongoDatabase = dockerSabreDavSetup.getMongoDB();
+        for (String collection : CLEANUP_COLLECTIONS) {
+            Mono.from(mongoDatabase.getCollection(collection).deleteMany(new Document())).block();
+        }
+    }
+
+    @Override
     public boolean supportsParameter(ParameterContext parameterContext, ExtensionContext extensionContext) throws ParameterResolutionException {
         return (parameterContext.getParameter().getType() == DockerSabreDavSetup.class);
     }
@@ -86,7 +109,7 @@ public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup) impleme
     }
 
     public OpenPaaSUser newTestUser() {
-        OpenPaaSUser openPaasUser=  dockerSabreDavSetup
+        OpenPaaSUser openPaasUser = dockerSabreDavSetup
             .getOpenPaaSProvisioningService()
             .createUser()
             .block();
