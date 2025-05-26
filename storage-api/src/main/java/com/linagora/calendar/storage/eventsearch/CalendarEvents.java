@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.storage.eventsearch;
 
+import java.util.Collection;
 import java.util.Set;
 
 import org.apache.commons.lang3.Validate;
@@ -35,7 +36,7 @@ public record CalendarEvents(EventUid eventUid,
         return new CalendarEvents(uid, calendarURL, ImmutableSet.copyOf(eventFields));
     }
 
-    public static CalendarEvents of(Set<EventFields> eventFields) {
+    public static CalendarEvents of(Collection<EventFields> eventFields) {
         EventFields sample = eventFields.iterator().next();
         return new CalendarEvents(sample.uid(), sample.calendarURL(), ImmutableSet.copyOf(eventFields));
     }
