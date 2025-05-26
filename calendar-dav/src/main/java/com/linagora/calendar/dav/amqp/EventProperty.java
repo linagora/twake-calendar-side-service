@@ -192,7 +192,7 @@ public class EventProperty {
 
     static final Function<String, MailAddress> calAddressToMailAddress = (String calAddress) -> {
         try {
-            return switch (LenientAddressParser.DEFAULT.parseAddress(StringUtils.remove(calAddress, "mailto:"))) {
+            return switch (LenientAddressParser.DEFAULT.parseAddress(StringUtils.removeIgnoreCase(calAddress, "mailto:"))) {
                 case Mailbox mailbox -> new MailAddress(mailbox.getAddress());
                 case null, default -> throw new CalendarEventDeserializeException("Unable to parse mail address from calendar address: " + calAddress);
             };
