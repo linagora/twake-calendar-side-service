@@ -22,7 +22,9 @@ import static com.linagora.calendar.dav.CalDavClient.CalDavExportException;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.UUID;
 
 import org.apache.commons.lang3.StringUtils;
@@ -31,6 +33,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.MailboxSessionUtil;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -198,5 +201,13 @@ public class CalDavClientTest {
 
         assertThatThrownBy(() -> testee.importCalendar(calendarURL, uid, user.username(), ics.getBytes(StandardCharsets.UTF_8)).block())
             .isInstanceOf(DavClientException.class);
+    }
+
+    @Test
+    void findUserCalendarsShouldSucceed() {
+        OpenPaaSUser user = openPaaSUser();
+        List<CalendarURL> uris = testee.findUserCalendars(user.username(), user.id()).collectList().block();
+
+        assertThat(uris).isEqualTo(ImmutableList.of(new CalendarURL(user.id(), user.id())));
     }
 }
