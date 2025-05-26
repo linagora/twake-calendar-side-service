@@ -25,6 +25,7 @@ import static org.mockito.ArgumentMatchers.any;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
@@ -147,13 +148,10 @@ public class EventIndexerConsumerTest {
 
     @AfterEach
     void afterEach() {
-        List.of("tcalendar:event:created",
-                "tcalendar:event:updated",
-                "tcalendar:event:deleted",
-                "tcalendar:event:cancel",
-                "tcalendar:event:request")
-            .forEach(queueName -> sender.delete(QueueSpecification.queue()
-                    .name(queueName))
+        Arrays.stream(EventIndexerConsumer.Queue
+                .values())
+            .map(EventIndexerConsumer.Queue::queueName)
+            .forEach(queueName -> sender.delete(QueueSpecification.queue().name(queueName))
                 .block());
 
         Mockito.reset(calendarSearchService);

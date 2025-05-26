@@ -65,11 +65,11 @@ public class EventIndexerConsumer implements Closeable, Startable {
     private static final boolean REQUEUE_ON_NACK = true;
 
     public enum Queue {
-        ADD("calendar:event:created", "tcalendar:event:created", "tcalendar:event:created-dead-letter"),
-        UPDATE("calendar:event:updated", "tcalendar:event:updated", "tcalendar:event:updated-dead-letter"),
-        DELETE("calendar:event:deleted", "tcalendar:event:deleted", "tcalendar:event:deleted-dead-letter"),
-        CANCEL("calendar:event:cancel", "tcalendar:event:cancel", "tcalendar:event:cancel-dead-letter"),
-        REQUEST("calendar:event:request", "tcalendar:event:request", "tcalendar:event:request-dead-letter");
+        ADD("calendar:event:created", "tcalendar:event:created:search", "tcalendar:event:created:search-dead-letter"),
+        UPDATE("calendar:event:updated", "tcalendar:event:updated:search", "tcalendar:event:updated:search-dead-letter"),
+        DELETE("calendar:event:deleted", "tcalendar:event:deleted:search", "tcalendar:event:deleted:search-dead-letter"),
+        CANCEL("calendar:event:cancel", "tcalendar:event:cancel:search", "tcalendar:event:cancel:search-dead-letter"),
+        REQUEST("calendar:event:request", "tcalendar:event:request:search", "tcalendar:event:request:search-dead-letter");
         /* Ignored the `calendar:event:reply`, which is triggered exclusively when an attendee updates their participation status (partstat).
         Since eventSearch does not rely on partstat, this queue is not required. */
 

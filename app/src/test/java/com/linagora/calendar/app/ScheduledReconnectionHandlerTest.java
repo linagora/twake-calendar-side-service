@@ -95,11 +95,13 @@ public class ScheduledReconnectionHandlerTest {
     void shouldRestartDavCalendarEventConsumerWhenConsumerDisconnected(TwakeCalendarGuiceServer server) throws NoSuchFieldException, IllegalAccessException {
         RabbitMQManagementAPI rabbitMQManagementAPI = RabbitMQManagementAPI.from(sabreDavExtension.dockerSabreDavSetup().rabbitMQConfiguration());
 
+        String queueName = EventIndexerConsumer.Queue.ADD.queueName();
+
         awaitAtMost
-            .untilAsserted(() -> assertThat(rabbitMQManagementAPI.queueDetails("/", "tcalendar:event:created")
+            .untilAsserted(() -> assertThat(rabbitMQManagementAPI.queueDetails("/", queueName)
                 .consumerDetails()).hasSize(1));
 
-        String consumerNameTag = rabbitMQManagementAPI.queueDetails("/", "tcalendar:event:created").consumerDetails().getFirst().tag();
+        String consumerNameTag = rabbitMQManagementAPI.queueDetails("/", queueName).consumerDetails().getFirst().tag();
 
         // try to close the consumer
         server.getProbe(ScheduledReconnectionHandlerProbe.class).davCalendarEventConsumer.close();
@@ -107,7 +109,7 @@ public class ScheduledReconnectionHandlerTest {
         // then ReconnectionHandler will restart the consumer
         awaitAtMost
             .untilAsserted(() -> {
-                List<RabbitMQManagementAPI.ConsumerDetails> consumerDetails = rabbitMQManagementAPI.queueDetails("/", "tcalendar:event:created")
+                List<RabbitMQManagementAPI.ConsumerDetails> consumerDetails = rabbitMQManagementAPI.queueDetails("/", queueName)
                     .consumerDetails();
                 assertThat(consumerDetails).hasSize(1);
                 assertThat(consumerDetails.getFirst().tag()).isNotEqualTo(consumerNameTag);
@@ -117,10 +119,10 @@ public class ScheduledReconnectionHandlerTest {
     @Test
     void shouldMonitorDavCalendarEventQueues(TwakeCalendarGuiceServer server) {
         assertThat(server.getProbe(ScheduledReconnectionHandlerProbe.class).getQueuesToMonitor())
-            .contains("tcalendar:event:created",
-                "tcalendar:event:updated",
-                "tcalendar:event:deleted",
-                "tcalendar:event:cancel",
-                "tcalendar:event:request");
+            .contains("tcalendar:event:created:search",
+                "tcalendar:event:updated:search",
+                "tcalendar:event:deleted:search",
+                "tcalendar:event:cancel:search",
+                "tcalendar:event:request:search");
     }
 }
