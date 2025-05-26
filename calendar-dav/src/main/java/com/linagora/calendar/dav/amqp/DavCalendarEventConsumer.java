@@ -32,6 +32,7 @@ import java.util.function.Supplier;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
+import org.apache.commons.lang3.BooleanUtils;
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.ReceiverProvider;
@@ -58,6 +59,7 @@ import reactor.rabbitmq.Receiver;
 import reactor.rabbitmq.Sender;
 
 public class DavCalendarEventConsumer implements Closeable, Startable {
+    private static final boolean IGNORE_EVENT_IF_USER_NOT_FOUND = BooleanUtils.toBoolean(System.getProperty("calendar.event.consumer.ignoreIfUserNotFound", "false"));
 
     private static final Logger LOGGER = LoggerFactory.getLogger(DavCalendarEventConsumer.class);
     private static final boolean REQUEUE_ON_NACK = true;
@@ -226,6 +228,13 @@ public class DavCalendarEventConsumer implements Closeable, Startable {
     private Mono<AccountId> getAccountId(OpenPaaSId openpaasUserId) {
         return openPaaSUserDAO.retrieve(openpaasUserId)
             .map(openPaaSUser -> AccountId.fromUsername(openPaaSUser.username()))
-            .switchIfEmpty(Mono.error(new CalendarEventConsumerException("Unable to find user with id '%s'".formatted(openpaasUserId.value()))));
+            .switchIfEmpty(Mono.defer(() -> {
+                if (IGNORE_EVENT_IF_USER_NOT_FOUND) {
+                    LOGGER.warn("Ignoring calendar event for user with id '{}', as the user was not found", openpaasUserId.value());
+                    return Mono.empty();
+                } else {
+                    return Mono.error(new CalendarEventConsumerException("Unable to find user with id '%s'".formatted(openpaasUserId.value())));
+                }
+            }));
     }
 }
