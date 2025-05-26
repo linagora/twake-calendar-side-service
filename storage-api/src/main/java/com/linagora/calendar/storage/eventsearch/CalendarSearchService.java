@@ -30,4 +30,6 @@ public interface CalendarSearchService {
     Mono<Void> delete(AccountId accountId, EventUid eventUid);
 
     Flux<EventFields> search(AccountId accountId, EventSearchQuery query);
+
+    Mono<Void> deleteAll(AccountId accountId);
 }
