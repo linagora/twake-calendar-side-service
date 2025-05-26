@@ -41,7 +41,7 @@ import com.linagora.calendar.app.modules.ScheduledReconnectionHandler.RabbitMQMa
 import com.linagora.calendar.app.modules.ScheduledReconnectionHandler.ScheduledReconnectionHandlerConfiguration;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
-import com.linagora.calendar.dav.amqp.EventIndexerConsumer;
+import com.linagora.calendar.amqp.EventIndexerConsumer;
 
 public class ScheduledReconnectionHandlerTest {
     private final ConditionFactory calmlyAwait = Awaitility.with()

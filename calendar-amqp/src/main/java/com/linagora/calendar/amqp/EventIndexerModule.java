@@ -16,7 +16,7 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.dav.amqp;
+package com.linagora.calendar.amqp;
 
 import java.io.FileNotFoundException;
 import java.util.function.Supplier;
