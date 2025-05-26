@@ -27,8 +27,8 @@
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
-    <artifactId>calendar-dav</artifactId>
-    <name>Twake Calendar :: Side service :: Dav</name>
+    <artifactId>calendar-amqp</artifactId>
+    <name>Twake Calendar :: Side service :: AMQP</name>
 
     <dependencies>
         <dependency>
@@ -36,21 +36,31 @@
             <artifactId>calendar-storage-api</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.googlecode.ez-vcard</groupId>
-            <artifactId>ez-vcard</artifactId>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>calendar-dav</artifactId>
+            <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>io.projectreactor.netty</groupId>
-            <artifactId>reactor-netty</artifactId>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>calendar-dav</artifactId>
+            <scope>test</scope>
+            <type>test-jar</type>
         </dependency>
         <dependency>
-            <groupId>org.apache.httpcomponents</groupId>
-            <artifactId>httpclient</artifactId>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-annotations</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
         </dependency>
         <dependency>
             <groupId>${james.groupId}</groupId>
             <artifactId>apache-james-backends-rabbitmq</artifactId>
-            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.mnode.ical4j</groupId>
