@@ -55,7 +55,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
-import com.linagora.calendar.dav.amqp.EventIndexerConsumer;
+import com.linagora.calendar.amqp.EventIndexerConsumer;
 
 import feign.Client;
 import feign.Feign;

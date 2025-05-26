@@ -16,7 +16,7 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.dav.amqp;
+package com.linagora.calendar.amqp;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

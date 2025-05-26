@@ -16,14 +16,14 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.dav.amqp;
+package com.linagora.calendar.amqp;
 
-public class CalendarEventDeserializeException extends RuntimeException {
-    public CalendarEventDeserializeException(String message, Throwable cause) {
+public class CalendarEventConsumerException extends RuntimeException {
+    public CalendarEventConsumerException(String message, Throwable cause) {
         super(message, cause);
     }
 
-    public CalendarEventDeserializeException(String message) {
+    public CalendarEventConsumerException(String message) {
         super(message);
     }
 }

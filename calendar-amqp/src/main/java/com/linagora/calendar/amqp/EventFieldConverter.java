@@ -16,7 +16,7 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.dav.amqp;
+package com.linagora.calendar.amqp;
 
 import java.io.IOException;
 import java.util.List;
@@ -39,11 +39,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.base.Splitter;
-import com.linagora.calendar.dav.amqp.EventProperty.AttendeeProperty;
-import com.linagora.calendar.dav.amqp.EventProperty.DateProperty;
-import com.linagora.calendar.dav.amqp.EventProperty.DtStampProperty;
-import com.linagora.calendar.dav.amqp.EventProperty.EventUidProperty;
-import com.linagora.calendar.dav.amqp.EventProperty.OrganizerProperty;
+import com.linagora.calendar.amqp.EventProperty.AttendeeProperty;
+import com.linagora.calendar.amqp.EventProperty.DateProperty;
+import com.linagora.calendar.amqp.EventProperty.DtStampProperty;
+import com.linagora.calendar.amqp.EventProperty.EventUidProperty;
+import com.linagora.calendar.amqp.EventProperty.OrganizerProperty;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.eventsearch.CalendarEvents;
