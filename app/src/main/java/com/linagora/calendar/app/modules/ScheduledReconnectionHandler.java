@@ -55,7 +55,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
-import com.linagora.calendar.dav.amqp.DavCalendarEventConsumer;
+import com.linagora.calendar.dav.amqp.EventIndexerConsumer;
 
 import feign.Client;
 import feign.Feign;
@@ -224,8 +224,8 @@ public class ScheduledReconnectionHandler implements Startable {
         this.connectionPool = connectionPool;
         this.config = config;
 
-        this.queuesToMonitor = Arrays.stream(DavCalendarEventConsumer.Queue.values())
-            .map(DavCalendarEventConsumer.Queue::queueName)
+        this.queuesToMonitor = Arrays.stream(EventIndexerConsumer.Queue.values())
+            .map(EventIndexerConsumer.Queue::queueName)
             .collect(ImmutableList.toImmutableList());
     }
 

@@ -18,7 +18,7 @@
 
 package com.linagora.calendar.dav.amqp;
 
-import static com.linagora.calendar.dav.amqp.DavCalendarEventModule.INJECT_KEY_DAV;
+import static com.linagora.calendar.dav.amqp.EventIndexerModule.INJECT_KEY_DAV;
 import static org.apache.james.backends.rabbitmq.Constants.DURABLE;
 import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
 
@@ -59,10 +59,9 @@ import reactor.rabbitmq.QueueSpecification;
 import reactor.rabbitmq.Receiver;
 import reactor.rabbitmq.Sender;
 
-public class DavCalendarEventConsumer implements Closeable, Startable {
+public class EventIndexerConsumer implements Closeable, Startable {
     private static final boolean IGNORE_EVENT_IF_USER_NOT_FOUND = BooleanUtils.toBoolean(System.getProperty("calendar.event.consumer.ignoreIfUserNotFound", "false"));
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(DavCalendarEventConsumer.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(EventIndexerConsumer.class);
     private static final boolean REQUEUE_ON_NACK = true;
 
     public enum Queue {
@@ -97,10 +96,10 @@ public class DavCalendarEventConsumer implements Closeable, Startable {
 
     @Inject
     @Singleton
-    public DavCalendarEventConsumer(ReactorRabbitMQChannelPool channelPool,
-                                    CalendarSearchService calendarSearchService,
-                                    OpenPaaSUserDAO openPaaSUserDAO,
-                                    @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier) {
+    public EventIndexerConsumer(ReactorRabbitMQChannelPool channelPool,
+                                CalendarSearchService calendarSearchService,
+                                OpenPaaSUserDAO openPaaSUserDAO,
+                                @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier) {
         this.receiverProvider = channelPool::createReceiver;
         this.calendarSearchService = calendarSearchService;
         this.openPaaSUserDAO = openPaaSUserDAO;
