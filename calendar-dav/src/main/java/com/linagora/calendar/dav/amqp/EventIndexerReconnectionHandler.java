@@ -31,14 +31,14 @@ import com.rabbitmq.client.Connection;
 
 import reactor.core.publisher.Mono;
 
-public class DavCalendarEventReconnectionHandler implements SimpleConnectionPool.ReconnectionHandler {
-    private static final Logger LOGGER = LoggerFactory.getLogger(DavCalendarEventReconnectionHandler.class);
+public class EventIndexerReconnectionHandler implements SimpleConnectionPool.ReconnectionHandler {
+    private static final Logger LOGGER = LoggerFactory.getLogger(EventIndexerReconnectionHandler.class);
     private static final Duration DELAY_ON_COMPLETED = Duration.ofSeconds(30);
 
-    private final DavCalendarEventConsumer davCalendarEventConsumer;
+    private final EventIndexerConsumer davCalendarEventConsumer;
 
     @Inject
-    public DavCalendarEventReconnectionHandler(DavCalendarEventConsumer davCalendarEventConsumer) {
+    public EventIndexerReconnectionHandler(EventIndexerConsumer davCalendarEventConsumer) {
         this.davCalendarEventConsumer = davCalendarEventConsumer;
     }
 

@@ -28,13 +28,13 @@ import org.apache.james.utils.PropertiesProvider;
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.Singleton;
-import com.linagora.calendar.dav.amqp.DavCalendarEventModule;
+import com.linagora.calendar.dav.amqp.EventIndexerModule;
 
 public class DavModule extends AbstractModule {
 
     @Override
     protected void configure() {
-        install(new DavCalendarEventModule());
+        install(new EventIndexerModule());
     }
 
     @Singleton

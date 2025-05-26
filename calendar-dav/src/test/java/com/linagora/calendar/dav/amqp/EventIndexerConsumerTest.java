@@ -82,7 +82,7 @@ import reactor.rabbitmq.OutboundMessage;
 import reactor.rabbitmq.QueueSpecification;
 import reactor.rabbitmq.Sender;
 
-public class DavCalendarEventConsumerTest {
+public class EventIndexerConsumerTest {
     private final ConditionFactory calmlyAwait = Awaitility.with()
         .pollInterval(Duration.ofMillis(500))
         .and()
@@ -138,7 +138,7 @@ public class DavCalendarEventConsumerTest {
         MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
         OpenPaaSUserDAO openPaaSUserDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
 
-        DavCalendarEventConsumer calendarEventConsumer = new DavCalendarEventConsumer(channelPool, calendarSearchService, openPaaSUserDAO,
+        EventIndexerConsumer calendarEventConsumer = new EventIndexerConsumer(channelPool, calendarSearchService, openPaaSUserDAO,
             QueueArguments.Builder::new);
         calendarEventConsumer.init();
 

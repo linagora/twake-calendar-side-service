@@ -36,7 +36,7 @@ import com.google.inject.Singleton;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.google.inject.name.Named;
 
-public class DavCalendarEventModule extends AbstractModule {
+public class EventIndexerModule extends AbstractModule {
     public static final String INJECT_KEY_DAV = "dav";
 
     private static final boolean FALLBACK_CLASSIC_QUEUES_VERSION_1 = Boolean.parseBoolean(System.getProperty("fallback.classic.queues.v1", "false"));
@@ -45,7 +45,7 @@ public class DavCalendarEventModule extends AbstractModule {
 
     @Override
     protected void configure() {
-        bind(DavCalendarEventConsumer.class).in(Scopes.SINGLETON);
+        bind(EventIndexerConsumer.class).in(Scopes.SINGLETON);
     }
 
     @Provides
@@ -74,14 +74,14 @@ public class DavCalendarEventModule extends AbstractModule {
     }
 
     @ProvidesIntoSet
-    SimpleConnectionPool.ReconnectionHandler provideReconnectionHandler(DavCalendarEventReconnectionHandler reconnectionHandler) {
+    SimpleConnectionPool.ReconnectionHandler provideReconnectionHandler(EventIndexerReconnectionHandler reconnectionHandler) {
         return reconnectionHandler;
     }
 
     @ProvidesIntoSet
-    public InitializationOperation initializeContactsConsumer(DavCalendarEventConsumer instance) {
+    public InitializationOperation initializeContactsConsumer(EventIndexerConsumer instance) {
         return InitilizationOperationBuilder
-            .forClass(DavCalendarEventConsumer.class)
+            .forClass(EventIndexerConsumer.class)
             .init(instance::init);
     }
 }
