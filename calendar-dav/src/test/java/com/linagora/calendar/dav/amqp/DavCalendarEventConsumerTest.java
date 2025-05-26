@@ -28,8 +28,10 @@ import java.time.Instant;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import jakarta.mail.internet.AddressException;
@@ -388,6 +390,162 @@ public class DavCalendarEventConsumerTest {
 
         assertThat(eventFieldsAttendee)
             .containsExactlyInAnyOrder(masterEvent, recurrenceEvent);
+    }
+
+    @Test
+    void shouldUpdateRecurrenceEvent() {
+        String eventUid = UUID.randomUUID().toString();
+        String summary = "Meeting Summary";
+        String description = "Detailed meeting description";
+        String location = "Meeting Room 101";
+        String organizer = openPaasUser.username().asString();
+        OpenPaaSUser attendee1 = sabreDavExtension.newTestUser();
+
+        // 3 events: 1 master event and 2 recurrence events
+        String calendarData = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            CALSCALE:GREGORIAN
+            PRODID:-//SabreDAV//SabreDAV 3.2.2//EN
+            X-WR-CALNAME:#default
+            BEGIN:VTIMEZONE
+            TZID:Asia/Jakarta
+            BEGIN:STANDARD
+            TZOFFSETFROM:+0700
+            TZOFFSETTO:+0700
+            TZNAME:WIB
+            DTSTART:19700101T000000
+            END:STANDARD
+            END:VTIMEZONE
+            BEGIN:VEVENT
+            UID:{eventUid}
+            TRANSP:OPAQUE
+            DTSTART;TZID=Asia/Jakarta:20250515T113000
+            DTEND;TZID=Asia/Jakarta:20250515T120000
+            CLASS:PUBLIC
+            SUMMARY:{summary}
+            DESCRIPTION:{description}
+            LOCATION:{location}
+            RRULE:FREQ=WEEKLY;COUNT=14;BYDAY=FR
+            ORGANIZER;CN=John1 Doe1:mailto:{organizer}
+            ATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVI
+             DUAL;CN=John2 Doe2;SCHEDULE-STATUS=1.1:mailto:{attendee1}
+            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:{organizer}
+            DTSTAMP:20250516T060320Z
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:{eventUid}
+            TRANSP:OPAQUE
+            DTSTART;TZID=Asia/Jakarta:20250523T143000
+            DTEND;TZID=Asia/Jakarta:20250523T150000
+            CLASS:PUBLIC
+            SUMMARY:{summary}
+            DESCRIPTION:{description}
+            LOCATION:{location}
+            ORGANIZER;CN=John1 Doe1:mailto:{organizer}
+            DTSTAMP:20250516T060320Z
+            RECURRENCE-ID:20250523T043000Z
+            ATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVI
+             DUAL;CN=John2 Doe2:mailto:{attendee1}
+            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;CN=John1
+              Doe1:mailto:{organizer}
+            SEQUENCE:1
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:{eventUid}
+            TRANSP:OPAQUE
+            DTSTART;TZID=Asia/Jakarta:20250530T143000
+            DTEND;TZID=Asia/Jakarta:20250530T150000
+            CLASS:PUBLIC
+            SUMMARY:{summary}
+            DESCRIPTION:{description}
+            LOCATION:{location}
+            ORGANIZER;CN=John1 Doe1:mailto:{organizer}
+            DTSTAMP:20250516T060320Z
+            RECURRENCE-ID:20250530T043000Z
+            ATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVI
+             DUAL;CN=John2 Doe2:mailto:{attendee1}
+            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;CN=John1
+              Doe1:mailto:{organizer}
+            SEQUENCE:1
+            END:VEVENT
+            END:VCALENDAR
+            """.replace("{eventUid}", eventUid)
+            .replace("{summary}", summary)
+            .replace("{description}", description)
+            .replace("{location}", location)
+            .replace("{organizer}", organizer)
+            .replace("{attendee1}", attendee1.username().asString());
+
+        davTestHelper.upsertCalendar(openPaasUser, calendarData, eventUid);
+
+        Supplier<Set<EventFields>> searchSupplier = () -> Flux.from(calendarSearchService.search(AccountId.fromUsername(openPaasUser.username()), simpleQuery(summary)))
+            .collect(Collectors.toSet())
+            .block();
+
+        awaitAtMost.untilAsserted(() -> assertThat(searchSupplier.get()).hasSize(3));
+
+        // Update the event (removed one recurrence event)
+        String updatedCalendar = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            CALSCALE:GREGORIAN
+            PRODID:-//SabreDAV//SabreDAV 3.2.2//EN
+            X-WR-CALNAME:#default
+            BEGIN:VTIMEZONE
+            TZID:Asia/Jakarta
+            BEGIN:STANDARD
+            TZOFFSETFROM:+0700
+            TZOFFSETTO:+0700
+            TZNAME:WIB
+            DTSTART:19700101T000000
+            END:STANDARD
+            END:VTIMEZONE
+            BEGIN:VEVENT
+            UID:{eventUid}
+            TRANSP:OPAQUE
+            DTSTART;TZID=Asia/Jakarta:20250515T113000
+            DTEND;TZID=Asia/Jakarta:20250515T120000
+            CLASS:PUBLIC
+            SUMMARY:{summary}
+            DESCRIPTION:{description}
+            LOCATION:{location}
+            RRULE:FREQ=WEEKLY;COUNT=14;BYDAY=FR
+            ORGANIZER;CN=John1 Doe1:mailto:{organizer}
+            ATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVI
+             DUAL;CN=John2 Doe2;SCHEDULE-STATUS=1.1:mailto:{attendee1}
+            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:{organizer}
+            DTSTAMP:20250516T060320Z
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:{eventUid}
+            TRANSP:OPAQUE
+            DTSTART;TZID=Asia/Jakarta:20250523T143000
+            DTEND;TZID=Asia/Jakarta:20250523T150000
+            CLASS:PUBLIC
+            SUMMARY:{summary}
+            DESCRIPTION:{description}
+            LOCATION:{location}
+            ORGANIZER;CN=John1 Doe1:mailto:{organizer}
+            DTSTAMP:20250516T060320Z
+            RECURRENCE-ID:20250523T043000Z
+            ATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVI
+             DUAL;CN=John2 Doe2:mailto:{attendee1}
+            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;CN=John1
+              Doe1:mailto:{organizer}
+            SEQUENCE:1
+            END:VEVENT
+            END:VCALENDAR
+            """.replace("{eventUid}", eventUid)
+            .replace("{summary}", summary)
+            .replace("{description}", description)
+            .replace("{location}", location)
+            .replace("{organizer}", organizer)
+            .replace("{attendee1}", attendee1.username().asString());
+
+        davTestHelper.upsertCalendar(openPaasUser, updatedCalendar, eventUid);
+
+        awaitAtMost.untilAsserted(() -> assertThat(searchSupplier.get()).hasSize(2));
     }
 
     @Test

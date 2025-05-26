@@ -45,6 +45,7 @@ import org.slf4j.LoggerFactory;
 import com.google.inject.name.Named;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.eventsearch.CalendarEvents;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
 import com.rabbitmq.client.BuiltinExchangeType;
 
@@ -137,11 +138,11 @@ public class DavCalendarEventConsumer implements Closeable, Startable {
     }
 
     public void start() {
-        consumeDisposableMap.put(Queue.ADD, doConsumeCalendarEventMessages(Queue.ADD, handlerIndex));
-        consumeDisposableMap.put(Queue.UPDATE, doConsumeCalendarEventMessages(Queue.UPDATE, handlerIndex));
+        consumeDisposableMap.put(Queue.ADD, doConsumeCalendarEventMessages(Queue.ADD, handlerAdd));
+        consumeDisposableMap.put(Queue.UPDATE, doConsumeCalendarEventMessages(Queue.UPDATE, handlerAddOrUpdate));
         consumeDisposableMap.put(Queue.DELETE, doConsumeCalendarEventMessages(Queue.DELETE, handlerDelete));
         consumeDisposableMap.put(Queue.CANCEL, doConsumeCalendarEventMessages(Queue.CANCEL, handlerDelete));
-        consumeDisposableMap.put(Queue.REQUEST, doConsumeCalendarEventMessages(Queue.REQUEST, handlerIndex));
+        consumeDisposableMap.put(Queue.REQUEST, doConsumeCalendarEventMessages(Queue.REQUEST, handlerAddOrUpdate));
     }
 
     public void restart() {
@@ -165,12 +166,40 @@ public class DavCalendarEventConsumer implements Closeable, Startable {
         Mono<CalendarEventMessage> deserialize(byte[] messagesAsBytes);
     }
 
-    private final CalendarEventHandler handlerIndex = new CalendarEventHandler() {
+    private final CalendarEventHandler handlerAdd = new CalendarEventHandler() {
         @Override
         public Mono<?> handle(AccountId ownerAccountId, CalendarEventMessage calendarEventMessage) {
             return Mono.fromCallable(calendarEventMessage::extractCalendarEvents)
                 .flatMap(calendarEvents -> calendarSearchService.index(ownerAccountId, calendarEvents))
                 .then();
+        }
+
+        @Override
+        public Mono<CalendarEventMessage> deserialize(byte[] messagesAsBytes) {
+            return Mono.fromCallable(() -> CalendarEventMessage.CreatedOrUpdated.deserialize(messagesAsBytes));
+        }
+    };
+
+    private final CalendarEventHandler handlerAddOrUpdate = new CalendarEventHandler() {
+
+        @Override
+        public Mono<?> handle(AccountId ownerAccountId, CalendarEventMessage calendarEventMessage) {
+            return Mono.fromCallable(calendarEventMessage::extractCalendarEvents)
+                .flatMap(calendarEvents -> indexEvents(ownerAccountId, calendarEvents))
+                .then();
+        }
+
+        private Mono<Void> indexEvents(AccountId ownerAccountId, CalendarEvents calendarEvents) {
+           if (hasRecurrenceEvents(calendarEvents)) {
+                return calendarSearchService.delete(ownerAccountId, calendarEvents.eventUid())
+                    .then(calendarSearchService.index(ownerAccountId, calendarEvents));
+            } else {
+                return calendarSearchService.index(ownerAccountId, calendarEvents);
+           }
+        }
+
+        private boolean hasRecurrenceEvents(CalendarEvents calendarEvents) {
+            return calendarEvents.events().size() > 1;
         }
 
         @Override
