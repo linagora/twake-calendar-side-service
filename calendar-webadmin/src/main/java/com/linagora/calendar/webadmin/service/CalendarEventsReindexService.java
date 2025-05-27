@@ -22,7 +22,14 @@ import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
 import java.util.List;
+
+import jakarta.mail.internet.AddressException;
 
 import org.apache.james.core.MailAddress;
 import org.apache.james.util.ReactorUtils;
@@ -38,12 +45,12 @@ import com.linagora.calendar.storage.eventsearch.CalendarEvents;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
 import com.linagora.calendar.storage.eventsearch.EventFields;
 
-import jakarta.mail.internet.AddressException;
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.Content;
 import net.fortuna.ical4j.model.Parameter;
 import net.fortuna.ical4j.model.Property;
+import net.fortuna.ical4j.model.TimeZone;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.property.Uid;
 import reactor.core.publisher.Flux;
@@ -51,6 +58,16 @@ import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 public class CalendarEventsReindexService {
+
+    public static final DateTimeFormatter UTC_DATE_TIME_FORMATTER = new DateTimeFormatterBuilder()
+        .appendPattern("yyyyMMdd'T'HHmmssX")
+        .toFormatter();
+    public static final DateTimeFormatter DATE_TIME_FORMATTER = new DateTimeFormatterBuilder()
+        .appendPattern("yyyyMMdd'T'HHmmss")
+        .toFormatter();
+    public static final DateTimeFormatter DATE_FORMATTER = new DateTimeFormatterBuilder()
+        .appendPattern("yyyyMMdd")
+        .toFormatter();
 
     private static final boolean GET_RESOURCE = true;
     private static final boolean GET_ATTENDEE = false;
@@ -107,9 +124,9 @@ public class CalendarEventsReindexService {
             .location(vEvent.getProperty(Property.LOCATION).map(Content::getValue).orElse(null))
             .description(vEvent.getProperty(Property.DESCRIPTION).map(Content::getValue).orElse(null))
             .clazz(vEvent.getProperty(Property.CLASS).map(Content::getValue).orElse(null))
-            .start(vEvent.getProperty(Property.DTSTART).map(Content::getValue).map(Instant::parse).orElse(null))
-            .end(vEvent.getProperty(Property.DTEND).map(Content::getValue).map(Instant::parse).orElse(null))
-            .dtStamp(vEvent.getProperty(Property.DTSTAMP).map(Content::getValue).map(Instant::parse).orElse(null))
+            .start(vEvent.getProperty(Property.DTSTART).map(this::parseTime).orElse(null))
+            .end(vEvent.getProperty(Property.DTEND).map(this::parseTime).orElse(null))
+            .dtStamp(vEvent.getProperty(Property.DTSTAMP).map(this::parseTime).orElse(null))
             .allDay(vEvent.getProperty(Property.DTSTART).map(Content::getValue).map(value -> !value.contains("T")).orElse(false))
             .isRecurrentMaster(isRecurrentMaster(vEvent))
             .organizer(getOrganizer(vEvent))
@@ -135,11 +152,11 @@ public class CalendarEventsReindexService {
     }
 
     private List<EventFields.Person> getAttendees(VEvent vEvent) {
-        return getPeople(vEvent, GET_RESOURCE);
+        return getPeople(vEvent, GET_ATTENDEE);
     }
 
     private List<EventFields.Person> getResources(VEvent vEvent) {
-        return getPeople(vEvent, GET_ATTENDEE);
+        return getPeople(vEvent, GET_RESOURCE);
     }
 
     private List<EventFields.Person> getPeople(VEvent vEvent, boolean getResource) {
@@ -152,9 +169,21 @@ public class CalendarEventsReindexService {
             .toList();
     }
 
+    private Instant parseTime(Property property) {
+        String value = property.getValue();
+        if (value.contains("T")) {
+            return property.getParameter(Parameter.TZID)
+                .map(tzId -> TimeZone.getTimeZone(tzId.getValue()).toZoneId())
+                .map(zoneId -> LocalDateTime.parse(value, DATE_TIME_FORMATTER).atZone(zoneId).toInstant())
+                .orElseGet(() -> Instant.from(UTC_DATE_TIME_FORMATTER.parse(value)));
+        } else {
+            return LocalDate.from(DATE_FORMATTER.parse(value)).atStartOfDay().toInstant(ZoneOffset.UTC);
+        }
+    }
+
     private EventFields.Person toPerson(Property property) throws AddressException {
-        String cn = property.getParameter(Parameter.CN).get().getValue();
-        String email = property.getValue();
+        String cn = property.getParameter(Parameter.CN).map(Parameter::getValue).orElse("");
+        String email = property.getValue().replaceFirst("^mailto:", "");
         return new EventFields.Person(cn, new MailAddress(email));
     }
 }

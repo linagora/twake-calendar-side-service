@@ -18,10 +18,8 @@
 
 package com.linagora.calendar.dav;
 
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.Optional;
 import java.util.function.UnaryOperator;
 
 import javax.net.ssl.SSLException;
@@ -61,7 +59,7 @@ public class CalDavClient extends DavClient {
 
     private static final String ACCEPT_XML = "application/xml";
 
-    protected CalDavClient(DavConfiguration config) throws SSLException {
+    public CalDavClient(DavConfiguration config) throws SSLException {
         super(config);
     }
 
