@@ -16,29 +16,34 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.webadmin;
+package com.linagora.calendar.webadmin.task;
 
-import org.apache.james.task.MemoryTaskManager;
-import org.apache.james.task.TaskManager;
-import org.apache.james.webadmin.Routes;
-import org.apache.james.webadmin.tasks.TaskFromRequestRegistry;
+import org.apache.james.task.Task;
+import org.apache.james.task.TaskType;
 
-import com.google.inject.AbstractModule;
-import com.google.inject.Scopes;
-import com.google.inject.multibindings.Multibinder;
+import com.linagora.calendar.webadmin.service.CalendarEventsReindexService;
 
-public class CalendarRoutesModule extends AbstractModule {
+public class CalendarEventsReindexTask implements Task {
+    public static final TaskType REINDEX_CALENDAR_EVENTS = TaskType.of("reindex-calendar-events");
+
+    private final CalendarEventsReindexService reindexService;
+
+    public CalendarEventsReindexTask(CalendarEventsReindexService reindexService) {
+        this.reindexService = reindexService;
+    }
+
     @Override
-    protected void configure() {
-        Multibinder<Routes> routesMultibinder = Multibinder.newSetBinder(binder(), Routes.class);
-        routesMultibinder.addBinding().to(CalendarUserRoutes.class);
-        routesMultibinder.addBinding().to(CalendarChannelLogoutRoutes.class);
-        routesMultibinder.addBinding().to(CalendarRoutes.class);
+    public Result run() {
+        try {
+            reindexService.reindex().block();
+            return Result.COMPLETED;
+        } catch (Exception e) {
+            return Result.PARTIAL;
+        }
+    }
 
-        bind(MemoryTaskManager.class).in(Scopes.SINGLETON);
-        bind(TaskManager.class).to(MemoryTaskManager.class);
-
-        Multibinder<TaskFromRequestRegistry.TaskRegistration> taskRegistrationMultibinder = Multibinder.newSetBinder(binder(), TaskFromRequestRegistry.TaskRegistration.class);
-        taskRegistrationMultibinder.addBinding().to(CalendarRoutes.CalendarEventsReindexRequestToTask.class);
+    @Override
+    public TaskType type() {
+        return REINDEX_CALENDAR_EVENTS;
     }
 }

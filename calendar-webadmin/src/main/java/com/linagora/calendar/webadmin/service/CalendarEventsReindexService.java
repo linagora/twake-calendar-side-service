@@ -29,6 +29,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.util.List;
 
+import jakarta.inject.Inject;
 import jakarta.mail.internet.AddressException;
 
 import org.apache.james.core.MailAddress;
@@ -77,6 +78,7 @@ public class CalendarEventsReindexService {
     private final CalendarSearchService calendarSearchService;
     private final CalDavClient calDavClient;
 
+    @Inject
     public CalendarEventsReindexService(OpenPaaSUserDAO userDAO, CalendarSearchService calendarSearchService, CalDavClient calDavClient) {
         this.userDAO = userDAO;
         this.calendarSearchService = calendarSearchService;
