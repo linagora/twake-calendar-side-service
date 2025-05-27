@@ -21,6 +21,7 @@ package com.linagora.calendar.dav.amqp;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
@@ -152,10 +153,7 @@ public class EventFieldConverter {
 
         private void validateNode(JsonNode node) throws JsonMappingException {
             if (!node.isArray()) {
-                throw new CalendarEventDeserializeException("Expected an array for EventProperty but got " + node.getNodeType());
-            }
-            if (node.size() != 4) {
-                throw new CalendarEventDeserializeException("Mismatched array size for EventProperty, expected 4 but got " + node.size());
+                throw new CalendarEventDeserializeException("Expected an array for EventProperty but got " + node.getNodeType() + ": " + node.toPrettyString());
             }
         }
 
@@ -168,7 +166,7 @@ public class EventFieldConverter {
             String name = node.get(0).asText();
             JsonNode param = node.get(1);
             String valueType = node.get(2).asText();
-            String value = node.get(3).asText();
+            String value = Optional.ofNullable(node.get(3)).map(JsonNode::asText).orElse(null);
 
             EventProperty eventProperty = new EventProperty(name, param, valueType, value);
 
