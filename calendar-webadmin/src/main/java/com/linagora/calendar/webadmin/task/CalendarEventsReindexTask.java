@@ -18,32 +18,51 @@
 
 package com.linagora.calendar.webadmin.task;
 
+import java.time.Clock;
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+
 import org.apache.james.task.Task;
+import org.apache.james.task.TaskExecutionDetails;
 import org.apache.james.task.TaskType;
 
 import com.linagora.calendar.webadmin.service.CalendarEventsReindexService;
 
 public class CalendarEventsReindexTask implements Task {
+    public record Details(Instant instant, long processedEventCount, List<CalendarEventsReindexService.Context.User> failedUsers) implements TaskExecutionDetails.AdditionalInformation {
+        @Override
+        public Instant timestamp() {
+            return null;
+        }
+    }
+
     public static final TaskType REINDEX_CALENDAR_EVENTS = TaskType.of("reindex-calendar-events");
 
     private final CalendarEventsReindexService reindexService;
+    private final RunningOptions runningOptions;
+    private final CalendarEventsReindexService.Context context;
 
-    public CalendarEventsReindexTask(CalendarEventsReindexService reindexService) {
+    public CalendarEventsReindexTask(CalendarEventsReindexService reindexService, RunningOptions runningOptions) {
         this.reindexService = reindexService;
+        this.runningOptions = runningOptions;
+        this.context = new CalendarEventsReindexService.Context();
     }
 
     @Override
     public Result run() {
-        try {
-            reindexService.reindex().block();
-            return Result.COMPLETED;
-        } catch (Exception e) {
-            return Result.PARTIAL;
-        }
+        return reindexService.reindex(context, runningOptions.usersPerSecond()).block();
     }
 
     @Override
     public TaskType type() {
         return REINDEX_CALENDAR_EVENTS;
+    }
+
+    @Override
+    public Optional<TaskExecutionDetails.AdditionalInformation> details() {
+        return Optional.of(new Details(Clock.systemUTC().instant(),
+            context.snapshot().processedEventCount(),
+            context.snapshot().failedUsers()));
     }
 }

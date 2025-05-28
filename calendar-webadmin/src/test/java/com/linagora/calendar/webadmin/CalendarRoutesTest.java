@@ -16,11 +16,14 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.webadmin.service;
+package com.linagora.calendar.webadmin;
 
 import static com.linagora.calendar.storage.eventsearch.EventSearchQuery.MAX_LIMIT;
 import static com.linagora.calendar.webadmin.service.CalendarEventsReindexService.UTC_DATE_TIME_FORMATTER;
+import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.notNullValue;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -33,11 +36,25 @@ import javax.net.ssl.SSLException;
 import jakarta.mail.internet.AddressException;
 
 import org.apache.james.core.MailAddress;
+import org.apache.james.json.DTOConverter;
+import org.apache.james.server.task.json.dto.AdditionalInformationDTO;
+import org.apache.james.server.task.json.dto.AdditionalInformationDTOModule;
+import org.apache.james.task.Hostname;
+import org.apache.james.task.MemoryTaskManager;
+import org.apache.james.task.TaskExecutionDetails;
+import org.apache.james.task.TaskManager;
 import org.apache.james.vacation.api.AccountId;
+import org.apache.james.webadmin.WebAdminServer;
+import org.apache.james.webadmin.WebAdminUtils;
+import org.apache.james.webadmin.routes.TasksRoutes;
+import org.apache.james.webadmin.utils.JsonTransformer;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
@@ -51,13 +68,18 @@ import com.linagora.calendar.storage.eventsearch.EventSearchQuery;
 import com.linagora.calendar.storage.eventsearch.MemoryCalendarSearchService;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
+import com.linagora.calendar.webadmin.service.CalendarEventsReindexService;
+import com.linagora.calendar.webadmin.task.CalendarEventsReindexTaskAdditionalInformationDTO;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
-class CalendarEventsReindexServiceTest {
+import io.restassured.RestAssured;
+
+public class CalendarRoutesTest {
 
     @RegisterExtension
     static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
 
+    private WebAdminServer webAdminServer;
     private OpenPaaSUserDAO userDAO;
     private CalendarSearchService calendarSearchService;
     private CalDavClient calDavClient;
@@ -75,6 +97,53 @@ class CalendarEventsReindexServiceTest {
         reindexService = new CalendarEventsReindexService(userDAO, calendarSearchService, calDavClient);
 
         this.openPaaSUser = sabreDavExtension.newTestUser();
+
+        TaskManager taskManager = new MemoryTaskManager(new Hostname("foo"));
+
+        webAdminServer = WebAdminUtils.createWebAdminServer(new CalendarRoutes(new JsonTransformer(),
+                taskManager,
+                ImmutableSet.of(new CalendarRoutes.CalendarEventsReindexRequestToTask(reindexService))),
+            new TasksRoutes(taskManager,
+                new JsonTransformer(),
+                new DTOConverter<>(ImmutableSet.<AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO>>builder()
+                    .add(CalendarEventsReindexTaskAdditionalInformationDTO.module())
+                    .build()))
+        ).start();
+
+        RestAssured.requestSpecification = WebAdminUtils.buildRequestSpecification(webAdminServer)
+            .setBasePath(CalendarRoutes.BASE_PATH)
+            .build();
+    }
+
+    @AfterEach
+    void tearDown() {
+        webAdminServer.destroy();
+    }
+
+    @Test
+    void shouldShowAllInformationInResponse() {
+        String taskId = given()
+            .queryParam("task", "reindex")
+            .when()
+            .post()
+            .jsonPath()
+            .get("taskId");
+
+        given()
+            .basePath(TasksRoutes.BASE)
+            .when()
+            .get(taskId + "/await")
+            .then()
+            .body("status", is("completed"))
+            .body("taskId", is(taskId))
+            .body("type", is("reindex-calendar-events"))
+            .body("additionalInformation.processedEventCount", is(0))
+            .body("additionalInformation.failedUsers", is(ImmutableList.of()))
+            .body("additionalInformation.timestamp", is(notNullValue()))
+            .body("additionalInformation.type", is("reindex-calendar-events"))
+            .body("startedDate", is(notNullValue()))
+            .body("submitDate", is(notNullValue()))
+            .body("completedDate", is(notNullValue()));
     }
 
     @Test
@@ -105,7 +174,22 @@ class CalendarEventsReindexServiceTest {
 
         calDavClient.importCalendar(calendarURL, eventId, openPaaSUser.username(), ics.getBytes(StandardCharsets.UTF_8)).block();
 
-        reindexService.reindex().block();
+        String taskId = given()
+            .queryParam("task", "reindex")
+            .when()
+            .post()
+            .jsonPath()
+            .get("taskId");
+
+        given()
+            .basePath(TasksRoutes.BASE)
+            .when()
+            .get(taskId + "/await")
+            .then()
+            .body("status", is("completed"))
+            .body("type", is("reindex-calendar-events"))
+            .body("additionalInformation.processedEventCount", is(1))
+            .body("additionalInformation.failedUsers", is(ImmutableList.of()));
 
         EventFields.Person person = new EventFields.Person("john doe", new MailAddress(openPaaSUser.username().asString()));
         EventFields expected = EventFields.builder()
@@ -206,7 +290,22 @@ class CalendarEventsReindexServiceTest {
         calDavClient.importCalendar(calendarURL, uid1, openPaaSUser.username(), ics).block();
         calDavClient.importCalendar(calendarURL, uid2, openPaaSUser.username(), ics2).block();
 
-        reindexService.reindex().block();
+        String taskId = given()
+            .queryParam("task", "reindex")
+            .when()
+            .post()
+            .jsonPath()
+            .get("taskId");
+
+        given()
+            .basePath(TasksRoutes.BASE)
+            .when()
+            .get(taskId + "/await")
+            .then()
+            .body("status", is("completed"))
+            .body("type", is("reindex-calendar-events"))
+            .body("additionalInformation.processedEventCount", is(2))
+            .body("additionalInformation.failedUsers", is(ImmutableList.of()));
 
         EventFields.Person person = new EventFields.Person("John1 Doe1", new MailAddress(username));
         EventFields expected1 = EventFields.builder()
@@ -276,7 +375,22 @@ class CalendarEventsReindexServiceTest {
             .build();
         calendarSearchService.index(accountId, CalendarEvents.of(event1)).block();
 
-        reindexService.reindex().block();
+        String taskId = given()
+            .queryParam("task", "reindex")
+            .when()
+            .post()
+            .jsonPath()
+            .get("taskId");
+
+        given()
+            .basePath(TasksRoutes.BASE)
+            .when()
+            .get(taskId + "/await")
+            .then()
+            .body("status", is("completed"))
+            .body("type", is("reindex-calendar-events"))
+            .body("additionalInformation.processedEventCount", is(0))
+            .body("additionalInformation.failedUsers", is(ImmutableList.of()));
 
         List<EventFields> actual = calendarSearchService.search(accountId, simpleQuery(""))
             .collectList().block();

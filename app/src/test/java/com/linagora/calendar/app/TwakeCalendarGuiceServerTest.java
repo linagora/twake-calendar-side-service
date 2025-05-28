@@ -193,7 +193,6 @@ class TwakeCalendarGuiceServerTest  {
             .post("/calendars?task=reindex")
             .then()
             .body("taskId", notNullValue());
-        System.out.println();
     }
 
     @Test
