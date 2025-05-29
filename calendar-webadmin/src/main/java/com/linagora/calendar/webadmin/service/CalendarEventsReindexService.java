@@ -162,6 +162,7 @@ public class CalendarEventsReindexService {
 
     private Mono<Task.Result> reindex(Context context, OpenPaaSUser user) {
         return calendarSearchService.deleteAll(AccountId.fromUsername(user.username()))
+            .then(Mono.fromRunnable(() -> LOGGER.info("{} task deleted all events of user {}", TASK_NAME.asString(), user.username())))
             .then(calDavClient.findUserCalendars(user.username(), user.id())
                 .flatMap(calendarURL -> reindex(context, user, calendarURL))
                 .reduce(Task.Result.COMPLETED, Task::combine))
