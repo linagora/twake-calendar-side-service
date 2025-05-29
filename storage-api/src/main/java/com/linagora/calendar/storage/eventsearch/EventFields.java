@@ -133,7 +133,7 @@ public record EventFields(EventUid uid,
             return this;
         }
 
-        public Builder isRecurrentMaster(Boolean isRecurrentMaster) {
+        public Builder isRecurrentMaster(boolean isRecurrentMaster) {
             this.isRecurrentMaster = isRecurrentMaster;
             return this;
         }

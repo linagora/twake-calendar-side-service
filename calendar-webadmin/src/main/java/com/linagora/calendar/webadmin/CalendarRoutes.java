@@ -65,7 +65,7 @@ public class CalendarRoutes implements Routes {
     }
 
     public static final String BASE_PATH = "/calendars";
-    private static final TaskRegistrationKey TASK_NAME = TaskRegistrationKey.of("reindex");
+    public static final TaskRegistrationKey TASK_NAME = TaskRegistrationKey.of("reindexCalendarEvents");
 
     private final JsonTransformer jsonTransformer;
     private final TaskManager taskManager;

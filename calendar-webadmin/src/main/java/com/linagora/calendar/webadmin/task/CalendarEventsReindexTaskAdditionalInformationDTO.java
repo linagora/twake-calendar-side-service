@@ -27,7 +27,12 @@ import org.apache.james.server.task.json.dto.AdditionalInformationDTOModule;
 
 import com.linagora.calendar.webadmin.service.CalendarEventsReindexService;
 
-public record CalendarEventsReindexTaskAdditionalInformationDTO(String type, Instant timestamp, long processedEventCount, List<String> failedUsers) implements AdditionalInformationDTO {
+public record CalendarEventsReindexTaskAdditionalInformationDTO(String type,
+                                                                Instant timestamp,
+                                                                long processedUserCount,
+                                                                long processedEventCount,
+                                                                long failedEventCount,
+                                                                List<String> failedUsers) implements AdditionalInformationDTO {
     @Override
     public String getType() {
         return type;
@@ -51,7 +56,9 @@ public record CalendarEventsReindexTaskAdditionalInformationDTO(String type, Ins
         return new CalendarEventsReindexTaskAdditionalInformationDTO(
             type,
             details.instant(),
+            details.processedUserCount(),
             details.processedEventCount(),
+            details.failedEventCount(),
             details.failedUsers().stream()
                 .map(CalendarEventsReindexService.Context.User::username)
                 .toList());
@@ -60,7 +67,9 @@ public record CalendarEventsReindexTaskAdditionalInformationDTO(String type, Ins
     private CalendarEventsReindexTask.Details toDomainObject() {
         return new CalendarEventsReindexTask.Details(
             timestamp,
+            processedUserCount,
             processedEventCount,
+            failedEventCount,
             failedUsers.stream()
                 .map(CalendarEventsReindexService.Context.User::new)
                 .toList());

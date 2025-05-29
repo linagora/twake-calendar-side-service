@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.webadmin.service;
 
+import static com.linagora.calendar.webadmin.CalendarRoutes.TASK_NAME;
 import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.time.Duration;
@@ -28,6 +29,7 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -36,13 +38,13 @@ import jakarta.mail.internet.AddressException;
 
 import org.apache.james.core.MailAddress;
 import org.apache.james.task.Task;
-import org.apache.james.user.api.UsersRepositoryException;
 import org.apache.james.util.ReactorUtils;
 import org.apache.james.vacation.api.AccountId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.github.fge.lambdas.Throwing;
+import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalendarUtil;
@@ -55,12 +57,10 @@ import com.linagora.calendar.storage.eventsearch.EventFields;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
-import net.fortuna.ical4j.model.Content;
 import net.fortuna.ical4j.model.Parameter;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.TimeZone;
 import net.fortuna.ical4j.model.component.VEvent;
-import net.fortuna.ical4j.model.property.Uid;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -68,21 +68,33 @@ import reactor.core.scheduler.Schedulers;
 public class CalendarEventsReindexService {
 
     public static class Context {
-        public record Snapshot(long processedEventCount, List<User> failedUsers) {
+        public record Snapshot(long processedUserCount, long processedEventCount, long failedEventCount, List<User> failedUsers) {
         }
 
         public record User(String username){}
 
+        private final AtomicLong processedUserCount;
         private final AtomicLong processedEventCount;
+        private final AtomicLong failedEventCount;
         private final ConcurrentLinkedDeque<User> failedUsers;
 
         public Context() {
+            processedUserCount = new AtomicLong();
             processedEventCount = new AtomicLong();
+            failedEventCount = new AtomicLong();
             failedUsers = new ConcurrentLinkedDeque<>();
         }
 
-        void incrementProcessed() {
+        void incrementProcessedUser() {
+            processedUserCount.incrementAndGet();
+        }
+
+        void incrementProcessedEvent() {
             processedEventCount.incrementAndGet();
+        }
+
+        void incrementFailedEvent() {
+            failedEventCount.incrementAndGet();
         }
 
         void addToFailedUsers(User user) {
@@ -90,8 +102,21 @@ public class CalendarEventsReindexService {
         }
 
         public Snapshot snapshot() {
-            return new Snapshot(processedEventCount.get(),
+            return new Snapshot(
+                processedUserCount.get(),
+                processedEventCount.get(),
+                failedEventCount.get(),
                 ImmutableList.copyOf(failedUsers));
+        }
+
+        @Override
+        public String toString() {
+            return MoreObjects.toStringHelper(this)
+                .add("processedUserCount", processedUserCount.get())
+                .add("processedEventCount", processedEventCount.get())
+                .add("failedEventCount", failedEventCount.get())
+                .add("failedUsers", failedUsers)
+                .toString();
         }
     }
 
@@ -128,29 +153,45 @@ public class CalendarEventsReindexService {
                 .per(Duration.ofSeconds(1))
                 .forOperation(user -> reindex(context, user)))
             .reduce(Task.Result.COMPLETED, Task::combine)
-            .onErrorResume(UsersRepositoryException.class, e -> {
-                LOGGER.error("Error while reindexing calendar events", e);
+            .doOnNext(result -> LOGGER.info("{} task result: {}. Detail:\n{}", TASK_NAME.asString(), result.toString(), context.snapshot()))
+            .onErrorResume(e -> {
+                LOGGER.error("Error while doing task {}", TASK_NAME.asString(), e);
                 return Mono.just(Task.Result.PARTIAL);
             });
     }
 
     private Mono<Task.Result> reindex(Context context, OpenPaaSUser user) {
-        AccountId accountId = AccountId.fromUsername(user.username());
-        return calendarSearchService.deleteAll(accountId)
+        return calendarSearchService.deleteAll(AccountId.fromUsername(user.username()))
             .then(calDavClient.findUserCalendars(user.username(), user.id())
-                .flatMap(calendarURL -> calDavClient.export(calendarURL, user.username())
-                    .flatMap(bytes -> Mono.fromCallable(() -> CalendarUtil.parseIcs(bytes))
-                        .subscribeOn(Schedulers.boundedElastic()))
-                    .flatMap(calendar -> reindex(context, accountId, calendarURL, calendar)))
+                .flatMap(calendarURL -> reindex(context, user, calendarURL))
                 .reduce(Task.Result.COMPLETED, Task::combine))
-            .onErrorResume(e -> {
-                LOGGER.error("Error while reindexing calendar events for user {}", user.username().asString(), e);
+            .doOnNext(result -> {
+                LOGGER.info("{} task result for user {}: {}", TASK_NAME.asString(), user.username(), result.toString());
+                if (result == Task.Result.COMPLETED) {
+                    context.incrementProcessedUser();
+                } else {
+                    context.addToFailedUsers(new Context.User(user.username().asString()));
+                }
+            }).onErrorResume(e -> {
+                LOGGER.error("Error while doing task {} for user {}", TASK_NAME.asString(), user.username().asString(), e);
                 context.addToFailedUsers(new Context.User(user.username().asString()));
                 return Mono.just(Task.Result.PARTIAL);
             });
     }
 
-    private Mono<Task.Result> reindex(Context context, AccountId accountId, CalendarURL calendarURL, Calendar calendar) {
+    private Mono<Task.Result> reindex(Context context, OpenPaaSUser user, CalendarURL calendarURL) {
+        return calDavClient.export(calendarURL, user.username())
+            .flatMap(bytes -> Mono.fromCallable(() -> CalendarUtil.parseIcs(bytes))
+                .subscribeOn(Schedulers.boundedElastic()))
+            .flatMap(calendar -> reindex(context, user, calendarURL, calendar))
+            .onErrorResume(e -> {
+                LOGGER.error("Error while doing task {} for user {} and calendar url {}", TASK_NAME.asString(), user.username().asString(), calendarURL.serialize(), e);
+                return Mono.just(Task.Result.PARTIAL);
+            });
+    }
+
+    private Mono<Task.Result> reindex(Context context, OpenPaaSUser user, CalendarURL calendarURL, Calendar calendar) {
+        AccountId accountId = AccountId.fromUsername(user.username());
         return Flux.fromIterable(calendar.getComponents(Component.VEVENT))
             .cast(VEvent.class)
             .groupBy(vEvent -> vEvent.getProperty(Property.UID).get().getValue())
@@ -159,40 +200,50 @@ public class CalendarEventsReindexService {
                     .collectList()
                     .map(CalendarEvents::of)
                     .flatMap(calendarEvents -> calendarSearchService.index(accountId, calendarEvents))
-                    .then(Mono.fromRunnable(() -> {
-                        context.incrementProcessed();
-                    })),
+                    .then(Mono.fromCallable(() -> {
+                        context.incrementProcessedEvent();
+                        return Task.Result.COMPLETED;
+                    })).onErrorResume(e -> {
+                        LOGGER.error("Error while doing task {} for user {} and calendar {} and eventId {}",
+                            TASK_NAME.asString(), user.username().asString(), calendarURL.serialize(), groupedFlux.key(), e);
+                        context.incrementFailedEvent();
+                        return Mono.just(Task.Result.PARTIAL);
+                    }),
                 DEFAULT_CONCURRENCY)
-            .then(Mono.just(Task.Result.COMPLETED));
+            .reduce(Task.Result.COMPLETED, Task::combine);
     }
 
     private EventFields toEventFields(VEvent vEvent, CalendarURL calendarURL) {
-        return EventFields.builder()
-            .calendarURL(calendarURL)
-            .uid(vEvent.getUid().map(Uid::getValue).orElse(null))
-            .summary(vEvent.getProperty(Property.SUMMARY).map(Content::getValue).orElse(null))
-            .location(vEvent.getProperty(Property.LOCATION).map(Content::getValue).orElse(null))
-            .description(vEvent.getProperty(Property.DESCRIPTION).map(Content::getValue).orElse(null))
-            .clazz(vEvent.getProperty(Property.CLASS).map(Content::getValue).orElse(null))
-            .start(vEvent.getProperty(Property.DTSTART).map(this::parseTime).orElse(null))
-            .end(vEvent.getProperty(Property.DTEND).map(this::parseTime).orElse(null))
-            .dtStamp(vEvent.getProperty(Property.DTSTAMP).map(this::parseTime).orElse(null))
-            .allDay(vEvent.getProperty(Property.DTSTART).map(Content::getValue).map(value -> !value.contains("T")).orElse(false))
-            .isRecurrentMaster(isRecurrentMaster(vEvent))
-            .organizer(getOrganizer(vEvent))
-            .attendees(getAttendees(vEvent))
-            .resources(getResources(vEvent))
-            .build();
+        final EventFields.Builder builder = EventFields.builder()
+            .calendarURL(calendarURL);
+
+        vEvent.getUid().ifPresent(uid -> builder.uid(uid.getValue()));
+        vEvent.getProperty(Property.SUMMARY).ifPresent(prop -> builder.summary(prop.getValue()));
+        vEvent.getProperty(Property.LOCATION).ifPresent(prop -> builder.location(prop.getValue()));
+        vEvent.getProperty(Property.DESCRIPTION).ifPresent(prop -> builder.description(prop.getValue()));
+        vEvent.getProperty(Property.CLASS).ifPresent(prop -> builder.clazz(prop.getValue()));
+        vEvent.getProperty(Property.DTSTART).ifPresent(prop -> {
+            builder.start(parseTime(prop));
+            builder.allDay(!prop.getValue().contains("T"));
+        });
+        vEvent.getProperty(Property.DTEND).ifPresent(prop -> builder.end(parseTime(prop)));
+        vEvent.getProperty(Property.DTSTAMP).ifPresent(prop -> builder.dtStamp(parseTime(prop)));
+        isRecurrentMaster(vEvent).ifPresent(builder::isRecurrentMaster);
+        builder.organizer(getOrganizer(vEvent));
+        builder.attendees(getAttendees(vEvent));
+        builder.resources(getResources(vEvent));
+
+        return builder.build();
     }
 
-    private Boolean isRecurrentMaster(VEvent vEvent) {
+    private Optional<Boolean> isRecurrentMaster(VEvent vEvent) {
         if (vEvent.getProperty(Property.RECURRENCE_ID).isPresent()) {
-            return false;
+            return Optional.of(false);
         }
         if (vEvent.getProperty(Property.RRULE).isPresent()) {
-            return true;
+            return Optional.of(true);
         }
-        return null;
+        return Optional.empty();
     }
 
     private EventFields.Person getOrganizer(VEvent vEvent) {

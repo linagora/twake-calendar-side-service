@@ -32,6 +32,8 @@ import org.apache.james.util.ReactorUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linagora.calendar.dav.xml.DavMultistatus;
 import com.linagora.calendar.dav.xml.DavResponse;
 import com.linagora.calendar.dav.xml.XMLUtil;
@@ -48,7 +50,14 @@ import reactor.core.publisher.Mono;
 
 public class CalDavClient extends DavClient {
 
+    public record NewCalendar(@JsonProperty("id") String id,
+                              @JsonProperty("dav:name") String davName,
+                              @JsonProperty("apple:color") String appleColor,
+                              @JsonProperty("caldav:description") String caldavDescription) {
+    }
+
     private static final Logger LOGGER = LoggerFactory.getLogger(CalDavClient.class);
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     public static class CalDavExportException extends DavClientException {
         public CalDavExportException(CalendarURL calendarUrl, Username username, String davResponse) {
@@ -57,14 +66,15 @@ public class CalDavClient extends DavClient {
         }
     }
 
-    private static final String ACCEPT_XML = "application/xml";
+    private static final String CONTENT_TYPE_XML = "application/xml";
+    private static final String CONTENT_TYPE_JSON = "application/json";
 
     public CalDavClient(DavConfiguration config) throws SSLException {
         super(config);
     }
 
     private UnaryOperator<HttpHeaders> addHeaders(String username) {
-        return headers -> headers.add(HttpHeaderNames.ACCEPT, ACCEPT_XML)
+        return headers -> headers.add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_XML)
             .add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username));
     }
 
@@ -111,7 +121,7 @@ public class CalDavClient extends DavClient {
     }
 
     public Flux<CalendarURL> findUserCalendars(Username user, OpenPaaSId userId) {
-        return client.headers(headers -> headers.add(HttpHeaderNames.ACCEPT, ACCEPT_XML)
+        return client.headers(headers -> headers.add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_XML)
                 .add(HttpHeaderNames.AUTHORIZATION, authenticationToken(user.asString())))
             .request(HttpMethod.valueOf("PROPFIND"))
             .uri(CalendarURL.CALENDAR_URL_PATH_PREFIX + "/" + userId.value())
@@ -127,6 +137,28 @@ public class CalDavClient extends DavClient {
                 }
             })
             .flatMapMany(Flux::fromIterable);
+    }
+
+    public Mono<Void> createNewCalendarDirectory(Username username, OpenPaaSId userId, NewCalendar newCalendar) {
+        String uri = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/" + userId.value() + ".json";
+        return client.headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_JSON)
+                .add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_JSON)
+                .add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username.asString())))
+            .request(HttpMethod.POST)
+            .uri(uri)
+            .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(OBJECT_MAPPER.writeValueAsBytes(newCalendar))))
+            .responseSingle((response, responseContent) -> {
+                if (response.status().code() == HttpStatus.SC_CREATED) {
+                    return Mono.empty();
+                } else {
+                    return responseContent.asString(StandardCharsets.UTF_8)
+                        .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                        .flatMap(responseBody -> Mono.error(new DavClientException("""
+                                Unexpected status code: %d when create new calendar directory '%s' in '%s'
+                                %s
+                                """.formatted(response.status().code(), newCalendar.id(), uri, responseBody))));
+                }
+            });
     }
 
     private List<CalendarURL> extractCalendarURIsFromResponse(DavMultistatus multistatus) {
