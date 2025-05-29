@@ -97,6 +97,7 @@ class TwakeCalendarGuiceServerTest  {
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY),
         DavModuleTestHelper.RABBITMQ_MODULE.apply(rabbitMQExtension),
         DavModuleTestHelper.BY_PASS_MODULE,
+        AppTestHelper.LEMON_COOKIE_AUTHENTICATION_STRATEGY_BY_PASS_MODULE,
         binder -> binder.bind(URL.class).annotatedWith(Names.named("userInfo")).toProvider(TwakeCalendarGuiceServerTest::getUserInfoTokenEndpoint),
         binder -> binder.bind(IntrospectionEndpoint.class).toProvider(() -> new IntrospectionEndpoint(getInrospectTokenEndpoint(), Optional.empty())));
 

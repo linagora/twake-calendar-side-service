@@ -43,8 +43,8 @@ import com.google.inject.multibindings.Multibinder;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.linagora.calendar.restapi.auth.BasicAuthenticationStrategy;
 import com.linagora.calendar.restapi.auth.JwtAuthenticationStrategy;
-import com.linagora.calendar.restapi.auth.OidcAuthenticationStrategy;
 import com.linagora.calendar.restapi.auth.OidcEndpointsInfoResolver;
+import com.linagora.calendar.restapi.auth.OidcFallbackCookieAuthenticationStrategy;
 import com.linagora.calendar.restapi.routes.AvatarRoute;
 import com.linagora.calendar.restapi.routes.CalendarSearchRoute;
 import com.linagora.calendar.restapi.routes.ConfigurationRoute;
@@ -102,7 +102,7 @@ public class RestApiModule extends AbstractModule {
         Multibinder<AuthenticationStrategy> authenticationStrategies = Multibinder.newSetBinder(binder(), AuthenticationStrategy.class);
         authenticationStrategies.addBinding().to(BasicAuthenticationStrategy.class);
         authenticationStrategies.addBinding().to(JwtAuthenticationStrategy.class);
-        authenticationStrategies.addBinding().to(OidcAuthenticationStrategy.class);
+        authenticationStrategies.addBinding().to(OidcFallbackCookieAuthenticationStrategy.class);
 
         Multibinder<ConfigurationEntryResolver> configurationEntryResolvers = Multibinder.newSetBinder(binder(), ConfigurationEntryResolver.class);
         configurationEntryResolvers.addBinding().to(FileConfigurationEntryResolver.class);
