@@ -18,11 +18,13 @@
 
 package com.linagora.calendar.app.oidc;
 
-import static com.linagora.calendar.app.AppTestHelper.COOKIE_RESOLUTION_PATH;
 import static io.restassured.RestAssured.given;
 import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
+import static io.restassured.http.ContentType.JSON;
 import static org.apache.james.backends.rabbitmq.RabbitMQExtension.IsolationPolicy.WEAK;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockserver.verify.VerificationTimes.exactly;
 
 import java.net.URI;
 import java.net.URL;
@@ -31,6 +33,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.Optional;
 
+import org.apache.http.HttpStatus;
 import org.apache.james.backends.rabbitmq.RabbitMQExtension;
 import org.apache.james.backends.redis.RedisConfiguration;
 import org.apache.james.backends.redis.StandaloneRedisConfiguration;
@@ -46,7 +49,6 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.mockserver.integration.ClientAndServer;
 import org.mockserver.model.HttpRequest;
 import org.mockserver.model.HttpResponse;
-import org.mockserver.verify.VerificationTimes;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.inject.AbstractModule;
@@ -60,25 +62,27 @@ import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.restapi.RestApiServerProbe;
-import com.linagora.calendar.restapi.auth.LemonCookieAuthenticationStrategy.ResolutionConfiguration;
+import com.linagora.calendar.restapi.auth.LemonCookieAuthenticationStrategy;
 import com.linagora.calendar.storage.redis.DockerRedisExtension;
 
 import io.restassured.RestAssured;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.http.ContentType;
 
-public class TwakeCalendarOidcAuthenticationRedisTest {
+public class TwakeCalendarOidcFallbackCookieAuthenticationTest {
 
     private static final String DOMAIN = "open-paas.ltd";
     private static final Username USERNAME = Username.fromLocalPartWithDomain("user1", DOMAIN);
     private static final String USERINFO_TOKEN_URI_PATH = "/oauth2/userinfo";
     private static final String INTROSPECT_TOKEN_URI_PATH = "/oauth2/introspect";
+    private static final String COOKIE_RESOLUTION_PATH = AppTestHelper.COOKIE_RESOLUTION_PATH;
 
     private static final ClientAndServer mockServer = ClientAndServer.startClientAndServer(0);
 
     private static URL getUserInfoTokenEndpoint() {
         return Throwing.supplier(() -> URI.create(String.format("http://127.0.0.1:%s%s", mockServer.getLocalPort(), USERINFO_TOKEN_URI_PATH)).toURL()).get();
     }
+
     private static URL getInrospectTokenEndpoint() {
         return Throwing.supplier(() -> URI.create(String.format("http://127.0.0.1:%s%s", mockServer.getLocalPort(), INTROSPECT_TOKEN_URI_PATH)).toURL()).get();
     }
@@ -92,9 +96,9 @@ public class TwakeCalendarOidcAuthenticationRedisTest {
     private static final RabbitMQExtension rabbitMQExtension = RabbitMQExtension.singletonRabbitMQ()
         .isolationPolicy(WEAK);
 
-    private static ResolutionConfiguration getResolutionConfiguration() {
+    private static LemonCookieAuthenticationStrategy.ResolutionConfiguration getResolutionConfiguration() {
         String resolutionURL = String.format("http://127.0.0.1:%s%s", mockServer.getLocalPort(), COOKIE_RESOLUTION_PATH);
-        return new ResolutionConfiguration(URI.create(resolutionURL),
+        return new LemonCookieAuthenticationStrategy.ResolutionConfiguration(URI.create(resolutionURL),
             Domain.of("localhost"),
             Domain.of(DOMAIN));
     }
@@ -111,7 +115,7 @@ public class TwakeCalendarOidcAuthenticationRedisTest {
         DavModuleTestHelper.RABBITMQ_MODULE.apply(rabbitMQExtension),
         AppTestHelper.LEMON_COOKIE_AUTHENTICATION_STRATEGY_MODULE.apply(getResolutionConfiguration()),
         binder -> binder.bind(URL.class).annotatedWith(Names.named("userInfo"))
-            .toProvider(TwakeCalendarOidcAuthenticationRedisTest::getUserInfoTokenEndpoint),
+            .toProvider(TwakeCalendarOidcFallbackCookieAuthenticationTest::getUserInfoTokenEndpoint),
         binder -> binder.bind(IntrospectionEndpoint.class)
             .toProvider(() -> new IntrospectionEndpoint(getInrospectTokenEndpoint(), Optional.empty())),
         new AbstractModule() {
@@ -147,11 +151,11 @@ public class TwakeCalendarOidcAuthenticationRedisTest {
     }
 
     @AfterAll
-    static void tearDownAll() {
+    static void tearDown() {
         mockServer.stop();
     }
 
-    private void updateMockerServerSpecifications(String path, String response, int statusResponse) {
+    private void updateMockServerSpecifications(String path, String response, int statusResponse) {
         mockServer
             .when(HttpRequest.request().withPath(path))
             .respond(HttpResponse.response().withStatusCode(statusResponse)
@@ -160,7 +164,7 @@ public class TwakeCalendarOidcAuthenticationRedisTest {
     }
 
     private void updateMockServerUserInfoResponse(String emailClaimValue) {
-        updateMockerServerSpecifications(USERINFO_TOKEN_URI_PATH, """
+        updateMockServerSpecifications(USERINFO_TOKEN_URI_PATH, """
             {
               "sub": "twake-calendar-dev",
               "email": "%s",
@@ -171,7 +175,7 @@ public class TwakeCalendarOidcAuthenticationRedisTest {
     }
 
     private void updateMockServerIntrospectionResponse() {
-        updateMockerServerSpecifications(INTROSPECT_TOKEN_URI_PATH, """
+        updateMockServerSpecifications(INTROSPECT_TOKEN_URI_PATH, """
             {
                 "exp": %d,
                 "scope": "openid email profile",
@@ -185,77 +189,172 @@ public class TwakeCalendarOidcAuthenticationRedisTest {
     }
 
     @Test
-    void shouldAuthenticateSuccessfullyWithValidOidcToken() {
+    void shouldAuthenticateWithCookieWhenBearerTokenIsAbsent() {
+        String validLemonLdapCookie = "123";
+        mockServer.when(HttpRequest.request()
+                .withMethod("GET")
+                .withPath(COOKIE_RESOLUTION_PATH)
+                .withCookie("lemonldap", validLemonLdapCookie))
+            .respond(HttpResponse.response()
+                .withStatusCode(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"result\":\"%s\"}".formatted(USERNAME.getLocalPart())));
+
+        String preferredEmail = given()
+            .cookie("lemonldap", validLemonLdapCookie)
+        .when()
+            .get("/api/user")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(JSON)
+            .extract()
+            .body()
+            .jsonPath()
+            .getString("preferredEmail");
+
+        assertThat(preferredEmail)
+            .isEqualTo(USERNAME.asString());
+    }
+
+    @Test
+    void shouldFailAuthenticationWithInvalidLemonLdapCookie() {
+        updateMockServerSpecifications(COOKIE_RESOLUTION_PATH, "{}", 401);
+
+        given()
+            .cookie("lemonldap", "invalidCookieValue")
+        .when()
+            .get("/api/user")
+        .then()
+            .statusCode(401);
+    }
+
+    @Test
+    void shouldFailAuthenticationWhenLemonLdapCookieIsMissing() {
+        updateMockServerSpecifications(COOKIE_RESOLUTION_PATH, "{}", 401);
+
+        given()
+            .cookie("notLemonLdap", "cookieValue")
+        .when()
+            .get("/api/user")
+        .then()
+            .statusCode(401);
+    }
+
+    @Test
+    void shouldFailAuthenticationWhenNoCookieAndNoBearerToken() {
+            given()
+        .when()
+            .get("/api/user")
+        .then()
+            .statusCode(401);
+    }
+
+    @Test
+    void shouldSucceedAuthenticationWhenResolutionDomainMatchesParent() {
+        mockServer.when(HttpRequest.request()
+                .withMethod("GET")
+                .withPath(COOKIE_RESOLUTION_PATH))
+            .respond(HttpResponse.response()
+                .withStatusCode(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"result\":\"%s\"}".formatted(USERNAME.getLocalPart())));
+
+        String regexMatch = "prefix." + getResolutionConfiguration().resolutionDomain().name();
+
+        given()
+            .cookie("lemonldap", "123")
+            .header("Host", regexMatch)
+        .when()
+            .get("/api/user")
+        .then()
+            .statusCode(200);
+    }
+
+    @Test
+    void shouldFailAuthenticationWhenResolutionDomainDoesNotMatch() {
+        mockServer.when(HttpRequest.request()
+                .withMethod("GET")
+                .withPath(COOKIE_RESOLUTION_PATH))
+            .respond(HttpResponse.response()
+                .withStatusCode(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"result\":\"%s\"}".formatted(USERNAME.getLocalPart())));
+
+        String notMatchHost = "another-domain.ltd";
+
+        given()
+            .cookie("lemonldap", "123")
+            .header("Host", notMatchHost)
+        .when()
+            .get("/api/user")
+        .then()
+            .statusCode(401);
+    }
+
+    @Test
+    void shouldPreferBearerTokenOverOtherAuthenticationMethods() {
+        mockServer.when(HttpRequest.request()
+                .withMethod("GET")
+                .withPath(COOKIE_RESOLUTION_PATH))
+            .respond(HttpResponse.response()
+                .withStatusCode(401));
+
         given()
             .header("Authorization", "Bearer oidc_opac_token")
+            .cookie("lemonldap", "123")
         .when()
-            .get("/api/themes/anything")
+            .get("/api/user")
         .then()
             .statusCode(200);
+
+        mockServer.verify(HttpRequest.request()
+                .withMethod("GET")
+                .withPath(COOKIE_RESOLUTION_PATH),
+            exactly(0));
     }
 
     @Test
-    void shouldUseCacheAfterFirstOidcTokenValidation() {
-        for (int i = 0; i < 3; i++) {
-            given()
-                .header("Authorization", "Bearer oidc_opac_token")
-            .when()
-                .get("/api/themes/anything")
-            .then()
-                .statusCode(200);
-        }
+    void shouldFailAuthenticationWhenBearerTokenIsInvalidEvenIfLemonLdapCookieIsValid() {
+        mockServer.reset();
+        updateMockServerSpecifications(INTROSPECT_TOKEN_URI_PATH, "{}", 401);
+        updateMockServerSpecifications(USERINFO_TOKEN_URI_PATH, "{}", 401);
 
-        // Verify that the mock server was called only once
-        mockServer.verify(HttpRequest.request().withPath(USERINFO_TOKEN_URI_PATH),
-            VerificationTimes.exactly(1));
+        mockServer.when(HttpRequest.request()
+                .withMethod("GET")
+                .withPath(COOKIE_RESOLUTION_PATH))
+            .respond(HttpResponse.response()
+                .withStatusCode(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"result\":\"%s\"}".formatted(USERNAME.getLocalPart())));
+
+        given()
+            .header("Authorization", "Bearer invalidToken")
+            .cookie("lemonldap", "validLemonLdapCookie")
+        .when()
+            .get("/api/user")
+        .then()
+            .statusCode(401);
     }
 
     @Test
-    void shouldNotShareCacheAcrossDifferentOidcTokens() {
-        String userInfoResponseTemplate = """
-            {
-              "sub": "twake-calendar-dev",
-              "email": "%s",
-              "family_name": "twake-calendar-dev",
-              "sid": "dT/8+UDx1lWp1bRZkdhbS1i6ZfYhf8+bWAZQs8p0T/c",
-              "name": "twake-calendar-dev"
-            }""";
+    void shouldFailAuthenticationWhenLemonLdapResolutionReturnsMalformedJson() {
+        String validLemonLdapCookie = "123";
 
-        String token1Email = "a@" + DOMAIN;
-        String token1Response = userInfoResponseTemplate.formatted(token1Email);
-
-        updateMockerServerSpecifications(USERINFO_TOKEN_URI_PATH, token1Response, 200);
-        String token1 = "Bearer token1";
+        mockServer.when(HttpRequest.request()
+                .withMethod("GET")
+                .withPath(COOKIE_RESOLUTION_PATH)
+                .withCookie("lemonldap", validLemonLdapCookie))
+            .respond(HttpResponse.response()
+                .withStatusCode(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody("this-is-not-json"));
 
         given()
-            .header("Authorization", token1)
+            .cookie("lemonldap", validLemonLdapCookie)
         .when()
-            .get("/api/themes/anything")
+            .get("/api/user")
         .then()
-            .statusCode(200);
-
-        String token2Email = "b@" + DOMAIN;
-        String token2Response = userInfoResponseTemplate.formatted(token2Email);
-        updateMockerServerSpecifications(USERINFO_TOKEN_URI_PATH, token2Response, 200);
-
-        String token2 = "Bearer token2";
-        given()
-            .header("Authorization", token2)
-        .when()
-            .get("/api/themes/anything")
-        .then()
-            .statusCode(200);
-
-        mockServer.verify(
-            HttpRequest.request()
-                .withPath(USERINFO_TOKEN_URI_PATH)
-                .withHeader("Authorization", token1),
-            VerificationTimes.exactly(1));
-
-        mockServer.verify(
-            HttpRequest.request()
-                .withPath(USERINFO_TOKEN_URI_PATH)
-                .withHeader("Authorization", token2),
-            VerificationTimes.exactly(1));
+            .statusCode(401);
     }
+
 }

@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.app;
 
+import static com.linagora.calendar.app.AppTestHelper.COOKIE_RESOLUTION_PATH;
 import static io.restassured.RestAssured.given;
 import static io.restassured.RestAssured.with;
 import static io.restassured.config.EncoderConfig.encoderConfig;
@@ -55,6 +56,7 @@ import com.google.inject.name.Names;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.restapi.RestApiServerProbe;
+import com.linagora.calendar.restapi.auth.LemonCookieAuthenticationStrategy;
 import com.linagora.calendar.storage.OpenPaaSUser;
 
 import io.restassured.RestAssured;
@@ -82,6 +84,13 @@ class TwakeCalendarAuthenticationTest {
     private static RabbitMQExtension rabbitMQExtension = RabbitMQExtension.singletonRabbitMQ()
         .isolationPolicy(WEAK);
 
+    private static LemonCookieAuthenticationStrategy.ResolutionConfiguration getResolutionConfiguration() {
+        String resolutionURL = String.format("http://127.0.0.1:%s%s", mockServer.getLocalPort(), COOKIE_RESOLUTION_PATH);
+        return new LemonCookieAuthenticationStrategy.ResolutionConfiguration(URI.create(resolutionURL),
+            Domain.of("localhost"),
+            Domain.of(DOMAIN));
+    }
+
     @RegisterExtension
     @Order(2)
     static TwakeCalendarExtension twakeCalendarExtension = new TwakeCalendarExtension(
@@ -91,6 +100,7 @@ class TwakeCalendarAuthenticationTest {
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY),
         DavModuleTestHelper.RABBITMQ_MODULE.apply(rabbitMQExtension),
         DavModuleTestHelper.BY_PASS_MODULE,
+        AppTestHelper.LEMON_COOKIE_AUTHENTICATION_STRATEGY_MODULE.apply(getResolutionConfiguration()),
         binder -> binder.bind(URL.class).annotatedWith(Names.named("userInfo"))
             .toProvider(TwakeCalendarAuthenticationTest::getUserInfoTokenEndpoint),
         binder -> binder.bind(IntrospectionEndpoint.class).toProvider(() -> new IntrospectionEndpoint(getInrospectTokenEndpoint(), Optional.empty())));

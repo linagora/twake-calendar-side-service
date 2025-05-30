@@ -74,6 +74,7 @@ class MongoTest {
         .configurationFromClasspath()
         .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
         .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB),
+        AppTestHelper.LEMON_COOKIE_AUTHENTICATION_STRATEGY_BY_PASS_MODULE,
         DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
         binder -> binder.bind(URL.class).annotatedWith(Names.named("userInfo"))
             .toProvider(MongoTest::getUserInfoTokenEndpoint));
