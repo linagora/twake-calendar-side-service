@@ -24,6 +24,7 @@ import java.util.Set;
 
 import jakarta.inject.Named;
 
+import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.james.jmap.JMAPRoutes;
 import org.apache.james.jmap.http.AuthenticationStrategy;
@@ -43,8 +44,12 @@ import com.google.inject.multibindings.Multibinder;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.linagora.calendar.restapi.auth.BasicAuthenticationStrategy;
 import com.linagora.calendar.restapi.auth.JwtAuthenticationStrategy;
+import com.linagora.calendar.restapi.auth.LemonCookieAuthenticationStrategy;
+import com.linagora.calendar.restapi.auth.LemonCookieAuthenticationStrategy.ResolutionConfiguration;
+import com.linagora.calendar.restapi.auth.OidcAuthenticationStrategy;
 import com.linagora.calendar.restapi.auth.OidcEndpointsInfoResolver;
 import com.linagora.calendar.restapi.auth.OidcFallbackCookieAuthenticationStrategy;
+import com.linagora.calendar.restapi.auth.SimpleSessionProvider;
 import com.linagora.calendar.restapi.routes.AvatarRoute;
 import com.linagora.calendar.restapi.routes.CalendarSearchRoute;
 import com.linagora.calendar.restapi.routes.ConfigurationRoute;
@@ -102,7 +107,6 @@ public class RestApiModule extends AbstractModule {
         Multibinder<AuthenticationStrategy> authenticationStrategies = Multibinder.newSetBinder(binder(), AuthenticationStrategy.class);
         authenticationStrategies.addBinding().to(BasicAuthenticationStrategy.class);
         authenticationStrategies.addBinding().to(JwtAuthenticationStrategy.class);
-        authenticationStrategies.addBinding().to(OidcFallbackCookieAuthenticationStrategy.class);
 
         Multibinder<ConfigurationEntryResolver> configurationEntryResolvers = Multibinder.newSetBinder(binder(), ConfigurationEntryResolver.class);
         configurationEntryResolvers.addBinding().to(FileConfigurationEntryResolver.class);
@@ -158,5 +162,28 @@ public class RestApiModule extends AbstractModule {
     @Singleton
     JwtSigner signer(JwtSigner.Factory factory) throws Exception {
         return factory.instancaiate();
+    }
+
+    @ProvidesIntoSet
+    AuthenticationStrategy oidcFallbackCookieAuthenticationStrategy(@Named("oidcAuthenticationStrategy") AuthenticationStrategy oidcAuthenticationStrategy) {
+        return oidcAuthenticationStrategy;
+    }
+
+    @Provides
+    @Named("oidcAuthenticationStrategy")
+    AuthenticationStrategy provideOidcAuthenticationStrategy(OidcAuthenticationStrategy oidcAuthenticationStrategy,
+                                                             SimpleSessionProvider sessionProvider,
+                                                             PropertiesProvider propertiesProvider) throws ConfigurationException {
+        try {
+            Configuration configuration = propertiesProvider.getConfiguration("configuration");
+
+            return ResolutionConfiguration.maybeFrom(configuration)
+                .<AuthenticationStrategy>map(resolutionConfig ->
+                    new OidcFallbackCookieAuthenticationStrategy(oidcAuthenticationStrategy,
+                        new LemonCookieAuthenticationStrategy(resolutionConfig, sessionProvider)))
+                .orElse(oidcAuthenticationStrategy);
+        } catch (FileNotFoundException e) {
+            return oidcAuthenticationStrategy;
+        }
     }
 }

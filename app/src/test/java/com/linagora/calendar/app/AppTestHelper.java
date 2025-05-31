@@ -21,25 +21,27 @@ package com.linagora.calendar.app;
 import static com.linagora.calendar.dav.DavModuleTestHelper.RABBITMQ_MODULE;
 
 import java.net.MalformedURLException;
-import java.net.URI;
 import java.net.URL;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.function.Function;
 
+import jakarta.inject.Named;
+
 import org.apache.james.backends.opensearch.DockerOpenSearchExtension;
 import org.apache.james.backends.opensearch.OpenSearchConfiguration;
 import org.apache.james.backends.rabbitmq.RabbitMQExtension;
-import org.apache.james.core.Domain;
+import org.apache.james.jmap.http.AuthenticationStrategy;
 
 import com.google.inject.AbstractModule;
 import com.google.inject.Module;
 import com.google.inject.Provides;
-import com.google.inject.Singleton;
 import com.google.inject.name.Names;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.restapi.auth.LemonCookieAuthenticationStrategy;
 import com.linagora.calendar.restapi.auth.LemonCookieAuthenticationStrategy.ResolutionConfiguration;
+import com.linagora.calendar.restapi.auth.OidcAuthenticationStrategy;
+import com.linagora.calendar.restapi.auth.OidcFallbackCookieAuthenticationStrategy;
 import com.linagora.calendar.restapi.auth.SimpleSessionProvider;
 
 public class AppTestHelper {
@@ -58,8 +60,6 @@ public class AppTestHelper {
     public static final Module OIDC_BY_PASS_MODULE = new AbstractModule() {
         @Override
         protected void configure() {
-            install(LEMON_COOKIE_AUTHENTICATION_STRATEGY_BY_PASS_MODULE);
-
             bind(URL.class).annotatedWith(Names.named("userInfo"))
                 .toProvider(() -> {
                     try {
@@ -86,22 +86,11 @@ public class AppTestHelper {
     public static final Function<ResolutionConfiguration, Module> LEMON_COOKIE_AUTHENTICATION_STRATEGY_MODULE = resolutionConfiguration -> new AbstractModule() {
 
         @Provides
-        @Singleton
-        public LemonCookieAuthenticationStrategy provideLemonCookieAuthenticationStrategy(SimpleSessionProvider sessionProvider) {
-            return new LemonCookieAuthenticationStrategy(resolutionConfiguration, sessionProvider);
-        }
-    };
-
-    public static final Module LEMON_COOKIE_AUTHENTICATION_STRATEGY_BY_PASS_MODULE = new AbstractModule() {
-
-        @Provides
-        @Singleton
-        public LemonCookieAuthenticationStrategy provideLemonCookieAuthenticationStrategy(SimpleSessionProvider sessionProvider) {
-            Domain domain = Domain.of("neven.to.be.called.com");
-            ResolutionConfiguration resolutionConfiguration = new ResolutionConfiguration(URI.create("https://neven.to.be.called.com"),
-                domain,
-                domain);
-            return new LemonCookieAuthenticationStrategy(resolutionConfiguration, sessionProvider);
+        @Named("oidcAuthenticationStrategy")
+        public AuthenticationStrategy provideprovideOidcAuthenticationStrategy(OidcAuthenticationStrategy oidcAuthenticationStrategy,
+            SimpleSessionProvider sessionProvider) {
+            LemonCookieAuthenticationStrategy lemonCookieAuthenticationStrategy = new LemonCookieAuthenticationStrategy(resolutionConfiguration, sessionProvider);
+            return new OidcFallbackCookieAuthenticationStrategy(oidcAuthenticationStrategy, lemonCookieAuthenticationStrategy);
         }
     };
 }

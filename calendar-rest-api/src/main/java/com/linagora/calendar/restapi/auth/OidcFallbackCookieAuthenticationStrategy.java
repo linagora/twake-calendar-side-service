@@ -18,8 +18,6 @@
 
 package com.linagora.calendar.restapi.auth;
 
-import jakarta.inject.Inject;
-
 import org.apache.james.jmap.http.AuthenticationChallenge;
 import org.apache.james.jmap.http.AuthenticationScheme;
 import org.apache.james.jmap.http.AuthenticationStrategy;
@@ -35,7 +33,6 @@ public class OidcFallbackCookieAuthenticationStrategy implements AuthenticationS
     private final OidcAuthenticationStrategy oidcAuthenticationStrategy;
     private final LemonCookieAuthenticationStrategy lemonCookieAuthenticationStrategy;
 
-    @Inject
     public OidcFallbackCookieAuthenticationStrategy(OidcAuthenticationStrategy oidcAuthenticationStrategy, LemonCookieAuthenticationStrategy lemonCookieAuthenticationStrategy) {
         this.oidcAuthenticationStrategy = oidcAuthenticationStrategy;
         this.lemonCookieAuthenticationStrategy = lemonCookieAuthenticationStrategy;

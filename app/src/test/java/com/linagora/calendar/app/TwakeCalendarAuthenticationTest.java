@@ -87,7 +87,6 @@ class TwakeCalendarAuthenticationTest {
     private static LemonCookieAuthenticationStrategy.ResolutionConfiguration getResolutionConfiguration() {
         String resolutionURL = String.format("http://127.0.0.1:%s%s", mockServer.getLocalPort(), COOKIE_RESOLUTION_PATH);
         return new LemonCookieAuthenticationStrategy.ResolutionConfiguration(URI.create(resolutionURL),
-            Domain.of("localhost"),
             Domain.of(DOMAIN));
     }
 
