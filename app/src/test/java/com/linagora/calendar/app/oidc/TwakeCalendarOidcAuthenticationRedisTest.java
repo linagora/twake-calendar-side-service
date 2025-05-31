@@ -94,9 +94,7 @@ public class TwakeCalendarOidcAuthenticationRedisTest {
 
     private static ResolutionConfiguration getResolutionConfiguration() {
         String resolutionURL = String.format("http://127.0.0.1:%s%s", mockServer.getLocalPort(), COOKIE_RESOLUTION_PATH);
-        return new ResolutionConfiguration(URI.create(resolutionURL),
-            Domain.of("localhost"),
-            Domain.of(DOMAIN));
+        return new ResolutionConfiguration(URI.create(resolutionURL), Domain.of(DOMAIN));
     }
 
     @Order(3)

@@ -18,19 +18,14 @@
 
 package com.linagora.calendar.restapi.auth;
 
-import java.io.FileNotFoundException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Locale;
 import java.util.Optional;
 
-import jakarta.inject.Inject;
-
 import org.apache.commons.configuration2.Configuration;
-import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.http.HttpHost;
 import org.apache.http.HttpStatus;
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
@@ -39,7 +34,6 @@ import org.apache.james.jmap.http.AuthenticationChallenge;
 import org.apache.james.jmap.http.AuthenticationScheme;
 import org.apache.james.jmap.http.AuthenticationStrategy;
 import org.apache.james.mailbox.MailboxSession;
-import org.apache.james.utils.PropertiesProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,26 +52,22 @@ import reactor.netty.http.server.HttpServerRequest;
 
 public class LemonCookieAuthenticationStrategy implements AuthenticationStrategy {
 
-    public record ResolutionConfiguration(URI resolutionURL, Domain resolutionDomain, Domain userDomain) {
-        private static final String LEMON_COOKIE_RESOLUTION_URL_PROPERTY = "oidc.fallback.lemon.cookie.resolution.username";
-        private static final String LEMON_COOKIE_RESOLUTION_DOMAIN_PROPERTY = "oidc.fallback.lemon.cookie.resolution.domain";
-        private static final String DOMAIN_PROPERTY = "domain";
+    public record ResolutionConfiguration(URI resolutionURL, Domain resolutionDomain) {
+        public static final String LEMON_COOKIE_RESOLUTION_URL_PROPERTY = "oidc.fallback.lemon.cookie.resolution.url";
+        public static final String LEMON_COOKIE_RESOLUTION_DOMAIN_PROPERTY = "oidc.fallback.lemon.cookie.resolution.domain";
 
-        public static ResolutionConfiguration from(Configuration configuration) {
-            String resolutionURL = configuration.getString(LEMON_COOKIE_RESOLUTION_URL_PROPERTY, null);
-            Domain resolutionDomain = Optional.ofNullable(configuration.getString(LEMON_COOKIE_RESOLUTION_DOMAIN_PROPERTY, null))
-                .map(Domain::of)
-                .orElseThrow(() -> new IllegalArgumentException("Resolution domain must not be null"));
+        public static Optional<ResolutionConfiguration> maybeFrom(Configuration configuration) {
+            String urlString = configuration.getString(LEMON_COOKIE_RESOLUTION_URL_PROPERTY, null);
+            String domainString = configuration.getString(LEMON_COOKIE_RESOLUTION_DOMAIN_PROPERTY, null);
 
-            Domain userDomain = Optional.ofNullable(configuration.getString(DOMAIN_PROPERTY, null))
-                .map(Domain::of)
-                .orElseThrow(() -> new IllegalArgumentException("Domain must not be null"));
-            return new ResolutionConfiguration(URI.create(resolutionURL), resolutionDomain, userDomain);
+            if (urlString == null || domainString == null) {
+                return Optional.empty();
+            }
+            return Optional.of(new ResolutionConfiguration(URI.create(urlString), Domain.of(domainString)));
         }
 
         public ResolutionConfiguration {
             Preconditions.checkNotNull(resolutionURL, "Resolution URL must not be null");
-            Preconditions.checkNotNull(userDomain, "User domain must not be null");
             Preconditions.checkNotNull(resolutionDomain, "Resolution domain must not be null");
         }
     }
@@ -149,12 +139,6 @@ public class LemonCookieAuthenticationStrategy implements AuthenticationStrategy
     private final ResolutionConfiguration resolutionConfiguration;
     private final SimpleSessionProvider sessionProvider;
 
-    @Inject
-    public LemonCookieAuthenticationStrategy(PropertiesProvider propertiesProvider,
-                                             SimpleSessionProvider sessionProvider) throws ConfigurationException, FileNotFoundException {
-        this(ResolutionConfiguration.from(propertiesProvider.getConfiguration("configuration")), sessionProvider);
-    }
-
     public LemonCookieAuthenticationStrategy(ResolutionConfiguration resolutionConfiguration, SimpleSessionProvider sessionProvider) {
         this.lemonClient = new LemonClient(resolutionConfiguration.resolutionURL());
         this.resolutionConfiguration = resolutionConfiguration;
@@ -164,15 +148,8 @@ public class LemonCookieAuthenticationStrategy implements AuthenticationStrategy
     @Override
     public Mono<MailboxSession> createMailboxSession(HttpServerRequest httpRequest) {
         return Mono.justOrEmpty(extractLemonCookie(httpRequest))
-            .flatMap(cookie -> {
-                String hostValue = extractHeaderValue(httpRequest, "Host");
-                if (!isHostMatchingResolutionDomain(hostValue)) {
-                    LOGGER.warn("Host header does not match resolution domain {}: {}", resolutionConfiguration.resolutionDomain, hostValue);
-                    return Mono.empty();
-                }
-                return lemonClient.resolveUser(cookie);
-            })
-            .map(user -> Username.fromLocalPartWithDomain(user, resolutionConfiguration.userDomain()))
+            .flatMap(lemonClient::resolveUser)
+            .map(user -> Username.fromLocalPartWithDomain(user, resolutionConfiguration.resolutionDomain()))
             .map(Throwing.function(sessionProvider::createSession))
             .onErrorResume(error -> {
                 if (error instanceof LemonClient.LemonClientException) {
@@ -189,14 +166,6 @@ public class LemonCookieAuthenticationStrategy implements AuthenticationStrategy
         return AuthenticationChallenge.of(
             AuthenticationScheme.of("LemonLDAPCookie"),
             ImmutableMap.of());
-    }
-
-    private boolean isHostMatchingResolutionDomain(String hostValue) {
-        if (StringUtils.isEmpty(hostValue)) {
-            return false;
-        }
-        HttpHost host = HttpHost.create(hostValue);
-        return StringUtils.endsWithIgnoreCase(host.getHostName(), resolutionConfiguration.resolutionDomain().asString());
     }
 
     private String extractHeaderValue(HttpServerRequest request, String headerName) {

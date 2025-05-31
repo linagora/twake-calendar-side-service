@@ -99,7 +99,6 @@ public class TwakeCalendarOidcFallbackCookieAuthenticationTest {
     private static LemonCookieAuthenticationStrategy.ResolutionConfiguration getResolutionConfiguration() {
         String resolutionURL = String.format("http://127.0.0.1:%s%s", mockServer.getLocalPort(), COOKIE_RESOLUTION_PATH);
         return new LemonCookieAuthenticationStrategy.ResolutionConfiguration(URI.create(resolutionURL),
-            Domain.of("localhost"),
             Domain.of(DOMAIN));
     }
 
@@ -243,48 +242,6 @@ public class TwakeCalendarOidcFallbackCookieAuthenticationTest {
     @Test
     void shouldFailAuthenticationWhenNoCookieAndNoBearerToken() {
             given()
-        .when()
-            .get("/api/user")
-        .then()
-            .statusCode(401);
-    }
-
-    @Test
-    void shouldSucceedAuthenticationWhenResolutionDomainMatchesParent() {
-        mockServer.when(HttpRequest.request()
-                .withMethod("GET")
-                .withPath(COOKIE_RESOLUTION_PATH))
-            .respond(HttpResponse.response()
-                .withStatusCode(200)
-                .withHeader("Content-Type", "application/json")
-                .withBody("{\"result\":\"%s\"}".formatted(USERNAME.getLocalPart())));
-
-        String regexMatch = "prefix." + getResolutionConfiguration().resolutionDomain().name();
-
-        given()
-            .cookie("lemonldap", "123")
-            .header("Host", regexMatch)
-        .when()
-            .get("/api/user")
-        .then()
-            .statusCode(200);
-    }
-
-    @Test
-    void shouldFailAuthenticationWhenResolutionDomainDoesNotMatch() {
-        mockServer.when(HttpRequest.request()
-                .withMethod("GET")
-                .withPath(COOKIE_RESOLUTION_PATH))
-            .respond(HttpResponse.response()
-                .withStatusCode(200)
-                .withHeader("Content-Type", "application/json")
-                .withBody("{\"result\":\"%s\"}".formatted(USERNAME.getLocalPart())));
-
-        String notMatchHost = "another-domain.ltd";
-
-        given()
-            .cookie("lemonldap", "123")
-            .header("Host", notMatchHost)
         .when()
             .get("/api/user")
         .then()
