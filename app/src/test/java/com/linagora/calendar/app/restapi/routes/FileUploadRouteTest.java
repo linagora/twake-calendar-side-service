@@ -239,7 +239,7 @@ public class FileUploadRouteTest {
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.code", equalTo(400))
             .body("error.message", equalTo("Bad request"))
-            .body("error.details", equalTo("Real size is greater than declared size"));
+            .body("error.details", equalTo("Real size is greater than declared size, expected: 5, got: 10"));
     }
 
     @Test
