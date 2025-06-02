@@ -125,6 +125,33 @@ public class FileUploadRouteTest {
     }
 
     @Test
+    void shouldSupportMultipartUploadFileSuccessfully(TwakeCalendarGuiceServer server) {
+        byte[] content = "BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR".getBytes(StandardCharsets.UTF_8);
+
+        String id = given().log().all()
+            .queryParam("name", "calendar.ics")
+            .queryParam("size", content.length)
+            .queryParam("mimetype", UploadedMimeType.TEXT_CALENDAR.getType())
+            .header("Content-Type", "multipart/form-data")
+            .multiPart("file", "calendar.ics", content, UploadedMimeType.TEXT_CALENDAR.getType())
+        .when()
+            .post("/api/files")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED)
+            .contentType(ContentType.JSON)
+            .extract()
+            .body()
+            .jsonPath()
+            .getString("_id");
+
+        UploadedFile file = server.getProbe(CalendarDataProbe.class).getUploadedFile(USERNAME, new OpenPaaSId(id));
+        assertThat(file.fileName()).isEqualTo("calendar.ics");
+        assertThat(file.uploadedMimeType()).isEqualTo(UploadedMimeType.TEXT_CALENDAR);
+        assertThat(file.size()).isEqualTo(content.length);
+        assertThat(file.data()).isEqualTo(content);
+    }
+
+    @Test
     void shouldRejectWhenMimeTypeIsMissing() {
         byte[] content = "data".getBytes(StandardCharsets.UTF_8);
 
@@ -212,7 +239,7 @@ public class FileUploadRouteTest {
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.code", equalTo(400))
             .body("error.message", equalTo("Bad request"))
-            .body("error.details", equalTo("Real size is greater than declared size"));
+            .body("error.details", equalTo("Real size is greater than declared size, expected: 5, got: 10"));
     }
 
     @Test

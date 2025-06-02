@@ -47,6 +47,8 @@ import com.linagora.calendar.storage.model.UploadedMimeType;
 
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.QueryStringDecoder;
+import io.netty.handler.codec.http.multipart.FileUpload;
+import io.netty.handler.codec.http.multipart.HttpData;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -130,14 +132,37 @@ public class FileUploadRoute extends CalendarRoute {
     }
 
     private Mono<byte[]> getUploadedData(HttpServerRequest request, long fileSize) {
+        if (request.isMultipart()) {
+            return getUploadedDataFromMultiPartRequest(request, fileSize);
+        }
+
         return Mono.fromCallable(() -> ReactorUtils.toInputStream(request.receive().asByteBuffer()))
             .map(inputStream -> new LimitedInputStream(inputStream, fileSize) {
                 @Override
                 protected void raiseError(long pSizeMax, long pCount) {
-                    throw new IllegalArgumentException("Real size is greater than declared size");
+                    throw sizeExceededException(pSizeMax, pCount);
                 }
             }).flatMap(inputStream -> Mono.fromCallable(() -> getBytes(inputStream))
                 .subscribeOn(Schedulers.boundedElastic()));
+    }
+
+    private Mono<byte[]> getUploadedDataFromMultiPartRequest(HttpServerRequest request, long fileSize) {
+        return request.receiveForm()
+            .doOnNext(HttpData::retain)
+            .filter(data -> data instanceof FileUpload)
+            .cast(FileUpload.class)
+            .next()
+            .flatMap(fileUpload -> {
+                long actualSize = fileUpload.length();
+                if (actualSize > fileSize) {
+                    return Mono.error(sizeExceededException(fileSize, actualSize));
+                }
+                return Mono.fromCallable(fileUpload::get);
+            });
+    }
+
+    private IllegalArgumentException sizeExceededException(long pSizeMax, long pCount) {
+        return new IllegalArgumentException("Real size is greater than declared size, expected: " + pSizeMax + ", got: " + pCount);
     }
 
     private byte[] getBytes(LimitedInputStream inputStream) {
