@@ -56,6 +56,7 @@ import com.linagora.calendar.restapi.routes.ConfigurationRoute;
 import com.linagora.calendar.restapi.routes.DomainRoute;
 import com.linagora.calendar.restapi.routes.DownloadCalendarRoute;
 import com.linagora.calendar.restapi.routes.FileUploadRoute;
+import com.linagora.calendar.restapi.routes.ImportProxyRoute;
 import com.linagora.calendar.restapi.routes.ImportRoute;
 import com.linagora.calendar.restapi.routes.JwtRoutes;
 import com.linagora.calendar.restapi.routes.JwtSigner;
@@ -102,6 +103,7 @@ public class RestApiModule extends AbstractModule {
         routes.addBinding().to(FileUploadRoute.class);
         routes.addBinding().to(DownloadCalendarRoute.class);
         routes.addBinding().to(ImportRoute.class);
+        routes.addBinding().to(ImportProxyRoute.class);
         routes.addBinding().to(CalendarSearchRoute.class);
 
         Multibinder<AuthenticationStrategy> authenticationStrategies = Multibinder.newSetBinder(binder(), AuthenticationStrategy.class);
