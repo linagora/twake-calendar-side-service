@@ -20,7 +20,6 @@ package com.linagora.calendar.webadmin.task;
 
 import java.time.Clock;
 import java.time.Instant;
-import java.util.List;
 import java.util.Optional;
 
 import org.apache.james.task.Task;
@@ -30,7 +29,7 @@ import org.apache.james.task.TaskType;
 import com.linagora.calendar.webadmin.service.CalendarEventsReindexService;
 
 public class CalendarEventsReindexTask implements Task {
-    public record Details(Instant instant, long processedUserCount, long processedEventCount, long failedEventCount, List<CalendarEventsReindexService.Context.User> failedUsers) implements TaskExecutionDetails.AdditionalInformation {
+    public record Details(Instant instant, long processedEventCount, long failedEventCount) implements TaskExecutionDetails.AdditionalInformation {
         @Override
         public Instant timestamp() {
             return null;
@@ -51,7 +50,7 @@ public class CalendarEventsReindexTask implements Task {
 
     @Override
     public Result run() {
-        return reindexService.reindex(context, runningOptions.usersPerSecond()).block();
+        return reindexService.reindex(context, runningOptions.eventsPerSecond()).block();
     }
 
     @Override
@@ -62,9 +61,7 @@ public class CalendarEventsReindexTask implements Task {
     @Override
     public Optional<TaskExecutionDetails.AdditionalInformation> details() {
         return Optional.of(new Details(Clock.systemUTC().instant(),
-            context.snapshot().processedUserCount(),
             context.snapshot().processedEventCount(),
-            context.snapshot().failedEventCount(),
-            context.snapshot().failedUsers()));
+            context.snapshot().failedEventCount()));
     }
 }

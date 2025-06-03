@@ -18,7 +18,7 @@
 
 package com.linagora.calendar.webadmin;
 
-import static com.linagora.calendar.webadmin.task.RunningOptions.DEFAULT_USERS_PER_SECOND;
+import static com.linagora.calendar.webadmin.task.RunningOptions.DEFAULT_EVENTS_PER_SECOND;
 
 import java.util.Optional;
 import java.util.Set;
@@ -42,24 +42,24 @@ import spark.Service;
 public class CalendarRoutes implements Routes {
 
     public static class CalendarEventsReindexRequestToTask extends TaskFromRequestRegistry.TaskRegistration {
-        private static final String USERS_PER_SECOND = "usersPerSecond";
+        private static final String EVENTS_PER_SECOND = "eventsPerSecond";
 
         @Inject
         public CalendarEventsReindexRequestToTask(CalendarEventsReindexService reindexService) {
             super(TASK_NAME, request -> {
-                int usersPerSecond = extractUsersPerSecond(request);
+                int usersPerSecond = extractEventsPerSecond(request);
                 return new CalendarEventsReindexTask(reindexService, RunningOptions.of(usersPerSecond));
             });
         }
 
-        private static Integer extractUsersPerSecond(Request request) {
+        private static Integer extractEventsPerSecond(Request request) {
             try {
-                return Optional.ofNullable(request.queryParams(USERS_PER_SECOND))
+                return Optional.ofNullable(request.queryParams(EVENTS_PER_SECOND))
                     .map(Integer::parseInt)
-                    .orElse(DEFAULT_USERS_PER_SECOND);
+                    .orElse(DEFAULT_EVENTS_PER_SECOND);
             } catch (NumberFormatException e) {
                 throw new IllegalArgumentException(String.format("Illegal value supplied for query parameter '%s', expecting a " +
-                    "strictly positive optional integer", USERS_PER_SECOND), e);
+                    "strictly positive optional integer", EVENTS_PER_SECOND), e);
             }
         }
     }

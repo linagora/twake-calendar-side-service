@@ -22,8 +22,6 @@ import static com.linagora.calendar.webadmin.CalendarRoutes.TASK_NAME;
 import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.time.Duration;
-import java.util.List;
-import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicLong;
 
 import jakarta.inject.Inject;
@@ -35,7 +33,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.MoreObjects;
-import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalendarUtil;
 import com.linagora.calendar.storage.CalendarURL;
@@ -55,26 +52,30 @@ import reactor.core.scheduler.Schedulers;
 
 public class CalendarEventsReindexService {
 
+    public record IndexItem(OpenPaaSUser user, CalendarURL calendarURL, CalendarEvents calendarEvents){
+    }
+
     public static class Context {
-        public record Snapshot(long processedUserCount, long processedEventCount, long failedEventCount, List<User> failedUsers) {
+        public record Snapshot(long processedEventCount, long failedEventCount) {
+            @Override
+            public String toString() {
+                return MoreObjects.toStringHelper(this)
+                    .add("processedEventCount", processedEventCount)
+                    .add("failedEventCount", failedEventCount)
+                    .toString();
+            }
         }
 
-        public record User(String username){}
-
-        private final AtomicLong processedUserCount;
         private final AtomicLong processedEventCount;
         private final AtomicLong failedEventCount;
-        private final ConcurrentLinkedDeque<User> failedUsers;
+        private final AtomicLong failedUserCount;
+        private final AtomicLong failedCalendarCount;
 
         public Context() {
-            processedUserCount = new AtomicLong();
             processedEventCount = new AtomicLong();
             failedEventCount = new AtomicLong();
-            failedUsers = new ConcurrentLinkedDeque<>();
-        }
-
-        void incrementProcessedUser() {
-            processedUserCount.incrementAndGet();
+            failedUserCount = new AtomicLong();
+            failedCalendarCount = new AtomicLong();
         }
 
         void incrementProcessedEvent() {
@@ -85,26 +86,18 @@ public class CalendarEventsReindexService {
             failedEventCount.incrementAndGet();
         }
 
-        void addToFailedUsers(User user) {
-            failedUsers.add(user);
+        void incrementFailedUser() {
+            failedUserCount.incrementAndGet();
+        }
+
+        void incrementFailedCalendar() {
+            failedCalendarCount.incrementAndGet();
         }
 
         public Snapshot snapshot() {
             return new Snapshot(
-                processedUserCount.get(),
                 processedEventCount.get(),
-                failedEventCount.get(),
-                ImmutableList.copyOf(failedUsers));
-        }
-
-        @Override
-        public String toString() {
-            return MoreObjects.toStringHelper(this)
-                .add("processedUserCount", processedUserCount.get())
-                .add("processedEventCount", processedEventCount.get())
-                .add("failedEventCount", failedEventCount.get())
-                .add("failedUsers", failedUsers)
-                .toString();
+                failedEventCount.get());
         }
     }
 
@@ -121,53 +114,66 @@ public class CalendarEventsReindexService {
         this.calDavClient = calDavClient;
     }
 
-    public Mono<Task.Result> reindex(Context context, int usersPerSecond) {
+    public Mono<Task.Result> reindex(Context context, int eventsPerSecond) {
         return userDAO.list()
-            .transform(ReactorUtils.<OpenPaaSUser, Task.Result>throttle()
-                .elements(usersPerSecond)
+            .flatMap(user -> collectEvents(context, user), DEFAULT_CONCURRENCY)
+            .transform(ReactorUtils.<IndexItem, Task.Result>throttle()
+                .elements(eventsPerSecond)
                 .per(Duration.ofSeconds(1))
-                .forOperation(user -> reindex(context, user)))
+                .forOperation(indexItem -> reindex(context, indexItem)))
             .reduce(Task.Result.COMPLETED, Task::combine)
-            .doOnNext(result -> LOGGER.info("{} task result: {}. Detail:\n{}", TASK_NAME.asString(), result.toString(), context.snapshot()))
-            .onErrorResume(e -> {
-                LOGGER.error("Error while doing task {}", TASK_NAME.asString(), e);
-                return Mono.just(Task.Result.PARTIAL);
-            });
-    }
-
-    private Mono<Task.Result> reindex(Context context, OpenPaaSUser user) {
-        return calendarSearchService.deleteAll(AccountId.fromUsername(user.username()))
-            .then(Mono.fromRunnable(() -> LOGGER.info("{} task deleted all events of user {}", TASK_NAME.asString(), user.username())))
-            .then(calDavClient.findUserCalendars(user.username(), user.id())
-                .flatMap(calendarURL -> reindex(context, user, calendarURL))
-                .reduce(Task.Result.COMPLETED, Task::combine))
-            .doOnNext(result -> {
-                LOGGER.info("{} task result for user {}: {}", TASK_NAME.asString(), user.username(), result.toString());
-                if (result == Task.Result.COMPLETED) {
-                    context.incrementProcessedUser();
+            .map(result -> {
+                if (context.failedUserCount.get() > 0 || context.failedCalendarCount.get() > 0 || context.failedEventCount.get() > 0) {
+                    LOGGER.info("{} task result: {}. Detail:\n{}", TASK_NAME.asString(), Task.Result.PARTIAL, context.snapshot());
+                    return Task.Result.PARTIAL;
                 } else {
-                    context.addToFailedUsers(new Context.User(user.username().asString()));
+                    LOGGER.info("{} task result: {}. Detail:\n{}", TASK_NAME.asString(), result.toString(), context.snapshot());
+                    return result;
                 }
             }).onErrorResume(e -> {
-                LOGGER.error("Error while doing task {} for user {}", TASK_NAME.asString(), user.username().asString(), e);
-                context.addToFailedUsers(new Context.User(user.username().asString()));
+                LOGGER.error("Task {} is incomplete", TASK_NAME.asString(), e);
                 return Mono.just(Task.Result.PARTIAL);
             });
     }
 
-    private Mono<Task.Result> reindex(Context context, OpenPaaSUser user, CalendarURL calendarURL) {
+    private Mono<Task.Result> reindex(Context context, IndexItem indexItem) {
+        return calendarSearchService.index(AccountId.fromUsername(indexItem.user().username()), indexItem.calendarEvents())
+            .then(Mono.fromCallable(() -> {
+                context.incrementProcessedEvent();
+                return Task.Result.COMPLETED;
+            })).onErrorResume(e -> {
+                LOGGER.error("Error while doing task {} for user {} and calendar {} and eventId {}",
+                    TASK_NAME.asString(), indexItem.user().username().asString(), indexItem.calendarURL().serialize(), indexItem.calendarEvents().eventUid().value(), e);
+                context.incrementFailedEvent();
+                return Mono.just(Task.Result.PARTIAL);
+            });
+    }
+
+    private Flux<IndexItem> collectEvents(Context context, OpenPaaSUser user) {
+        return calendarSearchService.deleteAll(AccountId.fromUsername(user.username()))
+            .then(Mono.fromRunnable(() -> LOGGER.info("{} task deleted all events of user {}", TASK_NAME.asString(), user.username())))
+            .thenMany(calDavClient.findUserCalendars(user.username(), user.id())
+                .flatMap(calendarURL -> collectEvents(context, user, calendarURL)))
+            .onErrorResume(e -> {
+                LOGGER.error("Error while doing task {} for user {}", TASK_NAME.asString(), user.username().asString(), e);
+                context.incrementFailedUser();
+                return Mono.empty();
+            });
+    }
+
+    private Flux<IndexItem> collectEvents(Context context, OpenPaaSUser user, CalendarURL calendarURL) {
         return calDavClient.export(calendarURL, user.username())
             .flatMap(bytes -> Mono.fromCallable(() -> CalendarUtil.parseIcs(bytes))
                 .subscribeOn(Schedulers.boundedElastic()))
-            .flatMap(calendar -> reindex(context, user, calendarURL, calendar))
+            .flatMapMany(calendar -> collectEvents(context, user, calendarURL, calendar))
             .onErrorResume(e -> {
                 LOGGER.error("Error while doing task {} for user {} and calendar url {}", TASK_NAME.asString(), user.username().asString(), calendarURL.serialize(), e);
-                return Mono.just(Task.Result.PARTIAL);
+                context.incrementFailedCalendar();
+                return Mono.empty();
             });
     }
 
-    private Mono<Task.Result> reindex(Context context, OpenPaaSUser user, CalendarURL calendarURL, Calendar calendar) {
-        AccountId accountId = AccountId.fromUsername(user.username());
+    private Flux<IndexItem> collectEvents(Context context, OpenPaaSUser user, CalendarURL calendarURL, Calendar calendar) {
         return Flux.fromIterable(calendar.getComponents(Component.VEVENT))
             .cast(VEvent.class)
             .groupBy(vEvent -> vEvent.getProperty(Property.UID).get().getValue())
@@ -175,17 +181,12 @@ public class CalendarEventsReindexService {
                 groupedFlux.map(vEvent -> EventFields.fromVEvent(vEvent, calendarURL))
                     .collectList()
                     .map(CalendarEvents::of)
-                    .flatMap(calendarEvents -> calendarSearchService.index(accountId, calendarEvents))
-                    .then(Mono.fromCallable(() -> {
-                        context.incrementProcessedEvent();
-                        return Task.Result.COMPLETED;
-                    })).onErrorResume(e -> {
+                    .map(calendarEvents -> new IndexItem(user, calendarURL, calendarEvents))
+                    .onErrorResume(e -> {
                         LOGGER.error("Error while doing task {} for user {} and calendar {} and eventId {}",
                             TASK_NAME.asString(), user.username().asString(), calendarURL.serialize(), groupedFlux.key(), e);
                         context.incrementFailedEvent();
-                        return Mono.just(Task.Result.PARTIAL);
-                    }),
-                DEFAULT_CONCURRENCY)
-            .reduce(Task.Result.COMPLETED, Task::combine);
+                        return Mono.empty();
+                    }));
     }
 }

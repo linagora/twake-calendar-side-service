@@ -56,7 +56,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
@@ -143,10 +142,8 @@ public class CalendarRoutesTest {
             .body("status", is("completed"))
             .body("taskId", is(taskId))
             .body("type", is("reindex-calendar-events"))
-            .body("additionalInformation.processedUserCount", is(2))
             .body("additionalInformation.processedEventCount", is(0))
             .body("additionalInformation.failedEventCount", is(0))
-            .body("additionalInformation.failedUsers", is(ImmutableList.of()))
             .body("additionalInformation.timestamp", is(notNullValue()))
             .body("additionalInformation.type", is("reindex-calendar-events"))
             .body("startedDate", is(notNullValue()))
@@ -196,10 +193,8 @@ public class CalendarRoutesTest {
             .then()
             .body("status", is("completed"))
             .body("type", is("reindex-calendar-events"))
-            .body("additionalInformation.processedUserCount", is(2))
             .body("additionalInformation.processedEventCount", is(1))
-            .body("additionalInformation.failedEventCount", is(0))
-            .body("additionalInformation.failedUsers", is(ImmutableList.of()));
+            .body("additionalInformation.failedEventCount", is(0));
 
         EventFields.Person person = new EventFields.Person("john doe", new MailAddress(openPaaSUser.username().asString()));
         EventFields expected = EventFields.builder()
@@ -314,10 +309,8 @@ public class CalendarRoutesTest {
             .then()
             .body("status", is("completed"))
             .body("type", is("reindex-calendar-events"))
-            .body("additionalInformation.processedUserCount", is(2))
             .body("additionalInformation.processedEventCount", is(2))
-            .body("additionalInformation.failedEventCount", is(0))
-            .body("additionalInformation.failedUsers", is(ImmutableList.of()));
+            .body("additionalInformation.failedEventCount", is(0));
 
         EventFields.Person person = new EventFields.Person("John1 Doe1", new MailAddress(username));
         EventFields expected1 = EventFields.builder()
@@ -400,10 +393,8 @@ public class CalendarRoutesTest {
             .then()
             .body("status", is("completed"))
             .body("type", is("reindex-calendar-events"))
-            .body("additionalInformation.processedUserCount", is(2))
             .body("additionalInformation.processedEventCount", is(0))
-            .body("additionalInformation.failedEventCount", is(0))
-            .body("additionalInformation.failedUsers", is(ImmutableList.of()));
+            .body("additionalInformation.failedEventCount", is(0));
 
         List<EventFields> actual = calendarSearchService.search(accountId, simpleQuery(""))
             .collectList().block();
@@ -509,10 +500,8 @@ public class CalendarRoutesTest {
             .then()
             .body("status", is("failed"))
             .body("type", is("reindex-calendar-events"))
-            .body("additionalInformation.processedUserCount", is(1))
             .body("additionalInformation.processedEventCount", is(1))
-            .body("additionalInformation.failedEventCount", is(1))
-            .body("additionalInformation.failedUsers", is(ImmutableList.of(openPaaSUser.username().asString())));
+            .body("additionalInformation.failedEventCount", is(1));
     }
 
     private EventSearchQuery simpleQuery(String query) {

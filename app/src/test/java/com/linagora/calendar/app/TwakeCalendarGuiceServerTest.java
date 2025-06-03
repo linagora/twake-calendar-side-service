@@ -206,7 +206,7 @@ class TwakeCalendarGuiceServerTest  {
             .body("taskId", is(taskId))
             .body("type", is("reindex-calendar-events"))
             .body("additionalInformation.processedEventCount", is(0))
-            .body("additionalInformation.failedUsers", is(ImmutableList.of("btellier@linagora.com")))
+            .body("additionalInformation.failedEventCount", is(0))
             .body("additionalInformation.timestamp", is(notNullValue()))
             .body("additionalInformation.type", is("reindex-calendar-events"))
             .body("startedDate", is(notNullValue()))

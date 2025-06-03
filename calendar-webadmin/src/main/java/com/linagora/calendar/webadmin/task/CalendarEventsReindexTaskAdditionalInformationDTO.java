@@ -19,20 +19,15 @@
 package com.linagora.calendar.webadmin.task;
 
 import java.time.Instant;
-import java.util.List;
 
 import org.apache.james.json.DTOModule;
 import org.apache.james.server.task.json.dto.AdditionalInformationDTO;
 import org.apache.james.server.task.json.dto.AdditionalInformationDTOModule;
 
-import com.linagora.calendar.webadmin.service.CalendarEventsReindexService;
-
 public record CalendarEventsReindexTaskAdditionalInformationDTO(String type,
                                                                 Instant timestamp,
-                                                                long processedUserCount,
                                                                 long processedEventCount,
-                                                                long failedEventCount,
-                                                                List<String> failedUsers) implements AdditionalInformationDTO {
+                                                                long failedEventCount) implements AdditionalInformationDTO {
     @Override
     public String getType() {
         return type;
@@ -56,22 +51,14 @@ public record CalendarEventsReindexTaskAdditionalInformationDTO(String type,
         return new CalendarEventsReindexTaskAdditionalInformationDTO(
             type,
             details.instant(),
-            details.processedUserCount(),
             details.processedEventCount(),
-            details.failedEventCount(),
-            details.failedUsers().stream()
-                .map(CalendarEventsReindexService.Context.User::username)
-                .toList());
+            details.failedEventCount());
     }
 
     private CalendarEventsReindexTask.Details toDomainObject() {
         return new CalendarEventsReindexTask.Details(
             timestamp,
-            processedUserCount,
             processedEventCount,
-            failedEventCount,
-            failedUsers.stream()
-                .map(CalendarEventsReindexService.Context.User::new)
-                .toList());
+            failedEventCount);
     }
 }
