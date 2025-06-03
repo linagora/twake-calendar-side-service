@@ -30,16 +30,17 @@ import java.util.List;
 import java.util.Optional;
 
 import jakarta.mail.internet.AddressException;
-import net.fortuna.ical4j.model.Parameter;
-import net.fortuna.ical4j.model.Property;
-import net.fortuna.ical4j.model.TimeZone;
-import net.fortuna.ical4j.model.component.VEvent;
 
 import org.apache.james.core.MailAddress;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.storage.CalendarURL;
+
+import net.fortuna.ical4j.model.Parameter;
+import net.fortuna.ical4j.model.Property;
+import net.fortuna.ical4j.model.TimeZone;
+import net.fortuna.ical4j.model.component.VEvent;
 
 public record EventFields(EventUid uid,
                           String summary,
