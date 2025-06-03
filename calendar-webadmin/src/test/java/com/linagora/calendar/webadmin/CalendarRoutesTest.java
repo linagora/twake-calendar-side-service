@@ -18,8 +18,8 @@
 
 package com.linagora.calendar.webadmin;
 
+import static com.linagora.calendar.storage.eventsearch.EventFields.UTC_DATE_TIME_FORMATTER;
 import static com.linagora.calendar.storage.eventsearch.EventSearchQuery.MAX_LIMIT;
-import static com.linagora.calendar.webadmin.service.CalendarEventsReindexService.UTC_DATE_TIME_FORMATTER;
 import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.is;

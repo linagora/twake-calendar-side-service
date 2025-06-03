@@ -19,14 +19,25 @@
 package com.linagora.calendar.storage.eventsearch;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import jakarta.mail.internet.AddressException;
+import net.fortuna.ical4j.model.Parameter;
+import net.fortuna.ical4j.model.Property;
+import net.fortuna.ical4j.model.TimeZone;
+import net.fortuna.ical4j.model.component.VEvent;
 
 import org.apache.james.core.MailAddress;
 
+import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.storage.CalendarURL;
 
@@ -47,6 +58,18 @@ public record EventFields(EventUid uid,
                           List<Person> resources,
                           CalendarURL calendarURL) {
 
+    public static final DateTimeFormatter UTC_DATE_TIME_FORMATTER = new DateTimeFormatterBuilder()
+        .appendPattern("yyyyMMdd'T'HHmmssX")
+        .toFormatter();
+    public static final DateTimeFormatter DATE_TIME_FORMATTER = new DateTimeFormatterBuilder()
+        .appendPattern("yyyyMMdd'T'HHmmss")
+        .toFormatter();
+    public static final DateTimeFormatter DATE_FORMATTER = new DateTimeFormatterBuilder()
+        .appendPattern("yyyyMMdd")
+        .toFormatter();
+
+    private static final boolean GET_RESOURCE = true;
+    private static final boolean GET_ATTENDEE = false;
 
     public record Person(String cn, MailAddress email) {
 
@@ -198,6 +221,85 @@ public record EventFields(EventUid uid,
                 resources,
                 calendarURL);
         }
+    }
+
+    public static EventFields fromVEvent(VEvent vEvent, CalendarURL calendarURL) {
+        EventFields.Builder builder = EventFields.builder()
+            .calendarURL(calendarURL);
+
+        vEvent.getUid().ifPresent(uid -> builder.uid(uid.getValue()));
+        vEvent.getProperty(Property.SUMMARY).ifPresent(prop -> builder.summary(prop.getValue()));
+        vEvent.getProperty(Property.LOCATION).ifPresent(prop -> builder.location(prop.getValue()));
+        vEvent.getProperty(Property.DESCRIPTION).ifPresent(prop -> builder.description(prop.getValue()));
+        vEvent.getProperty(Property.CLASS).ifPresent(prop -> builder.clazz(prop.getValue()));
+        vEvent.getProperty(Property.DTSTART).ifPresent(prop -> {
+            builder.start(parseTime(prop));
+            builder.allDay(isDate(prop));
+        });
+        vEvent.getProperty(Property.DTEND).ifPresent(prop -> builder.end(parseTime(prop)));
+        vEvent.getProperty(Property.DTSTAMP).ifPresent(prop -> builder.dtStamp(parseTime(prop)));
+        isRecurrentMaster(vEvent).ifPresent(builder::isRecurrentMaster);
+        builder.organizer(getOrganizer(vEvent));
+        builder.attendees(getAttendees(vEvent));
+        builder.resources(getResources(vEvent));
+
+        return builder.build();
+    }
+
+    private static Optional<Boolean> isRecurrentMaster(VEvent vEvent) {
+        if (vEvent.getProperty(Property.RECURRENCE_ID).isPresent()) {
+            return Optional.of(false);
+        }
+        if (vEvent.getProperty(Property.RRULE).isPresent()) {
+            return Optional.of(true);
+        }
+        return Optional.empty();
+    }
+
+    private static EventFields.Person getOrganizer(VEvent vEvent) {
+        return vEvent.getProperty(Property.ORGANIZER)
+            .map(Throwing.function(EventFields::toPerson))
+            .orElse(null);
+    }
+
+    private static List<EventFields.Person> getAttendees(VEvent vEvent) {
+        return getPeople(vEvent, GET_ATTENDEE);
+    }
+
+    private static List<EventFields.Person> getResources(VEvent vEvent) {
+        return getPeople(vEvent, GET_RESOURCE);
+    }
+
+    private static List<EventFields.Person> getPeople(VEvent vEvent, boolean getResource) {
+        return vEvent.getProperties(Property.ATTENDEE)
+            .stream()
+            .filter(attendee -> attendee.getParameter(Parameter.CUTYPE)
+                .map(parameter -> getResource == "RESOURCE".equals(parameter.getValue()))
+                .orElse(false))
+            .map(Throwing.function(EventFields::toPerson))
+            .toList();
+    }
+
+    private static Instant parseTime(Property property) {
+        String value = property.getValue();
+        if (isDate(property)) {
+            return LocalDate.from(DATE_FORMATTER.parse(value)).atStartOfDay().toInstant(ZoneOffset.UTC);
+        } else {
+            return property.getParameter(Parameter.TZID)
+                .map(tzId -> TimeZone.getTimeZone(tzId.getValue()).toZoneId())
+                .map(zoneId -> LocalDateTime.parse(value, DATE_TIME_FORMATTER).atZone(zoneId).toInstant())
+                .orElseGet(() -> Instant.from(UTC_DATE_TIME_FORMATTER.parse(value)));
+        }
+    }
+
+    private static boolean isDate(Property prop) {
+        return prop.getParameter(Parameter.VALUE).map(parameter -> "DATE".equals(parameter.getValue())).orElse(false);
+    }
+
+    private static EventFields.Person toPerson(Property property) throws AddressException {
+        String cn = property.getParameter(Parameter.CN).map(Parameter::getValue).orElse("");
+        String email = property.getValue().replaceFirst("^mailto:", "");
+        return new EventFields.Person(cn, new MailAddress(email));
     }
 
 }
