@@ -129,7 +129,7 @@ public class CalendarRoutesTest {
     @Test
     void shouldShowAllInformationInResponse() {
         String taskId = given()
-            .queryParam("task", "reindexCalendarEvents")
+            .queryParam("task", "reindex")
             .when()
             .post()
             .jsonPath()
@@ -183,7 +183,7 @@ public class CalendarRoutesTest {
         calDavClient.importCalendar(calendarURL, eventId, openPaaSUser.username(), ics.getBytes(StandardCharsets.UTF_8)).block();
 
         String taskId = given()
-            .queryParam("task", "reindexCalendarEvents")
+            .queryParam("task", "reindex")
             .when()
             .post()
             .jsonPath()
@@ -301,7 +301,7 @@ public class CalendarRoutesTest {
         calDavClient.importCalendar(calendarURL, uid2, openPaaSUser.username(), ics2).block();
 
         String taskId = given()
-            .queryParam("task", "reindexCalendarEvents")
+            .queryParam("task", "reindex")
             .when()
             .post()
             .jsonPath()
@@ -387,7 +387,7 @@ public class CalendarRoutesTest {
         calendarSearchService.index(accountId, CalendarEvents.of(event1)).block();
 
         String taskId = given()
-            .queryParam("task", "reindexCalendarEvents")
+            .queryParam("task", "reindex")
             .when()
             .post()
             .jsonPath()
@@ -496,7 +496,7 @@ public class CalendarRoutesTest {
         }).when(calendarSearchService).index(any(), any());
 
         String taskId = given()
-            .queryParam("task", "reindexCalendarEvents")
+            .queryParam("task", "reindex")
             .when()
             .post()
             .jsonPath()

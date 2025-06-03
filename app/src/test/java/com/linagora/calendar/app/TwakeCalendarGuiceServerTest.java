@@ -193,7 +193,7 @@ class TwakeCalendarGuiceServerTest  {
     void shouldExposeWebAdminCalendarEventReindexTask() {
         String taskId = given()
             .when()
-            .post("/calendars?task=reindexCalendarEvents")
+            .post("/calendars?task=reindex")
             .jsonPath()
             .get("taskId");;
 

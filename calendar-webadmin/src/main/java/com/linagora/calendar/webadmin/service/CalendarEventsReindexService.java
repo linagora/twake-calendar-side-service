@@ -215,7 +215,7 @@ public class CalendarEventsReindexService {
     }
 
     private EventFields toEventFields(VEvent vEvent, CalendarURL calendarURL) {
-        final EventFields.Builder builder = EventFields.builder()
+        EventFields.Builder builder = EventFields.builder()
             .calendarURL(calendarURL);
 
         vEvent.getUid().ifPresent(uid -> builder.uid(uid.getValue()));
@@ -225,7 +225,7 @@ public class CalendarEventsReindexService {
         vEvent.getProperty(Property.CLASS).ifPresent(prop -> builder.clazz(prop.getValue()));
         vEvent.getProperty(Property.DTSTART).ifPresent(prop -> {
             builder.start(parseTime(prop));
-            builder.allDay(!prop.getValue().contains("T"));
+            builder.allDay(isDate(prop));
         });
         vEvent.getProperty(Property.DTEND).ifPresent(prop -> builder.end(parseTime(prop)));
         vEvent.getProperty(Property.DTSTAMP).ifPresent(prop -> builder.dtStamp(parseTime(prop)));
@@ -273,14 +273,18 @@ public class CalendarEventsReindexService {
 
     private Instant parseTime(Property property) {
         String value = property.getValue();
-        if (value.contains("T")) {
+        if (isDate(property)) {
+            return LocalDate.from(DATE_FORMATTER.parse(value)).atStartOfDay().toInstant(ZoneOffset.UTC);
+        } else {
             return property.getParameter(Parameter.TZID)
                 .map(tzId -> TimeZone.getTimeZone(tzId.getValue()).toZoneId())
                 .map(zoneId -> LocalDateTime.parse(value, DATE_TIME_FORMATTER).atZone(zoneId).toInstant())
                 .orElseGet(() -> Instant.from(UTC_DATE_TIME_FORMATTER.parse(value)));
-        } else {
-            return LocalDate.from(DATE_FORMATTER.parse(value)).atStartOfDay().toInstant(ZoneOffset.UTC);
         }
+    }
+
+    private boolean isDate(Property prop) {
+        return prop.getParameter(Parameter.VALUE).map(parameter -> "DATE".equals(parameter.getValue())).orElse(false);
     }
 
     private EventFields.Person toPerson(Property property) throws AddressException {
