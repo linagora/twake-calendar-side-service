@@ -33,10 +33,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linagora.calendar.dav.xml.DavMultistatus;
-import com.linagora.calendar.dav.xml.DavResponse;
-import com.linagora.calendar.dav.xml.XMLUtil;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.Streams;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 
@@ -44,7 +45,6 @@ import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
-import io.netty.handler.codec.http.HttpResponseStatus;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -121,24 +121,50 @@ public class CalDavClient extends DavClient {
     }
 
     public Flux<CalendarURL> findUserCalendars(Username user, OpenPaaSId userId) {
-        return client.headers(headers -> headers.add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_XML)
+        String uri = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/" + userId.value() + ".json"
+            + "?personal=true&sharedDelegationStatus=accepted&sharedPublicSubscription=true&withRights=true";
+        return client.headers(headers -> headers
+                .add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_JSON)
                 .add(HttpHeaderNames.AUTHORIZATION, authenticationToken(user.asString())))
-            .request(HttpMethod.valueOf("PROPFIND"))
-            .uri(CalendarURL.CALENDAR_URL_PATH_PREFIX + "/" + userId.value())
-                            .responseSingle((response, byteBufMono) -> {
-                                if (response.status() == HttpResponseStatus.MULTI_STATUS) {
-                                    return byteBufMono.asString(StandardCharsets.UTF_8)
-                                        .map(multiStatusResponse -> XMLUtil.parse(multiStatusResponse, DavMultistatus.class))
-                        .map(this::extractCalendarURIsFromResponse);
+            .request(HttpMethod.GET)
+            .uri(uri)
+            .responseSingle((response, byteBufMono) -> {
+                if (response.status().code() == HttpStatus.SC_OK) {
+                    return byteBufMono.asString(StandardCharsets.UTF_8).map(this::extractCalendarURLsFromResponse);
                 } else {
                     return Mono.error(new DavClientException(
                         String.format("Unexpected status code: %d when finding user calendars for user: %s",
                             response.status().code(), userId.value())));
                 }
-            })
-            .flatMapMany(Flux::fromIterable);
+            }).flatMapMany(Flux::fromIterable);
     }
 
+    private List<CalendarURL> extractCalendarURLsFromResponse(String json) {
+        try {
+            JsonNode node = OBJECT_MAPPER.readTree(json);
+            ArrayNode calendars = (ArrayNode) node.path("_embedded").path("dav:calendar");
+            return Streams.stream(calendars.elements())
+                .map(calendarNode -> calendarNode.path("_links").path("self").path("href").asText())
+                .filter(href -> !href.isEmpty())
+                .map(this::parseCalendarHref)
+                .toList();
+        } catch (Exception e) {
+            throw new DavClientException("Failed to parse calendar list JSON", e);
+        }
+    }
+
+    private CalendarURL parseCalendarHref(String href) {
+        String[] parts = href.split("/");
+        if (parts.length != 4) {
+            throw new DavClientException("Found an invalid calendar href in JSON response: " + href);
+        }
+        String userId = parts[2];
+        String calendarIdWithExt = parts[3];
+        String calendarId = calendarIdWithExt.replace(".json", "");
+        return new CalendarURL(new OpenPaaSId(userId), new OpenPaaSId(calendarId));
+    }
+
+    @VisibleForTesting
     public Mono<Void> createNewCalendarDirectory(Username username, OpenPaaSId userId, NewCalendar newCalendar) {
         String uri = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/" + userId.value() + ".json";
         return client.headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_JSON)
@@ -159,26 +185,5 @@ public class CalDavClient extends DavClient {
                                 """.formatted(response.status().code(), newCalendar.id(), uri, responseBody))));
                 }
             });
-    }
-
-    private List<CalendarURL> extractCalendarURIsFromResponse(DavMultistatus multistatus) {
-        return multistatus.getResponses().stream()
-            .filter(DavResponse::isCalendarCollectionResponse)
-            .flatMap(response -> response.getHref()
-                .getValue()
-                .filter(href -> !(href.endsWith("inbox/") || href.endsWith("outbox/")))
-                .map(this::parseCalendarHref)
-                .stream())
-            .toList();
-    }
-
-    private CalendarURL parseCalendarHref(String href) {
-        String[] parts = href.split("/");
-        if (parts.length != 4) {
-            throw new DavClientException("Found an invalid calendar href in Dav server response: " + href);
-        }
-        String userId = parts[2];
-        String calendarId = parts[3];
-        return new CalendarURL(new OpenPaaSId(userId), new OpenPaaSId(calendarId));
     }
 }

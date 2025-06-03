@@ -31,7 +31,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
-import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.MailboxSessionUtil;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -216,5 +215,13 @@ public class CalDavClientTest {
         List<CalendarURL> uris = testee.findUserCalendars(user.username(), user.id()).collectList().block();
 
         assertThat(uris).containsExactlyInAnyOrder(new CalendarURL(user.id(), user.id()), new CalendarURL(user.id(), new OpenPaaSId(newCalendar.id())));
+    }
+
+    @Test
+    void findUserCalendarsShouldThrowWhenInvalidUserId() {
+        OpenPaaSUser user = createOpenPaaSUser();
+
+        assertThatThrownBy(() -> testee.findUserCalendars(user.username(), new OpenPaaSId("invalid")).collectList().block())
+            .isInstanceOf(DavClientException.class);
     }
 }
