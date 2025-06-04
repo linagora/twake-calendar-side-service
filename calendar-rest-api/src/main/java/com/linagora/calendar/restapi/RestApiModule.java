@@ -52,6 +52,7 @@ import com.linagora.calendar.restapi.auth.OidcFallbackCookieAuthenticationStrate
 import com.linagora.calendar.restapi.auth.SimpleSessionProvider;
 import com.linagora.calendar.restapi.routes.AvatarRoute;
 import com.linagora.calendar.restapi.routes.CalendarSearchRoute;
+import com.linagora.calendar.restapi.routes.CheckTechnicalUserTokenRoute;
 import com.linagora.calendar.restapi.routes.ConfigurationRoute;
 import com.linagora.calendar.restapi.routes.DomainRoute;
 import com.linagora.calendar.restapi.routes.DownloadCalendarRoute;
@@ -105,6 +106,7 @@ public class RestApiModule extends AbstractModule {
         routes.addBinding().to(ImportRoute.class);
         routes.addBinding().to(ImportProxyRoute.class);
         routes.addBinding().to(CalendarSearchRoute.class);
+        routes.addBinding().to(CheckTechnicalUserTokenRoute.class);
 
         Multibinder<AuthenticationStrategy> authenticationStrategies = Multibinder.newSetBinder(binder(), AuthenticationStrategy.class);
         authenticationStrategies.addBinding().to(BasicAuthenticationStrategy.class);
