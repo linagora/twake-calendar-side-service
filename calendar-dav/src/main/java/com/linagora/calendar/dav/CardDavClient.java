@@ -29,9 +29,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.TechnicalTokenService;
 
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
 import reactor.core.publisher.Mono;
@@ -45,9 +47,23 @@ public class CardDavClient extends DavClient {
     private static final String CONTENT_TYPE_VCARD = "application/vcard";
     private static final String ACCEPT_VCARD_JSON = "text/plain";
     private static final String ADDRESS_BOOK_PATH = "/addressbooks/%s/%s/%s.vcf";
+    private static final String TWAKE_CALENDAR_TOKEN_HEADER_NAME = "TwakeCalendarToken";
+    private static final byte[] CREATE_DOMAIN_MEMBERS_ADDRESS_BOOK_PAYLOAD = """
+        {
+            "id": "domain-members",
+            "dav:name": "Domain Members",
+            "carddav:description": "Address book contains all domain members",
+            "dav:acl": [ "{DAV:}read" ],
+            "type": "group"
+        }
+        """.getBytes(StandardCharsets.UTF_8);
 
-    protected CardDavClient(DavConfiguration config) throws SSLException {
+    private final TechnicalTokenService technicalTokenService;
+
+    protected CardDavClient(DavConfiguration config,
+                            TechnicalTokenService technicalTokenService) throws SSLException {
         super(config);
+        this.technicalTokenService = technicalTokenService;
     }
 
     private UnaryOperator<HttpHeaders> addHeaders(Username username) {
@@ -101,5 +117,28 @@ public class CardDavClient extends DavClient {
                                 %s
                                 """.formatted(response.status().code(), userId.value(), addressBook, responseBody))));
         }
+    }
+
+    public Mono<Void> createDomainMembersAddressBook(OpenPaaSId domainId) {
+        return technicalTokenService.generate(domainId)
+            .flatMap(esnToken -> createDomainMembersAddressBook(domainId, esnToken));
+    }
+
+    private Mono<Void> createDomainMembersAddressBook(OpenPaaSId domainId, TechnicalTokenService.JwtToken esnToken) {
+        return client.headers(headers ->
+                headers.add(HttpHeaderNames.CONTENT_TYPE, HttpHeaderValues.APPLICATION_JSON)
+                    .add(TWAKE_CALENDAR_TOKEN_HEADER_NAME, esnToken.value()))
+            .post()
+            .uri(String.format("/addressbooks/%s.json", domainId.value()))
+            .send(Mono.just(Unpooled.wrappedBuffer(CREATE_DOMAIN_MEMBERS_ADDRESS_BOOK_PAYLOAD)))
+            .responseSingle((response, byteBufMono) -> {
+                if (response.status().code() == 201) {
+                    return Mono.empty();
+                } else {
+                    return byteBufMono.asString(StandardCharsets.UTF_8)
+                        .flatMap(errorBody -> Mono.error(new DavClientException(
+                            "Failed to create domain members address book of domain: " + domainId.value() + "," + errorBody)));
+                }
+            });
     }
 }

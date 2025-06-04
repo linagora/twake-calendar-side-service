@@ -19,6 +19,7 @@
 package com.linagora.calendar.dav;
 
 import java.io.FileNotFoundException;
+import java.time.Duration;
 
 import javax.net.ssl.SSLException;
 
@@ -28,6 +29,7 @@ import org.apache.james.utils.PropertiesProvider;
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.Singleton;
+import com.linagora.calendar.storage.TechnicalTokenService;
 
 public class DavModule extends AbstractModule {
     @Singleton
@@ -45,6 +47,6 @@ public class DavModule extends AbstractModule {
     @Provides
     @Singleton
     public CardDavClient provideCardDavClient(DavConfiguration configuration) throws SSLException {
-        return new CardDavClient(configuration);
+        return new CardDavClient(configuration, new TechnicalTokenService.Impl("technicalTokenSecret", Duration.ofSeconds(300)));
     }
 }

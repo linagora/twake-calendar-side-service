@@ -27,11 +27,13 @@
 package com.linagora.calendar.dav;
 
 import static com.linagora.calendar.dav.DockerSabreDavSetup.DockerService.MOCK_ESN;
+import static org.mockserver.model.HttpResponse.response;
 import static org.mockserver.model.Parameter.param;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
@@ -48,12 +50,15 @@ import org.junit.jupiter.api.extension.ParameterResolver;
 import org.mockserver.client.MockServerClient;
 import org.mockserver.model.Header;
 import org.mockserver.model.HttpRequest;
-import org.mockserver.model.HttpResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.shaded.org.awaitility.Awaitility;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.fge.lambdas.Throwing;
+import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
+import com.linagora.calendar.storage.TechnicalTokenService;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBSecretLinkStore;
@@ -72,7 +77,8 @@ public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup) impleme
         MongoDBOpenPaaSUserDAO.COLLECTION,
         MongoDBUploadedFileDAO.COLLECTION,
         MongoDBSecretLinkStore.COLLECTION);
-
+    private static final TechnicalTokenService technicalTokenService = new TechnicalTokenService.Impl("technicalTokenSecret", Duration.ofSeconds(300));
+    private static final ObjectMapper objectMapper = new ObjectMapper();
     private static MockServerClient mockServerClient;
 
     @Override
@@ -80,6 +86,8 @@ public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup) impleme
         dockerSabreDavSetup.start();
         mockServerClient = new MockServerClient(dockerSabreDavSetup.getHost(MOCK_ESN), dockerSabreDavSetup.getPort(MOCK_ESN));
         waitForRabbitMQToBeReady();
+
+        setupMockAuthenticationTokenEndpoint();
     }
 
     @Override
@@ -124,12 +132,29 @@ public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup) impleme
                 .withMethod("GET")
                 .withPath("/api/users")
                 .withQueryStringParameter(param("email", emailAddress)))
-            .respond(HttpResponse.response()
+            .respond(response()
                 .withStatusCode(200)
                 .withHeader(new Header("Content-Type", "application/json"))
                 .withBody("[{\"_id\": \"" + id + "\"}]"));
 
         LOGGER.debug("Mocked user by email: {} with id: {}", emailAddress, id);
+    }
+
+    private void setupMockAuthenticationTokenEndpoint() {
+        mockServerClient
+            .when(HttpRequest.request()
+                .withMethod("GET")
+                .withPath("/api/technicalToken/introspect"))
+            .respond(httpRequest -> {
+                String token = httpRequest.getFirstHeader("X-TECHNICAL-TOKEN");
+                return response()
+                    .withStatusCode(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(technicalTokenService.claim(new TechnicalTokenService.JwtToken(token))
+                        .map(Throwing.function(tokenInfo -> objectMapper.writeValueAsString(tokenInfo.data())))
+                        .onErrorResume(e -> Mono.just("error: " + e.getMessage()))
+                        .block());
+            });
     }
 
     private boolean importRabbitMQDefinitions() {

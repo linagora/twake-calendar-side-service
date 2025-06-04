@@ -18,18 +18,29 @@
 
 package com.linagora.calendar.dav;
 
+import static com.linagora.calendar.dav.SabreDavProvisioningService.DATABASE;
+import static com.linagora.calendar.dav.SabreDavProvisioningService.DOMAIN;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatCode;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.apache.james.core.Domain;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSUser;
+import com.linagora.calendar.storage.TechnicalTokenService;
+import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
+import com.mongodb.reactivestreams.client.MongoClient;
+import com.mongodb.reactivestreams.client.MongoClients;
+import com.mongodb.reactivestreams.client.MongoDatabase;
 
 public class CardDavClientTest {
 
@@ -38,9 +49,14 @@ public class CardDavClientTest {
 
     private CardDavClient testee;
 
+    private MongoDBOpenPaaSDomainDAO mongoDBOpenPaaSDomainDAO;
+
     @BeforeEach
     void setupEach() throws Exception {
-        testee = new CardDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration());
+        TechnicalTokenService technicalTokenService = new TechnicalTokenService.Impl("technicalTokenSecret", Duration.ofSeconds(120));
+        mongoDBOpenPaaSDomainDAO = mongoDBOpenPaaSDomainDAO();
+        testee = new CardDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(),
+            technicalTokenService);
     }
 
     private OpenPaaSUser openPaaSUser() {
@@ -141,5 +157,20 @@ public class CardDavClientTest {
         assertThatThrownBy(() ->
             testee.exportContact(user.username(), user.id(), addressBook).block()
         ).isInstanceOf(DavClientException.class);
+    }
+
+    @Test
+    void createDomainMembersAddressBookShouldSucceed() {
+        OpenPaaSDomain openPaaSDomain = mongoDBOpenPaaSDomainDAO.retrieve(Domain.of(DOMAIN)).block();
+
+        assertThatCode(() -> testee.createDomainMembersAddressBook(openPaaSDomain.id())
+            .block())
+            .doesNotThrowAnyException();
+    }
+
+    private static MongoDBOpenPaaSDomainDAO mongoDBOpenPaaSDomainDAO() {
+        MongoClient mongoClient = MongoClients.create(sabreDavExtension.dockerSabreDavSetup().getMongoDbIpAddress().toString());
+        MongoDatabase database = mongoClient.getDatabase(DATABASE);
+        return new MongoDBOpenPaaSDomainDAO(database);
     }
 }
