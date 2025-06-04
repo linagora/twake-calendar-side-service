@@ -31,9 +31,11 @@ import java.util.Optional;
 
 import jakarta.mail.internet.AddressException;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.MailAddress;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.storage.CalendarURL;
 
@@ -71,6 +73,7 @@ public record EventFields(EventUid uid,
 
     private static final boolean GET_RESOURCE = true;
     private static final boolean GET_ATTENDEE = false;
+    public static final Logger LOGGER = LoggerFactory.getLogger(EventFields.class);
 
     public record Person(String cn, MailAddress email) {
 
@@ -234,11 +237,11 @@ public record EventFields(EventUid uid,
         vEvent.getProperty(Property.DESCRIPTION).ifPresent(prop -> builder.description(prop.getValue()));
         vEvent.getProperty(Property.CLASS).ifPresent(prop -> builder.clazz(prop.getValue()));
         vEvent.getProperty(Property.DTSTART).ifPresent(prop -> {
-            builder.start(parseTime(prop));
+            parseTime(prop).ifPresent(builder::start);
             builder.allDay(isDate(prop));
         });
-        vEvent.getProperty(Property.DTEND).ifPresent(prop -> builder.end(parseTime(prop)));
-        vEvent.getProperty(Property.DTSTAMP).ifPresent(prop -> builder.dtStamp(parseTime(prop)));
+        vEvent.getProperty(Property.DTEND).flatMap(EventFields::parseTime).ifPresent(builder::end);
+        vEvent.getProperty(Property.DTSTAMP).flatMap(EventFields::parseTime).ifPresent(builder::dtStamp);
         isRecurrentMaster(vEvent).ifPresent(builder::isRecurrentMaster);
         builder.organizer(getOrganizer(vEvent));
         builder.attendees(getAttendees(vEvent));
@@ -259,7 +262,7 @@ public record EventFields(EventUid uid,
 
     private static EventFields.Person getOrganizer(VEvent vEvent) {
         return vEvent.getProperty(Property.ORGANIZER)
-            .map(Throwing.function(EventFields::toPerson))
+            .flatMap(EventFields::toPerson)
             .orElse(null);
     }
 
@@ -277,19 +280,25 @@ public record EventFields(EventUid uid,
             .filter(attendee -> attendee.getParameter(Parameter.CUTYPE)
                 .map(parameter -> getResource == "RESOURCE".equals(parameter.getValue()))
                 .orElse(false))
-            .map(Throwing.function(EventFields::toPerson))
+            .map(EventFields::toPerson)
+            .flatMap(Optional::stream)
             .toList();
     }
 
-    private static Instant parseTime(Property property) {
-        String value = property.getValue();
-        if (isDate(property)) {
-            return LocalDate.from(DATE_FORMATTER.parse(value)).atStartOfDay().toInstant(ZoneOffset.UTC);
-        } else {
-            return property.getParameter(Parameter.TZID)
-                .map(tzId -> TimeZone.getTimeZone(tzId.getValue()).toZoneId())
-                .map(zoneId -> LocalDateTime.parse(value, DATE_TIME_FORMATTER).atZone(zoneId).toInstant())
-                .orElseGet(() -> Instant.from(UTC_DATE_TIME_FORMATTER.parse(value)));
+    private static Optional<Instant> parseTime(Property property) {
+        try {
+            String value = property.getValue();
+            if (isDate(property)) {
+                return Optional.of(LocalDate.from(DATE_FORMATTER.parse(value)).atStartOfDay().toInstant(ZoneOffset.UTC));
+            } else {
+                return Optional.of(property.getParameter(Parameter.TZID)
+                    .map(tzId -> TimeZone.getTimeZone(tzId.getValue()).toZoneId())
+                    .map(zoneId -> LocalDateTime.parse(value, DATE_TIME_FORMATTER).atZone(zoneId).toInstant())
+                    .orElseGet(() -> Instant.from(UTC_DATE_TIME_FORMATTER.parse(value))));
+            }
+        } catch (Exception e) {
+            LOGGER.info("Failed to parse time: {}", e.getMessage());
+            return Optional.empty();
         }
     }
 
@@ -297,10 +306,14 @@ public record EventFields(EventUid uid,
         return prop.getParameter(Parameter.VALUE).map(parameter -> "DATE".equals(parameter.getValue())).orElse(false);
     }
 
-    private static EventFields.Person toPerson(Property property) throws AddressException {
-        String cn = property.getParameter(Parameter.CN).map(Parameter::getValue).orElse("");
-        String email = property.getValue().replaceFirst("^mailto:", "");
-        return new EventFields.Person(cn, new MailAddress(email));
+    private static Optional<EventFields.Person> toPerson(Property property)  {
+        try {
+            String cn = property.getParameter(Parameter.CN).map(Parameter::getValue).orElse("");
+            String email = StringUtils.removeStartIgnoreCase(property.getValue(), "mailto:");
+            return Optional.of(new EventFields.Person(cn, new MailAddress(email)));
+        } catch (AddressException e) {
+            LOGGER.info("Invalid person: {}", property.getValue());
+            return Optional.empty();
+        }
     }
-
 }
