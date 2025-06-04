@@ -62,6 +62,7 @@ import com.linagora.calendar.storage.FileUploadConfigurationModule;
 import com.linagora.calendar.storage.MemoryStorageModule;
 import com.linagora.calendar.storage.OIDCTokenCache;
 import com.linagora.calendar.storage.OIDCTokenCacheConfigurationModule;
+import com.linagora.calendar.storage.TechnicalUserTokenModule;
 import com.linagora.calendar.storage.eventsearch.MemoryCalendarSearchService;
 import com.linagora.calendar.storage.mongodb.MongoDBStorageModule;
 import com.linagora.calendar.storage.opensearch.OpensearchCalendarSearchModule;
@@ -117,6 +118,7 @@ public class TwakeCalendarMain {
                 new DavModule(),
                 new EventIndexerModule(),
                 new TwakeCalendarRabbitMQModule(),
+                new TechnicalUserTokenModule(),
                 WEBADMIN));
     }
 
