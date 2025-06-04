@@ -16,20 +16,13 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage.eventsearch;
+package com.linagora.calendar.webadmin.task;
 
-import org.apache.james.vacation.api.AccountId;
+public record RunningOptions(int eventsPerSecond) {
+    public static final int DEFAULT_EVENTS_PER_SECOND = 100;
+    public static final RunningOptions DEFAULT = of(DEFAULT_EVENTS_PER_SECOND);
 
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
-
-public interface CalendarSearchService {
-
-    Mono<Void> index(AccountId accountId, CalendarEvents fields);
-
-    Mono<Void> delete(AccountId accountId, EventUid eventUid);
-
-    Flux<EventFields> search(AccountId accountId, EventSearchQuery query);
-
-    Mono<Void> deleteAll(AccountId accountId);
+    public static RunningOptions of(int eventsPerSecond) {
+        return new RunningOptions(eventsPerSecond);
+    }
 }

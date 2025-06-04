@@ -186,6 +186,16 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
                 -> Flux.error(CalendarSearchIndexingException.of("Error while searching events", accountId, throwable)));
     }
 
+    @Override
+    public Mono<Void> deleteAll(AccountId accountId) {
+        Preconditions.checkArgument(accountId != null, "accountId can not be null");
+
+        return indexer.deleteAllMatchingQuery(accountIdQuery(accountId), ROUTING_KEY.apply(accountId))
+            .onErrorResume(throwable
+                -> Mono.error(CalendarSearchIndexingException.of("Error while deleting all events for account " + accountId.getIdentifier(), accountId, throwable)))
+            .then();
+    }
+
     private Query accountIdQuery(AccountId accountId) {
         return QueryBuilders.term()
             .field(CalendarFields.ACCOUNT_ID)

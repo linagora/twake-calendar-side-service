@@ -1136,6 +1136,55 @@ public interface CalendarSearchServiceContract {
         }).doesNotThrowAnyException();
     }
 
+    @Test
+    default void deleteAllShouldRemoveAllEventsForAccount() {
+        EventFields event1 = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("Event1")
+            .calendarURL(generateCalendarURL())
+            .build();
+
+        EventFields event2 = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("Event2")
+            .calendarURL(generateCalendarURL())
+            .build();
+
+        indexEvents(accountId, event1);
+        indexEvents(accountId, event2);
+
+        testee().deleteAll(accountId).block();
+
+        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(accountId, simpleQuery(""))
+            .collectList().block()).isEmpty());
+    }
+
+    @Test
+    default void deleteAllShouldNotAffectOtherAccounts() {
+        EventFields event1 = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("Event1")
+            .calendarURL(generateCalendarURL())
+            .build();
+
+        EventFields event2 = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("Event2")
+            .calendarURL(generateCalendarURL())
+            .build();
+
+        indexEvents(accountId, event1);
+        indexEvents(accountId2, event2);
+
+        testee().deleteAll(accountId).block();
+
+        CALMLY_AWAIT.untilAsserted(() -> {
+            assertThat(testee().search(accountId, simpleQuery("")).collectList().block()).isEmpty();
+            assertThat(testee().search(accountId2, simpleQuery("")).collectList().block())
+                .extracting(EventFields::uid).containsExactly(event2.uid());
+        });
+    }
+
     private void indexEvents(AccountId accountId, EventFields events) {
         testee().index(accountId, CalendarEvents.of(events)).block();
 

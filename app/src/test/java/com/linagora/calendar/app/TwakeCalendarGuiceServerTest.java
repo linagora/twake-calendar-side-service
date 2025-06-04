@@ -24,6 +24,8 @@ import static io.restassured.config.RestAssuredConfig.newConfig;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.apache.james.backends.rabbitmq.RabbitMQExtension.IsolationPolicy.WEAK;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.notNullValue;
 
 import java.net.URI;
 import java.net.URL;
@@ -38,6 +40,7 @@ import org.apache.james.core.Username;
 import org.apache.james.jwt.introspection.IntrospectionEndpoint;
 import org.apache.james.util.Port;
 import org.apache.james.utils.WebAdminGuiceProbe;
+import org.apache.james.webadmin.routes.TasksRoutes;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
@@ -47,12 +50,11 @@ import org.mockserver.model.HttpRequest;
 import org.mockserver.model.HttpResponse;
 
 import com.github.fge.lambdas.Throwing;
+import com.google.common.collect.ImmutableList;
 import com.google.inject.name.Names;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.app.modules.MemoryAutoCompleteModule;
 import com.linagora.calendar.dav.DavModuleTestHelper;
-import com.linagora.calendar.dav.DockerSabreDavSetup;
-import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.OpenPaaSId;
 
@@ -175,7 +177,7 @@ class TwakeCalendarGuiceServerTest  {
     }
 
     @Test
-    void shouldExposeWebAdminCalendar() {
+    void shouldExposeWebAdminCalendarUsers() {
         String body = given()
         .when()
             .get("/registeredUsers")
@@ -185,6 +187,30 @@ class TwakeCalendarGuiceServerTest  {
             .asString();
 
         assertThat(body).contains("btellier@linagora.com");
+    }
+
+    @Test
+    void shouldExposeWebAdminCalendarEventReindexTask() {
+        String taskId = given()
+            .when()
+            .post("/calendars?task=reindex")
+            .jsonPath()
+            .get("taskId");;
+
+        given()
+            .basePath(TasksRoutes.BASE)
+            .when()
+            .get(taskId + "/await")
+            .then()
+            .body("status", is("failed"))
+            .body("taskId", is(taskId))
+            .body("type", is("reindex-calendar-events"))
+            .body("additionalInformation.processedEventCount", is(0))
+            .body("additionalInformation.failedEventCount", is(0))
+            .body("additionalInformation.timestamp", is(notNullValue()))
+            .body("additionalInformation.type", is("reindex-calendar-events"))
+            .body("startedDate", is(notNullValue()))
+            .body("submitDate", is(notNullValue()));
     }
 
     @Test

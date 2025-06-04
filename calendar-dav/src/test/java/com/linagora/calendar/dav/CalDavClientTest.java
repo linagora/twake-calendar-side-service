@@ -19,14 +19,14 @@
 package com.linagora.calendar.dav;
 
 import static com.linagora.calendar.dav.CalDavClient.CalDavExportException;
-import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
-import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.UUID;
 
 import org.apache.commons.lang3.StringUtils;
-import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -52,13 +52,13 @@ public class CalDavClientTest {
         testee = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration());
     }
 
-    private OpenPaaSUser openPaaSUser() {
+    private OpenPaaSUser createOpenPaaSUser() {
         return sabreDavExtension.newTestUser();
     }
 
     @Test
     void exportShouldSucceed() {
-        OpenPaaSUser openPaaSUser = openPaaSUser();
+        OpenPaaSUser openPaaSUser = createOpenPaaSUser();
         String exportPayloadAsString = testee.export(CalendarURL.from(openPaaSUser.id()), MailboxSessionUtil.create(openPaaSUser.username()))
             .map(bytes -> StringUtils.trim(new String(bytes, StandardCharsets.UTF_8)))
             .block();
@@ -69,7 +69,7 @@ public class CalDavClientTest {
 
     @Test
     void exportShouldThrowWhenInvalidPath() {
-        OpenPaaSUser openPaaSUser = openPaaSUser();
+        OpenPaaSUser openPaaSUser = createOpenPaaSUser();
 
         CalendarURL invalidUrlPath = new CalendarURL(openPaaSUser.id(), new OpenPaaSId("invalid"));
 
@@ -80,7 +80,7 @@ public class CalDavClientTest {
 
     @Test
     void exportShouldThrowWhenNotFound() {
-        OpenPaaSUser openPaaSUser = openPaaSUser();
+        OpenPaaSUser openPaaSUser = createOpenPaaSUser();
 
         CalendarURL notFoundCalendarURL = CalendarURL.from(new OpenPaaSId(UUID.randomUUID().toString()));
 
@@ -91,8 +91,8 @@ public class CalDavClientTest {
 
     @Test
     void exportShouldThrowWhenPathNotBelongingToUser() {
-        OpenPaaSUser openPaaSUser1 = openPaaSUser();
-        OpenPaaSUser openPaaSUser2 = openPaaSUser();
+        OpenPaaSUser openPaaSUser1 = createOpenPaaSUser();
+        OpenPaaSUser openPaaSUser2 = createOpenPaaSUser();
 
         CalendarURL notBelongingCalendarURL = CalendarURL.from(openPaaSUser1.id());
 
@@ -103,7 +103,7 @@ public class CalDavClientTest {
 
     @Test
     void importCalendarShouldSucceed() {
-        OpenPaaSUser user = openPaaSUser();
+        OpenPaaSUser user = createOpenPaaSUser();
         CalendarURL calendarURL = CalendarURL.from(user.id());
 
         String uid = UUID.randomUUID().toString();
@@ -151,7 +151,7 @@ public class CalDavClientTest {
 
     @Test
     void importCalendarShouldThrowWhenDataContainMultipleEventsWithDifferentUid() {
-        OpenPaaSUser user = openPaaSUser();
+        OpenPaaSUser user = createOpenPaaSUser();
         CalendarURL calendarURL = CalendarURL.from(user.id());
 
         String uid = UUID.randomUUID().toString();
@@ -178,13 +178,13 @@ public class CalDavClientTest {
         // To trigger calendar directory activation
         testee.export(calendarURL, MailboxSessionUtil.create(user.username())).block();
 
-        Assertions.assertThatThrownBy(() -> testee.importCalendar(calendarURL, uid, user.username(), ics.getBytes(StandardCharsets.UTF_8)).block())
+        assertThatThrownBy(() -> testee.importCalendar(calendarURL, uid, user.username(), ics.getBytes(StandardCharsets.UTF_8)).block())
             .isInstanceOf(DavClientException.class);
     }
 
     @Test
     void importCalendarShouldThrowWhenInvalidData() {
-        OpenPaaSUser user = openPaaSUser();
+        OpenPaaSUser user = createOpenPaaSUser();
         CalendarURL calendarURL = CalendarURL.from(user.id());
 
         String uid = UUID.randomUUID().toString();
@@ -197,6 +197,31 @@ public class CalDavClientTest {
         testee.export(calendarURL, MailboxSessionUtil.create(user.username())).block();
 
         assertThatThrownBy(() -> testee.importCalendar(calendarURL, uid, user.username(), ics.getBytes(StandardCharsets.UTF_8)).block())
+            .isInstanceOf(DavClientException.class);
+    }
+
+    @Test
+    void findUserCalendarsShouldSucceed() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalDavClient.NewCalendar newCalendar = new CalDavClient.NewCalendar(
+            "fe71d5c5-7fd3-49be-8895-c79213605154",
+            "Test Calendar",
+            "#97c3c1",
+            "A test calendar"
+        );
+
+        testee.createNewCalendarDirectory(user.username(), user.id(), newCalendar).block();
+
+        List<CalendarURL> uris = testee.findUserCalendars(user.username(), user.id()).collectList().block();
+
+        assertThat(uris).containsExactlyInAnyOrder(new CalendarURL(user.id(), user.id()), new CalendarURL(user.id(), new OpenPaaSId(newCalendar.id())));
+    }
+
+    @Test
+    void findUserCalendarsShouldThrowWhenInvalidUserId() {
+        OpenPaaSUser user = createOpenPaaSUser();
+
+        assertThatThrownBy(() -> testee.findUserCalendars(user.username(), new OpenPaaSId("invalid")).collectList().block())
             .isInstanceOf(DavClientException.class);
     }
 }

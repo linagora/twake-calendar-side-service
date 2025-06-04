@@ -71,6 +71,11 @@ public class MemoryCalendarSearchService implements CalendarSearchService {
             .take(query.limit());
     }
 
+    @Override
+    public Mono<Void> deleteAll(AccountId accountId) {
+        return Mono.fromRunnable(() -> indexStore.rowKeySet().removeIf(accountId::equals));
+    }
+
     private boolean matchesQuery(EventFields event, EventSearchQuery query) {
         if (!matchesQueryKeyword(event, query.query())) {
             return false;
