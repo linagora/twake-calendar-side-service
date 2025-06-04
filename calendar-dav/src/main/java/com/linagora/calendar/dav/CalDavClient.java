@@ -90,6 +90,10 @@ public class CalDavClient extends DavClient {
                 if (response.status().code() == HttpStatus.SC_OK) {
                     return byteBufMono.asByteArray();
                 } else {
+                    if (response.status().code() == HttpStatus.SC_NOT_IMPLEMENTED) {
+                        LOGGER.info("Could not export for {} calendar {}", username.asString(), calendarURL.serialize());
+                        return Mono.empty();
+                    }
                     return byteBufMono
                         .asString(StandardCharsets.UTF_8)
                         .flatMap(errorBody -> Mono.error(new CalDavExportException(calendarURL, username, "Response status: " + response.status().code() + " - " + errorBody)));
