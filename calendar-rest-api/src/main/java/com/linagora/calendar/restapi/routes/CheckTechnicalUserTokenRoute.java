@@ -20,11 +20,12 @@ package com.linagora.calendar.restapi.routes;
 
 import static com.linagora.calendar.restapi.RestApiConstants.JSON_HEADER;
 
+import java.util.Locale;
+import java.util.Optional;
 import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
 
-import org.apache.commons.lang3.StringUtils;
 import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.JMAPRoute;
 import org.apache.james.jmap.JMAPRoutes;
@@ -34,12 +35,12 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.fge.lambdas.Throwing;
-import com.google.common.base.Preconditions;
 import com.linagora.calendar.restapi.ErrorResponse;
 import com.linagora.calendar.restapi.RestApiConstants;
 import com.linagora.calendar.storage.TechnicalTokenService;
 import com.linagora.calendar.storage.TechnicalTokenService.JwtToken;
 
+import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import reactor.core.publisher.Mono;
@@ -49,8 +50,7 @@ import reactor.netty.http.server.HttpServerResponse;
 public class CheckTechnicalUserTokenRoute implements JMAPRoutes {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CheckTechnicalUserTokenRoute.class);
-    private static final String TOKEN_PARAM = "technicalUserToken";
-
+    private static final String TOKEN_HEADER_NAME = "X-TECHNICAL-TOKEN";
     private final TechnicalTokenService technicalTokenService;
     private final MetricFactory metricFactory;
     private final ObjectMapper objectMapper;
@@ -63,7 +63,7 @@ public class CheckTechnicalUserTokenRoute implements JMAPRoutes {
     }
 
     Endpoint endpoint() {
-        return new Endpoint(HttpMethod.GET, "/api/authenticationtoken/{" + TOKEN_PARAM + "}/user");
+        return new Endpoint(HttpMethod.GET, "/api/tecknicalToken/introspect");
     }
 
     @Override
@@ -76,12 +76,8 @@ public class CheckTechnicalUserTokenRoute implements JMAPRoutes {
     }
 
     private Mono<Void> verifyTechnicalUserToken(HttpServerRequest request, HttpServerResponse response) {
-        String token = request.param(TOKEN_PARAM);
-        Preconditions.checkArgument(StringUtils.isNotEmpty(token), "Technical user token is not empty");
-
-        return Mono.just(token)
-            .filter(tokenValue -> tokenValue.startsWith("eyJ")) // Basic Heuristic check
-            .switchIfEmpty(Mono.error(new IllegalArgumentException("Invalid technical user token format")))
+        return Mono.justOrEmpty(getToken(request))
+            .switchIfEmpty(Mono.error(new IllegalArgumentException("Missing technical user token in request headers " + TOKEN_HEADER_NAME)))
             .flatMap(requestToken -> technicalTokenService.claim(new JwtToken(requestToken)))
             .map(Throwing.function(tokenClaims -> objectMapper.writeValueAsBytes(tokenClaims.data())))
             .flatMap(bytes -> response.status(200)
@@ -89,7 +85,7 @@ public class CheckTechnicalUserTokenRoute implements JMAPRoutes {
                 .sendByteArray(Mono.just(bytes))
                 .then())
             .onErrorResume(Exception.class, exception -> {
-                LOGGER.warn("Error while verifying technical user token: {}", token, exception);
+                LOGGER.warn("Error while verifying technical user ", exception);
                 return doOnError(response);
             });
     }
@@ -100,5 +96,11 @@ public class CheckTechnicalUserTokenRoute implements JMAPRoutes {
             .sendByteArray(Mono.fromCallable(() -> ErrorResponse.of(404, "Not found", "Token not found or expired")
                 .serializeAsBytes()))
             .then();
+    }
+
+    private Optional<String> getToken(HttpServerRequest request) {
+        HttpHeaders httpHeaders = request.requestHeaders();
+        return Optional.ofNullable(httpHeaders.get(TOKEN_HEADER_NAME))
+            .or(() -> Optional.ofNullable(httpHeaders.get(TOKEN_HEADER_NAME.toLowerCase(Locale.US))));
     }
 }

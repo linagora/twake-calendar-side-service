@@ -75,6 +75,7 @@ public class CheckTechnicalUserTokenRouteTest {
     }
 
     private static final Domain DOMAIN = Domain.of("open-paas.ltd");
+    private static final String TECHNICAL_TOKEN_INTROSPECT_PATH = "/api/tecknicalToken/introspect";
 
     @RegisterExtension
     @Order(1)
@@ -116,10 +117,6 @@ public class CheckTechnicalUserTokenRouteTest {
             .build();
     }
 
-    private String getAuthenticationTokenURI(String token) {
-        return String.format("/api/authenticationtoken/%s/user", token);
-    }
-
     @Test
     void validTokenShouldReturnExpectedUserDetails(TwakeCalendarGuiceServer server) {
         String token = server.getProbe(TechnicalTokenProbe.class)
@@ -127,8 +124,9 @@ public class CheckTechnicalUserTokenRouteTest {
 
         String response = RestAssured
             .given()
+            .header("X-TECHNICAL-TOKEN", token)
         .when()
-            .get(getAuthenticationTokenURI(token))
+            .get(TECHNICAL_TOKEN_INTROSPECT_PATH)
         .then()
             .statusCode(HttpStatus.SC_OK)
             .contentType(JSON)
@@ -163,8 +161,9 @@ public class CheckTechnicalUserTokenRouteTest {
 
         String response = RestAssured
             .given()
+            .header("X-TECHNICAL-TOKEN", invalidToken)
         .when()
-            .get(getAuthenticationTokenURI(invalidToken))
+            .get(TECHNICAL_TOKEN_INTROSPECT_PATH)
         .then()
             .statusCode(HttpStatus.SC_NOT_FOUND)
             .contentType(JSON)
@@ -187,9 +186,33 @@ public class CheckTechnicalUserTokenRouteTest {
     void malformedTokenShouldReturn404() {
         String invalidToken = "not-a-valid-jwt-token";
 
-        String response  =RestAssured
+        String response = RestAssured.given()
+            .header("X-TECHNICAL-TOKEN", invalidToken)
+        .when()
+            .get(TECHNICAL_TOKEN_INTROSPECT_PATH)
+        .then()
+            .statusCode(HttpStatus.SC_NOT_FOUND)
+            .contentType(JSON)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response)
+            .isEqualTo("""
+                {
+                    "error": {
+                        "code": 404,
+                        "message": "Not found",
+                        "details": "Token not found or expired"
+                    }
+                }""");
+    }
+
+    @Test
+    void shouldReturn404WhenMissingTokenInHeader() {
+        String response = RestAssured.given()
             .when()
-            .get(getAuthenticationTokenURI(invalidToken))
+            .get(TECHNICAL_TOKEN_INTROSPECT_PATH)
         .then()
             .statusCode(HttpStatus.SC_NOT_FOUND)
             .contentType(JSON)
@@ -213,10 +236,11 @@ public class CheckTechnicalUserTokenRouteTest {
         String token1 = server.getProbe(TechnicalTokenProbe.class).generateToken(DOMAIN);
         String domainId1 = server.getProbe(CalendarDataProbe.class).domainId(DOMAIN).value();
 
-        Function<String, String> getResponse = token -> RestAssured
-            .when()
-            .get(getAuthenticationTokenURI(token))
-            .then()
+        Function<String, String> getResponse = token -> RestAssured.given()
+            .header("X-TECHNICAL-TOKEN", token)
+        .when()
+            .get(TECHNICAL_TOKEN_INTROSPECT_PATH)
+        .then()
             .statusCode(HttpStatus.SC_OK)
             .extract()
             .asString();
@@ -265,9 +289,10 @@ public class CheckTechnicalUserTokenRouteTest {
     void sameValidTokenUsedMultipleTimesShouldReturnSameResponse(TwakeCalendarGuiceServer server) {
         String token = server.getProbe(TechnicalTokenProbe.class).generateToken(DOMAIN);
 
-        Function<String, String> getResponse = tokenInput -> RestAssured
+        Function<String, String> getResponse = tokenInput -> RestAssured.given()
+            .header("X-TECHNICAL-TOKEN", token)
             .when()
-            .get(getAuthenticationTokenURI(tokenInput))
+            .get(TECHNICAL_TOKEN_INTROSPECT_PATH)
         .then()
             .statusCode(HttpStatus.SC_OK)
             .extract()
