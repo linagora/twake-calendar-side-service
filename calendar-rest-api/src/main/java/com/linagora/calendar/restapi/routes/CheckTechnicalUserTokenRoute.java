@@ -63,7 +63,7 @@ public class CheckTechnicalUserTokenRoute implements JMAPRoutes {
     }
 
     Endpoint endpoint() {
-        return new Endpoint(HttpMethod.GET, "/api/tecknicalToken/introspect");
+        return new Endpoint(HttpMethod.GET, "/api/technicalToken/introspect");
     }
 
     @Override

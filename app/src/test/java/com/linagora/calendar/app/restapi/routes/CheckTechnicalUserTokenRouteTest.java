@@ -75,7 +75,7 @@ public class CheckTechnicalUserTokenRouteTest {
     }
 
     private static final Domain DOMAIN = Domain.of("open-paas.ltd");
-    private static final String TECHNICAL_TOKEN_INTROSPECT_PATH = "/api/tecknicalToken/introspect";
+    private static final String TECHNICAL_TOKEN_INTROSPECT_PATH = "/api/technicalToken/introspect";
 
     @RegisterExtension
     @Order(1)
