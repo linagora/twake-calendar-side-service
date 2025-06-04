@@ -136,7 +136,7 @@ public interface TechnicalTokenService {
                     .withExpiresAt(clock.instant().plusSeconds(expiration.toSeconds()))
                     .sign(algorithm))
                 .map(JwtToken::new)
-                .subscribeOn(Schedulers.boundedElastic());
+                .subscribeOn(Schedulers.parallel());
         }
 
         @Override
@@ -150,7 +150,7 @@ public interface TechnicalTokenService {
                     Map<String, Object> data = decodedJWT.getClaim(CLAIM_NAME_DATA).asMap();
                     return new TechnicalTokenInfo(new OpenPaaSId(domainId), data);
                 })
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(Schedulers.parallel())
                 .onErrorResume(throwable
                     -> Mono.error(new TechnicalTokenClaimException("Unable to claim technical token: " + token.value() + " , " + throwable.getMessage())));
         }
