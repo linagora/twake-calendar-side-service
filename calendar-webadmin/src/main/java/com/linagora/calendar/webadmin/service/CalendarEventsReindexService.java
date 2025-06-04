@@ -22,6 +22,7 @@ import static com.linagora.calendar.webadmin.CalendarRoutes.TASK_NAME;
 import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
 import jakarta.inject.Inject;
@@ -180,6 +181,13 @@ public class CalendarEventsReindexService {
             .flatMap(groupedFlux ->
                 groupedFlux.map(vEvent -> EventFields.fromVEvent(vEvent, calendarURL))
                     .collectList()
+                    .<List<EventFields>>handle((list, sink) -> {
+                        if (list.isEmpty()) {
+                            sink.complete();
+                        } else {
+                            sink.next(list);
+                        }
+                    })
                     .map(CalendarEvents::of)
                     .map(calendarEvents -> new IndexItem(user, calendarURL, calendarEvents))
                     .onErrorResume(e -> {
