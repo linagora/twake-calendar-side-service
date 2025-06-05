@@ -31,6 +31,7 @@ import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.commons.configuration2.plist.PropertyListConfiguration;
 import org.apache.commons.configuration2.tree.ImmutableNode;
 import org.apache.james.core.Domain;
+import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;
 import org.apache.james.user.ldap.DockerLdapSingleton;
 import org.apache.james.user.ldap.LDAPConnectionFactory;
@@ -63,10 +64,10 @@ public class DefaultLdapDomainMemberProviderTest {
             "james-user",
             "james-user",
             "james-user",
-            null,
-            new org.apache.james.core.MailAddress("james-user@james.org"),
-            null,
-            null
+            "James",
+            new MailAddress("james-user@james.org"),
+            "+33612345678",
+            "James User"
         );
 
         var expected2 = new LdapDomainMember(
@@ -74,7 +75,7 @@ public class DefaultLdapDomainMemberProviderTest {
             "james-user2",
             "james-user2",
             null,
-            new org.apache.james.core.MailAddress("james-user2@james.org"),
+            new MailAddress("james-user2@james.org"),
             null,
             null
         );

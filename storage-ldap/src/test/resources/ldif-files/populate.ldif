@@ -21,6 +21,9 @@ cn: james-user
 sn: james-user
 mail: james-user@james.org
 userPassword: secret
+givenName: James
+telephoneNumber: +33612345678
+displayName: James User
 description: abcdef
 
 dn: uid=james-user2, ou=people, dc=james,dc=org
