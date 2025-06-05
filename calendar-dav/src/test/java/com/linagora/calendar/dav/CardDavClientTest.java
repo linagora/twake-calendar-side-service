@@ -20,16 +20,21 @@ package com.linagora.calendar.dav;
 
 import static com.linagora.calendar.dav.SabreDavProvisioningService.DATABASE;
 import static com.linagora.calendar.dav.SabreDavProvisioningService.DOMAIN;
+import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
+import static net.javacrumbs.jsonunit.assertj.JsonAssertions.json;
+import static net.javacrumbs.jsonunit.core.Option.IGNORING_ARRAY_ORDER;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatCode;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
-
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;
 
+import javax.net.ssl.SSLException;
+
 import org.apache.james.core.Domain;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -47,25 +52,27 @@ public class CardDavClientTest {
     @RegisterExtension
     static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
 
-    private CardDavClient testee;
+    private static DavTestHelper davTestHelper;
 
+    private CardDavClient testee;
     private MongoDBOpenPaaSDomainDAO mongoDBOpenPaaSDomainDAO;
+    private OpenPaaSUser user;
+
+    @BeforeAll
+    static void setUp() throws SSLException {
+        davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration());
+    }
 
     @BeforeEach
     void setupEach() throws Exception {
         TechnicalTokenService technicalTokenService = new TechnicalTokenService.Impl("technicalTokenSecret", Duration.ofSeconds(120));
         mongoDBOpenPaaSDomainDAO = mongoDBOpenPaaSDomainDAO();
-        testee = new CardDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(),
-            technicalTokenService);
-    }
-
-    private OpenPaaSUser openPaaSUser() {
-        return sabreDavExtension.newTestUser();
+        testee = new CardDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), technicalTokenService);
+        user = sabreDavExtension.newTestUser();
     }
 
     @Test
     void createContactShouldSucceed() {
-        OpenPaaSUser user = openPaaSUser();
         String addressBook = "collected";
         String vcardUid = UUID.randomUUID().toString();
         String vcard = """
@@ -87,7 +94,6 @@ public class CardDavClientTest {
 
     @Test
     void createContactShouldThrowWhenInvalidAddressBook() {
-        OpenPaaSUser user = openPaaSUser();
         String addressBook = "invalid";
         String vcardUid = UUID.randomUUID().toString();
         String vcard = """
@@ -107,7 +113,6 @@ public class CardDavClientTest {
 
     @Test
     void exportContactShouldReturnMultipleContacts() {
-        OpenPaaSUser user = openPaaSUser();
         String addressBook = "collected";
         String vcardUid = UUID.randomUUID().toString();
         String vcardUid2 = UUID.randomUUID().toString();
@@ -141,7 +146,6 @@ public class CardDavClientTest {
 
     @Test
     void exportContactShouldReturnEmptyWhenNoContact() {
-        OpenPaaSUser user = openPaaSUser();
         String addressBook = "collected";
 
         Optional<byte[]> actual = testee.exportContact(user.username(), user.id(), addressBook).blockOptional();
@@ -151,7 +155,6 @@ public class CardDavClientTest {
 
     @Test
     void exportContactShouldThrowErrorWhenAddressBookNotFound() {
-        OpenPaaSUser user = openPaaSUser();
         String addressBook = "notfound";
 
         assertThatThrownBy(() ->
@@ -160,8 +163,57 @@ public class CardDavClientTest {
     }
 
     @Test
-    void createDomainMembersAddressBookShouldSucceed() {
+    void createDomainMembersAddressBookShouldNotThrowWhenCreatedFirstTime() {
+        OpenPaaSDomain domain = mongoDBOpenPaaSDomainDAO.retrieve(Domain.of(DOMAIN)).block();
+        assertThatCode(() -> testee.createDomainMembersAddressBook(domain.id()).block())
+            .doesNotThrowAnyException();
+    }
+
+    @Test
+    void regularUserShouldSeeDomainMembersAddressBook() {
+        OpenPaaSDomain domain = mongoDBOpenPaaSDomainDAO.retrieve(Domain.of(DOMAIN)).block();
+
+        testee.createDomainMembersAddressBook(domain.id()).block();
+
+        String addressBooksJson = davTestHelper.listAddressBooks(user, domain.id()).block();
+
+        assertThatJson(addressBooksJson)
+            .withOptions(IGNORING_ARRAY_ORDER)
+            .inPath("_embedded.dav:addressbook")
+            .isArray()
+            .contains(json("""
+                {
+                    "_links": {
+                        "self": {
+                            "href": "/addressbooks/{domain_id}/domain-members.json"
+                        }
+                    },
+                    "dav:name": "Domain Members",
+                    "carddav:description": "Address book contains all domain members",
+                    "dav:acl": [
+                        "{DAV:}read"
+                    ],
+                    "dav:share-access": 1,
+                    "openpaas:subscription-type": null,
+                    "type": "group",
+                    "state": "",
+                    "numberOfContacts": null,
+                    "acl": [
+                        {
+                            "privilege": "{DAV:}read",
+                            "principal": "principals/users/{user_id}",
+                            "protected": true
+                        }
+                    ],
+                    "dav:group": "principals/domains/{domain_id}"
+                }""".replace("{domain_id}", domain.id().value())
+                .replace("{user_id}", user.id().value())));
+    }
+
+    @Test
+    void createDomainMembersAddressBookShouldNotThrowWhenAlreadyExists() {
         OpenPaaSDomain openPaaSDomain = mongoDBOpenPaaSDomainDAO.retrieve(Domain.of(DOMAIN)).block();
+        testee.createDomainMembersAddressBook(openPaaSDomain.id()).block();
 
         assertThatCode(() -> testee.createDomainMembersAddressBook(openPaaSDomain.id())
             .block())

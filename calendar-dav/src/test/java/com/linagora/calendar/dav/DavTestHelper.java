@@ -25,6 +25,7 @@ import javax.net.ssl.SSLException;
 
 import org.apache.commons.lang3.StringUtils;
 
+import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 
 import io.netty.buffer.Unpooled;
@@ -86,6 +87,25 @@ public class DavTestHelper extends DavClient {
                         Unexpected status code: %d when delete calendar object '%s'
                         %s
                         """.formatted(response.status().code(), uri.toString(), responseBody))));
+            });
+    }
+
+    public Mono<String> listAddressBooks(OpenPaaSUser openPaaSUser, OpenPaaSId homeBaseId) {
+        String username = openPaaSUser.username().asString();
+        return client.headers(headers -> headers.add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username))
+                .add(HttpHeaderNames.ACCEPT, "application/json"))
+            .request(HttpMethod.GET)
+            .uri("/addressbooks/%s.json?personal=true&shared=true&subscribed=true".formatted(homeBaseId.value()))
+            .responseSingle((response, responseContent) -> {
+                if (response.status().code() == 200) {
+                    return responseContent.asString(StandardCharsets.UTF_8);
+                }
+                return responseContent.asString(StandardCharsets.UTF_8)
+                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .flatMap(responseBody -> Mono.error(new DavClientException("""
+                        Unexpected status code: %d when listing address books for user '%s', homeBaseId '%s'
+                        %s
+                        """.formatted(response.status().code(), homeBaseId.value(), username, responseBody))));
             });
     }
 }
