@@ -18,43 +18,58 @@
 
 package com.linagora.calendar.storage.ldap;
 
-import org.apache.james.core.Domain;
-import org.apache.james.core.MailAddress;
-import org.apache.james.user.ldap.LDAPConnectionFactory;
-import org.apache.james.user.ldap.LdapRepositoryConfiguration;
+import static com.linagora.calendar.storage.ldap.LdapStorageModule.LDAP_STORAGE_INJECTION;
 
-import com.unboundid.ldap.sdk.LDAPConnectionPool;
-import com.unboundid.ldap.sdk.LDAPException;
-import com.unboundid.ldap.sdk.SearchResultEntry;
+import java.util.Optional;
 
 import jakarta.inject.Inject;
+import jakarta.inject.Named;
+
+import org.apache.james.core.Domain;
+import org.apache.james.core.MailAddress;
+import org.apache.james.user.ldap.LdapRepositoryConfiguration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.github.fge.lambdas.Throwing;
+import com.unboundid.ldap.sdk.LDAPConnectionPool;
+import com.unboundid.ldap.sdk.LDAPSearchException;
+import com.unboundid.ldap.sdk.SearchResultEntry;
+import com.unboundid.ldap.sdk.SearchScope;
+
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 public class DefaultLdapDomainMemberProvider implements LdapDomainMemberProvider {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(DefaultLdapDomainMemberProvider.class);
+
+    private final LdapRepositoryConfiguration ldapRepositoryConfiguration;
     private final LDAPConnectionPool ldapConnectionPool;
 
     @Inject
-    public DefaultLdapDomainMemberProvider(LdapRepositoryConfiguration ldapRepositoryConfiguration) throws LDAPException {
-        ldapConnectionPool = new LDAPConnectionFactory(ldapRepositoryConfiguration).getLdapConnectionPool();
+    public DefaultLdapDomainMemberProvider(@Named(LDAP_STORAGE_INJECTION) LdapRepositoryConfiguration ldapRepositoryConfiguration,
+                                           @Named(LDAP_STORAGE_INJECTION) LDAPConnectionPool ldapConnectionPool) {
+        this.ldapRepositoryConfiguration = ldapRepositoryConfiguration;
+        this.ldapConnectionPool = ldapConnectionPool;
     }
 
     @Override
     public Flux<LdapDomainMember> domainMembers(Domain domain) {
         return Flux.defer(() -> {
-            String baseDn = getBaseDn(domain);
-            String filter = "(objectClass=inetOrgPerson)";
-            try (var connection = ldapConnectionPool.getConnection()) {
-                var searchResult = connection.search(baseDn, com.unboundid.ldap.sdk.SearchScope.SUB, filter);
+            String baseDn = ldapRepositoryConfiguration.getUserBase();
+            String filter = String.format("(&(objectClass=%s)(mail=*@%s))", ldapRepositoryConfiguration.getUserObjectClass(), domain.name());
+            try {
+                var searchResult = ldapConnectionPool.search(baseDn, SearchScope.SUB, filter);
                 return Flux.fromIterable(searchResult.getSearchEntries())
-                    .map(DefaultLdapDomainMemberProvider::ldapDomainMember);
-            } catch (Exception e) {
+                    .flatMap(DefaultLdapDomainMemberProvider::ldapDomainMember);
+            } catch (LDAPSearchException e) {
                 return Flux.error(e);
             }
         });
     }
 
-    private static LdapDomainMember ldapDomainMember(SearchResultEntry entry) {
+    private static Mono<LdapDomainMember> ldapDomainMember(SearchResultEntry entry) {
         try {
             String uid = entry.getAttributeValue("uid");
             String cn = entry.getAttributeValue("cn");
@@ -63,22 +78,11 @@ public class DefaultLdapDomainMemberProvider implements LdapDomainMemberProvider
             String mailStr = entry.getAttributeValue("mail");
             String telephoneNumber = entry.getAttributeValue("telephoneNumber");
             String displayName = entry.getAttributeValue("displayName");
-            MailAddress mail = mailStr != null ? new MailAddress(mailStr) : null;
-            return new LdapDomainMember(uid, cn, sn, givenName, mail, telephoneNumber, displayName);
+            MailAddress mail = Optional.ofNullable(mailStr).map(Throwing.function(MailAddress::new)).orElse(null);
+            return Mono.just(new LdapDomainMember(uid, cn, sn, givenName, mail, telephoneNumber, displayName));
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            LOGGER.error("Error while processing LDAP entry: {}", entry.getDN(), e);
+            return Mono.empty();
         }
-    }
-
-    private String getBaseDn(Domain domain) {
-        String[] domainParts = domain.name().split("\\.");
-        StringBuilder dcBuilder = new StringBuilder();
-        for (String part : domainParts) {
-            if (!dcBuilder.isEmpty()) {
-                dcBuilder.append(",");
-            }
-            dcBuilder.append("dc=").append(part);
-        }
-        return dcBuilder.toString();
     }
 }

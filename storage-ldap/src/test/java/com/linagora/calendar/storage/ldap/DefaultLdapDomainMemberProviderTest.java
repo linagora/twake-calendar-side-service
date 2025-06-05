@@ -24,6 +24,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Optional;
 
+import jakarta.mail.internet.AddressException;
+
 import org.apache.commons.configuration2.HierarchicalConfiguration;
 import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.commons.configuration2.plist.PropertyListConfiguration;
@@ -31,6 +33,7 @@ import org.apache.commons.configuration2.tree.ImmutableNode;
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
 import org.apache.james.user.ldap.DockerLdapSingleton;
+import org.apache.james.user.ldap.LDAPConnectionFactory;
 import org.apache.james.user.ldap.LdapGenericContainer;
 import org.apache.james.user.ldap.LdapRepositoryConfiguration;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,8 +41,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.unboundid.ldap.sdk.LDAPException;
-
-import jakarta.mail.internet.AddressException;
 
 public class DefaultLdapDomainMemberProviderTest {
 
@@ -50,8 +51,10 @@ public class DefaultLdapDomainMemberProviderTest {
 
     @BeforeEach
     void setUp() throws ConfigurationException, LDAPException {
+        LdapRepositoryConfiguration configuration = LdapRepositoryConfiguration.from(ldapRepositoryConfiguration(ldapExtension.ldapContainer(), Optional.of(ADMIN)));
         ldapDomainMemberProvider = new DefaultLdapDomainMemberProvider(
-            LdapRepositoryConfiguration.from(ldapRepositoryConfigurationWithVirtualHosting(ldapExtension.ldapContainer(), Optional.of(ADMIN))));
+            configuration,
+            new LDAPConnectionFactory(configuration).getLdapConnectionPool());
     }
 
     @Test
@@ -83,7 +86,15 @@ public class DefaultLdapDomainMemberProviderTest {
         assertThat(actual).containsExactlyInAnyOrder(expected1, expected2);
     }
 
-    private HierarchicalConfiguration<ImmutableNode> ldapRepositoryConfigurationWithVirtualHosting(LdapGenericContainer ldapContainer, Optional<Username> administrator) {
+    @Test
+    void getDomainMembersShouldReturnEmptyWhenNoMembers() {
+        var actual = ldapDomainMemberProvider.domainMembers(Domain.of("non-existing-domain.org"))
+            .collectList()
+            .block();
+        assertThat(actual).isEmpty();
+    }
+
+    private HierarchicalConfiguration<ImmutableNode> ldapRepositoryConfiguration(LdapGenericContainer ldapContainer, Optional<Username> administrator) {
         PropertyListConfiguration configuration = baseConfiguration(ldapContainer);
         configuration.addProperty("[@userIdAttribute]", "mail");
         administrator.ifPresent(username -> configuration.addProperty("[@administratorId]", username.asString()));
