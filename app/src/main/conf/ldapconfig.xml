@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<ldapconfig ldapHost="ldap://ldap:389"
+                 principal="uid=james-user,ou=people,dc=james,dc=org"
+                 credentials="secret"
+                 userBase="ou=people,dc=james,dc=org"
+                 userIdAttribute="mail"
+                 userObjectClass="person">
+</ldapconfig>
