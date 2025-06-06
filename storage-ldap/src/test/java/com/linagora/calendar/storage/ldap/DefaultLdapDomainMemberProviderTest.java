@@ -60,25 +60,22 @@ public class DefaultLdapDomainMemberProviderTest {
 
     @Test
     void getDomainMembersShouldReturnMembers() throws AddressException {
-        var expected1 = new LdapDomainMember(
-            "james-user",
-            "james-user",
-            "james-user",
-            "James",
-            new MailAddress("james-user@james.org"),
-            "+33612345678",
-            "James User"
-        );
+        LdapDomainMember expected1 = LdapDomainMember.builder()
+            .uid("james-user")
+            .cn("James User")
+            .sn("User")
+            .givenName("James")
+            .mail(new MailAddress("james-user@james.org"))
+            .telephoneNumber("+33612345678")
+            .displayName("James User")
+            .build();
 
-        var expected2 = new LdapDomainMember(
-            "james-user2",
-            "james-user2",
-            "james-user2",
-            null,
-            new MailAddress("james-user2@james.org"),
-            null,
-            null
-        );
+        LdapDomainMember expected2 = LdapDomainMember.builder()
+            .uid("james-user2")
+            .cn("James User2")
+            .sn("User2")
+            .mail(new MailAddress("james-user2@james.org"))
+            .build();
 
         var actual = ldapDomainMemberProvider.domainMembers(Domain.of("james.org"))
             .collectList()

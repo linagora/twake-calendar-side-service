@@ -17,8 +17,8 @@ objectClass: organizationalUnit
 dn: uid=james-user, ou=people, dc=james,dc=org
 objectClass: inetOrgPerson
 uid: james-user
-cn: james-user
-sn: james-user
+cn: James User
+sn: User
 mail: james-user@james.org
 userPassword: secret
 givenName: James
@@ -29,8 +29,8 @@ description: abcdef
 dn: uid=james-user2, ou=people, dc=james,dc=org
 objectClass: inetOrgPerson
 uid: james-user2
-cn: james-user2
-sn: james-user2
+cn: James User2
+sn: User2
 mail: james-user2@james.org
 userPassword: secret
 description: cn=active,ou=accountStatus,ou=whatever,o=gov,c=vn

@@ -27,4 +27,56 @@ public record LdapDomainMember(String uid,
                                MailAddress mail,
                                String telephoneNumber,
                                String displayName) {
+    public static class Builder {
+        private String uid;
+        private String cn;
+        private String sn;
+        private String givenName;
+        private MailAddress mail;
+        private String telephoneNumber;
+        private String displayName;
+
+        public Builder uid(String uid) {
+            this.uid = uid;
+            return this;
+        }
+
+        public Builder cn(String cn) {
+            this.cn = cn;
+            return this;
+        }
+
+        public Builder sn(String sn) {
+            this.sn = sn;
+            return this;
+        }
+
+        public Builder givenName(String givenName) {
+            this.givenName = givenName;
+            return this;
+        }
+
+        public Builder mail(MailAddress mail) {
+            this.mail = mail;
+            return this;
+        }
+
+        public Builder telephoneNumber(String telephoneNumber) {
+            this.telephoneNumber = telephoneNumber;
+            return this;
+        }
+
+        public Builder displayName(String displayName) {
+            this.displayName = displayName;
+            return this;
+        }
+
+        public LdapDomainMember build() {
+            return new LdapDomainMember(uid, cn, sn, givenName, mail, telephoneNumber, displayName);
+        }
+    }
+
+    public static Builder builder() {
+        return new Builder();
+    }
 }

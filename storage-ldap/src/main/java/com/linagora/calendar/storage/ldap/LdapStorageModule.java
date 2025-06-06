@@ -18,18 +18,8 @@
 
 package com.linagora.calendar.storage.ldap;
 
-import org.apache.commons.configuration2.ex.ConfigurationException;
-import org.apache.james.server.core.configuration.ConfigurationProvider;
-import org.apache.james.user.ldap.LDAPConnectionFactory;
-import org.apache.james.user.ldap.LdapRepositoryConfiguration;
-
 import com.google.inject.AbstractModule;
-import com.google.inject.Provides;
 import com.google.inject.Scopes;
-import com.google.inject.Singleton;
-import com.google.inject.name.Named;
-import com.unboundid.ldap.sdk.LDAPConnectionPool;
-import com.unboundid.ldap.sdk.LDAPException;
 
 public class LdapStorageModule extends AbstractModule {
 
@@ -39,20 +29,5 @@ public class LdapStorageModule extends AbstractModule {
     protected void configure() {
         bind(DefaultLdapDomainMemberProvider.class).in(Scopes.SINGLETON);
         bind(LdapDomainMemberProvider.class).to(DefaultLdapDomainMemberProvider.class);
-    }
-
-    @Named(LDAP_STORAGE_INJECTION)
-    @Provides
-    @Singleton
-    public LDAPConnectionPool provideConfiguration(@Named(LDAP_STORAGE_INJECTION) LdapRepositoryConfiguration configuration) throws LDAPException {
-        return new LDAPConnectionFactory(configuration).getLdapConnectionPool();
-    }
-
-    @Named(LDAP_STORAGE_INJECTION)
-    @Provides
-    @Singleton
-    public LdapRepositoryConfiguration provideConfiguration(ConfigurationProvider configurationProvider) throws ConfigurationException {
-        return LdapRepositoryConfiguration.from(
-            configurationProvider.getConfiguration("ldapconfig"));
     }
 }
