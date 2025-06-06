@@ -18,26 +18,30 @@
 
 package com.linagora.calendar.storage.ldap;
 
+import java.util.Optional;
+
 import org.apache.james.core.MailAddress;
 
-public record LdapDomainMember(String uid,
+import com.google.common.base.Preconditions;
+
+public record LdapDomainMember(Optional<String> uid,
                                String cn,
                                String sn,
-                               String givenName,
-                               MailAddress mail,
-                               String telephoneNumber,
-                               String displayName) {
+                               Optional<String> givenName,
+                               Optional<MailAddress> mail,
+                               Optional<String> telephoneNumber,
+                               Optional<String> displayName) {
     public static class Builder {
-        private String uid;
+        private Optional<String> uid = Optional.empty();
         private String cn;
         private String sn;
-        private String givenName;
-        private MailAddress mail;
-        private String telephoneNumber;
-        private String displayName;
+        private Optional<String> givenName = Optional.empty();
+        private Optional<MailAddress> mail = Optional.empty();
+        private Optional<String> telephoneNumber = Optional.empty();
+        private Optional<String> displayName = Optional.empty();
 
         public Builder uid(String uid) {
-            this.uid = uid;
+            this.uid = Optional.of(uid);
             return this;
         }
 
@@ -52,22 +56,22 @@ public record LdapDomainMember(String uid,
         }
 
         public Builder givenName(String givenName) {
-            this.givenName = givenName;
+            this.givenName = Optional.of(givenName);
             return this;
         }
 
         public Builder mail(MailAddress mail) {
-            this.mail = mail;
+            this.mail = Optional.ofNullable(mail);
             return this;
         }
 
         public Builder telephoneNumber(String telephoneNumber) {
-            this.telephoneNumber = telephoneNumber;
+            this.telephoneNumber = Optional.of(telephoneNumber);
             return this;
         }
 
         public Builder displayName(String displayName) {
-            this.displayName = displayName;
+            this.displayName = Optional.of(displayName);
             return this;
         }
 
@@ -78,5 +82,10 @@ public record LdapDomainMember(String uid,
 
     public static Builder builder() {
         return new Builder();
+    }
+
+    public LdapDomainMember {
+        Preconditions.checkArgument(cn != null, "cn must not be null");
+        Preconditions.checkArgument(sn != null, "sn must not be null");
     }
 }
