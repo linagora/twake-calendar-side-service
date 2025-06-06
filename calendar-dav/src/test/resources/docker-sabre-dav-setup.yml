@@ -17,7 +17,7 @@ services:
       - tcalendar
     healthcheck:
       test: rabbitmq-diagnostics -q ping
-      interval: 30s
+      interval: 3s
       timeout: 30s
       retries: 3
     environment:
@@ -45,7 +45,7 @@ services:
 
   sabre_dav:
     hostname: esn_sabre
-    image: linagora/sabre:lng-12-02-2025
+    image: linagora/sabre:lng-04-06-2025-3
     environment:
       - SABRE_ENV=dev
       - SABRE_MONGO_HOST=mongo

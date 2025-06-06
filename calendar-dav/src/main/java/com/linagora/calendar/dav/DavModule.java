@@ -28,6 +28,7 @@ import org.apache.james.utils.PropertiesProvider;
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.Singleton;
+import com.linagora.calendar.storage.TechnicalTokenService;
 
 public class DavModule extends AbstractModule {
     @Singleton
@@ -44,7 +45,8 @@ public class DavModule extends AbstractModule {
 
     @Provides
     @Singleton
-    public CardDavClient provideCardDavClient(DavConfiguration configuration) throws SSLException {
-        return new CardDavClient(configuration);
+    public CardDavClient provideCardDavClient(DavConfiguration configuration,
+                                              TechnicalTokenService technicalTokenService) throws SSLException {
+        return new CardDavClient(configuration, technicalTokenService);
     }
 }
