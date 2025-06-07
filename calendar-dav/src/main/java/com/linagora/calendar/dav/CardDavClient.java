@@ -29,6 +29,7 @@ import org.apache.james.core.Username;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.base.Preconditions;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.TechnicalTokenService;
 
@@ -39,6 +40,7 @@ import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
 import reactor.core.publisher.Mono;
 import reactor.netty.ByteBufMono;
+import reactor.netty.http.client.HttpClient;
 import reactor.netty.http.client.HttpClientResponse;
 import reactor.util.retry.Retry;
 
@@ -53,15 +55,16 @@ public class CardDavClient extends DavClient {
     private static final String ACCEPT_VCARD_JSON = "text/plain";
     private static final String ADDRESS_BOOK_PATH = "/addressbooks/%s/%s/%s.vcf";
     private static final String TWAKE_CALENDAR_TOKEN_HEADER_NAME = "TwakeCalendarToken";
+    private static final String DOMAIN_MEMBERS_ADDRESS_BOOK_ID = "domain-members";
     private static final byte[] CREATE_DOMAIN_MEMBERS_ADDRESS_BOOK_PAYLOAD = """
         {
-            "id": "domain-members",
+            "id": "%s",
             "dav:name": "Domain Members",
             "carddav:description": "Address book contains all domain members",
             "dav:acl": [ "{DAV:}read" ],
             "type": "group"
         }
-        """.getBytes(StandardCharsets.UTF_8);
+        """.formatted(DOMAIN_MEMBERS_ADDRESS_BOOK_ID).getBytes(StandardCharsets.UTF_8);
 
     private final TechnicalTokenService technicalTokenService;
 
@@ -77,12 +80,19 @@ public class CardDavClient extends DavClient {
     }
 
     public Mono<Void> createContact(Username username, OpenPaaSId userId, String addressBook, String vcardUid, byte[] vcardPayload) {
-        return client.headers(headers -> addHeaders(username).apply(headers)
-                .add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_VCARD))
+        HttpClient authenticatedClient = client.headers(headers -> headers
+            . add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username.asString())));
+        return upsertContact(authenticatedClient, userId, addressBook, vcardUid, vcardPayload);
+    }
+
+    public Mono<Void> upsertContact(HttpClient authenticatedClient, OpenPaaSId homeBaseId, String addressBook, String vcardUid, byte[] vcardPayload) {
+        return authenticatedClient.headers(headers -> headers
+                .add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_VCARD)
+                .add(HttpHeaderNames.ACCEPT, ACCEPT_VCARD_JSON))
             .put()
-            .uri(String.format(ADDRESS_BOOK_PATH, userId.value(), addressBook, vcardUid))
+            .uri(String.format(ADDRESS_BOOK_PATH, homeBaseId.value(), addressBook, vcardUid))
             .send(Mono.just(Unpooled.wrappedBuffer(vcardPayload)))
-            .responseSingle((response, byteBufMono) -> handleContactCreationResponse(response, byteBufMono, userId, addressBook, vcardUid));
+            .responseSingle((response, byteBufMono) -> handleContactUpsertResponse(response, byteBufMono, homeBaseId, addressBook, vcardUid));
     }
 
     public Mono<byte[]> exportContact(Username username, OpenPaaSId userId, String addressBook) {
@@ -93,11 +103,20 @@ public class CardDavClient extends DavClient {
             .responseSingle((response, byteBufMono) -> handleContactExportResponse(response, byteBufMono, userId, addressBook));
     }
 
-    private Mono<Void> handleContactCreationResponse(HttpClientResponse response, ByteBufMono responseContent, OpenPaaSId userId, String addressBook, String vcardUid) {
+    private Mono<HttpClient> authenticatedClientByToken(OpenPaaSId domainId) {
+        return technicalTokenService.generate(domainId)
+            .map(token -> client.headers(headers -> headers
+                .add(TWAKE_CALENDAR_TOKEN_HEADER_NAME, token.value())));
+    }
+
+    private Mono<Void> handleContactUpsertResponse(HttpClientResponse response, ByteBufMono responseContent, OpenPaaSId userId, String addressBook, String vcardUid) {
         return switch (response.status().code()) {
-            case 201 -> Mono.empty();
+            case 201 -> {
+                LOGGER.debug("Create successful for user {} and addressBook {} and vcardUid {}", userId.value(), addressBook, vcardUid);
+                yield Mono.empty();
+            }
             case 204 -> {
-                LOGGER.info("Contact for user {} and addressBook {} and vcardUid {} already exists", userId.value(), addressBook, vcardUid);
+                LOGGER.debug("Update successful for user {} and addressBook {} and vcardUid {}", userId.value(), addressBook, vcardUid);
                 yield Mono.empty();
             }
             default -> responseBodyAsString(responseContent)
@@ -123,15 +142,14 @@ public class CardDavClient extends DavClient {
     }
 
     public Mono<Void> createDomainMembersAddressBook(OpenPaaSId domainId) {
-        return technicalTokenService.generate(domainId)
-            .flatMap(esnToken -> createDomainMembersAddressBook(domainId, esnToken));
+        return authenticatedClientByToken(domainId)
+            .flatMap(httpClient -> createDomainMembersAddressBook(httpClient, domainId));
     }
 
-    private Mono<Void> createDomainMembersAddressBook(OpenPaaSId domainId, TechnicalTokenService.JwtToken esnToken) {
-        return client.headers(headers ->
+    private Mono<Void> createDomainMembersAddressBook(HttpClient authenticatedClient, OpenPaaSId domainId) {
+        return authenticatedClient.headers(headers ->
                 headers.add(HttpHeaderNames.CONTENT_TYPE, HttpHeaderValues.APPLICATION_JSON)
-                    .add(HttpHeaderNames.ACCEPT, HttpHeaderValues.APPLICATION_JSON)
-                    .add(TWAKE_CALENDAR_TOKEN_HEADER_NAME, esnToken.value()))
+                    .add(HttpHeaderNames.ACCEPT, HttpHeaderValues.APPLICATION_JSON))
             .post()
             .uri("/addressbooks/%s.json".formatted(domainId.value()))
             .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(CREATE_DOMAIN_MEMBERS_ADDRESS_BOOK_PAYLOAD)))
@@ -154,6 +172,55 @@ public class CardDavClient extends DavClient {
                 .flatMap(errorBody -> Mono.error(new DavClientException(
                     "Failed to create address book for domain %s: %s".formatted(domainId.value(), errorBody))));
         };
+    }
+
+    public Mono<Void> upsertContactDomainMembers(OpenPaaSId domainId, String vcardUid, byte[] vcardPayload) {
+        Preconditions.checkArgument(StringUtils.isNotEmpty(vcardUid), "vcardUid must not be empty");
+        Preconditions.checkArgument(vcardPayload != null && vcardPayload.length > 0, "vcardPayload must not be empty");
+
+        return authenticatedClientByToken(domainId)
+            .flatMap(client
+                -> upsertContact(client, domainId, DOMAIN_MEMBERS_ADDRESS_BOOK_ID, vcardUid, vcardPayload));
+    }
+
+    public Mono<Void> deleteContactDomainMembers(OpenPaaSId domainId, String vcardUid) {
+        Preconditions.checkArgument(StringUtils.isNotEmpty(vcardUid), "vcardUid must not be empty");
+
+        return authenticatedClientByToken(domainId)
+            .flatMap(client -> client.headers(headers
+                    -> headers.add(HttpHeaderNames.ACCEPT, ACCEPT_VCARD_JSON))
+                .delete()
+                .uri(String.format(ADDRESS_BOOK_PATH, domainId.value(), DOMAIN_MEMBERS_ADDRESS_BOOK_ID, vcardUid))
+                .responseSingle((response, byteBufMono) -> {
+                    int statusCode = response.status().code();
+
+                    if (statusCode == 204) {
+                        LOGGER.debug("Delete successful for domain {} and vcardUid {}", domainId.value(), vcardUid);
+                        return Mono.empty();
+                    }
+                    return responseBodyAsString(byteBufMono)
+                        .filter(bodyStr -> !(bodyStr.contains("Card not found") && statusCode == 404))
+                        .switchIfEmpty(Mono.empty())
+                        .flatMap(bodyStr -> Mono.error(new DavClientException(String.format(
+                            "Unexpected status code: %d when deleting contact for domain %s and vcardUid: %s\n%s",
+                            statusCode, domainId.value(), vcardUid, bodyStr))));
+                }));
+    }
+
+    public Mono<byte[]> listContactDomainMembers(OpenPaaSId domainId) {
+        return authenticatedClientByToken(domainId)
+            .flatMap(client -> client
+                .get()
+                .uri(String.format("/addressbooks/%s/%s?export", domainId.value(), DOMAIN_MEMBERS_ADDRESS_BOOK_ID))
+                .responseSingle((response, byteBufMono) -> {
+                    if (response.status().code() == 200) {
+                        return byteBufMono.asByteArray();
+                    }
+                    return responseBodyAsString(byteBufMono)
+                        .flatMap(responseBody -> Mono.error(new DavClientException(
+                            "Unexpected status code: %d when listing contacts for domain %s\n%s"
+                                .formatted(response.status().code(), domainId.value(), responseBody))));
+                }));
     }
 
     private Mono<String> responseBodyAsString(ByteBufMono byteBufMono) {
