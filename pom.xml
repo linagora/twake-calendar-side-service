@@ -41,6 +41,7 @@
         <module>calendar-rest-api</module>
         <module>calendar-webadmin</module>
         <module>storage-api</module>
+        <module>storage-ldap</module>
         <module>storage-mongodb</module>
         <module>storage-redis</module>
         <module>storage-opensearch</module>
@@ -86,6 +87,11 @@
                 <artifactId>calendar-storage-api</artifactId>
                 <version>${project.version}</version>
                 <type>test-jar</type>
+            </dependency>
+            <dependency>
+                <groupId>${project.groupId}</groupId>
+                <artifactId>calendar-storage-ldap</artifactId>
+                <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>${project.groupId}</groupId>

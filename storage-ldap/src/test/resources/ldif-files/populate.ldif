@@ -1,0 +1,64 @@
+dn: ou=people, dc=james,dc=org
+ou: people
+objectClass: organizationalUnit
+
+dn: ou=empty, dc=james,dc=org
+ou: empty
+objectClass: organizationalUnit
+
+dn: ou=groups, dc=james,dc=org
+ou: groups
+objectClass: organizationalUnit
+
+dn: ou=whatever, dc=james,dc=org
+ou: whatever
+objectClass: organizationalUnit
+
+dn: uid=james-user, ou=people, dc=james,dc=org
+objectClass: inetOrgPerson
+uid: james-user
+cn: James User
+sn: User
+mail: james-user@james.org
+userPassword: secret
+givenName: James
+telephoneNumber: +33612345678
+displayName: James User
+description: abcdef
+
+dn: uid=james-user2, ou=people, dc=james,dc=org
+objectClass: inetOrgPerson
+uid: james-user2
+cn: James User2
+sn: User2
+mail: james-user2@james.org
+userPassword: secret
+description: cn=active,ou=accountStatus,ou=whatever,o=gov,c=vn
+
+dn: uid=other-domain-user, ou=people, dc=james,dc=org
+objectClass: inetOrgPerson
+uid: other-domain-user
+cn: other-domain-user
+sn: other-domain-user
+mail: other-domain-user@other.domain
+userPassword: secret
+description: cn=active,ou=accountStatus,ou=whatever,o=gov,c=vn
+
+dn: uid=no-mail-user, ou=people, dc=james,dc=org
+objectClass: inetOrgPerson
+uid: no-mail-user
+cn: no-mail-user
+sn: no-mail-user
+userPassword: secret
+description: cn=active,ou=accountStatus,ou=whatever,o=gov,c=vn
+
+dn: cn=mygroup,ou=groups, dc=james,dc=org
+objectclass: top
+objectclass: groupofnames
+member: uid=james-user,ou=people,dc=james,dc=org
+member: uid=james-user2,ou=people,dc=james,dc=org
+member: uid=other-domain-user,ou=people,dc=james,dc=org
+member: uid=no-mail-user,ou=people,dc=james,dc=org
+cn: mygroup
+ou: groups
+
