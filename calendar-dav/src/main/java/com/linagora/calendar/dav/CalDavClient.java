@@ -143,6 +143,49 @@ public class CalDavClient extends DavClient {
             }).flatMapMany(Flux::fromIterable);
     }
 
+    public Mono<Void> deleteCalendarEvent(Username username, CalendarURL calendarURL, String eventId) {
+        String uri = calendarURL.asUri() + "/" + eventId + ".ics";
+        return client.headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, "text/plain")
+                .add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username.asString())))
+            .request(HttpMethod.DELETE)
+            .uri(uri)
+            .responseSingle((response, responseContent) ->
+                switch (response.status().code()) {
+                    case 204 -> Mono.empty();
+                    case 404 -> ReactorUtils.logAsMono(() -> LOGGER.info("Calendar object '{}' not found, nothing to delete.", uri));
+                    default -> responseContent.asString(StandardCharsets.UTF_8)
+                        .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                        .flatMap(responseBody -> Mono.error(new DavClientException("""
+                            Unexpected status code: %d when deleting calendar object '%s'
+                            %s
+                            """.formatted(response.status().code(), uri, responseBody))));
+            });
+    }
+
+    public Mono<Void> deleteCalendar(Username username, CalendarURL calendarURL) {
+        String uri = calendarURL.asUri() + ".json";
+        return client.headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_JSON)
+                .add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username.asString())))
+            .request(HttpMethod.DELETE)
+            .uri(uri)
+            .responseSingle((response, responseContent) -> {
+                if (response.status().code() == HttpStatus.SC_NO_CONTENT) {
+                    return Mono.empty();
+                } else {
+                    if (response.status().code() == HttpStatus.SC_NOT_IMPLEMENTED) {
+                        LOGGER.info("Could not delete user {}'s calendar {}", username.asString(), calendarURL.serialize());
+                        return Mono.empty();
+                    }
+                    return responseContent.asString(StandardCharsets.UTF_8)
+                        .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                        .flatMap(responseBody -> Mono.error(new DavClientException("""
+                                Unexpected status code: %d when deleting calendar '%s'
+                                %s
+                                """.formatted(response.status().code(), uri, responseBody))));
+                }
+            });
+    }
+
     private List<CalendarURL> extractCalendarURLsFromResponse(String json) {
         try {
             JsonNode node = OBJECT_MAPPER.readTree(json);
@@ -169,7 +212,7 @@ public class CalDavClient extends DavClient {
     }
 
     @VisibleForTesting
-    public Mono<Void> createNewCalendarDirectory(Username username, OpenPaaSId userId, NewCalendar newCalendar) {
+    public Mono<Void> createNewCalendar(Username username, OpenPaaSId userId, NewCalendar newCalendar) {
         String uri = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/" + userId.value() + ".json";
         return client.headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_JSON)
                 .add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_JSON)
