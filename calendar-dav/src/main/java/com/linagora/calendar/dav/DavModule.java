@@ -23,14 +23,23 @@ import java.io.FileNotFoundException;
 import javax.net.ssl.SSLException;
 
 import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.james.user.api.DeleteUserDataTaskStep;
 import org.apache.james.utils.PropertiesProvider;
 
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.Singleton;
+import com.google.inject.multibindings.Multibinder;
 import com.linagora.calendar.storage.TechnicalTokenService;
 
 public class DavModule extends AbstractModule {
+    @Override
+    protected void configure() {
+        Multibinder.newSetBinder(binder(), DeleteUserDataTaskStep.class)
+            .addBinding()
+            .to(DavCalendarDeletionTaskStep.class);
+    }
+
     @Singleton
     @Provides
     public DavConfiguration provideDavConfiguration(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {

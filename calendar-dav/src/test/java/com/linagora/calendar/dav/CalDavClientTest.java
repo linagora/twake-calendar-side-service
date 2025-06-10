@@ -210,7 +210,7 @@ public class CalDavClientTest {
             "A test calendar"
         );
 
-        testee.createNewCalendarDirectory(user.username(), user.id(), newCalendar).block();
+        testee.createNewCalendar(user.username(), user.id(), newCalendar).block();
 
         List<CalendarURL> uris = testee.findUserCalendars(user.username(), user.id()).collectList().block();
 
@@ -223,5 +223,168 @@ public class CalDavClientTest {
 
         assertThatThrownBy(() -> testee.findUserCalendars(user.username(), new OpenPaaSId("invalid")).collectList().block())
             .isInstanceOf(DavClientException.class);
+    }
+
+    @Test
+    void deleteCalendarEventShouldSucceed() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL calendarURL = CalendarURL.from(user.id());
+
+        String uid = UUID.randomUUID().toString();
+        String ics = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            TRANSP:OPAQUE
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250102T120000Z
+            DTEND:20250102T130000Z
+            SUMMARY:Test Event
+            RRULE:FREQ=DAILY;COUNT=3
+            CLASS:PUBLIC
+            ORGANIZER;CN=john doe:mailto:%s
+            ATTENDEE;PARTSTAT=accepted;RSVP=false;ROLE=chair;CUTYPE=individual:mailto:%s
+            DESCRIPTION:This is a test event
+            LOCATION:office
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uid, user.username().asString(), user.username().asString(), user.username().asString());
+
+        // To trigger calendar directory activation
+        testee.export(calendarURL, MailboxSessionUtil.create(user.username())).block();
+
+        testee.importCalendar(calendarURL, uid, user.username(), ics.getBytes(StandardCharsets.UTF_8)).block();
+
+        testee.deleteCalendarEvent(user.username(), calendarURL, uid).block();
+
+        String exportedCalendarString = testee.export(calendarURL, MailboxSessionUtil.create(user.username()))
+            .map(bytes -> StringUtils.trim(new String(bytes, StandardCharsets.UTF_8)))
+            .block();
+        Calendar exportedCalendar = CalendarUtil.parseIcs(exportedCalendarString.getBytes(StandardCharsets.UTF_8));
+
+        assertThat(exportedCalendar.getComponent(Component.VEVENT)).isEmpty();
+    }
+
+    @Test
+    void deleteCalendarEventShouldNotThrowWhenCalendarEventNotFound() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL calendarURL = CalendarURL.from(user.id());
+
+        // To trigger calendar directory activation
+        testee.export(calendarURL, MailboxSessionUtil.create(user.username())).block();
+
+        // Should not throw an exception even if the calendar does not exist
+        testee.deleteCalendarEvent(user.username(), calendarURL, UUID.randomUUID().toString()).block();
+    }
+
+    @Test
+    void deleteCalendarEventShouldNotDeleteWrongCalendarsEvent() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL calendarURL = CalendarURL.from(user.id());
+
+        String uid = UUID.randomUUID().toString();
+        String ics = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            TRANSP:OPAQUE
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250102T120000Z
+            DTEND:20250102T130000Z
+            SUMMARY:Test Event
+            RRULE:FREQ=DAILY;COUNT=3
+            CLASS:PUBLIC
+            ORGANIZER;CN=john doe:mailto:%s
+            ATTENDEE;PARTSTAT=accepted;RSVP=false;ROLE=chair;CUTYPE=individual:mailto:%s
+            DESCRIPTION:This is a test event
+            LOCATION:office
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uid, user.username().asString(), user.username().asString(), user.username().asString());
+
+        // To trigger calendar directory activation
+        testee.export(calendarURL, MailboxSessionUtil.create(user.username())).block();
+
+        testee.importCalendar(calendarURL, uid, user.username(), ics.getBytes(StandardCharsets.UTF_8)).block();
+
+        testee.deleteCalendarEvent(user.username(), calendarURL, "other-uid").block();
+
+        String exportedCalendarString = testee.export(calendarURL, MailboxSessionUtil.create(user.username()))
+            .map(bytes -> StringUtils.trim(new String(bytes, StandardCharsets.UTF_8)))
+            .block();
+        Calendar exportedCalendar = CalendarUtil.parseIcs(exportedCalendarString.getBytes(StandardCharsets.UTF_8));
+
+        Calendar calendar = CalendarUtil.parseIcs(ics.getBytes(StandardCharsets.UTF_8));
+        VEvent expected = (VEvent) calendar.getComponent(Component.VEVENT).get();
+
+        assertThat((VEvent) exportedCalendar.getComponent(Component.VEVENT).get()).isEqualTo(expected);
+    }
+
+    @Test
+    void deleteCalendarShouldSucceed() {
+        OpenPaaSUser user = createOpenPaaSUser();
+
+        String newCalendarId = UUID.randomUUID().toString();
+        CalendarURL newCalendarURL = new CalendarURL(user.id(), new OpenPaaSId(newCalendarId));
+        CalDavClient.NewCalendar newCalendar = new CalDavClient.NewCalendar(
+            newCalendarId,
+            "Test Calendar",
+            "#97c3c1",
+            "A test calendar"
+        );
+
+        testee.createNewCalendar(user.username(), user.id(), newCalendar).block();
+
+        testee.deleteCalendar(user.username(), newCalendarURL).block();
+
+        List<CalendarURL> uris = testee.findUserCalendars(user.username(), user.id()).collectList().block();
+
+        assertThat(uris).doesNotContain(newCalendarURL);
+    }
+
+    @Test
+    void deleteCalendarShouldThrowWhenCalendarNotFound() {
+        OpenPaaSUser user = createOpenPaaSUser();
+
+        String newCalendarId = UUID.randomUUID().toString();
+        CalendarURL newCalendarURL = new CalendarURL(user.id(), new OpenPaaSId(newCalendarId));
+
+        // To trigger calendar directory activation
+        testee.export(CalendarURL.from(user.id()), MailboxSessionUtil.create(user.username())).block();
+
+        assertThatThrownBy(() -> testee.deleteCalendar(user.username(), newCalendarURL).block())
+            .isInstanceOf(DavClientException.class);
+    }
+
+    @Test
+    void deleteCalendarShouldNotDeleteWrongCalendar() {
+        OpenPaaSUser user = createOpenPaaSUser();
+
+        String newCalendarId = UUID.randomUUID().toString();
+        CalendarURL newCalendarURL = new CalendarURL(user.id(), new OpenPaaSId(newCalendarId));
+        CalDavClient.NewCalendar newCalendar = new CalDavClient.NewCalendar(
+            newCalendarId,
+            "Test Calendar",
+            "#97c3c1",
+            "A test calendar"
+        );
+
+        String anotherCalendarId = UUID.randomUUID().toString();
+        CalendarURL anotherCalendarURL = new CalendarURL(user.id(), new OpenPaaSId(anotherCalendarId));
+        CalDavClient.NewCalendar anotherCalendar = new CalDavClient.NewCalendar(
+            anotherCalendarId,
+            "Another Calendar",
+            "#ff0000",
+            "Another test calendar"
+        );
+
+        testee.createNewCalendar(user.username(), user.id(), newCalendar).block();
+        testee.createNewCalendar(user.username(), user.id(), anotherCalendar).block();
+
+        testee.deleteCalendar(user.username(), newCalendarURL).block();
+
+        List<CalendarURL> uris = testee.findUserCalendars(user.username(), user.id()).collectList().block();
+
+        assertThat(uris).containsExactlyInAnyOrder(CalendarURL.from(user.id()), anotherCalendarURL);
     }
 }
