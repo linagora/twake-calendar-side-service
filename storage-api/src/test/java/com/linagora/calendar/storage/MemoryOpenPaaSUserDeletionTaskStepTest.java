@@ -18,23 +18,26 @@
 
 package com.linagora.calendar.storage;
 
-import org.apache.james.core.Username;
+import org.junit.jupiter.api.BeforeEach;
 
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
+class MemoryOpenPaaSUserDeletionTaskStepTest implements OpenPaaSUserDeletionTaskStepContract {
+    private MemoryOpenPaaSUserDAO userDAO;
+    private OpenPaaSUserDeletionTaskStep testee;
 
-public interface OpenPaaSUserDAO {
-    Mono<OpenPaaSUser> retrieve(OpenPaaSId id);
+    @BeforeEach
+    void setup() {
+        userDAO = new MemoryOpenPaaSUserDAO();
+        testee = new OpenPaaSUserDeletionTaskStep(userDAO);
+    }
 
-    Mono<OpenPaaSUser> retrieve(Username username);
+    @Override
+    public OpenPaaSUserDAO userDAO() {
+        return userDAO;
+    }
 
-    Mono<OpenPaaSUser> add(Username username);
-
-    Mono<OpenPaaSUser> add(Username username, String firstName, String lastName);
-
-    Mono<Void> update(OpenPaaSId id, Username newUsername, String newFirstname, String newLastname);
-
-    Mono<Void> delete(Username username);
-
-    Flux<OpenPaaSUser> list();
+    @Override
+    public OpenPaaSUserDeletionTaskStep testee() {
+        return testee;
+    }
 }
+

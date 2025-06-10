@@ -33,7 +33,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 public class MemoryOpenPaaSUserDAO implements OpenPaaSUserDAO {
-    private final ConcurrentHashMap<OpenPaaSId, OpenPaaSUser> hashMap = new ConcurrentHashMap();
+    private final ConcurrentHashMap<OpenPaaSId, OpenPaaSUser> hashMap = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Username, OpenPaaSId> usernameIndex = new ConcurrentHashMap<>();
 
     @Override
@@ -91,6 +91,16 @@ public class MemoryOpenPaaSUserDAO implements OpenPaaSUserDAO {
 
             if (user == null) {
                 throw new UserNotFoundException(id);
+            }
+        });
+    }
+
+    @Override
+    public Mono<Void> delete(Username username) {
+        return Mono.fromRunnable(() -> {
+            OpenPaaSId id = usernameIndex.remove(username);
+            if (id != null) {
+                hashMap.remove(id);
             }
         });
     }
