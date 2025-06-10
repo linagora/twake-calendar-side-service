@@ -62,6 +62,7 @@ import com.linagora.calendar.storage.FileUploadConfigurationModule;
 import com.linagora.calendar.storage.MemoryStorageModule;
 import com.linagora.calendar.storage.OIDCTokenCache;
 import com.linagora.calendar.storage.OIDCTokenCacheConfigurationModule;
+import com.linagora.calendar.storage.OpenPaaSUserDeletionTaskStep;
 import com.linagora.calendar.storage.TechnicalUserTokenModule;
 import com.linagora.calendar.storage.eventsearch.MemoryCalendarSearchService;
 import com.linagora.calendar.storage.mongodb.MongoDBStorageModule;
@@ -78,7 +79,10 @@ public class TwakeCalendarMain {
         binder -> Multibinder.newSetBinder(binder, Routes.class).addBinding().to(MetricsRoutes.class),
         binder -> Multibinder.newSetBinder(binder, Routes.class).addBinding().to(DomainsRoutes.class),
         binder -> Multibinder.newSetBinder(binder, Routes.class).addBinding().to(UserRoutes.class),
-        binder -> Multibinder.newSetBinder(binder, DeleteUserDataTaskStep.class),
+        binder -> {
+            Multibinder<DeleteUserDataTaskStep> multibinder = Multibinder.newSetBinder(binder, DeleteUserDataTaskStep.class);
+            multibinder.addBinding().to(OpenPaaSUserDeletionTaskStep.class);
+        },
         binder -> MapBinder.newMapBinder(binder, String.class, UserCondition.class),
         binder -> binder.bind(UserEntityValidator.class).toInstance(UserEntityValidator.NOOP),
         binder -> Multibinder.newSetBinder(binder, CertificateReloadable.Factory.class),

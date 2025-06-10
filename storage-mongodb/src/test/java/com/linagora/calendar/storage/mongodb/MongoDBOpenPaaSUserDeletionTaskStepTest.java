@@ -16,25 +16,38 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage;
+package com.linagora.calendar.storage.mongodb;
 
-import org.apache.james.core.Username;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
+import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.OpenPaaSUserDeletionTaskStep;
+import com.linagora.calendar.storage.OpenPaaSUserDeletionTaskStepContract;
 
-public interface OpenPaaSUserDAO {
-    Mono<OpenPaaSUser> retrieve(OpenPaaSId id);
+public class MongoDBOpenPaaSUserDeletionTaskStepTest implements OpenPaaSUserDeletionTaskStepContract {
+    @RegisterExtension
+    static DockerMongoDBExtension mongo = new DockerMongoDBExtension();
 
-    Mono<OpenPaaSUser> retrieve(Username username);
+    private MongoDBOpenPaaSUserDAO userDAO;
+    private OpenPaaSUserDeletionTaskStep testee;
 
-    Mono<OpenPaaSUser> add(Username username);
+    @BeforeEach
+    void setUpTest() {
+        MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongo.getDb());
+        domainDAO.add(USERNAME.getDomainPart().get()).block();
+        userDAO = new MongoDBOpenPaaSUserDAO(mongo.getDb(), domainDAO);
+        testee = new OpenPaaSUserDeletionTaskStep(userDAO);
+    }
 
-    Mono<OpenPaaSUser> add(Username username, String firstName, String lastName);
+    @Override
+    public OpenPaaSUserDAO userDAO() {
+        return userDAO;
+    }
 
-    Mono<Void> update(OpenPaaSId id, Username newUsername, String newFirstname, String newLastname);
-
-    Mono<Void> delete(Username username);
-
-    Flux<OpenPaaSUser> list();
+    @Override
+    public OpenPaaSUserDeletionTaskStep testee() {
+        return testee;
+    }
 }
+

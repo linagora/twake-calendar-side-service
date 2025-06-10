@@ -133,6 +133,16 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
     }
 
     @Override
+    public Mono<Void> delete(Username username) {
+        return Mono.from(database.getCollection(COLLECTION)
+                .deleteOne(Filters.or(
+                    Filters.eq("email", username.asString()),
+                    Filters.eq("accounts.emails", username.asString())
+                )))
+            .then();
+    }
+
+    @Override
     public Flux<OpenPaaSUser> list() {
         return Flux.from(database.getCollection(COLLECTION).find())
             .map(document -> new OpenPaaSUser(

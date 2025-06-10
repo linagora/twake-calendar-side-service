@@ -114,6 +114,28 @@ public interface OpenPaaSUserDAOContract {
     }
 
     @Test
+    default void deleteShouldRemoveUser() {
+        testee().add(USERNAME).block();
+        testee().delete(USERNAME).block();
+
+        assertThat(testee().retrieve(USERNAME).blockOptional()).isEmpty();
+    }
+
+    @Test
+    default void deleteShouldNotThrowWhenUserDoesNotExist() {
+        testee().delete(USERNAME).block(); // Should not throw
+    }
+
+    @Test
+    default void deleteShouldNotAffectOtherUsers() {
+        testee().add(USERNAME).block();
+        testee().add(USERNAME_2).block();
+        testee().delete(USERNAME).block();
+
+        assertThat(testee().retrieve(USERNAME_2).blockOptional()).isPresent();
+    }
+
+    @Test
     default void listShouldBeMultiValued() {
         testee().add(USERNAME).block();
         testee().add(USERNAME_2).block();

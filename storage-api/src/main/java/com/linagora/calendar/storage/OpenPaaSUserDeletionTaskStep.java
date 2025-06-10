@@ -18,23 +18,34 @@
 
 package com.linagora.calendar.storage;
 
-import org.apache.james.core.Username;
+import jakarta.inject.Inject;
 
-import reactor.core.publisher.Flux;
+import org.apache.james.core.Username;
+import org.apache.james.user.api.DeleteUserDataTaskStep;
+
 import reactor.core.publisher.Mono;
 
-public interface OpenPaaSUserDAO {
-    Mono<OpenPaaSUser> retrieve(OpenPaaSId id);
+public class OpenPaaSUserDeletionTaskStep implements DeleteUserDataTaskStep {
 
-    Mono<OpenPaaSUser> retrieve(Username username);
+    private final OpenPaaSUserDAO userDAO;
 
-    Mono<OpenPaaSUser> add(Username username);
+    @Inject
+    public OpenPaaSUserDeletionTaskStep(OpenPaaSUserDAO userDAO) {
+        this.userDAO = userDAO;
+    }
 
-    Mono<OpenPaaSUser> add(Username username, String firstName, String lastName);
+    @Override
+    public StepName name() {
+        return new StepName("OpenPaaSUserDeletionTaskStep");
+    }
 
-    Mono<Void> update(OpenPaaSId id, Username newUsername, String newFirstname, String newLastname);
+    @Override
+    public int priority() {
+        return 1000;
+    }
 
-    Mono<Void> delete(Username username);
-
-    Flux<OpenPaaSUser> list();
+    @Override
+    public Mono<Void> deleteUserData(Username username) {
+        return userDAO.delete(username);
+    }
 }

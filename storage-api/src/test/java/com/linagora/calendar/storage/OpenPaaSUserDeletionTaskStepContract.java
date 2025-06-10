@@ -18,23 +18,34 @@
 
 package com.linagora.calendar.storage;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import org.apache.james.core.Username;
+import org.junit.jupiter.api.Test;
 
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
+public interface OpenPaaSUserDeletionTaskStepContract {
 
-public interface OpenPaaSUserDAO {
-    Mono<OpenPaaSUser> retrieve(OpenPaaSId id);
+    Username USERNAME = Username.of("user@domain.tld");
 
-    Mono<OpenPaaSUser> retrieve(Username username);
+    OpenPaaSUserDAO userDAO();
 
-    Mono<OpenPaaSUser> add(Username username);
+    OpenPaaSUserDeletionTaskStep testee();
 
-    Mono<OpenPaaSUser> add(Username username, String firstName, String lastName);
+    @Test
+    default void deleteUserDataShouldSucceed() {
+        userDAO().add(USERNAME).block();
+        testee().deleteUserData(USERNAME).block();
 
-    Mono<Void> update(OpenPaaSId id, Username newUsername, String newFirstname, String newLastname);
+        assertThat(userDAO().retrieve(USERNAME).blockOptional()).isEmpty();
+    }
 
-    Mono<Void> delete(Username username);
+    @Test
+    default void deleteUserDataShouldNotAffectOtherUsers() {
+        userDAO().add(USERNAME).block();
+        Username other = Username.of("other@domain.tld");
+        userDAO().add(other).block();
+        testee().deleteUserData(USERNAME).block();
 
-    Flux<OpenPaaSUser> list();
+        assertThat(userDAO().retrieve(other).blockOptional()).isPresent();
+    }
 }
