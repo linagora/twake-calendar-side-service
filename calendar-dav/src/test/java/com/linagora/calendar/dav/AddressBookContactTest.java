@@ -19,6 +19,7 @@
 package com.linagora.calendar.dav;
 
 import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
+import static org.assertj.core.api.SoftAssertions.assertSoftly;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -52,16 +53,16 @@ public class AddressBookContactTest {
             List<AddressBookContact> contacts = AddressBookContact.parse(data);
 
             assertThat(contacts).hasSize(1);
-            AddressBookContact contact = contacts.getFirst();
 
-            assertThat(contact)
-                .isEqualTo(new AddressBookContact(
-                    Optional.of("1234"),
-                    Optional.of("Doe"),
-                    Optional.of("John"),
-                    Optional.of("John Doe Mr"),
-                    mail("john.doe@example.com"),
-                    Optional.of("+123456789")));
+            assertThat(contacts.getFirst())
+                .isEqualTo(AddressBookContact.builder()
+                    .uid("1234")
+                    .familyName("Doe")
+                    .givenName("John")
+                    .displayName("John Doe Mr")
+                    .mail("john.doe@example.com")
+                    .telephoneNumber("+123456789")
+                    .build());
         }
 
         @Test
@@ -77,16 +78,10 @@ public class AddressBookContactTest {
             List<AddressBookContact> contacts = AddressBookContact.parse(data);
 
             assertThat(contacts).hasSize(1);
-            AddressBookContact contact = contacts.getFirst();
-
-            assertThat(contact)
-                .isEqualTo(new AddressBookContact(
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.of("Unknown"),
-                    Optional.empty(),
-                    Optional.empty()));
+            assertThat(contacts.getFirst())
+                .isEqualTo(AddressBookContact.builder()
+                    .displayName("Unknown")
+                    .build());
         }
 
         @Test
@@ -106,16 +101,8 @@ public class AddressBookContactTest {
             List<AddressBookContact> contacts = AddressBookContact.parse(data);
 
             assertThat(contacts).hasSize(1);
-            AddressBookContact contact = contacts.getFirst();
-
-            assertThat(contact)
-                .isEqualTo(new AddressBookContact(
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty()));
+            assertThat(contacts.getFirst())
+                .isEqualTo(AddressBookContact.builder().build());
         }
 
         @Test
@@ -125,7 +112,7 @@ public class AddressBookContactTest {
                 VERSION:4.0
                 UID:αβγδ
                 FN:Đặng Văn Hùng
-                N:Hùng;Văn Đặng;;;
+                N:Văn Đặng;Hùng;;;
                 EMAIL:hung@example.com
                 TEL:+84 123 456 789
                 END:VCARD
@@ -135,16 +122,15 @@ public class AddressBookContactTest {
             List<AddressBookContact> contacts = AddressBookContact.parse(data);
 
             assertThat(contacts).hasSize(1);
-            AddressBookContact contact = contacts.getFirst();
-
-            assertThat(contact)
-                .isEqualTo(new AddressBookContact(
-                    Optional.of("αβγδ"),
-                    Optional.of("Hùng"),
-                    Optional.of("Văn Đặng"),
-                    Optional.of("Đặng Văn Hùng"),
-                    mail("hung@example.com"),
-                    Optional.of("+84 123 456 789")));
+            assertThat(contacts.getFirst())
+                .isEqualTo(AddressBookContact.builder()
+                    .uid("αβγδ")
+                    .familyName("Văn Đặng")
+                    .givenName("Hùng")
+                    .displayName("Đặng Văn Hùng")
+                    .mail("hung@example.com")
+                    .telephoneNumber("+84 123 456 789")
+                    .build());
         }
 
         @Test
@@ -164,16 +150,15 @@ public class AddressBookContactTest {
             List<AddressBookContact> contacts = AddressBookContact.parse(data);
 
             assertThat(contacts).hasSize(1);
-            AddressBookContact contact = contacts.getFirst();
-
-            assertThat(contact)
-                .isEqualTo(new AddressBookContact(
-                    Optional.of("uuid-0001"),
-                    Optional.of("Bar"),
-                    Optional.of("Foo"),
-                    Optional.of("Foo Bar"),
-                    mail("foo@bar.com"),
-                    Optional.of("+111111111")));
+            assertThat(contacts.getFirst())
+                .isEqualTo(AddressBookContact.builder()
+                    .uid("uuid-0001")
+                    .familyName("Bar")
+                    .givenName("Foo")
+                    .displayName("Foo Bar")
+                    .mail("foo@bar.com")
+                    .telephoneNumber("+111111111")
+                    .build());
         }
 
         @Test
@@ -253,7 +238,6 @@ public class AddressBookContactTest {
             assertThat(contacts.getFirst().familyName()).isEmpty();
         }
 
-
         @Test
         void shouldHandleMissingStructuredName() {
             String vcard = """
@@ -271,14 +255,12 @@ public class AddressBookContactTest {
             assertThat(contacts).hasSize(1);
             AddressBookContact contact = contacts.getFirst();
 
-            assertThat(contact).isEqualTo(
-                new AddressBookContact(
-                    Optional.of("no-n"),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.of("Anonymous"),
-                    mail("anon@example.com"),
-                    Optional.empty()));
+            assertThat(contacts.getFirst())
+                .isEqualTo(AddressBookContact.builder()
+                    .uid("no-n")
+                    .displayName("Anonymous")
+                    .mail("anon@example.com")
+                    .build());
         }
 
         @Test
@@ -334,11 +316,14 @@ public class AddressBookContactTest {
             List<AddressBookContact> contacts = AddressBookContact.parse(data);
 
             assertThat(contacts).hasSize(2);
-            assertThat(contacts.get(0).uid()).contains("1");
-            assertThat(contacts.get(0).mail().map(MailAddress::asString)).contains("alice@example.com");
 
-            assertThat(contacts.get(1).uid()).contains("2");
-            assertThat(contacts.get(1).telephoneNumber()).contains("+12345");
+            assertSoftly(softly -> {
+                softly.assertThat(contacts.get(0).uid()).contains("1");
+                softly.assertThat(contacts.get(0).mail().map(MailAddress::asString)).contains("alice@example.com");
+
+                softly.assertThat(contacts.get(1).uid()).contains("2");
+                softly.assertThat(contacts.get(1).telephoneNumber()).contains("+12345");
+            });
         }
     }
 
@@ -347,7 +332,14 @@ public class AddressBookContactTest {
 
         @Test
         void shouldBuildVcardWithAllFields() {
-            AddressBookContact card = generateCard("u-123", "Doe", "John", "John Doe", "john@example.com", "+12345678");
+            AddressBookContact card = AddressBookContact.builder()
+                .uid("u-123")
+                .familyName("Doe")
+                .givenName("John")
+                .displayName("John Doe")
+                .mail("john@example.com")
+                .telephoneNumber("+12345678")
+                .build();
 
             String vcard = card.toVcardString();
             assertThat(vcard)
@@ -356,7 +348,7 @@ public class AddressBookContactTest {
                     VERSION:4.0
                     UID:u-123
                     FN:John Doe
-                    N:John;Doe;;;
+                    N:Doe;John;;;
                     EMAIL:john@example.com
                     TEL;TYPE=work:+12345678
                     END:VCARD""".trim());
@@ -364,19 +356,30 @@ public class AddressBookContactTest {
 
         @Test
         void shouldGenerateRandomUidIfMissing() {
-            AddressBookContact card = generateCard(null, "Nguyen", "Tuan", "Tuan Nguyen", "tuan@example.com", null);
+            AddressBookContact card = AddressBookContact.builder()
+                .familyName("Nguyen")
+                .givenName("Tuan")
+                .displayName("Tuan Nguyen")
+                .mail("tuan@example.com")
+                .build();
 
             String vcard = card.toVcardString();
 
-            assertThat(vcard).contains("FN:Tuan Nguyen");
-            assertThat(vcard).contains("UID:");
-            assertThat(vcard).matches("(?s).*UID:[a-zA-Z0-9\\-]+.*");
+            assertSoftly(softly -> {
+                softly.assertThat(vcard).contains("FN:Tuan Nguyen");
+                softly.assertThat(vcard).contains("UID:");
+                softly.assertThat(vcard).matches("(?s).*UID:[a-zA-Z0-9\\-]+.*");
+            });
         }
-
 
         @Test
         void shouldUseEmailAsFormattedNameIfDisplayNameMissing() {
-            AddressBookContact card = generateCard("uid-99", "Smith", "Anna", null, "anna@example.com", null);
+            AddressBookContact card = AddressBookContact.builder()
+                .uid("uid-99")
+                .familyName("Smith")
+                .givenName("Anna")
+                .mail("anna@example.com")
+                .build();
 
             String vcard = card.toVcardString();
 
@@ -385,14 +388,18 @@ public class AddressBookContactTest {
                 VERSION:4.0
                 UID:uid-99
                 FN:anna@example.com
-                N:Anna;Smith;;;
+                N:Smith;Anna;;;
                 EMAIL:anna@example.com
                 END:VCARD""".trim());
         }
 
         @Test
         void shouldUseEmptyFormattedNameIfNoDisplayNameOrEmail() {
-            AddressBookContact card = generateCard("uid-blank", "Vo", "Minh", null, null, null);
+            AddressBookContact card = AddressBookContact.builder()
+                .uid("uid-blank")
+                .familyName("Vo")
+                .givenName("Minh")
+                .build();
 
             String vcard = card.toVcardString();
 
@@ -400,13 +407,17 @@ public class AddressBookContactTest {
                 BEGIN:VCARD
                 VERSION:4.0
                 UID:uid-blank
-                N:Minh;Vo;;;
+                N:Vo;Minh;;;
                 END:VCARD""".trim());
         }
 
         @Test
         void shouldHandleNoStructuredName() {
-            AddressBookContact card = generateCard("uid-no-name", null, null, "Only Display", "display@example.com", null);
+            AddressBookContact card = AddressBookContact.builder()
+                .uid("uid-no-name")
+                .displayName("Only Display")
+                .mail("display@example.com")
+                .build();
 
             String vcard = card.toVcardString();
 
@@ -422,7 +433,12 @@ public class AddressBookContactTest {
 
         @Test
         void shouldHandleNoEmailOrPhone() {
-            AddressBookContact card = generateCard("uid-abc", "Tran", "Nam", "Nam Tran", null, null);
+            AddressBookContact card = AddressBookContact.builder()
+                .uid("uid-abc")
+                .familyName("Tran")
+                .givenName("Nam")
+                .displayName("Nam Tran")
+                .build();
 
             String vcard = card.toVcardString();
 
@@ -431,13 +447,20 @@ public class AddressBookContactTest {
                 VERSION:4.0
                 UID:uid-abc
                 FN:Nam Tran
-                N:Nam;Tran;;;
+                N:Tran;Nam;;;
                 END:VCARD""".trim());
         }
 
         @Test
         void shouldTrimWhitespaceInFields() {
-            AddressBookContact card = generateCard("uid-trim", "  Le  ", "   Mai   ", "  Mai Le  ", "mai@example.com", "  +84991234567  ");
+            AddressBookContact card = AddressBookContact.builder()
+                .uid("uid-trim")
+                .givenName("  Le  ")
+                .familyName("   Mai   ")
+                .displayName("  Mai Le  ")
+                .mail("mai@example.com")
+                .telephoneNumber("  +84991234567  ")
+                .build();
 
             String vcard = card.toVcardString();
 
@@ -451,26 +474,5 @@ public class AddressBookContactTest {
                 TEL;TYPE=work:+84991234567
                 END:VCARD""".trim());
         }
-
-        private AddressBookContact generateCard(String uid, String givenName, String familyName, String displayName, String email, String telephone) {
-            return new AddressBookContact(
-                Optional.ofNullable(uid),
-                Optional.ofNullable(familyName),
-                Optional.ofNullable(givenName),
-                Optional.ofNullable(displayName),
-                Optional.ofNullable(email).flatMap(AddressBookContactTest::mail),
-                Optional.ofNullable(telephone)
-            );
-        }
     }
-
-
-    private static Optional<MailAddress> mail(String address) {
-        try {
-            return Optional.of(new MailAddress(address));
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-    }
-
 }

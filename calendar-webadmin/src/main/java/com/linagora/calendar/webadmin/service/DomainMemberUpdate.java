@@ -72,10 +72,9 @@ public record DomainMemberUpdate(Set<AddressBookContact> added,
         return new DomainMemberUpdate(added, deleted, updated);
     }
 
-
     private static boolean isChanged(LdapDomainMember ldap, AddressBookContact dav) {
         return !Objects.equals(ldap.givenName(), dav.givenName())
-            || !Objects.equals(Optional.of(ldap.sn()), dav.familyName())
+            || !Objects.equals(Optional.ofNullable(ldap.sn()), dav.familyName())
             || !Objects.equals(ldap.displayName(), dav.displayName())
             || !Objects.equals(ldap.mail(), dav.mail())
             || !Objects.equals(ldap.telephoneNumber(), dav.telephoneNumber());
@@ -91,11 +90,13 @@ public record DomainMemberUpdate(Set<AddressBookContact> added,
 
     public static AddressBookContact toAddressBookContact(LdapDomainMember ldap,
                                                           Optional<String> uid) {
-        return new AddressBookContact(uid,
-            Optional.ofNullable(ldap.sn()),
-            ldap.givenName(),
-            ldap.displayName(),
-            ldap.mail(),
-            ldap.telephoneNumber());
+        return AddressBookContact.builder()
+            .uid(uid)
+            .familyName(Optional.ofNullable(ldap.sn()))
+            .givenName(ldap.givenName())
+            .displayName(ldap.displayName())
+            .mail(ldap.mail())
+            .telephoneNumber(ldap.telephoneNumber())
+            .build();
     }
 }
