@@ -45,6 +45,7 @@
         <module>storage-mongodb</module>
         <module>storage-redis</module>
         <module>storage-opensearch</module>
+        <module>calendar-smtp</module>
     </modules>
 
     <properties>
