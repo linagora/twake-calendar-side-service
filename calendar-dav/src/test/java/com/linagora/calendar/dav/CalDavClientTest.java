@@ -226,6 +226,68 @@ public class CalDavClientTest {
     }
 
     @Test
+    void findUserCalendarEventIdsShouldReturnEmptyWhenNoEvents() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL calendarURL = CalendarURL.from(user.id());
+
+        // Trigger calendar directory activation
+        testee.export(calendarURL, MailboxSessionUtil.create(user.username())).block();
+
+        List<String> eventIds = testee.findUserCalendarEventIds(user.username(), calendarURL).collectList().block();
+
+        assertThat(eventIds).isEmpty();
+    }
+
+    @Test
+    void findUserCalendarEventIdsShouldReturnEventIds() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL calendarURL = CalendarURL.from(user.id());
+        String uid = UUID.randomUUID().toString();
+        String ics = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250102T120000Z
+            DTEND:20250102T130000Z
+            SUMMARY:Test Event
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uid);
+
+        String uid2 = UUID.randomUUID().toString();
+        String ics2 = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250102T100000Z
+            DTSTART:20250103T120000Z
+            DTEND:20250103T130000Z
+            SUMMARY:Test Event 2
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uid2);
+
+        // Trigger calendar directory activation
+        testee.export(calendarURL, MailboxSessionUtil.create(user.username())).block();
+
+        testee.importCalendar(calendarURL, uid, user.username(), ics.getBytes(StandardCharsets.UTF_8)).block();
+        testee.importCalendar(calendarURL, uid2, user.username(), ics2.getBytes(StandardCharsets.UTF_8)).block();
+        List<String> eventIds = testee.findUserCalendarEventIds(user.username(), calendarURL).collectList().block();
+
+        assertThat(eventIds).containsExactlyInAnyOrder(uid, uid2);
+    }
+
+    @Test
+    void findUserCalendarEventIdsShouldThrowOnInvalidCalendar() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL invalidCalendarURL = new CalendarURL(user.id(), new OpenPaaSId("invalid"));
+
+        assertThatThrownBy(() -> testee.findUserCalendarEventIds(user.username(), invalidCalendarURL).collectList().block())
+            .isInstanceOf(DavClientException.class);
+    }
+
+    @Test
     void deleteCalendarEventShouldSucceed() {
         OpenPaaSUser user = createOpenPaaSUser();
         CalendarURL calendarURL = CalendarURL.from(user.id());

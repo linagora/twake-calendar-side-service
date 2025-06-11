@@ -20,8 +20,6 @@ package com.linagora.calendar.dav;
 
 import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
-import java.util.Optional;
-
 import jakarta.inject.Inject;
 
 import org.apache.james.core.Username;
@@ -30,11 +28,8 @@ import org.apache.james.user.api.DeleteUserDataTaskStep;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 
-import net.fortuna.ical4j.model.Component;
-import net.fortuna.ical4j.model.Property;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 public class DavCalendarDeletionTaskStep implements DeleteUserDataTaskStep {
 
@@ -74,15 +69,8 @@ public class DavCalendarDeletionTaskStep implements DeleteUserDataTaskStep {
     }
 
     private Flux<Void> deletePrimaryCalendar(Username username, CalendarURL calendarURL) {
-        return calDavClient.export(calendarURL, username)
-            .flatMap(bytes -> Mono.fromCallable(() -> CalendarUtil.parseIcs(bytes))
-                .subscribeOn(Schedulers.boundedElastic()))
-            .flatMapMany(calendar -> Flux.fromStream(calendar.getComponents(Component.VEVENT).stream())
-                .map(component -> component.getProperty(Property.UID))
-                .filter(Optional::isPresent)
-                .map(opt -> opt.get().getValue())
-                .distinct()
-                .flatMap(eventId -> calDavClient.deleteCalendarEvent(username, calendarURL, eventId),
-                    DEFAULT_CONCURRENCY));
+        return calDavClient.findUserCalendarEventIds(username, calendarURL)
+            .flatMap(eventId -> calDavClient.deleteCalendarEvent(username, calendarURL, eventId),
+                DEFAULT_CONCURRENCY);
     }
 }
