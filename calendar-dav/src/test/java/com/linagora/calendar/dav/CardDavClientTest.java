@@ -451,7 +451,7 @@ public class CardDavClientTest {
 
     @Test
     void listContactDomainMembersShouldTriggerCreateDomainMembersAddressBookWhenNotExists() {
-        OpenPaaSDomain newDomain = mongoDBOpenPaaSDomainDAO.add(Domain.of("new-domain" + UUID.randomUUID() +".tld")).block();
+        OpenPaaSDomain newDomain = mongoDBOpenPaaSDomainDAO.add(Domain.of("new-domain" + UUID.randomUUID() + ".tld")).block();
 
         assertThatCode(() -> testee.listContactDomainMembers(newDomain.id()).block())
             .doesNotThrowAnyException();

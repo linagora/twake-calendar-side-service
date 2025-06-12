@@ -21,7 +21,6 @@ package com.linagora.calendar.dav;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
-import java.util.function.UnaryOperator;
 
 import javax.net.ssl.SSLException;
 
@@ -44,8 +43,6 @@ import com.linagora.calendar.storage.TechnicalTokenService;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
-import io.netty.handler.codec.http.HttpHeaders;
-import io.netty.handler.codec.http.HttpMethod;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.netty.ByteBufMono;
