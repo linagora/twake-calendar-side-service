@@ -323,7 +323,7 @@ public class CardDavClient extends DavClient {
     }
 
     public Mono<Void> deleteContact(Username username, OpenPaaSId userId, String addressBookId, String vcardUid) {
-        String uri = String.format("/addressbooks/%s/%s/%s.vcf?graceperiod=8000", userId.value(), addressBookId, vcardUid);
+        String uri = String.format("/addressbooks/%s/%s/%s.vcf", userId.value(), addressBookId, vcardUid);
         return client.headers(headers -> headers
                 .add(HttpHeaderNames.ACCEPT, "application/vcard+json")
                 .add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username.asString())))
