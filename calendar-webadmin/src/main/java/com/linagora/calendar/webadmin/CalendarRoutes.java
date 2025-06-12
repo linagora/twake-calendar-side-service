@@ -85,11 +85,11 @@ public class CalendarRoutes implements Routes {
 
     @Override
     public void define(Service service) {
-        definePostUsersQuota()
+        defineReindexCalendarSearchTaskRoute()
             .ifPresent(route -> service.post(BASE_PATH, route, jsonTransformer));
     }
 
-    public Optional<Route> definePostUsersQuota() {
+    public Optional<Route> defineReindexCalendarSearchTaskRoute() {
         return TaskFromRequestRegistry.builder()
             .parameterName("task")
             .registrations(taskRegistrations)
