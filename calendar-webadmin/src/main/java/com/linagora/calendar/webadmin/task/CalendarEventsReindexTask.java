@@ -32,7 +32,7 @@ public class CalendarEventsReindexTask implements Task {
     public record Details(Instant instant, long processedEventCount, long failedEventCount) implements TaskExecutionDetails.AdditionalInformation {
         @Override
         public Instant timestamp() {
-            return null;
+            return instant;
         }
     }
 
