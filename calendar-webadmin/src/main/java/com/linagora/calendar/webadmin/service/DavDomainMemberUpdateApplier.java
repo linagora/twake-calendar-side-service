@@ -20,7 +20,9 @@ package com.linagora.calendar.webadmin.service;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.james.core.MailAddress;
@@ -39,21 +41,22 @@ import reactor.core.publisher.Mono;
 
 public interface DavDomainMemberUpdateApplier {
 
-    Mono<UpdateResult> apply(DomainMemberUpdate update);
+    Mono<UpdateResult> apply(DomainMemberUpdate update, ContactUpdateContext context);
 
-    class Default implements DavDomainMemberUpdateApplier {
+    default Mono<UpdateResult> apply(DomainMemberUpdate update) {
+        return apply(update, new ContactUpdateContext());
+    }
 
-        public record ContactUpdateContext(AtomicInteger successCount,
-                                           AtomicInteger failureCount,
-                                           List<AddressBookContact> failureContacts) {
-            public ContactUpdateContext() {
+    record ContactUpdateContext(EnumMap<OperationType, OperationContext> context) {
+
+        public record OperationContext(AtomicInteger successCount,
+                                       List<AddressBookContact> failureContacts) {
+            public OperationContext() {
                 this(new AtomicInteger(0),
-                    new AtomicInteger(0),
                     Collections.synchronizedList(new ArrayList<>()));
             }
 
             public void recordFailure(AddressBookContact contact) {
-                failureCount.incrementAndGet();
                 failureContacts.add(contact);
             }
 
@@ -62,9 +65,44 @@ public interface DavDomainMemberUpdateApplier {
             }
         }
 
-        enum OperationType {
-            ADD, UPDATE, DELETE
+        public ContactUpdateContext() {
+            this(new EnumMap<>(Map.of(
+                OperationType.ADD, new OperationContext(),
+                OperationType.UPDATE, new OperationContext(),
+                OperationType.DELETE, new OperationContext()
+            )));
         }
+
+        public OperationContext get(OperationType type) {
+            return context.get(type);
+        }
+
+        public void recordSuccess(OperationType type) {
+            context.get(type).recordSuccess();
+        }
+
+        public void recordFailure(OperationType type, AddressBookContact contact) {
+            context.get(type).recordFailure(contact);
+        }
+
+        public UpdateResult toUpdateResult() {
+            OperationContext addOperationContext = this.get(OperationType.ADD);
+            OperationContext updateOperationContext = this.get(OperationType.UPDATE);
+            OperationContext deleteOperationContext = this.get(OperationType.DELETE);
+            return new UpdateResult(addOperationContext.successCount.get(),
+                ImmutableList.copyOf(addOperationContext.failureContacts),
+                updateOperationContext.successCount.get(),
+                ImmutableList.copyOf(updateOperationContext.failureContacts),
+                deleteOperationContext.successCount.get(),
+                ImmutableList.copyOf(deleteOperationContext.failureContacts));
+        }
+    }
+
+    enum OperationType {
+        ADD, UPDATE, DELETE
+    }
+
+    class Default implements DavDomainMemberUpdateApplier {
 
         private static final Logger LOGGER = LoggerFactory.getLogger(Default.class);
 
@@ -78,16 +116,12 @@ public interface DavDomainMemberUpdateApplier {
         }
 
         @Override
-        public Mono<UpdateResult> apply(DomainMemberUpdate memberUpdate) {
-            ContactUpdateContext deleteContext = new ContactUpdateContext();
-            ContactUpdateContext updateContext = new ContactUpdateContext();
-            ContactUpdateContext addContext = new ContactUpdateContext();
-
+        public Mono<UpdateResult> apply(DomainMemberUpdate memberUpdate, ContactUpdateContext context) {
             return Mono.when(
-                    processContacts(memberUpdate.deleted(), deleteContactOperation(), deleteContext, OperationType.DELETE),
-                    processContacts(memberUpdate.updated(), upsertContactOperation(), updateContext, OperationType.UPDATE),
-                    processContacts(memberUpdate.added(), upsertContactOperation(), addContext, OperationType.ADD))
-                .then(Mono.defer(() -> Mono.just(toUpdateResult(addContext, updateContext, deleteContext))));
+                    processContacts(memberUpdate.deleted(), deleteContactOperation(), context, OperationType.DELETE),
+                    processContacts(memberUpdate.updated(), upsertContactOperation(), context, OperationType.UPDATE),
+                    processContacts(memberUpdate.added(), upsertContactOperation(), context, OperationType.ADD))
+                .thenReturn(context.toUpdateResult());
         }
 
         @FunctionalInterface
@@ -111,9 +145,9 @@ public interface DavDomainMemberUpdateApplier {
             return Flux.fromIterable(contacts)
                 .flatMap(contact ->
                     operation.process(contact)
-                        .doOnSuccess(ignored -> context.recordSuccess())
+                        .doOnSuccess(ignored -> context.recordSuccess(type))
                         .onErrorResume(e -> {
-                            context.recordFailure(contact);
+                            context.recordFailure(type, contact);
                             LOGGER.error("Failed to {} contact {} for domain {}",
                                 type.name().toLowerCase(),
                                 contact.mail().map(MailAddress::asString).orElse(null),
@@ -123,18 +157,6 @@ public interface DavDomainMemberUpdateApplier {
                         }), ReactorUtils.LOW_CONCURRENCY)
                 .then();
         }
-
-        private UpdateResult toUpdateResult(ContactUpdateContext addContext,
-                                            ContactUpdateContext updateContext,
-                                            ContactUpdateContext removeContext) {
-            return new UpdateResult(addContext.successCount.get(),
-                ImmutableList.copyOf(addContext.failureContacts),
-                updateContext.successCount.get(),
-                ImmutableList.copyOf(updateContext.failureContacts),
-                removeContext.successCount.get(),
-                ImmutableList.copyOf(removeContext.failureContacts));
-        }
-
     }
 
     record UpdateResult(int addedCount,

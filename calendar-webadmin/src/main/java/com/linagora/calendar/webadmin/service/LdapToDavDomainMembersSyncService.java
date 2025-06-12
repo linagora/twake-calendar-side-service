@@ -21,6 +21,8 @@ package com.linagora.calendar.webadmin.service;
 import java.util.List;
 import java.util.function.Function;
 
+import jakarta.inject.Inject;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,6 +33,7 @@ import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.ldap.LdapDomainMember;
 import com.linagora.calendar.storage.ldap.LdapDomainMemberProvider;
+import com.linagora.calendar.webadmin.service.DavDomainMemberUpdateApplier.ContactUpdateContext;
 import com.linagora.calendar.webadmin.service.DavDomainMemberUpdateApplier.UpdateResult;
 
 import reactor.core.publisher.Mono;
@@ -44,6 +47,7 @@ public class LdapToDavDomainMembersSyncService {
     private final OpenPaaSDomainDAO openPaaSDomainDAO;
     private final Function<OpenPaaSId, DavDomainMemberUpdateApplier> davDomainMemberUpdateApplierFactory;
 
+    @Inject
     public LdapToDavDomainMembersSyncService(LdapDomainMemberProvider ldapDomainMemberProvider,
                                              CardDavClient davClient, OpenPaaSDomainDAO openPaaSDomainDAO) {
         this.ldapDomainMemberProvider = ldapDomainMemberProvider;
@@ -52,19 +56,19 @@ public class LdapToDavDomainMembersSyncService {
         this.openPaaSDomainDAO = openPaaSDomainDAO;
     }
 
-    public Mono<UpdateResult> syncDomainMembers() {
+    public Mono<UpdateResult> syncDomainMembers(ContactUpdateContext contexts) {
         return openPaaSDomainDAO.list()
-            .flatMap(this::syncDomainMembers)
+            .flatMap(openPaaSDomain -> syncDomainMembers(openPaaSDomain, contexts))
             .reduce(UpdateResult::merge);
     }
 
-    public Mono<UpdateResult> syncDomainMembers(OpenPaaSDomain openPaaSDomain) {
+    public Mono<UpdateResult> syncDomainMembers(OpenPaaSDomain openPaaSDomain, ContactUpdateContext contexts) {
         return Mono.zip(fetchLdapDomainMembers(openPaaSDomain), fetchDavDomainMembers(openPaaSDomain))
             .flatMap(tuple -> {
                 List<LdapDomainMember> ldapMembers = tuple.getT1();
                 List<AddressBookContact> davContacts = tuple.getT2();
                 DomainMemberUpdate domainMemberUpdate = DomainMemberUpdate.compute(ldapMembers, davContacts);
-                return davDomainMemberUpdateApplierFactory.apply(openPaaSDomain.id()).apply(domainMemberUpdate);
+                return davDomainMemberUpdateApplierFactory.apply(openPaaSDomain.id()).apply(domainMemberUpdate, contexts);
             })
             .doOnSubscribe(sub -> LOGGER.info("Syncing domain: {}", openPaaSDomain.domain()));
     }

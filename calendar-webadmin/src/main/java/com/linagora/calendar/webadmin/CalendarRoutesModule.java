@@ -32,7 +32,9 @@ import com.google.inject.Scopes;
 import com.google.inject.multibindings.Multibinder;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.google.inject.name.Named;
+import com.linagora.calendar.webadmin.service.LdapToDavDomainMembersSyncService;
 import com.linagora.calendar.webadmin.task.CalendarEventsReindexTaskAdditionalInformationDTO;
+import com.linagora.calendar.webadmin.task.DomainMembersSyncTaskAdditionalInformationDTO;
 
 public class CalendarRoutesModule extends AbstractModule {
     @Override
@@ -45,13 +47,22 @@ public class CalendarRoutesModule extends AbstractModule {
         bind(MemoryTaskManager.class).in(Scopes.SINGLETON);
         bind(TaskManager.class).to(MemoryTaskManager.class);
 
+        bind(LdapToDavDomainMembersSyncService.class).in(Scopes.SINGLETON);
+
         Multibinder<TaskFromRequestRegistry.TaskRegistration> taskRegistrationMultibinder = Multibinder.newSetBinder(binder(), TaskFromRequestRegistry.TaskRegistration.class);
         taskRegistrationMultibinder.addBinding().to(CalendarRoutes.CalendarEventsReindexRequestToTask.class);
+        taskRegistrationMultibinder.addBinding().to(DomainMembersAddressBookRoutes.LdapToDavDomainMembersSyncTaskRegistration.class);
     }
 
     @Named(DTOModuleInjections.WEBADMIN_DTO)
     @ProvidesIntoSet
     public AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO> calendarEventsReindexTaskAdditionalInformation() {
         return CalendarEventsReindexTaskAdditionalInformationDTO.module();
+    }
+
+    @Named(DTOModuleInjections.WEBADMIN_DTO)
+    @ProvidesIntoSet
+    public AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO> domainMembersSyncTaskAdditionalInformation() {
+        return DomainMembersSyncTaskAdditionalInformationDTO.module();
     }
 }
