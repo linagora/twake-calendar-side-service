@@ -23,7 +23,7 @@ import static com.linagora.calendar.dav.SabreDavProvisioningService.DOMAIN;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.json;
 import static net.javacrumbs.jsonunit.core.Option.IGNORING_ARRAY_ORDER;
-import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatCode;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
@@ -165,7 +165,7 @@ public class CardDavClientTest {
 
     @Test
     void createDomainMembersAddressBookShouldNotThrowWhenCreatedFirstTime() {
-        OpenPaaSDomain domain = mongoDBOpenPaaSDomainDAO.add(Domain.of("new-domain" + UUID.randomUUID() +".tld")).block();
+        OpenPaaSDomain domain = mongoDBOpenPaaSDomainDAO.add(Domain.of("new-domain" + UUID.randomUUID() + ".tld")).block();
         assertThatCode(() -> testee.createDomainMembersAddressBook(domain.id()).block())
             .doesNotThrowAnyException();
     }
@@ -548,13 +548,127 @@ public class CardDavClientTest {
 
     @Test
     void deleteContactDomainMembersShouldBeNoOpWhenAddressBookNotCreated() {
-        OpenPaaSDomain domain = mongoDBOpenPaaSDomainDAO.add(Domain.of("new-domain" + UUID.randomUUID() +".tld")).block();
+        OpenPaaSDomain domain = mongoDBOpenPaaSDomainDAO.add(Domain.of("new-domain" + UUID.randomUUID() + ".tld")).block();
         assertThatThrownBy(() -> testee.deleteContactDomainMembers(domain.id(), "any-uid").block())
             .isInstanceOf(DavClientException.class);
     }
 
+    @Test
+    void listUserAddressBookIdsShouldReturnCreatedAddressBook() {
+        String addressBookId = "testbook";
+        String name = "Test Address Book";
+        testee.createUserAddressBook(user.username(), user.id(), addressBookId, name).block();
+
+        var addressBooks = testee.listUserAddressBookIds(user.username(), user.id()).collectList().block();
+        assertThat(addressBooks)
+            .anySatisfy(addressBook -> {
+                assertThat(addressBook.value()).isEqualTo(addressBookId);
+                assertThat(addressBook.type()).isEqualTo(CardDavClient.AddressBookType.USER);
+            });
+    }
+
+    @Test
+    void listUserAddressBookIdsShouldReturnDefaultAddressBooksWhenNoCustomCreated() {
+        var addressBooks = testee.listUserAddressBookIds(user.username(), user.id()).collectList().block();
+        assertThat(addressBooks)
+            .containsExactlyInAnyOrder(new CardDavClient.AddressBook("collected", CardDavClient.AddressBookType.SYSTEM),
+                new CardDavClient.AddressBook("contacts", CardDavClient.AddressBookType.SYSTEM));
+    }
+
+    @Test
+    void deleteUserAddressBookShouldRemoveAddressBook() {
+        String addressBookId = "todelete";
+        String name = "To Delete";
+        testee.createUserAddressBook(user.username(), user.id(), addressBookId, name).block();
+        testee.deleteUserAddressBook(user.username(), user.id(), addressBookId).block();
+
+        assertThat(testee.listUserAddressBookIds(user.username(), user.id()).collectList().block())
+            .extracting(CardDavClient.AddressBook::value)
+            .doesNotContain(addressBookId);
+    }
+
+    @Test
+    void deleteUserAddressBookShouldThrowOnError() {
+        assertThatThrownBy(() -> testee.deleteUserAddressBook(user.username(), user.id(), "doesnotexist").block())
+            .isInstanceOf(DavClientException.class);
+    }
+
+    @Test
+    void deleteContactShouldRemoveSpecifiedContactWhenExists() {
+        String addressBook = "collected";
+        String vcardUid = UUID.randomUUID().toString();
+        String vcardUid2 = UUID.randomUUID().toString();
+        String vcard = """
+            BEGIN:VCARD
+            VERSION:3.0
+            UID:%s
+            FN:John
+            EMAIL:john@example.com
+            END:VCARD
+            """.formatted(vcardUid);
+        String vcard2 = """
+            BEGIN:VCARD
+            VERSION:3.0
+            UID:%s
+            FN:Jane
+            EMAIL:jane@example.com
+            END:VCARD
+            """.formatted(vcardUid2);
+        testee.createContact(user.username(), user.id(), addressBook, vcardUid, vcard.getBytes(StandardCharsets.UTF_8)).block();
+        testee.createContact(user.username(), user.id(), addressBook, vcardUid2, vcard2.getBytes(StandardCharsets.UTF_8)).block();
+        testee.deleteContact(user.username(), user.id(), addressBook, vcardUid).block();
+
+        String actual = new String(testee.exportContact(user.username(), user.id(), addressBook).block(), StandardCharsets.UTF_8);
+        assertThat(actual).doesNotContain("UID:" + vcardUid);
+    }
+
+    @Test
+    void deleteContactShouldNotAffectOtherContacts() {
+        String addressBook = "collected";
+        String vcardUid1 = UUID.randomUUID().toString();
+        String vcard1 = """
+            BEGIN:VCARD
+            VERSION:3.0
+            UID:%s
+            FN:Alice
+            EMAIL:alice@example.com
+            END:VCARD
+            """.formatted(vcardUid1);
+        String vcardUid2 = UUID.randomUUID().toString();
+        String vcard2 = """
+            BEGIN:VCARD
+            VERSION:3.0
+            UID:%s
+            FN:Bob
+            EMAIL:bob@example.com
+            END:VCARD
+            """.formatted(vcardUid2);
+        testee.createContact(user.username(), user.id(), addressBook, vcardUid1, vcard1.getBytes(StandardCharsets.UTF_8)).block();
+        testee.createContact(user.username(), user.id(), addressBook, vcardUid2, vcard2.getBytes(StandardCharsets.UTF_8)).block();
+        testee.deleteContact(user.username(), user.id(), addressBook, vcardUid1).block();
+        String actual = new String(testee.exportContact(user.username(), user.id(), addressBook).block(), StandardCharsets.UTF_8);
+
+        assertThat(actual).contains("UID:" + vcardUid2);
+    }
+
+    @Test
+    void deleteContactShouldThrowWhenContactDoesNotExist() {
+        String addressBook = "collected";
+        String vcardUid = UUID.randomUUID().toString();
+        assertThatThrownBy(() -> testee.deleteContact(user.username(), user.id(), addressBook, vcardUid).block())
+            .isInstanceOf(DavClientException.class);
+    }
+
+    @Test
+    void deleteContactShouldThrowWhenAddressBookDoesNotExist() {
+        String addressBook = "notfound";
+        String vcardUid = UUID.randomUUID().toString();
+        assertThatThrownBy(() -> testee.deleteContact(user.username(), user.id(), addressBook, vcardUid).block())
+            .isInstanceOf(DavClientException.class);
+    }
+
     private OpenPaaSDomain createNewDomainMemberAddressBook() {
-        OpenPaaSDomain newDomain = mongoDBOpenPaaSDomainDAO.add(Domain.of("new-domain" + UUID.randomUUID() +".tld")).block();
+        OpenPaaSDomain newDomain = mongoDBOpenPaaSDomainDAO.add(Domain.of("new-domain" + UUID.randomUUID() + ".tld")).block();
         testee.createDomainMembersAddressBook(newDomain.id()).block();
         return newDomain;
     }
@@ -572,3 +686,4 @@ public class CardDavClientTest {
         return new MongoDBOpenPaaSDomainDAO(database);
     }
 }
+
