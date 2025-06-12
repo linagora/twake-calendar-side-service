@@ -208,6 +208,24 @@ public class CardDavClient extends DavClient {
     }
 
     public Mono<byte[]> listContactDomainMembers(OpenPaaSId domainId) {
+        return tryListContactDomainMembers(domainId)
+            .onErrorResume(DavClientException.class, exception -> {
+                if (isNotFoundCalendarError(exception)) {
+                    return createDomainMembersAddressBook(domainId)
+                        .then(tryListContactDomainMembers(domainId))
+                        .doOnSubscribe(s
+                            -> LOGGER.info("Creating domain members address book for domain {} and retrying to list contacts", domainId.value()));
+                }
+                return Mono.error(exception);
+            });
+    }
+
+    private boolean isNotFoundCalendarError(DavClientException ex) {
+        return StringUtils.startsWithIgnoreCase(ex.getMessage(), "Unexpected status code: 404")
+            && StringUtils.containsIgnoreCase(ex.getMessage(), "Could not find node at path: calendars/");
+    }
+
+    private Mono<byte[]> tryListContactDomainMembers(OpenPaaSId domainId) {
         return authenticatedClientByToken(domainId)
             .flatMap(client -> client
                 .get()
