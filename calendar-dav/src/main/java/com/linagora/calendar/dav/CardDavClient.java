@@ -68,8 +68,8 @@ public class CardDavClient extends DavClient {
 
     private final TechnicalTokenService technicalTokenService;
 
-    protected CardDavClient(DavConfiguration config,
-                            TechnicalTokenService technicalTokenService) throws SSLException {
+    public CardDavClient(DavConfiguration config,
+                         TechnicalTokenService technicalTokenService) throws SSLException {
         super(config);
         this.technicalTokenService = technicalTokenService;
     }
@@ -109,22 +109,22 @@ public class CardDavClient extends DavClient {
                 .add(TWAKE_CALENDAR_TOKEN_HEADER_NAME, token.value())));
     }
 
-    private Mono<Void> handleContactUpsertResponse(HttpClientResponse response, ByteBufMono responseContent, OpenPaaSId userId, String addressBook, String vcardUid) {
+    private Mono<Void> handleContactUpsertResponse(HttpClientResponse response, ByteBufMono responseContent, OpenPaaSId homeBaseId, String addressBook, String vcardUid) {
         return switch (response.status().code()) {
             case 201 -> {
-                LOGGER.debug("Create successful for user {} and addressBook {} and vcardUid {}", userId.value(), addressBook, vcardUid);
+                LOGGER.debug("Create successful for homeBaseId {} and addressBook {} and vcardUid {}", homeBaseId.value(), addressBook, vcardUid);
                 yield Mono.empty();
             }
             case 204 -> {
-                LOGGER.debug("Update successful for user {} and addressBook {} and vcardUid {}", userId.value(), addressBook, vcardUid);
+                LOGGER.debug("Update successful for homeBaseId {} and addressBook {} and vcardUid {}", homeBaseId.value(), addressBook, vcardUid);
                 yield Mono.empty();
             }
             default -> responseBodyAsString(responseContent)
                 .flatMap(responseBody ->
                     Mono.error(new DavClientException("""
-                                Unexpected status code: %d when creating contact for user %s and addressBook %s and vcardUid: %s
+                                Unexpected status code: %d when creating contact for homeBaseId %s and addressBook %s and vcardUid: %s
                                 %s
-                                """.formatted(response.status().code(), userId.value(), addressBook, vcardUid, responseBody))));
+                                """.formatted(response.status().code(), homeBaseId.value(), addressBook, vcardUid, responseBody))));
         };
     }
 
