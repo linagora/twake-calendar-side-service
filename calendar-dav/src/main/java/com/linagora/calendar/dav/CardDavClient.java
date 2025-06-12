@@ -281,7 +281,7 @@ public class CardDavClient extends DavClient {
             return Streams.stream(books.elements())
                 .map(jsonNode -> {
                     String href = jsonNode.path("_links").path("self").path("href").asText();
-                    String type = jsonNode.path("type").asText("");
+                    String type = jsonNode.path("type").asText();
                     return new AddressBook(extractAddressBookId(href), AddressBookType.from(type));
                 })
                 .toList();
@@ -293,11 +293,8 @@ public class CardDavClient extends DavClient {
     private String extractAddressBookId(String href) {
         // href: /addressbooks/{userId}/{addressBookId}.json
         String[] parts = href.split("/");
-        if (parts.length >= 4) {
-            String last = parts[3];
-            if (last.endsWith(".json")) {
-                return last.substring(0, last.length() - 5);
-            }
+        if (parts.length == 4 && parts[1].equals("addressbooks") && parts[3].endsWith(".json")) {
+            return parts[3].substring(0, parts[3].length() - 5);
         }
         throw new DavClientException("Invalid address book href: " + href);
     }
@@ -326,8 +323,7 @@ public class CardDavClient extends DavClient {
     }
 
     public Mono<Void> deleteContact(Username username, OpenPaaSId userId, String addressBookId, String vcardUid) {
-        int gracePeriodMs = 8000;
-        String uri = String.format("/addressbooks/%s/%s/%s.vcf?graceperiod=8000", userId.value(), addressBookId, vcardUid, gracePeriodMs);
+        String uri = String.format("/addressbooks/%s/%s/%s.vcf?graceperiod=8000", userId.value(), addressBookId, vcardUid);
         return client.headers(headers -> headers
                 .add(HttpHeaderNames.ACCEPT, "application/vcard+json")
                 .add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username.asString())))
