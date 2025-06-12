@@ -20,7 +20,6 @@ package com.linagora.calendar.dav;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.function.UnaryOperator;
 
 import javax.net.ssl.SSLException;
 
@@ -36,8 +35,6 @@ import com.linagora.calendar.storage.TechnicalTokenService;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
-import io.netty.handler.codec.http.HttpHeaders;
-import io.netty.handler.codec.http.HttpMethod;
 import reactor.core.publisher.Mono;
 import reactor.netty.ByteBufMono;
 import reactor.netty.http.client.HttpClient;
@@ -74,11 +71,6 @@ public class CardDavClient extends DavClient {
         this.technicalTokenService = technicalTokenService;
     }
 
-    private UnaryOperator<HttpHeaders> addHeaders(Username username) {
-        return headers -> headers.add(HttpHeaderNames.ACCEPT, ACCEPT_VCARD_JSON)
-            .add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username.asString()));
-    }
-
     public Mono<Void> createContact(Username username, OpenPaaSId userId, String addressBook, String vcardUid, byte[] vcardPayload) {
         HttpClient authenticatedClient = client.headers(headers -> headers
             . add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username.asString())));
@@ -96,11 +88,27 @@ public class CardDavClient extends DavClient {
     }
 
     public Mono<byte[]> exportContact(Username username, OpenPaaSId userId, String addressBook) {
-        return client.headers(headers -> addHeaders(username).apply(headers)
-                .add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_VCARD))
-            .request(HttpMethod.GET)
-            .uri(String.format("/addressbooks/%s/%s?export", userId.value(), addressBook))
-            .responseSingle((response, byteBufMono) -> handleContactExportResponse(response, byteBufMono, userId, addressBook));
+        HttpClient authenticatedClient = client.headers(headers -> headers
+            . add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username.asString())));
+
+        return exportContactAsVcard(authenticatedClient, userId, addressBook);
+    }
+
+    private Mono<byte[]> exportContactAsVcard(HttpClient authenticatedClient, OpenPaaSId homeBaseId, String addressBook) {
+        return authenticatedClient
+            .get()
+            .uri("/addressbooks/%s/%s?export".formatted(homeBaseId.value(), addressBook))
+            .responseSingle((response, byteBufMono) -> {
+                if (response.status().code() == 200) {
+                    return byteBufMono.asByteArray();
+                }
+                return responseBodyAsString(byteBufMono)
+                    .flatMap(responseBody ->
+                        Mono.error(new DavClientException("""
+                                Unexpected status code: %d when exporting contact for homeBaseId %s and addressBook %s
+                                %s
+                                """.formatted(response.status().code(), homeBaseId.value(), addressBook, responseBody))));
+            });
     }
 
     private Mono<HttpClient> authenticatedClientByToken(OpenPaaSId domainId) {
@@ -126,19 +134,6 @@ public class CardDavClient extends DavClient {
                                 %s
                                 """.formatted(response.status().code(), homeBaseId.value(), addressBook, vcardUid, responseBody))));
         };
-    }
-
-    private Mono<byte[]> handleContactExportResponse(HttpClientResponse response, ByteBufMono responseContent, OpenPaaSId userId, String addressBook) {
-        if (response.status().code() == 200) {
-            return responseContent.asByteArray();
-        } else {
-            return responseBodyAsString(responseContent)
-                .flatMap(responseBody ->
-                    Mono.error(new DavClientException("""
-                                Unexpected status code: %d when exporting contact for user %s and addressBook %s
-                                %s
-                                """.formatted(response.status().code(), userId.value(), addressBook, responseBody))));
-        }
     }
 
     public Mono<Void> createDomainMembersAddressBook(OpenPaaSId domainId) {
@@ -227,18 +222,7 @@ public class CardDavClient extends DavClient {
 
     private Mono<byte[]> tryListContactDomainMembers(OpenPaaSId domainId) {
         return authenticatedClientByToken(domainId)
-            .flatMap(client -> client
-                .get()
-                .uri(String.format("/addressbooks/%s/%s?export", domainId.value(), DOMAIN_MEMBERS_ADDRESS_BOOK_ID))
-                .responseSingle((response, byteBufMono) -> {
-                    if (response.status().code() == 200) {
-                        return byteBufMono.asByteArray();
-                    }
-                    return responseBodyAsString(byteBufMono)
-                        .flatMap(responseBody -> Mono.error(new DavClientException(
-                            "Unexpected status code: %d when listing contacts for domain %s\n%s"
-                                .formatted(response.status().code(), domainId.value(), responseBody))));
-                }));
+            .flatMap(authenticatedClient -> exportContactAsVcard(authenticatedClient, domainId, DOMAIN_MEMBERS_ADDRESS_BOOK_ID));
     }
 
     private Mono<String> responseBodyAsString(ByteBufMono byteBufMono) {
