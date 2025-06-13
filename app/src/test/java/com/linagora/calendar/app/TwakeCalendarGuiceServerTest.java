@@ -19,6 +19,7 @@
 package com.linagora.calendar.app;
 
 import static io.restassured.RestAssured.given;
+import static io.restassured.RestAssured.with;
 import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
@@ -32,10 +33,12 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Optional;
 
 import org.apache.james.backends.rabbitmq.RabbitMQExtension;
 import org.apache.james.core.Domain;
+import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;
 import org.apache.james.jwt.introspection.IntrospectionEndpoint;
 import org.apache.james.util.Port;
@@ -50,17 +53,20 @@ import org.mockserver.model.HttpRequest;
 import org.mockserver.model.HttpResponse;
 
 import com.github.fge.lambdas.Throwing;
-import com.google.common.collect.ImmutableList;
 import com.google.inject.name.Names;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.app.modules.MemoryAutoCompleteModule;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.restapi.RestApiServerProbe;
+import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.eventsearch.CalendarEvents;
+import com.linagora.calendar.storage.eventsearch.EventFields;
 
 import io.restassured.RestAssured;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.http.ContentType;
+import jakarta.mail.internet.AddressException;
 
 class TwakeCalendarGuiceServerTest  {
     public static final Domain DOMAIN = Domain.of("linagora.com");
@@ -211,6 +217,55 @@ class TwakeCalendarGuiceServerTest  {
             .body("additionalInformation.type", is("reindex-calendar-events"))
             .body("startedDate", is(notNullValue()))
             .body("submitDate", is(notNullValue()));
+    }
+
+    @Test
+    void shouldExposeWebAdminCalendarDeleteUserDataRoutes(TwakeCalendarGuiceServer server) throws AddressException {
+        String userId = "6053022c9da5ef001f430b43";
+        String calendarId = "6053022c9da5ef001f430b43";
+        String organizerEmail = "organizer@linagora.com";
+        String attendeeEmail = "attendee@linagora.com";
+        EventFields event = EventFields.builder()
+            .uid("event-1")
+            .summary("Title 1")
+            .location("office")
+            .description("note 1")
+            .start(Instant.parse("2025-04-19T11:00:00Z"))
+            .end(Instant.parse("2025-04-19T11:30:00Z"))
+            .clazz("PUBLIC")
+            .allDay(true)
+            .isRecurrentMaster(true)
+            .organizer(EventFields.Person.of("organizer", organizerEmail))
+            .addAttendee(EventFields.Person.of("attendee", attendeeEmail))
+            .addResource(new EventFields.Person("resource 1", new MailAddress("resource1@linagora.com")))
+            .calendarURL(new CalendarURL(new OpenPaaSId(userId), new OpenPaaSId(calendarId)))
+            .dtStamp(Instant.parse("2025-04-18T07:47:48Z"))
+            .build();
+        server.getProbe(CalendarDataProbe.class).indexCalendar(USERNAME, CalendarEvents.of(event));
+
+        String taskId = with()
+            .queryParam("action", "deleteData")
+            .queryParam("fromStep", "CalendarSearchDeletionTaskStep")
+            .post("/users/" + "btellier@linagora.com")
+            .jsonPath()
+            .get("taskId");
+
+        given()
+            .basePath(TasksRoutes.BASE)
+        .when()
+            .get(taskId + "/await")
+        .then()
+            .body("type", is("DeleteUserDataTask"))
+            .body("status", is("completed"))
+            .body("additionalInformation.type", is("DeleteUserDataTask"))
+            .body("additionalInformation.username", is("btellier@linagora.com"))
+            .body("additionalInformation.status.DavCalendarDeletionTaskStep", is("SKIPPED"))
+            .body("additionalInformation.status.DavContactDeletionTaskStep", is("SKIPPED"))
+            .body("additionalInformation.status.CalendarSearchDeletionTaskStep", is("DONE"))
+            .body("additionalInformation.status.OpenPaaSUserDeletionTaskStep", is("DONE"));
+
+        assertThat(server.getProbe(CalendarDataProbe.class).searchEvents(USERNAME, "")).isEmpty();
+        assertThat(server.getProbe(CalendarDataProbe.class).getUser(USERNAME)).isNull();
     }
 
     @Test
