@@ -165,7 +165,7 @@ public class CardDavClient extends DavClient {
                 .filter(serverResponse -> !StringUtils.contains(serverResponse, "The resource you tried to create already exists"))
                 .switchIfEmpty(Mono.empty())
                 .flatMap(errorBody -> Mono.error(new DavClientException(
-                    "Failed to create address book for domain %s: %s".formatted(domainId.value(), errorBody))));
+                    "Failed to create `domain-members` address book for domain %s: %s".formatted(domainId.value(), errorBody))));
         };
     }
 
@@ -205,7 +205,7 @@ public class CardDavClient extends DavClient {
     public Mono<byte[]> listContactDomainMembers(OpenPaaSId domainId) {
         return tryListContactDomainMembers(domainId)
             .onErrorResume(DavClientException.class, exception -> {
-                if (isNotFoundCalendarError(exception)) {
+                if (isNotFoundPathResourceError(exception)) {
                     return createDomainMembersAddressBook(domainId)
                         .then(tryListContactDomainMembers(domainId))
                         .doOnSubscribe(s
@@ -215,9 +215,10 @@ public class CardDavClient extends DavClient {
             });
     }
 
-    private boolean isNotFoundCalendarError(DavClientException ex) {
+    private boolean isNotFoundPathResourceError(DavClientException ex) {
         return StringUtils.startsWithIgnoreCase(ex.getMessage(), "Unexpected status code: 404")
-            && StringUtils.containsIgnoreCase(ex.getMessage(), "Could not find node at path: calendars/");
+            && (StringUtils.containsIgnoreCase(ex.getMessage(), "Could not find node at path: calendars/")
+            || StringUtils.containsIgnoreCase(ex.getMessage(), "Could not find node at path: addressbooks/"));
     }
 
     private Mono<byte[]> tryListContactDomainMembers(OpenPaaSId domainId) {

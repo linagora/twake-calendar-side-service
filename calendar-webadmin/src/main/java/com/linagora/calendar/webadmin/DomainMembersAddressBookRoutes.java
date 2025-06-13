@@ -20,7 +20,6 @@ package com.linagora.calendar.webadmin;
 
 import static org.apache.james.webadmin.Constants.SEPARATOR;
 
-import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
@@ -38,7 +37,6 @@ import org.apache.james.webadmin.utils.ErrorResponder;
 import org.apache.james.webadmin.utils.JsonTransformer;
 import org.eclipse.jetty.http.HttpStatus;
 
-import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.webadmin.service.LdapToDavDomainMembersSyncService;
 import com.linagora.calendar.webadmin.task.LdapToDavDomainMembersSyncTask;
@@ -66,7 +64,6 @@ public class DomainMembersAddressBookRoutes implements Routes {
                 .message("domain not found: " + domain.asString())
                 .haltError();
 
-            List<OpenPaaSDomain> block = openPaaSDomainDAO.list().collectList().block();
             return extractDomain(request)
                 .map(domain -> openPaaSDomainDAO.retrieve(domain)
                     .switchIfEmpty(Mono.defer(() -> Mono.error(domainNotFoundErrorFunction.apply(domain))))

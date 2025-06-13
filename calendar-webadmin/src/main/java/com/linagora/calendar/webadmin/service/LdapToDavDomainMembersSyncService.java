@@ -58,7 +58,7 @@ public class LdapToDavDomainMembersSyncService {
 
     public Mono<UpdateResult> syncDomainMembers(ContactUpdateContext contexts) {
         return openPaaSDomainDAO.list()
-            .flatMap(openPaaSDomain -> syncDomainMembers(openPaaSDomain, contexts))
+            .concatMap(openPaaSDomain -> syncDomainMembers(openPaaSDomain, contexts))
             .reduce(UpdateResult::merge);
     }
 

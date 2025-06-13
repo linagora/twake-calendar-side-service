@@ -23,8 +23,6 @@ import com.google.inject.Scopes;
 
 public class LdapStorageModule extends AbstractModule {
 
-    public static final String LDAP_STORAGE_INJECTION = "LdapStorage";
-
     @Override
     protected void configure() {
         bind(DefaultLdapDomainMemberProvider.class).in(Scopes.SINGLETON);

@@ -29,6 +29,7 @@ import static org.mockito.Mockito.when;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 import javax.net.ssl.SSLException;
 
@@ -123,8 +124,8 @@ public class DomainMembersAddressBookRoutesTest {
 
         String taskId = given()
             .queryParam("task", "sync")
-            .post("/addressbook/domain-members")
-            .then()
+            .post(DomainMembersAddressBookRoutes.BASE_PATH)
+        .then()
             .statusCode(201)
             .extract()
             .jsonPath()
@@ -134,7 +135,7 @@ public class DomainMembersAddressBookRoutesTest {
             .basePath(TasksRoutes.BASE)
             .when()
             .get(taskId + "/await")
-            .then()
+        .then()
             .extract()
             .body()
             .asString();
@@ -167,7 +168,7 @@ public class DomainMembersAddressBookRoutesTest {
 
         String taskId = given()
             .queryParam("task", "sync")
-            .post("/addressbook/domain-members/" + openPaaSDomain.domain().asString())
+            .post(DomainMembersAddressBookRoutes.BASE_PATH + "/" + openPaaSDomain.domain().asString())
         .then()
             .statusCode(201)
             .extract()
@@ -211,7 +212,7 @@ public class DomainMembersAddressBookRoutesTest {
 
         String response = given()
             .queryParam("task", "sync")
-            .post("/addressbook/domain-members/" + nonExistentDomain)
+            .post(DomainMembersAddressBookRoutes.BASE_PATH + "/" + nonExistentDomain)
         .then()
             .statusCode(404)
             .extract()
@@ -252,7 +253,7 @@ public class DomainMembersAddressBookRoutesTest {
 
         String taskId = given()
             .queryParam("task", "sync")
-            .post("/addressbook/domain-members")
+            .post(DomainMembersAddressBookRoutes.BASE_PATH)
         .then()
             .statusCode(201)
             .extract()
@@ -275,6 +276,91 @@ public class DomainMembersAddressBookRoutesTest {
         assertThat(listContactDomainMembersAsVcard(openPaaSDomain2.id()))
             .contains("bob@example.org")
             .doesNotContain("alice@example.com");
+    }
+
+    @Test
+    void shouldSyncSingleDomainMembersToDavServerAfterTaskCompletion() {
+        LdapDomainMember ldap = ldapMember("uid123", "charlie@example.net", "Charlie", "Pham", "Charlie Pham", "333");
+        Domain domain = Domain.of("domain1" + UUID.randomUUID() + ".tld");
+        OpenPaaSDomain openPaaSDomain1 = domainDAO.add(domain).block();
+        mockLdapDomainMembersForDomain(domain, ldap);
+
+        String taskId = given()
+            .queryParam("task", "sync")
+            .post(DomainMembersAddressBookRoutes.BASE_PATH + "/" + domain.asString())
+        .then()
+            .statusCode(201)
+            .extract()
+            .jsonPath()
+            .getString("taskId");
+
+        given()
+            .basePath(TasksRoutes.BASE)
+        .when()
+            .get(taskId + "/await")
+        .then()
+            .statusCode(200)
+            .body("status", is("completed"))
+            .body("additionalInformation.addedCount", is(1));
+
+        String vcard = listContactDomainMembersAsVcard(openPaaSDomain1.id());
+        assertThat(vcard)
+            .contains("EMAIL:charlie@example.net");
+    }
+
+    @Test
+    void routeShouldReturnCorrectAddedUpdatedDeletedCounts() {
+        // Given domain and initial contact
+        Domain domain = Domain.of("domain-test-" + UUID.randomUUID() + ".tld");
+        OpenPaaSDomain openPaaSDomain = domainDAO.add(domain).block();
+
+        // Initial LDAP contact -> to be added
+        LdapDomainMember ldapInitial1 = ldapMember("uid001-1", "first11@example.com", "Nguyen", "First", "First Nguyen", "111");
+        LdapDomainMember ldapInitial2 = ldapMember("uid001-2", "first12@example.com", "Nguyen", "First", "First Nguyen", "111");
+
+        // Add initial contact
+        mockLdapDomainMembersForDomain(domain, ldapInitial1, ldapInitial2);
+
+        // First sync - should add contact
+        Supplier<String> submitTask = () -> given()
+            .queryParam("task", "sync")
+            .post("/addressbook/domain-members/" + domain.asString())
+        .then()
+            .statusCode(201)
+            .extract()
+            .jsonPath()
+            .getString("taskId");
+
+        String initialTaskId = submitTask.get();
+
+        given()
+            .basePath(TasksRoutes.BASE)
+        .when()
+            .get(initialTaskId + "/await")
+        .then()
+            .statusCode(200)
+            .body("status", is("completed"))
+            .body("additionalInformation.addedCount", is(2));
+
+        // Modify the contact for update + add one new + remove one -> simulate updated + added + deleted
+        LdapDomainMember ldapUpdated = ldapMember("uid001-1", "first11@example.com", "Nguyen", "First", "First Updated", "999"); // Updated
+        LdapDomainMember ldapAdded = ldapMember("uid002", "second@example.org", "Le", "Second", "Second Le", "222"); // New
+
+        mockLdapDomainMembersForDomain(domain, ldapUpdated, ldapAdded);
+
+        // Second sync - should detect 1 updated, 1 added, 1 deleted
+        String taskId = submitTask.get();
+
+        given()
+            .basePath(TasksRoutes.BASE)
+        .when()
+            .get(taskId + "/await")
+        .then()
+            .statusCode(200)
+            .body("status", is("completed"))
+            .body("additionalInformation.addedCount", is(1))
+            .body("additionalInformation.updatedCount", is(1))
+            .body("additionalInformation.deletedCount", is(1));
     }
 
     private void mockLdapDomainMembersForDomain(Domain domain, LdapDomainMember... members) {

@@ -121,7 +121,7 @@ public interface DavDomainMemberUpdateApplier {
                     processContacts(memberUpdate.deleted(), deleteContactOperation(), context, OperationType.DELETE),
                     processContacts(memberUpdate.updated(), upsertContactOperation(), context, OperationType.UPDATE),
                     processContacts(memberUpdate.added(), upsertContactOperation(), context, OperationType.ADD))
-                .thenReturn(context.toUpdateResult());
+                .then(Mono.defer(() -> Mono.just(context.toUpdateResult())));
         }
 
         @FunctionalInterface
