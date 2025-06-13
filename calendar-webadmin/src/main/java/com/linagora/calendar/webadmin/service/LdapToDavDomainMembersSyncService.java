@@ -29,7 +29,6 @@ import org.slf4j.LoggerFactory;
 import com.linagora.calendar.dav.AddressBookContact;
 import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.storage.OpenPaaSDomain;
-import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.ldap.LdapDomainMember;
 import com.linagora.calendar.storage.ldap.LdapDomainMemberProvider;
@@ -44,22 +43,14 @@ public class LdapToDavDomainMembersSyncService {
 
     private final LdapDomainMemberProvider ldapDomainMemberProvider;
     private final CardDavClient davClient;
-    private final OpenPaaSDomainDAO openPaaSDomainDAO;
     private final Function<OpenPaaSId, DavDomainMemberUpdateApplier> davDomainMemberUpdateApplierFactory;
 
     @Inject
     public LdapToDavDomainMembersSyncService(LdapDomainMemberProvider ldapDomainMemberProvider,
-                                             CardDavClient davClient, OpenPaaSDomainDAO openPaaSDomainDAO) {
+                                             CardDavClient davClient) {
         this.ldapDomainMemberProvider = ldapDomainMemberProvider;
         this.davClient = davClient;
         this.davDomainMemberUpdateApplierFactory = openPaaSId -> new DavDomainMemberUpdateApplier.Default(davClient, openPaaSId);
-        this.openPaaSDomainDAO = openPaaSDomainDAO;
-    }
-
-    public Mono<UpdateResult> syncDomainMembers(ContactUpdateContext contexts) {
-        return openPaaSDomainDAO.list()
-            .concatMap(openPaaSDomain -> syncDomainMembers(openPaaSDomain, contexts))
-            .reduce(UpdateResult::merge);
     }
 
     public Mono<UpdateResult> syncDomainMembers(OpenPaaSDomain openPaaSDomain, ContactUpdateContext contexts) {

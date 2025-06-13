@@ -29,10 +29,13 @@ import org.apache.james.core.MailAddress;
 import org.apache.james.task.Task;
 import org.apache.james.task.TaskExecutionDetails;
 import org.apache.james.task.TaskType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.dav.AddressBookContact;
 import com.linagora.calendar.storage.OpenPaaSDomain;
+import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.webadmin.service.DavDomainMemberUpdateApplier;
 import com.linagora.calendar.webadmin.service.LdapToDavDomainMembersSyncService;
 
@@ -76,22 +79,28 @@ public class LdapToDavDomainMembersSyncTask implements Task {
     }
 
     public static final TaskType TASK_TYPE = TaskType.of("sync-domain-members-contacts-ldap-to-dav");
+    private static final Logger LOGGER = LoggerFactory.getLogger(LdapToDavDomainMembersSyncTask.class);
 
-    public static LdapToDavDomainMembersSyncTask singleDomain(OpenPaaSDomain domain, LdapToDavDomainMembersSyncService syncService) {
-        return new LdapToDavDomainMembersSyncTask(Optional.of(domain), syncService);
+    public static LdapToDavDomainMembersSyncTask singleDomain(OpenPaaSDomain domain, LdapToDavDomainMembersSyncService syncService,
+                                                              OpenPaaSDomainDAO openPaaSDomainDAO) {
+        return new LdapToDavDomainMembersSyncTask(Optional.of(domain), syncService, openPaaSDomainDAO);
     }
 
-    public static LdapToDavDomainMembersSyncTask allDomains(LdapToDavDomainMembersSyncService syncService) {
-        return new LdapToDavDomainMembersSyncTask(Optional.empty(), syncService);
+    public static LdapToDavDomainMembersSyncTask allDomains(LdapToDavDomainMembersSyncService syncService,
+                                                            OpenPaaSDomainDAO openPaaSDomainDAO) {
+        return new LdapToDavDomainMembersSyncTask(Optional.empty(), syncService, openPaaSDomainDAO);
     }
 
     private final LdapToDavDomainMembersSyncService syncService;
     private final DavDomainMemberUpdateApplier.ContactUpdateContext context;
     private final Optional<OpenPaaSDomain> optionalDomain;
+    private final OpenPaaSDomainDAO openPaaSDomainDAO;
 
     public LdapToDavDomainMembersSyncTask(Optional<OpenPaaSDomain> optionalDomain,
-                                          LdapToDavDomainMembersSyncService syncService) {
+                                          LdapToDavDomainMembersSyncService syncService,
+                                          OpenPaaSDomainDAO openPaaSDomainDAO) {
         this.syncService = syncService;
+        this.openPaaSDomainDAO = openPaaSDomainDAO;
         this.context = new DavDomainMemberUpdateApplier.ContactUpdateContext();
         this.optionalDomain = optionalDomain;
     }
@@ -102,26 +111,36 @@ public class LdapToDavDomainMembersSyncTask implements Task {
             .map(this::singleDomainSyncProcessor)
             .orElseGet(this::allDomainsSyncProcessor);
 
-        return syncProcessor.process()
+        return syncProcessor.process().block();
+    }
+
+    @FunctionalInterface
+    interface SyncProcessor {
+        Mono<Result> process();
+    }
+
+    private SyncProcessor singleDomainSyncProcessor(OpenPaaSDomain domain) {
+        return () -> syncDomainMembers(domain);
+    }
+
+    private SyncProcessor allDomainsSyncProcessor() {
+        return () -> openPaaSDomainDAO.list()
+            .concatMap(openPaaSDomain -> syncDomainMembers(openPaaSDomain)
+                .onErrorResume(error -> {
+                    LOGGER.error("Failed to sync domain members for domain: {}", openPaaSDomain.domain(), error);
+                    return Mono.just(Result.PARTIAL);
+                }))
+            .reduce(Task.Result.COMPLETED, Task::combine);
+    }
+
+    private Mono<Result> syncDomainMembers(OpenPaaSDomain domain) {
+        return syncService.syncDomainMembers(domain, context)
             .map(updateResult -> {
                 if (updateResult.hasFailures()) {
                     return Result.PARTIAL;
                 }
                 return Result.COMPLETED;
-            }).block();
-    }
-
-    @FunctionalInterface
-    interface SyncProcessor {
-        Mono<DavDomainMemberUpdateApplier.UpdateResult> process();
-    }
-
-    private SyncProcessor singleDomainSyncProcessor(OpenPaaSDomain domain) {
-        return () -> syncService.syncDomainMembers(domain, context);
-    }
-
-    private SyncProcessor allDomainsSyncProcessor() {
-        return () -> syncService.syncDomainMembers(context);
+            });
     }
 
     @Override

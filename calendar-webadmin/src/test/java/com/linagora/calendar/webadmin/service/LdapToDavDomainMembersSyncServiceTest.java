@@ -88,7 +88,7 @@ public class LdapToDavDomainMembersSyncServiceTest {
         cardDavClient = spy(cardDavClientActual);
 
         ldapDomainMemberProvider = mock(LdapDomainMemberProvider.class);
-        testee = new LdapToDavDomainMembersSyncService(ldapDomainMemberProvider, cardDavClient, mongoDBOpenPaaSDomainDAO);
+        testee = new LdapToDavDomainMembersSyncService(ldapDomainMemberProvider, cardDavClient);
         openPaaSDomain = createNewDomainMemberAddressBook();
     }
 

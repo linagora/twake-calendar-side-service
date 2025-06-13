@@ -68,8 +68,8 @@ public class DomainMembersAddressBookRoutes implements Routes {
                 .map(domain -> openPaaSDomainDAO.retrieve(domain)
                     .switchIfEmpty(Mono.defer(() -> Mono.error(domainNotFoundErrorFunction.apply(domain))))
                     .block())
-                .map(openPaaSDomain -> LdapToDavDomainMembersSyncTask.singleDomain(openPaaSDomain, syncService))
-                .orElseGet(() -> LdapToDavDomainMembersSyncTask.allDomains(syncService));
+                .map(openPaaSDomain -> LdapToDavDomainMembersSyncTask.singleDomain(openPaaSDomain, syncService, openPaaSDomainDAO))
+                .orElseGet(() -> LdapToDavDomainMembersSyncTask.allDomains(syncService, openPaaSDomainDAO));
         }
 
         private static Optional<Domain> extractDomain(Request request) {

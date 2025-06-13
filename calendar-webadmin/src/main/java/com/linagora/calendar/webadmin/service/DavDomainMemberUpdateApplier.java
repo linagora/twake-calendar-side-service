@@ -31,7 +31,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Iterables;
 import com.linagora.calendar.dav.AddressBookContact;
 import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -165,16 +164,6 @@ public interface DavDomainMemberUpdateApplier {
                         List<AddressBookContact> updateFailureContacts,
                         int deletedCount,
                         List<AddressBookContact> deleteFailureContacts) {
-
-        public UpdateResult merge(UpdateResult other) {
-            return new UpdateResult(
-                this.addedCount + other.addedCount,
-                ImmutableList.copyOf(Iterables.concat(this.addFailureContacts, other.addFailureContacts)),
-                this.updatedCount + other.updatedCount,
-                ImmutableList.copyOf(Iterables.concat(this.updateFailureContacts, other.updateFailureContacts)),
-                this.deletedCount + other.deletedCount,
-                ImmutableList.copyOf(Iterables.concat(this.deleteFailureContacts, other.deleteFailureContacts)));
-        }
 
         public boolean hasFailures() {
             return addFailureCount() > 0 || updateFailureCount() > 0 || deleteFailureCount() > 0;

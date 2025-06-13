@@ -93,7 +93,7 @@ public class DomainMembersAddressBookRoutesTest {
         TaskManager taskManager = new MemoryTaskManager(new Hostname("foo"));
         ldapDomainMemberProvider = mock(LdapDomainMemberProvider.class);
         LdapToDavDomainMembersSyncService syncService = new LdapToDavDomainMembersSyncService(
-            ldapDomainMemberProvider, cardDavClient, domainDAO);
+            ldapDomainMemberProvider, cardDavClient);
 
         LdapToDavDomainMembersSyncTaskRegistration ldapToDavDomainMembersSyncTaskRegistration = new LdapToDavDomainMembersSyncTaskRegistration(
             syncService, domainDAO);
