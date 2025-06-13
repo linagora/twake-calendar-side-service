@@ -23,21 +23,23 @@ import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static net.javacrumbs.jsonunit.core.Option.IGNORING_ARRAY_ORDER;
-import static org.apache.james.backends.rabbitmq.RabbitMQExtension.IsolationPolicy.WEAK;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.notNullValue;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 
 import org.apache.commons.configuration2.BaseHierarchicalConfiguration;
 import org.apache.commons.configuration2.HierarchicalConfiguration;
 import org.apache.commons.configuration2.plist.PropertyListConfiguration;
 import org.apache.commons.configuration2.tree.ImmutableNode;
-import org.apache.james.backends.rabbitmq.RabbitMQExtension;
 import org.apache.james.core.Domain;
 import org.apache.james.server.core.configuration.ConfigurationProvider;
 import org.apache.james.user.ldap.DockerLdapSingleton;
 import org.apache.james.user.ldap.LdapGenericContainer;
 import org.apache.james.util.Port;
 import org.apache.james.utils.WebAdminGuiceProbe;
+import org.apache.james.webadmin.routes.TasksRoutes;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
@@ -45,6 +47,10 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.google.inject.Module;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
+import com.linagora.calendar.dav.DavModuleTestHelper;
+import com.linagora.calendar.dav.DockerSabreDavSetup;
+import com.linagora.calendar.dav.SabreDavExtension;
+import com.linagora.calendar.storage.TechnicalTokenService;
 
 import io.restassured.RestAssured;
 import io.restassured.builder.RequestSpecBuilder;
@@ -74,10 +80,10 @@ class LdapTest {
         configuration.addProperty("enableVirtualHosting", true);
         return configuration;
     }
+
     @RegisterExtension
     @Order(1)
-    private static RabbitMQExtension rabbitMQExtension = RabbitMQExtension.singletonRabbitMQ()
-        .isolationPolicy(WEAK);
+    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
 
     @RegisterExtension
     @Order(2)
@@ -85,9 +91,12 @@ class LdapTest {
         TwakeCalendarConfiguration.builder()
             .configurationFromClasspath()
             .userChoice(TwakeCalendarConfiguration.UserChoice.LDAP)
-            .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY),
-        AppTestHelper.BY_PASS_MODULE.apply(rabbitMQExtension),
-        ldapModule());
+            .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB),
+        AppTestHelper.OIDC_BY_PASS_MODULE,
+        DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
+        ldapModule(),
+        binder -> binder.bind(TechnicalTokenService.class)
+            .toInstance(new TechnicalTokenService.Impl("technicalTokenSecret", Duration.ofSeconds(2000))));
 
     @BeforeEach
     void setUp(TwakeCalendarGuiceServer server) {
@@ -152,5 +161,51 @@ class LdapTest {
 
         assertThatJson(body).isEqualTo("""
             [{"username":"james-user@james.org"}]""");
+    }
+
+    @Test
+    void shouldExposeAllDomainMembersContactsSyncTask() {
+        String taskId = given()
+            .queryParam("task", "sync")
+        .when()
+            .post("/addressbook/domain-members")
+            .jsonPath()
+            .get("taskId");;
+
+        given()
+            .basePath(TasksRoutes.BASE)
+        .when()
+            .get(taskId + "/await")
+        .then()
+            .body("status", is("completed"))
+            .body("taskId", is(taskId))
+            .body("type", is("sync-domain-members-contacts-ldap-to-dav"))
+            .body("additionalInformation.addedCount", is(notNullValue()))
+            .body("additionalInformation.updatedCount", is(notNullValue()))
+            .body("additionalInformation.deletedCount", is(notNullValue()));
+    }
+
+    @Test
+    void shouldExposeSingleDomainMembersContactsSyncTask() {
+        String taskId = given()
+            .queryParam("task", "sync")
+            .queryParam("targetDomain", DOMAIN.name())
+        .when()
+            .post("/addressbook/domain-members/" + DOMAIN.name())
+            .jsonPath()
+            .get("taskId");
+
+        given()
+            .basePath(TasksRoutes.BASE)
+        .when()
+            .get(taskId + "/await")
+        .then()
+            .body("status", is("completed"))
+            .body("taskId", is(taskId))
+            .body("type", is("sync-domain-members-contacts-ldap-to-dav"))
+            .body("additionalInformation.domain", is(DOMAIN.asString()))
+            .body("additionalInformation.addedCount", is(notNullValue()))
+            .body("additionalInformation.updatedCount", is(notNullValue()))
+            .body("additionalInformation.deletedCount", is(notNullValue()));
     }
 }

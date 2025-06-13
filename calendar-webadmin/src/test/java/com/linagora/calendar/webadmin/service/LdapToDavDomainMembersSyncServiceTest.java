@@ -57,6 +57,7 @@ import com.linagora.calendar.storage.ldap.LdapDomainMemberProvider;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.webadmin.service.DavDomainMemberUpdateApplier.UpdateResult;
 import com.mongodb.reactivestreams.client.MongoClients;
+import com.linagora.calendar.webadmin.service.DavDomainMemberUpdateApplier.ContactUpdateContext;
 
 import reactor.core.publisher.Flux;
 
@@ -87,7 +88,7 @@ public class LdapToDavDomainMembersSyncServiceTest {
         cardDavClient = spy(cardDavClientActual);
 
         ldapDomainMemberProvider = mock(LdapDomainMemberProvider.class);
-        testee = new LdapToDavDomainMembersSyncService(ldapDomainMemberProvider, cardDavClient, mongoDBOpenPaaSDomainDAO);
+        testee = new LdapToDavDomainMembersSyncService(ldapDomainMemberProvider, cardDavClient);
         openPaaSDomain = createNewDomainMemberAddressBook();
     }
 
@@ -103,7 +104,7 @@ public class LdapToDavDomainMembersSyncServiceTest {
         when(ldapDomainMemberProvider.domainMembers(openPaaSDomain.domain()))
             .thenReturn(Flux.just(ldap));
 
-        UpdateResult updateResult = testee.syncDomainMembers(openPaaSDomain).block();
+        UpdateResult updateResult = testee.syncDomainMembers(openPaaSDomain, new ContactUpdateContext()).block();
 
         assertThat(updateResult.addedCount()).isEqualTo(1);
         assertThat(listContactDomainMembersAsVcard(openPaaSDomain))
@@ -121,7 +122,7 @@ public class LdapToDavDomainMembersSyncServiceTest {
         LdapDomainMember ldap = ldapMember("uid123", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "123");
         preloadDavData(ldap);
 
-        UpdateResult updateResult = testee.syncDomainMembers(openPaaSDomain).block();
+        UpdateResult updateResult = testee.syncDomainMembers(openPaaSDomain, new ContactUpdateContext()).block();
 
         // Assert no changes in the second sync
         assertSoftly(softly -> {
@@ -143,7 +144,7 @@ public class LdapToDavDomainMembersSyncServiceTest {
         LdapDomainMember updated = ldapMember("uid123", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "456");
         when(ldapDomainMemberProvider.domainMembers(openPaaSDomain.domain()))
             .thenReturn(Flux.just(updated));
-        UpdateResult result = testee.syncDomainMembers(openPaaSDomain).block();
+        UpdateResult result = testee.syncDomainMembers(openPaaSDomain, new ContactUpdateContext()).block();
 
         assertThat(result.updatedCount()).isEqualTo(1);
 
@@ -161,7 +162,7 @@ public class LdapToDavDomainMembersSyncServiceTest {
 
         when(ldapDomainMemberProvider.domainMembers(openPaaSDomain.domain()))
             .thenReturn(Flux.empty());
-        UpdateResult result = testee.syncDomainMembers(openPaaSDomain).block();
+        UpdateResult result = testee.syncDomainMembers(openPaaSDomain, new ContactUpdateContext()).block();
 
         assertThat(result.deletedCount()).isEqualTo(1);
         verify(cardDavClient).deleteContactDomainMembers(eq(openPaaSDomain.id()), any());
@@ -188,7 +189,7 @@ public class LdapToDavDomainMembersSyncServiceTest {
             .thenReturn(Flux.just(updated1, updated2, added1, added2));
 
         // Step 3: First sync — expect 2 add, 2 update, 1 delete
-        UpdateResult firstResult = testee.syncDomainMembers(openPaaSDomain).block();
+        UpdateResult firstResult = testee.syncDomainMembers(openPaaSDomain, new ContactUpdateContext()).block();
         assertSoftly(softly -> {
             softly.assertThat(firstResult.addedCount()).isEqualTo(2);
             softly.assertThat(firstResult.updatedCount()).isEqualTo(2);
@@ -198,7 +199,7 @@ public class LdapToDavDomainMembersSyncServiceTest {
 
         // Step 4: Second sync — no changes expected
         clearInvocations(cardDavClient);
-        UpdateResult secondResult = testee.syncDomainMembers(openPaaSDomain).block();
+        UpdateResult secondResult = testee.syncDomainMembers(openPaaSDomain, new ContactUpdateContext()).block();
 
         assertSoftly(softly -> {
             softly.assertThat(secondResult.addedCount()).isEqualTo(0);
@@ -272,7 +273,7 @@ public class LdapToDavDomainMembersSyncServiceTest {
     private void preloadDavData(LdapDomainMember... members) {
         when(ldapDomainMemberProvider.domainMembers(openPaaSDomain.domain()))
             .thenReturn(Flux.fromArray(members));
-        testee.syncDomainMembers(openPaaSDomain).block();
+        testee.syncDomainMembers(openPaaSDomain, new ContactUpdateContext()).block();
         clearInvocations(cardDavClient); // Reset interaction tracking
     }
 
