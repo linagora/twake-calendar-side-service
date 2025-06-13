@@ -252,9 +252,9 @@ class TwakeCalendarGuiceServerTest  {
 
         given()
             .basePath(TasksRoutes.BASE)
-            .when()
+        .when()
             .get(taskId + "/await")
-            .then()
+        .then()
             .body("type", is("DeleteUserDataTask"))
             .body("status", is("completed"))
             .body("additionalInformation.type", is("DeleteUserDataTask"))
