@@ -20,16 +20,11 @@ package com.linagora.calendar.app.modules;
 
 import org.apache.james.server.task.json.dto.AdditionalInformationDTO;
 import org.apache.james.server.task.json.dto.AdditionalInformationDTOModule;
-import org.apache.james.server.task.json.dto.TaskDTO;
-import org.apache.james.server.task.json.dto.TaskDTOModule;
-import org.apache.james.task.Task;
 import org.apache.james.task.TaskExecutionDetails;
 import org.apache.james.webadmin.Routes;
 import org.apache.james.webadmin.dto.DTOModuleInjections;
 import org.apache.james.webadmin.routes.DeleteUserDataRoutes;
-import org.apache.james.webadmin.service.DeleteUserDataService;
 import org.apache.james.webadmin.service.DeleteUserDataTaskAdditionalInformationDTO;
-import org.apache.james.webadmin.service.DeleteUserDataTaskDTO;
 
 import com.google.inject.AbstractModule;
 import com.google.inject.multibindings.Multibinder;
@@ -41,11 +36,6 @@ public class DeleteUserDataRoutesModule extends AbstractModule {
     protected void configure() {
         Multibinder<Routes> routesMultibinder = Multibinder.newSetBinder(binder(), Routes.class);
         routesMultibinder.addBinding().to(DeleteUserDataRoutes.class);
-    }
-
-    @ProvidesIntoSet
-    public TaskDTOModule<? extends Task, ? extends TaskDTO> deleteUserDataTaskDTO(DeleteUserDataService service) {
-        return DeleteUserDataTaskDTO.module(service);
     }
 
     @ProvidesIntoSet
