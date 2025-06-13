@@ -51,6 +51,7 @@ import com.linagora.calendar.storage.configuration.ConfigurationEntry;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
 import com.linagora.calendar.storage.eventsearch.CalendarEvents;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
+import com.linagora.calendar.storage.eventsearch.EventFields;
 import com.linagora.calendar.storage.eventsearch.EventSearchQuery;
 import com.linagora.calendar.storage.model.Upload;
 import com.linagora.calendar.storage.model.UploadedFile;
@@ -178,5 +179,17 @@ public class CalendarDataProbe implements GuiceProbe {
                     Optional.empty(), Optional.empty(),
                     MAX_LIMIT, 0))
             .collectList().block().isEmpty());
+    }
+
+    public List<EventFields> searchEvents(Username username, String query) {
+        AccountId accountId = AccountId.fromUsername(username);
+        return calendarSearchService.search(accountId, simpleQuery(query))
+            .collectList().block();
+    }
+
+    private EventSearchQuery simpleQuery(String query) {
+        return new EventSearchQuery(query, Optional.empty(),
+            Optional.empty(), Optional.empty(),
+            MAX_LIMIT, 0);
     }
 }

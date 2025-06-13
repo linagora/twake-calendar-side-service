@@ -51,6 +51,7 @@ import com.google.inject.multibindings.Multibinder;
 import com.google.inject.name.Names;
 import com.google.inject.util.Modules;
 import com.linagora.calendar.amqp.EventIndexerModule;
+import com.linagora.calendar.app.modules.DeleteUserDataRoutesModule;
 import com.linagora.calendar.app.modules.MemoryAutoCompleteModule;
 import com.linagora.calendar.app.modules.MemoryUserModule;
 import com.linagora.calendar.app.modules.OpenSearchClientModule;
@@ -77,6 +78,7 @@ public class TwakeCalendarMain {
         new WebAdminServerModule(),
         new NoJwtModule(),
         new CalendarRoutesModule(),
+        new DeleteUserDataRoutesModule(),
         binder -> Multibinder.newSetBinder(binder, Routes.class).addBinding().to(MetricsRoutes.class),
         binder -> Multibinder.newSetBinder(binder, Routes.class).addBinding().to(DomainsRoutes.class),
         binder -> Multibinder.newSetBinder(binder, Routes.class).addBinding().to(UserRoutes.class),

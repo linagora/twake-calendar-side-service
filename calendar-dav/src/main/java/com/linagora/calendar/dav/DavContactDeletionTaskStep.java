@@ -50,7 +50,7 @@ public class DavContactDeletionTaskStep implements DeleteUserDataTaskStep {
 
     @Override
     public int priority() {
-        return 1;
+        return 2;
     }
 
     @Override

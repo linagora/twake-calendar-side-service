@@ -35,9 +35,9 @@ import com.linagora.calendar.storage.TechnicalTokenService;
 public class DavModule extends AbstractModule {
     @Override
     protected void configure() {
-        Multibinder.newSetBinder(binder(), DeleteUserDataTaskStep.class)
-            .addBinding()
-            .to(DavCalendarDeletionTaskStep.class);
+        Multibinder<DeleteUserDataTaskStep> multibinder = Multibinder.newSetBinder(binder(), DeleteUserDataTaskStep.class);
+        multibinder.addBinding().to(DavCalendarDeletionTaskStep.class);
+        multibinder.addBinding().to(DavContactDeletionTaskStep.class);
     }
 
     @Singleton

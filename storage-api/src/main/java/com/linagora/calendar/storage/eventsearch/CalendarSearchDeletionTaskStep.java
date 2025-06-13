@@ -37,12 +37,12 @@ public class CalendarSearchDeletionTaskStep implements DeleteUserDataTaskStep {
 
     @Override
     public StepName name() {
-        return new StepName("CalendarSearchUserDeletionTaskStep");
+        return new StepName("CalendarSearchDeletionTaskStep");
     }
 
     @Override
     public int priority() {
-        return 1;
+        return 10;
     }
 
     @Override
