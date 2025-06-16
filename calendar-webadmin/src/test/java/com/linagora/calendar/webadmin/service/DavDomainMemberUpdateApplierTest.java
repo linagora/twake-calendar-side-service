@@ -96,11 +96,7 @@ public class DavDomainMemberUpdateApplierTest {
         });
 
         assertThat(listContactDomainMembersAsVcard(openPaaSDomain))
-            .containsIgnoringNewLines("""
-                UID:uid-99
-                FN:anna@example.com
-                N:Smith;Anna;;;
-                EMAIL:anna@example.com""".trim());
+            .contains("UID:uid-99", "FN:Anna Smith", "N:Smith;Anna;;;", "EMAIL:anna@example.com");
     }
 
     @Test

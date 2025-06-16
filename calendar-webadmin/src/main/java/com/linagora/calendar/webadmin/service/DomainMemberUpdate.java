@@ -72,12 +72,14 @@ public record DomainMemberUpdate(Set<AddressBookContact> added,
         return new DomainMemberUpdate(added, deleted, updated);
     }
 
-    private static boolean isChanged(LdapDomainMember ldap, AddressBookContact dav) {
-        return !Objects.equals(ldap.givenName(), dav.givenName())
-            || !Objects.equals(Optional.ofNullable(ldap.sn()), dav.familyName())
-            || !Objects.equals(ldap.displayName(), dav.displayName())
-            || !Objects.equals(ldap.mail(), dav.mail())
-            || !Objects.equals(ldap.telephoneNumber(), dav.telephoneNumber());
+    private static boolean isChanged(LdapDomainMember ldapDomainMember, AddressBookContact davContact) {
+        AddressBookContact ldapAsContact = toAddressBookContact(ldapDomainMember, davContact);
+
+        return !Objects.equals(ldapAsContact.givenName(), davContact.givenName())
+            || !Objects.equals(ldapAsContact.familyName(), davContact.familyName())
+            || !Objects.equals(ldapAsContact.mail(), davContact.mail())
+            || !Objects.equals(ldapAsContact.telephoneNumber(), davContact.telephoneNumber())
+            || (ldapAsContact.displayName().isPresent() && !Objects.equals(ldapAsContact.displayName(), davContact.displayName()));
     }
 
     private static AddressBookContact toAddressBookContact(LdapDomainMember ldap) {

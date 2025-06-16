@@ -35,6 +35,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import javax.net.ssl.SSLException;
 
@@ -44,6 +45,9 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.dav.AddressBookContact;
@@ -55,9 +59,9 @@ import com.linagora.calendar.storage.TechnicalTokenService;
 import com.linagora.calendar.storage.ldap.LdapDomainMember;
 import com.linagora.calendar.storage.ldap.LdapDomainMemberProvider;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
+import com.linagora.calendar.webadmin.service.DavDomainMemberUpdateApplier.ContactUpdateContext;
 import com.linagora.calendar.webadmin.service.DavDomainMemberUpdateApplier.UpdateResult;
 import com.mongodb.reactivestreams.client.MongoClients;
-import com.linagora.calendar.webadmin.service.DavDomainMemberUpdateApplier.ContactUpdateContext;
 
 import reactor.core.publisher.Flux;
 
@@ -116,10 +120,63 @@ public class LdapToDavDomainMembersSyncServiceTest {
                 TEL;TYPE=work:123""".trim());
     }
 
+    static Stream<Arguments> ldapSample() {
+        LdapDomainMember fullFields = LdapDomainMember.builder()
+            .uid(UUID.randomUUID().toString())
+            .cn("cn1")
+            .sn("sn1")
+            .givenName("givenName2")
+            .mail(Throwing.supplier(() -> new MailAddress("mail@domain.tld")).get())
+            .telephoneNumber("123")
+            .displayName("full name")
+            .build();
 
-    @Test
-    void shouldNotUpdateDavWhenLdapDataIsUnchanged() {
-        LdapDomainMember ldap = ldapMember("uid123", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "123");
+        LdapDomainMember absentDisplayName = LdapDomainMember.builder()
+            .uid(UUID.randomUUID().toString())
+            .cn("cn1")
+            .sn("sn1")
+            .givenName("givenName2")
+            .mail(Throwing.supplier(() -> new MailAddress("mail@domain.tld")).get())
+            .telephoneNumber("123")
+            .build();
+
+        LdapDomainMember absentGivenName = LdapDomainMember.builder()
+            .uid(UUID.randomUUID().toString())
+            .cn("cn1")
+            .sn("sn1")
+            .mail(Throwing.supplier(() -> new MailAddress("mail@domain.tld")).get())
+            .telephoneNumber("123")
+            .displayName("full name")
+            .build();
+
+        LdapDomainMember absentGivenNameAndDisplayName = LdapDomainMember.builder()
+            .uid(UUID.randomUUID().toString())
+            .cn("cn1")
+            .sn("sn1")
+            .mail(Throwing.supplier(() -> new MailAddress("mail@domain.tld")).get())
+            .telephoneNumber("123")
+            .build();
+
+        LdapDomainMember absentTelephone = LdapDomainMember.builder()
+            .uid(UUID.randomUUID().toString())
+            .cn("cn1")
+            .sn("sn1")
+            .givenName("givenName2")
+            .mail(Throwing.supplier(() -> new MailAddress("mail@domain.tld")).get())
+            .displayName("full name")
+            .build();
+
+        return Stream.of(
+            Arguments.of(fullFields, "full fields"),
+            Arguments.of(absentDisplayName, "absent display name"),
+            Arguments.of(absentGivenName, "absent given name"),
+            Arguments.of(absentGivenNameAndDisplayName, "absent given name and display name"),
+            Arguments.of(absentTelephone, "absent telephone number"));
+    }
+
+    @ParameterizedTest(name = "{index} => {1}")
+    @MethodSource("ldapSample")
+    void shouldNotUpdateDavWhenLdapDataIsUnchanged(LdapDomainMember ldap, String ignored) {
         preloadDavData(ldap);
 
         UpdateResult updateResult = testee.syncDomainMembers(openPaaSDomain, new ContactUpdateContext()).block();
