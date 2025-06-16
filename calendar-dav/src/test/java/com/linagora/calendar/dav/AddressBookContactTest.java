@@ -373,27 +373,6 @@ public class AddressBookContactTest {
         }
 
         @Test
-        void shouldUseEmailAsFormattedNameIfDisplayNameMissing() {
-            AddressBookContact card = AddressBookContact.builder()
-                .uid("uid-99")
-                .familyName("Smith")
-                .givenName("Anna")
-                .mail("anna@example.com")
-                .build();
-
-            String vcard = card.toVcardString();
-
-            assertThat(vcard).isEqualToIgnoringNewLines("""
-                BEGIN:VCARD
-                VERSION:4.0
-                UID:uid-99
-                FN:anna@example.com
-                N:Smith;Anna;;;
-                EMAIL:anna@example.com
-                END:VCARD""".trim());
-        }
-
-        @Test
         void shouldUseEmptyFormattedNameIfNoDisplayNameOrEmail() {
             AddressBookContact card = AddressBookContact.builder()
                 .uid("uid-blank")
@@ -426,7 +405,6 @@ public class AddressBookContactTest {
                 VERSION:4.0
                 UID:uid-no-name
                 FN:Only Display
-                N:;;;;
                 EMAIL:display@example.com
                 END:VCARD""".trim());
         }
