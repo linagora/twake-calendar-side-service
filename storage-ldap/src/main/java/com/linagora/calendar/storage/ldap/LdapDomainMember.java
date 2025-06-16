@@ -56,7 +56,7 @@ public record LdapDomainMember(Optional<String> uid,
         }
 
         public Builder givenName(String givenName) {
-            this.givenName = Optional.of(givenName);
+            this.givenName = Optional.ofNullable(givenName);
             return this;
         }
 
@@ -66,12 +66,12 @@ public record LdapDomainMember(Optional<String> uid,
         }
 
         public Builder telephoneNumber(String telephoneNumber) {
-            this.telephoneNumber = Optional.of(telephoneNumber);
+            this.telephoneNumber = Optional.ofNullable(telephoneNumber);
             return this;
         }
 
         public Builder displayName(String displayName) {
-            this.displayName = Optional.of(displayName);
+            this.displayName = Optional.ofNullable(displayName);
             return this;
         }
 

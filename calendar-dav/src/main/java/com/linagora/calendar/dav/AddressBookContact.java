@@ -203,14 +203,18 @@ public record AddressBookContact(Optional<String> uid,
         VCard vcard = new VCard();
         vcard.setUid(new Uid(vcardUid()));
 
-        String formattedName = StringUtils.defaultIfBlank(this.displayName().orElse(null),
-            this.mail().map(MailAddress::asString).orElse(null));
-        vcard.setFormattedName(StringUtils.trimToNull(formattedName));
+        this.displayName()
+            .map(StringUtils::trimToNull)
+            .ifPresent(vcard::setFormattedName);
 
-        StructuredName name = new StructuredName();
-        this.familyName().ifPresent(fn -> name.setFamily(StringUtils.trimToNull(fn)));
-        this.givenName().ifPresent(given -> name.setGiven(StringUtils.trimToNull(given)));
-        vcard.setStructuredName(name);
+        Optional<String> familyName = this.familyName().map(StringUtils::trimToNull);
+        Optional<String> givenName = this.givenName().map(StringUtils::trimToNull);
+        if (familyName.isPresent() || givenName.isPresent()) {
+            StructuredName name = new StructuredName();
+            familyName.ifPresent(name::setFamily);
+            givenName.ifPresent(name::setGiven);
+            vcard.setStructuredName(name);
+        }
 
         this.mail().map(MailAddress::asString)
             .ifPresent(email -> vcard.addEmail(new Email(email)));
