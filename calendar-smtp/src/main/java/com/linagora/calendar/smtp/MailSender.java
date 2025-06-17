@@ -93,7 +93,7 @@ public interface MailSender {
                     if (configuration.startTlsEnabled()) {
                         authClient.execTLS();
                         if (!SMTPReply.isPositiveCompletion(authClient.getReplyCode())) {
-                            throw new RuntimeException("'starttls' failed: " + authClient.getReplyString());
+                            throw new SmtpSendingFailedException("'starttls' failed: " + authClient.getReplyString());
                         }
                     }
                     // AUTH
@@ -101,7 +101,7 @@ public interface MailSender {
                         String password = configuration.password().get();
                         authClient.auth(AuthenticatingSMTPClient.AUTH_METHOD.PLAIN, username.asString(), password);
                         if (!SMTPReply.isPositiveCompletion(authClient.getReplyCode())) {
-                            throw new RuntimeException("'auth' failed: " + authClient.getReplyString());
+                            throw new SmtpSendingFailedException("'auth' failed: " + authClient.getReplyString());
                         }
                     }));
                     return new MailSender.Default(authClient, configuration);
@@ -140,7 +140,7 @@ public interface MailSender {
                     }
                     boolean reset = client.reset();
                     if (!reset) {
-                        throw new RuntimeException("Failure to reset SMTP client: " + client.getReplyString());
+                        throw new SmtpSendingFailedException("Failure to reset SMTP client: " + client.getReplyString());
                     }
                 }));
                 disconnect();
@@ -162,19 +162,19 @@ public interface MailSender {
         private void sendMailTransaction(Mail mail) throws IOException {
             int heloCode = client.helo(configuration.ehlo());
             if (!SMTPReply.isPositiveCompletion(heloCode)) {
-                throw new RuntimeException("'helo' failed: " + client.getReplyString());
+                throw new SmtpSendingFailedException("'helo' failed: " + client.getReplyString());
             }
 
             client.setSender(mail.sender().asString(""));
             if (!SMTPReply.isPositiveCompletion(client.getReplyCode())) {
-                throw new RuntimeException("'mail from' failed: " + client.getReplyString());
+                throw new SmtpSendingFailedException("'mail from' failed: " + client.getReplyString());
             }
 
             addRecipients(mail);
             sendMessageData(mail);
 
             if (!client.completePendingCommand()) {
-                throw new RuntimeException("'data' command failed: " + client.getReplyString());
+                throw new SmtpSendingFailedException("'data' command failed: " + client.getReplyString());
             }
         }
 
@@ -199,7 +199,7 @@ public interface MailSender {
                 }
             }
             if (successfullRecipientCount == 0) {
-                throw new RuntimeException("All 'rcpt to' commands failed: " + client.getReplyString());
+                throw new SmtpSendingFailedException("All 'rcpt to' commands failed: " + client.getReplyString());
             }
         }
     }

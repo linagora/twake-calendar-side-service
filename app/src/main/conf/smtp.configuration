@@ -1,9 +1,0 @@
-smtp.host=localhost
-smtp.port=25
-smtp.helo=localhost
-smtp.ssl.enabled=false
-smtp.ssl.trustAllCerts=false
-smtp.starttls.enabled=false
-# Uncomment and set these if authentication is needed
-# smtp.username=your_username
-# smtp.password=your_password

@@ -20,6 +20,7 @@ package com.linagora.calendar.smtp;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.SoftAssertions.assertSoftly;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
@@ -35,6 +36,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableList;
 
 import io.restassured.RestAssured;
@@ -82,10 +84,12 @@ class MailSenderTest {
         mailSender.send(mail).block();
         JsonPath response = RestAssured.get("/smtpMails").jsonPath();
 
-        assertThat(response.getList("")).hasSize(1);
-        assertThat(response.getString("[0].from")).isEqualTo("sender@localhost");
-        assertThat(response.getString("[0].recipients[0].address")).isEqualTo("recipient@localhost");
-        assertThat(response.getString("[0].message")).containsIgnoringNewLines(rawMessage);
+        assertSoftly(Throwing.consumer(softly -> {
+            assertThat(response.getList("")).hasSize(1);
+            assertThat(response.getString("[0].from")).isEqualTo("sender@localhost");
+            assertThat(response.getString("[0].recipients[0].address")).isEqualTo("recipient@localhost");
+            assertThat(response.getString("[0].message")).containsIgnoringNewLines(rawMessage);
+        }));
     }
 
     @Test
@@ -102,8 +106,10 @@ class MailSenderTest {
         mailSender.send(mail).block();
         JsonPath response = RestAssured.get("/smtpMails").jsonPath();
 
-        assertThat(response.getList("")).hasSize(1);
-        assertThat(response.getList("[0].recipients.address")).containsExactlyInAnyOrder("recipient1@localhost", "recipient2@localhost");
+        assertSoftly(Throwing.consumer(softly -> {
+            assertThat(response.getList("")).hasSize(1);
+            assertThat(response.getList("[0].recipients.address")).containsExactlyInAnyOrder("recipient1@localhost", "recipient2@localhost");
+        }));
     }
 
     @Test
@@ -122,7 +128,7 @@ class MailSenderTest {
         RestAssured.given().body(behaviorJson).contentType("application/json").put("/smtpBehaviors");
 
         assertThatThrownBy(() -> mailSender.send(mail).block())
-            .isInstanceOf(RuntimeException.class)
+            .isInstanceOf(SmtpSendingFailedException.class)
             .hasMessageContaining("All 'rcpt to' commands failed");
     }
 
@@ -142,7 +148,7 @@ class MailSenderTest {
         RestAssured.given().body(behaviorJson).contentType("application/json").put("/smtpBehaviors");
 
         assertThatThrownBy(() -> mailSender.send(mail).block())
-            .isInstanceOf(RuntimeException.class)
+            .isInstanceOf(SmtpSendingFailedException.class)
             .hasMessageContaining("'mail from' failed");
     }
 
@@ -162,7 +168,7 @@ class MailSenderTest {
         RestAssured.given().body(behaviorJson).contentType("application/json").put("/smtpBehaviors");
 
         assertThatThrownBy(() -> mailSender.send(mail).block())
-            .isInstanceOf(RuntimeException.class)
+            .isInstanceOf(SmtpSendingFailedException.class)
             .hasMessageContaining("'data' command failed");
     }
 
@@ -178,13 +184,15 @@ class MailSenderTest {
         mailSender.send(java.util.List.of(mail1, mail2)).block();
         JsonPath response = RestAssured.get("/smtpMails").jsonPath();
 
-        assertThat(response.getList("")).hasSize(2);
-        assertThat(response.getString("[0].from")).isEqualTo("sender1@localhost");
-        assertThat(response.getString("[0].recipients[0].address")).isEqualTo("recipient1@localhost");
-        assertThat(response.getString("[0].message")).containsIgnoringNewLines(rawMessage1);
-        assertThat(response.getString("[1].from")).isEqualTo("sender2@localhost");
-        assertThat(response.getString("[1].recipients[0].address")).isEqualTo("recipient2@localhost");
-        assertThat(response.getString("[1].message")).containsIgnoringNewLines(rawMessage2);
+        assertSoftly(Throwing.consumer(softly -> {
+            assertThat(response.getList("")).hasSize(2);
+            assertThat(response.getString("[0].from")).isEqualTo("sender1@localhost");
+            assertThat(response.getString("[0].recipients[0].address")).isEqualTo("recipient1@localhost");
+            assertThat(response.getString("[0].message")).containsIgnoringNewLines(rawMessage1);
+            assertThat(response.getString("[1].from")).isEqualTo("sender2@localhost");
+            assertThat(response.getString("[1].recipients[0].address")).isEqualTo("recipient2@localhost");
+            assertThat(response.getString("[1].message")).containsIgnoringNewLines(rawMessage2);
+        }));
     }
 
     @Test
@@ -198,7 +206,7 @@ class MailSenderTest {
         );
 
         assertThatThrownBy(() -> mailSender.send(mail).block())
-            .isInstanceOf(RuntimeException.class)
+            .isInstanceOf(SmtpSendingFailedException.class)
             .hasMessageContaining("All 'rcpt to' commands failed");
     }
 
@@ -221,10 +229,12 @@ class MailSenderTest {
         mailSender.send(java.util.List.of(mail1, mail2)).block();
         JsonPath response = RestAssured.get("/smtpMails").jsonPath();
 
-        assertThat(response.getList("")).hasSize(1);
-        assertThat(response.getString("[0].from")).isEqualTo("sender1@localhost");
-        assertThat(response.getString("[0].recipients[0].address")).isEqualTo("recipient1@localhost");
-        assertThat(response.getString("[0].message")).containsIgnoringNewLines(rawMessage1);
+        assertSoftly(Throwing.consumer(softly -> {
+            assertThat(response.getList("")).hasSize(1);
+            assertThat(response.getString("[0].from")).isEqualTo("sender1@localhost");
+            assertThat(response.getString("[0].recipients[0].address")).isEqualTo("recipient1@localhost");
+            assertThat(response.getString("[0].message")).containsIgnoringNewLines(rawMessage1);
+        }));
     }
 
     @Test
@@ -245,7 +255,7 @@ class MailSenderTest {
         RestAssured.given().body(behaviorJson).contentType("application/json").put("/smtpBehaviors");
 
         assertThatThrownBy(() -> mailSender.send(ImmutableList.of(mail1, mail2)).block())
-            .isInstanceOf(RuntimeException.class)
+            .isInstanceOf(SmtpSendingFailedException.class)
             .hasMessageContaining("All 'rcpt to' commands failed");
     }
 }
