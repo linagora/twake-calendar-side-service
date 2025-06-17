@@ -21,6 +21,7 @@ package com.linagora.calendar.amqp;
 import static com.linagora.calendar.amqp.EventIndexerModule.INJECT_KEY_DAV;
 import static org.apache.james.backends.rabbitmq.Constants.DURABLE;
 import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
+import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.io.Closeable;
 import java.util.Arrays;
@@ -54,6 +55,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.rabbitmq.AcknowledgableDelivery;
 import reactor.rabbitmq.BindingSpecification;
+import reactor.rabbitmq.ConsumeOptions;
 import reactor.rabbitmq.ExchangeSpecification;
 import reactor.rabbitmq.QueueSpecification;
 import reactor.rabbitmq.Receiver;
@@ -229,13 +231,13 @@ public class EventIndexerConsumer implements Closeable, Startable {
         return delivery(queue.queueName)
             .flatMap(delivery -> messageConsume(delivery,
                 calendarEventHandler.deserialize(delivery.getBody()),
-                calendarEventHandler))
+                calendarEventHandler), DEFAULT_CONCURRENCY)
             .subscribe();
     }
 
     public Flux<AcknowledgableDelivery> delivery(String queue) {
         return Flux.using(receiverProvider::createReceiver,
-            receiver -> receiver.consumeManualAck(queue),
+            receiver -> receiver.consumeManualAck(queue, new ConsumeOptions().qos(DEFAULT_CONCURRENCY)),
             Receiver::close);
     }
 
