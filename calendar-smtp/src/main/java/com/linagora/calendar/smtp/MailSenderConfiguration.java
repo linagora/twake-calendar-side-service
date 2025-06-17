@@ -40,7 +40,7 @@ public record MailSenderConfiguration(String host,
         Preconditions.checkArgument(!(sslEnabled && startTlsEnabled), "'smtp.ssl.enabled' should not be set with 'smtp.starttls.enabled'");
     }
 
-    public static MailSenderConfiguration parse(Configuration configuration) {
+    public static MailSenderConfiguration from(Configuration configuration) {
         String host = Optional.ofNullable(configuration.getString("smtp.host", null))
             .orElseThrow(() -> new RuntimeException("'smtp.host' is compulsory"));
         String helo = Optional.ofNullable(configuration.getString("smtp.helo", null))

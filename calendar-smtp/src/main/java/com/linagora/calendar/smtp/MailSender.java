@@ -20,13 +20,15 @@ package com.linagora.calendar.smtp;
 
 import java.io.IOException;
 import java.io.Writer;
+import java.nio.charset.StandardCharsets;
 import java.security.cert.X509Certificate;
-import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 
 import javax.net.ssl.X509TrustManager;
 
-import org.apache.commons.io.output.WriterOutputStream;
+import jakarta.inject.Inject;
+
 import org.apache.commons.net.smtp.AuthenticatingSMTPClient;
 import org.apache.commons.net.smtp.SMTPClient;
 import org.apache.commons.net.smtp.SMTPReply;
@@ -36,6 +38,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.github.fge.lambdas.Throwing;
+import com.google.common.collect.ImmutableList;
 
 import reactor.core.publisher.Mono;
 
@@ -68,6 +71,7 @@ public interface MailSender {
 
             private final MailSenderConfiguration configuration;
 
+            @Inject
             public Default(MailSenderConfiguration configuration) {
                 this.configuration = configuration;
             }
@@ -126,14 +130,13 @@ public interface MailSender {
         @Override
         public Mono<Void> send(Collection<Mail> mails) {
             return Mono.fromRunnable(Throwing.runnable(() -> {
-                ArrayList<Exception> exceptions = new ArrayList<>();
-
+                ImmutableList.Builder<Exception> exceptionBuilder = new ImmutableList.Builder<>();
                 mails.forEach(Throwing.consumer(mail -> {
                     try {
                         sendMailTransaction(mail);
                     } catch (Exception e) {
-                        LOGGER.warn("Sendering email failed", e);
-                        exceptions.add(e);
+                        LOGGER.warn("Sending email failed", e);
+                        exceptionBuilder.add(e);
                     }
                     boolean reset = client.reset();
                     if (!reset) {
@@ -142,6 +145,7 @@ public interface MailSender {
                 }));
                 disconnect();
 
+                List<Exception> exceptions = exceptionBuilder.build();
                 if (exceptions.size() == mails.size()) {
                     throw exceptions.getFirst();
                 }
@@ -157,13 +161,34 @@ public interface MailSender {
 
         private void sendMailTransaction(Mail mail) throws IOException {
             int heloCode = client.helo(configuration.ehlo());
-            if (SMTPReply.isPositiveCompletion(heloCode)) {
+            if (!SMTPReply.isPositiveCompletion(heloCode)) {
                 throw new RuntimeException("'helo' failed: " + client.getReplyString());
             }
+
             client.setSender(mail.sender().asString(""));
             if (!SMTPReply.isPositiveCompletion(client.getReplyCode())) {
                 throw new RuntimeException("'mail from' failed: " + client.getReplyString());
             }
+
+            addRecipients(mail);
+            sendMessageData(mail);
+
+            if (!client.completePendingCommand()) {
+                throw new RuntimeException("'data' command failed: " + client.getReplyString());
+            }
+        }
+
+        private void sendMessageData(Mail mail) throws IOException {
+            DefaultMessageWriter defaultMessageWriter = new DefaultMessageWriter();
+            try (java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream()) {
+                defaultMessageWriter.writeMessage(mail.message(), baos);
+                try (Writer writer = client.sendMessageData()) {
+                    writer.write(baos.toString(StandardCharsets.UTF_8));
+                }
+            }
+        }
+
+        private void addRecipients(Mail mail) throws IOException {
             int successfullRecipientCount = 0;
             for (MailAddress recipient : mail.recipients()) {
                 client.addRecipient(recipient.asString());
@@ -175,14 +200,6 @@ public interface MailSender {
             }
             if (successfullRecipientCount == 0) {
                 throw new RuntimeException("All 'rcpt to' commands failed: " + client.getReplyString());
-            }
-            DefaultMessageWriter defaultMessageWriter = new DefaultMessageWriter();
-
-            try (Writer writer = client.sendMessageData()) {
-                defaultMessageWriter.writeMessage(mail.message(), new WriterOutputStream(writer));
-            }
-            if (!client.completePendingCommand()) {
-                throw new RuntimeException("'data' command failed: " + client.getReplyString());
             }
         }
     }
