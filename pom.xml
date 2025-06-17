@@ -45,6 +45,7 @@
         <module>storage-mongodb</module>
         <module>storage-redis</module>
         <module>storage-opensearch</module>
+        <module>calendar-smtp</module>
     </modules>
 
     <properties>
@@ -71,6 +72,11 @@
                 <version>${project.version}</version>
                 <type>test-jar</type>
                 <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>${project.groupId}</groupId>
+                <artifactId>calendar-smtp</artifactId>
+                <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>${project.groupId}</groupId>

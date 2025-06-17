@@ -58,6 +58,7 @@ import com.linagora.calendar.app.modules.OpenSearchClientModule;
 import com.linagora.calendar.app.modules.TwakeCalendarRabbitMQModule;
 import com.linagora.calendar.dav.DavModule;
 import com.linagora.calendar.restapi.RestApiModule;
+import com.linagora.calendar.smtp.SmtpModule;
 import com.linagora.calendar.storage.CaffeineOIDCTokenCache;
 import com.linagora.calendar.storage.FileUploadConfigurationModule;
 import com.linagora.calendar.storage.MemoryStorageModule;
@@ -129,6 +130,7 @@ public class TwakeCalendarMain {
                 new EventIndexerModule(),
                 new TwakeCalendarRabbitMQModule(),
                 new TechnicalUserTokenModule(),
+                new SmtpModule(),
                 WEBADMIN));
     }
 
