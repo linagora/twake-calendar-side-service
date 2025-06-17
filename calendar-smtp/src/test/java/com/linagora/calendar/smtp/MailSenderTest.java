@@ -18,7 +18,6 @@
 
 package com.linagora.calendar.smtp;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 
@@ -85,10 +84,10 @@ class MailSenderTest {
         JsonPath response = RestAssured.get("/smtpMails").jsonPath();
 
         assertSoftly(Throwing.consumer(softly -> {
-            assertThat(response.getList("")).hasSize(1);
-            assertThat(response.getString("[0].from")).isEqualTo("sender@localhost");
-            assertThat(response.getString("[0].recipients[0].address")).isEqualTo("recipient@localhost");
-            assertThat(response.getString("[0].message")).containsIgnoringNewLines(rawMessage);
+            softly.assertThat(response.getList("")).hasSize(1);
+            softly.assertThat(response.getString("[0].from")).isEqualTo("sender@localhost");
+            softly.assertThat(response.getString("[0].recipients[0].address")).isEqualTo("recipient@localhost");
+            softly.assertThat(response.getString("[0].message")).containsIgnoringNewLines(rawMessage);
         }));
     }
 
@@ -107,8 +106,8 @@ class MailSenderTest {
         JsonPath response = RestAssured.get("/smtpMails").jsonPath();
 
         assertSoftly(Throwing.consumer(softly -> {
-            assertThat(response.getList("")).hasSize(1);
-            assertThat(response.getList("[0].recipients.address")).containsExactlyInAnyOrder("recipient1@localhost", "recipient2@localhost");
+            softly.assertThat(response.getList("")).hasSize(1);
+            softly.assertThat(response.getList("[0].recipients.address")).containsExactlyInAnyOrder("recipient1@localhost", "recipient2@localhost");
         }));
     }
 
@@ -185,13 +184,13 @@ class MailSenderTest {
         JsonPath response = RestAssured.get("/smtpMails").jsonPath();
 
         assertSoftly(Throwing.consumer(softly -> {
-            assertThat(response.getList("")).hasSize(2);
-            assertThat(response.getString("[0].from")).isEqualTo("sender1@localhost");
-            assertThat(response.getString("[0].recipients[0].address")).isEqualTo("recipient1@localhost");
-            assertThat(response.getString("[0].message")).containsIgnoringNewLines(rawMessage1);
-            assertThat(response.getString("[1].from")).isEqualTo("sender2@localhost");
-            assertThat(response.getString("[1].recipients[0].address")).isEqualTo("recipient2@localhost");
-            assertThat(response.getString("[1].message")).containsIgnoringNewLines(rawMessage2);
+            softly.assertThat(response.getList("")).hasSize(2);
+            softly.assertThat(response.getString("[0].from")).isEqualTo("sender1@localhost");
+            softly.assertThat(response.getString("[0].recipients[0].address")).isEqualTo("recipient1@localhost");
+            softly.assertThat(response.getString("[0].message")).containsIgnoringNewLines(rawMessage1);
+            softly.assertThat(response.getString("[1].from")).isEqualTo("sender2@localhost");
+            softly.assertThat(response.getString("[1].recipients[0].address")).isEqualTo("recipient2@localhost");
+            softly.assertThat(response.getString("[1].message")).containsIgnoringNewLines(rawMessage2);
         }));
     }
 
@@ -230,10 +229,10 @@ class MailSenderTest {
         JsonPath response = RestAssured.get("/smtpMails").jsonPath();
 
         assertSoftly(Throwing.consumer(softly -> {
-            assertThat(response.getList("")).hasSize(1);
-            assertThat(response.getString("[0].from")).isEqualTo("sender1@localhost");
-            assertThat(response.getString("[0].recipients[0].address")).isEqualTo("recipient1@localhost");
-            assertThat(response.getString("[0].message")).containsIgnoringNewLines(rawMessage1);
+            softly.assertThat(response.getList("")).hasSize(1);
+            softly.assertThat(response.getString("[0].from")).isEqualTo("sender1@localhost");
+            softly.assertThat(response.getString("[0].recipients[0].address")).isEqualTo("recipient1@localhost");
+            softly.assertThat(response.getString("[0].message")).containsIgnoringNewLines(rawMessage1);
         }));
     }
 
