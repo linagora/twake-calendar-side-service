@@ -24,8 +24,6 @@ import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.http.Authenticator;
 import org.apache.james.metrics.api.MetricFactory;
 
-import com.linagora.calendar.dav.CalDavClient;
-import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.storage.UploadedFileDAO;
 
 import io.netty.handler.codec.http.HttpMethod;
@@ -34,8 +32,8 @@ public class ImportProxyRoute extends ImportRoute {
 
     @Inject
     public ImportProxyRoute(Authenticator authenticator, MetricFactory metricFactory,
-                            UploadedFileDAO fileDAO, CalDavClient calDavClient, CardDavClient cardDavClient) {
-        super(authenticator, metricFactory, fileDAO, calDavClient, cardDavClient);
+                            UploadedFileDAO fileDAO, ImportProcessor importProcessor) {
+        super(authenticator, metricFactory, fileDAO, importProcessor);
     }
 
     @Override
