@@ -40,6 +40,7 @@ import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalendarUtil;
 import com.linagora.calendar.dav.CardDavClient;
+import com.linagora.calendar.smtp.template.TemplateType;
 import com.linagora.calendar.smtp.MailSender;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -64,7 +65,18 @@ public class ImportProcessor {
     private static final Logger LOGGER = LoggerFactory.getLogger(ImportProcessor.class);
 
     public enum ImportType {
-        ICS, VCARD
+        ICS(new TemplateType("import-calendar")),
+        VCARD(new TemplateType("import-contacts"));
+
+        private final TemplateType templateType;
+
+        ImportType(TemplateType templateType) {
+            this.templateType = templateType;
+        }
+
+        public TemplateType getTemplateType() {
+            return templateType;
+        }
     }
 
     public interface ImportToDavHandler {
