@@ -65,7 +65,7 @@ public class ImportMailReportRender {
     public Mono<Mail> generateMail(ImportType importType, ImportResult importResult, Username username) {
         String baseUrl = switch (importType) {
             case ICS -> configuration.getCalendarSpaUrl().toString();
-            case VCARD -> configuration.getCalendarSpaUrl().toString(); // TODO change me to point to contact SPA
+            case VCARD -> configuration.getCalendarSpaUrl().toString(); // TODO change me to point to contact SPA spa.contacts.url
         };
         byte[] logoBytes = switch (importType) {
             case ICS -> calendarLogo;
