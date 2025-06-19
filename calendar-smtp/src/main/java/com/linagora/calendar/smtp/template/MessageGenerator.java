@@ -75,7 +75,7 @@ public class MessageGenerator {
         }
     }
 
-    public static Factory factory(MailTemplateConfiguration configuration, FileSystem fileSystem) {
+    public static Factory.Default factory(MailTemplateConfiguration configuration, FileSystem fileSystem) {
         return new Factory.Default(configuration, fileSystem);
     }
 
