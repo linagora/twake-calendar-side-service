@@ -1,0 +1,32 @@
+doctype html
+html.mail
+  head
+    meta(charset='utf-8')
+    meta(name='viewport', content='width=device-width, initial-scale=1')
+    style
+      | @media (max-width: 768px) {
+      |   .content {
+      |     width: 100% !important;
+      |     border-radius: 0 !important;
+      |   }
+      | }
+  body(style="background-color: #EEEEEE;")
+    .wrapper.mail-content(style="width: 700px; margin-left: auto; margin-right: auto; padding: 10px 13px; border-radius: 5px; text-align: justify; background-color: white;")
+      .grid-container(style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; grid-template-areas: 'header header header header' 'import import import import' 'failed failed failed failed';")
+        .header(style="display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-areas: 'logo subject subject'; grid-area: header; align-self: center;")
+          .logo(style="grid-area: logo; align-self: center;")
+            a(href=content.baseUrl)
+              img(src="cid:logo", alt="OpenPaas Logo")
+          .subject(style="grid-area: subject; justify-self: center;")
+            div.title(style="padding-bottom: 10px; padding-top: 20px; text-align: left; font-size: 25px; font-weight: bold;") Import Report
+        .import(style="grid-area: import;")
+          span Your Import is done see below the report :
+            ul
+              li #{content.jobSucceedCount} Contact(s) imported successfully
+              li #{content.jobFailedCount} Contact(s) not imported
+        if content.jobFailedCount
+          .failed(style="grid-area: failed;")
+            span List of contact who were not imported :
+            ul
+              each contact in content.jobFailedList
+                li #{contact.email}
