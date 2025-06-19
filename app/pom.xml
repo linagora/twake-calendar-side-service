@@ -408,6 +408,10 @@
                                         <into>/root/conf</into>
                                     </path>
                                     <path>
+                                        <from>src/main/resources/templates</from>
+                                        <into>/root/templates</into>
+                                    </path>
+                                    <path>
                                         <from>target/async-profiler-2.9-linux-x64</from>
                                         <into>/root/async-profiler</into>
                                     </path>

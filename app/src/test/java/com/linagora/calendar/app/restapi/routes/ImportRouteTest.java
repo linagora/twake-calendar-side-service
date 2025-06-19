@@ -26,6 +26,8 @@ import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.awaitility.Durations.ONE_HUNDRED_MILLISECONDS;
 import static org.hamcrest.Matchers.equalTo;
 
+import java.io.File;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -35,6 +37,8 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 import org.apache.http.HttpStatus;
+import org.apache.james.core.MaybeSender;
+import org.apache.james.util.ClassLoaderUtils;
 import org.apache.james.util.Port;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionFactory;
@@ -56,6 +60,7 @@ import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.smtp.MailSenderConfiguration;
 import com.linagora.calendar.smtp.MockSmtpServerExtension;
+import com.linagora.calendar.smtp.template.MailTemplateConfiguration;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.MailboxSessionUtil;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -110,6 +115,14 @@ public class ImportRouteTest {
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB),
         AppTestHelper.OIDC_BY_PASS_MODULE,
         DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
+        binder -> binder.bind(MailTemplateConfiguration.class).toProvider(() -> {
+            try {
+                String templatesPath = new File(ClassLoader.getSystemResource("templates").toURI()).getAbsolutePath();
+                return new MailTemplateConfiguration(templatesPath, MaybeSender.getMailSender("no-reply@openpaas.org"));
+            } catch (URISyntaxException e) {
+                throw new RuntimeException(e);
+            }
+        }),
         binder -> binder.bind(MailSenderConfiguration.class)
             .toInstance(mailSenderConfigurationFunction.apply(mockSmtpExtension)));
 
