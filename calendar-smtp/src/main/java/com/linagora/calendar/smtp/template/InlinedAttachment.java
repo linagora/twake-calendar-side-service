@@ -16,28 +16,23 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.restapi.routes;
+package com.linagora.calendar.smtp.template;
 
-import jakarta.inject.Inject;
+import java.io.IOException;
 
-import org.apache.james.jmap.Endpoint;
-import org.apache.james.jmap.http.Authenticator;
-import org.apache.james.metrics.api.MetricFactory;
+import org.apache.james.mailbox.model.Cid;
+import org.apache.james.mailbox.model.ContentType;
+import org.apache.james.mime4j.message.BodyPart;
+import org.apache.james.mime4j.message.BodyPartBuilder;
+import org.apache.james.mime4j.stream.RawField;
 
-import com.linagora.calendar.storage.UploadedFileDAO;
-
-import io.netty.handler.codec.http.HttpMethod;
-
-public class ImportProxyRoute extends ImportRoute {
-
-    @Inject
-    public ImportProxyRoute(Authenticator authenticator, MetricFactory metricFactory,
-                            UploadedFileDAO fileDAO, ImportProcessor importProcessor) {
-        super(authenticator, metricFactory, fileDAO, importProcessor);
-    }
-
-    @Override
-    Endpoint endpoint() {
-        return new Endpoint(HttpMethod.POST, "/linagora.esn.dav.import/api/import");
+public record InlinedAttachment(ContentType contentType, Cid cid, byte[] content, String filename) {
+    public BodyPart asBodyPart() throws IOException {
+        return BodyPartBuilder.create()
+            .setContentDisposition("inline; filename=\"" + filename() + "\"")
+            .setField(new RawField("Content-ID", cid().getValue()))
+            .setContentTransferEncoding("base64")
+            .setBody(content(), contentType().asString() + "; name=\"" + filename() + "\"")
+            .build();
     }
 }

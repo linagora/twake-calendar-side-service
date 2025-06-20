@@ -16,28 +16,25 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.restapi.routes;
+package com.linagora.calendar.smtp.template;
 
-import jakarta.inject.Inject;
+import java.util.Optional;
 
-import org.apache.james.jmap.Endpoint;
-import org.apache.james.jmap.http.Authenticator;
-import org.apache.james.metrics.api.MetricFactory;
+import org.apache.commons.configuration2.Configuration;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.james.core.MaybeSender;
 
-import com.linagora.calendar.storage.UploadedFileDAO;
+public record MailTemplateConfiguration(String templateLocationPath,
+                                        MaybeSender sender) {
+    private static final String TEMPLATE_LOCATION = "mail.template.location";
+    private static final String SENDER = "mail.sender";
 
-import io.netty.handler.codec.http.HttpMethod;
-
-public class ImportProxyRoute extends ImportRoute {
-
-    @Inject
-    public ImportProxyRoute(Authenticator authenticator, MetricFactory metricFactory,
-                            UploadedFileDAO fileDAO, ImportProcessor importProcessor) {
-        super(authenticator, metricFactory, fileDAO, importProcessor);
-    }
-
-    @Override
-    Endpoint endpoint() {
-        return new Endpoint(HttpMethod.POST, "/linagora.esn.dav.import/api/import");
+    public static MailTemplateConfiguration from(Configuration configuration) {
+        String templateLocation = Optional.ofNullable(configuration.getString(TEMPLATE_LOCATION, null))
+            .filter(StringUtils::isNotEmpty)
+            .orElseThrow(() -> new IllegalArgumentException("'" + TEMPLATE_LOCATION + "'is compulsory"));
+        String senderString = Optional.ofNullable(configuration.getString(SENDER, null))
+            .orElseThrow(() -> new IllegalArgumentException("'" + TEMPLATE_LOCATION + "'is compulsory"));
+        return new MailTemplateConfiguration(templateLocation, MaybeSender.getMailSender(senderString));
     }
 }

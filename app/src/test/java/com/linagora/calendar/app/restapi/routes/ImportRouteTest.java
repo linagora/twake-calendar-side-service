@@ -22,15 +22,21 @@ import static io.restassured.RestAssured.given;
 import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.awaitility.Durations.ONE_HUNDRED_MILLISECONDS;
 import static org.hamcrest.Matchers.equalTo;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 import org.apache.http.HttpStatus;
+import org.apache.james.core.MaybeSender;
+import org.apache.james.util.Port;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionFactory;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,6 +44,7 @@ import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.app.AppTestHelper;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
@@ -48,6 +55,9 @@ import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiServerProbe;
+import com.linagora.calendar.smtp.MailSenderConfiguration;
+import com.linagora.calendar.smtp.MockSmtpServerExtension;
+import com.linagora.calendar.smtp.template.MailTemplateConfiguration;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.MailboxSessionUtil;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -59,6 +69,8 @@ import io.restassured.RestAssured;
 import io.restassured.authentication.PreemptiveBasicAuthScheme;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.http.ContentType;
+import io.restassured.path.json.JsonPath;
+import io.restassured.specification.RequestSpecification;
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.Property;
@@ -79,13 +91,33 @@ public class ImportRouteTest {
 
     @RegisterExtension
     @Order(2)
+    static final MockSmtpServerExtension mockSmtpExtension = new MockSmtpServerExtension();
+
+    static Function<MockSmtpServerExtension, MailSenderConfiguration> mailSenderConfigurationFunction = mockSmtpExtension -> new MailSenderConfiguration(
+        "localhost",
+        Port.of(mockSmtpExtension.getMockSmtp().getSmtpPort()),
+        "localhost",
+        Optional.empty(),
+        Optional.empty(),
+        false,
+        false,
+        false);
+
+    @RegisterExtension
+    @Order(3)
     static TwakeCalendarExtension extension = new TwakeCalendarExtension(
         TwakeCalendarConfiguration.builder()
             .configurationFromClasspath()
             .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB),
         AppTestHelper.OIDC_BY_PASS_MODULE,
-        DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension));
+        DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
+        binder -> binder.bind(MailTemplateConfiguration.class)
+            .toInstance(new MailTemplateConfiguration("classpath://templates/",
+                MaybeSender.getMailSender("no-reply@openpaas.org"))),
+        binder -> binder.bind(MailSenderConfiguration.class)
+            .toInstance(mailSenderConfigurationFunction.apply(mockSmtpExtension)));
+
 
     private OpenPaaSUser openPaaSUser;
 
@@ -107,6 +139,21 @@ public class ImportRouteTest {
             .setAccept(ContentType.JSON)
             .setContentType(ContentType.JSON)
             .setConfig(newConfig().encoderConfig(encoderConfig().defaultContentCharset(StandardCharsets.UTF_8)))
+            .build();
+
+        given(mockSMTPRequestSpecification())
+            .delete("/smtpMails")
+            .then();
+
+        given(mockSMTPRequestSpecification())
+            .delete("/smtpBehaviors")
+            .then();
+    }
+
+    static RequestSpecification mockSMTPRequestSpecification() {
+        return new RequestSpecBuilder()
+            .setPort(mockSmtpExtension.getMockSmtp().getRestApiPort())
+            .setBasePath("")
             .build();
     }
 
@@ -168,6 +215,82 @@ public class ImportRouteTest {
 
                 assertThat(actual.getComponent(Component.VEVENT).get().getProperty(Property.UID).get().getValue()).isEqualTo(uid);
             });
+    }
+
+    @Test
+    void shouldReportMailWhenImportEventSucceed(TwakeCalendarGuiceServer server) {
+        String uid = UUID.randomUUID().toString();
+        byte[] ics = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            TRANSP:OPAQUE
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250102T120000Z
+            DTEND:20250102T130000Z
+            SUMMARY:Test Event
+            ORGANIZER;CN=john doe:mailto:%s
+            ATTENDEE;PARTSTAT=accepted;RSVP=false;ROLE=chair;CUTYPE=individual:mailto:%s
+            DESCRIPTION:This is a test event
+            LOCATION:office
+            CLASS:PUBLIC
+            BEGIN:VALARM
+            TRIGGER:-PT5M
+            ACTION:EMAIL
+            ATTENDEE:mailto:%s
+            SUMMARY:test
+            DESCRIPTION:This is an automatic alarm
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """
+            .formatted(uid, openPaaSUser.username().asString(), openPaaSUser.username().asString(), openPaaSUser.username().asString())
+            .getBytes(StandardCharsets.UTF_8);
+
+        OpenPaaSId fileId = server.getProbe(CalendarDataProbe.class).saveUploadedFile(openPaaSUser.username(),
+            new Upload("abc.ics", UploadedMimeType.TEXT_CALENDAR, Instant.now(), (long) ics.length, ics));
+
+        String requestBody = """
+            {
+                "fileId": "%s",
+                "target": "/calendars/%s/%s.json"
+            }
+            """.formatted(fileId.value(), openPaaSUser.id().value(), openPaaSUser.id().value());
+
+        // To trigger calendar directory activation
+        server.getProbe(CalendarDataProbe.class).exportCalendarFromCalDav(new CalendarURL(openPaaSUser.id(), openPaaSUser.id()), MailboxSessionUtil.create(openPaaSUser.username()));
+
+        given()
+            .body(requestBody)
+        .when()
+            .post("/api/import")
+            .then()
+            .statusCode(HttpStatus.SC_ACCEPTED);
+
+        Supplier<JsonPath> smtpMailsResponseSupplier  = () -> given(mockSMTPRequestSpecification())
+            .get("/smtpMails")
+            .jsonPath();
+
+        CALMLY_AWAIT
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> assertThat( smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        JsonPath  smtpMailsResponse = smtpMailsResponseSupplier.get();
+
+        assertSoftly(Throwing.consumer(softly -> {
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(openPaaSUser.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[0].message"))
+                .contains("Subject: Calendar import reporting")
+                .containsIgnoringNewLines("""
+                    Content-Transfer-Encoding: base64
+                    Content-Type: text/html; charset=UTF-8""") // text HTML body part
+                .containsIgnoringNewLines("""
+                    Content-Disposition: inline; filename="logo.png"
+                    Content-ID: logo
+                    Content-Transfer-Encoding: base64
+                    Content-Type: image/png; name="logo.png"""); // base64 encoded image
+        }));
     }
 
     @Test
@@ -361,6 +484,62 @@ public class ImportRouteTest {
                     StandardCharsets.UTF_8);
                 assertThat(contact).contains("EMAIL;TYPE=Work:john.doe@example.com");
             });
+    }
+
+    @Test
+    void shouldReportMailWhenImportVcardSucceed(TwakeCalendarGuiceServer server) {
+        String addressBook = "collected";
+        String vcardUid = UUID.randomUUID().toString();
+        byte[] vcard = """
+            BEGIN:VCARD
+            VERSION:4.0
+            UID:%s
+            FN:John Doe
+            EMAIL;TYPE=Work:john.doe@example.com
+            END:VCARD
+            """.formatted(vcardUid).getBytes(StandardCharsets.UTF_8);
+
+        OpenPaaSId fileId = server.getProbe(CalendarDataProbe.class).saveUploadedFile(openPaaSUser.username(),
+            new Upload("contact.vcf", UploadedMimeType.TEXT_VCARD, Instant.now(), (long) vcard.length, vcard));
+
+        String requestBody = """
+        {
+            "fileId": "%s",
+            "target": "/addressbooks/%s/%s.json"
+        }
+        """.formatted(fileId.value(), openPaaSUser.id().value(), addressBook);
+
+        given()
+            .body(requestBody)
+        .when()
+            .post("/api/import")
+            .then()
+            .statusCode(HttpStatus.SC_ACCEPTED);
+
+        Supplier<JsonPath> smtpMailsResponseSupplier  = () -> given(mockSMTPRequestSpecification())
+            .get("/smtpMails")
+            .jsonPath();
+
+        CALMLY_AWAIT
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> assertThat( smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        JsonPath  smtpMailsResponse = smtpMailsResponseSupplier.get();
+
+        assertSoftly(Throwing.consumer(softly -> {
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(openPaaSUser.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[0].message"))
+                .contains("Subject: Contacts import reporting")
+                .containsIgnoringNewLines("""
+                    Content-Transfer-Encoding: base64
+                    Content-Type: text/html; charset=UTF-8""") // text HTML body part
+                .containsIgnoringNewLines("""
+                    Content-Disposition: inline; filename="logo.png"
+                    Content-ID: logo
+                    Content-Transfer-Encoding: base64
+                    Content-Type: image/png; name="logo.png"""); // base64 encoded image
+        }));
     }
 
     @Test

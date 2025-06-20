@@ -16,28 +16,28 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.restapi.routes;
+package com.linagora.calendar.smtp.template;
 
-import jakarta.inject.Inject;
+import java.io.FileNotFoundException;
 
-import org.apache.james.jmap.Endpoint;
-import org.apache.james.jmap.http.Authenticator;
-import org.apache.james.metrics.api.MetricFactory;
+import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.james.filesystem.api.FileSystem;
+import org.apache.james.utils.PropertiesProvider;
 
-import com.linagora.calendar.storage.UploadedFileDAO;
+import com.google.inject.AbstractModule;
+import com.google.inject.Provides;
+import com.google.inject.Singleton;
 
-import io.netty.handler.codec.http.HttpMethod;
-
-public class ImportProxyRoute extends ImportRoute {
-
-    @Inject
-    public ImportProxyRoute(Authenticator authenticator, MetricFactory metricFactory,
-                            UploadedFileDAO fileDAO, ImportProcessor importProcessor) {
-        super(authenticator, metricFactory, fileDAO, importProcessor);
+public class MailTemplateModule extends AbstractModule {
+    @Provides
+    @Singleton
+    MailTemplateConfiguration config(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
+        return MailTemplateConfiguration.from(propertiesProvider.getConfiguration("configuration"));
     }
 
-    @Override
-    Endpoint endpoint() {
-        return new Endpoint(HttpMethod.POST, "/linagora.esn.dav.import/api/import");
+    @Provides
+    @Singleton
+    MessageGenerator.Factory messageGeneratorFactory(MailTemplateConfiguration configuration, FileSystem fileSystem) {
+        return MessageGenerator.factory(configuration, fileSystem).cached();
     }
 }

@@ -16,28 +16,15 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.restapi.routes;
+package com.linagora.calendar.smtp.template;
 
-import jakarta.inject.Inject;
+import java.util.Locale;
 
-import org.apache.james.jmap.Endpoint;
-import org.apache.james.jmap.http.Authenticator;
-import org.apache.james.metrics.api.MetricFactory;
+public record Language(Locale locale) {
 
-import com.linagora.calendar.storage.UploadedFileDAO;
+    public static final Language ENGLISH = new Language(Locale.ENGLISH);
 
-import io.netty.handler.codec.http.HttpMethod;
-
-public class ImportProxyRoute extends ImportRoute {
-
-    @Inject
-    public ImportProxyRoute(Authenticator authenticator, MetricFactory metricFactory,
-                            UploadedFileDAO fileDAO, ImportProcessor importProcessor) {
-        super(authenticator, metricFactory, fileDAO, importProcessor);
-    }
-
-    @Override
-    Endpoint endpoint() {
-        return new Endpoint(HttpMethod.POST, "/linagora.esn.dav.import/api/import");
+    public String value() {
+        return locale.getLanguage();
     }
 }

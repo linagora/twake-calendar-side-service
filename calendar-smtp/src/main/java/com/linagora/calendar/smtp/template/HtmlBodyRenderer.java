@@ -16,28 +16,36 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.restapi.routes;
+package com.linagora.calendar.smtp.template;
 
-import jakarta.inject.Inject;
+import java.io.IOException;
+import java.util.Map;
 
-import org.apache.james.jmap.Endpoint;
-import org.apache.james.jmap.http.Authenticator;
-import org.apache.james.metrics.api.MetricFactory;
+import de.neuland.pug4j.Pug4J;
+import de.neuland.pug4j.PugConfiguration;
+import de.neuland.pug4j.template.FileTemplateLoader;
+import de.neuland.pug4j.template.PugTemplate;
 
-import com.linagora.calendar.storage.UploadedFileDAO;
+public class HtmlBodyRenderer {
+    private static final String TEMPLATE_FILE_NAME = "html.pug";
 
-import io.netty.handler.codec.http.HttpMethod;
+    public static HtmlBodyRenderer forPath(String templatePath) throws IOException {
+        FileTemplateLoader fileLoader = new FileTemplateLoader(templatePath);
+        fileLoader.setBase("");
 
-public class ImportProxyRoute extends ImportRoute {
+        PugConfiguration pugConfiguration = new PugConfiguration();
+        pugConfiguration.setTemplateLoader(fileLoader);
 
-    @Inject
-    public ImportProxyRoute(Authenticator authenticator, MetricFactory metricFactory,
-                            UploadedFileDAO fileDAO, ImportProcessor importProcessor) {
-        super(authenticator, metricFactory, fileDAO, importProcessor);
+        return new HtmlBodyRenderer(pugConfiguration.getTemplate(TEMPLATE_FILE_NAME));
     }
 
-    @Override
-    Endpoint endpoint() {
-        return new Endpoint(HttpMethod.POST, "/linagora.esn.dav.import/api/import");
+    private final PugTemplate template;
+
+    public HtmlBodyRenderer(PugTemplate template) {
+        this.template = template;
+    }
+
+    public String render(Map<String, Object> scopedValue) {
+        return Pug4J.render(template, scopedValue);
     }
 }

@@ -1,0 +1,25 @@
+doctype html
+html.mail
+    head
+        meta(charset='utf-8')
+        meta(name='viewport', content='width=device-width, initial-scale=1')
+    body
+        .wrapper.mail-content
+            .grid-container
+                .header
+                    .logo
+                        a(href=content.baseUrl)
+                            img(src="cid:logo", alt="OpenPaas Logo")
+                    .subject
+                        div.title Import Report
+                .import
+                    span Your Import is done see below the report :
+                        ul
+                            li #{content.jobSucceed.length} Contact(s) imported successfully
+                            li #{content.jobFailedList.length} Contact(s) not imported
+                if content.jobFailedList.length
+                    .failed
+                        span List of contact who were not imported :
+                        ul
+                            each contact in content.jobFailedList
+                                li #{contact.email}

@@ -90,6 +90,12 @@
         </dependency>
         <dependency>
             <groupId>${project.groupId}</groupId>
+            <artifactId>calendar-smtp</artifactId>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>${project.groupId}</groupId>
             <artifactId>calendar-webadmin</artifactId>
         </dependency>
         <dependency>
@@ -152,6 +158,11 @@
             <groupId>${james.groupId}</groupId>
             <artifactId>apache-james-backends-opensearch</artifactId>
             <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>${james.groupId}</groupId>
+            <artifactId>mock-smtp-server</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -395,6 +406,10 @@
                                     <path>
                                         <from>src/main/conf</from>
                                         <into>/root/conf</into>
+                                    </path>
+                                    <path>
+                                        <from>src/main/resources/templates</from>
+                                        <into>/root/templates</into>
                                     </path>
                                     <path>
                                         <from>target/async-profiler-2.9-linux-x64</from>

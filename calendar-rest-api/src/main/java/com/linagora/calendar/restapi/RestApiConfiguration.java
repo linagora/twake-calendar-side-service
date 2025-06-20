@@ -20,6 +20,7 @@ package com.linagora.calendar.restapi;
 
 import java.io.FileNotFoundException;
 import java.net.MalformedURLException;
+import java.net.URI;
 import java.net.URL;
 import java.time.Duration;
 import java.util.List;
@@ -38,6 +39,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Function;
 import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
@@ -57,6 +59,7 @@ public class RestApiConfiguration {
         private Optional<List<String>> jwtPublicPath = Optional.empty();
         private Optional<Duration> jwtValidity = Optional.empty();
         private Optional<URL> calendarSpaUrl = Optional.empty();
+        private Optional<URL> contactSpaUrl = Optional.empty();
         private Optional<URL> openpaasBackendURL = Optional.empty();
         private Optional<URL> davdURL = Optional.empty();
         private Optional<URL> selfURL = Optional.empty();
@@ -133,6 +136,11 @@ public class RestApiConfiguration {
             return this;
         }
 
+        public Builder contactSpaUrl(Optional<URL> url) {
+            this.contactSpaUrl = url;
+            return this;
+        }
+
         public Builder openpaasBackendURL(Optional<URL> url) {
             this.openpaasBackendURL = url;
             return this;
@@ -193,17 +201,18 @@ public class RestApiConfiguration {
                 ArrayNode arrayNode = defaultBusinessHours();
 
                 return new RestApiConfiguration(port,
-                    calendarSpaUrl.orElse(new URL("https://e-calendrier.avocat.fr")),
-                    selfURL.orElse(new URL("https://twcalendar.linagora.com")),
-                    openpaasBackendURL.orElse(new URL("https://openpaas.linagora.com")),
-                    davdURL.orElse(new URL("https://dav.linagora.com")),
-                    visioURL.orElse(new URL("https://jitsi.linagora.com")),
+                    calendarSpaUrl.orElse(URI.create("https://e-calendrier.avocat.fr").toURL()),
+                    contactSpaUrl.orElse(URI.create("https://e-contacts.avocat.fr").toURL()),
+                    selfURL.orElse(URI.create("https://twcalendar.linagora.com").toURL()),
+                    openpaasBackendURL.orElse(URI.create("https://openpaas.linagora.com").toURL()),
+                    davdURL.orElse(URI.create("https://dav.linagora.com").toURL()),
+                    visioURL.orElse(URI.create("https://jitsi.linagora.com").toURL()),
                     openpaasBackendTrustAllCerts.orElse(false),
                     jwtPrivatePath.orElse("classpath://jwt_privatekey"),
                     jwtPublicPath.orElse(ImmutableList.of("classpath://jwt_publickey")),
                     jwtValidity.orElse(Duration.ofHours(12)),
-                    oidcUserInfoUrl.orElse(new URL("http://keycloak:8080/auth/realms/oidc/protocol/openid-connect/userInfo")),
-                    oidcIntrospectionEndpoint.orElse(new IntrospectionEndpoint(new URL("http://keycloak:8080/auth/realms/oidc/protocol/openid-connect/introspect"), Optional.empty())),
+                    oidcUserInfoUrl.orElse(URI.create("http://keycloak:8080/auth/realms/oidc/protocol/openid-connect/userInfo").toURL()),
+                    oidcIntrospectionEndpoint.orElse(new IntrospectionEndpoint(URI.create("http://keycloak:8080/auth/realms/oidc/protocol/openid-connect/introspect").toURL(), Optional.empty())),
                     oidcIntrospectionClaim.orElse("email"),
                     oidcAudience.orElse(new Aud("tcalendar")),
                     sharingCalendarEnabled.orElse(true),
@@ -239,28 +248,26 @@ public class RestApiConfiguration {
     }
 
     public static RestApiConfiguration parseConfiguration(Configuration configuration) {
+        Function<String, Optional<URL>> urlParser = propertyName -> Optional.ofNullable(configuration.getString(propertyName, null))
+            .map(Throwing.function(urlAsString -> URI.create(urlAsString).toURL()));
+
         Optional<Port> port = Optional.ofNullable(configuration.getInteger("rest.api.port", null))
             .map(Port::of);
-        Optional<URL> calendarSpaUrl = Optional.ofNullable(configuration.getString("spa.calendar.url", null))
-            .map(Throwing.function(URL::new));
-        Optional<URL> openpaasBackendURL = Optional.ofNullable(configuration.getString("openpaas.backend.url", null))
-            .map(Throwing.function(URL::new));
-        Optional<URL> davURL = Optional.ofNullable(configuration.getString("dav.url", "https://dav.linagora.com"))
-            .map(Throwing.function(URL::new));
-        Optional<URL> selfURL = Optional.ofNullable(configuration.getString("self.url", "https://twcalendar.linagora.com"))
-            .map(Throwing.function(URL::new));
-        Optional<URL> visioURL = Optional.ofNullable(configuration.getString("visio.url", "https://dav.linagora.com"))
-            .map(Throwing.function(URL::new));
+        Optional<URL> calendarSpaUrl = urlParser.apply("spa.calendar.url");
+        Optional<URL> contactSpaUrl = urlParser.apply("spa.contacts.url");
+        Optional<URL> openpaasBackendURL = urlParser.apply("openpaas.backend.url");
+
+        Optional<URL> davURL = urlParser.apply("dav.url");
+        Optional<URL> selfURL = urlParser.apply("self.url");
+        Optional<URL> visioURL = urlParser.apply("visio.url");
         Optional<Boolean> openpaasBackendTrustAllCerts = Optional.ofNullable(configuration.getBoolean("openpaas.backend.trust.all.certificates", null));
         Optional<String> jwtPrivateKey = Optional.ofNullable(configuration.getString("jwt.key.private", null));
         Optional<List<String>> jwtPublicKey = Optional.ofNullable(configuration.getString("jwt.key.public", null))
             .map(s -> Splitter.on(',').splitToList(s));
         Optional<Duration> jwtValidity = Optional.ofNullable(configuration.getString("jwt.key.validity", null))
             .map(Duration::parse);
-        Optional<URL> oidcUserInfoUrl = Optional.ofNullable(configuration.getString("oidc.userInfo.url", null))
-            .map(Throwing.function(URL::new));
-        Optional<URL> oidcIntrospectUrl = Optional.ofNullable(configuration.getString("oidc.introspect.url", null))
-            .map(Throwing.function(URL::new));
+        Optional<URL> oidcUserInfoUrl = urlParser.apply("oidc.userInfo.url");
+        Optional<URL> oidcIntrospectUrl = urlParser.apply("oidc.introspect.url");
         Optional<String> oidcIntrospectCreds = Optional.ofNullable(configuration.getString("oidc.introspect.credentials", null));
         Optional<Aud> oidcAudience = Optional.ofNullable(configuration.getString("oidc.audience", null)).map(Aud::new);
         Optional<String> oidcIntrospectionClaim = Optional.ofNullable(configuration.getString("oidc.claim", null));
@@ -277,6 +284,7 @@ public class RestApiConfiguration {
         return RestApiConfiguration.builder()
             .port(port)
             .calendarSpaUrl(calendarSpaUrl)
+            .contactSpaUrl(contactSpaUrl)
             .openpaasBackendURL(openpaasBackendURL)
             .davURL(davURL)
             .selfUrl(selfURL)
@@ -324,6 +332,7 @@ public class RestApiConfiguration {
 
     private final Optional<Port> port;
     private final URL calendarSpaUrl;
+    private final URL contactSpaUrl;
     private final URL selfUrl;
     private final URL openpaasBackendURL;
     private final URL davURL;
@@ -345,12 +354,14 @@ public class RestApiConfiguration {
     private final JsonNode defaultBusinessHours;
 
     @VisibleForTesting
-    RestApiConfiguration(Optional<Port> port, URL calendarSpaUrl, URL selfUrl, URL openpaasBackendURL, URL davURL, URL visioURL, boolean openpaasBackendTrustAllCerts,
+    RestApiConfiguration(Optional<Port> port, URL calendarSpaUrl,
+                         URL contactSpaUrl, URL selfUrl, URL openpaasBackendURL, URL davURL, URL visioURL, boolean openpaasBackendTrustAllCerts,
                          String jwtPrivatePath, List<String> jwtPublicPath, Duration jwtValidity, URL oidcUserInfoUrl, IntrospectionEndpoint introspectionEndpoint,
                          String oidcIntrospectionClaim, Aud aud, boolean calendarSharingENabled, boolean sharingCalendarEnabled, boolean domainMembersAddressbookEnabled,
                          String defaultLanguage, String defaultTimezone, boolean defaultUse24hFormat, JsonNode defaultBusinessHours) {
         this.port = port;
         this.calendarSpaUrl = calendarSpaUrl;
+        this.contactSpaUrl = contactSpaUrl;
         this.selfUrl = selfUrl;
         this.openpaasBackendURL = openpaasBackendURL;
         this.davURL = davURL;
@@ -378,6 +389,10 @@ public class RestApiConfiguration {
 
     public URL getCalendarSpaUrl() {
         return calendarSpaUrl;
+    }
+
+    public URL getContactSpaUrl() {
+        return contactSpaUrl;
     }
 
     public URL getOpenpaasBackendURL() {
