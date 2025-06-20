@@ -38,7 +38,6 @@
         <dependency>
             <groupId>${project.groupId}</groupId>
             <artifactId>calendar-dav</artifactId>
-            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>${project.groupId}</groupId>
