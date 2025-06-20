@@ -40,8 +40,8 @@ import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalendarUtil;
 import com.linagora.calendar.dav.CardDavClient;
-import com.linagora.calendar.smtp.template.TemplateType;
 import com.linagora.calendar.smtp.MailSender;
+import com.linagora.calendar.smtp.template.TemplateType;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.model.UploadedFile;
@@ -173,7 +173,7 @@ public class ImportProcessor {
     private final ImportICSToDavHandler importICSHandler;
     private final ImportVCardToDavHandler importVCardHandler;
     private final Scheduler mailScheduler;
-    private final MailSender mailSender;
+    private final MailSender.Factory mailSenderFactory;
     private final ImportMailReportRender mailReportRender;
 
     @Inject
@@ -185,7 +185,7 @@ public class ImportProcessor {
         this.importVCardHandler = new ImportVCardToDavHandler(cardDavClient);
         this.mailScheduler = Schedulers.newBoundedElastic(1, DEFAULT_BOUNDED_ELASTIC_QUEUESIZE,
             "sendMailScheduler");
-        this.mailSender = mailSenderFactory.create().block();
+        this.mailSenderFactory = mailSenderFactory;
         this.mailReportRender = mailReportRender;
     }
 
@@ -204,8 +204,8 @@ public class ImportProcessor {
 
     private Disposable sendReportMail(ImportType importType, ImportResult importResult, Username receiver) {
         return mailReportRender.generateMail(importType, importResult, receiver)
-            .flatMap(mailSender::send)
-            .doOnError(error -> LOGGER.error("Error sending import events report mail to {}: {}", receiver.asString(), error.getMessage()))
+            .flatMap(mail -> mailSenderFactory.create().flatMap(mailSender -> mailSender.send(mail)))
+            .doOnError(error -> LOGGER.error("Error sending import `{}` report mail to {}: {}", importType.name(), receiver, error.getMessage()))
             .subscribeOn(mailScheduler)
             .subscribe();
     }

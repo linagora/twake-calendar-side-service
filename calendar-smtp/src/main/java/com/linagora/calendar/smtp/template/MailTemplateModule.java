@@ -28,7 +28,7 @@ import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.Singleton;
 
-public class TemplateModule extends AbstractModule {
+public class MailTemplateModule extends AbstractModule {
     @Provides
     @Singleton
     MailTemplateConfiguration config(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {

@@ -83,6 +83,7 @@ import com.linagora.calendar.storage.secretlink.SecretLinkPermissionChecker.Noop
 public class RestApiModule extends AbstractModule {
     @Override
     protected void configure() {
+        install(new AssetModule());
         Multibinder.newSetBinder(binder(), GuiceProbe.class).addBinding().to(RestApiServerProbe.class);
         bind(CalendarRestApiServer.class).in(Scopes.SINGLETON);
 

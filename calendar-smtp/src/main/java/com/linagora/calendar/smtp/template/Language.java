@@ -18,6 +18,13 @@
 
 package com.linagora.calendar.smtp.template;
 
-public record Language(String value) {
+import java.util.Locale;
 
+public record Language(Locale locale) {
+
+    public static final Language ENGLISH = new Language(Locale.ENGLISH);
+
+    public String value() {
+        return locale.getLanguage();
+    }
 }

@@ -32,9 +32,9 @@ public record MailTemplateConfiguration(String templateLocationPath,
     public static MailTemplateConfiguration from(Configuration configuration) {
         String templateLocation = Optional.ofNullable(configuration.getString(TEMPLATE_LOCATION, null))
             .filter(StringUtils::isNotEmpty)
-            .orElseThrow(() -> new IllegalArgumentException("'" + TEMPLATE_LOCATION + "'is compulsary"));
+            .orElseThrow(() -> new IllegalArgumentException("'" + TEMPLATE_LOCATION + "'is compulsory"));
         String senderString = Optional.ofNullable(configuration.getString(SENDER, null))
-            .orElseThrow(() -> new IllegalArgumentException("'" + TEMPLATE_LOCATION + "'is compulsary"));
+            .orElseThrow(() -> new IllegalArgumentException("'" + TEMPLATE_LOCATION + "'is compulsory"));
         return new MailTemplateConfiguration(templateLocation, MaybeSender.getMailSender(senderString));
     }
 }

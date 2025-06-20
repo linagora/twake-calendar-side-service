@@ -1,7 +1,29 @@
+/********************************************************************
+ *  As a subpart of Twake Mail, this file is edited by Linagora.    *
+ *                                                                  *
+ *  https://twake-mail.com/                                         *
+ *  https://linagora.com                                            *
+ *                                                                  *
+ *  This file is subject to The Affero Gnu Public License           *
+ *  version 3.                                                      *
+ *                                                                  *
+ *  https://www.gnu.org/licenses/agpl-3.0.en.html                   *
+ *                                                                  *
+ *  This program is distributed in the hope that it will be         *
+ *  useful, but WITHOUT ANY WARRANTY; without even the implied      *
+ *  warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR         *
+ *  PURPOSE. See the GNU Affero General Public License for          *
+ *  more details.                                                   *
+ ********************************************************************/
+
 package com.linagora.calendar.smtp.template;
 
+import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
@@ -16,7 +38,7 @@ import org.apache.james.mime4j.message.MultipartBuilder;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.LoadingCache;
+
 import reactor.core.publisher.Mono;
 
 public class MessageGenerator {
@@ -24,6 +46,8 @@ public class MessageGenerator {
         MessageGenerator forLocalizedFeature(Language language, TemplateType templateType) throws IOException;
 
         class Default implements Factory {
+            private static final String SUBJECT_FILE_NAME = "subject.txt";
+
             private final MailTemplateConfiguration configuration;
             private final FileSystem fileSystem;
 
@@ -33,13 +57,21 @@ public class MessageGenerator {
             }
 
             public MessageGenerator forLocalizedFeature(Language language, TemplateType templateType) throws IOException {
-                String templatePath = configuration.templateLocationPath()
-                    .replace(":language", language.value())
-                    .replace(":feature", templateType.value());
+                Path templatePath = Paths.get(configuration.templateLocationPath(), language.value(), templateType.value());
+                File templateFileDirectory = fileSystem.getFile(templatePath.toString());
 
-                HtmlBodyRenderer htmlBodyRenderer = HtmlBodyRenderer.forPath(templatePath + "/html.pug");
-                String subject = IOUtils.toString(fileSystem.getResource(templatePath + "/subject.txt"), StandardCharsets.UTF_8);
+                if (!templateFileDirectory.exists() || !templateFileDirectory.isDirectory()) {
+                    throw new FileNotFoundException("Template directory not found: " + templateFileDirectory.getAbsolutePath());
+                }
 
+                Path subjectPath = templatePath.resolve(SUBJECT_FILE_NAME);
+                File subjectFile = fileSystem.getFile(subjectPath.toString());
+                if (!subjectFile.exists() || !subjectFile.isFile()) {
+                    throw new FileNotFoundException("Subject file not found: " + subjectFile.getAbsolutePath());
+                }
+
+                HtmlBodyRenderer htmlBodyRenderer = HtmlBodyRenderer.forPath(templateFileDirectory.getAbsolutePath());
+                String subject = IOUtils.toString(subjectFile.toURI(), StandardCharsets.UTF_8);
                 return new MessageGenerator(configuration, subject, htmlBodyRenderer);
             }
 

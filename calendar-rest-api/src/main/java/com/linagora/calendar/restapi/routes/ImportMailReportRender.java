@@ -32,14 +32,14 @@ import org.apache.james.mailbox.model.ContentType;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.linagora.calendar.restapi.RestApiConfiguration;
 import com.linagora.calendar.restapi.routes.ImportProcessor.ImportResult;
 import com.linagora.calendar.restapi.routes.ImportProcessor.ImportType;
-import com.linagora.calendar.restapi.RestApiConfiguration;
+import com.linagora.calendar.smtp.Mail;
 import com.linagora.calendar.smtp.template.InlinedAttachment;
 import com.linagora.calendar.smtp.template.Language;
 import com.linagora.calendar.smtp.template.MailTemplateConfiguration;
 import com.linagora.calendar.smtp.template.MessageGenerator;
-import com.linagora.calendar.smtp.Mail;
 
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -53,8 +53,11 @@ public class ImportMailReportRender {
 
     @Inject
     @Singleton
-    public ImportMailReportRender(MailTemplateConfiguration templateConfiguration, MessageGenerator.Factory factory, RestApiConfiguration configuration,
-                                  @Named("calendar-logo") byte[] calendarLogo, @Named("calendar-logo") byte[] contactLogo) {
+    public ImportMailReportRender(MailTemplateConfiguration templateConfiguration,
+                                  MessageGenerator.Factory factory,
+                                  RestApiConfiguration configuration,
+                                  @Named("calendar-logo") byte[] calendarLogo,
+                                  @Named("calendar-logo") byte[] contactLogo) {
         this.templateConfiguration = templateConfiguration;
         this.messageGeneratorFactory = factory;
         this.configuration = configuration;
@@ -65,7 +68,7 @@ public class ImportMailReportRender {
     public Mono<Mail> generateMail(ImportType importType, ImportResult importResult, Username username) {
         String baseUrl = switch (importType) {
             case ICS -> configuration.getCalendarSpaUrl().toString();
-            case VCARD -> configuration.getCalendarSpaUrl().toString(); // TODO change me to point to contact SPA spa.contacts.url
+            case VCARD -> configuration.getContactSpaUrl().toString();
         };
         byte[] logoBytes = switch (importType) {
             case ICS -> calendarLogo;
@@ -80,7 +83,7 @@ public class ImportMailReportRender {
                 "jobFailedCount", importResult.failed().size()));
         InlinedAttachment logoAttachment = new InlinedAttachment(ContentType.of("image/png"), Cid.from("logo"), logoBytes, "logo.png");
 
-        return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language("en"), importType.getTemplateType()))
+        return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(Language.ENGLISH, importType.getTemplateType()))
             .flatMap(messageGenerator -> messageGenerator.generate(username, model, ImmutableList.of(logoAttachment)))
             .map(Throwing.function(message -> new Mail(templateConfiguration.sender(), List.of(username.asMailAddress()), message)))
             .subscribeOn(Schedulers.boundedElastic());

@@ -18,11 +18,12 @@
 
 package com.linagora.calendar.restapi;
 
+import jakarta.inject.Named;
+
 import org.apache.james.util.ClassLoaderUtils;
 
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
-import jakarta.inject.Named;
 
 public class AssetModule extends AbstractModule {
     @Provides

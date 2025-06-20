@@ -131,7 +131,6 @@ public class TwakeCalendarMain {
                 new TwakeCalendarRabbitMQModule(),
                 new TechnicalUserTokenModule(),
                 new SmtpModule(),
-                new TaskManagerModule(),
                 WEBADMIN));
     }
 

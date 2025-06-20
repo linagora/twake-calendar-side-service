@@ -26,8 +26,6 @@ import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.awaitility.Durations.ONE_HUNDRED_MILLISECONDS;
 import static org.hamcrest.Matchers.equalTo;
 
-import java.io.File;
-import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -38,7 +36,6 @@ import java.util.function.Supplier;
 
 import org.apache.http.HttpStatus;
 import org.apache.james.core.MaybeSender;
-import org.apache.james.util.ClassLoaderUtils;
 import org.apache.james.util.Port;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionFactory;
@@ -115,14 +112,9 @@ public class ImportRouteTest {
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB),
         AppTestHelper.OIDC_BY_PASS_MODULE,
         DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
-        binder -> binder.bind(MailTemplateConfiguration.class).toProvider(() -> {
-            try {
-                String templatesPath = new File(ClassLoader.getSystemResource("templates").toURI()).getAbsolutePath();
-                return new MailTemplateConfiguration(templatesPath, MaybeSender.getMailSender("no-reply@openpaas.org"));
-            } catch (URISyntaxException e) {
-                throw new RuntimeException(e);
-            }
-        }),
+        binder -> binder.bind(MailTemplateConfiguration.class)
+            .toInstance(new MailTemplateConfiguration("classpath://templates/",
+                MaybeSender.getMailSender("no-reply@openpaas.org"))),
         binder -> binder.bind(MailSenderConfiguration.class)
             .toInstance(mailSenderConfigurationFunction.apply(mockSmtpExtension)));
 
@@ -286,11 +278,18 @@ public class ImportRouteTest {
         JsonPath  smtpMailsResponse = smtpMailsResponseSupplier.get();
 
         assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("noreply@open-paas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
             softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(openPaaSUser.username().asString());
             softly.assertThat(smtpMailsResponse.getString("[0].message"))
-                .contains("Subject: Import reporting")
-                .contains("iVBORw0KGgoAAAANSUhEUgAAAK4AAAAqCAYAAAAqLWAgAAAABmJLR0QAFQAVABUmcyb9AAAACXBI"); // base64 encoded image
+                .contains("Subject: Calendar import reporting")
+                .containsIgnoringNewLines("""
+                    Content-Transfer-Encoding: base64
+                    Content-Type: text/html; charset=UTF-8""") // text HTML body part
+                .containsIgnoringNewLines("""
+                    Content-Disposition: inline; filename="logo.png"
+                    Content-ID: logo
+                    Content-Transfer-Encoding: base64
+                    Content-Type: image/png; name="logo.png"""); // base64 encoded image
         }));
     }
 
@@ -485,6 +484,62 @@ public class ImportRouteTest {
                     StandardCharsets.UTF_8);
                 assertThat(contact).contains("EMAIL;TYPE=Work:john.doe@example.com");
             });
+    }
+
+    @Test
+    void shouldReportMailWhenImportVcardSucceed(TwakeCalendarGuiceServer server) {
+        String addressBook = "collected";
+        String vcardUid = UUID.randomUUID().toString();
+        byte[] vcard = """
+            BEGIN:VCARD
+            VERSION:4.0
+            UID:%s
+            FN:John Doe
+            EMAIL;TYPE=Work:john.doe@example.com
+            END:VCARD
+            """.formatted(vcardUid).getBytes(StandardCharsets.UTF_8);
+
+        OpenPaaSId fileId = server.getProbe(CalendarDataProbe.class).saveUploadedFile(openPaaSUser.username(),
+            new Upload("contact.vcf", UploadedMimeType.TEXT_VCARD, Instant.now(), (long) vcard.length, vcard));
+
+        String requestBody = """
+        {
+            "fileId": "%s",
+            "target": "/addressbooks/%s/%s.json"
+        }
+        """.formatted(fileId.value(), openPaaSUser.id().value(), addressBook);
+
+        given()
+            .body(requestBody)
+        .when()
+            .post("/api/import")
+            .then()
+            .statusCode(HttpStatus.SC_ACCEPTED);
+
+        Supplier<JsonPath> smtpMailsResponseSupplier  = () -> given(mockSMTPRequestSpecification())
+            .get("/smtpMails")
+            .jsonPath();
+
+        CALMLY_AWAIT
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> assertThat( smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        JsonPath  smtpMailsResponse = smtpMailsResponseSupplier.get();
+
+        assertSoftly(Throwing.consumer(softly -> {
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(openPaaSUser.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[0].message"))
+                .contains("Subject: Contacts import reporting")
+                .containsIgnoringNewLines("""
+                    Content-Transfer-Encoding: base64
+                    Content-Type: text/html; charset=UTF-8""") // text HTML body part
+                .containsIgnoringNewLines("""
+                    Content-Disposition: inline; filename="logo.png"
+                    Content-ID: logo
+                    Content-Transfer-Encoding: base64
+                    Content-Type: image/png; name="logo.png"""); // base64 encoded image
+        }));
     }
 
     @Test

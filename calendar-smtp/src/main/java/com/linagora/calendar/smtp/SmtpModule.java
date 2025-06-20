@@ -27,12 +27,15 @@ import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.Scopes;
 import com.google.inject.Singleton;
+import com.linagora.calendar.smtp.template.MailTemplateModule;
 
 public class SmtpModule extends AbstractModule {
     @Override
     protected void configure() {
         bind(MailSender.Factory.Default.class).in(Scopes.SINGLETON);
         bind(MailSender.Factory.class).to(MailSender.Factory.Default.class);
+
+        install(new MailTemplateModule());
     }
 
     @Provides

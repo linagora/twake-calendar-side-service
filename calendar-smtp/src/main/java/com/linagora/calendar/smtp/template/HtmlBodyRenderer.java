@@ -27,6 +27,8 @@ import de.neuland.pug4j.template.FileTemplateLoader;
 import de.neuland.pug4j.template.PugTemplate;
 
 public class HtmlBodyRenderer {
+    private static final String TEMPLATE_FILE_NAME = "html.pug";
+
     public static HtmlBodyRenderer forPath(String templatePath) throws IOException {
         FileTemplateLoader fileLoader = new FileTemplateLoader(templatePath);
         fileLoader.setBase("");
@@ -34,7 +36,7 @@ public class HtmlBodyRenderer {
         PugConfiguration pugConfiguration = new PugConfiguration();
         pugConfiguration.setTemplateLoader(fileLoader);
 
-        return new HtmlBodyRenderer(pugConfiguration.getTemplate(templatePath + "html.pug"));
+        return new HtmlBodyRenderer(pugConfiguration.getTemplate(TEMPLATE_FILE_NAME));
     }
 
     private final PugTemplate template;

@@ -29,7 +29,7 @@ import org.apache.james.mime4j.stream.RawField;
 public record InlinedAttachment(ContentType contentType, Cid cid, byte[] content, String filename) {
     public BodyPart asBodyPart() throws IOException {
         return BodyPartBuilder.create()
-            .setContentDisposition("inline; filename=\"" + filename() +"\"")
+            .setContentDisposition("inline; filename=\"" + filename() + "\"")
             .setField(new RawField("Content-ID", cid().getValue()))
             .setContentTransferEncoding("base64")
             .setBody(content(), contentType().asString() + "; name=\"" + filename() + "\"")
