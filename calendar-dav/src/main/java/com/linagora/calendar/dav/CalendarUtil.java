@@ -28,13 +28,13 @@ package com.linagora.calendar.dav;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 
 import net.fortuna.ical4j.data.CalendarBuilder;
 import net.fortuna.ical4j.data.CalendarParserFactory;
 import net.fortuna.ical4j.data.ContentHandlerContext;
 import net.fortuna.ical4j.data.ParserException;
 import net.fortuna.ical4j.model.Calendar;
-import net.fortuna.ical4j.model.TimeZoneRegistryFactory;
 import net.fortuna.ical4j.util.CompatibilityHints;
 import net.fortuna.ical4j.util.MapTimeZoneCache;
 
@@ -51,11 +51,15 @@ public class CalendarUtil {
         System.setProperty("net.fortuna.ical4j.timezone.cache.impl", MapTimeZoneCache.class.getName());
     }
 
+    public static Calendar parseIcs(String icsContent) {
+        return parseIcs(icsContent.getBytes(StandardCharsets.UTF_8));
+    }
+
     public static Calendar parseIcs(byte[] icsContent) {
         CalendarBuilder builder = new CalendarBuilder(
             CalendarParserFactory.getInstance().get(),
             new ContentHandlerContext().withSupressInvalidProperties(true),
-            TimeZoneRegistryFactory.getInstance().createRegistry());
+            new CustomizedTimeZoneRegistry());
         try {
             ByteArrayInputStream inputStream = new ByteArrayInputStream(icsContent);
             return builder.build(inputStream);
