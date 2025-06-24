@@ -28,17 +28,38 @@ package com.linagora.calendar.dav;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.time.DateTimeException;
+import java.time.ZoneId;
 
 import net.fortuna.ical4j.data.CalendarBuilder;
 import net.fortuna.ical4j.data.CalendarParserFactory;
 import net.fortuna.ical4j.data.ContentHandlerContext;
 import net.fortuna.ical4j.data.ParserException;
 import net.fortuna.ical4j.model.Calendar;
-import net.fortuna.ical4j.model.TimeZoneRegistryFactory;
+import net.fortuna.ical4j.model.TimeZoneRegistry;
+import net.fortuna.ical4j.model.TimeZoneRegistryImpl;
 import net.fortuna.ical4j.util.CompatibilityHints;
 import net.fortuna.ical4j.util.MapTimeZoneCache;
 
 public class CalendarUtil {
+
+    public static class CustomizedTimeZoneRegistry extends TimeZoneRegistryImpl {
+
+        @Override
+        public ZoneId getZoneId(String tzId) {
+            try {
+                // Attempt to get the zone ID from the parent class first
+                return super.getZoneId(tzId);
+            } catch (DateTimeException e) {
+                // If it fails, we try to get the global zone ID
+                if (e.getMessage().contains("Unknown timezone identifier")) {
+                    return TimeZoneRegistry.getGlobalZoneId(tzId);
+                }
+                throw e;
+            }
+        }
+    }
 
     static {
         CompatibilityHints.setHintEnabled(CompatibilityHints.KEY_RELAXED_PARSING, true);
@@ -51,11 +72,15 @@ public class CalendarUtil {
         System.setProperty("net.fortuna.ical4j.timezone.cache.impl", MapTimeZoneCache.class.getName());
     }
 
+    public static Calendar parseIcs(String icsContent) {
+        return parseIcs(icsContent.getBytes(StandardCharsets.UTF_8));
+    }
+
     public static Calendar parseIcs(byte[] icsContent) {
         CalendarBuilder builder = new CalendarBuilder(
             CalendarParserFactory.getInstance().get(),
             new ContentHandlerContext().withSupressInvalidProperties(true),
-            TimeZoneRegistryFactory.getInstance().createRegistry());
+            new CustomizedTimeZoneRegistry());
         try {
             ByteArrayInputStream inputStream = new ByteArrayInputStream(icsContent);
             return builder.build(inputStream);

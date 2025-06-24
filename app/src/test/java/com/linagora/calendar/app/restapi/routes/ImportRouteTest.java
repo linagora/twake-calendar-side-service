@@ -359,7 +359,7 @@ public class ImportRouteTest {
             PRODID:-//SabreDAV//SabreDAV 3.2.2//EN
             X-WR-CALNAME:#default
             BEGIN:VTIMEZONE
-            TZID:Asia/Saigon
+            TZID:Asia/Jakarta
             BEGIN:STANDARD
             TZOFFSETFROM:+0700
             TZOFFSETTO:+0700
