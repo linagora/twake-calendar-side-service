@@ -122,10 +122,10 @@ public class EventEmailConsumer implements Closeable, Startable {
     private Mono<?> consumeMessage(AcknowledgableDelivery ackDelivery) {
         return Mono.fromCallable(() -> OBJECT_MAPPER.readValue(ackDelivery.getBody(), CalendarEventNotificationEmail.class))
             .flatMap(message -> handleMessage(message)
-                .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed calendar mail event successfully {} '{}'", message.getClass().getSimpleName(), message.eventPath()))) )
+                .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed calendar mail event message successfully {} '{}'", message.getClass().getSimpleName(), message.eventPath()))) )
             .doOnSuccess(result -> ackDelivery.ack())
             .onErrorResume(error -> {
-                LOGGER.error("Error when consume calendar mail event", error);
+                LOGGER.error("Error when consume calendar mail event message", error);
                 ackDelivery.nack(!REQUEUE_ON_NACK);
                 return Mono.empty();
             });
@@ -135,23 +135,23 @@ public class EventEmailConsumer implements Closeable, Startable {
         return switch (calendarEventMessage.method()) {
             case REQUEST -> {
                 if (calendarEventMessage.isNewEvent()) {
-                    LOGGER.info("Received new calendar event with method REQUEST and eventPath {}", calendarEventMessage.eventPath());
+                    LOGGER.info("Received new calendar event message with method REQUEST and eventPath {}", calendarEventMessage.eventPath());
                     yield Mono.empty();
                 } else {
-                    LOGGER.info("Received updated calendar event with method REQUEST and eventPath {}", calendarEventMessage.eventPath());
+                    LOGGER.info("Received updated calendar event message with method REQUEST and eventPath {}", calendarEventMessage.eventPath());
                     yield Mono.empty();
                 }
             }
             case REPLY -> {
-                LOGGER.info("Received calendar event with method REPLY and eventPath {}", calendarEventMessage.eventPath());
+                LOGGER.info("Received calendar event message with method REPLY and eventPath {}", calendarEventMessage.eventPath());
                 yield Mono.empty();
             }
             case CANCEL -> {
-                LOGGER.info("Received calendar event with method CANCEL and eventPath {}", calendarEventMessage.eventPath());
+                LOGGER.info("Received calendar event message with method CANCEL and eventPath {}", calendarEventMessage.eventPath());
                 yield Mono.empty();
             }
             case COUNTER -> {
-                LOGGER.info("Received calendar event with method COUNTER and eventPath {}", calendarEventMessage.eventPath());
+                LOGGER.info("Received calendar event message with method COUNTER and eventPath {}", calendarEventMessage.eventPath());
                 yield Mono.empty();
             }
             default -> throw new IllegalArgumentException("Unknown method: " + calendarEventMessage.method());
