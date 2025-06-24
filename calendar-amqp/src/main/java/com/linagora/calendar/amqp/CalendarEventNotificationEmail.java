@@ -19,6 +19,7 @@
 package com.linagora.calendar.amqp;
 
 import java.io.IOException;
+import java.util.Optional;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonParser;
@@ -36,18 +37,18 @@ public record CalendarEventNotificationEmail(@JsonProperty("senderEmail") String
                                              @JsonProperty("notify") boolean notifyEvent,
                                              @JsonProperty("calendarURI") String calendarURI,
                                              @JsonProperty("eventPath") String eventPath,
-                                             @JsonProperty("changes") Changes changes,
-                                             @JsonProperty("isNewEvent") Boolean isNewEvent,
-                                             @JsonProperty("oldEvent") @JsonDeserialize(using = CalendarEventDeserializer.class) Calendar oldEvent) {
+                                             @JsonProperty("changes") Optional<Changes> changes,
+                                             @JsonProperty("isNewEvent") Optional<Boolean> isNewEvent,
+                                             @JsonProperty("oldEvent") @JsonDeserialize(contentUsing = CalendarEventDeserializer.class) Optional<Calendar> oldEvent) {
     public enum Method {
         REQUEST, REPLY, CANCEL, COUNTER
     }
 
-    public record Changes(@JsonProperty("dtstart") DateTimeChange dtstart,
-                          @JsonProperty("dtend") DateTimeChange dtend,
-                          @JsonProperty("summary") StringChange summary,
-                          @JsonProperty("location") StringChange location,
-                          @JsonProperty("description") StringChange description) {
+    public record Changes(@JsonProperty("dtstart") Optional<DateTimeChange> dtstart,
+                          @JsonProperty("dtend") Optional<DateTimeChange> dtend,
+                          @JsonProperty("summary") Optional<StringChange> summary,
+                          @JsonProperty("location") Optional<StringChange> location,
+                          @JsonProperty("description") Optional<StringChange> description) {
     }
 
     public record DateTimeChange(@JsonProperty("previous") DateTimeValue previous,

@@ -19,6 +19,7 @@
 package com.linagora.calendar.amqp;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.linagora.calendar.dav.CalendarUtil;
 
 import org.junit.jupiter.api.Test;
@@ -26,7 +27,7 @@ import org.assertj.core.api.SoftAssertions;
 
 class CalendarEventNotificationEmailDeserializeTest {
 
-    static final ObjectMapper mapper = new ObjectMapper();
+    static final ObjectMapper mapper = new ObjectMapper().registerModule(new Jdk8Module());
 
     @Test
     void shouldDeserializeFromJsonWhenInvite() throws Exception {
@@ -66,7 +67,7 @@ class CalendarEventNotificationEmailDeserializeTest {
             softly.assertThat(calendarEvent.notifyEvent()).isTrue();
             softly.assertThat(calendarEvent.calendarURI()).isEqualTo("67e26ebbecd9f300255a9f80");
             softly.assertThat(calendarEvent.eventPath()).isEqualTo("/calendars/5f50a663bdaffe002629099c/5f50a663bdaffe002629099c/sabredav-71741739-8806-4a9e-98b0-cc386d248832.ics");
-            softly.assertThat(calendarEvent.isNewEvent()).isTrue();
+            softly.assertThat(calendarEvent.isNewEvent().get()).isTrue();
         });
     }
 
@@ -149,28 +150,33 @@ class CalendarEventNotificationEmailDeserializeTest {
             softly.assertThat(calendarEvent.notifyEvent()).isTrue();
             softly.assertThat(calendarEvent.calendarURI()).isEqualTo("67e26ebbecd9f300255a9f80");
             softly.assertThat(calendarEvent.eventPath()).isEqualTo("/calendars/5f50a663bdaffe002629099c/5f50a663bdaffe002629099c/sabredav-71741739-8806-4a9e-98b0-cc386d248832.ics");
-            softly.assertThat(calendarEvent.changes().summary().previous()).isEqualTo("Old summary");
-            softly.assertThat(calendarEvent.changes().summary().current()).isEqualTo("Test Event");
-            softly.assertThat(calendarEvent.changes().location().previous()).isEqualTo("office1");
-            softly.assertThat(calendarEvent.changes().location().current()).isEqualTo("office2");
-            softly.assertThat(calendarEvent.changes().description().previous()).isEqualTo("detail1");
-            softly.assertThat(calendarEvent.changes().description().current()).isEqualTo("detail2");
-            softly.assertThat(calendarEvent.changes().dtstart().previous().isAllDay()).isFalse();
-            softly.assertThat(calendarEvent.changes().dtstart().previous().date()).isEqualTo("2025-06-21 08:00:00.000000");
-            softly.assertThat(calendarEvent.changes().dtstart().previous().timezoneType()).isEqualTo(3);
-            softly.assertThat(calendarEvent.changes().dtstart().previous().timezone()).isEqualTo("Europe/Paris");
-            softly.assertThat(calendarEvent.changes().dtstart().current().isAllDay()).isFalse();
-            softly.assertThat(calendarEvent.changes().dtstart().current().date()).isEqualTo("2025-06-21 07:30:00.000000");
-            softly.assertThat(calendarEvent.changes().dtstart().current().timezoneType()).isEqualTo(3);
-            softly.assertThat(calendarEvent.changes().dtstart().current().timezone()).isEqualTo("Europe/Paris");
-            softly.assertThat(calendarEvent.changes().dtend().previous().isAllDay()).isFalse();
-            softly.assertThat(calendarEvent.changes().dtend().previous().date()).isEqualTo("2025-06-21 08:30:00.000000");
-            softly.assertThat(calendarEvent.changes().dtend().previous().timezoneType()).isEqualTo(3);
-            softly.assertThat(calendarEvent.changes().dtend().previous().timezone()).isEqualTo("Europe/Paris");
-            softly.assertThat(calendarEvent.changes().dtend().current().isAllDay()).isFalse();
-            softly.assertThat(calendarEvent.changes().dtend().current().date()).isEqualTo("2025-06-21 08:00:00.000000");
-            softly.assertThat(calendarEvent.changes().dtend().current().timezoneType()).isEqualTo(3);
-            softly.assertThat(calendarEvent.changes().dtend().current().timezone()).isEqualTo("Europe/Paris");
+            softly.assertThat(calendarEvent.changes().get().summary()).isPresent();
+            softly.assertThat(calendarEvent.changes().get().summary().get().previous()).isEqualTo("Old summary");
+            softly.assertThat(calendarEvent.changes().get().summary().get().current()).isEqualTo("Test Event");
+            softly.assertThat(calendarEvent.changes().get().location()).isPresent();
+            softly.assertThat(calendarEvent.changes().get().location().get().previous()).isEqualTo("office1");
+            softly.assertThat(calendarEvent.changes().get().location().get().current()).isEqualTo("office2");
+            softly.assertThat(calendarEvent.changes().get().description()).isPresent();
+            softly.assertThat(calendarEvent.changes().get().description().get().previous()).isEqualTo("detail1");
+            softly.assertThat(calendarEvent.changes().get().description().get().current()).isEqualTo("detail2");
+            softly.assertThat(calendarEvent.changes().get().dtstart()).isPresent();
+            softly.assertThat(calendarEvent.changes().get().dtstart().get().previous().isAllDay()).isFalse();
+            softly.assertThat(calendarEvent.changes().get().dtstart().get().previous().date()).isEqualTo("2025-06-21 08:00:00.000000");
+            softly.assertThat(calendarEvent.changes().get().dtstart().get().previous().timezoneType()).isEqualTo(3);
+            softly.assertThat(calendarEvent.changes().get().dtstart().get().previous().timezone()).isEqualTo("Europe/Paris");
+            softly.assertThat(calendarEvent.changes().get().dtstart().get().current().isAllDay()).isFalse();
+            softly.assertThat(calendarEvent.changes().get().dtstart().get().current().date()).isEqualTo("2025-06-21 07:30:00.000000");
+            softly.assertThat(calendarEvent.changes().get().dtstart().get().current().timezoneType()).isEqualTo(3);
+            softly.assertThat(calendarEvent.changes().get().dtstart().get().current().timezone()).isEqualTo("Europe/Paris");
+            softly.assertThat(calendarEvent.changes().get().dtend()).isPresent();
+            softly.assertThat(calendarEvent.changes().get().dtend().get().previous().isAllDay()).isFalse();
+            softly.assertThat(calendarEvent.changes().get().dtend().get().previous().date()).isEqualTo("2025-06-21 08:30:00.000000");
+            softly.assertThat(calendarEvent.changes().get().dtend().get().previous().timezoneType()).isEqualTo(3);
+            softly.assertThat(calendarEvent.changes().get().dtend().get().previous().timezone()).isEqualTo("Europe/Paris");
+            softly.assertThat(calendarEvent.changes().get().dtend().get().current().isAllDay()).isFalse();
+            softly.assertThat(calendarEvent.changes().get().dtend().get().current().date()).isEqualTo("2025-06-21 08:00:00.000000");
+            softly.assertThat(calendarEvent.changes().get().dtend().get().current().timezoneType()).isEqualTo(3);
+            softly.assertThat(calendarEvent.changes().get().dtend().get().current().timezone()).isEqualTo("Europe/Paris");
         });
     }
 
@@ -342,7 +348,7 @@ class CalendarEventNotificationEmailDeserializeTest {
             softly.assertThat(calendarEvent.recipientEmail()).isEqualTo("user1@open-paas.org");
             softly.assertThat(calendarEvent.method()).isEqualTo(CalendarEventNotificationEmail.Method.COUNTER);
             softly.assertThat(calendarEvent.event()).isEqualTo(CalendarUtil.parseIcs(eventIcs));
-            softly.assertThat(calendarEvent.oldEvent()).isEqualTo(CalendarUtil.parseIcs(oldEventIcs));
+            softly.assertThat(calendarEvent.oldEvent().get()).isEqualTo(CalendarUtil.parseIcs(oldEventIcs));
             softly.assertThat(calendarEvent.notifyEvent()).isTrue();
             softly.assertThat(calendarEvent.calendarURI()).isEqualTo("6853ca6c1cbe800055fd838b");
             softly.assertThat(calendarEvent.eventPath()).isEqualTo("/calendars/6853ca6c1cbe800055fd838a/6853ca6c1cbe800055fd838a/a92de371-8529-45f8-948a-70ddf27bbc09.ics");

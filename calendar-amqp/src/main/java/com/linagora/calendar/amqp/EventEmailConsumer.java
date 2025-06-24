@@ -26,6 +26,9 @@ import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 import java.io.Closeable;
 import java.util.function.Supplier;
 
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
+
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.ReceiverProvider;
@@ -35,11 +38,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.inject.name.Named;
 import com.rabbitmq.client.BuiltinExchangeType;
 
-import jakarta.inject.Inject;
-import jakarta.inject.Singleton;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -54,7 +56,7 @@ import reactor.rabbitmq.Sender;
 public class EventEmailConsumer implements Closeable, Startable {
     private static final Logger LOGGER = LoggerFactory.getLogger(EventEmailConsumer.class);
     private static final boolean REQUEUE_ON_NACK = true;
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module());
 
     private static final String EXCHANGE_NAME = "calendar:event:notificationEmail:send";
     private static final String QUEUE_NAME = "tcalendar:event:notificationEmail:send";
@@ -66,7 +68,7 @@ public class EventEmailConsumer implements Closeable, Startable {
     @Inject
     @Singleton
     public EventEmailConsumer(ReactorRabbitMQChannelPool channelPool,
-                              @Named(INJECT_KEY_DAV)  Supplier<QueueArguments.Builder> queueArgumentSupplier) {
+                              @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier) {
         this.receiverProvider = channelPool::createReceiver;
 
         Sender sender = channelPool.getSender();
@@ -124,7 +126,7 @@ public class EventEmailConsumer implements Closeable, Startable {
     private Mono<?> consumeMessage(AcknowledgableDelivery ackDelivery) {
         return Mono.fromCallable(() -> OBJECT_MAPPER.readValue(ackDelivery.getBody(), CalendarEventNotificationEmail.class))
             .flatMap(message -> handleMessage(message)
-                .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed calendar mail event message successfully {} '{}'", message.getClass().getSimpleName(), message.eventPath()))) )
+                .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed calendar mail event message successfully {} '{}'", message.getClass().getSimpleName(), message.eventPath()))))
             .doOnSuccess(result -> ackDelivery.ack())
             .onErrorResume(error -> {
                 LOGGER.error("Error when consume calendar mail event message", error);
@@ -136,7 +138,8 @@ public class EventEmailConsumer implements Closeable, Startable {
     private Mono<Void> handleMessage(CalendarEventNotificationEmail calendarEventMessage) {
         return switch (calendarEventMessage.method()) {
             case REQUEST -> {
-                if (calendarEventMessage.isNewEvent()) {
+                boolean isNewEvent = calendarEventMessage.isNewEvent().orElse(false);
+                if (isNewEvent) {
                     LOGGER.info("Received new calendar event message with method REQUEST and eventPath {}", calendarEventMessage.eventPath());
                     yield Mono.empty();
                 } else {
