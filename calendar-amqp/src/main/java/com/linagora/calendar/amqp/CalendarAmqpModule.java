@@ -36,7 +36,7 @@ import com.google.inject.Singleton;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.google.inject.name.Named;
 
-public class EventIndexerModule extends AbstractModule {
+public class CalendarAmqpModule extends AbstractModule {
     public static final String INJECT_KEY_DAV = "dav";
 
     private static final boolean FALLBACK_CLASSIC_QUEUES_VERSION_1 = Boolean.parseBoolean(System.getProperty("fallback.classic.queues.v1", "false"));
@@ -46,6 +46,7 @@ public class EventIndexerModule extends AbstractModule {
     @Override
     protected void configure() {
         bind(EventIndexerConsumer.class).in(Scopes.SINGLETON);
+        bind(EventEmailConsumer.class).in(Scopes.SINGLETON);
     }
 
     @Provides
@@ -82,6 +83,18 @@ public class EventIndexerModule extends AbstractModule {
     public InitializationOperation initializeContactsConsumer(EventIndexerConsumer instance) {
         return InitilizationOperationBuilder
             .forClass(EventIndexerConsumer.class)
+            .init(instance::init);
+    }
+
+    @ProvidesIntoSet
+    SimpleConnectionPool.ReconnectionHandler provideEventEmailReconnectionHandler(EventEmailReconnectionHandler reconnectionHandler) {
+        return reconnectionHandler;
+    }
+
+    @ProvidesIntoSet
+    public InitializationOperation initializeEventEmailConsumer(EventEmailConsumer instance) {
+        return InitilizationOperationBuilder
+            .forClass(EventEmailConsumer.class)
             .init(instance::init);
     }
 }

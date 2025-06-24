@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.amqp;
 
+import static com.linagora.calendar.amqp.CalendarAmqpModule.INJECT_KEY_DAV;
 import static org.apache.james.backends.rabbitmq.Constants.DURABLE;
 import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
 import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
@@ -34,6 +35,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.inject.name.Named;
 import com.rabbitmq.client.BuiltinExchangeType;
 
 import jakarta.inject.Inject;
@@ -64,7 +66,7 @@ public class EventEmailConsumer implements Closeable, Startable {
     @Inject
     @Singleton
     public EventEmailConsumer(ReactorRabbitMQChannelPool channelPool,
-                              Supplier<QueueArguments.Builder> queueArgumentSupplier) {
+                              @Named(INJECT_KEY_DAV)  Supplier<QueueArguments.Builder> queueArgumentSupplier) {
         this.receiverProvider = channelPool::createReceiver;
 
         Sender sender = channelPool.getSender();

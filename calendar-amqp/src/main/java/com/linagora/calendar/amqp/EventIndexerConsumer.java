@@ -18,7 +18,7 @@
 
 package com.linagora.calendar.amqp;
 
-import static com.linagora.calendar.amqp.EventIndexerModule.INJECT_KEY_DAV;
+import static com.linagora.calendar.amqp.CalendarAmqpModule.INJECT_KEY_DAV;
 import static org.apache.james.backends.rabbitmq.Constants.DURABLE;
 import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
 import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
