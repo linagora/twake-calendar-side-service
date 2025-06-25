@@ -22,6 +22,7 @@ import static com.linagora.calendar.storage.eventsearch.EventFields.UTC_DATE_TIM
 import static com.linagora.calendar.storage.eventsearch.EventSearchQuery.MAX_LIMIT;
 import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.recursive.comparison.RecursiveComparisonConfiguration.builder;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.mockito.ArgumentMatchers.any;
@@ -216,7 +217,10 @@ public class CalendarRoutesTest {
         List<EventFields> actual = calendarSearchService.search(AccountId.fromUsername(openPaaSUser.username()), simpleQuery(""))
             .collectList().block();
         assertThat(actual).hasSize(1);
-        assertThat(actual.getFirst()).isEqualTo(expected);
+        assertThat(actual.getFirst())
+            .usingRecursiveComparison()
+            .ignoringFields("attendees.partStat", "resources.partStat", "organizer.partStat")
+            .isEqualTo(expected);
     }
 
     @Test
@@ -365,7 +369,11 @@ public class CalendarRoutesTest {
 
         List<EventFields> actual = calendarSearchService.search(AccountId.fromUsername(openPaaSUser.username()), simpleQuery(""))
             .collectList().block();
-        assertThat(actual).containsExactlyInAnyOrder(expected1, expected2, expected3);
+        assertThat(actual)
+            .usingRecursiveFieldByFieldElementComparator(builder()
+                .withIgnoredFields("attendees.partStat", "resources.partStat", "organizer.partStat")
+                .build())
+            .containsExactlyInAnyOrder(expected1, expected2, expected3);
     }
 
     @Test

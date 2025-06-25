@@ -43,6 +43,7 @@ import net.fortuna.ical4j.model.Parameter;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.TimeZone;
 import net.fortuna.ical4j.model.component.VEvent;
+import net.fortuna.ical4j.model.parameter.PartStat;
 
 public record EventFields(EventUid uid,
                           String summary,
@@ -75,10 +76,14 @@ public record EventFields(EventUid uid,
     private static final boolean GET_ATTENDEE = false;
     public static final Logger LOGGER = LoggerFactory.getLogger(EventFields.class);
 
-    public record Person(String cn, MailAddress email) {
+    public record Person(String cn, MailAddress email, Optional<PartStat> partStat) {
 
         public static Person of(String cn, String email) throws AddressException {
-            return new Person(cn, new MailAddress(email));
+            return new Person(cn, new MailAddress(email), Optional.empty());
+        }
+
+        public Person(String cn, MailAddress email) {
+            this(cn, email, Optional.empty());
         }
 
         public Person {
@@ -310,7 +315,9 @@ public record EventFields(EventUid uid,
         try {
             String cn = property.getParameter(Parameter.CN).map(Parameter::getValue).orElse("");
             String email = StringUtils.removeStartIgnoreCase(property.getValue(), "mailto:");
-            return Optional.of(new EventFields.Person(cn, new MailAddress(email)));
+            Optional<PartStat> partStat = property.getParameter(Parameter.PARTSTAT)
+                .map(value -> (PartStat) value);
+            return Optional.of(new EventFields.Person(cn, new MailAddress(email), partStat));
         } catch (AddressException e) {
             LOGGER.info("Invalid person: {}", property.getValue());
             return Optional.empty();
