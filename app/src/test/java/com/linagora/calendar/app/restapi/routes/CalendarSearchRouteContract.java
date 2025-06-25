@@ -40,7 +40,7 @@ import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.eventsearch.CalendarEvents;
-import com.linagora.calendar.storage.eventsearch.EventFields;
+import com.linagora.calendar.storage.event.EventFields;
 
 import io.restassured.RestAssured;
 import io.restassured.authentication.PreemptiveBasicAuthScheme;

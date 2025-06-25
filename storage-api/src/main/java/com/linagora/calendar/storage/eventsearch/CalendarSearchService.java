@@ -20,6 +20,8 @@ package com.linagora.calendar.storage.eventsearch;
 
 import org.apache.james.vacation.api.AccountId;
 
+import com.linagora.calendar.storage.event.EventFields;
+
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 

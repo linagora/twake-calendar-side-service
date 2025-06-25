@@ -31,6 +31,7 @@ import org.junit.jupiter.api.Test;
 
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.event.EventFields;
 
 import reactor.core.publisher.Mono;
 

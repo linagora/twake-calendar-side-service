@@ -25,6 +25,7 @@ import org.apache.commons.lang3.Validate;
 
 import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.event.EventFields;
 
 public record CalendarEvents(EventUid eventUid,
                              CalendarURL calendarURL,

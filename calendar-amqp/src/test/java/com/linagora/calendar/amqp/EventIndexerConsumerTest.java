@@ -69,7 +69,7 @@ import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
-import com.linagora.calendar.storage.eventsearch.EventFields;
+import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.eventsearch.EventSearchQuery;
 import com.linagora.calendar.storage.eventsearch.EventUid;
 import com.linagora.calendar.storage.eventsearch.MemoryCalendarSearchService;

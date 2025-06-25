@@ -16,7 +16,7 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage.eventsearch;
+package com.linagora.calendar.storage.event;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -38,6 +38,7 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.eventsearch.EventUid;
 
 import net.fortuna.ical4j.model.Parameter;
 import net.fortuna.ical4j.model.Property;

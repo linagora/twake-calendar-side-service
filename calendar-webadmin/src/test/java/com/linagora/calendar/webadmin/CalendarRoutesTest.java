@@ -18,7 +18,7 @@
 
 package com.linagora.calendar.webadmin;
 
-import static com.linagora.calendar.storage.eventsearch.EventFields.UTC_DATE_TIME_FORMATTER;
+import static com.linagora.calendar.storage.event.EventFields.UTC_DATE_TIME_FORMATTER;
 import static com.linagora.calendar.storage.eventsearch.EventSearchQuery.MAX_LIMIT;
 import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -66,7 +66,7 @@ import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.eventsearch.CalendarEvents;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
-import com.linagora.calendar.storage.eventsearch.EventFields;
+import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.eventsearch.EventSearchQuery;
 import com.linagora.calendar.storage.eventsearch.MemoryCalendarSearchService;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;

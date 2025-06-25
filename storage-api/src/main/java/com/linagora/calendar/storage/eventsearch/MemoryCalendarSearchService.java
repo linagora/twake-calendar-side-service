@@ -35,6 +35,7 @@ import com.google.inject.AbstractModule;
 import com.google.inject.Module;
 import com.google.inject.Scopes;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.event.EventFields;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
