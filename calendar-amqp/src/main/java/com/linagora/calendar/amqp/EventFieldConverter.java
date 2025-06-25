@@ -46,8 +46,8 @@ import com.linagora.calendar.amqp.EventProperty.EventUidProperty;
 import com.linagora.calendar.amqp.EventProperty.OrganizerProperty;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.eventsearch.CalendarEvents;
-import com.linagora.calendar.storage.eventsearch.EventFields;
 
 public class EventFieldConverter {
     private static final ObjectMapper MAPPER = new ObjectMapper()

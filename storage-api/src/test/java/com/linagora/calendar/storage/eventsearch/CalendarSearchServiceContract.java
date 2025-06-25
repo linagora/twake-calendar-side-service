@@ -48,7 +48,8 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
-import com.linagora.calendar.storage.eventsearch.EventFields.Person;
+import com.linagora.calendar.storage.event.EventFields;
+import com.linagora.calendar.storage.event.EventFields.Person;
 
 public interface CalendarSearchServiceContract {
     Username username = Username.of("user@domain.tld");

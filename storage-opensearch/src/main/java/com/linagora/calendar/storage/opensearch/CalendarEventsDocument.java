@@ -28,7 +28,7 @@ import org.apache.james.vacation.api.AccountId;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.linagora.calendar.storage.CalendarURL;
-import com.linagora.calendar.storage.eventsearch.EventFields;
+import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.opensearch.CalendarEventIndexMappingFactory.CalendarFields;
 
 public record CalendarEventsDocument(@JsonProperty(CalendarFields.ACCOUNT_ID) String accountId,

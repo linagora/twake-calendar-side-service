@@ -41,8 +41,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
-import com.linagora.calendar.storage.eventsearch.EventFields;
 import com.linagora.calendar.storage.eventsearch.EventSearchQuery;
 
 import io.netty.handler.codec.http.HttpMethod;
