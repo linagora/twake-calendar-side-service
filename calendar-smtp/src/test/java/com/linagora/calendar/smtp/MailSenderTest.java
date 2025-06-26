@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.smtp;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 
@@ -37,6 +38,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 
 import io.restassured.RestAssured;
 import io.restassured.path.json.JsonPath;
@@ -58,7 +60,8 @@ class MailSenderTest {
             Optional.empty(),
             false,
             false,
-            false
+            false,
+            ImmutableSet.of()
         );
         mailSender = new MailSender.Factory.Default(config).create().block();
 
@@ -256,5 +259,64 @@ class MailSenderTest {
         assertThatThrownBy(() -> mailSender.send(ImmutableList.of(mail1, mail2)).block())
             .isInstanceOf(SmtpSendingFailedException.class)
             .hasMessageContaining("All 'rcpt to' commands failed");
+    }
+
+    @Test
+    void shouldDeliverMailOnlyToWhitelistedRecipients() throws Exception {
+        MailSenderConfiguration config = new MailSenderConfiguration(
+            "localhost",
+            Port.of(mockSmtpExtension.getMockSmtp().getSmtpPort()),
+            "localhost",
+            Optional.empty(),
+            Optional.empty(),
+            false,
+            false,
+            false,
+            ImmutableSet.of(new MailAddress("recipient1@localhost"))
+        );
+        mailSender = new MailSender.Factory.Default(config).create().block();
+
+        String rawMessage = "From: sender@localhost\nTo: recipient1@localhost, recipient2@localhost\nSubject: Test\n\nHello!";
+        Message message = new DefaultMessageBuilder().parseMessage(new ByteArrayInputStream(rawMessage.getBytes(StandardCharsets.UTF_8)));
+        Mail mail = new Mail(
+            MaybeSender.of(new MailAddress("sender@localhost")),
+            ImmutableList.of(new MailAddress("recipient1@localhost"), new MailAddress("recipient2@localhost")),
+            message
+        );
+
+        mailSender.send(mail).block();
+        JsonPath response = RestAssured.get("/smtpMails").jsonPath();
+        assertSoftly(Throwing.consumer(softly -> {
+            softly.assertThat(response.getList("")).hasSize(1);
+            softly.assertThat(response.getList("[0].recipients.address")).containsExactly("recipient1@localhost");
+        }));
+    }
+
+    @Test
+    void shouldNotDeliverMailIfNoRecipientsMatchWhitelist() throws Exception {
+        MailSenderConfiguration config = new MailSenderConfiguration(
+            "localhost",
+            Port.of(mockSmtpExtension.getMockSmtp().getSmtpPort()),
+            "localhost",
+            Optional.empty(),
+            Optional.empty(),
+            false,
+            false,
+            false,
+            ImmutableSet.of(new MailAddress("recipient3@localhost"))
+        );
+        mailSender = new MailSender.Factory.Default(config).create().block();
+
+        String rawMessage = "From: sender@localhost\nTo: recipient1@localhost, recipient2@localhost\nSubject: Test\n\nHello!";
+        Message message = new DefaultMessageBuilder().parseMessage(new ByteArrayInputStream(rawMessage.getBytes(StandardCharsets.UTF_8)));
+        Mail mail = new Mail(
+            MaybeSender.of(new MailAddress("sender@localhost")),
+            ImmutableList.of(new MailAddress("recipient1@localhost"), new MailAddress("recipient2@localhost")),
+            message
+        );
+
+        mailSender.send(mail).block();
+        JsonPath response = RestAssured.get("/smtpMails").jsonPath();
+        assertThat(response.getList("")).isEmpty();
     }
 }

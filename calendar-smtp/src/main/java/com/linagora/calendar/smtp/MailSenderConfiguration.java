@@ -18,13 +18,19 @@
 
 package com.linagora.calendar.smtp;
 
+import java.util.Arrays;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.apache.commons.configuration2.Configuration;
+import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;
 import org.apache.james.util.Port;
 
+import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableSet;
 
 public record MailSenderConfiguration(String host,
                                       Port port,
@@ -33,7 +39,8 @@ public record MailSenderConfiguration(String host,
                                       Optional<String> password,
                                       boolean sslEnabled,
                                       boolean trustAllCerts,
-                                      boolean startTlsEnabled) {
+                                      boolean startTlsEnabled,
+                                      Set<MailAddress> recipientWhitelist) {
 
     public MailSenderConfiguration {
         Preconditions.checkArgument(username.isPresent() == password.isPresent(), "'smtp.username' and 'smtp.password' must be simultaneously set.");
@@ -55,6 +62,13 @@ public record MailSenderConfiguration(String host,
         boolean trustAllCerts = configuration.getBoolean("smtp.ssl.trustAllCerts", false);
         boolean startTlsEnabled = configuration.getBoolean("smtp.starttls.enabled", false);
 
-        return new MailSenderConfiguration(host, port, helo, user, password, sslEnabled, trustAllCerts, startTlsEnabled);
+        Set<MailAddress> whitelist = Optional.ofNullable(configuration.getString("mail.imip.recipient.whitelist", null))
+            .map(whitelistRaw -> Arrays.stream(whitelistRaw.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .map(Throwing.function(MailAddress::new))
+                .collect(Collectors.toSet()))
+            .orElse(ImmutableSet.of());
+        return new MailSenderConfiguration(host, port, helo, user, password, sslEnabled, trustAllCerts, startTlsEnabled, whitelist);
     }
 }

@@ -24,6 +24,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.cert.X509Certificate;
 import java.util.Collection;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import javax.net.ssl.X509TrustManager;
 
@@ -160,6 +161,13 @@ public interface MailSender {
         }
 
         private void sendMailTransaction(Mail mail) throws IOException {
+            // Filter recipients according to whitelist
+            Collection<MailAddress> filteredRecipients = filterRecipients(mail);
+            if (!configuration.recipientWhitelist().isEmpty() && filteredRecipients.isEmpty()) {
+                LOGGER.warn("Not sending mail from {} and subject {} due to no recipients match the whitelist", mail.sender(), mail.message().getSubject());
+                return;
+            }
+
             int heloCode = client.helo(configuration.ehlo());
             if (!SMTPReply.isPositiveCompletion(heloCode)) {
                 throw new SmtpSendingFailedException("'helo' failed: " + client.getReplyString());
@@ -170,12 +178,21 @@ public interface MailSender {
                 throw new SmtpSendingFailedException("'mail from' failed: " + client.getReplyString());
             }
 
-            addRecipients(mail);
+            addRecipients(filteredRecipients);
             sendMessageData(mail);
 
             if (!client.completePendingCommand()) {
                 throw new SmtpSendingFailedException("'data' command failed: " + client.getReplyString());
             }
+        }
+
+        private Collection<MailAddress> filterRecipients(Mail mail) {
+            if (configuration.recipientWhitelist().isEmpty()) {
+                return mail.recipients();
+            }
+            return mail.recipients().stream()
+                .filter(recipient -> configuration.recipientWhitelist().contains(recipient))
+                .collect(Collectors.toList());
         }
 
         private void sendMessageData(Mail mail) throws IOException {
@@ -188,9 +205,9 @@ public interface MailSender {
             }
         }
 
-        private void addRecipients(Mail mail) throws IOException {
+        private void addRecipients(Collection<MailAddress> recipients) throws IOException {
             int successfullRecipientCount = 0;
-            for (MailAddress recipient : mail.recipients()) {
+            for (MailAddress recipient : recipients) {
                 client.addRecipient(recipient.asString());
                 if (!SMTPReply.isPositiveCompletion(client.getReplyCode())) {
                     LOGGER.warn("'rcpr to' command failed for {}: {}", recipient.asString(), client.getReplyString());

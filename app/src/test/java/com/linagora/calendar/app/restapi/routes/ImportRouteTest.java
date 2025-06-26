@@ -45,6 +45,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.github.fge.lambdas.Throwing;
+import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.app.AppTestHelper;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
@@ -101,7 +102,8 @@ public class ImportRouteTest {
         Optional.empty(),
         false,
         false,
-        false);
+        false,
+        ImmutableSet.of());
 
     @RegisterExtension
     @Order(3)
