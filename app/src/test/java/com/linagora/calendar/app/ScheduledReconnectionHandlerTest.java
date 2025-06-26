@@ -92,7 +92,7 @@ public class ScheduledReconnectionHandlerTest {
 
 
     @Test
-    void shouldRestartDavCalendarEventConsumerWhenConsumerDisconnected(TwakeCalendarGuiceServer server) throws NoSuchFieldException, IllegalAccessException {
+    void shouldRestartDavCalendarEventConsumerWhenConsumerDisconnected(TwakeCalendarGuiceServer server) {
         RabbitMQManagementAPI rabbitMQManagementAPI = RabbitMQManagementAPI.from(sabreDavExtension.dockerSabreDavSetup().rabbitMQConfiguration());
 
         String queueName = EventIndexerConsumer.Queue.ADD.queueName();

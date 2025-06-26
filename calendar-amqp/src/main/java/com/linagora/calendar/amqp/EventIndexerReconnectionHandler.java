@@ -18,8 +18,6 @@
 
 package com.linagora.calendar.amqp;
 
-import java.time.Duration;
-
 import jakarta.inject.Inject;
 
 import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
@@ -33,7 +31,6 @@ import reactor.core.publisher.Mono;
 
 public class EventIndexerReconnectionHandler implements SimpleConnectionPool.ReconnectionHandler {
     private static final Logger LOGGER = LoggerFactory.getLogger(EventIndexerReconnectionHandler.class);
-    private static final Duration DELAY_ON_COMPLETED = Duration.ofSeconds(30);
 
     private final EventIndexerConsumer davCalendarEventConsumer;
 
@@ -46,7 +43,6 @@ public class EventIndexerReconnectionHandler implements SimpleConnectionPool.Rec
     public Publisher<Void> handleReconnection(Connection connection) {
         return Mono.fromRunnable(davCalendarEventConsumer::restart)
             .doOnError(error -> LOGGER.error("Error while handle reconnection for disconnector consumer", error))
-            .then(Mono.delay(DELAY_ON_COMPLETED))
             .then();
     }
 }

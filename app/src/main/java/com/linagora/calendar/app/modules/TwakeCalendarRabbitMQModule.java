@@ -26,6 +26,7 @@ import org.apache.james.utils.PropertiesProvider;
 
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
+import com.google.inject.Scopes;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.linagora.calendar.app.modules.ScheduledReconnectionHandler.ScheduledReconnectionHandlerConfiguration;
 
@@ -34,6 +35,7 @@ public class TwakeCalendarRabbitMQModule extends AbstractModule {
     @Override
     protected void configure() {
         install(new RabbitMQModule());
+        bind(ScheduledReconnectionHandler.class).in(Scopes.SINGLETON);
     }
 
     @Provides

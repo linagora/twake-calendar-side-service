@@ -204,6 +204,7 @@ public class ScheduledReconnectionHandler implements Startable {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ScheduledReconnectionHandler.class);
     private static final Duration DELAY_START = DurationParser.parse(System.getProperty("scheduled.consumer.reconnection.delayStartUp", "30s"));
+    private static final Duration DELAY_ON_EACH_COMPLETED = Duration.ofSeconds(30);
 
     private final Set<SimpleConnectionPool.ReconnectionHandler> reconnectionHandlers;
     private final RabbitMQManagementAPI mqManagementAPI;
@@ -241,7 +242,7 @@ public class ScheduledReconnectionHandler implements Startable {
         disposable = Mono.delay(DELAY_START)
             .thenMany(Flux.interval(config.interval()))
             .filter(any -> restartNeeded())
-            .concatMap(any -> restart())
+            .concatMap(any -> restart().then(Mono.delay(DELAY_ON_EACH_COMPLETED)))
             .onErrorResume(e -> {
                 LOGGER.warn("Failed to run scheduled RabbitMQ consumer checks", e);
                 return Mono.empty();
