@@ -17,11 +17,17 @@
  ********************************************************************/
 package com.linagora.calendar.storage.redis;
 
+import static org.awaitility.Awaitility.await;
+
+import java.time.Duration;
+
 import org.apache.james.backends.redis.RedisClusterExtension;
 import org.apache.james.backends.redis.RedisConfiguration;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.testcontainers.containers.Container;
+import org.testcontainers.containers.GenericContainer;
 
 public class RedisClusterOIDCTokenCacheTest extends RedisOIDCTokenCacheContract {
 
@@ -34,6 +40,17 @@ public class RedisClusterOIDCTokenCacheTest extends RedisOIDCTokenCacheContract 
     @BeforeAll
     static void setUp(RedisClusterExtension.RedisClusterContainer container) {
         redisClusterContainer = container;
+        container.forEach(genericContainer ->  waitUntilClusterReady(genericContainer, Duration.ofSeconds(10)));
+    }
+
+    private static void waitUntilClusterReady(GenericContainer<?> container, Duration timeout) {
+        await().atMost(timeout)
+            .pollInterval(Duration.ofMillis(500))
+            .ignoreExceptions()
+            .until(() -> {
+                Container.ExecResult result = container.execInContainer("redis-cli", "cluster", "info");
+                return result.getExitCode() == 0 && result.getStdout().contains("cluster_state:ok");
+            });
     }
 
     @AfterEach
