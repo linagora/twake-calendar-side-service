@@ -25,6 +25,8 @@ import com.linagora.calendar.dav.CalendarUtil;
 import org.junit.jupiter.api.Test;
 import org.assertj.core.api.SoftAssertions;
 
+import net.fortuna.ical4j.model.property.immutable.ImmutableMethod;
+
 class CalendarEventNotificationEmailDeserializeTest {
 
     static final ObjectMapper mapper = new ObjectMapper().registerModule(new Jdk8Module());
@@ -58,11 +60,11 @@ class CalendarEventNotificationEmailDeserializeTest {
             }
             """.formatted(eventIcs.replace("\n", "\\r\\n"));
 
-        CalendarEventNotificationEmail calendarEvent = mapper.readValue(json, CalendarEventNotificationEmail.class);
+        CalendarEventNotificationEmailDTO calendarEvent = mapper.readValue(json, CalendarEventNotificationEmailDTO.class);
         SoftAssertions.assertSoftly(softly -> {
-            softly.assertThat(calendarEvent.senderEmail()).isEqualTo("twake-calendar-dev@linagora.com");
-            softly.assertThat(calendarEvent.recipientEmail()).isEqualTo("btellier@linagora.com");
-            softly.assertThat(calendarEvent.method()).isEqualTo(CalendarEventNotificationEmail.Method.REQUEST);
+            softly.assertThat(calendarEvent.senderEmail().asString()).isEqualTo("twake-calendar-dev@linagora.com");
+            softly.assertThat(calendarEvent.recipientEmail().asString()).isEqualTo("btellier@linagora.com");
+            softly.assertThat(calendarEvent.method()).isEqualTo(ImmutableMethod.REQUEST);
             softly.assertThat(calendarEvent.event()).isEqualTo(CalendarUtil.parseIcs(eventIcs));
             softly.assertThat(calendarEvent.notifyEvent()).isTrue();
             softly.assertThat(calendarEvent.calendarURI()).isEqualTo("67e26ebbecd9f300255a9f80");
@@ -141,11 +143,11 @@ class CalendarEventNotificationEmailDeserializeTest {
             }
             """.formatted(eventIcs.replace("\n", "\\r\\n"));
 
-        CalendarEventNotificationEmail calendarEvent = mapper.readValue(json, CalendarEventNotificationEmail.class);
+        CalendarEventNotificationEmailDTO calendarEvent = mapper.readValue(json, CalendarEventNotificationEmailDTO.class);
         SoftAssertions.assertSoftly(softly -> {
-            softly.assertThat(calendarEvent.senderEmail()).isEqualTo("twake-calendar-dev@linagora.com");
-            softly.assertThat(calendarEvent.recipientEmail()).isEqualTo("btellier@linagora.com");
-            softly.assertThat(calendarEvent.method()).isEqualTo(CalendarEventNotificationEmail.Method.REQUEST);
+            softly.assertThat(calendarEvent.senderEmail().asString()).isEqualTo("twake-calendar-dev@linagora.com");
+            softly.assertThat(calendarEvent.recipientEmail().asString()).isEqualTo("btellier@linagora.com");
+            softly.assertThat(calendarEvent.method()).isEqualTo(ImmutableMethod.REQUEST);
             softly.assertThat(calendarEvent.event()).isEqualTo(CalendarUtil.parseIcs(eventIcs));
             softly.assertThat(calendarEvent.notifyEvent()).isTrue();
             softly.assertThat(calendarEvent.calendarURI()).isEqualTo("67e26ebbecd9f300255a9f80");
@@ -208,11 +210,11 @@ class CalendarEventNotificationEmailDeserializeTest {
             }
             """.formatted(eventIcs.replace("\n", "\\r\\n"));
 
-        CalendarEventNotificationEmail calendarEvent = mapper.readValue(json, CalendarEventNotificationEmail.class);
+        CalendarEventNotificationEmailDTO calendarEvent = mapper.readValue(json, CalendarEventNotificationEmailDTO.class);
         SoftAssertions.assertSoftly(softly -> {
-            softly.assertThat(calendarEvent.senderEmail()).isEqualTo("twake-calendar-dev@linagora.com");
-            softly.assertThat(calendarEvent.recipientEmail()).isEqualTo("btellier@linagora.com");
-            softly.assertThat(calendarEvent.method()).isEqualTo(CalendarEventNotificationEmail.Method.CANCEL);
+            softly.assertThat(calendarEvent.senderEmail().asString()).isEqualTo("twake-calendar-dev@linagora.com");
+            softly.assertThat(calendarEvent.recipientEmail().asString()).isEqualTo("btellier@linagora.com");
+            softly.assertThat(calendarEvent.method()).isEqualTo(ImmutableMethod.CANCEL);
             softly.assertThat(calendarEvent.event()).isEqualTo(CalendarUtil.parseIcs(eventIcs));
             softly.assertThat(calendarEvent.notifyEvent()).isTrue();
             softly.assertThat(calendarEvent.calendarURI()).isEqualTo("67e26ebbecd9f300255a9f80");
@@ -261,11 +263,11 @@ class CalendarEventNotificationEmailDeserializeTest {
             }
             """.formatted(eventIcs.replace("\n", "\\r\\n"));
 
-        CalendarEventNotificationEmail calendarEvent = mapper.readValue(json, CalendarEventNotificationEmail.class);
+        CalendarEventNotificationEmailDTO calendarEvent = mapper.readValue(json, CalendarEventNotificationEmailDTO.class);
         SoftAssertions.assertSoftly(softly -> {
-            softly.assertThat(calendarEvent.senderEmail()).isEqualTo("user2@open-paas.org");
-            softly.assertThat(calendarEvent.recipientEmail()).isEqualTo("user1@open-paas.org");
-            softly.assertThat(calendarEvent.method()).isEqualTo(CalendarEventNotificationEmail.Method.REPLY);
+            softly.assertThat(calendarEvent.senderEmail().asString()).isEqualTo("user2@open-paas.org");
+            softly.assertThat(calendarEvent.recipientEmail().asString()).isEqualTo("user1@open-paas.org");
+            softly.assertThat(calendarEvent.method()).isEqualTo(ImmutableMethod.REPLY);
             softly.assertThat(calendarEvent.event()).isEqualTo(CalendarUtil.parseIcs(eventIcs));
             softly.assertThat(calendarEvent.notifyEvent()).isTrue();
             softly.assertThat(calendarEvent.calendarURI()).isEqualTo("6853ca6c1cbe800055fd838b");
@@ -342,11 +344,11 @@ class CalendarEventNotificationEmailDeserializeTest {
             }
             """.formatted(eventIcs.replace("\n", "\\r\\n"), oldEventIcs.replace("\n", "\\r\\n"));
 
-        CalendarEventNotificationEmail calendarEvent = mapper.readValue(json, CalendarEventNotificationEmail.class);
+        CalendarEventNotificationEmailDTO calendarEvent = mapper.readValue(json, CalendarEventNotificationEmailDTO.class);
         SoftAssertions.assertSoftly(softly -> {
-            softly.assertThat(calendarEvent.senderEmail()).isEqualTo("user2@open-paas.org");
-            softly.assertThat(calendarEvent.recipientEmail()).isEqualTo("user1@open-paas.org");
-            softly.assertThat(calendarEvent.method()).isEqualTo(CalendarEventNotificationEmail.Method.COUNTER);
+            softly.assertThat(calendarEvent.senderEmail().asString()).isEqualTo("user2@open-paas.org");
+            softly.assertThat(calendarEvent.recipientEmail().asString()).isEqualTo("user1@open-paas.org");
+            softly.assertThat(calendarEvent.method()).isEqualTo(ImmutableMethod.COUNTER);
             softly.assertThat(calendarEvent.event()).isEqualTo(CalendarUtil.parseIcs(eventIcs));
             softly.assertThat(calendarEvent.oldEvent().get()).isEqualTo(CalendarUtil.parseIcs(oldEventIcs));
             softly.assertThat(calendarEvent.notifyEvent()).isTrue();

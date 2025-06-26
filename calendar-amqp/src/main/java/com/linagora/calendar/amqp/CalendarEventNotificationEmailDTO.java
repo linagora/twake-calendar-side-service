@@ -21,6 +21,8 @@ package com.linagora.calendar.amqp;
 import java.io.IOException;
 import java.util.Optional;
 
+import org.apache.james.core.MailAddress;
+
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.DeserializationContext;
@@ -29,20 +31,18 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.linagora.calendar.dav.CalendarUtil;
 
 import net.fortuna.ical4j.model.Calendar;
+import net.fortuna.ical4j.model.property.Method;
 
-public record CalendarEventNotificationEmail(@JsonProperty("senderEmail") String senderEmail,
-                                             @JsonProperty("recipientEmail") String recipientEmail,
-                                             @JsonProperty("method") Method method,
-                                             @JsonProperty("event") @JsonDeserialize(using = CalendarEventDeserializer.class) Calendar event,
-                                             @JsonProperty("notify") boolean notifyEvent,
-                                             @JsonProperty("calendarURI") String calendarURI,
-                                             @JsonProperty("eventPath") String eventPath,
-                                             @JsonProperty("changes") Optional<Changes> changes,
-                                             @JsonProperty("isNewEvent") Optional<Boolean> isNewEvent,
-                                             @JsonProperty("oldEvent") @JsonDeserialize(contentUsing = CalendarEventDeserializer.class) Optional<Calendar> oldEvent) {
-    public enum Method {
-        REQUEST, REPLY, CANCEL, COUNTER
-    }
+public record CalendarEventNotificationEmailDTO(@JsonProperty("senderEmail") @JsonDeserialize(using = MailAddressDeserializer.class) MailAddress senderEmail,
+                                                @JsonProperty("recipientEmail") @JsonDeserialize(using = MailAddressDeserializer.class) MailAddress recipientEmail,
+                                                @JsonProperty("method") Method method,
+                                                @JsonProperty("event") @JsonDeserialize(using = CalendarEventDeserializer.class) Calendar event,
+                                                @JsonProperty("notify") boolean notifyEvent,
+                                                @JsonProperty("calendarURI") String calendarURI,
+                                                @JsonProperty("eventPath") String eventPath,
+                                                @JsonProperty("changes") Optional<Changes> changes,
+                                                @JsonProperty("isNewEvent") Optional<Boolean> isNewEvent,
+                                                @JsonProperty("oldEvent") @JsonDeserialize(contentUsing = CalendarEventDeserializer.class) Optional<Calendar> oldEvent) {
 
     public record Changes(@JsonProperty("dtstart") Optional<DateTimeChange> dtstart,
                           @JsonProperty("dtend") Optional<DateTimeChange> dtend,
@@ -71,6 +71,18 @@ public record CalendarEventNotificationEmail(@JsonProperty("senderEmail") String
         public Calendar deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
             String icsString = p.getValueAsString();
             return CalendarUtil.parseIcs(icsString);
+        }
+    }
+
+    public static class MailAddressDeserializer extends JsonDeserializer<MailAddress> {
+        @Override
+        public MailAddress deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+            String value = p.getValueAsString();
+            try {
+                return new MailAddress(value);
+            } catch (Exception e) {
+                throw ctxt.weirdStringException(value, MailAddress.class, "Unable to parse MailAddress: " + e.getMessage());
+            }
         }
     }
 }
