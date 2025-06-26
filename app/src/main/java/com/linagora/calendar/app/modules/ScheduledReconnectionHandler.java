@@ -55,6 +55,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
+import com.linagora.calendar.amqp.EventEmailConsumer;
 import com.linagora.calendar.amqp.EventIndexerConsumer;
 
 import feign.Client;
@@ -204,6 +205,7 @@ public class ScheduledReconnectionHandler implements Startable {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ScheduledReconnectionHandler.class);
     private static final Duration DELAY_START = DurationParser.parse(System.getProperty("scheduled.consumer.reconnection.delayStartUp", "30s"));
+    private static final Duration DELAY_ON_EACH_COMPLETED = Duration.ofSeconds(30);
 
     private final Set<SimpleConnectionPool.ReconnectionHandler> reconnectionHandlers;
     private final RabbitMQManagementAPI mqManagementAPI;
@@ -224,9 +226,12 @@ public class ScheduledReconnectionHandler implements Startable {
         this.connectionPool = connectionPool;
         this.config = config;
 
-        this.queuesToMonitor = Arrays.stream(EventIndexerConsumer.Queue.values())
-            .map(EventIndexerConsumer.Queue::queueName)
-            .collect(ImmutableList.toImmutableList());
+        this.queuesToMonitor = ImmutableList.<String>builder()
+            .addAll(Arrays.stream(EventIndexerConsumer.Queue.values())
+                .map(EventIndexerConsumer.Queue::queueName)
+                .collect(ImmutableList.toImmutableList()))
+            .add(EventEmailConsumer.QUEUE_NAME)
+            .build();
     }
 
     @VisibleForTesting
@@ -241,7 +246,7 @@ public class ScheduledReconnectionHandler implements Startable {
         disposable = Mono.delay(DELAY_START)
             .thenMany(Flux.interval(config.interval()))
             .filter(any -> restartNeeded())
-            .concatMap(any -> restart())
+            .concatMap(any -> restart().then(Mono.delay(DELAY_ON_EACH_COMPLETED)))
             .onErrorResume(e -> {
                 LOGGER.warn("Failed to run scheduled RabbitMQ consumer checks", e);
                 return Mono.empty();

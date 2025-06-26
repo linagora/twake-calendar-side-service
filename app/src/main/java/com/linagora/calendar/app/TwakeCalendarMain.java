@@ -50,7 +50,7 @@ import com.google.inject.multibindings.MapBinder;
 import com.google.inject.multibindings.Multibinder;
 import com.google.inject.name.Names;
 import com.google.inject.util.Modules;
-import com.linagora.calendar.amqp.EventIndexerModule;
+import com.linagora.calendar.amqp.CalendarAmqpModule;
 import com.linagora.calendar.app.modules.DeleteUserDataRoutesModule;
 import com.linagora.calendar.app.modules.MemoryAutoCompleteModule;
 import com.linagora.calendar.app.modules.MemoryUserModule;
@@ -127,7 +127,7 @@ public class TwakeCalendarMain {
                 new RestApiModule(),
                 new TaskManagerModule(),
                 new DavModule(),
-                new EventIndexerModule(),
+                new CalendarAmqpModule(),
                 new TwakeCalendarRabbitMQModule(),
                 new TechnicalUserTokenModule(),
                 new SmtpModule(),

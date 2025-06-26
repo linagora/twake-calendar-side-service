@@ -16,33 +16,21 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.amqp;
+package com.linagora.calendar.amqp.model;
 
-import jakarta.inject.Inject;
+import java.util.Optional;
 
-import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
-import org.reactivestreams.Publisher;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.linagora.calendar.amqp.CalendarEventNotificationEmailDTO;
 
-import com.rabbitmq.client.Connection;
+public record CalendarEventRequestNotificationEmail(CalendarEventNotificationEmail calendarEventNotificationEmail,
+                                                    Optional<CalendarEventNotificationEmailDTO.Changes> changes,
+                                                    boolean isNewEvent) {
 
-import reactor.core.publisher.Mono;
-
-public class EventIndexerReconnectionHandler implements SimpleConnectionPool.ReconnectionHandler {
-    private static final Logger LOGGER = LoggerFactory.getLogger(EventIndexerReconnectionHandler.class);
-
-    private final EventIndexerConsumer davCalendarEventConsumer;
-
-    @Inject
-    public EventIndexerReconnectionHandler(EventIndexerConsumer davCalendarEventConsumer) {
-        this.davCalendarEventConsumer = davCalendarEventConsumer;
-    }
-
-    @Override
-    public Publisher<Void> handleReconnection(Connection connection) {
-        return Mono.fromRunnable(davCalendarEventConsumer::restart)
-            .doOnError(error -> LOGGER.error("Error while handle reconnection for disconnector consumer", error))
-            .then();
+    public static CalendarEventRequestNotificationEmail from(CalendarEventNotificationEmailDTO dto) {
+        return new CalendarEventRequestNotificationEmail(
+            CalendarEventNotificationEmail.from(dto),
+            dto.changes(),
+            dto.isNewEvent().orElse(false)
+        );
     }
 }

@@ -1,0 +1,88 @@
+/********************************************************************
+ *  As a subpart of Twake Mail, this file is edited by Linagora.    *
+ *                                                                  *
+ *  https://twake-mail.com/                                         *
+ *  https://linagora.com                                            *
+ *                                                                  *
+ *  This file is subject to The Affero Gnu Public License           *
+ *  version 3.                                                      *
+ *                                                                  *
+ *  https://www.gnu.org/licenses/agpl-3.0.en.html                   *
+ *                                                                  *
+ *  This program is distributed in the hope that it will be         *
+ *  useful, but WITHOUT ANY WARRANTY; without even the implied      *
+ *  warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR         *
+ *  PURPOSE. See the GNU Affero General Public License for          *
+ *  more details.                                                   *
+ ********************************************************************/
+
+package com.linagora.calendar.amqp;
+
+import java.io.IOException;
+import java.util.Optional;
+
+import org.apache.james.core.MailAddress;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.linagora.calendar.dav.CalendarUtil;
+
+import net.fortuna.ical4j.model.Calendar;
+import net.fortuna.ical4j.model.property.Method;
+
+public record CalendarEventNotificationEmailDTO(@JsonProperty("senderEmail") @JsonDeserialize(using = MailAddressDeserializer.class) MailAddress senderEmail,
+                                                @JsonProperty("recipientEmail") @JsonDeserialize(using = MailAddressDeserializer.class) MailAddress recipientEmail,
+                                                @JsonProperty("method") Method method,
+                                                @JsonProperty("event") @JsonDeserialize(using = CalendarEventDeserializer.class) Calendar event,
+                                                @JsonProperty("notify") boolean notifyEvent,
+                                                @JsonProperty("calendarURI") String calendarURI,
+                                                @JsonProperty("eventPath") String eventPath,
+                                                @JsonProperty("changes") Optional<Changes> changes,
+                                                @JsonProperty("isNewEvent") Optional<Boolean> isNewEvent,
+                                                @JsonProperty("oldEvent") @JsonDeserialize(contentUsing = CalendarEventDeserializer.class) Optional<Calendar> oldEvent) {
+
+    public record Changes(@JsonProperty("dtstart") Optional<DateTimeChange> dtstart,
+                          @JsonProperty("dtend") Optional<DateTimeChange> dtend,
+                          @JsonProperty("summary") Optional<StringChange> summary,
+                          @JsonProperty("location") Optional<StringChange> location,
+                          @JsonProperty("description") Optional<StringChange> description) {
+    }
+
+    public record DateTimeChange(@JsonProperty("previous") DateTimeValue previous,
+                                 @JsonProperty("current") DateTimeValue current) {
+    }
+
+    public record DateTimeValue(@JsonProperty("isAllDay") boolean isAllDay,
+                                @JsonProperty("date") String date,
+                                @JsonProperty("timezone_type") int timezoneType,
+                                @JsonProperty("timezone") String timezone) {
+
+    }
+
+    public record StringChange(@JsonProperty("previous") String previous,
+                               @JsonProperty("current") String current) {
+    }
+
+    public static class CalendarEventDeserializer extends JsonDeserializer<Calendar> {
+        @Override
+        public Calendar deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+            String icsString = p.getValueAsString();
+            return CalendarUtil.parseIcs(icsString);
+        }
+    }
+
+    public static class MailAddressDeserializer extends JsonDeserializer<MailAddress> {
+        @Override
+        public MailAddress deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+            String value = p.getValueAsString();
+            try {
+                return new MailAddress(value);
+            } catch (Exception e) {
+                throw ctxt.weirdStringException(value, MailAddress.class, "Unable to parse MailAddress: " + e.getMessage());
+            }
+        }
+    }
+}

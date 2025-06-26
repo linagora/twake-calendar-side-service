@@ -29,20 +29,21 @@ import com.rabbitmq.client.Connection;
 
 import reactor.core.publisher.Mono;
 
-public class EventIndexerReconnectionHandler implements SimpleConnectionPool.ReconnectionHandler {
-    private static final Logger LOGGER = LoggerFactory.getLogger(EventIndexerReconnectionHandler.class);
+public class EventEmailReconnectionHandler implements SimpleConnectionPool.ReconnectionHandler {
+    private static final Logger LOGGER = LoggerFactory.getLogger(EventEmailReconnectionHandler.class);
 
-    private final EventIndexerConsumer davCalendarEventConsumer;
+    private final EventEmailConsumer eventEmailConsumer;
 
     @Inject
-    public EventIndexerReconnectionHandler(EventIndexerConsumer davCalendarEventConsumer) {
-        this.davCalendarEventConsumer = davCalendarEventConsumer;
+    public EventEmailReconnectionHandler(EventEmailConsumer eventEmailConsumer) {
+        this.eventEmailConsumer = eventEmailConsumer;
     }
 
     @Override
     public Publisher<Void> handleReconnection(Connection connection) {
-        return Mono.fromRunnable(davCalendarEventConsumer::restart)
-            .doOnError(error -> LOGGER.error("Error while handle reconnection for disconnector consumer", error))
+        return Mono.fromRunnable(eventEmailConsumer::restart)
+            .doOnError(error -> LOGGER.error("Error while handle reconnection for email consumer", error))
             .then();
     }
 }
+
