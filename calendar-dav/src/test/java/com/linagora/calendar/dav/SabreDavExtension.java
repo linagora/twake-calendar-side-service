@@ -91,10 +91,10 @@ public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup) impleme
 
     @Override
     public void afterAll(ExtensionContext extensionContext) {
-        dockerSabreDavSetup.stop();
         if (mockServerClient != null) {
-            mockServerClient.stop();
+            mockServerClient.close();
         }
+        dockerSabreDavSetup.stop();
     }
 
     @Override
