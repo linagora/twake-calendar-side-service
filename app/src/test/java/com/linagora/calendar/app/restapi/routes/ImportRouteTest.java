@@ -29,10 +29,13 @@ import static org.hamcrest.Matchers.equalTo;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.function.Supplier;
+
+import javax.mail.internet.MimeUtility;
 
 import org.apache.http.HttpStatus;
 import org.apache.james.core.MaybeSender;
@@ -293,6 +296,98 @@ public class ImportRouteTest {
         }));
     }
 
+    private void setUserLanguage(Locale locale) {
+        given()
+            .body("""
+            [
+              {
+                "name": "core",
+                "configurations": [
+                  {
+                    "name": "language",
+                    "value": "%s"
+                  }
+                ]
+              }
+            ]
+            """.formatted(locale.getLanguage()))
+        .when()
+            .put("/api/configurations?scope=user")
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+    }
+    @Test
+    void shouldReportMailWithI18NWhenImportEventSucceed(TwakeCalendarGuiceServer server) {
+        // Given set language to France
+        setUserLanguage(Locale.FRANCE);
+
+        String uid = UUID.randomUUID().toString();
+        byte[] ics = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            TRANSP:OPAQUE
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250102T120000Z
+            DTEND:20250102T130000Z
+            SUMMARY:Test Event
+            ORGANIZER;CN=john doe:mailto:%s
+            ATTENDEE;PARTSTAT=accepted;RSVP=false;ROLE=chair;CUTYPE=individual:mailto:%s
+            DESCRIPTION:This is a test event
+            LOCATION:office
+            CLASS:PUBLIC
+            BEGIN:VALARM
+            TRIGGER:-PT5M
+            ACTION:EMAIL
+            ATTENDEE:mailto:%s
+            SUMMARY:test
+            DESCRIPTION:This is an automatic alarm
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """
+            .formatted(uid, openPaaSUser.username().asString(), openPaaSUser.username().asString(), openPaaSUser.username().asString())
+            .getBytes(StandardCharsets.UTF_8);
+
+        OpenPaaSId fileId = server.getProbe(CalendarDataProbe.class).saveUploadedFile(openPaaSUser.username(),
+            new Upload("abc.ics", UploadedMimeType.TEXT_CALENDAR, Instant.now(), (long) ics.length, ics));
+
+        String requestBody = """
+            {
+                "fileId": "%s",
+                "target": "/calendars/%s/%s.json"
+            }
+            """.formatted(fileId.value(), openPaaSUser.id().value(), openPaaSUser.id().value());
+
+        // To trigger calendar directory activation
+        server.getProbe(CalendarDataProbe.class).exportCalendarFromCalDav(new CalendarURL(openPaaSUser.id(), openPaaSUser.id()), MailboxSessionUtil.create(openPaaSUser.username()));
+
+        given()
+            .body(requestBody)
+            .when()
+            .post("/api/import")
+            .then()
+            .statusCode(HttpStatus.SC_ACCEPTED);
+
+        Supplier<JsonPath> smtpMailsResponseSupplier  = () -> given(mockSMTPRequestSpecification())
+            .get("/smtpMails")
+            .jsonPath();
+
+        CALMLY_AWAIT
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> assertThat( smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        JsonPath  smtpMailsResponse = smtpMailsResponseSupplier.get();
+
+        assertSoftly(Throwing.consumer(softly -> {
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(openPaaSUser.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[0].message"))
+                .contains("Subject: Rapport d'importation de calendrier");
+        }));
+    }
+
     @Test
     void shouldImportMultipleEventsSuccessfully(TwakeCalendarGuiceServer server) {
         String uid1 = UUID.randomUUID().toString();
@@ -539,6 +634,57 @@ public class ImportRouteTest {
                     Content-ID: logo
                     Content-Transfer-Encoding: base64
                     Content-Type: image/png; name="logo.png"""); // base64 encoded image
+        }));
+    }
+
+    @Test
+    void shouldReportMailWithI18NWhenImportVcardSucceed(TwakeCalendarGuiceServer server) {
+        // Given set language to VI
+        setUserLanguage(Locale.of("vi"));
+
+        String addressBook = "collected";
+        String vcardUid = UUID.randomUUID().toString();
+        byte[] vcard = """
+            BEGIN:VCARD
+            VERSION:4.0
+            UID:%s
+            FN:John Doe
+            EMAIL;TYPE=Work:john.doe@example.com
+            END:VCARD
+            """.formatted(vcardUid).getBytes(StandardCharsets.UTF_8);
+
+        OpenPaaSId fileId = server.getProbe(CalendarDataProbe.class).saveUploadedFile(openPaaSUser.username(),
+            new Upload("contact.vcf", UploadedMimeType.TEXT_VCARD, Instant.now(), (long) vcard.length, vcard));
+
+        String requestBody = """
+        {
+            "fileId": "%s",
+            "target": "/addressbooks/%s/%s.json"
+        }
+        """.formatted(fileId.value(), openPaaSUser.id().value(), addressBook);
+
+        given()
+            .body(requestBody)
+            .when()
+            .post("/api/import")
+            .then()
+            .statusCode(HttpStatus.SC_ACCEPTED);
+
+        Supplier<JsonPath> smtpMailsResponseSupplier  = () -> given(mockSMTPRequestSpecification())
+            .get("/smtpMails")
+            .jsonPath();
+
+        CALMLY_AWAIT
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> assertThat( smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        JsonPath  smtpMailsResponse = smtpMailsResponseSupplier.get();
+
+        assertSoftly(Throwing.consumer(softly -> {
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(openPaaSUser.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[0].message"))
+                .contains("Subject: "+ MimeUtility.encodeText("Báo cáo nhập danh bạ", "UTF-8", "B"));
         }));
     }
 

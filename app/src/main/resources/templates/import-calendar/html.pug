@@ -16,17 +16,17 @@ html.mail
         .header(style="display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-areas: 'logo subject subject'; grid-area: header; align-self: center;")
           .logo(style="grid-area: logo; align-self: center;")
             a(href=content.baseUrl)
-              img(src="cid:logo", alt="OpenPaas Logo")
+              img(src="cid:logo", alt="Twake Calendar Logo")
           .subject(style="grid-area: subject; justify-self: center;")
-            div.title(style="padding-bottom: 10px; padding-top: 20px; text-align: left; font-size: 25px; font-weight: bold;") Import Report
+            div.title(style="padding-bottom: 10px; padding-top: 20px; text-align: left; font-size: 25px; font-weight: bold;") #{translator.get('header')}
         .import(style="grid-area: import;")
-          span Your Import is done see below the report :
+          span #{translator.get('completed_message')}
             ul
-              li #{content.jobSucceedCount} Contact(s) imported successfully
-              li #{content.jobFailedCount} Contact(s) not imported
+              li #{content.jobSucceedCount} #{translator.get('import_success')}
+              li #{content.jobFailedCount} #{translator.get('import_failure')}
         if content.jobFailedCount
           .failed(style="grid-area: failed;")
-            span List of contact who were not imported :
+            span #{translator.get('import_failure_list')}
             ul
-              each contact in content.jobFailedList
-                li #{contact.email}
+              each event in content.jobFailedList
+                li #{event.uid} - #{event.summary} - #{event.start} / #{event.end}

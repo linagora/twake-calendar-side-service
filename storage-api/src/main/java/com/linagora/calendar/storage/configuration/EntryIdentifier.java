@@ -20,4 +20,5 @@ package com.linagora.calendar.storage.configuration;
 
 public record EntryIdentifier(ModuleName moduleName, ConfigurationKey configurationKey) {
 
+    public static final EntryIdentifier LANGUAGE_IDENTIFIER = new EntryIdentifier(new ModuleName("core"), new ConfigurationKey("language"));
 }

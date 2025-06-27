@@ -65,7 +65,7 @@ public class ImportMailReportRender {
         this.contactsLogo = contactLogo;
     }
 
-    public Mono<Mail> generateMail(ImportType importType, ImportResult importResult, Username username) {
+    public Mono<Mail> generateMail(ImportType importType, Language language, ImportResult importResult, Username username) {
         String baseUrl = switch (importType) {
             case ICS -> configuration.getCalendarSpaUrl().toString();
             case VCARD -> configuration.getContactSpaUrl().toString();
@@ -83,7 +83,7 @@ public class ImportMailReportRender {
                 "jobFailedCount", importResult.failed().size()));
         InlinedAttachment logoAttachment = new InlinedAttachment(ContentType.of("image/png"), Cid.from("logo"), logoBytes, "logo.png");
 
-        return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(Language.ENGLISH, importType.getTemplateType()))
+        return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(language, importType.getTemplateType()))
             .flatMap(messageGenerator -> messageGenerator.generate(username, model, ImmutableList.of(logoAttachment)))
             .map(Throwing.function(message -> new Mail(templateConfiguration.sender(), List.of(username.asMailAddress()), message)))
             .subscribeOn(Schedulers.boundedElastic());

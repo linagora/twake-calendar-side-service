@@ -25,10 +25,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 
-import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.Username;
 import org.apache.james.filesystem.api.FileSystem;
 import org.apache.james.mime4j.dom.Message;
@@ -36,8 +37,12 @@ import org.apache.james.mime4j.message.BodyPartBuilder;
 import org.apache.james.mime4j.message.MultipartBuilder;
 
 import com.github.fge.lambdas.Throwing;
+import com.google.common.base.Preconditions;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
+import com.google.common.collect.ImmutableMap;
+import com.linagora.calendar.smtp.i18n.I18NTranslator;
+import com.linagora.calendar.smtp.i18n.I18NTranslator.PropertiesI18NTranslator;
 
 import reactor.core.publisher.Mono;
 
@@ -46,37 +51,37 @@ public class MessageGenerator {
         MessageGenerator forLocalizedFeature(Language language, TemplateType templateType) throws IOException;
 
         class Default implements Factory {
-            private static final String SUBJECT_FILE_NAME = "subject.txt";
 
             private final MailTemplateConfiguration configuration;
             private final FileSystem fileSystem;
 
-            public Default(MailTemplateConfiguration configuration, FileSystem fileSystem) {
+            public Default(MailTemplateConfiguration configuration,
+                           FileSystem fileSystem) {
                 this.configuration = configuration;
                 this.fileSystem = fileSystem;
             }
 
             public MessageGenerator forLocalizedFeature(Language language, TemplateType templateType) throws IOException {
-                Path templatePath = Paths.get(configuration.templateLocationPath(), language.value(), templateType.value());
+                Path templatePath = Paths.get(configuration.templateLocationPath(), templateType.value());
                 File templateFileDirectory = fileSystem.getFile(templatePath.toString());
-
                 if (!templateFileDirectory.exists() || !templateFileDirectory.isDirectory()) {
                     throw new FileNotFoundException("Template directory not found: " + templateFileDirectory.getAbsolutePath());
                 }
 
-                Path subjectPath = templatePath.resolve(SUBJECT_FILE_NAME);
-                File subjectFile = fileSystem.getFile(subjectPath.toString());
-                if (!subjectFile.exists() || !subjectFile.isFile()) {
-                    throw new FileNotFoundException("Subject file not found: " + subjectFile.getAbsolutePath());
-                }
+                I18NTranslator i18NTranslator = getI18NTranslator(templateType, language.locale());
 
                 HtmlBodyRenderer htmlBodyRenderer = HtmlBodyRenderer.forPath(templateFileDirectory.getAbsolutePath());
-                String subject = IOUtils.toString(subjectFile.toURI(), StandardCharsets.UTF_8);
-                return new MessageGenerator(configuration, subject, htmlBodyRenderer);
+                return new MessageGenerator(configuration, i18NTranslator, htmlBodyRenderer);
             }
 
             public Factory cached() {
                 return new Cached(this);
+            }
+
+            private I18NTranslator getI18NTranslator(TemplateType templateType, Locale locale) throws FileNotFoundException {
+                Path translationsPath = Path.of(configuration.templateLocationPath(), templateType.value(), "translations");
+                File translationsFileDirectory = fileSystem.getFile(translationsPath.toString());
+                return new PropertiesI18NTranslator.Factory(translationsFileDirectory).forLocale(locale);
             }
         }
 
@@ -107,23 +112,32 @@ public class MessageGenerator {
         }
     }
 
-    public static Factory.Default factory(MailTemplateConfiguration configuration, FileSystem fileSystem) {
+    public static Factory.Default factory(MailTemplateConfiguration configuration,
+                                          FileSystem fileSystem) {
         return new Factory.Default(configuration, fileSystem);
     }
 
-    private final MailTemplateConfiguration configuration;
-    private final String subject;
-    private final HtmlBodyRenderer htmlBodyRenderer;
+    private static final String SUBJECT_KEY_NAME = "mail_subject";
+    private static final String TRANSLATOR_FUNCTION_NAME = "translator";
 
-    public MessageGenerator(MailTemplateConfiguration configuration, String subject, HtmlBodyRenderer htmlBodyRenderer) {
+    private final MailTemplateConfiguration configuration;
+    private final HtmlBodyRenderer htmlBodyRenderer;
+    private final I18NTranslator i18nTranslator;
+
+    public MessageGenerator(MailTemplateConfiguration configuration, I18NTranslator i18nTranslator, HtmlBodyRenderer htmlBodyRenderer) {
         this.configuration = configuration;
-        this.subject = subject;
+        this.i18nTranslator = i18nTranslator;
         this.htmlBodyRenderer = htmlBodyRenderer;
     }
 
     public Mono<Message> generate(Username recipient, Map<String, Object> scopedVariable, List<InlinedAttachment> inlinedAttachments) {
         return Mono.fromCallable(() -> {
-            String htmlBodyText = htmlBodyRenderer.render(scopedVariable);
+            Map<String, Object> scopedVariableFinal = ImmutableMap.<String, Object>builder()
+                .putAll(scopedVariable)
+                .put(TRANSLATOR_FUNCTION_NAME, i18nTranslator)
+                .build();
+
+            String htmlBodyText = htmlBodyRenderer.render(scopedVariableFinal);
 
             MultipartBuilder multipartBuilder = MultipartBuilder.create("related")
                 .addBodyPart(BodyPartBuilder.create()
@@ -133,11 +147,18 @@ public class MessageGenerator {
             inlinedAttachments.forEach(Throwing.consumer(attachment -> multipartBuilder.addBodyPart(attachment.asBodyPart())));
 
             return Message.Builder.of()
-                .setSubject(subject)
+                .setSubject(subject())
                 .setBody(multipartBuilder.build())
                 .setFrom(configuration.sender().asString())
                 .setTo(recipient.asString())
                 .build();
         });
+    }
+
+    private String subject() {
+        String subject = i18nTranslator.get(SUBJECT_KEY_NAME);
+        Preconditions.checkArgument(StringUtils.isNotBlank(subject),
+            "Subject is empty, please check your translations for key: " + SUBJECT_KEY_NAME);
+        return subject;
     }
 }

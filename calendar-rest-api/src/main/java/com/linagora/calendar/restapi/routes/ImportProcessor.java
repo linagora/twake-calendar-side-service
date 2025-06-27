@@ -18,19 +18,23 @@
 
 package com.linagora.calendar.restapi.routes;
 
+import static com.linagora.calendar.storage.configuration.EntryIdentifier.LANGUAGE_IDENTIFIER;
 import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 import static reactor.core.scheduler.Schedulers.DEFAULT_BOUNDED_ELASTIC_QUEUESIZE;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.Username;
+import org.apache.james.mailbox.MailboxSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,7 +44,10 @@ import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalendarUtil;
 import com.linagora.calendar.dav.CardDavClient;
+import com.linagora.calendar.restapi.routes.configuration.ConfigurationDocument;
+import com.linagora.calendar.restapi.routes.configuration.ConfigurationResolver;
 import com.linagora.calendar.smtp.MailSender;
+import com.linagora.calendar.smtp.template.Language;
 import com.linagora.calendar.smtp.template.TemplateType;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -175,22 +182,26 @@ public class ImportProcessor {
     private final Scheduler mailScheduler;
     private final MailSender.Factory mailSenderFactory;
     private final ImportMailReportRender mailReportRender;
+    private final ConfigurationResolver configurationResolver;
 
     @Inject
     public ImportProcessor(CardDavClient cardDavClient,
                            CalDavClient calDavClient,
                            MailSender.Factory mailSenderFactory,
-                           ImportMailReportRender mailReportRender) {
+                           ImportMailReportRender mailReportRender,
+                           ConfigurationResolver configurationResolver) {
         this.importICSHandler = new ImportICSToDavHandler(calDavClient);
         this.importVCardHandler = new ImportVCardToDavHandler(cardDavClient);
         this.mailScheduler = Schedulers.newBoundedElastic(1, DEFAULT_BOUNDED_ELASTIC_QUEUESIZE,
             "sendMailScheduler");
         this.mailSenderFactory = mailSenderFactory;
         this.mailReportRender = mailReportRender;
+        this.configurationResolver = configurationResolver;
     }
 
     public Mono<Void> process(ImportType importType, UploadedFile uploadedFile,
-                              OpenPaaSId baseId, String resourceId, Username username) {
+                              OpenPaaSId baseId, String resourceId, MailboxSession mailboxSession) {
+        Username username = mailboxSession.getUser();
 
         ImportToDavHandler importToDavHandler = switch (importType) {
             case ICS -> importICSHandler;
@@ -198,12 +209,29 @@ public class ImportProcessor {
         };
 
         return importToDavHandler.handle(uploadedFile, username, baseId, resourceId)
-            .doOnSuccess(importResult -> sendReportMail(importType, importResult, username))
+            .flatMap(importResult -> getLanguageUserSetting(mailboxSession)
+                .doOnSuccess(language -> sendReportMail(importType, language, importResult, username)))
             .then();
     }
 
-    private Disposable sendReportMail(ImportType importType, ImportResult importResult, Username receiver) {
-        return mailReportRender.generateMail(importType, importResult, receiver)
+    private Mono<Language> getLanguageUserSetting(MailboxSession mailboxSession) {
+        Language fallbackLanguage = Language.ENGLISH;
+
+        return configurationResolver.resolve(Set.of(LANGUAGE_IDENTIFIER), mailboxSession)
+            .map(ConfigurationDocument::table)
+            .filter(configTable -> configTable.contains(LANGUAGE_IDENTIFIER.moduleName(), LANGUAGE_IDENTIFIER.configurationKey()))
+            .mapNotNull(configTable -> configTable.get(LANGUAGE_IDENTIFIER.moduleName(), LANGUAGE_IDENTIFIER.configurationKey()))
+            .map(jsonNode -> new Language(Locale.of(jsonNode.asText())))
+            .onErrorResume(error -> {
+                LOGGER.error("Error resolving user language setting for {}, will use fallback language: {}",
+                    mailboxSession.getUser(), fallbackLanguage.value(), error);
+                return Mono.just(fallbackLanguage);
+            })
+            .defaultIfEmpty(fallbackLanguage);
+    }
+
+    private Disposable sendReportMail(ImportType importType, Language language, ImportResult importResult, Username receiver) {
+        return mailReportRender.generateMail(importType, language, importResult, receiver)
             .flatMap(mail -> mailSenderFactory.create().flatMap(mailSender -> mailSender.send(mail)))
             .doOnError(error -> LOGGER.error("Error sending import `{}` report mail to {}: {}", importType.name(), receiver, error.getMessage()))
             .subscribeOn(mailScheduler)
