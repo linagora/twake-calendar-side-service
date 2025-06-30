@@ -19,11 +19,7 @@
 package com.linagora.calendar.storage.event;
 
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeFormatterBuilder;
+import java.time.chrono.ChronoZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
@@ -31,7 +27,6 @@ import java.util.Optional;
 
 import jakarta.mail.internet.AddressException;
 
-import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.MailAddress;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,9 +35,7 @@ import com.google.common.base.Preconditions;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.eventsearch.EventUid;
 
-import net.fortuna.ical4j.model.Parameter;
 import net.fortuna.ical4j.model.Property;
-import net.fortuna.ical4j.model.TimeZone;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
 
@@ -63,18 +56,6 @@ public record EventFields(EventUid uid,
                           List<Person> resources,
                           CalendarURL calendarURL) {
 
-    public static final DateTimeFormatter UTC_DATE_TIME_FORMATTER = new DateTimeFormatterBuilder()
-        .appendPattern("yyyyMMdd'T'HHmmssX")
-        .toFormatter();
-    public static final DateTimeFormatter DATE_TIME_FORMATTER = new DateTimeFormatterBuilder()
-        .appendPattern("yyyyMMdd'T'HHmmss")
-        .toFormatter();
-    public static final DateTimeFormatter DATE_FORMATTER = new DateTimeFormatterBuilder()
-        .appendPattern("yyyyMMdd")
-        .toFormatter();
-
-    private static final boolean GET_RESOURCE = true;
-    private static final boolean GET_ATTENDEE = false;
     public static final Logger LOGGER = LoggerFactory.getLogger(EventFields.class);
 
     public record Person(String cn, MailAddress email, Optional<PartStat> partStat) {
@@ -238,90 +219,22 @@ public record EventFields(EventUid uid,
             .calendarURL(calendarURL);
 
         vEvent.getUid().ifPresent(uid -> builder.uid(uid.getValue()));
-        vEvent.getProperty(Property.SUMMARY).ifPresent(prop -> builder.summary(prop.getValue()));
-        vEvent.getProperty(Property.LOCATION).ifPresent(prop -> builder.location(prop.getValue()));
-        vEvent.getProperty(Property.DESCRIPTION).ifPresent(prop -> builder.description(prop.getValue()));
+        EventParseUtils.getSummary(vEvent).ifPresent(builder::summary);
+        EventParseUtils.getLocation(vEvent).ifPresent(builder::location);
+        EventParseUtils.getDescription(vEvent).ifPresent(builder::description);
         vEvent.getProperty(Property.CLASS).ifPresent(prop -> builder.clazz(prop.getValue()));
-        vEvent.getProperty(Property.DTSTART).ifPresent(prop -> {
-            parseTime(prop).ifPresent(builder::start);
-            builder.allDay(isDate(prop));
-        });
-        vEvent.getProperty(Property.DTEND).flatMap(EventFields::parseTime).ifPresent(builder::end);
-        vEvent.getProperty(Property.DTSTAMP).flatMap(EventFields::parseTime).ifPresent(builder::dtStamp);
-        isRecurrentMaster(vEvent).ifPresent(builder::isRecurrentMaster);
-        builder.organizer(getOrganizer(vEvent));
-        builder.attendees(getAttendees(vEvent));
-        builder.resources(getResources(vEvent));
 
+        builder.start(EventParseUtils.getStartTime(vEvent).toInstant());
+        builder.allDay(EventParseUtils.isAllDay(vEvent));
+
+        EventParseUtils.getEndTime(vEvent).map(ChronoZonedDateTime::toInstant).ifPresent(builder::end);
+        vEvent.getProperty(Property.DTSTAMP).flatMap(EventParseUtils::parseTimeAsInstant).ifPresent(builder::dtStamp);
+        EventParseUtils.isRecurrentMaster(vEvent).ifPresent(builder::isRecurrentMaster);
+        builder.organizer(EventParseUtils.getOrganizer(vEvent));
+        builder.attendees(EventParseUtils.getAttendees(vEvent));
+        builder.resources(EventParseUtils.getResources(vEvent));
         return builder.build();
     }
 
-    private static Optional<Boolean> isRecurrentMaster(VEvent vEvent) {
-        if (vEvent.getProperty(Property.RECURRENCE_ID).isPresent()) {
-            return Optional.of(false);
-        }
-        if (vEvent.getProperty(Property.RRULE).isPresent()) {
-            return Optional.of(true);
-        }
-        return Optional.empty();
-    }
 
-    private static EventFields.Person getOrganizer(VEvent vEvent) {
-        return vEvent.getProperty(Property.ORGANIZER)
-            .flatMap(EventFields::toPerson)
-            .orElse(null);
-    }
-
-    private static List<EventFields.Person> getAttendees(VEvent vEvent) {
-        return getPeople(vEvent, GET_ATTENDEE);
-    }
-
-    private static List<EventFields.Person> getResources(VEvent vEvent) {
-        return getPeople(vEvent, GET_RESOURCE);
-    }
-
-    private static List<EventFields.Person> getPeople(VEvent vEvent, boolean getResource) {
-        return vEvent.getProperties(Property.ATTENDEE)
-            .stream()
-            .filter(attendee -> attendee.getParameter(Parameter.CUTYPE)
-                .map(parameter -> getResource == "RESOURCE".equals(parameter.getValue()))
-                .orElse(false))
-            .map(EventFields::toPerson)
-            .flatMap(Optional::stream)
-            .toList();
-    }
-
-    private static Optional<Instant> parseTime(Property property) {
-        try {
-            String value = property.getValue();
-            if (isDate(property)) {
-                return Optional.of(LocalDate.from(DATE_FORMATTER.parse(value)).atStartOfDay().toInstant(ZoneOffset.UTC));
-            } else {
-                return Optional.of(property.getParameter(Parameter.TZID)
-                    .map(tzId -> TimeZone.getTimeZone(tzId.getValue()).toZoneId())
-                    .map(zoneId -> LocalDateTime.parse(value, DATE_TIME_FORMATTER).atZone(zoneId).toInstant())
-                    .orElseGet(() -> Instant.from(UTC_DATE_TIME_FORMATTER.parse(value))));
-            }
-        } catch (Exception e) {
-            LOGGER.info("Failed to parse time: {}", e.getMessage());
-            return Optional.empty();
-        }
-    }
-
-    private static boolean isDate(Property prop) {
-        return prop.getParameter(Parameter.VALUE).map(parameter -> "DATE".equals(parameter.getValue())).orElse(false);
-    }
-
-    private static Optional<EventFields.Person> toPerson(Property property)  {
-        try {
-            String cn = property.getParameter(Parameter.CN).map(Parameter::getValue).orElse("");
-            String email = StringUtils.removeStartIgnoreCase(property.getValue(), "mailto:");
-            Optional<PartStat> partStat = property.getParameter(Parameter.PARTSTAT)
-                .map(value -> (PartStat) value);
-            return Optional.of(new EventFields.Person(cn, new MailAddress(email), partStat));
-        } catch (AddressException e) {
-            LOGGER.info("Invalid person: {}", property.getValue());
-            return Optional.empty();
-        }
-    }
 }
