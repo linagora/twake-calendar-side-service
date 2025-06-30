@@ -147,7 +147,7 @@ public class MessageGenerator {
             inlinedAttachments.forEach(Throwing.consumer(attachment -> multipartBuilder.addBodyPart(attachment.asBodyPart())));
 
             return Message.Builder.of()
-                .setSubject(subject())
+                .setSubject(subject(scopedVariableFinal))
                 .setBody(multipartBuilder.build())
                 .setFrom(configuration.sender().asString())
                 .setTo(recipient.asString())
@@ -155,10 +155,11 @@ public class MessageGenerator {
         });
     }
 
-    private String subject() {
-        String subject = i18nTranslator.get(SUBJECT_KEY_NAME);
-        Preconditions.checkArgument(StringUtils.isNotBlank(subject),
+    private String subject(Map<String, Object> scopedVariable) throws IOException {
+        String subjectTemplate = i18nTranslator.get(SUBJECT_KEY_NAME);
+        Preconditions.checkArgument(StringUtils.isNotBlank(subjectTemplate),
             "Subject is empty, please check your translations for key: " + SUBJECT_KEY_NAME);
-        return subject;
+
+        return SubjectRenderer.of(subjectTemplate).render(scopedVariable);
     }
 }
