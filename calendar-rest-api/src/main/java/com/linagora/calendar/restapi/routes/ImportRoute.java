@@ -31,7 +31,7 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.fge.lambdas.Throwing;
-import com.google.api.client.util.Preconditions;
+import com.google.common.base.Preconditions;
 import com.linagora.calendar.restapi.routes.ImportProcessor.ImportType;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.UploadedFileDAO;

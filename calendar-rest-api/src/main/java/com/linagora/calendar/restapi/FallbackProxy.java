@@ -20,6 +20,8 @@ package com.linagora.calendar.restapi;
 
 import java.util.function.Consumer;
 
+import javax.net.ssl.SSLException;
+
 import jakarta.inject.Inject;
 
 import org.apache.james.jmap.http.Authenticator;
@@ -31,6 +33,7 @@ import com.linagora.calendar.restapi.routes.JwtSigner;
 
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaders;
+import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import reactor.core.publisher.Mono;
@@ -47,7 +50,7 @@ public class FallbackProxy {
     private final MetricFactory metricFactory;
 
     @Inject
-    public FallbackProxy(Authenticator authenticator, RestApiConfiguration configuration, JwtSigner jwtSigner, MetricFactory metricFactory) {
+    public FallbackProxy(Authenticator authenticator, RestApiConfiguration configuration, JwtSigner jwtSigner, MetricFactory metricFactory) throws SSLException {
         this.authenticator = authenticator;
         this.configuration = configuration;
         this.jwtSigner = jwtSigner;
@@ -55,10 +58,10 @@ public class FallbackProxy {
         this.client = createClient();
     }
 
-    private HttpClient createClient() {
+    private HttpClient createClient() throws SSLException {
         if (configuration.openpaasBackendTrustAllCerts()) {
-                return HttpClient.create().secure(sslContextSpec -> sslContextSpec.sslContext(
-                    SslContextBuilder.forClient().trustManager(InsecureTrustManagerFactory.INSTANCE)));
+            SslContext sslContext = SslContextBuilder.forClient().trustManager(InsecureTrustManagerFactory.INSTANCE).build();
+                return HttpClient.create().secure(sslContextSpec -> sslContextSpec.sslContext(sslContext));
         }
         return HttpClient.create();
     }

@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.restapi.routes.configuration;
 
+import javax.net.ssl.SSLException;
+
 import jakarta.inject.Inject;
 
 import org.apache.james.mailbox.MailboxSession;
@@ -37,6 +39,7 @@ import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import reactor.core.publisher.Mono;
@@ -50,17 +53,17 @@ public class OpenpaasConfigurationEntryResolver implements FallbackConfiguration
     private final HttpClient client;
 
     @Inject
-    public OpenpaasConfigurationEntryResolver(RestApiConfiguration configuration, JwtSigner signer) {
+    public OpenpaasConfigurationEntryResolver(RestApiConfiguration configuration, JwtSigner signer) throws SSLException {
         this.configuration = configuration;
         this.signer = signer;
 
         this.client = createClient();
     }
 
-    private HttpClient createClient() {
+    private HttpClient createClient() throws SSLException {
         if (configuration.openpaasBackendTrustAllCerts()) {
-            return HttpClient.create().secure(sslContextSpec -> sslContextSpec.sslContext(
-                SslContextBuilder.forClient().trustManager(InsecureTrustManagerFactory.INSTANCE)));
+            SslContext sslContext = SslContextBuilder.forClient().trustManager(InsecureTrustManagerFactory.INSTANCE).build();
+            return HttpClient.create().secure(sslContextSpec -> sslContextSpec.sslContext(sslContext));
         }
         return HttpClient.create();
     }
