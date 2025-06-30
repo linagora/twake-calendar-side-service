@@ -61,7 +61,7 @@ public interface I18NTranslator {
             if (resourceBundle.containsKey(key)) {
                 return resourceBundle.getString(key);
             }
-            LOGGER.debug("Key '{}' not found in locale '{}', trying fallback", key, resourceBundle.getLocale().toLanguageTag());
+            LOGGER.debug("Key '{}' not found in locale '{}', trying fallback", key, resourceBundle.getLocale().getLanguage());
             // If the key is not found in the current locale, try the fallback translator
             return fallbackTranslator.map(translator -> translator.get(key))
                 .orElse(key);
@@ -93,7 +93,7 @@ public interface I18NTranslator {
                             try {
                                 return new PropertiesI18NTranslator(loadResourceBundle(locale), defaultTranslator);
                             } catch (MissingResourceException e) {
-                                LOGGER.warn("Missing translate file for locale '{}' at {}, falling back to default", locale.toLanguageTag(), translateAbsolutePath(locale));
+                                LOGGER.warn("Missing translate file for locale '{}' at {}, falling back to default", locale.getLanguage(), translateAbsolutePath(locale));
                                 return defaultTranslator;
                             }
                         }
@@ -117,7 +117,7 @@ public interface I18NTranslator {
             }
 
             private String translateAbsolutePath(Locale locale) {
-                return Paths.get(baseDirectory.getAbsolutePath(), BUNDLE_BASE_NAME + "_" + locale.toLanguageTag() + ".properties").toString();
+                return Paths.get(baseDirectory.getAbsolutePath(), BUNDLE_BASE_NAME + "_" + locale.getLanguage() + ".properties").toString();
             }
         }
 

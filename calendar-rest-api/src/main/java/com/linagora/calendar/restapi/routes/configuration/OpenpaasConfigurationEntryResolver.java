@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.restapi.routes.configuration;
 
+import javax.net.ssl.SSLException;
+
 import jakarta.inject.Inject;
 
 import org.apache.james.mailbox.MailboxSession;
@@ -31,35 +33,37 @@ import com.linagora.calendar.restapi.RestApiConfiguration;
 import com.linagora.calendar.restapi.routes.JwtSigner;
 import com.linagora.calendar.storage.configuration.ConfigurationKey;
 import com.linagora.calendar.storage.configuration.ModuleName;
+import com.linagora.calendar.storage.configuration.resolver.FallbackConfigurationEntryResolver;
 
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.client.HttpClient;
 
-public class FallbackConfigurationEntryResolver {
+public class OpenpaasConfigurationEntryResolver implements FallbackConfigurationEntryResolver {
     public static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    public static final Logger LOGGER = LoggerFactory.getLogger(FallbackConfigurationEntryResolver.class);
+    public static final Logger LOGGER = LoggerFactory.getLogger(OpenpaasConfigurationEntryResolver.class);
     private final RestApiConfiguration configuration;
     private final JwtSigner signer;
     private final HttpClient client;
 
     @Inject
-    public FallbackConfigurationEntryResolver(RestApiConfiguration configuration, JwtSigner signer) {
+    public OpenpaasConfigurationEntryResolver(RestApiConfiguration configuration, JwtSigner signer) throws SSLException {
         this.configuration = configuration;
         this.signer = signer;
 
         this.client = createClient();
     }
 
-    private HttpClient createClient() {
+    private HttpClient createClient() throws SSLException {
         if (configuration.openpaasBackendTrustAllCerts()) {
-            return HttpClient.create().secure(sslContextSpec -> sslContextSpec.sslContext(
-                SslContextBuilder.forClient().trustManager(InsecureTrustManagerFactory.INSTANCE)));
+            SslContext sslContext = SslContextBuilder.forClient().trustManager(InsecureTrustManagerFactory.INSTANCE).build();
+            return HttpClient.create().secure(sslContextSpec -> sslContextSpec.sslContext(sslContext));
         }
         return HttpClient.create();
     }

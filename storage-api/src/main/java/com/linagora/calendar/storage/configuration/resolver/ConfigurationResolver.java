@@ -16,7 +16,7 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.restapi.routes.configuration;
+package com.linagora.calendar.storage.configuration.resolver;
 
 import java.util.Set;
 
@@ -57,7 +57,8 @@ public class ConfigurationResolver {
                 Set<EntryIdentifier> toBeResolved = Sets.difference(request, resolvedIds);
 
                 return Flux.fromIterable(toBeResolved)
-                    .flatMap(id -> fallbackConfigurationEntryResolver.resolve(id.moduleName(), id.configurationKey(), session).map(json -> new ConfigurationEntry(id.moduleName(), id.configurationKey(), json)), 4)
+                    .flatMap(id -> fallbackConfigurationEntryResolver.resolve(id.moduleName(), id.configurationKey(), session)
+                        .map(json -> new ConfigurationEntry(id.moduleName(), id.configurationKey(), json)), 4)
                     .collect(ImmutableTable.toImmutableTable(ConfigurationEntry::moduleName, ConfigurationEntry::configurationKey, ConfigurationEntry::node))
                     .map(fallback -> ImmutableTable.<ModuleName, ConfigurationKey, JsonNode>builder().putAll(resolved).putAll(fallback).build());
             })

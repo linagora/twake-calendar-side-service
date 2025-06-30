@@ -71,11 +71,13 @@ import com.linagora.calendar.restapi.routes.UserConfigurationsRoute;
 import com.linagora.calendar.restapi.routes.UserProfileRoute;
 import com.linagora.calendar.restapi.routes.UserRoute;
 import com.linagora.calendar.restapi.routes.UsersRoute;
-import com.linagora.calendar.restapi.routes.configuration.ConfigurationEntryResolver;
-import com.linagora.calendar.restapi.routes.configuration.ConstantConfigurationEntryResolver;
 import com.linagora.calendar.restapi.routes.configuration.FileConfigurationEntryResolver;
+import com.linagora.calendar.restapi.routes.configuration.OpenpaasConfigurationEntryResolver;
 import com.linagora.calendar.restapi.routes.configuration.StoredConfigurationEntryResolver;
 import com.linagora.calendar.storage.TokenInfoResolver;
+import com.linagora.calendar.storage.configuration.resolver.ConfigurationEntryResolver;
+import com.linagora.calendar.storage.configuration.resolver.ConstantConfigurationEntryResolver;
+import com.linagora.calendar.storage.configuration.resolver.FallbackConfigurationEntryResolver;
 import com.linagora.calendar.storage.model.Aud;
 import com.linagora.calendar.storage.secretlink.SecretLinkPermissionChecker;
 import com.linagora.calendar.storage.secretlink.SecretLinkPermissionChecker.NoopPermissionChecker;
@@ -117,6 +119,8 @@ public class RestApiModule extends AbstractModule {
         configurationEntryResolvers.addBinding().to(FileConfigurationEntryResolver.class);
         configurationEntryResolvers.addBinding().to(ConstantConfigurationEntryResolver.class);
         configurationEntryResolvers.addBinding().to(StoredConfigurationEntryResolver.class);
+
+        bind(FallbackConfigurationEntryResolver.class).to(OpenpaasConfigurationEntryResolver.class);
 
         bind(TokenInfoResolver.class).to(OidcEndpointsInfoResolver.class);
 

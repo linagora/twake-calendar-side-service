@@ -31,6 +31,7 @@ import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.Username;
+import org.apache.james.mailbox.MailboxSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,9 +42,11 @@ import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalendarUtil;
 import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.smtp.MailSender;
+import com.linagora.calendar.smtp.template.Language;
 import com.linagora.calendar.smtp.template.TemplateType;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.configuration.resolver.SettingsBasedLocator;
 import com.linagora.calendar.storage.model.UploadedFile;
 
 import ezvcard.Ezvcard;
@@ -175,22 +178,26 @@ public class ImportProcessor {
     private final Scheduler mailScheduler;
     private final MailSender.Factory mailSenderFactory;
     private final ImportMailReportRender mailReportRender;
+    private final SettingsBasedLocator settingsBasedLocator;
 
     @Inject
     public ImportProcessor(CardDavClient cardDavClient,
                            CalDavClient calDavClient,
                            MailSender.Factory mailSenderFactory,
-                           ImportMailReportRender mailReportRender) {
+                           ImportMailReportRender mailReportRender,
+                           SettingsBasedLocator settingsBasedLocator) {
         this.importICSHandler = new ImportICSToDavHandler(calDavClient);
         this.importVCardHandler = new ImportVCardToDavHandler(cardDavClient);
         this.mailScheduler = Schedulers.newBoundedElastic(1, DEFAULT_BOUNDED_ELASTIC_QUEUESIZE,
             "sendMailScheduler");
         this.mailSenderFactory = mailSenderFactory;
         this.mailReportRender = mailReportRender;
+        this.settingsBasedLocator = settingsBasedLocator;
     }
 
     public Mono<Void> process(ImportType importType, UploadedFile uploadedFile,
-                              OpenPaaSId baseId, String resourceId, Username username) {
+                              OpenPaaSId baseId, String resourceId, MailboxSession mailboxSession) {
+        Username username = mailboxSession.getUser();
 
         ImportToDavHandler importToDavHandler = switch (importType) {
             case ICS -> importICSHandler;
@@ -198,12 +205,13 @@ public class ImportProcessor {
         };
 
         return importToDavHandler.handle(uploadedFile, username, baseId, resourceId)
-            .doOnSuccess(importResult -> sendReportMail(importType, importResult, username))
+            .flatMap(importResult -> settingsBasedLocator.getLanguageUserSetting(mailboxSession)
+                .doOnSuccess(language -> sendReportMail(importType, new Language(language), importResult, username)))
             .then();
     }
 
-    private Disposable sendReportMail(ImportType importType, ImportResult importResult, Username receiver) {
-        return mailReportRender.generateMail(importType, importResult, receiver)
+    private Disposable sendReportMail(ImportType importType, Language language, ImportResult importResult, Username receiver) {
+        return mailReportRender.generateMail(importType, language, importResult, receiver)
             .flatMap(mail -> mailSenderFactory.create().flatMap(mailSender -> mailSender.send(mail)))
             .doOnError(error -> LOGGER.error("Error sending import `{}` report mail to {}: {}", importType.name(), receiver, error.getMessage()))
             .subscribeOn(mailScheduler)

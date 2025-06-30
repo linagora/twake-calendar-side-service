@@ -16,9 +16,25 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage.configuration;
+package com.linagora.calendar.storage.configuration.resolver;
 
-public record EntryIdentifier(ModuleName moduleName, ConfigurationKey configurationKey) {
+import org.apache.james.mailbox.MailboxSession;
 
-    public static final EntryIdentifier LANGUAGE_IDENTIFIER = new EntryIdentifier(new ModuleName("core"), new ConfigurationKey("language"));
+import com.fasterxml.jackson.databind.JsonNode;
+import com.linagora.calendar.storage.configuration.ConfigurationKey;
+import com.linagora.calendar.storage.configuration.ModuleName;
+
+import reactor.core.publisher.Mono;
+
+public interface FallbackConfigurationEntryResolver {
+
+    Mono<JsonNode> resolve(ModuleName moduleName, ConfigurationKey configurationKey, MailboxSession session);
+
+    class EmptyFallbackConfigurationEntryResolver implements FallbackConfigurationEntryResolver {
+
+        @Override
+        public Mono<JsonNode> resolve(ModuleName moduleName, ConfigurationKey configurationKey, MailboxSession session) {
+            return Mono.empty();
+        }
+    }
 }

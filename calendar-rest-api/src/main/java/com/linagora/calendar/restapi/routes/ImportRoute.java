@@ -31,7 +31,7 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.fge.lambdas.Throwing;
-import com.google.api.client.util.Preconditions;
+import com.google.common.base.Preconditions;
 import com.linagora.calendar.restapi.routes.ImportProcessor.ImportType;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.UploadedFileDAO;
@@ -104,7 +104,7 @@ public class ImportRoute extends CalendarRoute {
             .switchIfEmpty(Mono.error(new IllegalArgumentException("Uploaded file not found")))
             .doOnSuccess(uploadedFile -> {
                 ImportType importType = getImportType(uploadedFile.uploadedMimeType());
-                importProcessor.process(importType, uploadedFile, new OpenPaaSId(baseId), davCollectionId, session.getUser())
+                importProcessor.process(importType, uploadedFile, new OpenPaaSId(baseId), davCollectionId, session)
                     .doOnSuccess(unused -> LOGGER.info("Import of {} with fileId {} completed successfully", importType.name(), request.fileId))
                     .doOnError(ex -> LOGGER.error("Error during import of {} with fileId {}", importType.name(), request.fileId, ex))
                     .subscribe();
