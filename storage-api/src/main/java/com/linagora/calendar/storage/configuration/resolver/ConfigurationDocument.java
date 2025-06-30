@@ -16,7 +16,7 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.restapi.routes.configuration;
+package com.linagora.calendar.storage.configuration.resolver;
 
 import java.util.Map;
 import java.util.stream.Collectors;

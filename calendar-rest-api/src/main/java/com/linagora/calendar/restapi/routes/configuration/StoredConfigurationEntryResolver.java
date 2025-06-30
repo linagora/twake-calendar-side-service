@@ -43,6 +43,7 @@ import com.linagora.calendar.storage.configuration.ConfigurationKey;
 import com.linagora.calendar.storage.configuration.EntryIdentifier;
 import com.linagora.calendar.storage.configuration.ModuleName;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
+import com.linagora.calendar.storage.configuration.resolver.ConfigurationEntryResolver;
 
 import reactor.core.publisher.Flux;
 

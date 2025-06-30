@@ -33,11 +33,11 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableSet;
-import com.linagora.calendar.restapi.routes.configuration.ConfigurationDocument;
-import com.linagora.calendar.restapi.routes.configuration.ConfigurationResolver;
 import com.linagora.calendar.storage.configuration.ConfigurationKey;
 import com.linagora.calendar.storage.configuration.EntryIdentifier;
 import com.linagora.calendar.storage.configuration.ModuleName;
+import com.linagora.calendar.storage.configuration.resolver.ConfigurationDocument;
+import com.linagora.calendar.storage.configuration.resolver.ConfigurationResolver;
 
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;

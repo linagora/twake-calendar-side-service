@@ -44,13 +44,13 @@ import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalendarUtil;
 import com.linagora.calendar.dav.CardDavClient;
-import com.linagora.calendar.restapi.routes.configuration.ConfigurationDocument;
-import com.linagora.calendar.restapi.routes.configuration.ConfigurationResolver;
 import com.linagora.calendar.smtp.MailSender;
 import com.linagora.calendar.smtp.template.Language;
 import com.linagora.calendar.smtp.template.TemplateType;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.configuration.resolver.ConfigurationDocument;
+import com.linagora.calendar.storage.configuration.resolver.ConfigurationResolver;
 import com.linagora.calendar.storage.model.UploadedFile;
 
 import ezvcard.Ezvcard;

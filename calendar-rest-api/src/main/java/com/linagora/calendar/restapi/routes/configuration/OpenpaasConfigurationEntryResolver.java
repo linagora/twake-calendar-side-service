@@ -31,6 +31,7 @@ import com.linagora.calendar.restapi.RestApiConfiguration;
 import com.linagora.calendar.restapi.routes.JwtSigner;
 import com.linagora.calendar.storage.configuration.ConfigurationKey;
 import com.linagora.calendar.storage.configuration.ModuleName;
+import com.linagora.calendar.storage.configuration.resolver.FallbackConfigurationEntryResolver;
 
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -41,15 +42,15 @@ import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.client.HttpClient;
 
-public class FallbackConfigurationEntryResolver {
+public class OpenpaasConfigurationEntryResolver implements FallbackConfigurationEntryResolver {
     public static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    public static final Logger LOGGER = LoggerFactory.getLogger(FallbackConfigurationEntryResolver.class);
+    public static final Logger LOGGER = LoggerFactory.getLogger(OpenpaasConfigurationEntryResolver.class);
     private final RestApiConfiguration configuration;
     private final JwtSigner signer;
     private final HttpClient client;
 
     @Inject
-    public FallbackConfigurationEntryResolver(RestApiConfiguration configuration, JwtSigner signer) {
+    public OpenpaasConfigurationEntryResolver(RestApiConfiguration configuration, JwtSigner signer) {
         this.configuration = configuration;
         this.signer = signer;
 

@@ -37,11 +37,11 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableList;
-import com.linagora.calendar.restapi.routes.configuration.ConfigurationResolver;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.configuration.resolver.ConfigurationResolver;
 
 import io.netty.handler.codec.http.HttpMethod;
 import reactor.core.publisher.Mono;
