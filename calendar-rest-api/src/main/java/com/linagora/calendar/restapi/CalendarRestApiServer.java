@@ -58,12 +58,14 @@ public class CalendarRestApiServer implements Startable  {
     private final List<JMAPRoute> routes;
     private final RestApiConfiguration configuration;
     private final FallbackProxy fallbackProxy;
+    private final DavProxy davProxy;
     private Optional<DisposableServer> server;
 
     @Inject
-    public CalendarRestApiServer(Set<JMAPRoutes> jmapRoutes, FallbackProxy fallbackProxy, RestApiConfiguration configuration) {
+    public CalendarRestApiServer(Set<JMAPRoutes> jmapRoutes, FallbackProxy fallbackProxy, RestApiConfiguration configuration, DavProxy davProxy) {
         this.routes = jmapRoutes.stream().flatMap(JMAPRoutes::routes).collect(Collectors.toList());
         this.configuration = configuration;
+        this.davProxy = davProxy;
         this.server = Optional.empty();
         this.fallbackProxy = fallbackProxy;
     }
@@ -115,7 +117,13 @@ public class CalendarRestApiServer implements Startable  {
                 .filter(jmapRoute -> jmapRoute.matches(request))
                 .map(JMAPRoute::getAction)
                 .findFirst()
-                .orElse(fallbackProxy::forwardRequest);
+                .orElseGet(() -> {
+                    if (request.uri().startsWith("/dav/")) {
+                        return davProxy::forwardRequest;
+                    } else {
+                        return fallbackProxy::forwardRequest;
+                    }
+                });
         } catch (IllegalArgumentException e) {
             return (req, res) -> res.status(BAD_REQUEST).send();
         }
