@@ -18,16 +18,13 @@
 
 package com.linagora.calendar.restapi.routes;
 
-import static com.linagora.calendar.storage.configuration.EntryIdentifier.LANGUAGE_IDENTIFIER;
 import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 import static reactor.core.scheduler.Schedulers.DEFAULT_BOUNDED_ELASTIC_QUEUESIZE;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 
 import jakarta.inject.Inject;
@@ -49,8 +46,7 @@ import com.linagora.calendar.smtp.template.Language;
 import com.linagora.calendar.smtp.template.TemplateType;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
-import com.linagora.calendar.storage.configuration.resolver.ConfigurationDocument;
-import com.linagora.calendar.storage.configuration.resolver.ConfigurationResolver;
+import com.linagora.calendar.storage.configuration.resolver.SettingsBasedLocator;
 import com.linagora.calendar.storage.model.UploadedFile;
 
 import ezvcard.Ezvcard;
@@ -182,21 +178,21 @@ public class ImportProcessor {
     private final Scheduler mailScheduler;
     private final MailSender.Factory mailSenderFactory;
     private final ImportMailReportRender mailReportRender;
-    private final ConfigurationResolver configurationResolver;
+    private final SettingsBasedLocator settingsBasedLocator;
 
     @Inject
     public ImportProcessor(CardDavClient cardDavClient,
                            CalDavClient calDavClient,
                            MailSender.Factory mailSenderFactory,
                            ImportMailReportRender mailReportRender,
-                           ConfigurationResolver configurationResolver) {
+                           SettingsBasedLocator settingsBasedLocator) {
         this.importICSHandler = new ImportICSToDavHandler(calDavClient);
         this.importVCardHandler = new ImportVCardToDavHandler(cardDavClient);
         this.mailScheduler = Schedulers.newBoundedElastic(1, DEFAULT_BOUNDED_ELASTIC_QUEUESIZE,
             "sendMailScheduler");
         this.mailSenderFactory = mailSenderFactory;
         this.mailReportRender = mailReportRender;
-        this.configurationResolver = configurationResolver;
+        this.settingsBasedLocator = settingsBasedLocator;
     }
 
     public Mono<Void> process(ImportType importType, UploadedFile uploadedFile,
@@ -209,25 +205,9 @@ public class ImportProcessor {
         };
 
         return importToDavHandler.handle(uploadedFile, username, baseId, resourceId)
-            .flatMap(importResult -> getLanguageUserSetting(mailboxSession)
-                .doOnSuccess(language -> sendReportMail(importType, language, importResult, username)))
+            .flatMap(importResult -> settingsBasedLocator.getLanguageUserSetting(mailboxSession)
+                .doOnSuccess(language -> sendReportMail(importType, new Language(language), importResult, username)))
             .then();
-    }
-
-    private Mono<Language> getLanguageUserSetting(MailboxSession mailboxSession) {
-        Language fallbackLanguage = Language.ENGLISH;
-
-        return configurationResolver.resolve(Set.of(LANGUAGE_IDENTIFIER), mailboxSession)
-            .map(ConfigurationDocument::table)
-            .filter(configTable -> configTable.contains(LANGUAGE_IDENTIFIER.moduleName(), LANGUAGE_IDENTIFIER.configurationKey()))
-            .mapNotNull(configTable -> configTable.get(LANGUAGE_IDENTIFIER.moduleName(), LANGUAGE_IDENTIFIER.configurationKey()))
-            .map(jsonNode -> new Language(Locale.of(jsonNode.asText())))
-            .onErrorResume(error -> {
-                LOGGER.error("Error resolving user language setting for {}, will use fallback language: {}",
-                    mailboxSession.getUser(), fallbackLanguage.value(), error);
-                return Mono.just(fallbackLanguage);
-            })
-            .defaultIfEmpty(fallbackLanguage);
     }
 
     private Disposable sendReportMail(ImportType importType, Language language, ImportResult importResult, Username receiver) {
