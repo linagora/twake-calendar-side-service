@@ -317,6 +317,7 @@ public class ImportRouteTest {
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
     }
+
     @Test
     void shouldReportMailWithI18NWhenImportEventSucceed(TwakeCalendarGuiceServer server) {
         // Given set language to France
@@ -387,6 +388,80 @@ public class ImportRouteTest {
                 .contains("Subject: Rapport d'importation de calendrier");
         }));
     }
+
+    @Test
+    void shouldReportMailDefaultToEnglishWhenLanguageTemplateIsMissing(TwakeCalendarGuiceServer server) {
+        // Given: user sets language to Japanese (which has no template)
+        setUserLanguage(Locale.JAPAN);
+
+        String uid = UUID.randomUUID().toString();
+        byte[] ics = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            TRANSP:OPAQUE
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250102T120000Z
+            DTEND:20250102T130000Z
+            SUMMARY:Test Event
+            ORGANIZER;CN=john doe:mailto:%s
+            ATTENDEE;PARTSTAT=accepted;RSVP=false;ROLE=chair;CUTYPE=individual:mailto:%s
+            DESCRIPTION:This is a test event
+            LOCATION:office
+            CLASS:PUBLIC
+            BEGIN:VALARM
+            TRIGGER:-PT5M
+            ACTION:EMAIL
+            ATTENDEE:mailto:%s
+            SUMMARY:test
+            DESCRIPTION:This is an automatic alarm
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """
+            .formatted(uid, openPaaSUser.username().asString(), openPaaSUser.username().asString(), openPaaSUser.username().asString())
+            .getBytes(StandardCharsets.UTF_8);
+
+        OpenPaaSId fileId = server.getProbe(CalendarDataProbe.class).saveUploadedFile(openPaaSUser.username(),
+            new Upload("abc.ics", UploadedMimeType.TEXT_CALENDAR, Instant.now(), (long) ics.length, ics));
+
+        String requestBody = """
+            {
+                "fileId": "%s",
+                "target": "/calendars/%s/%s.json"
+            }
+            """.formatted(fileId.value(), openPaaSUser.id().value(), openPaaSUser.id().value());
+
+        // Ensure calendar directory is activated
+        server.getProbe(CalendarDataProbe.class).exportCalendarFromCalDav(new CalendarURL(openPaaSUser.id(), openPaaSUser.id()), MailboxSessionUtil.create(openPaaSUser.username()));
+
+        given()
+            .body(requestBody)
+        .when()
+            .post("/api/import")
+        .then()
+            .statusCode(HttpStatus.SC_ACCEPTED);
+
+        Supplier<JsonPath> smtpMailsResponseSupplier = () -> given(mockSMTPRequestSpecification())
+            .get("/smtpMails")
+            .jsonPath();
+
+        CALMLY_AWAIT
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
+
+        assertSoftly(softly -> {
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(openPaaSUser.username().asString());
+
+            // Fallback to English subject
+            softly.assertThat(smtpMailsResponse.getString("[0].message"))
+                .contains("Subject: Calendar import reporting"); // English fallback
+        });
+    }
+
 
     @Test
     void shouldImportMultipleEventsSuccessfully(TwakeCalendarGuiceServer server) {
