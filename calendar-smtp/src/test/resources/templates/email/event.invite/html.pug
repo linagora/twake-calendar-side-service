@@ -15,7 +15,7 @@ mixin displayResources(resources)
   span
     each resource, key in resources
       if !first
-        | ,
+        | ,&nbsp;
       = resource.cn
       - first = false
 
@@ -184,17 +184,17 @@ div(style='')
                                       td.part-message-container(colspan='3' style='font-size: 16px; font-family: Roboto; color: #333; font-weight: 500; padding-bottom: 12px;') Will you attend this event?
                                     tr
                                       td.part-button-container(style='white-space: nowrap;')
-                                        a.part-button(href='https://openpaas.linagora.com/calendar/#/calendar/participation/?jwt=eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdHRlbmRlZUVtYWlsIjoiaHBoYW5AbGluYWdvcmEuY29tIiwib3JnYW5pemVyRW1haWwiOiJ2dHRyYW5AbGluYWdvcmEuY29tIiwidWlkIjoiOWU2MDcxYmItZDQxYi00NzkwLWFlMDItYjI1MjhkNTU5YmM3IiwiY2FsZW5kYXJVUkkiOiI2MDUzMDIyYzlkYTVlZjAwMWY0MzBiNDMiLCJhY3Rpb24iOiJBQ0NFUFRFRCIsImlhdCI6MTc0ODgzMTk3OH0.oXKCYE8hcyMc63KIhbT2vaO_CesEhmEpJMqrEEiL0_Jwblzw4fqmfLIVxCAMeMkqxpDPKIzy-AfK0IVXeM-ICP6p9heLPPb-bxBJ5vjOCXFfH9cAPZ31mGi77cw32Z-FNLTcVLhmV-eV6j5rJI5qhYV4852iKuUxFsRsIyqm0f0DoEKOIqBhOu_VatmvYQwBAXGV8NHiIEYzjc7plSNI36DhuBZGnCxtJ6cgGZNO1fHbbW2HB7GDtyYwHcC1qW7y0vI78Zr30Sb9x84hkbHGFpMo9koz7lAh2oSE7PBX7toAauf7VVEmW48Ekjgw7p3UXIbfN1ODIOLv8RBzP-kuPg' style='display: block; color: #333; text-align: center; margin-right: 8px; min-width: 64px; font-size: 16px; text-decoration: none; padding: 6px 8px; background: #fff; border-radius: 18px; border: 1px solid #ccc;')
+                                        a.part-button(href=content.yes onclick='return false;' style='display: block; color: #333; text-align: center; margin-right: 8px; min-width: 64px; font-size: 16px; text-decoration: none; padding: 6px 8px; background: #fff; border-radius: 18px; border: 1px solid #ccc;')
                                           span(style='color: green; font-size: 18px;') &nbsp;&check;&nbsp;
-                                          | &nbsp;Yes
+                                          | &nbsp;#{translate.get('yes')}
                                       td.part-button-container(style='white-space: nowrap;')
-                                        a.part-button(href='https://openpaas.linagora.com/calendar/#/calendar/participation/?jwt=eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdHRlbmRlZUVtYWlsIjoiaHBoYW5AbGluYWdvcmEuY29tIiwib3JnYW5pemVyRW1haWwiOiJ2dHRyYW5AbGluYWdvcmEuY29tIiwidWlkIjoiOWU2MDcxYmItZDQxYi00NzkwLWFlMDItYjI1MjhkNTU5YmM3IiwiY2FsZW5kYXJVUkkiOiI2MDUzMDIyYzlkYTVlZjAwMWY0MzBiNDMiLCJhY3Rpb24iOiJURU5UQVRJVkUiLCJpYXQiOjE3NDg4MzE5Nzh9.jfZBpaF2IzEk_icd_USxeleFc1TpJsbTatUvWdoOnTsRSGnfUwYMVYT9qz5Wtc2fdRsHq33frXuI24YjQGIkfupyqK7SehV0F5jpbkGrTFMRsjAOSNvB7-vAzHy8vJXN8CxGNFgqqR1oLaDIafdKuGHwkhNTTDU-6sDC9cuAQCf0mpjWa7xndVIVGYIlQSqzIGOKYGz-JeZFk2ldf0LBr0HNb40wHkB3ZJabQSTlEaLnEWsMXvvukQmBgZDLZO-VgjKHmgbqw-77826FyW2CX85B6VNOFxjYqxL3CrbBRBBtc9JS5ZDVEsCdm6AmIM82RrqiLX6Pn8LA4uptluNEqg' style='display: block; color: #333; text-align: center; margin-right: 8px; min-width: 64px; font-size: 16px; text-decoration: none; padding: 6px 8px; background: #fff; border-radius: 18px; border: 1px solid #ccc;')
+                                        a.part-button(href=content.maybe onclick='return false;' style='display: block; color: #333; text-align: center; margin-right: 8px; min-width: 64px; font-size: 16px; text-decoration: none; padding: 6px 8px; background: #fff; border-radius: 18px; border: 1px solid #ccc;')
                                           span(style='color: orange; font-weight: 500;') &nbsp;?&nbsp;
-                                          | &nbsp;Maybe
+                                          | &nbsp;#{translate.get('maybe')}
                                       td.part-button-container(style='white-space: nowrap;')
-                                        a.part-button(href='https://openpaas.linagora.com/calendar/#/calendar/participation/?jwt=eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdHRlbmRlZUVtYWlsIjoiaHBoYW5AbGluYWdvcmEuY29tIiwib3JnYW5pemVyRW1haWwiOiJ2dHRyYW5AbGluYWdvcmEuY29tIiwidWlkIjoiOWU2MDcxYmItZDQxYi00NzkwLWFlMDItYjI1MjhkNTU5YmM3IiwiY2FsZW5kYXJVUkkiOiI2MDUzMDIyYzlkYTVlZjAwMWY0MzBiNDMiLCJhY3Rpb24iOiJERUNMSU5FRCIsImlhdCI6MTc0ODgzMTk3OH0.PXpEqJjwRzkxEy3KVsHmJSShFx7870VEHspFZ5G6h6o9Z2VDpBv5IWT9FfFwLZwhZiQHbQJKGre7IUWQLRvNEvQ2hpqPTlS60YqwVIFyKrNsYzF46dnSDOg12ueQCwheIDJ7OL10QYCUImFzpphn8HhMJQPJCZI1wT_ravzWS7Lvk9BMU9UDusQhvGL_Lu_-R45WHsH0BYJk6hz0tn7CsoBKqswGJHlbeuznnp-SXbpAXk5u7USN8vLpMfClcIUkwBD2TdT-Lmp9jshHAq_akbJPl4NmYGvRMmVEtL3kKo3eEwlaWRQLzAHzT2qSyeeoFp6AkW_oKD-wMxA4foI7AQ' style='display: block; color: #333; text-align: center; margin-right: 8px; min-width: 64px; font-size: 16px; text-decoration: none; padding: 6px 8px; background: #fff; border-radius: 18px; border: 1px solid #ccc;')
+                                        a.part-button(href=content.no onclick='return false;' style='display: block; color: #333; text-align: center; margin-right: 8px; min-width: 64px; font-size: 16px; text-decoration: none; padding: 6px 8px; background: #fff; border-radius: 18px; border: 1px solid #ccc;')
                                           span(style='color: red; font-size: 18px;') &nbsp;&#x2715;&nbsp;
-                                          | &nbsp;No
+                                          | &nbsp;#{translate.get('no')}
                                       td.part-button-container--last(style='width: 100%;' width='100%') &nbsp;
                       //if mso | IE
             //if mso | IE
@@ -229,7 +229,7 @@ div(style='')
                             tr
                               td.warning-text(align='left' style='background-color: #fffaea; border-radius: 4px; font-size: 0px; padding: 12px; word-break: break-word;' bgcolor='#fffaea')
                                 div(style='font-family:Roboto;font-size:12px;line-height:1;text-align:left;color:#808080;')
-                                  | &#x26A0; Forwarding this invitation could allow any recipient to send a response to the organizer and be added to the guest list, or invite others regardless of their own invitation status, or to modify your RSVP.
+                                  | &#x26A0; #{translate.get('forward_warning')}
                       //if mso | IE
             //if mso | IE
   //if mso | IE
