@@ -27,6 +27,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Predicate;
 
 import jakarta.mail.internet.AddressException;
 
@@ -101,12 +102,23 @@ public class EventParseUtils {
             .orElse(null);
     }
 
+    private static Predicate<Property> attendeeFilter(boolean getResource) {
+        return attendee -> {
+            if (getResource) {
+                return attendee.getParameter(Parameter.CUTYPE)
+                    .map(parameter -> "RESOURCE".equalsIgnoreCase(parameter.getValue()))
+                    .orElse(false);
+            } else {
+                return attendee.getParameter(Parameter.CUTYPE).isEmpty()
+                    || !"RESOURCE".equalsIgnoreCase(attendee.getParameter(Parameter.CUTYPE).get().getValue());
+            }
+        };
+    }
+
     public static List<EventFields.Person> getPeople(VEvent vEvent, boolean getResource) {
         return vEvent.getProperties(Property.ATTENDEE)
             .stream()
-            .filter(attendee -> attendee.getParameter(Parameter.CUTYPE)
-                .map(parameter -> getResource == "RESOURCE".equals(parameter.getValue()))
-                .orElse(false))
+            .filter(attendeeFilter(getResource))
             .map(EventParseUtils::toPerson)
             .flatMap(Optional::stream)
             .toList();
