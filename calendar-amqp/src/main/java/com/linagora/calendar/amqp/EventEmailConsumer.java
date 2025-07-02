@@ -68,12 +68,15 @@ public class EventEmailConsumer implements Closeable, Startable {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module());
 
     private final ReceiverProvider receiverProvider;
+    private final EventMailHandler eventMailHandler;
     private Disposable consumeDisposable;
 
     @Inject
     public EventEmailConsumer(ReactorRabbitMQChannelPool channelPool,
-                              @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier) {
+                              @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier,
+                              EventMailHandler eventMailHandler) {
         this.receiverProvider = channelPool::createReceiver;
+        this.eventMailHandler = eventMailHandler;
 
         Sender sender = channelPool.getSender();
         Flux.concat(
@@ -155,8 +158,7 @@ public class EventEmailConsumer implements Closeable, Startable {
             }
             case Method.VALUE_REPLY -> {
                 LOGGER.info("Received calendar event message with method REPLY and eventPath {}", calendarEventMessage.eventPath());
-                CalendarEventReplyNotificationEmail calendarEventReplyNotificationEmail = CalendarEventReplyNotificationEmail.from(calendarEventMessage);
-                yield Mono.empty();
+                yield eventMailHandler.handReplyEvent(CalendarEventReplyNotificationEmail.from(calendarEventMessage));
             }
             case Method.VALUE_CANCEL -> {
                 LOGGER.info("Received calendar event message with method CANCEL and eventPath {}", calendarEventMessage.eventPath());

@@ -20,6 +20,7 @@ package com.linagora.calendar.dav;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.Optional;
 
 import javax.net.ssl.SSLException;
 
@@ -35,8 +36,11 @@ import reactor.core.publisher.Mono;
 
 public class DavTestHelper extends DavClient {
 
+    private final CalDavClient calDavClient;
+
     public DavTestHelper(DavConfiguration config) throws SSLException {
         super(config);
+        this.calDavClient = new CalDavClient(config);
     }
 
     public void upsertCalendar(OpenPaaSUser openPaaSUser, String calendarData, String eventUid) {
@@ -107,5 +111,13 @@ public class DavTestHelper extends DavClient {
                         %s
                         """.formatted(response.status().code(), homeBaseId.value(), username, responseBody))));
             });
+    }
+
+    public Optional<String> findFirstEventId(OpenPaaSUser openPaaSUser) {
+        return calDavClient.findUserCalendars(openPaaSUser.username(), openPaaSUser.id())
+            .flatMap(calendarURL -> calDavClient.findUserCalendarEventIds(openPaaSUser.username(), calendarURL))
+            .collectList()
+            .blockOptional()
+            .flatMap(e -> e.stream().findFirst());
     }
 }

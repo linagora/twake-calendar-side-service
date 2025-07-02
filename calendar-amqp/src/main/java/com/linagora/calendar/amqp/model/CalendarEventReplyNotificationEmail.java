@@ -18,10 +18,59 @@
 
 package com.linagora.calendar.amqp.model;
 
-import com.linagora.calendar.amqp.CalendarEventNotificationEmailDTO;
+import java.util.List;
+import java.util.function.Function;
 
-public record CalendarEventReplyNotificationEmail(CalendarEventNotificationEmail calendarEventNotificationEmail) {
+import org.apache.commons.lang3.StringUtils;
+
+import com.linagora.calendar.amqp.CalendarEventNotificationEmailDTO;
+import com.linagora.calendar.smtp.template.content.model.PersonModel;
+import com.linagora.calendar.smtp.template.content.model.ReplyContentModelBuilder;
+import com.linagora.calendar.storage.event.EventFields.Person;
+import com.linagora.calendar.storage.event.EventParseUtils;
+
+import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.component.VEvent;
+import net.fortuna.ical4j.model.parameter.PartStat;
+
+public record CalendarEventReplyNotificationEmail(CalendarEventNotificationEmail base) {
+
+    public static final Function<Person, PersonModel> PERSON_TO_MODEL =
+        person -> new PersonModel(person.cn(), person.email().asString());
+
     public static CalendarEventReplyNotificationEmail from(CalendarEventNotificationEmailDTO dto) {
         return new CalendarEventReplyNotificationEmail(CalendarEventNotificationEmail.from(dto));
+    }
+
+    public VEvent vEvent() {
+        return base.event()
+            .getComponent(Component.VEVENT)
+            .map(VEvent.class::cast)
+            .orElseThrow(() -> new IllegalStateException("No VEvent found in the calendar event notification email"));
+    }
+
+    public ReplyContentModelBuilder.LocaleStep toReplyContentModelBuilder() {
+        VEvent vEvent = vEvent();
+
+        Person attendee = EventParseUtils.getAttendees(vEvent).getFirst();
+        PersonModel attendeeModel = PERSON_TO_MODEL.apply(attendee);
+        PartStat attendeePartStat = attendee.partStat()
+            .orElseThrow(() -> new IllegalStateException("Attendee partStat is missing"));
+
+        List<PersonModel> resourceModel = EventParseUtils.getResources(vEvent)
+            .stream()
+            .map(PERSON_TO_MODEL)
+            .toList();
+
+        return ReplyContentModelBuilder.builder()
+            .eventSummary(EventParseUtils.getSummary(vEvent).orElse(StringUtils.EMPTY))
+            .eventAllDay(EventParseUtils.isAllDay(vEvent))
+            .eventStart(EventParseUtils.getStartTime(vEvent))
+            .eventEnd(EventParseUtils.getEndTime(vEvent))
+            .eventLocation(EventParseUtils.getLocation(vEvent))
+            .eventAttendee(attendeeModel, attendeePartStat)
+            .eventOrganizer(PERSON_TO_MODEL.apply(EventParseUtils.getOrganizer(vEvent)))
+            .eventResources(resourceModel)
+            .eventDescription(EventParseUtils.getDescription(vEvent));
     }
 }
