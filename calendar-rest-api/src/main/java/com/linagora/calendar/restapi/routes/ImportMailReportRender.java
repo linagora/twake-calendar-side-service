@@ -36,10 +36,10 @@ import com.linagora.calendar.restapi.RestApiConfiguration;
 import com.linagora.calendar.restapi.routes.ImportProcessor.ImportResult;
 import com.linagora.calendar.restapi.routes.ImportProcessor.ImportType;
 import com.linagora.calendar.smtp.Mail;
-import com.linagora.calendar.smtp.template.InlinedAttachment;
 import com.linagora.calendar.smtp.template.Language;
 import com.linagora.calendar.smtp.template.MailTemplateConfiguration;
 import com.linagora.calendar.smtp.template.MessageGenerator;
+import com.linagora.calendar.smtp.template.MimeAttachment;
 
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -81,7 +81,12 @@ public class ImportMailReportRender {
                 "jobFailedList", importResult.failed(),
                 "jobSucceedCount", importResult.succeedCount(),
                 "jobFailedCount", importResult.failed().size()));
-        InlinedAttachment logoAttachment = new InlinedAttachment(ContentType.of("image/png"), Cid.from("logo"), logoBytes, "logo.png");
+        MimeAttachment logoAttachment = MimeAttachment.builder()
+            .contentType(ContentType.of("image/png"))
+            .cid(Cid.from("logo"))
+            .content(logoBytes)
+            .fileName("logo.png")
+            .build();
 
         return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(language, importType.getTemplateType()))
             .flatMap(messageGenerator -> messageGenerator.generate(username, model, ImmutableList.of(logoAttachment)))
