@@ -27,9 +27,12 @@ import java.nio.file.Paths;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.james.core.MailAddress;
+import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
 import org.apache.james.filesystem.api.FileSystem;
 import org.apache.james.mime4j.dom.Message;
@@ -120,17 +123,21 @@ public class MessageGenerator {
     private static final String SUBJECT_KEY_NAME = "mail_subject";
     private static final String TRANSLATOR_FUNCTION_NAME = "translator";
 
-    private final MailTemplateConfiguration configuration;
+    private final MaybeSender sender;
     private final HtmlBodyRenderer htmlBodyRenderer;
     private final I18NTranslator i18nTranslator;
 
     public MessageGenerator(MailTemplateConfiguration configuration, I18NTranslator i18nTranslator, HtmlBodyRenderer htmlBodyRenderer) {
-        this.configuration = configuration;
+        this.sender = configuration.sender();
         this.i18nTranslator = i18nTranslator;
         this.htmlBodyRenderer = htmlBodyRenderer;
     }
 
-    public Mono<Message> generate(Username recipient, Map<String, Object> scopedVariable, List<InlinedAttachment> inlinedAttachments) {
+    public Mono<Message> generate(Username recipient, Map<String, Object> scopedVariable, List<MimeAttachment> mimeAttachments) {
+        return generate(recipient, Optional.empty(), scopedVariable, mimeAttachments);
+    }
+
+    public Mono<Message> generate(Username recipient, Optional<MailAddress> fromAddress, Map<String, Object> scopedVariable, List<MimeAttachment> mimeAttachments) {
         return Mono.fromCallable(() -> {
             Map<String, Object> scopedVariableFinal = ImmutableMap.<String, Object>builder()
                 .putAll(scopedVariable)
@@ -139,17 +146,21 @@ public class MessageGenerator {
 
             String htmlBodyText = htmlBodyRenderer.render(scopedVariableFinal);
 
-            MultipartBuilder multipartBuilder = MultipartBuilder.create("related")
+            MultipartBuilder multipartBuilder = MultipartBuilder.create("mixed")
                 .addBodyPart(BodyPartBuilder.create()
                     .setContentTransferEncoding("base64")
                     .setBody(htmlBodyText, "html", StandardCharsets.UTF_8));
 
-            inlinedAttachments.forEach(Throwing.consumer(attachment -> multipartBuilder.addBodyPart(attachment.asBodyPart())));
+            mimeAttachments.forEach(Throwing.consumer(attachment -> multipartBuilder.addBodyPart(attachment.asBodyPart())));
+
+            String fromFieldValue = fromAddress
+                .map(MailAddress::asString)
+                .orElse(sender.asString());
 
             return Message.Builder.of()
                 .setSubject(subject(scopedVariableFinal))
                 .setBody(multipartBuilder.build())
-                .setFrom(configuration.sender().asString())
+                .setFrom(fromFieldValue)
                 .setTo(recipient.asString())
                 .build();
         });
@@ -161,5 +172,9 @@ public class MessageGenerator {
             "Subject is empty, please check your translations for key: " + SUBJECT_KEY_NAME);
 
         return SubjectRenderer.of(subjectTemplate).render(scopedVariable);
+    }
+
+    public I18NTranslator getI18nTranslator() {
+        return i18nTranslator;
     }
 }

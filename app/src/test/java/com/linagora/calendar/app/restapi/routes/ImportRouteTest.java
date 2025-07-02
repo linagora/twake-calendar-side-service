@@ -285,14 +285,11 @@ public class ImportRouteTest {
             softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(openPaaSUser.username().asString());
             softly.assertThat(smtpMailsResponse.getString("[0].message"))
                 .contains("Subject: Calendar import reporting")
-                .containsIgnoringNewLines("""
-                    Content-Transfer-Encoding: base64
-                    Content-Type: text/html; charset=UTF-8""") // text HTML body part
-                .containsIgnoringNewLines("""
-                    Content-Disposition: inline; filename="logo.png"
-                    Content-ID: logo
-                    Content-Transfer-Encoding: base64
-                    Content-Type: image/png; name="logo.png"""); // base64 encoded image
+                .contains("Content-Transfer-Encoding: base64", "Content-Type: text/html; charset=UTF-8")  // text HTML body part
+                .contains("Content-Disposition: inline; filename=\"logo.png\"",
+                    "Content-ID: logo",
+                    "Content-Transfer-Encoding: base64",
+                    "Content-Type: image/png; name=\"logo.png\""); // base64 encoded image
         }));
     }
 
@@ -701,14 +698,12 @@ public class ImportRouteTest {
             softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(openPaaSUser.username().asString());
             softly.assertThat(smtpMailsResponse.getString("[0].message"))
                 .contains("Subject: Contacts import reporting")
-                .containsIgnoringNewLines("""
-                    Content-Transfer-Encoding: base64
-                    Content-Type: text/html; charset=UTF-8""") // text HTML body part
-                .containsIgnoringNewLines("""
-                    Content-Disposition: inline; filename="logo.png"
-                    Content-ID: logo
-                    Content-Transfer-Encoding: base64
-                    Content-Type: image/png; name="logo.png"""); // base64 encoded image
+                .contains("Content-Transfer-Encoding: base64",
+                    "Content-Type: text/html; charset=UTF-8") // text HTML body part
+                .contains("Content-Disposition: inline; filename=\"logo.png\"",
+                    "Content-ID: logo",
+                    "Content-Transfer-Encoding: base64",
+                    "Content-Type: image/png; name=\"logo.png\""); // base64 encoded image
         }));
     }
 
