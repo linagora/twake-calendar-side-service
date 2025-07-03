@@ -148,7 +148,7 @@ public class EventReplyEmailConsumerTest {
         organizer = sabreDavExtension.newTestUser();
         attendee = sabreDavExtension.newTestUser();
 
-        when(settingsLocator.getLanguageUserSetting(any())).thenReturn(Mono.just(Locale.ENGLISH));
+        when(settingsLocator.getLanguageUserSetting(any(), any())).thenReturn(Mono.just(Locale.ENGLISH));
 
         setupEventEmailConsumer();
         clearSmtpMock();
@@ -316,7 +316,7 @@ public class EventReplyEmailConsumerTest {
         String eventDavIdOnAttendee = waitForEventCreation(attendee);
 
         // Mock exception
-        when(settingsLocator.getLanguageUserSetting(any()))
+        when(settingsLocator.getLanguageUserSetting(any(), any()))
             .thenReturn(Mono.defer(() -> Mono.error(new RuntimeException("Temporary exception"))));
 
         String replyDataFirst = generateCalendarData(
@@ -329,7 +329,7 @@ public class EventReplyEmailConsumerTest {
         Thread.sleep(1000); // Wait for the exception to be processed
 
         // Recover by returning a valid language setting
-        when(settingsLocator.getLanguageUserSetting(any()))
+        when(settingsLocator.getLanguageUserSetting(any(), any()))
             .thenReturn(Mono.just(Locale.ENGLISH));
 
         String replyDataSecond = generateCalendarData(

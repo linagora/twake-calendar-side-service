@@ -47,16 +47,33 @@ public class SettingsBasedLocator {
     public Mono<Locale> getLanguageUserSetting(MailboxSession mailboxSession) {
         Locale fallbackLanguage = Locale.ENGLISH;
 
-        return configurationResolver.resolve(Set.of(LANGUAGE_IDENTIFIER), mailboxSession)
-            .map(ConfigurationDocument::table)
-            .filter(configTable -> configTable.contains(LANGUAGE_IDENTIFIER.moduleName(), LANGUAGE_IDENTIFIER.configurationKey()))
-            .mapNotNull(configTable -> configTable.get(LANGUAGE_IDENTIFIER.moduleName(), LANGUAGE_IDENTIFIER.configurationKey()))
-            .map(jsonNode -> Locale.of(jsonNode.asText()))
+        return readSavedSettings(mailboxSession)
+            .defaultIfEmpty(fallbackLanguage)
             .onErrorResume(error -> {
                 LOGGER.error("Error resolving user language setting for {}, will use fallback language: {}",
                     mailboxSession.getUser(), fallbackLanguage.getLanguage(), error);
                 return Mono.just(fallbackLanguage);
-            })
-            .defaultIfEmpty(fallbackLanguage);
+            });
+    }
+
+    public Mono<Locale> getLanguageUserSetting(MailboxSession session1, MailboxSession session2) {
+        Locale fallbackLanguage = Locale.ENGLISH;
+
+        return readSavedSettings(session1)
+            .switchIfEmpty(readSavedSettings(session2))
+            .defaultIfEmpty(fallbackLanguage)
+            .onErrorResume(error -> {
+                LOGGER.error("Error resolving user language setting for {} and {} , will use fallback language: {}",
+                    session1.getUser(), session2.getUser(), fallbackLanguage.getLanguage(), error);
+                return Mono.just(fallbackLanguage);
+            });
+    }
+
+    private Mono<Locale> readSavedSettings(MailboxSession mailboxSession) {
+        return configurationResolver.resolve(Set.of(LANGUAGE_IDENTIFIER), mailboxSession)
+            .map(ConfigurationDocument::table)
+            .filter(configTable -> configTable.contains(LANGUAGE_IDENTIFIER.moduleName(), LANGUAGE_IDENTIFIER.configurationKey()))
+            .mapNotNull(configTable -> configTable.get(LANGUAGE_IDENTIFIER.moduleName(), LANGUAGE_IDENTIFIER.configurationKey()))
+            .map(jsonNode -> Locale.of(jsonNode.asText()));
     }
 }
