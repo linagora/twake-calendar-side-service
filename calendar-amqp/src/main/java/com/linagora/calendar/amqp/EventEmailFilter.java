@@ -16,31 +16,11 @@
  *  more details.                                                   *
  ********************************************************************/
 
-/********************************************************************
- *  As a subpart of Twake Mail, this file is edited by Linagora.    *
- *                                                                  *
- *  https://twake-mail.com/                                         *
- *  https://linagora.com                                            *
- *                                                                  *
- *  This file is subject to The Affero Gnu Public License           *
- *  version 3.                                                      *
- *                                                                  *
- *  https://www.gnu.org/licenses/agpl-3.0.en.html                   *
- *                                                                  *
- *  This program is distributed in the hope that it will be         *
- *  useful, but WITHOUT ANY WARRANTY; without even the implied      *
- *  warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR         *
- *  PURPOSE. See the GNU Affero General Public License for          *
- *  more details.                                                   *
- ********************************************************************/
-
 package com.linagora.calendar.amqp;
 
 import java.io.FileNotFoundException;
 import java.util.Set;
 import java.util.stream.Collectors;
-
-import jakarta.inject.Inject;
 
 import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.configuration2.ex.ConfigurationException;
@@ -55,7 +35,32 @@ import com.google.common.base.Splitter;
 
 public interface EventEmailFilter {
 
+    Logger LOGGER = LoggerFactory.getLogger(EventEmailFilter.class);
+    String ALLOWED_RECIPIENTS_PROPERTY = "mail.imip.recipient.whitelist";
+
     boolean shouldProcess(CalendarEventNotificationEmailDTO dto);
+
+    static EventEmailFilter fromConfigure(PropertiesProvider propertiesProvider) throws ConfigurationException {
+        try {
+            Configuration configuration = propertiesProvider.getConfiguration("configuration");
+            Set<MailAddress> whiteList = Splitter.on(',')
+                .trimResults()
+                .omitEmptyStrings()
+                .splitToList(configuration.getString(ALLOWED_RECIPIENTS_PROPERTY, StringUtils.EMPTY))
+                .stream()
+                .map(Throwing.function(MailAddress::new))
+                .collect(Collectors.toSet());
+
+            if (!whiteList.isEmpty()) {
+                return new WhitelistRecipientFilter(whiteList);
+            } else {
+                return acceptAll();
+            }
+        } catch (FileNotFoundException e) {
+            LOGGER.info("Configuration file not found, allowed all recipients configured.");
+            return acceptAll();
+        }
+    }
 
     static EventEmailFilter acceptAll() {
         return new NoOpEventEmailFilter();
@@ -64,31 +69,8 @@ public interface EventEmailFilter {
     class WhitelistRecipientFilter implements EventEmailFilter {
 
         private static final Logger LOGGER = LoggerFactory.getLogger(WhitelistRecipientFilter.class);
-        private static final String ALLOWED_RECIPIENTS_PROPERTY = "mail.imip.recipient.whitelist";
 
         private final Set<MailAddress> allowedRecipients;
-
-        private static Set<MailAddress> parseAllowedRecipients(PropertiesProvider propertiesProvider) throws ConfigurationException {
-            try {
-                Configuration configuration = propertiesProvider.getConfiguration("configuration");
-                return Splitter.on(',')
-                    .trimResults()
-                    .omitEmptyStrings()
-                    .splitToList(configuration.getString(ALLOWED_RECIPIENTS_PROPERTY, StringUtils.EMPTY))
-                    .stream()
-                    .map(Throwing.function(MailAddress::new))
-                    .collect(Collectors.toSet());
-
-            } catch (FileNotFoundException e) {
-                LOGGER.info("Configuration file not found, no allowed recipients configured.");
-                return Set.of();
-            }
-        }
-
-        @Inject
-        public WhitelistRecipientFilter(PropertiesProvider propertiesProvider) throws ConfigurationException {
-            this(parseAllowedRecipients(propertiesProvider));
-        }
 
         public WhitelistRecipientFilter(Set<MailAddress> allowedRecipients) {
             this.allowedRecipients = allowedRecipients;

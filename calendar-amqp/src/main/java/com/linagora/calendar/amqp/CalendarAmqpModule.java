@@ -47,8 +47,6 @@ public class CalendarAmqpModule extends AbstractModule {
     protected void configure() {
         bind(EventIndexerConsumer.class).in(Scopes.SINGLETON);
         bind(EventEmailConsumer.class).in(Scopes.SINGLETON);
-
-        bind(EventEmailFilter.class).to(EventEmailFilter.WhitelistRecipientFilter.class);
     }
 
     @Provides
@@ -98,5 +96,11 @@ public class CalendarAmqpModule extends AbstractModule {
         return InitilizationOperationBuilder
             .forClass(EventEmailConsumer.class)
             .init(instance::init);
+    }
+
+    @Provides
+    @Singleton
+    public EventEmailFilter provideEventEmailFilter(PropertiesProvider propertiesProvider) throws ConfigurationException {
+        return EventEmailFilter.fromConfigure(propertiesProvider);
     }
 }
