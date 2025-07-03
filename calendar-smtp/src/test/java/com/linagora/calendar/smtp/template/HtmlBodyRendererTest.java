@@ -46,7 +46,7 @@ import com.linagora.calendar.smtp.template.content.model.ReplyContentModelBuilde
 
 import net.fortuna.ical4j.model.parameter.PartStat;
 
-public class HtmlBodyRendererTest {
+class HtmlBodyRendererTest {
     static FileSystem fileSystem = FileSystemImpl.forTesting();
 
     @Test

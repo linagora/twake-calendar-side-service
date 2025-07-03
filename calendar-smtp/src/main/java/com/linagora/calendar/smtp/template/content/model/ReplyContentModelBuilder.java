@@ -41,6 +41,7 @@ public class ReplyContentModelBuilder {
 
                         ImmutableMap.Builder<String, Object> builder = ImmutableMap.builder();
                         builder.put("partStat", partStat.getValue().toUpperCase(Locale.US));
+                        builder.put("partStatColor", partStatColor(partStat));
                         builder.put("content.replyPersonDisplayName", eventAttendee.cn());
                         builder.put("content.replyMessage", translator.get("reply_message_" + partStat.getValue().toLowerCase(Locale.US)));
                         builder.put("content.event.summary", eventSummary);
@@ -72,6 +73,15 @@ public class ReplyContentModelBuilder {
                         builder.put("subject.participant", eventAttendee.cn());
                         return builder.build();
                     };
+    }
+
+    private static String partStatColor(PartStat partStat) {
+        return switch (partStat.getValue().toLowerCase(Locale.US)) {
+            case "accepted" -> "#deffe1";
+            case "declined" -> "#ffdede";
+            case "tentative" -> "#fffcde";
+            default -> "#deffe1";
+        };
     }
 
     public interface LocaleStep {
