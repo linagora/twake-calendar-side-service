@@ -97,4 +97,10 @@ public class CalendarAmqpModule extends AbstractModule {
             .forClass(EventEmailConsumer.class)
             .init(instance::init);
     }
+
+    @Provides
+    @Singleton
+    public EventEmailFilter provideEventEmailFilter(PropertiesProvider propertiesProvider) throws ConfigurationException {
+        return EventEmailFilter.from(propertiesProvider);
+    }
 }
