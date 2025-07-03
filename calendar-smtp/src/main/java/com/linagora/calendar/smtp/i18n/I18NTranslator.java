@@ -40,20 +40,30 @@ import com.github.benmanes.caffeine.cache.LoadingCache;
 public interface I18NTranslator {
     String get(String key);
 
+    Locale associatedLocale();
+
     class PropertiesI18NTranslator implements I18NTranslator {
         private static final Logger LOGGER = LoggerFactory.getLogger(PropertiesI18NTranslator.class);
 
         private final ResourceBundle resourceBundle;
         private final Optional<PropertiesI18NTranslator> fallbackTranslator;
+        private final Locale locale;
 
-        private PropertiesI18NTranslator(ResourceBundle resourceBundle) {
+        private PropertiesI18NTranslator(ResourceBundle resourceBundle, Locale locale) {
             this.resourceBundle = resourceBundle;
+            this.locale = locale;
             this.fallbackTranslator = Optional.empty();
         }
 
-        private PropertiesI18NTranslator(ResourceBundle resourceBundle, PropertiesI18NTranslator fallbackTranslator) {
+        private PropertiesI18NTranslator(ResourceBundle resourceBundle, PropertiesI18NTranslator fallbackTranslator, Locale locale) {
             this.resourceBundle = resourceBundle;
             this.fallbackTranslator = Optional.of(fallbackTranslator);
+            this.locale = locale;
+        }
+
+        @Override
+        public Locale associatedLocale() {
+            return locale;
         }
 
         @Override
@@ -91,7 +101,7 @@ public interface I18NTranslator {
                             return defaultTranslator;
                         } else {
                             try {
-                                return new PropertiesI18NTranslator(loadResourceBundle(locale), defaultTranslator);
+                                return new PropertiesI18NTranslator(loadResourceBundle(locale), defaultTranslator, locale);
                             } catch (MissingResourceException e) {
                                 LOGGER.warn("Missing translate file for locale '{}' at {}, falling back to default", locale.getLanguage(), translateAbsolutePath(locale));
                                 return defaultTranslator;
@@ -106,7 +116,7 @@ public interface I18NTranslator {
 
             private PropertiesI18NTranslator createDefaultTranslator() {
                 try {
-                    return new PropertiesI18NTranslator(loadResourceBundle(DEFAULT_LOCALE));
+                    return new PropertiesI18NTranslator(loadResourceBundle(DEFAULT_LOCALE), DEFAULT_LOCALE);
                 } catch (MissingResourceException e) {
                     throw new IllegalStateException("Missing required translation file: %s".formatted(translateAbsolutePath(DEFAULT_LOCALE)));
                 }
