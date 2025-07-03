@@ -10,12 +10,6 @@ mixin displayAttendees(attendees, organizer)
             span(style='font-weight: 500') #{attendee.cn}
             span(style='color: #787878;') &nbsp;&lt;#{attendeeEmail}&gt;
 
-- var partStatColor = '#deffe1';
-if (content.partStat === 'DECLINED')
-    - partStatColor = '#ffdede';
-else if (content.partStat === 'MAYBE')
-    - partStatColor = '#fffcde';
-
 doctype html
 head
   title
@@ -104,7 +98,7 @@ div(style='')
                             td.reply-title-container-outlook(style='vertical-align:top;width:600px;')
 
                       .mj-column-per-100.mj-outlook-group-fix.reply-title-container(
-                        style=`background: ${partStatColor}; border-radius: 4px; border: 1px solid ${partStatColor}; font-size: 0px; text-align: left; direction: ltr; display: inline-block; vertical-align: top; width: 100%;`
+                        style=`background: #{partStatColor}; border-radius: 4px; border: 1px solid #{partStatColor}; font-size: 0px; text-align: left; direction: ltr; display: inline-block; vertical-align: top; width: 100%;`
                       )
                         table(border='0' cellpadding='0' cellspacing='0' role='presentation' width='100%')
                           tbody
