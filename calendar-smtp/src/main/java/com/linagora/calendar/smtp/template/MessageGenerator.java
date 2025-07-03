@@ -28,9 +28,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.james.core.Domain;
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
@@ -158,6 +160,7 @@ public class MessageGenerator {
                 .orElse(sender.asString());
 
             return Message.Builder.of()
+                .setMessageId("<" + UUID.randomUUID() + "@" + fromAddress.or(sender::asOptional).map(MailAddress::getDomain).map(Domain::asString).orElse("") + ">")
                 .setSubject(subject(scopedVariableFinal))
                 .setBody(multipartBuilder.build())
                 .setFrom(fromFieldValue)
