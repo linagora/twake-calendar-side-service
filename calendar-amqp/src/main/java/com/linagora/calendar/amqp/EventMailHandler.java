@@ -137,7 +137,9 @@ public class EventMailHandler {
     }
 
     private Mono<Void> handleEvent(EventMessageGenerator eventMessageGenerator, Username recipientUser, MailAddress senderEmail) {
-        return settingsBasedLocator.getLanguageUserSetting(sessionProvider.createSession(recipientUser))
+        return settingsBasedLocator.getLanguageUserSetting(
+                sessionProvider.createSession(recipientUser),
+                sessionProvider.createSession(Username.fromMailAddress(senderEmail)))
             .flatMap(eventMessageGenerator::generate)
             .flatMap(mailMessage -> mailSenderFactory.create()
                 .flatMap(mailSender -> mailSender.send(new Mail(MaybeSender.of(senderEmail),
