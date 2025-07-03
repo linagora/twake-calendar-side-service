@@ -34,8 +34,6 @@ import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
 import org.apache.james.mailbox.model.ContentType;
 import org.apache.james.mime4j.dom.Message;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableList;
@@ -43,7 +41,6 @@ import com.linagora.calendar.amqp.model.CalendarEventReplyNotificationEmail;
 import com.linagora.calendar.smtp.Mail;
 import com.linagora.calendar.smtp.MailSender;
 import com.linagora.calendar.smtp.template.Language;
-import com.linagora.calendar.smtp.template.MailTemplateConfiguration;
 import com.linagora.calendar.smtp.template.MessageGenerator;
 import com.linagora.calendar.smtp.template.MimeAttachment;
 import com.linagora.calendar.smtp.template.TemplateType;
@@ -54,8 +51,6 @@ import com.linagora.calendar.storage.configuration.resolver.SettingsBasedLocator
 import reactor.core.publisher.Mono;
 
 public class EventMailHandler {
-
-    public static final Logger LOGGER = LoggerFactory.getLogger(EventMailHandler.class);
 
     enum EventType {
         INVITATION,
@@ -73,18 +68,15 @@ public class EventMailHandler {
     private final SimpleSessionProvider sessionProvider;
     private final MessageGenerator.Factory messageGeneratorFactory;
     private final EventInCalendarLinkFactory eventInCalendarLinkFactory;
-    private final MaybeSender sender;
 
     @Inject
     @Singleton
     public EventMailHandler(MailSender.Factory mailSenderFactory,
-                            MailTemplateConfiguration mailTemplateConfiguration,
                             SettingsBasedLocator settingsBasedLocator,
                             MessageGenerator.Factory messageGeneratorFactory,
                             EventInCalendarLinkFactory eventInCalendarLinkFactory,
                             SimpleSessionProvider sessionProvider) {
         this.mailSenderFactory = mailSenderFactory;
-        this.sender = mailTemplateConfiguration.sender();
         this.settingsBasedLocator = settingsBasedLocator;
         this.sessionProvider = sessionProvider;
         this.messageGeneratorFactory = messageGeneratorFactory;
@@ -141,20 +133,15 @@ public class EventMailHandler {
     public Mono<Void> handReplyEvent(CalendarEventReplyNotificationEmail event) {
         MailAddress recipientEmail = event.base().recipientEmail();
         Username recipientUser = Username.fromMailAddress(recipientEmail);
-        return handleEvent(new ReplyEventMessageGenerator(event, recipientUser), recipientUser);
+        return handleEvent(new ReplyEventMessageGenerator(event, recipientUser), recipientUser, event.base().senderEmail());
     }
 
-    private Mono<Void> handleEvent(EventMessageGenerator eventMessageGenerator, Username recipientUser) {
-        return resolveUserLocale(recipientUser)
+    private Mono<Void> handleEvent(EventMessageGenerator eventMessageGenerator, Username recipientUser, MailAddress senderEmail) {
+        return settingsBasedLocator.getLanguageUserSetting(sessionProvider.createSession(recipientUser))
             .flatMap(eventMessageGenerator::generate)
             .flatMap(mailMessage -> mailSenderFactory.create()
-                .flatMap(mailSender -> mailSender.send(new Mail(sender,
+                .flatMap(mailSender -> mailSender.send(new Mail(MaybeSender.of(senderEmail),
                     ImmutableList.of(Throwing.supplier(recipientUser::asMailAddress).get()), mailMessage))));
-    }
-
-    private Mono<Locale> resolveUserLocale(Username recipientUser) {
-        return Mono.fromCallable(() -> sessionProvider.createSession(recipientUser))
-            .flatMap(settingsBasedLocator::getLanguageUserSetting);
     }
 
 }

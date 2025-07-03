@@ -191,7 +191,6 @@ public class EventReplyEmailConsumerTest {
         EventInCalendarLinkFactory linkFactory = new EventInCalendarLinkFactory(URI.create("http://localhost:3000/").toURL());
 
         EventMailHandler mailHandler = new EventMailHandler(mailSenderFactory,
-            mailTemplateConfig,
             settingsLocator,
             messageFactory,
             linkFactory,
@@ -257,7 +256,7 @@ public class EventReplyEmailConsumerTest {
         };
 
         assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo(attendee.username().asString());
             softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(organizer.username().asString());
             softly.assertThat(smtpMailsResponse.getString("[0].message"))
                 .contains("Subject: =?ISO-8859-1?Q?" + partStatDisplayFunction.apply(partStatValue) + ":_Twake_Calendar")
@@ -283,7 +282,7 @@ public class EventReplyEmailConsumerTest {
         JsonPath smtpMailsResponse = simulateAcceptedReplyAndWaitForEmail();
 
         assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo(attendee.username().asString());
             softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(organizer.username().asString());
             softly.assertThat(smtpMailsResponse.getString("[0].message"))
                 .containsIgnoringNewLines("""
