@@ -49,7 +49,6 @@ import com.linagora.calendar.restapi.auth.LemonCookieAuthenticationStrategy.Reso
 import com.linagora.calendar.restapi.auth.OidcAuthenticationStrategy;
 import com.linagora.calendar.restapi.auth.OidcEndpointsInfoResolver;
 import com.linagora.calendar.restapi.auth.OidcFallbackCookieAuthenticationStrategy;
-import com.linagora.calendar.restapi.auth.SimpleSessionProvider;
 import com.linagora.calendar.restapi.routes.AvatarRoute;
 import com.linagora.calendar.restapi.routes.CalendarSearchRoute;
 import com.linagora.calendar.restapi.routes.CheckTechnicalUserTokenRoute;
@@ -74,6 +73,7 @@ import com.linagora.calendar.restapi.routes.UsersRoute;
 import com.linagora.calendar.restapi.routes.configuration.FileConfigurationEntryResolver;
 import com.linagora.calendar.restapi.routes.configuration.OpenpaasConfigurationEntryResolver;
 import com.linagora.calendar.restapi.routes.configuration.StoredConfigurationEntryResolver;
+import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.TokenInfoResolver;
 import com.linagora.calendar.storage.configuration.resolver.ConfigurationEntryResolver;
 import com.linagora.calendar.storage.configuration.resolver.ConstantConfigurationEntryResolver;

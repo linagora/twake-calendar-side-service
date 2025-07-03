@@ -42,7 +42,7 @@ import com.linagora.calendar.restapi.auth.LemonCookieAuthenticationStrategy;
 import com.linagora.calendar.restapi.auth.LemonCookieAuthenticationStrategy.ResolutionConfiguration;
 import com.linagora.calendar.restapi.auth.OidcAuthenticationStrategy;
 import com.linagora.calendar.restapi.auth.OidcFallbackCookieAuthenticationStrategy;
-import com.linagora.calendar.restapi.auth.SimpleSessionProvider;
+import com.linagora.calendar.storage.SimpleSessionProvider;
 
 public class AppTestHelper {
 

@@ -47,6 +47,7 @@ import org.apache.james.backends.rabbitmq.RabbitMQConnectionFactory;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
 import org.apache.james.core.MaybeSender;
+import org.apache.james.mailbox.store.RandomMailboxSessionIdGenerator;
 import org.apache.james.metrics.api.NoopGaugeRegistry;
 import org.apache.james.metrics.tests.RecordingMetricFactory;
 import org.apache.james.server.core.filesystem.FileSystemImpl;
@@ -75,6 +76,7 @@ import com.linagora.calendar.smtp.template.MailTemplateConfiguration;
 import com.linagora.calendar.smtp.template.MessageGenerator;
 import com.linagora.calendar.smtp.template.content.model.EventInCalendarLinkFactory;
 import com.linagora.calendar.storage.OpenPaaSUser;
+import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedLocator;
 
 import io.restassured.builder.RequestSpecBuilder;
@@ -185,7 +187,12 @@ public class EventReplyEmailConsumerTest {
         MessageGenerator.Factory messageFactory = MessageGenerator.factory(mailTemplateConfig, fileSystem);
         EventInCalendarLinkFactory linkFactory = new EventInCalendarLinkFactory(URI.create("http://localhost:3000/").toURL());
 
-        EventMailHandler mailHandler = new EventMailHandler(mailSenderFactory, mailTemplateConfig, settingsLocator, messageFactory, linkFactory);
+        EventMailHandler mailHandler = new EventMailHandler(mailSenderFactory,
+            mailTemplateConfig,
+            settingsLocator,
+            messageFactory,
+            linkFactory,
+            new SimpleSessionProvider(new RandomMailboxSessionIdGenerator()));
 
         EventEmailConsumer consumer = new EventEmailConsumer(channelPool, QueueArguments.Builder::new, mailHandler);
         consumer.init();

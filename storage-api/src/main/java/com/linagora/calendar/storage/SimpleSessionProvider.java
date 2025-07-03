@@ -16,7 +16,7 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.restapi.auth;
+package com.linagora.calendar.storage;
 
 import java.util.Optional;
 

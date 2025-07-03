@@ -42,9 +42,9 @@ import com.google.common.base.CharMatcher;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.restapi.ErrorResponse;
-import com.linagora.calendar.restapi.auth.SimpleSessionProvider;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.secretlink.SecretLinkStore;
 import com.linagora.calendar.storage.secretlink.SecretLinkToken;
 

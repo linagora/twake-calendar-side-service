@@ -36,6 +36,7 @@ import org.apache.james.util.ReactorUtils;
 import com.google.common.base.CharMatcher;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
+import com.linagora.calendar.storage.SimpleSessionProvider;
 
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;

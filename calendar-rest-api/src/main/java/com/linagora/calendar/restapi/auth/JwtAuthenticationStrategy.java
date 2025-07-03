@@ -43,6 +43,7 @@ import org.apache.james.util.ReactorUtils;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.restapi.RestApiConfiguration;
+import com.linagora.calendar.storage.SimpleSessionProvider;
 
 import reactor.core.publisher.Mono;
 import reactor.netty.http.server.HttpServerRequest;

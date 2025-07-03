@@ -36,6 +36,7 @@ import org.apache.james.mailbox.MailboxSession;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.storage.OIDCTokenCache;
+import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.model.Aud;
 import com.linagora.calendar.storage.model.Token;
 import com.linagora.calendar.storage.model.TokenInfo;
