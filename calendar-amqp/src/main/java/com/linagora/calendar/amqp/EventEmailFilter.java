@@ -21,17 +21,16 @@ package com.linagora.calendar.amqp;
 import java.io.FileNotFoundException;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.configuration2.ex.ConfigurationException;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.MailAddress;
 import org.apache.james.utils.PropertiesProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.github.fge.lambdas.Throwing;
-import com.google.common.base.Splitter;
 
 public interface EventEmailFilter {
 
@@ -43,11 +42,7 @@ public interface EventEmailFilter {
     static EventEmailFilter from(PropertiesProvider propertiesProvider) throws ConfigurationException {
         try {
             Configuration configuration = propertiesProvider.getConfiguration("configuration");
-            Set<MailAddress> whiteList = Splitter.on(',')
-                .trimResults()
-                .omitEmptyStrings()
-                .splitToList(configuration.getString(ALLOWED_RECIPIENTS_PROPERTY, StringUtils.EMPTY))
-                .stream()
+            Set<MailAddress> whiteList = Stream.of(configuration.getStringArray(ALLOWED_RECIPIENTS_PROPERTY))
                 .map(Throwing.function(MailAddress::new))
                 .collect(Collectors.toSet());
 
