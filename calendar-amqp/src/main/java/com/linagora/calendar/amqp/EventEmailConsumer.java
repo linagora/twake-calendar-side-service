@@ -69,14 +69,18 @@ public class EventEmailConsumer implements Closeable, Startable {
 
     private final ReceiverProvider receiverProvider;
     private final EventMailHandler eventMailHandler;
+    private final EventEmailFilter eventEmailFilter;
+
     private Disposable consumeDisposable;
 
     @Inject
     public EventEmailConsumer(ReactorRabbitMQChannelPool channelPool,
                               @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier,
-                              EventMailHandler eventMailHandler) {
+                              EventMailHandler eventMailHandler,
+                              EventEmailFilter eventEmailFilter) {
         this.receiverProvider = channelPool::createReceiver;
         this.eventMailHandler = eventMailHandler;
+        this.eventEmailFilter = eventEmailFilter;
 
         Sender sender = channelPool.getSender();
         Flux.concat(
@@ -133,6 +137,7 @@ public class EventEmailConsumer implements Closeable, Startable {
 
     private Mono<Void> consumeMessage(AcknowledgableDelivery ackDelivery) {
         return Mono.fromCallable(() -> OBJECT_MAPPER.readValue(ackDelivery.getBody(), CalendarEventNotificationEmailDTO.class))
+            .filter(eventEmailFilter::shouldProcess)
             .flatMap(message -> handleMessage(message)
                 .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed calendar mail event message successfully {} '{}'", message.getClass().getSimpleName(), message.eventPath()))))
             .doOnSuccess(result -> ackDelivery.ack())

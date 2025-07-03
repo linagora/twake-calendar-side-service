@@ -25,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 import java.net.URI;
@@ -106,6 +107,7 @@ public class EventReplyEmailConsumerTest {
     static final MockSmtpServerExtension mockSmtpExtension = new MockSmtpServerExtension();
 
     private static final SettingsBasedLocator settingsLocator = mock(SettingsBasedLocator.class);
+    private static final EventEmailFilter eventEmailFilter = spy(EventEmailFilter.acceptAll());
     private static ReactorRabbitMQChannelPool channelPool;
     private static SimpleConnectionPool connectionPool;
     private static DavTestHelper davTestHelper;
@@ -161,6 +163,7 @@ public class EventReplyEmailConsumerTest {
                 .block());
 
         Mockito.reset(settingsLocator);
+        Mockito.reset(eventEmailFilter);
     }
 
     private void setupEventEmailConsumer() throws Exception {
@@ -194,7 +197,8 @@ public class EventReplyEmailConsumerTest {
             linkFactory,
             new SimpleSessionProvider(new RandomMailboxSessionIdGenerator()));
 
-        EventEmailConsumer consumer = new EventEmailConsumer(channelPool, QueueArguments.Builder::new, mailHandler);
+        EventEmailConsumer consumer = new EventEmailConsumer(channelPool, QueueArguments.Builder::new, mailHandler,
+            eventEmailFilter);
         consumer.init();
 
         sender = channelPool.getSender();
@@ -344,6 +348,33 @@ public class EventReplyEmailConsumerTest {
             .contains("Subject: =?ISO-8859-1?Q?Declined")
             .containsIgnoringNewLines("""
                     Content-Type: text/calendar; charset=UTF-8; method=REPLY""");
+    }
+
+    @Test
+    void shouldNotSendEmailWhenRecipientIsNotInWhitelist() throws InterruptedException {
+        when(eventEmailFilter.shouldProcess(any()))
+            .thenReturn(false);
+
+        // Given: Organizer creates calendar event with attendee
+        String eventUid = UUID.randomUUID().toString();
+        String initialCalendarData = generateCalendarData(
+            eventUid,
+            organizer.username().asString(),
+            attendee.username().asString(),
+            PartStat.NEEDS_ACTION);
+        davTestHelper.upsertCalendar(organizer, initialCalendarData, eventUid);
+
+        // When: Attendee replies to the event
+        String eventDavIdOnAttendee = waitForEventCreation(attendee);
+        String replyCalendarData = generateCalendarData(
+            eventUid,
+            organizer.username().asString(),
+            attendee.username().asString(),
+            PartStat.ACCEPTED);
+        davTestHelper.upsertCalendar(attendee, replyCalendarData, eventDavIdOnAttendee);
+
+        Thread.sleep(1000); // Wait for the message to be processed
+        assertThat(smtpMailsResponseSupplier.get().getList("")).isEmpty();
     }
 
     private JsonPath simulateAcceptedReplyAndWaitForEmail() {

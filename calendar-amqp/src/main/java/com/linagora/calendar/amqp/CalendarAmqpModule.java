@@ -47,6 +47,8 @@ public class CalendarAmqpModule extends AbstractModule {
     protected void configure() {
         bind(EventIndexerConsumer.class).in(Scopes.SINGLETON);
         bind(EventEmailConsumer.class).in(Scopes.SINGLETON);
+
+        bind(EventEmailFilter.class).to(EventEmailFilter.WhitelistRecipientFilter.class);
     }
 
     @Provides
