@@ -344,7 +344,7 @@ public class EventReplyEmailConsumerTest {
             .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
 
         assertThat(smtpMailsResponseSupplier.get().getString("[0].message"))
-            .contains("Subject: =?ISO-8859-1?Q?Declined")
+            .contains("Subject: =?ISO-8859-1?Q?Declined:_Twake_Calendar")
             .containsIgnoringNewLines("""
                     Content-Type: text/calendar; charset=UTF-8; method=REPLY""");
     }
