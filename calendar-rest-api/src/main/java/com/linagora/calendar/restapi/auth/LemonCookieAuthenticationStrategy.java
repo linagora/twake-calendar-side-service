@@ -44,6 +44,7 @@ import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableMap;
+import com.linagora.calendar.storage.SimpleSessionProvider;
 
 import io.netty.handler.codec.http.HttpHeaders;
 import reactor.core.publisher.Mono;
