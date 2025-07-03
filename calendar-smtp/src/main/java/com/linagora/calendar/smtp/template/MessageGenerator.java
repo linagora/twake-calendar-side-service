@@ -40,6 +40,7 @@ import org.apache.james.filesystem.api.FileSystem;
 import org.apache.james.mime4j.dom.Message;
 import org.apache.james.mime4j.message.BodyPartBuilder;
 import org.apache.james.mime4j.message.MultipartBuilder;
+import org.apache.james.mime4j.stream.RawField;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
@@ -148,10 +149,11 @@ public class MessageGenerator {
 
             String htmlBodyText = htmlBodyRenderer.render(scopedVariableFinal);
 
-            MultipartBuilder multipartBuilder = MultipartBuilder.create("mixed")
-                .addBodyPart(BodyPartBuilder.create()
-                    .setContentTransferEncoding("base64")
-                    .setBody(htmlBodyText, "html", StandardCharsets.UTF_8));
+            BodyPartBuilder bodyPartBuilder = BodyPartBuilder.create()
+                .setContentTransferEncoding("base64")
+                .setBody(htmlBodyText, "html", StandardCharsets.UTF_8);
+            bodyPartBuilder.addField(new RawField("Content-Language", i18nTranslator.associatedLocale().getLanguage()));
+            MultipartBuilder multipartBuilder = MultipartBuilder.create("mixed").addBodyPart(bodyPartBuilder);
 
             mimeAttachments.forEach(Throwing.consumer(attachment -> multipartBuilder.addBodyPart(attachment.asBodyPart())));
 

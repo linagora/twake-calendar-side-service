@@ -21,6 +21,7 @@ package com.linagora.calendar.smtp.template;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
+import java.util.Locale;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
@@ -49,11 +50,19 @@ public class SubjectRendererTest {
     void shouldRenderSubjectUsingI18NTranslator() throws IOException {
         SubjectRenderer subjectRenderer = SubjectRenderer.of("!{translator.get('accepted')}: Sprint review");
 
-        I18NTranslator i18NTranslator = key -> {
-            if ("accepted".equals(key)) {
-                return "Đã chấp nhận";
+        I18NTranslator i18NTranslator = new I18NTranslator() {
+            @Override
+            public String get(String key) {
+                if ("accepted".equals(key)) {
+                    return "Đã chấp nhận";
+                }
+                return key;
             }
-            return key;
+
+            @Override
+            public Locale associatedLocale() {
+                return Locale.CANADA;
+            }
         };
 
         Map<String, Object> scopedValue = Map.of("translator", i18NTranslator);
