@@ -40,7 +40,7 @@ public interface EventEmailFilter {
 
     boolean shouldProcess(CalendarEventNotificationEmailDTO dto);
 
-    static EventEmailFilter fromConfigure(PropertiesProvider propertiesProvider) throws ConfigurationException {
+    static EventEmailFilter from(PropertiesProvider propertiesProvider) throws ConfigurationException {
         try {
             Configuration configuration = propertiesProvider.getConfiguration("configuration");
             Set<MailAddress> whiteList = Splitter.on(',')

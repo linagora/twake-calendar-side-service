@@ -101,6 +101,6 @@ public class CalendarAmqpModule extends AbstractModule {
     @Provides
     @Singleton
     public EventEmailFilter provideEventEmailFilter(PropertiesProvider propertiesProvider) throws ConfigurationException {
-        return EventEmailFilter.fromConfigure(propertiesProvider);
+        return EventEmailFilter.from(propertiesProvider);
     }
 }
