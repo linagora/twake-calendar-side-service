@@ -26,6 +26,9 @@ import javax.net.ssl.SSLException;
 
 import org.apache.commons.lang3.StringUtils;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 
@@ -35,6 +38,26 @@ import io.netty.handler.codec.http.HttpMethod;
 import reactor.core.publisher.Mono;
 
 public class DavTestHelper extends DavClient {
+
+    public record CounterRequest(String calendarData,
+                                 String sender,
+                                 String recipient,
+                                 String eventUid,
+                                 int sequence) {
+        private static final ObjectMapper mapper = new ObjectMapper();
+
+        public String toJson() {
+            ObjectNode root = mapper.createObjectNode();
+
+            root.put("ical", calendarData);
+            root.put("sender", sender);
+            root.put("recipient", recipient);
+            root.put("uid", eventUid);
+            root.put("sequence", sequence);
+            root.put("method", "COUNTER");
+            return Throwing.supplier(() -> mapper.writerWithDefaultPrettyPrinter().writeValueAsString(root)).get();
+        }
+    }
 
     private final CalDavClient calDavClient;
 
@@ -72,6 +95,29 @@ public class DavTestHelper extends DavClient {
                     .switchIfEmpty(Mono.just(StringUtils.EMPTY))
                     .flatMap(responseBody -> Mono.error(new DavClientException("""
                         Unexpected status code: %d when create/update calendar object '%s'
+                        %s
+                        """.formatted(response.status().code(), uri.toString(), responseBody))));
+            });
+    }
+
+    public Mono<Void> postCounter(OpenPaaSUser openPaaSUser, String attendeeEventUid, CounterRequest counterRequest) {
+        URI uri = URI.create("/calendars/" + openPaaSUser.id().value() + "/" + openPaaSUser.id().value() + "/" + attendeeEventUid + ".ics");
+        return client.headers(headers -> headers
+                .add("Content-Type", "application/calendar+json")
+                .add("Accept", "application/json, text/plain, */*")
+                .add("x-http-method-override", "ITIP")
+                .add(HttpHeaderNames.AUTHORIZATION, authenticationToken(openPaaSUser.username().asString())))
+            .request(HttpMethod.POST)
+            .uri(uri.toString())
+            .send(Mono.just(Unpooled.wrappedBuffer(counterRequest.toJson().getBytes(StandardCharsets.UTF_8))))
+            .responseSingle((response, responseContent) -> {
+                if (response.status().code() == 204) {
+                    return Mono.empty();
+                }
+                return responseContent.asString(StandardCharsets.UTF_8)
+                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .flatMap(responseBody -> Mono.error(new DavClientException("""
+                        Unexpected status code: %d when posting calendar object '%s'
                         %s
                         """.formatted(response.status().code(), uri.toString(), responseBody))));
             });

@@ -37,6 +37,7 @@ import org.apache.james.mime4j.dom.Message;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableList;
+import com.linagora.calendar.amqp.model.CalendarEventCounterNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventReplyNotificationEmail;
 import com.linagora.calendar.smtp.Mail;
 import com.linagora.calendar.smtp.MailSender;
@@ -130,10 +131,58 @@ public class EventMailHandler {
         }
     }
 
+    class CounterEventMessageGenerator implements EventMessageGenerator {
+        private final CalendarEventCounterNotificationEmail event;
+        private final Username recipientUser;
+
+        public CounterEventMessageGenerator(CalendarEventCounterNotificationEmail event, Username recipientUser) {
+            this.event = event;
+            this.recipientUser = recipientUser;
+        }
+
+        @Override
+        public Mono<Message> generate(Locale locale) {
+            return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(locale), EventType.COUNTER.asTemplateType()))
+                .flatMap(messageGenerator -> generateCounterMessage(locale, messageGenerator))
+                .onErrorResume(error -> Mono.error(new EventMailHandlerException("Error occurred when generate counter event message", error)));
+        }
+
+        private Mono<Message> generateCounterMessage(Locale locale,
+                                                     MessageGenerator messageGenerator) {
+            Map<String, Object> model = event.toCounterContentModelBuilder()
+                .locale(locale)
+                .translator(messageGenerator.getI18nTranslator())
+                .eventInCalendarLink(eventInCalendarLinkFactory)
+                .buildAsMap();
+
+            byte[] calendarAsBytes = event.base().event().toString().getBytes(StandardCharsets.UTF_8);
+
+            List<MimeAttachment> attachments = List.of(MimeAttachment.builder()
+                    .contentType(ContentType.of("text/calendar; charset=UTF-8; method=COUNTER"))
+                    .content(calendarAsBytes)
+                    .build(),
+                MimeAttachment.builder()
+                    .contentType(ContentType.of("application/ics"))
+                    .content(calendarAsBytes)
+                    .dispositionType(ATTACHMENT_DISPOSITION_TYPE)
+                    .fileName("meeting.ics")
+                    .build());
+
+            MailAddress fromAddress = event.base().senderEmail();
+            return messageGenerator.generate(recipientUser, Optional.of(fromAddress), model, attachments);
+        }
+    }
+
     public Mono<Void> handReplyEvent(CalendarEventReplyNotificationEmail event) {
         MailAddress recipientEmail = event.base().recipientEmail();
         Username recipientUser = Username.fromMailAddress(recipientEmail);
         return handleEvent(new ReplyEventMessageGenerator(event, recipientUser), recipientUser, event.base().senderEmail());
+    }
+
+    public Mono<Void> handCounterEvent(CalendarEventCounterNotificationEmail event) {
+        MailAddress recipientEmail = event.base().recipientEmail();
+        Username recipientUser = Username.fromMailAddress(recipientEmail);
+        return handleEvent(new CounterEventMessageGenerator(event, recipientUser), recipientUser, event.base().senderEmail());
     }
 
     private Mono<Void> handleEvent(EventMessageGenerator eventMessageGenerator, Username recipientUser, MailAddress senderEmail) {
