@@ -38,6 +38,7 @@ import org.apache.james.mime4j.dom.Message;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.amqp.model.CalendarEventCounterNotificationEmail;
+import com.linagora.calendar.amqp.model.CalendarEventInviteNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventReplyNotificationEmail;
 import com.linagora.calendar.smtp.Mail;
 import com.linagora.calendar.smtp.MailSender;
@@ -54,7 +55,7 @@ import reactor.core.publisher.Mono;
 public class EventMailHandler {
 
     enum EventType {
-        INVITATION,
+        INVITE,
         REPLY,
         CANCELLATION,
         COUNTER;
@@ -86,6 +87,43 @@ public class EventMailHandler {
 
     interface EventMessageGenerator {
         Mono<Message> generate(Locale locale);
+    }
+
+    class InviteEventMessageGenerator implements EventMessageGenerator {
+        private final CalendarEventInviteNotificationEmail event;
+        private final Username recipientUser;
+
+        public InviteEventMessageGenerator(CalendarEventInviteNotificationEmail event, Username recipientUser) {
+            this.event = event;
+            this.recipientUser = recipientUser;
+        }
+
+        @Override
+        public Mono<Message> generate(Locale locale) {
+            return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(locale), EventType.INVITE.asTemplateType()))
+                .flatMap(messageGenerator -> generateInvitationMessage(locale, messageGenerator))
+                .onErrorResume(error -> Mono.error(new EventMailHandlerException("Error occurred when generate invitation event message", error)));
+        }
+
+        private Mono<Message> generateInvitationMessage(Locale locale, MessageGenerator messageGenerator) {
+            byte[] calendarAsBytes = event.base().event().toString().getBytes(StandardCharsets.UTF_8);
+
+            List<MimeAttachment> attachments = List.of(
+                MimeAttachment.builder()
+                    .contentType(ContentType.of("text/calendar; charset=UTF-8; method=REQUEST"))
+                    .content(calendarAsBytes)
+                    .build(),
+                MimeAttachment.builder()
+                    .contentType(ContentType.of("application/ics"))
+                    .content(calendarAsBytes)
+                    .dispositionType(ATTACHMENT_DISPOSITION_TYPE)
+                    .fileName("meeting.ics")
+                    .build()
+            );
+
+            MailAddress fromAddress = event.base().senderEmail();
+            return messageGenerator.generate(recipientUser, Optional.of(fromAddress), event.toPugModel(locale, eventInCalendarLinkFactory), attachments);
+        }
     }
 
     class ReplyEventMessageGenerator implements EventMessageGenerator {
@@ -171,6 +209,12 @@ public class EventMailHandler {
             MailAddress fromAddress = event.base().senderEmail();
             return messageGenerator.generate(recipientUser, Optional.of(fromAddress), model, attachments);
         }
+    }
+
+    public Mono<Void> handInviteEvent(CalendarEventInviteNotificationEmail event) {
+        MailAddress recipientEmail = event.base().recipientEmail();
+        Username recipientUser = Username.fromMailAddress(recipientEmail);
+        return handleEvent(new InviteEventMessageGenerator(event, recipientUser), recipientUser, event.base().senderEmail());
     }
 
     public Mono<Void> handReplyEvent(CalendarEventReplyNotificationEmail event) {
