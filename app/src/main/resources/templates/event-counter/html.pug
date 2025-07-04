@@ -1,0 +1,182 @@
+mixin displayAttendees(attendees, organizer)
+  ul(style='padding-inline-start: 16px; margin: 0;')
+    li
+      span(style='font-weight: 500') #{organizer.cn}
+      span(style='color: #787878;') &nbsp;&lt;#{organizer.email}&gt;
+      span(style='font-weight: 500') &nbsp;(#{translator.get('organizer')})
+      each attendee, attendeeEmail in attendees
+        if (attendeeEmail !== organizer.email)
+          li
+            span(style='font-weight: 500') #{attendee.cn}
+            span(style='color: #787878;') &nbsp;&lt;#{attendeeEmail}&gt;
+
+doctype html
+head
+  title
+  // [if !mso] <!
+  meta(http-equiv='X-UA-Compatible' content='IE=edge')
+  // <![endif]
+  meta(http-equiv='Content-Type' content='text/html; charset=UTF-8')
+  meta(name='viewport' content='width=device-width, initial-scale=1')
+  style(type='text/css').
+      #outlook a { padding:0; }
+      body { margin:0;padding:0;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%; }
+      table, td { border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt; }
+      img { border:0;height:auto;line-height:100%; outline:none;text-decoration:none;-ms-interpolation-mode:bicubic; }
+      p { display:block;margin:13px 0; }
+  //if mso
+    xml
+      o:officedocumentsettings
+        o:allowpng
+          o:pixelsperinch 96
+  //if lte mso 11
+    style(type='text/css').
+      .mj-outlook-group-fix { width:100% !important; }
+  // [if !mso] <!
+  link(href='https://fonts.googleapis.com/css?family=Roboto:300,400,500,700' rel='stylesheet' type='text/css')
+  style(type='text/css').
+      @import url(https://fonts.googleapis.com/css?family=Roboto:300,400,500,700);
+  // <![endif]
+  style(type='text/css').
+      @media only screen and (min-width:480px) {
+          .mj-column-per-100 { width:100% !important; max-width: 100%; }
+      }
+  style(type='text/css').
+div(style='')
+  //if mso | IE
+    table(align='center' border='0' cellpadding='0' cellspacing='0' style='width:600px;' width='600')
+      tr
+        td(style='line-height:0px;font-size:0px;mso-line-height-rule:exactly;')
+  div(style='margin:0px auto;max-width:600px;')
+    table(align='center' border='0' cellpadding='0' cellspacing='0' role='presentation' style='width:100%;')
+      tbody
+        tr
+          td(style='direction:ltr;font-size:0px;padding:20px 0;padding-bottom:32px;text-align:center;')
+            //if mso | IE
+              table(role='presentation' border='0' cellpadding='0' cellspacing='0')
+                tr
+                  td(width='600px')
+                    table(align='center' border='0' cellpadding='0' cellspacing='0' style='width:600px;' width='600')
+                      tr
+                        td(style='line-height:0px;font-size:0px;mso-line-height-rule:exactly;')
+            div(style='margin:0px auto;max-width:600px;')
+              table(align='center' border='0' cellpadding='0' cellspacing='0' role='presentation' style='width:100%;')
+                tbody
+                  tr
+                    td(style='direction:ltr;font-size:0px;padding:20px 0;padding-bottom:0;padding-top:0;text-align:center;')
+                      //if mso | IE
+                        table(role='presentation' border='0' cellpadding='0' cellspacing='0')
+                          tr
+                            td.propose-time-title-container-outlook(style='vertical-align:top;width:600px;')
+                      .mj-column-per-100.mj-outlook-group-fix.propose-time-title-container(style='background: #eaeefe; border-radius: 4px; border: 1px solid #eaeefe; font-size: 0px; text-align: left; direction: ltr; display: inline-block; vertical-align: top; width: 100%;')
+                        table(border='0' cellpadding='0' cellspacing='0' role='presentation' width='100%')
+                          tbody
+                            tr
+                              td(style='vertical-align:top;padding-top:4px;padding-bottom:4px;')
+                                table(border='0' cellpadding='0' cellspacing='0' role='presentation' style='' width='100%')
+                                  tbody
+                                    tr
+                                      td(align='left' style='font-size:0px;padding:0;padding-top:8px;padding-right:20px;padding-bottom:8px;padding-left:20px;word-break:break-word;')
+                                        div(style='font-family:Roboto;font-size:16px;line-height:1;text-align:left;color:#222222;')
+                                          span(style='font-weight: 500;') #{content.editorDisplayName}
+                                          span &nbsp;#{translator.get('propose_change_message')}
+                      //if mso | IE
+                        td.content-outlook(style='vertical-align:top;width:600px;')
+                      .mj-column-per-100.mj-outlook-group-fix.content(style='border: 1px solid #ccc; border-radius: 4px; margin-top: 24px; font-size: 0px; text-align: left; direction: ltr; display: inline-block; vertical-align: top; width: 100%;')
+                        table(border='0' cellpadding='0' cellspacing='0' role='presentation' style='vertical-align:top;' width='100%')
+                          tbody
+                            tr
+                              td(align='left' style='font-size:0px;padding:20px;word-break:break-word;')
+                                div(style='font-family:Roboto;font-size:20px;font-weight:500;line-height:1;text-align:left;color:#434343;') #{translator.get('proposal_detail')}
+                            tr
+                              td(align='left' style='font-size:0px;padding:16px;padding-top:0px;word-break:break-word;')
+                                table(cellpadding='4px' cellspacing='0' width='100%' border='0' style='color:#434343;font-family:Roboto;font-size:14px;line-height:22px;table-layout:auto;width:100%;border:none;')
+                                  tr
+                                    td(valign='top' style='min-width: 80px;')
+                                      strong #{translator.get('new_time')}
+                                    td
+                                      if (!content.event.allDay)
+                                        span(style='display: inline-block;')
+                                          if (content.event.start.date === content.event.end.date)
+                                            | #{content.event.start.fullDateTime} - #{content.event.end.time}
+                                          else
+                                            | #{content.event.start.fullDateTime} - #{content.event.end.fullDateTime}
+                                        span(style='display: inline-block; color: #787878; font-weight: 400;') &nbsp;#{content.event.start.timezone}
+                                      else
+                                        span(style='display: inline-block;')
+                                          if (content.event.start.date === content.event.end.date)
+                                            | #{content.event.start.fullDate} (#{translator.get('all_day')})
+                                          else
+                                            | #{content.event.start.fullDate} - #{content.event.end.fullDate} (#{translator.get('all_day')})
+                                  if (content.event.comment)
+                                    tr
+                                      td(valign='top')
+                                        strong #{translator.get('comment')}
+                                      td #{content.event.comment}
+                      if (content.oldEvent)
+                        //if mso | IE
+                          td.content-outlook(style='vertical-align:top;width:600px;')
+                        .mj-column-per-100.mj-outlook-group-fix.content(style='border: 1px solid #ccc; border-radius: 4px; margin-top: 24px; font-size: 0px; text-align: left; direction: ltr; display: inline-block; vertical-align: top; width: 100%;')
+                          table(border='0' cellpadding='0' cellspacing='0' role='presentation' style='vertical-align:top;' width='100%')
+                            tbody
+                              tr
+                                td(align='left' style='font-size:0px;padding:20px;word-break:break-word;')
+                                  div(style='font-family:Roboto;font-size:20px;font-weight:500;line-height:1;text-align:left;color:#434343;') #{content.oldEvent.summary}
+                              tr
+                                td(align='left' style='font-size:0px;padding:20px;padding-top:0px;word-break:break-word;')
+                                  table(cellpadding='4px' cellspacing='0' width='100%' border='0' style='color:#434343;font-family:Roboto;font-size:14px;line-height:22px;table-layout:auto;width:100%;border:none;')
+                                    tr
+                                      td(valign='top' style='min-width: 80px;')
+                                        strong #{translator.get('time')}
+                                      td
+                                        if (!content.oldEvent.allDay)
+                                          span(style='display: inline-block;')
+                                            if (content.oldEvent.start.date === content.oldEvent.end.date)
+                                              | #{content.oldEvent.start.fullDateTime} - #{content.oldEvent.end.time}
+                                            else
+                                              | #{content.oldEvent.start.fullDateTime} - #{content.oldEvent.end.fullDateTime}
+                                          span(style='display: inline-block; color: #787878; font-weight: 400;') &nbsp;#{content.oldEvent.start.timezone}
+                                        else
+                                          span(style='display: inline-block;')
+                                            if (content.oldEvent.start.date === content.oldEvent.end.date)
+                                              | #{content.oldEvent.start.fullDate} (#{translator.get('all_day')})
+                                            else
+                                              | #{content.oldEvent.start.fullDate} - #{content.oldEvent.end.fullDate} (#{translator.get('all_day')})
+                                        if (content.seeInCalendarLink)
+                                          | &nbsp;(
+                                          a.link(href=content.seeInCalendarLink style='text-decoration: none; color: #4d91c9;') #{translator.get('see_in_calendar')}
+                                          | )
+                                    if (content.oldEvent.location)
+                                      tr
+                                        td(style="min-width: 96px;" valign='top')
+                                          strong #{translator.get('location')}
+                                        td
+                                          if (content.oldEvent.location.isValidURL)
+                                            if (content.oldEvent.location.isAbsoluteURL)
+                                              a.link(href=content.oldEvent.location.value style='text-decoration: none; color: #4d91c9;') #{content.oldEvent.location.value}
+                                            else
+                                              a.link(href=`//${content.oldEvent.location.value}` style='text-decoration: none; color: #4d91c9;') #{content.oldEvent.location.value}
+                                          else
+                                            | #{content.oldEvent.location.value} (
+                                            a(href=`https://www.openstreetmap.org/search?query=${content.oldEvent.location.value}`) #{translator.get('see_in_map')}
+                                            | )
+
+                                    tr
+                                      td(valign='top')
+                                        strong #{translator.get('attendees')}
+                                      td
+                                        +displayAttendees(content.oldEvent.attendees, content.oldEvent.organizer)
+                                    if (content.oldEvent.hasResources)
+                                      tr
+                                        td(valign='top')
+                                          strong #{translator.get('resources')}
+                                        td
+                                          span #{content.oldEvent.resourcesJoined}
+                                    if (content.oldEvent.description)
+                                      tr
+                                        td(valign='top')
+                                          strong #{translator.get('notes')}
+                                        td #{content.oldEvent.description}
+                        //if mso | IE
+            //if mso | IE
+  //if mso | IE

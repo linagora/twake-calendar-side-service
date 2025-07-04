@@ -172,8 +172,7 @@ public class EventEmailConsumer implements Closeable, Startable {
             }
             case Method.VALUE_COUNTER -> {
                 LOGGER.info("Received calendar event message with method COUNTER and eventPath {}", calendarEventMessage.eventPath());
-                CalendarEventCounterNotificationEmail calendarEventCounterNotificationEmail = CalendarEventCounterNotificationEmail.from(calendarEventMessage);
-                yield Mono.empty();
+                yield eventMailHandler.handCounterEvent(CalendarEventCounterNotificationEmail.from(calendarEventMessage));
             }
             default -> throw new IllegalArgumentException("Unknown method: " + calendarEventMessage.method());
         };
