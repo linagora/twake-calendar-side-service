@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.amqp;
 
+import static com.linagora.calendar.amqp.EventInviteEmailConsumerTest.INTERNAL_USER;
 import static io.restassured.RestAssured.given;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
@@ -52,6 +53,7 @@ import org.apache.james.mailbox.store.RandomMailboxSessionIdGenerator;
 import org.apache.james.metrics.api.NoopGaugeRegistry;
 import org.apache.james.metrics.tests.RecordingMetricFactory;
 import org.apache.james.server.core.filesystem.FileSystemImpl;
+import org.apache.james.user.api.UsersRepository;
 import org.apache.james.util.Port;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -190,11 +192,15 @@ public class EventReplyEmailConsumerTest {
         MessageGenerator.Factory messageFactory = MessageGenerator.factory(mailTemplateConfig, fileSystem);
         EventInCalendarLinkFactory linkFactory = new EventInCalendarLinkFactory(URI.create("http://localhost:3000/").toURL());
 
+        UsersRepository usersRepository = mock(UsersRepository.class);
+        when(usersRepository.containsReactive(any())).thenReturn(Mono.just(INTERNAL_USER));
+
         EventMailHandler mailHandler = new EventMailHandler(mailSenderFactory,
             settingsLocator,
             messageFactory,
             linkFactory,
-            new SimpleSessionProvider(new RandomMailboxSessionIdGenerator()));
+            new SimpleSessionProvider(new RandomMailboxSessionIdGenerator()),
+            usersRepository);
 
         EventEmailConsumer consumer = new EventEmailConsumer(channelPool, QueueArguments.Builder::new, mailHandler,
             eventEmailFilter);

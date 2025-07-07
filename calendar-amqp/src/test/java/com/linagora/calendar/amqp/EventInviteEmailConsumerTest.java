@@ -47,10 +47,13 @@ import org.apache.james.backends.rabbitmq.RabbitMQConnectionFactory;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
 import org.apache.james.core.MaybeSender;
+import org.apache.james.core.Username;
 import org.apache.james.mailbox.store.RandomMailboxSessionIdGenerator;
 import org.apache.james.metrics.api.NoopGaugeRegistry;
 import org.apache.james.metrics.tests.RecordingMetricFactory;
 import org.apache.james.server.core.filesystem.FileSystemImpl;
+import org.apache.james.user.api.UsersRepository;
+import org.apache.james.user.api.UsersRepositoryException;
 import org.apache.james.util.Port;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -86,6 +89,9 @@ import reactor.rabbitmq.QueueSpecification;
 import reactor.rabbitmq.Sender;
 
 public class EventInviteEmailConsumerTest {
+    static final boolean INTERNAL_USER = true;
+    static final boolean EXTERNAL_USER = false;
+
     private final ConditionFactory calmlyAwait = Awaitility.with()
         .pollInterval(Duration.ofMillis(500))
         .and()
@@ -138,6 +144,7 @@ public class EventInviteEmailConsumerTest {
     private OpenPaaSUser organizer;
     private OpenPaaSUser attendee;
     private Sender sender;
+    private UsersRepository usersRepository;
 
     @BeforeEach
     public void setUp() throws Exception {
@@ -186,11 +193,15 @@ public class EventInviteEmailConsumerTest {
         MessageGenerator.Factory messageFactory = MessageGenerator.factory(mailTemplateConfig, fileSystem);
         EventInCalendarLinkFactory linkFactory = new EventInCalendarLinkFactory(URI.create("http://localhost:3000/").toURL());
 
+        usersRepository = mock(UsersRepository.class);
+        when(usersRepository.containsReactive(any())).thenReturn(Mono.just(INTERNAL_USER));
+
         EventMailHandler mailHandler = new EventMailHandler(mailSenderFactory,
             settingsLocator,
             messageFactory,
             linkFactory,
-            new SimpleSessionProvider(new RandomMailboxSessionIdGenerator()));
+            new SimpleSessionProvider(new RandomMailboxSessionIdGenerator()),
+            usersRepository);
 
         EventEmailConsumer consumer = new EventEmailConsumer(channelPool, QueueArguments.Builder::new, mailHandler,
             eventEmailFilter);
@@ -252,11 +263,64 @@ public class EventInviteEmailConsumerTest {
             assertThat(html).contains("Van Tung TRAN")
                 .contains("has invited you in to a meeting")
                 .contains("Monday, 11 April 3025 10:00 - 11:00")
+                .contains("See in Calendar")
                 .contains("Asia/Ho_Chi_Minh")
                 .contains("Twake Meeting Room")
                 .contains(organizer.username().asString())
                 .contains(attendee.username().asString())
                 .contains("This is a meeting to discuss the sprint planning for the next week.");
+        }));
+    }
+
+    @Test
+    void shouldNotIncludeSeeInCalendarLinkEmailWhenRecipientIsNotInternal() {
+        when(usersRepository.containsReactive(Username.of("externaluser@gg.com"))).thenReturn(Mono.just(EXTERNAL_USER));
+
+        String eventUid = UUID.randomUUID().toString();
+        String initialCalendarData = generateCalendarData(
+            eventUid,
+            organizer.username().asString(),
+            "externaluser@gg.com",
+            PartStat.NEEDS_ACTION);
+        davTestHelper.upsertCalendar(organizer, initialCalendarData, eventUid);
+
+        // Wait for the mail to be received via mock SMTP
+        awaitAtMost.atMost(Duration.ofSeconds(20))
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
+
+        assertSoftly(Throwing.consumer(softly -> {
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo(organizer.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo("externaluser@gg.com");
+            softly.assertThat(smtpMailsResponse.getString("[0].message"))
+                .contains("Subject: New event from Van Tung TRAN: Twake Calendar - Sprint planning #04")
+                .contains("Content-Type: multipart/mixed;")
+                .containsIgnoringNewLines("""
+                    Content-Transfer-Encoding: base64
+                    Content-Type: text/html; charset=UTF-8
+                    """)
+                .containsIgnoringNewLines("""
+                    Content-Transfer-Encoding: base64
+                    Content-Type: text/calendar; charset=UTF-8; method=REQUEST
+                    """)
+                .containsIgnoringNewLines("""
+                    Content-Transfer-Encoding: base64
+                    Content-Type: application/ics; name="meeting.ics"
+                    Content-Disposition: attachment; filename="meeting.ics"
+                    """);
+
+            String html = getHtml(smtpMailsResponse);
+
+            assertThat(html).contains("Van Tung TRAN")
+                .contains("has invited you in to a meeting")
+                .contains("Monday, 11 April 3025 10:00 - 11:00")
+                .contains("Asia/Ho_Chi_Minh")
+                .contains("Twake Meeting Room")
+                .contains(organizer.username().asString())
+                .contains("externaluser@gg.com")
+                .contains("This is a meeting to discuss the sprint planning for the next week.")
+                .doesNotContain("See in Calendar");
         }));
     }
 
