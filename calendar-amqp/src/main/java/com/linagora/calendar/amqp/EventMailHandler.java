@@ -34,6 +34,7 @@ import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
 import org.apache.james.mailbox.model.ContentType;
 import org.apache.james.mime4j.dom.Message;
+import org.apache.james.user.api.UsersRepository;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableList;
@@ -71,6 +72,7 @@ public class EventMailHandler {
     private final SimpleSessionProvider sessionProvider;
     private final MessageGenerator.Factory messageGeneratorFactory;
     private final EventInCalendarLinkFactory eventInCalendarLinkFactory;
+    private final UsersRepository usersRepository;
 
     @Inject
     @Singleton
@@ -78,12 +80,14 @@ public class EventMailHandler {
                             SettingsBasedLocator settingsBasedLocator,
                             MessageGenerator.Factory messageGeneratorFactory,
                             EventInCalendarLinkFactory eventInCalendarLinkFactory,
-                            SimpleSessionProvider sessionProvider) {
+                            SimpleSessionProvider sessionProvider,
+                            UsersRepository usersRepository) {
         this.mailSenderFactory = mailSenderFactory;
         this.settingsBasedLocator = settingsBasedLocator;
         this.sessionProvider = sessionProvider;
         this.messageGeneratorFactory = messageGeneratorFactory;
         this.eventInCalendarLinkFactory = eventInCalendarLinkFactory;
+        this.usersRepository = usersRepository;
     }
 
     interface EventMessageGenerator {
@@ -93,10 +97,12 @@ public class EventMailHandler {
     class InviteEventMessageGenerator implements EventMessageGenerator {
         private final CalendarEventInviteNotificationEmail event;
         private final Username recipientUser;
+        private final boolean isInternalUser;
 
-        public InviteEventMessageGenerator(CalendarEventInviteNotificationEmail event, Username recipientUser) {
+        public InviteEventMessageGenerator(CalendarEventInviteNotificationEmail event, Username recipientUser, boolean isInternalUser) {
             this.event = event;
             this.recipientUser = recipientUser;
+            this.isInternalUser = isInternalUser;
         }
 
         @Override
@@ -123,27 +129,29 @@ public class EventMailHandler {
             );
 
             MailAddress fromAddress = event.base().senderEmail();
-            return messageGenerator.generate(recipientUser, Optional.of(fromAddress), event.toPugModel(locale, eventInCalendarLinkFactory), attachments);
+            return messageGenerator.generate(recipientUser, Optional.of(fromAddress), event.toPugModel(locale, eventInCalendarLinkFactory, isInternalUser), attachments);
         }
     }
 
     class CancelEventMessageGenerator implements EventMessageGenerator {
         private final CalendarEventCancelNotificationEmail event;
         private final Username recipientUser;
+        private final boolean isInternalUser;
 
-        public CancelEventMessageGenerator(CalendarEventCancelNotificationEmail event, Username recipientUser) {
+        public CancelEventMessageGenerator(CalendarEventCancelNotificationEmail event, Username recipientUser, boolean isInternalUser) {
             this.event = event;
             this.recipientUser = recipientUser;
+            this.isInternalUser = isInternalUser;
         }
 
         @Override
         public Mono<Message> generate(Locale locale) {
             return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(locale), EventType.CANCEL.asTemplateType()))
-                .flatMap(messageGenerator -> generateInvitationMessage(locale, messageGenerator))
+                .flatMap(messageGenerator -> generateCancelMessage(locale, messageGenerator))
                 .onErrorResume(error -> Mono.error(new EventMailHandlerException("Error occurred when generate cancel event message", error)));
         }
 
-        private Mono<Message> generateInvitationMessage(Locale locale, MessageGenerator messageGenerator) {
+        private Mono<Message> generateCancelMessage(Locale locale, MessageGenerator messageGenerator) {
             byte[] calendarAsBytes = event.base().event().toString().getBytes(StandardCharsets.UTF_8);
 
             List<MimeAttachment> attachments = List.of(
@@ -160,7 +168,7 @@ public class EventMailHandler {
             );
 
             MailAddress fromAddress = event.base().senderEmail();
-            return messageGenerator.generate(recipientUser, Optional.of(fromAddress), event.toPugModel(locale, eventInCalendarLinkFactory), attachments);
+            return messageGenerator.generate(recipientUser, Optional.of(fromAddress), event.toPugModel(locale, eventInCalendarLinkFactory, isInternalUser), attachments);
         }
     }
 
@@ -252,13 +260,15 @@ public class EventMailHandler {
     public Mono<Void> handInviteEvent(CalendarEventInviteNotificationEmail event) {
         MailAddress recipientEmail = event.base().recipientEmail();
         Username recipientUser = Username.fromMailAddress(recipientEmail);
-        return handleEvent(new InviteEventMessageGenerator(event, recipientUser), recipientUser, event.base().senderEmail());
+        return Mono.from(usersRepository.containsReactive(recipientUser))
+            .flatMap(isInternalUser -> handleEvent(new InviteEventMessageGenerator(event, recipientUser, isInternalUser), recipientUser, event.base().senderEmail()));
     }
 
     public Mono<Void> handleCancelEvent(CalendarEventCancelNotificationEmail event) {
         MailAddress recipientEmail = event.base().recipientEmail();
         Username recipientUser = Username.fromMailAddress(recipientEmail);
-        return handleEvent(new CancelEventMessageGenerator(event, recipientUser), recipientUser, event.base().senderEmail());
+        return Mono.from(usersRepository.containsReactive(recipientUser))
+            .flatMap(isInternalUser -> handleEvent(new CancelEventMessageGenerator(event, recipientUser, isInternalUser), recipientUser, event.base().senderEmail()));
     }
 
     public Mono<Void> handReplyEvent(CalendarEventReplyNotificationEmail event) {

@@ -47,7 +47,7 @@ public record CalendarEventCancelNotificationEmail(CalendarEventNotificationEmai
         return new CalendarEventCancelNotificationEmail(CalendarEventNotificationEmail.from(dto));
     }
 
-    public Map<String, Object> toPugModel(Locale locale, EventInCalendarLinkFactory eventInCalendarLinkFactory) {
+    public Map<String, Object> toPugModel(Locale locale, EventInCalendarLinkFactory eventInCalendarLinkFactory, boolean isInternalUser) {
         VEvent vEvent = (VEvent) base.event().getComponent(Component.VEVENT).get();
         PersonModel organizer = PERSON_TO_MODEL.apply(EventParseUtils.getOrganizer(vEvent));
         String summary = EventParseUtils.getSummary(vEvent).orElse(StringUtils.EMPTY);
@@ -72,8 +72,10 @@ public record CalendarEventCancelNotificationEmail(CalendarEventNotificationEmai
         EventParseUtils.getDescription(vEvent).ifPresent(description -> eventBuilder.put("description", description));
 
         ImmutableMap.Builder<String, Object> contentBuilder = ImmutableMap.builder();
-        contentBuilder.put("event", eventBuilder.build())
-            .put("seeInCalendarLink", eventInCalendarLinkFactory.getEventInCalendarLink(startDate));
+        contentBuilder.put("event", eventBuilder.build());
+        if (isInternalUser) {
+            contentBuilder.put("seeInCalendarLink", eventInCalendarLinkFactory.getEventInCalendarLink(startDate));
+        }
         return ImmutableMap.of("content", contentBuilder.build(),
             "subject.summary", summary,
             "subject.organizer", organizer.cn());
