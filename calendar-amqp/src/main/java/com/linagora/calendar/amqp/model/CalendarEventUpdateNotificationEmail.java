@@ -22,15 +22,13 @@ import java.util.Optional;
 
 import com.linagora.calendar.amqp.CalendarEventNotificationEmailDTO;
 
-public record CalendarEventRequestNotificationEmail(CalendarEventNotificationEmail calendarEventNotificationEmail,
-                                                    Optional<CalendarEventNotificationEmailDTO.Changes> changes,
-                                                    boolean isNewEvent) {
+public record CalendarEventUpdateNotificationEmail(CalendarEventNotificationEmail calendarEventNotificationEmail,
+                                                  Optional<CalendarEventNotificationEmailDTO.Changes> changes) {
 
-    public static CalendarEventRequestNotificationEmail from(CalendarEventNotificationEmailDTO dto) {
-        return new CalendarEventRequestNotificationEmail(
+    public static CalendarEventUpdateNotificationEmail from(CalendarEventNotificationEmailDTO dto) {
+        return new CalendarEventUpdateNotificationEmail(
             CalendarEventNotificationEmail.from(dto),
-            dto.changes(),
-            dto.isNewEvent().orElse(false)
+            dto.changes()
         );
     }
 }

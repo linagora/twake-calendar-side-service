@@ -41,8 +41,9 @@ import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.inject.name.Named;
 import com.linagora.calendar.amqp.model.CalendarEventCancelNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventCounterNotificationEmail;
+import com.linagora.calendar.amqp.model.CalendarEventInviteNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventReplyNotificationEmail;
-import com.linagora.calendar.amqp.model.CalendarEventRequestNotificationEmail;
+import com.linagora.calendar.amqp.model.CalendarEventUpdateNotificationEmail;
 import com.rabbitmq.client.BuiltinExchangeType;
 
 import net.fortuna.ical4j.model.property.Method;
@@ -151,13 +152,13 @@ public class EventEmailConsumer implements Closeable, Startable {
     private Mono<Void> handleMessage(CalendarEventNotificationEmailDTO calendarEventMessage) {
         return switch (calendarEventMessage.method().getValue()) {
             case Method.VALUE_REQUEST -> {
-                CalendarEventRequestNotificationEmail calendarEventRequestNotificationEmail = CalendarEventRequestNotificationEmail.from(calendarEventMessage);
                 boolean isNewEvent = calendarEventMessage.isNewEvent().orElse(false);
                 if (isNewEvent) {
                     LOGGER.info("Received new calendar event message with method REQUEST and eventPath {}", calendarEventMessage.eventPath());
-                    yield Mono.empty();
+                    yield eventMailHandler.handInviteEvent(CalendarEventInviteNotificationEmail.from(calendarEventMessage));
                 } else {
                     LOGGER.info("Received updated calendar event message with method REQUEST and eventPath {}", calendarEventMessage.eventPath());
+                    CalendarEventUpdateNotificationEmail calendarEventUpdateNotificationEmail = CalendarEventUpdateNotificationEmail.from(calendarEventMessage);
                     yield Mono.empty();
                 }
             }

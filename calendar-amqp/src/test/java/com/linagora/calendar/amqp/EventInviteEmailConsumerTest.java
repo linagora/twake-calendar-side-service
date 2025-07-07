@@ -19,8 +19,6 @@
 package com.linagora.calendar.amqp;
 
 import static io.restassured.RestAssured.given;
-import static java.nio.charset.StandardCharsets.UTF_8;
-import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.mockito.ArgumentMatchers.any;
@@ -29,18 +27,19 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
@@ -60,8 +59,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mockito;
 import org.testcontainers.shaded.org.awaitility.Awaitility;
 import org.testcontainers.shaded.org.awaitility.core.ConditionFactory;
@@ -85,11 +82,10 @@ import io.restassured.path.json.JsonPath;
 import io.restassured.specification.RequestSpecification;
 import net.fortuna.ical4j.model.parameter.PartStat;
 import reactor.core.publisher.Mono;
-import reactor.rabbitmq.OutboundMessage;
 import reactor.rabbitmq.QueueSpecification;
 import reactor.rabbitmq.Sender;
 
-public class EventReplyEmailConsumerTest {
+public class EventInviteEmailConsumerTest {
     private final ConditionFactory calmlyAwait = Awaitility.with()
         .pollInterval(Duration.ofMillis(500))
         .and()
@@ -215,14 +211,8 @@ public class EventReplyEmailConsumerTest {
             .build();
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"ACCEPTED", "DECLINED", "TENTATIVE"})
-    void shouldSendEmailWhenAttendeeRepliesToEvent(String partStatValue) {
-        when(settingsLocator.getLanguageUserSetting(any())).thenReturn(Mono.just(Locale.ENGLISH));
-        // Ensure no event exists initially for attendee
-        assertThat(davTestHelper.findFirstEventId(attendee)).isEmpty();
-
-        // Given: Organizer creates calendar event with attendee
+    @Test
+    void shouldSendInviteEmailWhenNewEventIsCreated() {
         String eventUid = UUID.randomUUID().toString();
         String initialCalendarData = generateCalendarData(
             eventUid,
@@ -231,191 +221,62 @@ public class EventReplyEmailConsumerTest {
             PartStat.NEEDS_ACTION);
         davTestHelper.upsertCalendar(organizer, initialCalendarData, eventUid);
 
-        // When: Attendee replies to the event (e.g. accepts the invitation)
-        String eventDavIdOnAttendee = waitForEventCreation(attendee);
-        String replyCalendarData = generateCalendarData(
-            eventUid,
-            organizer.username().asString(),
-            attendee.username().asString(),
-            new PartStat(partStatValue));
-        davTestHelper.upsertCalendar(attendee, replyCalendarData, eventDavIdOnAttendee);
-
         // Wait for the mail to be received via mock SMTP
-        awaitAtMost
-            .atMost(Duration.ofSeconds(20))
-            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(2));
+        awaitAtMost.atMost(Duration.ofSeconds(20))
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
 
-        // Then: Received mail
         JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
 
-        Function<String, String> partStatDisplayFunction = partStat -> switch (partStat) {
-            case "ACCEPTED" -> "Accepted";
-            case "DECLINED" -> "Declined";
-            case "TENTATIVE" -> "Maybe";
-            default -> partStat;
-        };
-
         assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[1].from")).isEqualTo(attendee.username().asString());
-            softly.assertThat(smtpMailsResponse.getString("[1].recipients[0].address")).isEqualTo(organizer.username().asString());
-            softly.assertThat(smtpMailsResponse.getString("[1].message"))
-                .contains("Subject: =?ISO-8859-1?Q?" + partStatDisplayFunction.apply(partStatValue) + ":_Twake_Calendar")
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo(organizer.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(attendee.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[0].message"))
+                .contains("Subject: New event from Van Tung TRAN: Twake Calendar - Sprint planning #04")
                 .contains("Content-Type: multipart/mixed;")
                 .containsIgnoringNewLines("""
                     Content-Transfer-Encoding: base64
-                    Content-Type: text/html; charset=UTF-8""")
+                    Content-Type: text/html; charset=UTF-8
+                    """)
                 .containsIgnoringNewLines("""
                     Content-Transfer-Encoding: base64
-                    Content-Type: text/calendar; charset=UTF-8; method=REPLY""")
+                    Content-Type: text/calendar; charset=UTF-8; method=REQUEST
+                    """)
                 .containsIgnoringNewLines("""
                     Content-Transfer-Encoding: base64
                     Content-Type: application/ics; name="meeting.ics"
-                    Content-Disposition: attachment; filename="meeting.ics""");
+                    Content-Disposition: attachment; filename="meeting.ics"
+                    """);
+
+            String html = getHtml(smtpMailsResponse);
+
+            assertThat(html).contains("Van Tung TRAN")
+                .contains("has invited you in to a meeting")
+                .contains("Monday, 11 April 3025 10:00 - 11:00")
+                .contains("Asia/Ho_Chi_Minh")
+                .contains("Twake Meeting Room")
+                .contains(organizer.username().asString())
+                .contains(attendee.username().asString())
+                .contains("This is a meeting to discuss the sprint planning for the next week.");
         }));
     }
 
-    @Test
-    void shouldSendLocalizedEmailAccordingToUserLanguageSetting() {
-        when(settingsLocator.getLanguageUserSetting(any()))
-            .thenReturn(Mono.just(Locale.FRENCH));
-
-        JsonPath smtpMailsResponse = simulateAcceptedReplyAndWaitForEmail();
-
-        assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[1].from")).isEqualTo(attendee.username().asString());
-            softly.assertThat(smtpMailsResponse.getString("[1].recipients[0].address")).isEqualTo(organizer.username().asString());
-            softly.assertThat(smtpMailsResponse.getString("[1].message"))
-                .containsIgnoringNewLines("""
-                    Content-Type: text/calendar; charset=UTF-8; method=REPLY""");
-        }));
-    }
-
-    @Test
-    void consumeShouldNotCrashOnMalformedMessage() {
-        channelPool.getSender()
-            .send(Mono.just(new OutboundMessage("calendar:event:notificationEmail:send",
-                EMPTY_ROUTING_KEY,
-                "BAD_PAYLOAD".getBytes(UTF_8))))
-            .block();
-
-        JsonPath smtpMailsResponse = simulateAcceptedReplyAndWaitForEmail();
-        assertThat(smtpMailsResponse.getString("[1].message"))
-            .containsIgnoringNewLines("""
-                    Content-Type: text/calendar; charset=UTF-8; method=REPLY""");
-    }
-
-    @Test
-    void shouldRecoverWhenEventHandlerHasTemporaryException() throws InterruptedException {
-        String eventUid = UUID.randomUUID().toString();
-        String calendarData = generateCalendarData(
-            eventUid,
-            organizer.username().asString(),
-            attendee.username().asString(),
-            PartStat.NEEDS_ACTION);
-        davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
-        String eventDavIdOnAttendee = waitForEventCreation(attendee);
-
-        // Mock exception
-        when(settingsLocator.getLanguageUserSetting(any(), any()))
-            .thenReturn(Mono.defer(() -> Mono.error(new RuntimeException("Temporary exception"))));
-
-        String replyDataFirst = generateCalendarData(
-            eventUid,
-            organizer.username().asString(),
-            attendee.username().asString(),
-            PartStat.ACCEPTED);
-        davTestHelper.upsertCalendar(attendee, replyDataFirst, eventDavIdOnAttendee);
-
-        Thread.sleep(1000); // Wait for the exception to be processed
-
-        // Recover by returning a valid language setting
-        when(settingsLocator.getLanguageUserSetting(any(), any()))
-            .thenReturn(Mono.just(Locale.ENGLISH));
-
-        String replyDataSecond = generateCalendarData(
-            eventUid,
-            organizer.username().asString(),
-            attendee.username().asString(),
-            PartStat.DECLINED);
-        davTestHelper.upsertCalendar(attendee, replyDataSecond, eventDavIdOnAttendee);
-
-        awaitAtMost
-            .atMost(Duration.ofSeconds(20))
-            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(2));
-
-        assertThat(smtpMailsResponseSupplier.get().getString("[1].message"))
-            .contains("Subject: =?ISO-8859-1?Q?Declined:_Twake_Calendar")
-            .containsIgnoringNewLines("""
-                    Content-Type: text/calendar; charset=UTF-8; method=REPLY""");
-    }
-
-    @Test
-    void shouldNotSendEmailWhenRecipientIsNotInWhitelist() throws InterruptedException {
-        when(eventEmailFilter.shouldProcess(any()))
-            .thenReturn(false);
-
-        // Given: Organizer creates calendar event with attendee
-        String eventUid = UUID.randomUUID().toString();
-        String initialCalendarData = generateCalendarData(
-            eventUid,
-            organizer.username().asString(),
-            attendee.username().asString(),
-            PartStat.NEEDS_ACTION);
-        davTestHelper.upsertCalendar(organizer, initialCalendarData, eventUid);
-
-        // When: Attendee replies to the event
-        String eventDavIdOnAttendee = waitForEventCreation(attendee);
-        String replyCalendarData = generateCalendarData(
-            eventUid,
-            organizer.username().asString(),
-            attendee.username().asString(),
-            PartStat.ACCEPTED);
-        davTestHelper.upsertCalendar(attendee, replyCalendarData, eventDavIdOnAttendee);
-
-        Thread.sleep(1000); // Wait for the message to be processed
-        assertThat(smtpMailsResponseSupplier.get().getList("")).isEmpty();
-    }
-
-    private JsonPath simulateAcceptedReplyAndWaitForEmail() {
-        String eventUid = UUID.randomUUID().toString();
-        String calendarData = generateCalendarData(
-            eventUid,
-            organizer.username().asString(),
-            attendee.username().asString(),
-            PartStat.NEEDS_ACTION);
-        davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
-        String eventDavIdOnAttendee = waitForEventCreation(attendee);
-        String replyData = generateCalendarData(
-            eventUid,
-            organizer.username().asString(),
-            attendee.username().asString(),
-            PartStat.ACCEPTED);
-        davTestHelper.upsertCalendar(attendee, replyData, eventDavIdOnAttendee);
-
-        awaitAtMost
-            .atMost(Duration.ofSeconds(20))
-            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(2));
-
-        return smtpMailsResponseSupplier.get();
+    private String getHtml(JsonPath smtpMailsResponse) {
+        String rawMessage = smtpMailsResponse.getString("[0].message");
+        Pattern htmlPattern = Pattern.compile(
+            "Content-Transfer-Encoding: base64\r?\nContent-Type: text/html; charset=UTF-8\r?\nContent-Language: [^\r\n]+\r?\n\r?\n([A-Za-z0-9+/=\r\n]+)\r?\n---=Part",
+            java.util.regex.Pattern.DOTALL);
+        Matcher matcher = htmlPattern.matcher(rawMessage);
+        matcher.find();
+        String base64Html = matcher.group(1).replaceAll("\\s+", "");
+        return new String(Base64.getDecoder().decode(base64Html), StandardCharsets.UTF_8);
     }
 
     private static final Supplier<JsonPath> smtpMailsResponseSupplier = () -> given(mockSMTPRequestSpecification())
         .get("/smtpMails")
         .jsonPath();
 
-    private String waitForEventCreation(OpenPaaSUser user) {
-        awaitAtMost.untilAsserted(() ->
-            assertThat(davTestHelper.findFirstEventId(user)).isPresent());
-
-        return davTestHelper.findFirstEventId(user).get();
-    }
-
     private String generateCalendarData(String eventUid, String organizerEmail, String attendeeEmail,
                                         PartStat partStat) {
-        DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss");
-        String startDateTime = LocalDateTime.now().plusDays(3).format(dateTimeFormatter);
-        String endDateTime = LocalDateTime.now().plusDays(3).plusHours(1).format(dateTimeFormatter);
-
         return """
             BEGIN:VCALENDAR
             VERSION:2.0
@@ -432,11 +293,13 @@ public class EventReplyEmailConsumerTest {
             END:VTIMEZONE
             BEGIN:VEVENT
             UID:{eventUid}
-            DTSTAMP:{dtStamp}Z
+            DTSTAMP:30250411T022032Z
             SEQUENCE:1
-            DTSTART;TZID=Asia/Ho_Chi_Minh:{startDateTime}
-            DTEND;TZID=Asia/Ho_Chi_Minh:{endDateTime}
+            DTSTART;TZID=Asia/Ho_Chi_Minh:30250411T100000
+            DTEND;TZID=Asia/Ho_Chi_Minh:30250411T110000
             SUMMARY:Twake Calendar - Sprint planning #04
+            LOCATION:Twake Meeting Room
+            DESCRIPTION:This is a meeting to discuss the sprint planning for the next week.
             ORGANIZER;CN=Van Tung TRAN:mailto:{organizerEmail}
             ATTENDEE;PARTSTAT={partStat};CN=Benoît TELLIER:mailto:{attendeeEmail}
             END:VEVENT
@@ -444,9 +307,7 @@ public class EventReplyEmailConsumerTest {
             """.replace("{eventUid}", eventUid)
             .replace("{organizerEmail}", organizerEmail)
             .replace("{attendeeEmail}", attendeeEmail)
-            .replace("{startDateTime}", startDateTime)
-            .replace("{endDateTime}", endDateTime)
-            .replace("{dtStamp}", LocalDateTime.now().format(dateTimeFormatter))
             .replace("{partStat}", partStat.getValue());
     }
 }
+
