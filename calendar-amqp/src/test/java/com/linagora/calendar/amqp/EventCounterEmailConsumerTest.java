@@ -217,9 +217,9 @@ public class EventCounterEmailConsumerTest {
         JsonPath smtpMailsResponse = simulateProposeCounterAndWaitForEmail();
 
         assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo(attendee.username().asString());
-            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(organizer.username().asString());
-            softly.assertThat(smtpMailsResponse.getString("[0].message"))
+            softly.assertThat(smtpMailsResponse.getString("[1].from")).isEqualTo(attendee.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[1].recipients[0].address")).isEqualTo(organizer.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[1].message"))
                 .contains("Subject: New changes proposed to event Twake Calendar - Sprint planning #04")
                 .contains("Content-Type: multipart/mixed;")
                 .containsIgnoringNewLines("""
@@ -241,9 +241,9 @@ public class EventCounterEmailConsumerTest {
         JsonPath smtpMailsResponse = simulateProposeCounterAndWaitForEmail();
 
         assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo(attendee.username().asString());
-            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(organizer.username().asString());
-            softly.assertThat(smtpMailsResponse.getString("[0].message"))
+            softly.assertThat(smtpMailsResponse.getString("[1].from")).isEqualTo(attendee.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[1].recipients[0].address")).isEqualTo(organizer.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[1].message"))
                 .contains("Subject: =?ISO-8859-1?Q?Nouvelles_modifications_propos")
                 .containsIgnoringNewLines("""
                     Content-Type: text/calendar; charset=UTF-8; method=COUNTER""");
@@ -286,7 +286,7 @@ public class EventCounterEmailConsumerTest {
         // Wait for the mail to be received via mock SMTP
         awaitAtMost
             .atMost(Duration.ofSeconds(20))
-            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(2));
 
         // Then: Received mail
         return  smtpMailsResponseSupplier.get();
@@ -337,7 +337,6 @@ public class EventCounterEmailConsumerTest {
             SUMMARY:Twake Calendar - Sprint planning #04
             ORGANIZER;CN=Van Tung TRAN:mailto:{organizerEmail}
             ATTENDEE;PARTSTAT=NEEDS-ACTION;CN=Benoît TELLIER:mailto:{attendeeEmail}
-            ATTENDEE;PARTSTAT=NEEDS-ACTION;CN=Another1:mailto:abc@domain.tld
             END:VEVENT
             END:VCALENDAR
             """.replace("{eventUid}", eventUid)

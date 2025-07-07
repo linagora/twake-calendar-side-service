@@ -243,7 +243,7 @@ public class EventReplyEmailConsumerTest {
         // Wait for the mail to be received via mock SMTP
         awaitAtMost
             .atMost(Duration.ofSeconds(20))
-            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(2));
 
         // Then: Received mail
         JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
@@ -256,9 +256,9 @@ public class EventReplyEmailConsumerTest {
         };
 
         assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo(attendee.username().asString());
-            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(organizer.username().asString());
-            softly.assertThat(smtpMailsResponse.getString("[0].message"))
+            softly.assertThat(smtpMailsResponse.getString("[1].from")).isEqualTo(attendee.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[1].recipients[0].address")).isEqualTo(organizer.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[1].message"))
                 .contains("Subject: =?ISO-8859-1?Q?" + partStatDisplayFunction.apply(partStatValue) + ":_Twake_Calendar")
                 .contains("Content-Type: multipart/mixed;")
                 .containsIgnoringNewLines("""
@@ -282,9 +282,9 @@ public class EventReplyEmailConsumerTest {
         JsonPath smtpMailsResponse = simulateAcceptedReplyAndWaitForEmail();
 
         assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo(attendee.username().asString());
-            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(organizer.username().asString());
-            softly.assertThat(smtpMailsResponse.getString("[0].message"))
+            softly.assertThat(smtpMailsResponse.getString("[1].from")).isEqualTo(attendee.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[1].recipients[0].address")).isEqualTo(organizer.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[1].message"))
                 .containsIgnoringNewLines("""
                     Content-Type: text/calendar; charset=UTF-8; method=REPLY""");
         }));
@@ -299,7 +299,7 @@ public class EventReplyEmailConsumerTest {
             .block();
 
         JsonPath smtpMailsResponse = simulateAcceptedReplyAndWaitForEmail();
-        assertThat(smtpMailsResponse.getString("[0].message"))
+        assertThat(smtpMailsResponse.getString("[1].message"))
             .containsIgnoringNewLines("""
                     Content-Type: text/calendar; charset=UTF-8; method=REPLY""");
     }
@@ -341,9 +341,9 @@ public class EventReplyEmailConsumerTest {
 
         awaitAtMost
             .atMost(Duration.ofSeconds(20))
-            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(2));
 
-        assertThat(smtpMailsResponseSupplier.get().getString("[0].message"))
+        assertThat(smtpMailsResponseSupplier.get().getString("[1].message"))
             .contains("Subject: =?ISO-8859-1?Q?Declined:_Twake_Calendar")
             .containsIgnoringNewLines("""
                     Content-Type: text/calendar; charset=UTF-8; method=REPLY""");
@@ -394,7 +394,7 @@ public class EventReplyEmailConsumerTest {
 
         awaitAtMost
             .atMost(Duration.ofSeconds(20))
-            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(2));
 
         return smtpMailsResponseSupplier.get();
     }
