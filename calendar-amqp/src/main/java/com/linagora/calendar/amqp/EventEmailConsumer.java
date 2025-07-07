@@ -169,7 +169,7 @@ public class EventEmailConsumer implements Closeable, Startable {
             case Method.VALUE_CANCEL -> {
                 LOGGER.info("Received calendar event message with method CANCEL and eventPath {}", calendarEventMessage.eventPath());
                 CalendarEventCancelNotificationEmail calendarEventCancelNotificationEmail = CalendarEventCancelNotificationEmail.from(calendarEventMessage);
-                yield Mono.empty();
+                yield eventMailHandler.handleCancelEvent(calendarEventCancelNotificationEmail);
             }
             case Method.VALUE_COUNTER -> {
                 LOGGER.info("Received calendar event message with method COUNTER and eventPath {}", calendarEventMessage.eventPath());

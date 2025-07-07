@@ -37,6 +37,7 @@ import org.apache.james.mime4j.dom.Message;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableList;
+import com.linagora.calendar.amqp.model.CalendarEventCancelNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventCounterNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventInviteNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventReplyNotificationEmail;
@@ -57,7 +58,7 @@ public class EventMailHandler {
     enum EventType {
         INVITE,
         REPLY,
-        CANCELLATION,
+        CANCEL,
         COUNTER;
 
         public TemplateType asTemplateType() {
@@ -111,6 +112,43 @@ public class EventMailHandler {
             List<MimeAttachment> attachments = List.of(
                 MimeAttachment.builder()
                     .contentType(ContentType.of("text/calendar; charset=UTF-8; method=REQUEST"))
+                    .content(calendarAsBytes)
+                    .build(),
+                MimeAttachment.builder()
+                    .contentType(ContentType.of("application/ics"))
+                    .content(calendarAsBytes)
+                    .dispositionType(ATTACHMENT_DISPOSITION_TYPE)
+                    .fileName("meeting.ics")
+                    .build()
+            );
+
+            MailAddress fromAddress = event.base().senderEmail();
+            return messageGenerator.generate(recipientUser, Optional.of(fromAddress), event.toPugModel(locale, eventInCalendarLinkFactory), attachments);
+        }
+    }
+
+    class CancelEventMessageGenerator implements EventMessageGenerator {
+        private final CalendarEventCancelNotificationEmail event;
+        private final Username recipientUser;
+
+        public CancelEventMessageGenerator(CalendarEventCancelNotificationEmail event, Username recipientUser) {
+            this.event = event;
+            this.recipientUser = recipientUser;
+        }
+
+        @Override
+        public Mono<Message> generate(Locale locale) {
+            return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(locale), EventType.CANCEL.asTemplateType()))
+                .flatMap(messageGenerator -> generateInvitationMessage(locale, messageGenerator))
+                .onErrorResume(error -> Mono.error(new EventMailHandlerException("Error occurred when generate cancel event message", error)));
+        }
+
+        private Mono<Message> generateInvitationMessage(Locale locale, MessageGenerator messageGenerator) {
+            byte[] calendarAsBytes = event.base().event().toString().getBytes(StandardCharsets.UTF_8);
+
+            List<MimeAttachment> attachments = List.of(
+                MimeAttachment.builder()
+                    .contentType(ContentType.of("text/calendar; charset=UTF-8; method=CANCEL"))
                     .content(calendarAsBytes)
                     .build(),
                 MimeAttachment.builder()
@@ -215,6 +253,12 @@ public class EventMailHandler {
         MailAddress recipientEmail = event.base().recipientEmail();
         Username recipientUser = Username.fromMailAddress(recipientEmail);
         return handleEvent(new InviteEventMessageGenerator(event, recipientUser), recipientUser, event.base().senderEmail());
+    }
+
+    public Mono<Void> handleCancelEvent(CalendarEventCancelNotificationEmail event) {
+        MailAddress recipientEmail = event.base().recipientEmail();
+        Username recipientUser = Username.fromMailAddress(recipientEmail);
+        return handleEvent(new CancelEventMessageGenerator(event, recipientUser), recipientUser, event.base().senderEmail());
     }
 
     public Mono<Void> handReplyEvent(CalendarEventReplyNotificationEmail event) {
