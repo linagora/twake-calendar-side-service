@@ -261,7 +261,7 @@ public class EventInviteEmailConsumerTest {
             String html = getHtml(smtpMailsResponse);
 
             assertThat(html).contains("Van Tung TRAN")
-                .contains("has invited you in to a meeting")
+                .contains("has invited you in to an event")
                 .contains("Monday, 11 April 3025 10:00 - 11:00")
                 .contains("See in Calendar")
                 .contains("Asia/Ho_Chi_Minh")
@@ -313,7 +313,7 @@ public class EventInviteEmailConsumerTest {
             String html = getHtml(smtpMailsResponse);
 
             assertThat(html).contains("Van Tung TRAN")
-                .contains("has invited you in to a meeting")
+                .contains("has invited you in to an event")
                 .contains("Monday, 11 April 3025 10:00 - 11:00")
                 .contains("Asia/Ho_Chi_Minh")
                 .contains("Twake Meeting Room")
