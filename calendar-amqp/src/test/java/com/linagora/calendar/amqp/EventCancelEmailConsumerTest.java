@@ -259,7 +259,7 @@ public class EventCancelEmailConsumerTest {
             String html = getHtml(message);
 
             assertThat(html).contains("Van Tung TRAN")
-                .contains("has canceled a meeting")
+                .contains("has canceled an event")
                 .contains("Monday, 11 April 3025 10:00 - 11:00")
                 .contains("Asia/Ho_Chi_Minh")
                 .contains(organizer.username().asString())
