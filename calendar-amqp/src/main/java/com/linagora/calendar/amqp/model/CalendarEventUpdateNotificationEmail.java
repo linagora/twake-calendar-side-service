@@ -18,17 +18,95 @@
 
 package com.linagora.calendar.amqp.model;
 
+import static com.linagora.calendar.amqp.model.CalendarEventNotificationEmail.PERSON_TO_MODEL;
+
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 
-import com.linagora.calendar.amqp.CalendarEventNotificationEmailDTO;
+import org.apache.commons.lang3.StringUtils;
 
-public record CalendarEventUpdateNotificationEmail(CalendarEventNotificationEmail calendarEventNotificationEmail,
-                                                  Optional<CalendarEventNotificationEmailDTO.Changes> changes) {
+import com.google.common.collect.ImmutableMap;
+import com.linagora.calendar.amqp.CalendarEventNotificationEmailDTO;
+import com.linagora.calendar.smtp.template.content.model.EventInCalendarLinkFactory;
+import com.linagora.calendar.smtp.template.content.model.EventTimeModel;
+import com.linagora.calendar.smtp.template.content.model.PersonModel;
+import com.linagora.calendar.storage.event.EventParseUtils;
+
+import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.component.VEvent;
+
+public record CalendarEventUpdateNotificationEmail(CalendarEventNotificationEmail base,
+                                                  Optional<CalendarEventNotificationEmailDTO.Changes> maybeChanges) {
+
+    public static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSS");
 
     public static CalendarEventUpdateNotificationEmail from(CalendarEventNotificationEmailDTO dto) {
         return new CalendarEventUpdateNotificationEmail(
             CalendarEventNotificationEmail.from(dto),
             dto.changes()
         );
+    }
+
+    public Map<String, Object> toPugModel(Locale locale, EventInCalendarLinkFactory eventInCalendarLinkFactory, boolean isInternalUser) {
+        VEvent vEvent = (VEvent) base.event().getComponent(Component.VEVENT).get();
+        PersonModel organizer = PERSON_TO_MODEL.apply(EventParseUtils.getOrganizer(vEvent));
+        String summary = EventParseUtils.getSummary(vEvent).orElse(StringUtils.EMPTY);
+        ZonedDateTime startDate = EventParseUtils.getStartTime(vEvent);
+
+        ImmutableMap.Builder<String, Object> contentBuilder = ImmutableMap.builder();
+        contentBuilder.put("event", base.toPugModel(locale));
+        if (isInternalUser) {
+            contentBuilder.put("seeInCalendarLink", eventInCalendarLinkFactory.getEventInCalendarLink(startDate));
+        }
+
+        maybeChanges.ifPresent(changes -> contentBuilder.put("changes", toPugModel(locale, changes)));
+
+        return ImmutableMap.of(
+            "content", contentBuilder.build(),
+            "subject.summary", maybeChanges.flatMap(CalendarEventNotificationEmailDTO.Changes::summary)
+                .map(CalendarEventNotificationEmailDTO.StringChange::previous)
+                .orElse(summary),
+            "subject.organizer", organizer.cn()
+        );
+    }
+
+    private Map<String, Object> toPugModel(Locale locale, CalendarEventNotificationEmailDTO.Changes changes) {
+        ImmutableMap.Builder<String, Object> changesBuilder = ImmutableMap.builder();
+        changes.summary().ifPresent(summaryChange -> {
+            changesBuilder.put("summary", ImmutableMap.of(
+                "previous", summaryChange.previous()
+            ));
+        });
+        changes.dtstart().ifPresent(dtstartChange -> {
+            changesBuilder.put("isOldEventAllDay", dtstartChange.previous().isAllDay());
+            changesBuilder.put("dtstart", ImmutableMap.of(
+                "previous", toEventTimeModel(dtstartChange).toPugModel(locale)
+            ));
+        });
+        changes.dtend().ifPresent(dtendChange ->
+            changesBuilder.put("dtend", ImmutableMap.of(
+                "previous", toEventTimeModel(dtendChange).toPugModel(locale)
+        )));
+        changes.location().ifPresent(locationChange ->
+            changesBuilder.put("location", ImmutableMap.of(
+                "previous", locationChange.previous()
+        )));
+        changes.description().ifPresent(descriptionChange ->
+            changesBuilder.put("description", ImmutableMap.of(
+                "previous", descriptionChange.previous()
+        )));
+        return changesBuilder.build();
+    }
+
+    private EventTimeModel toEventTimeModel(CalendarEventNotificationEmailDTO.DateTimeChange dateTimeChange) {
+        LocalDateTime ldt = LocalDateTime.parse(dateTimeChange.previous().date(), DATE_TIME_FORMATTER);
+        ZoneId zoneId = ZoneId.of(dateTimeChange.previous().timezone());
+        ZonedDateTime zonedDateTime = ldt.atZone(zoneId);
+        return new EventTimeModel(zonedDateTime);
     }
 }

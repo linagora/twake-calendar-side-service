@@ -158,8 +158,7 @@ public class EventEmailConsumer implements Closeable, Startable {
                     yield eventMailHandler.handInviteEvent(CalendarEventInviteNotificationEmail.from(calendarEventMessage));
                 } else {
                     LOGGER.info("Received updated calendar event message with method REQUEST and eventPath {}", calendarEventMessage.eventPath());
-                    CalendarEventUpdateNotificationEmail calendarEventUpdateNotificationEmail = CalendarEventUpdateNotificationEmail.from(calendarEventMessage);
-                    yield Mono.empty();
+                    yield eventMailHandler.handleUpdateEvent(CalendarEventUpdateNotificationEmail.from(calendarEventMessage));
                 }
             }
             case Method.VALUE_REPLY -> {

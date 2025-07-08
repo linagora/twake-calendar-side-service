@@ -42,6 +42,7 @@ import com.linagora.calendar.amqp.model.CalendarEventCancelNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventCounterNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventInviteNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventReplyNotificationEmail;
+import com.linagora.calendar.amqp.model.CalendarEventUpdateNotificationEmail;
 import com.linagora.calendar.smtp.Mail;
 import com.linagora.calendar.smtp.MailSender;
 import com.linagora.calendar.smtp.template.Language;
@@ -58,6 +59,7 @@ public class EventMailHandler {
 
     enum EventType {
         INVITE,
+        UPDATE,
         REPLY,
         CANCEL,
         COUNTER;
@@ -113,6 +115,45 @@ public class EventMailHandler {
         }
 
         private Mono<Message> generateInvitationMessage(Locale locale, MessageGenerator messageGenerator) {
+            byte[] calendarAsBytes = event.base().event().toString().getBytes(StandardCharsets.UTF_8);
+
+            List<MimeAttachment> attachments = List.of(
+                MimeAttachment.builder()
+                    .contentType(ContentType.of("text/calendar; charset=UTF-8; method=REQUEST"))
+                    .content(calendarAsBytes)
+                    .build(),
+                MimeAttachment.builder()
+                    .contentType(ContentType.of("application/ics"))
+                    .content(calendarAsBytes)
+                    .dispositionType(ATTACHMENT_DISPOSITION_TYPE)
+                    .fileName("meeting.ics")
+                    .build()
+            );
+
+            MailAddress fromAddress = event.base().senderEmail();
+            return messageGenerator.generate(recipientUser, Optional.of(fromAddress), event.toPugModel(locale, eventInCalendarLinkFactory, isInternalUser), attachments);
+        }
+    }
+
+    class UpdateEventMessageGenerator implements EventMessageGenerator {
+        private final CalendarEventUpdateNotificationEmail event;
+        private final Username recipientUser;
+        private final boolean isInternalUser;
+
+        public UpdateEventMessageGenerator(CalendarEventUpdateNotificationEmail event, Username recipientUser, boolean isInternalUser) {
+            this.event = event;
+            this.recipientUser = recipientUser;
+            this.isInternalUser = isInternalUser;
+        }
+
+        @Override
+        public Mono<Message> generate(Locale locale) {
+            return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(locale), EventType.UPDATE.asTemplateType()))
+                .flatMap(messageGenerator -> generateUpdateMessage(locale, messageGenerator))
+                .onErrorResume(error -> Mono.error(new EventMailHandlerException("Error occurred when generate update event message", error)));
+        }
+
+        private Mono<Message> generateUpdateMessage(Locale locale, MessageGenerator messageGenerator) {
             byte[] calendarAsBytes = event.base().event().toString().getBytes(StandardCharsets.UTF_8);
 
             List<MimeAttachment> attachments = List.of(
@@ -262,6 +303,13 @@ public class EventMailHandler {
         Username recipientUser = Username.fromMailAddress(recipientEmail);
         return Mono.from(usersRepository.containsReactive(recipientUser))
             .flatMap(isInternalUser -> handleEvent(new InviteEventMessageGenerator(event, recipientUser, isInternalUser), recipientUser, event.base().senderEmail()));
+    }
+
+    public Mono<Void> handleUpdateEvent(CalendarEventUpdateNotificationEmail event) {
+        MailAddress recipientEmail = event.base().recipientEmail();
+        Username recipientUser = Username.fromMailAddress(recipientEmail);
+        return Mono.from(usersRepository.containsReactive(recipientUser))
+            .flatMap(isInternalUser -> handleEvent(new UpdateEventMessageGenerator(event, recipientUser, isInternalUser), recipientUser, event.base().senderEmail()));
     }
 
     public Mono<Void> handleCancelEvent(CalendarEventCancelNotificationEmail event) {
