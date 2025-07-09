@@ -36,6 +36,7 @@
 
     <modules>
         <module>app</module>
+        <module>calendar-api</module>
         <module>calendar-amqp</module>
         <module>calendar-dav</module>
         <module>calendar-rest-api</module>
@@ -59,6 +60,11 @@
             <dependency>
                 <groupId>${project.groupId}</groupId>
                 <artifactId>calendar-amqp</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>${project.groupId}</groupId>
+                <artifactId>calendar-api</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

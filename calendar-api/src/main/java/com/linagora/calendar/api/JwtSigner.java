@@ -16,9 +16,9 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.restapi.routes;
+package com.linagora.calendar.api;
 
-import java.io.File;
+
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.Key;
@@ -26,10 +26,8 @@ import java.security.PrivateKey;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Date;
+import java.util.Map;
 
-import jakarta.inject.Inject;
-
-import org.apache.james.filesystem.api.FileSystem;
 import org.apache.james.metrics.api.MetricFactory;
 import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
 import org.bouncycastle.openssl.PEMKeyPair;
@@ -37,10 +35,12 @@ import org.bouncycastle.openssl.PEMParser;
 import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter;
 import org.bouncycastle.util.io.pem.PemReader;
 
-import com.linagora.calendar.restapi.RestApiConfiguration;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableMap;
 
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.lang.Collections;
+import io.jsonwebtoken.security.SecureDigestAlgorithm;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
@@ -60,25 +60,26 @@ public class JwtSigner {
             }
         }
 
-        private final RestApiConfiguration configuration;
+        private final Duration tokenValidity;
+        private final Path privateKeyPath;
         private final Clock clock;
-        private final FileSystem fileSystem;
         private final MetricFactory metricFactory;
 
-        @Inject
-        public Factory(RestApiConfiguration configuration, Clock clock, FileSystem fileSystem, MetricFactory metricFactory) {
-            this.configuration = configuration;
+        public Factory(Clock clock, Duration tokenValidity, Path privateKeyPath, MetricFactory metricFactory) {
             this.clock = clock;
-            this.fileSystem = fileSystem;
+            this.tokenValidity = tokenValidity;
+            this.privateKeyPath = privateKeyPath;
             this.metricFactory = metricFactory;
         }
 
-        public JwtSigner instancaiate() throws Exception {
-            File file = fileSystem.getFile(configuration.getJwtPrivatePath());
-            return new JwtSigner(clock, configuration.getJwtValidity(), loadPrivateKey(file.toPath()), metricFactory);
+        public JwtSigner instantiate() throws Exception {
+            PrivateKey key = loadPrivateKey(privateKeyPath);
+            return new JwtSigner(clock, tokenValidity, key, metricFactory);
         }
     }
-    
+
+    private static final String SUB_CLAIM = "sub";
+
     private final Clock clock;
     private final Duration tokenValidity;
     private final Key key;
@@ -92,13 +93,18 @@ public class JwtSigner {
     }
 
     public Mono<String> generate(String sub) {
+        return generate(ImmutableMap.of(SUB_CLAIM, sub));
+    }
+
+    public Mono<String> generate(Map<String, Object> claims) {
+        Preconditions.checkArgument(!Collections.isEmpty(claims), "claims can't be empty");
         return Mono.from(metricFactory.decoratePublisherWithTimerMetric("jwt-signer", Mono.fromCallable(() -> Jwts.builder()
-            .setHeaderParam("typ", "JWT")
-            .claim("sub", sub)
-            .signWith(key, SignatureAlgorithm.RS256)
-            .setIssuedAt(Date.from(clock.instant()))
-            .setExpiration(Date.from(clock.instant().plus(tokenValidity)))
-            .compact())))
+                .header().add("typ", "JWT").and()
+                .claims(claims)
+                .signWith(key, (SecureDigestAlgorithm) Jwts.SIG.RS256)
+                .issuedAt(Date.from(clock.instant()))
+                .expiration(Date.from(clock.instant().plus(tokenValidity)))
+                .compact())))
             .subscribeOn(Schedulers.parallel());
     }
 }
