@@ -18,7 +18,6 @@
 
 package com.linagora.calendar.restapi.routes;
 
-import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.Key;
@@ -27,17 +26,12 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.Date;
 
-import jakarta.inject.Inject;
-
-import org.apache.james.filesystem.api.FileSystem;
 import org.apache.james.metrics.api.MetricFactory;
 import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
 import org.bouncycastle.openssl.PEMKeyPair;
 import org.bouncycastle.openssl.PEMParser;
 import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter;
 import org.bouncycastle.util.io.pem.PemReader;
-
-import com.linagora.calendar.restapi.RestApiConfiguration;
 
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
@@ -60,22 +54,21 @@ public class JwtSigner {
             }
         }
 
-        private final RestApiConfiguration configuration;
+        private final Duration tokenValidity;
+        private final Path privateKeyPath;
         private final Clock clock;
-        private final FileSystem fileSystem;
         private final MetricFactory metricFactory;
 
-        @Inject
-        public Factory(RestApiConfiguration configuration, Clock clock, FileSystem fileSystem, MetricFactory metricFactory) {
-            this.configuration = configuration;
+        public Factory(Clock clock, Duration tokenValidity, Path privateKeyPath, MetricFactory metricFactory) {
             this.clock = clock;
-            this.fileSystem = fileSystem;
+            this.tokenValidity = tokenValidity;
+            this.privateKeyPath = privateKeyPath;
             this.metricFactory = metricFactory;
         }
 
-        public JwtSigner instancaiate() throws Exception {
-            File file = fileSystem.getFile(configuration.getJwtPrivatePath());
-            return new JwtSigner(clock, configuration.getJwtValidity(), loadPrivateKey(file.toPath()), metricFactory);
+        public JwtSigner instantiate() throws Exception {
+            PrivateKey key = loadPrivateKey(privateKeyPath);
+            return new JwtSigner(clock, tokenValidity, key, metricFactory);
         }
     }
     

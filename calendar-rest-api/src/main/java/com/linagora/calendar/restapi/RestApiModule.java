@@ -18,14 +18,17 @@
 
 package com.linagora.calendar.restapi;
 
+import java.io.File;
 import java.io.FileNotFoundException;
 import java.net.URL;
+import java.time.Clock;
 import java.util.Set;
 
 import jakarta.inject.Named;
 
 import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.james.filesystem.api.FileSystem;
 import org.apache.james.jmap.JMAPRoutes;
 import org.apache.james.jmap.http.AuthenticationStrategy;
 import org.apache.james.jmap.http.Authenticator;
@@ -169,8 +172,14 @@ public class RestApiModule extends AbstractModule {
 
     @Provides
     @Singleton
-    JwtSigner signer(JwtSigner.Factory factory) throws Exception {
-        return factory.instancaiate();
+    JwtSigner provideJwtSigner(FileSystem fileSystem,
+                               RestApiConfiguration configuration,
+                               Clock clock,
+                               MetricFactory metricFactory) throws Exception {
+        File privateKeyPath = fileSystem.getFile(configuration.getJwtPrivatePath());
+        JwtSigner.Factory jwtSigerFactory = new JwtSigner.Factory(clock, configuration.getJwtValidity(),
+            privateKeyPath.toPath(), metricFactory);
+        return jwtSigerFactory.instantiate();
     }
 
     @ProvidesIntoSet
