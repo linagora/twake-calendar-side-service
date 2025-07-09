@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -35,6 +36,8 @@ import org.apache.james.core.Username;
 import org.apache.james.mailbox.model.ContentType;
 import org.apache.james.mime4j.dom.Message;
 import org.apache.james.user.api.UsersRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableList;
@@ -51,7 +54,11 @@ import com.linagora.calendar.smtp.template.MimeAttachment;
 import com.linagora.calendar.smtp.template.TemplateType;
 import com.linagora.calendar.smtp.template.content.model.EventInCalendarLinkFactory;
 import com.linagora.calendar.storage.SimpleSessionProvider;
-import com.linagora.calendar.storage.configuration.resolver.SettingsBasedLocator;
+import com.linagora.calendar.storage.configuration.resolver.ConfigurationResolver;
+import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
+import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.LanguageSettingReader;
+import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.ResolvedSettings;
+import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.TimeZoneSettingReader;
 
 import reactor.core.publisher.Mono;
 
@@ -69,31 +76,43 @@ public class EventMailHandler {
         }
     }
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(EventMailHandler.class);
     private final MailSender.Factory mailSenderFactory;
-    private final SettingsBasedLocator settingsBasedLocator;
     private final SimpleSessionProvider sessionProvider;
     private final MessageGenerator.Factory messageGeneratorFactory;
     private final EventInCalendarLinkFactory eventInCalendarLinkFactory;
     private final UsersRepository usersRepository;
+    private final SettingsBasedResolver settingsBasedResolver;
 
     @Inject
     @Singleton
     public EventMailHandler(MailSender.Factory mailSenderFactory,
-                            SettingsBasedLocator settingsBasedLocator,
+                            ConfigurationResolver configurationResolver,
                             MessageGenerator.Factory messageGeneratorFactory,
                             EventInCalendarLinkFactory eventInCalendarLinkFactory,
                             SimpleSessionProvider sessionProvider,
                             UsersRepository usersRepository) {
+        this(mailSenderFactory, messageGeneratorFactory, eventInCalendarLinkFactory, sessionProvider, usersRepository,
+            SettingsBasedResolver.of(configurationResolver,
+                Set.of(LanguageSettingReader.INSTANCE, TimeZoneSettingReader.INSTANCE)));
+    }
+
+    public EventMailHandler(MailSender.Factory mailSenderFactory,
+                            MessageGenerator.Factory messageGeneratorFactory,
+                            EventInCalendarLinkFactory eventInCalendarLinkFactory,
+                            SimpleSessionProvider sessionProvider,
+                            UsersRepository usersRepository,
+                            SettingsBasedResolver settingsBasedResolver) {
         this.mailSenderFactory = mailSenderFactory;
-        this.settingsBasedLocator = settingsBasedLocator;
         this.sessionProvider = sessionProvider;
         this.messageGeneratorFactory = messageGeneratorFactory;
         this.eventInCalendarLinkFactory = eventInCalendarLinkFactory;
         this.usersRepository = usersRepository;
+        this.settingsBasedResolver = settingsBasedResolver;
     }
 
     interface EventMessageGenerator {
-        Mono<Message> generate(Locale locale);
+        Mono<Message> generate(ResolvedSettings resolvedSettings);
     }
 
     class InviteEventMessageGenerator implements EventMessageGenerator {
@@ -108,13 +127,13 @@ public class EventMailHandler {
         }
 
         @Override
-        public Mono<Message> generate(Locale locale) {
-            return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(locale), EventType.INVITE.asTemplateType()))
-                .flatMap(messageGenerator -> generateInvitationMessage(locale, messageGenerator))
+        public Mono<Message> generate(ResolvedSettings resolvedSettings) {
+            return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(resolvedSettings.locale()), EventType.INVITE.asTemplateType()))
+                .flatMap(messageGenerator -> generateInvitationMessage(resolvedSettings, messageGenerator))
                 .onErrorResume(error -> Mono.error(new EventMailHandlerException("Error occurred when generate invitation event message", error)));
         }
 
-        private Mono<Message> generateInvitationMessage(Locale locale, MessageGenerator messageGenerator) {
+        private Mono<Message> generateInvitationMessage(ResolvedSettings resolvedSettings, MessageGenerator messageGenerator) {
             byte[] calendarAsBytes = event.base().event().toString().getBytes(StandardCharsets.UTF_8);
 
             List<MimeAttachment> attachments = List.of(
@@ -131,7 +150,9 @@ public class EventMailHandler {
             );
 
             MailAddress fromAddress = event.base().senderEmail();
-            return messageGenerator.generate(recipientUser, Optional.of(fromAddress), event.toPugModel(locale, eventInCalendarLinkFactory, isInternalUser), attachments);
+            return messageGenerator.generate(recipientUser,
+                Optional.of(fromAddress),
+                event.toPugModel(resolvedSettings.locale(), resolvedSettings.zoneId(), eventInCalendarLinkFactory, isInternalUser), attachments);
         }
     }
 
@@ -147,13 +168,13 @@ public class EventMailHandler {
         }
 
         @Override
-        public Mono<Message> generate(Locale locale) {
-            return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(locale), EventType.UPDATE.asTemplateType()))
-                .flatMap(messageGenerator -> generateUpdateMessage(locale, messageGenerator))
+        public Mono<Message> generate(ResolvedSettings resolvedSettings) {
+            return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(resolvedSettings.locale()), EventType.UPDATE.asTemplateType()))
+                .flatMap(messageGenerator -> generateUpdateMessage(resolvedSettings, messageGenerator))
                 .onErrorResume(error -> Mono.error(new EventMailHandlerException("Error occurred when generate update event message", error)));
         }
 
-        private Mono<Message> generateUpdateMessage(Locale locale, MessageGenerator messageGenerator) {
+        private Mono<Message> generateUpdateMessage(ResolvedSettings resolvedSettings, MessageGenerator messageGenerator) {
             byte[] calendarAsBytes = event.base().event().toString().getBytes(StandardCharsets.UTF_8);
 
             List<MimeAttachment> attachments = List.of(
@@ -170,7 +191,9 @@ public class EventMailHandler {
             );
 
             MailAddress fromAddress = event.base().senderEmail();
-            return messageGenerator.generate(recipientUser, Optional.of(fromAddress), event.toPugModel(locale, eventInCalendarLinkFactory, isInternalUser), attachments);
+            return messageGenerator.generate(recipientUser,
+                Optional.of(fromAddress),
+                event.toPugModel(resolvedSettings.locale(), resolvedSettings.zoneId(), eventInCalendarLinkFactory, isInternalUser), attachments);
         }
     }
 
@@ -186,13 +209,13 @@ public class EventMailHandler {
         }
 
         @Override
-        public Mono<Message> generate(Locale locale) {
-            return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(locale), EventType.CANCEL.asTemplateType()))
-                .flatMap(messageGenerator -> generateCancelMessage(locale, messageGenerator))
+        public Mono<Message> generate(ResolvedSettings resolvedSettings) {
+            return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(resolvedSettings.locale()), EventType.CANCEL.asTemplateType()))
+                .flatMap(messageGenerator -> generateCancelMessage(resolvedSettings, messageGenerator))
                 .onErrorResume(error -> Mono.error(new EventMailHandlerException("Error occurred when generate cancel event message", error)));
         }
 
-        private Mono<Message> generateCancelMessage(Locale locale, MessageGenerator messageGenerator) {
+        private Mono<Message> generateCancelMessage(ResolvedSettings resolvedSettings, MessageGenerator messageGenerator) {
             byte[] calendarAsBytes = event.base().event().toString().getBytes(StandardCharsets.UTF_8);
 
             List<MimeAttachment> attachments = List.of(
@@ -209,7 +232,8 @@ public class EventMailHandler {
             );
 
             MailAddress fromAddress = event.base().senderEmail();
-            return messageGenerator.generate(recipientUser, Optional.of(fromAddress), event.toPugModel(locale, eventInCalendarLinkFactory, isInternalUser), attachments);
+            return messageGenerator.generate(recipientUser, Optional.of(fromAddress),
+                event.toPugModel(resolvedSettings.locale(), resolvedSettings.zoneId(), eventInCalendarLinkFactory, isInternalUser), attachments);
         }
     }
 
@@ -223,17 +247,18 @@ public class EventMailHandler {
         }
 
         @Override
-        public Mono<Message> generate(Locale locale) {
-            return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(locale), EventType.REPLY.asTemplateType()))
-                .flatMap(messageGenerator -> generateReplyMessage(locale, messageGenerator))
+        public Mono<Message> generate(ResolvedSettings resolvedSettings) {
+            return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(resolvedSettings.locale()), EventType.REPLY.asTemplateType()))
+                .flatMap(messageGenerator -> generateReplyMessage(resolvedSettings, messageGenerator))
                 .onErrorResume(error -> Mono.error(new EventMailHandlerException("Error occurred when generate reply event message", error)));
         }
 
-        private Mono<Message> generateReplyMessage(Locale locale,
+        private Mono<Message> generateReplyMessage(ResolvedSettings resolvedSettings,
                                                    MessageGenerator messageGenerator) {
 
             Map<String, Object> model = event.toReplyContentModelBuilder()
-                .locale(locale)
+                .locale(resolvedSettings.locale())
+                .timeZoneDisplay(resolvedSettings.zoneId())
                 .translator(messageGenerator.getI18nTranslator())
                 .eventInCalendarLink(eventInCalendarLinkFactory)
                 .buildAsMap();
@@ -266,16 +291,17 @@ public class EventMailHandler {
         }
 
         @Override
-        public Mono<Message> generate(Locale locale) {
-            return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(locale), EventType.COUNTER.asTemplateType()))
-                .flatMap(messageGenerator -> generateCounterMessage(locale, messageGenerator))
+        public Mono<Message> generate(ResolvedSettings resolvedSettings) {
+            return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(resolvedSettings.locale()), EventType.COUNTER.asTemplateType()))
+                .flatMap(messageGenerator -> generateCounterMessage(resolvedSettings, messageGenerator))
                 .onErrorResume(error -> Mono.error(new EventMailHandlerException("Error occurred when generate counter event message", error)));
         }
 
-        private Mono<Message> generateCounterMessage(Locale locale,
+        private Mono<Message> generateCounterMessage(ResolvedSettings resolvedSettings,
                                                      MessageGenerator messageGenerator) {
             Map<String, Object> model = event.toCounterContentModelBuilder()
-                .locale(locale)
+                .locale(resolvedSettings.locale())
+                .zoneToDisplay(resolvedSettings.zoneId())
                 .translator(messageGenerator.getI18nTranslator())
                 .eventInCalendarLink(eventInCalendarLinkFactory)
                 .buildAsMap();
@@ -332,13 +358,22 @@ public class EventMailHandler {
     }
 
     private Mono<Void> handleEvent(EventMessageGenerator eventMessageGenerator, Username recipientUser, MailAddress senderEmail) {
-        return settingsBasedLocator.getLanguageUserSetting(
-                sessionProvider.createSession(recipientUser),
-                sessionProvider.createSession(Username.fromMailAddress(senderEmail)))
+        Mono<ResolvedSettings> resolvedSettingsPublisher = getUserSettings(recipientUser)
+            .switchIfEmpty(getUserSettings(Username.fromMailAddress(senderEmail)))
+            .defaultIfEmpty(ResolvedSettings.DEFAULT)
+            .onErrorResume(error -> Mono.just(ResolvedSettings.DEFAULT));
+
+        return resolvedSettingsPublisher
             .flatMap(eventMessageGenerator::generate)
             .flatMap(mailMessage -> mailSenderFactory.create()
                 .flatMap(mailSender -> mailSender.send(new Mail(MaybeSender.of(senderEmail),
                     ImmutableList.of(Throwing.supplier(recipientUser::asMailAddress).get()), mailMessage))));
+    }
+
+    private Mono<ResolvedSettings> getUserSettings(Username user) {
+        return settingsBasedResolver.readSavedSettings(sessionProvider.createSession(user))
+            .doOnError(error -> LOGGER.error("Error resolving user settings for {}, will use default settings: {}",
+                user.asString(), ResolvedSettings.DEFAULT, error));
     }
 
 }

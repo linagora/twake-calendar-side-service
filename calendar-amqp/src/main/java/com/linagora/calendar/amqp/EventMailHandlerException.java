@@ -22,4 +22,8 @@ public class EventMailHandlerException extends RuntimeException {
     public EventMailHandlerException(String message, Throwable cause) {
         super(message, cause);
     }
+
+    public EventMailHandlerException(String message) {
+        super(message);
+    }
 }

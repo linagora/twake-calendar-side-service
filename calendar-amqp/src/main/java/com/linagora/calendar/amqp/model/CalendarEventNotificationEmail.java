@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.amqp.model;
 
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Locale;
@@ -63,7 +64,7 @@ public record CalendarEventNotificationEmail(MailAddress senderEmail,
         );
     }
 
-    public Map<String, Object> toPugModel(Locale locale) {
+    public Map<String, Object> toPugModel(Locale locale, ZoneId zoneToDisplay) {
         VEvent vEvent = (VEvent) event.getComponent(Component.VEVENT).get();
         PersonModel organizer = PERSON_TO_MODEL.apply(EventParseUtils.getOrganizer(vEvent));
         String summary = EventParseUtils.getSummary(vEvent).orElse(StringUtils.EMPTY);
@@ -77,8 +78,8 @@ public record CalendarEventNotificationEmail(MailAddress senderEmail,
                     attendee -> PERSON_TO_MODEL.apply(attendee).toPugModel())))
             .put("summary", summary)
             .put("allDay", EventParseUtils.isAllDay(vEvent))
-            .put("start", new EventTimeModel(startDate).toPugModel(locale))
-            .put("end", EventParseUtils.getEndTime(vEvent).map(endDate -> new EventTimeModel(endDate).toPugModel(locale))
+            .put("start", new EventTimeModel(startDate).toPugModel(locale, zoneToDisplay))
+            .put("end", EventParseUtils.getEndTime(vEvent).map(endDate -> new EventTimeModel(endDate).toPugModel(locale, zoneToDisplay))
                 .orElseThrow(() -> new IllegalArgumentException("Missing endDate")))
             .put("hasResources", !resourceList.isEmpty())
             .put("resources", resourceList.stream()

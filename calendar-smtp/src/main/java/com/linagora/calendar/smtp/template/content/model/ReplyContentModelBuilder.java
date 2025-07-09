@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.smtp.template.content.model;
 
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Locale;
@@ -37,7 +38,7 @@ public class ReplyContentModelBuilder {
         return eventSummary -> eventAllDay -> eventStart -> eventEnd ->
             eventLocation -> (eventAttendee, partStat) ->
                 eventOrganizer -> eventResources -> eventDescription ->
-                    locale -> translator -> eventInCalendarLinkFactory -> () -> {
+                    locale -> displayZoneId -> translator -> eventInCalendarLinkFactory -> () -> {
 
                         ImmutableMap.Builder<String, Object> builder = ImmutableMap.builder();
                         builder.put("partStat", partStat.getValue().toUpperCase(Locale.US));
@@ -46,14 +47,14 @@ public class ReplyContentModelBuilder {
                         builder.put("content.replyMessage", translator.get("reply_message_" + partStat.getValue().toLowerCase(Locale.US)));
                         builder.put("content.event.summary", eventSummary);
                         builder.put("content.event.allDay", eventAllDay);
-                        builder.put("content.event.start", new EventTimeModel(eventStart).toPugModel(locale));
+                        builder.put("content.event.start", new EventTimeModel(eventStart).toPugModel(locale, displayZoneId));
                         builder.put("content.seeInCalendarLink", eventInCalendarLinkFactory.getEventInCalendarLink(eventStart));
                         builder.put("content.event.attendees", Map.of(eventAttendee.email(), eventAttendee.toPugModel()));
                         builder.put("content.event.organizer", eventOrganizer.toPugModel());
 
                         builder.put("content.event.hasResources", !eventResources.isEmpty());
                         eventEnd.ifPresent(end ->
-                            builder.put("content.event.end", new EventTimeModel(end).toPugModel(locale)));
+                            builder.put("content.event.end", new EventTimeModel(end).toPugModel(locale, displayZoneId)));
 
                         eventLocation.ifPresent(location ->
                             builder.put("content.event.location", new LocationModel(location).toPugModel()));
@@ -85,7 +86,11 @@ public class ReplyContentModelBuilder {
     }
 
     public interface LocaleStep {
-        TranslatorStep locale(Locale locale);
+        TimeZoneDisplayStep locale(Locale locale);
+    }
+
+    public interface TimeZoneDisplayStep {
+        TranslatorStep timeZoneDisplay(ZoneId zoneId);
     }
 
     public interface TranslatorStep {

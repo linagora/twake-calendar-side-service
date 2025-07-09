@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.amqp;
 
+import static com.linagora.calendar.storage.configuration.EntryIdentifier.LANGUAGE_IDENTIFIER;
+import static com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.TimeZoneSettingReader.TIMEZONE_IDENTIFIER;
 import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
@@ -31,9 +33,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
+import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -53,7 +57,6 @@ import org.apache.james.metrics.api.NoopGaugeRegistry;
 import org.apache.james.metrics.tests.RecordingMetricFactory;
 import org.apache.james.server.core.filesystem.FileSystemImpl;
 import org.apache.james.user.api.UsersRepository;
-import org.apache.james.user.api.UsersRepositoryException;
 import org.apache.james.util.Port;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -78,7 +81,7 @@ import com.linagora.calendar.smtp.template.MessageGenerator;
 import com.linagora.calendar.smtp.template.content.model.EventInCalendarLinkFactory;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.SimpleSessionProvider;
-import com.linagora.calendar.storage.configuration.resolver.SettingsBasedLocator;
+import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.path.json.JsonPath;
@@ -108,7 +111,7 @@ public class EventInviteEmailConsumerTest {
     @Order(2)
     static final MockSmtpServerExtension mockSmtpExtension = new MockSmtpServerExtension();
 
-    private static final SettingsBasedLocator settingsLocator = mock(SettingsBasedLocator.class);
+    private static final SettingsBasedResolver settingsResolver = mock(SettingsBasedResolver.class);
     private static final EventEmailFilter eventEmailFilter = spy(EventEmailFilter.acceptAll());
     private static ReactorRabbitMQChannelPool channelPool;
     private static SimpleConnectionPool connectionPool;
@@ -151,8 +154,11 @@ public class EventInviteEmailConsumerTest {
         organizer = sabreDavExtension.newTestUser();
         attendee = sabreDavExtension.newTestUser();
 
-        when(settingsLocator.getLanguageUserSetting(any(), any())).thenReturn(Mono.just(Locale.ENGLISH));
-
+        when(settingsResolver.readSavedSettings(any()))
+            .thenReturn(Mono.just(new SettingsBasedResolver.ResolvedSettings(
+                Map.of(
+                    LANGUAGE_IDENTIFIER, Locale.ENGLISH,
+                    TIMEZONE_IDENTIFIER, ZoneId.of("Asia/Ho_Chi_Minh")))));
         setupEventEmailConsumer();
         clearSmtpMock();
     }
@@ -165,7 +171,7 @@ public class EventInviteEmailConsumerTest {
             .forEach(queueName -> sender.delete(QueueSpecification.queue().name(queueName))
                 .block());
 
-        Mockito.reset(settingsLocator);
+        Mockito.reset(settingsResolver);
         Mockito.reset(eventEmailFilter);
     }
 
@@ -197,11 +203,11 @@ public class EventInviteEmailConsumerTest {
         when(usersRepository.containsReactive(any())).thenReturn(Mono.just(INTERNAL_USER));
 
         EventMailHandler mailHandler = new EventMailHandler(mailSenderFactory,
-            settingsLocator,
             messageFactory,
             linkFactory,
             new SimpleSessionProvider(new RandomMailboxSessionIdGenerator()),
-            usersRepository);
+            usersRepository,
+            settingsResolver);
 
         EventEmailConsumer consumer = new EventEmailConsumer(channelPool, QueueArguments.Builder::new, mailHandler,
             eventEmailFilter);

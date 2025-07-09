@@ -18,27 +18,39 @@
 
 package com.linagora.calendar.smtp.template.content.model;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.Map;
 
-public record EventTimeModel(ZonedDateTime dateTime) {
+import org.junit.jupiter.api.Test;
 
-    public Map<String, Object> toPugModel(Locale locale, ZoneId zoneToDisplay) {
-        return Map.of(
-            "date", format("yyyy-MM-dd", locale, zoneToDisplay),
-            "time", format("HH:mm", locale, zoneToDisplay),
-            "fullDate", format("EEEE, dd MMMM yyyy", locale, zoneToDisplay),
-            "fullDateTime", format("EEEE, dd MMMM yyyy HH:mm", locale, zoneToDisplay),
-            "timezone", zoneToDisplay.getId()
-        );
+public class EventTimeModelTest {
+
+    @Test
+    void shouldConvertAndFormatToVietnamTimeZone() {
+        ZonedDateTime eventTime = ZonedDateTime.parse("2025-07-07T07:00:00+02:00[Europe/Paris]");
+        EventTimeModel model = new EventTimeModel(eventTime);
+
+        Map<String, Object> pugModel = model.toPugModel(Locale.ENGLISH, ZoneId.of("Asia/Ho_Chi_Minh"));
+
+        assertThat(pugModel.get("date")).isEqualTo("2025-07-07");
+        assertThat(pugModel.get("time")).isEqualTo("12:00");
+        assertThat(pugModel.get("fullDate")).isEqualTo("Monday, 07 July 2025");
+        assertThat(pugModel.get("fullDateTime")).isEqualTo("Monday, 07 July 2025 12:00");
+        assertThat(pugModel.get("timezone")).isEqualTo("Asia/Ho_Chi_Minh");
     }
 
-    private String format(String pattern, Locale locale, ZoneId displayZone) {
-        return dateTime
-            .withZoneSameInstant(displayZone)
-            .format(DateTimeFormatter.ofPattern(pattern, locale));
+    @Test
+    void shouldFormatInFrenchLocale() {
+        ZonedDateTime eventTime = ZonedDateTime.parse("2025-12-25T09:30:00+01:00[Europe/Paris]");
+        EventTimeModel model = new EventTimeModel(eventTime);
+
+        Map<String, Object> pugModel = model.toPugModel(Locale.FRENCH, ZoneId.of("Europe/Paris"));
+
+        assertThat(pugModel.get("fullDate")).isEqualTo("jeudi, 25 décembre 2025");
+        assertThat(pugModel.get("fullDateTime")).isEqualTo("jeudi, 25 décembre 2025 09:30");
     }
 }
