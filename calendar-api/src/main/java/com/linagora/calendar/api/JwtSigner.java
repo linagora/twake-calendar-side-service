@@ -16,7 +16,8 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.restapi.routes;
+package com.linagora.calendar.api;
+
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -71,7 +72,7 @@ public class JwtSigner {
             return new JwtSigner(clock, tokenValidity, key, metricFactory);
         }
     }
-    
+
     private final Clock clock;
     private final Duration tokenValidity;
     private final Key key;
@@ -86,12 +87,12 @@ public class JwtSigner {
 
     public Mono<String> generate(String sub) {
         return Mono.from(metricFactory.decoratePublisherWithTimerMetric("jwt-signer", Mono.fromCallable(() -> Jwts.builder()
-            .setHeaderParam("typ", "JWT")
-            .claim("sub", sub)
-            .signWith(key, SignatureAlgorithm.RS256)
-            .setIssuedAt(Date.from(clock.instant()))
-            .setExpiration(Date.from(clock.instant().plus(tokenValidity)))
-            .compact())))
+                .setHeaderParam("typ", "JWT")
+                .claim("sub", sub)
+                .signWith(key, SignatureAlgorithm.RS256)
+                .setIssuedAt(Date.from(clock.instant()))
+                .setExpiration(Date.from(clock.instant().plus(tokenValidity)))
+                .compact())))
             .subscribeOn(Schedulers.parallel());
     }
 }

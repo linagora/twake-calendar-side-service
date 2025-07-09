@@ -29,7 +29,7 @@ import org.apache.james.metrics.api.MetricFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.linagora.calendar.restapi.routes.JwtSigner;
+import com.linagora.calendar.api.JwtSigner;
 
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaders;

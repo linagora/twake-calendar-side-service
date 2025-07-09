@@ -27,34 +27,17 @@
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
-    <artifactId>calendar-rest-api</artifactId>
-    <name>Twake Calendar :: Side service :: Rest API</name>
+    <artifactId>calendar-api</artifactId>
+    <name>Twake Calendar :: Side service :: API</name>
 
     <dependencies>
         <dependency>
-            <groupId>${project.groupId}</groupId>
-            <artifactId>calendar-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>${project.groupId}</groupId>
-            <artifactId>calendar-storage-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>${project.groupId}</groupId>
-            <artifactId>calendar-dav</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>${project.groupId}</groupId>
-            <artifactId>calendar-smtp</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>${project.groupId}</groupId>
-            <artifactId>jmap-extensions-api</artifactId>
-            <version>${project.version}</version>
+            <groupId>${james.groupId}</groupId>
+            <artifactId>james-core</artifactId>
         </dependency>
         <dependency>
             <groupId>${james.groupId}</groupId>
-            <artifactId>james-server-jmap</artifactId>
+            <artifactId>metrics-api</artifactId>
         </dependency>
         <dependency>
             <groupId>${james.groupId}</groupId>
