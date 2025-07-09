@@ -21,17 +21,21 @@ package com.linagora.calendar.restapi;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
+import java.util.List;
 import java.util.Set;
 
 import jakarta.inject.Named;
 
 import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.commons.io.IOUtils;
 import org.apache.james.filesystem.api.FileSystem;
 import org.apache.james.jmap.JMAPRoutes;
 import org.apache.james.jmap.http.AuthenticationStrategy;
 import org.apache.james.jmap.http.Authenticator;
+import org.apache.james.jwt.JwtConfiguration;
 import org.apache.james.jwt.introspection.IntrospectionEndpoint;
 import org.apache.james.metrics.api.MetricFactory;
 import org.apache.james.utils.GuiceProbe;
@@ -39,6 +43,7 @@ import org.apache.james.utils.InitializationOperation;
 import org.apache.james.utils.InitilizationOperationBuilder;
 import org.apache.james.utils.PropertiesProvider;
 
+import com.github.fge.lambdas.Throwing;
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.Scopes;
@@ -46,6 +51,7 @@ import com.google.inject.Singleton;
 import com.google.inject.multibindings.Multibinder;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.linagora.calendar.api.JwtSigner;
+import com.linagora.calendar.api.JwtVerifier;
 import com.linagora.calendar.restapi.auth.BasicAuthenticationStrategy;
 import com.linagora.calendar.restapi.auth.JwtAuthenticationStrategy;
 import com.linagora.calendar.restapi.auth.LemonCookieAuthenticationStrategy;
@@ -180,6 +186,17 @@ public class RestApiModule extends AbstractModule {
         JwtSigner.Factory jwtSigerFactory = new JwtSigner.Factory(clock, configuration.getJwtValidity(),
             privateKeyPath.toPath(), metricFactory);
         return jwtSigerFactory.instantiate();
+    }
+
+    @Provides
+    @Singleton
+    JwtVerifier provideJwtVerifier(RestApiConfiguration configuration,
+                                   FileSystem fileSystem) {
+        List<String> loadedKeys = configuration.getJwtPublicPath()
+            .stream()
+            .map(Throwing.function(path -> IOUtils.toString(fileSystem.getResource(path), StandardCharsets.UTF_8)))
+            .toList();
+        return JwtVerifier.create(new JwtConfiguration(loadedKeys));
     }
 
     @ProvidesIntoSet
