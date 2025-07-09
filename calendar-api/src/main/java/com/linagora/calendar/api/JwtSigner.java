@@ -26,6 +26,7 @@ import java.security.PrivateKey;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Date;
+import java.util.Map;
 
 import org.apache.james.metrics.api.MetricFactory;
 import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
@@ -34,8 +35,12 @@ import org.bouncycastle.openssl.PEMParser;
 import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter;
 import org.bouncycastle.util.io.pem.PemReader;
 
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableMap;
+
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.lang.Collections;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
@@ -73,6 +78,8 @@ public class JwtSigner {
         }
     }
 
+    private static final String SUB_CLAIM = "sub";
+
     private final Clock clock;
     private final Duration tokenValidity;
     private final Key key;
@@ -86,9 +93,14 @@ public class JwtSigner {
     }
 
     public Mono<String> generate(String sub) {
+        return generate(ImmutableMap.of(SUB_CLAIM, sub));
+    }
+
+    public Mono<String> generate(Map<String, Object> claims) {
+        Preconditions.checkArgument(!Collections.isEmpty(claims), "claims can't be empty");
         return Mono.from(metricFactory.decoratePublisherWithTimerMetric("jwt-signer", Mono.fromCallable(() -> Jwts.builder()
                 .setHeaderParam("typ", "JWT")
-                .claim("sub", sub)
+                .claims(claims)
                 .signWith(key, SignatureAlgorithm.RS256)
                 .setIssuedAt(Date.from(clock.instant()))
                 .setExpiration(Date.from(clock.instant().plus(tokenValidity)))
