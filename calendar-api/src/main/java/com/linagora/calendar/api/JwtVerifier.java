@@ -60,7 +60,7 @@ public class JwtVerifier {
         return jwtParsers.stream()
             .flatMap(jwtParser -> verifyWithParsers(jwtParser, jwt).stream())
             .findFirst()
-            .orElseThrow(() -> new JwtException("Invalid JWT token" + jwt));
+            .orElseThrow(() -> new JwtException("Invalid JWT token " + jwt));
     }
 
     private Optional<Claims> verifyWithParsers(JwtParser jwtParser, String jwt) {

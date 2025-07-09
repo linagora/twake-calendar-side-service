@@ -18,12 +18,14 @@
 
 package com.linagora.calendar.api;
 
+import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
 import org.apache.james.core.MailAddress;
 
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
 
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -65,6 +67,15 @@ public interface ParticipationTokenSigner {
                         throw new IllegalArgumentException("Invalid email address: " + email, e);
                     }
                 };
+
+                List<String> requiredKeys = ImmutableList.of(ORGANIZER_EMAIL, ATTENDEE_EMAIL, UID, CALENDAR_URI, ACTION);
+                List<String> missingKeys = requiredKeys.stream()
+                    .filter(key -> !map.containsKey(key))
+                    .toList();
+
+                if (!missingKeys.isEmpty()) {
+                    throw new IllegalArgumentException("Missing required keys in claim map: " + missingKeys);
+                }
 
                 return new Participation(
                     toMailAddress.apply((String) map.get(ORGANIZER_EMAIL)),
