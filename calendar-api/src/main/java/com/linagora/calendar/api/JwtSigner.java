@@ -39,8 +39,8 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
 
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.lang.Collections;
+import io.jsonwebtoken.security.SecureDigestAlgorithm;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
@@ -99,11 +99,11 @@ public class JwtSigner {
     public Mono<String> generate(Map<String, Object> claims) {
         Preconditions.checkArgument(!Collections.isEmpty(claims), "claims can't be empty");
         return Mono.from(metricFactory.decoratePublisherWithTimerMetric("jwt-signer", Mono.fromCallable(() -> Jwts.builder()
-                .setHeaderParam("typ", "JWT")
+                .header().add("typ", "JWT").and()
                 .claims(claims)
-                .signWith(key, SignatureAlgorithm.RS256)
-                .setIssuedAt(Date.from(clock.instant()))
-                .setExpiration(Date.from(clock.instant().plus(tokenValidity)))
+                .signWith(key, (SecureDigestAlgorithm) Jwts.SIG.RS256)
+                .issuedAt(Date.from(clock.instant()))
+                .expiration(Date.from(clock.instant().plus(tokenValidity)))
                 .compact())))
             .subscribeOn(Schedulers.parallel());
     }
