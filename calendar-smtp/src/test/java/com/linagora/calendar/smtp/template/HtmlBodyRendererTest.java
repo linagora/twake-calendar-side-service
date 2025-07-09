@@ -25,6 +25,7 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Locale;
@@ -100,6 +101,7 @@ class HtmlBodyRendererTest {
                 .eventResources(List.of(new PersonModel("Andre anton", "anton@example.com"), new PersonModel("Celine", "celine@example.com")))
                 .eventDescription(Optional.of("Discuss project updates and blockers"))
                 .locale(locale)
+                .timeZoneDisplay(ZoneId.of("Asia/Ho_Chi_Minh"))
                 .translator(translator)
                 .eventInCalendarLink(new EventInCalendarLinkFactory(URI.create("http://localhost:3000/").toURL()))
                 .buildAsMap();
@@ -329,6 +331,7 @@ class HtmlBodyRendererTest {
                 .newEvent(newEventModel)
                 .editorDisplayName("Editor 123")
                 .locale(locale)
+                .zoneToDisplay(ZoneId.of("Asia/Ho_Chi_Minh"))
                 .translator(translator)
                 .eventInCalendarLink(new EventInCalendarLinkFactory(URI.create("http://localhost:3000/").toURL()))
                 .buildAsMap();

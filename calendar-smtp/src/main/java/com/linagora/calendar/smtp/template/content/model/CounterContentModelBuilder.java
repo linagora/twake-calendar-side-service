@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.smtp.template.content.model;
 
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Locale;
@@ -70,13 +71,13 @@ public class CounterContentModelBuilder {
             }
         }
 
-        public Map<String, Object> toPugModel(Locale locale) {
+        public Map<String, Object> toPugModel(Locale locale, ZoneId zoneToDisplay) {
             ImmutableMap.Builder<String, Object> builder = ImmutableMap.builder();
 
             builder.put("content.event.allDay", allDay);
-            builder.put("content.event.start", new EventTimeModel(start).toPugModel(locale));
+            builder.put("content.event.start", new EventTimeModel(start).toPugModel(locale, zoneToDisplay));
             comment.ifPresent(value -> builder.put("content.event.comment", value));
-            end.ifPresent(e -> builder.put("content.event.end", new EventTimeModel(e).toPugModel(locale)));
+            end.ifPresent(e -> builder.put("content.event.end", new EventTimeModel(e).toPugModel(locale, zoneToDisplay)));
 
             return builder.build();
         }
@@ -161,15 +162,15 @@ public class CounterContentModelBuilder {
             }
         }
 
-        public Map<String, Object> toPugModel(Locale locale) {
+        public Map<String, Object> toPugModel(Locale locale, ZoneId zoneToDisplay) {
             ImmutableMap.Builder<String, Object> builder = ImmutableMap.builder();
 
             builder.put("subject.summary", summary);
             builder.put("content.oldEvent", true);
             builder.put("content.oldEvent.summary", summary);
             builder.put("content.oldEvent.allDay", allDay);
-            builder.put("content.oldEvent.start", new EventTimeModel(start).toPugModel(locale));
-            end.ifPresent(e -> builder.put("content.oldEvent.end", new EventTimeModel(e).toPugModel(locale)));
+            builder.put("content.oldEvent.start", new EventTimeModel(start).toPugModel(locale, zoneToDisplay));
+            end.ifPresent(e -> builder.put("content.oldEvent.end", new EventTimeModel(e).toPugModel(locale, zoneToDisplay)));
             location.ifPresent(loc -> builder.put("content.oldEvent.location", new LocationModel(loc).toPugModel()));
             description.ifPresent(desc -> builder.put("content.oldEvent.description", desc));
 
@@ -188,11 +189,12 @@ public class CounterContentModelBuilder {
     }
 
     public static OldEventStep builder() {
-        return oldEvent -> newEvent -> editorDisplayName -> locale -> translator -> linkFactory -> () -> {
+        return oldEvent -> newEvent -> editorDisplayName ->
+            locale -> zoneToDisplay -> translator -> linkFactory -> () -> {
             ImmutableMap.Builder<String, Object> mapBuilder = ImmutableMap.builder();
 
-            mapBuilder.putAll(oldEvent.toPugModel(locale));
-            mapBuilder.putAll(newEvent.toPugModel(locale));
+            mapBuilder.putAll(oldEvent.toPugModel(locale, zoneToDisplay));
+            mapBuilder.putAll(newEvent.toPugModel(locale, zoneToDisplay));
             mapBuilder.put("content.editorDisplayName", editorDisplayName);
             mapBuilder.put("content.seeInCalendarLink", linkFactory.getEventInCalendarLink(newEvent.start()));
 
@@ -213,7 +215,11 @@ public class CounterContentModelBuilder {
     }
 
     public interface LocaleStep {
-        TranslatorStep locale(Locale locale);
+        ZoneToDisplayStep locale(Locale locale);
+    }
+
+    public interface ZoneToDisplayStep {
+        TranslatorStep zoneToDisplay(ZoneId zoneId);
     }
 
     public interface TranslatorStep {

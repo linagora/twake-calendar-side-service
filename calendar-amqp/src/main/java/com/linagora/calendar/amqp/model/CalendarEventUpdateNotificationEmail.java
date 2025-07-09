@@ -52,19 +52,19 @@ public record CalendarEventUpdateNotificationEmail(CalendarEventNotificationEmai
         );
     }
 
-    public Map<String, Object> toPugModel(Locale locale, EventInCalendarLinkFactory eventInCalendarLinkFactory, boolean isInternalUser) {
+    public Map<String, Object> toPugModel(Locale locale, ZoneId zoneToDisplay, EventInCalendarLinkFactory eventInCalendarLinkFactory, boolean isInternalUser) {
         VEvent vEvent = (VEvent) base.event().getComponent(Component.VEVENT).get();
         PersonModel organizer = PERSON_TO_MODEL.apply(EventParseUtils.getOrganizer(vEvent));
         String summary = EventParseUtils.getSummary(vEvent).orElse(StringUtils.EMPTY);
         ZonedDateTime startDate = EventParseUtils.getStartTime(vEvent);
 
         ImmutableMap.Builder<String, Object> contentBuilder = ImmutableMap.builder();
-        contentBuilder.put("event", base.toPugModel(locale));
+        contentBuilder.put("event", base.toPugModel(locale, zoneToDisplay));
         if (isInternalUser) {
             contentBuilder.put("seeInCalendarLink", eventInCalendarLinkFactory.getEventInCalendarLink(startDate));
         }
 
-        maybeChanges.ifPresent(changes -> contentBuilder.put("changes", toPugModel(locale, changes)));
+        maybeChanges.ifPresent(changes -> contentBuilder.put("changes", toPugModel(locale, zoneToDisplay, changes)));
 
         return ImmutableMap.of(
             "content", contentBuilder.build(),
@@ -75,7 +75,7 @@ public record CalendarEventUpdateNotificationEmail(CalendarEventNotificationEmai
         );
     }
 
-    private Map<String, Object> toPugModel(Locale locale, CalendarEventNotificationEmailDTO.Changes changes) {
+    private Map<String, Object> toPugModel(Locale locale, ZoneId zoneToDisplay, CalendarEventNotificationEmailDTO.Changes changes) {
         ImmutableMap.Builder<String, Object> changesBuilder = ImmutableMap.builder();
         changes.summary().ifPresent(summaryChange -> {
             changesBuilder.put("summary", ImmutableMap.of(
@@ -85,12 +85,12 @@ public record CalendarEventUpdateNotificationEmail(CalendarEventNotificationEmai
         changes.dtstart().ifPresent(dtstartChange -> {
             changesBuilder.put("isOldEventAllDay", dtstartChange.previous().isAllDay());
             changesBuilder.put("dtstart", ImmutableMap.of(
-                "previous", toEventTimeModel(dtstartChange).toPugModel(locale)
+                "previous", toEventTimeModel(dtstartChange).toPugModel(locale, zoneToDisplay)
             ));
         });
         changes.dtend().ifPresent(dtendChange ->
             changesBuilder.put("dtend", ImmutableMap.of(
-                "previous", toEventTimeModel(dtendChange).toPugModel(locale)
+                "previous", toEventTimeModel(dtendChange).toPugModel(locale, zoneToDisplay)
         )));
         changes.location().ifPresent(locationChange ->
             changesBuilder.put("location", ImmutableMap.of(

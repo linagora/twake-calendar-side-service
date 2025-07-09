@@ -20,6 +20,7 @@ package com.linagora.calendar.amqp.model;
 
 import static com.linagora.calendar.amqp.model.CalendarEventNotificationEmail.PERSON_TO_MODEL;
 
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.Locale;
 import java.util.Map;
@@ -41,14 +42,14 @@ public record CalendarEventCancelNotificationEmail(CalendarEventNotificationEmai
         return new CalendarEventCancelNotificationEmail(CalendarEventNotificationEmail.from(dto));
     }
 
-    public Map<String, Object> toPugModel(Locale locale, EventInCalendarLinkFactory eventInCalendarLinkFactory, boolean isInternalUser) {
+    public Map<String, Object> toPugModel(Locale locale, ZoneId zoneToDisplay, EventInCalendarLinkFactory eventInCalendarLinkFactory, boolean isInternalUser) {
         VEvent vEvent = (VEvent) base.event().getComponent(Component.VEVENT).get();
         PersonModel organizer = PERSON_TO_MODEL.apply(EventParseUtils.getOrganizer(vEvent));
         String summary = EventParseUtils.getSummary(vEvent).orElse(StringUtils.EMPTY);
         ZonedDateTime startDate = EventParseUtils.getStartTime(vEvent);
 
         ImmutableMap.Builder<String, Object> contentBuilder = ImmutableMap.builder();
-        contentBuilder.put("event", base.toPugModel(locale));
+        contentBuilder.put("event", base.toPugModel(locale, zoneToDisplay));
         if (isInternalUser) {
             contentBuilder.put("seeInCalendarLink", eventInCalendarLinkFactory.getEventInCalendarLink(startDate));
         }

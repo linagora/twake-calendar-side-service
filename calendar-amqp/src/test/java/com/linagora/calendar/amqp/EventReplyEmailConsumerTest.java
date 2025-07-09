@@ -19,6 +19,7 @@
 package com.linagora.calendar.amqp;
 
 import static com.linagora.calendar.amqp.EventInviteEmailConsumerTest.INTERNAL_USER;
+import static com.linagora.calendar.storage.configuration.EntryIdentifier.LANGUAGE_IDENTIFIER;
 import static io.restassured.RestAssured.given;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
@@ -34,9 +35,11 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -80,7 +83,7 @@ import com.linagora.calendar.smtp.template.MessageGenerator;
 import com.linagora.calendar.smtp.template.content.model.EventInCalendarLinkFactory;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.SimpleSessionProvider;
-import com.linagora.calendar.storage.configuration.resolver.SettingsBasedLocator;
+import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.path.json.JsonPath;
@@ -108,7 +111,7 @@ public class EventReplyEmailConsumerTest {
     @Order(2)
     static final MockSmtpServerExtension mockSmtpExtension = new MockSmtpServerExtension();
 
-    private static final SettingsBasedLocator settingsLocator = mock(SettingsBasedLocator.class);
+    private static final SettingsBasedResolver settingsResolver = mock(SettingsBasedResolver.class);
     private static final EventEmailFilter eventEmailFilter = spy(EventEmailFilter.acceptAll());
     private static ReactorRabbitMQChannelPool channelPool;
     private static SimpleConnectionPool connectionPool;
@@ -150,7 +153,7 @@ public class EventReplyEmailConsumerTest {
         organizer = sabreDavExtension.newTestUser();
         attendee = sabreDavExtension.newTestUser();
 
-        when(settingsLocator.getLanguageUserSetting(any(), any())).thenReturn(Mono.just(Locale.ENGLISH));
+        when(settingsResolver.readSavedSettings(any())).thenReturn(Mono.just(SettingsBasedResolver.ResolvedSettings.DEFAULT));
 
         setupEventEmailConsumer();
         clearSmtpMock();
@@ -164,7 +167,7 @@ public class EventReplyEmailConsumerTest {
             .forEach(queueName -> sender.delete(QueueSpecification.queue().name(queueName))
                 .block());
 
-        Mockito.reset(settingsLocator);
+        Mockito.reset(settingsResolver);
         Mockito.reset(eventEmailFilter);
     }
 
@@ -196,11 +199,11 @@ public class EventReplyEmailConsumerTest {
         when(usersRepository.containsReactive(any())).thenReturn(Mono.just(INTERNAL_USER));
 
         EventMailHandler mailHandler = new EventMailHandler(mailSenderFactory,
-            settingsLocator,
             messageFactory,
             linkFactory,
             new SimpleSessionProvider(new RandomMailboxSessionIdGenerator()),
-            usersRepository);
+            usersRepository,
+            settingsResolver);
 
         EventEmailConsumer consumer = new EventEmailConsumer(channelPool, QueueArguments.Builder::new, mailHandler,
             eventEmailFilter);
@@ -224,7 +227,7 @@ public class EventReplyEmailConsumerTest {
     @ParameterizedTest
     @ValueSource(strings = {"ACCEPTED", "DECLINED", "TENTATIVE"})
     void shouldSendEmailWhenAttendeeRepliesToEvent(String partStatValue) {
-        when(settingsLocator.getLanguageUserSetting(any())).thenReturn(Mono.just(Locale.ENGLISH));
+        when(settingsResolver.readSavedSettings(any())).thenReturn(Mono.just(SettingsBasedResolver.ResolvedSettings.DEFAULT));
         // Ensure no event exists initially for attendee
         assertThat(davTestHelper.findFirstEventId(attendee)).isEmpty();
 
@@ -282,8 +285,11 @@ public class EventReplyEmailConsumerTest {
 
     @Test
     void shouldSendLocalizedEmailAccordingToUserLanguageSetting() {
-        when(settingsLocator.getLanguageUserSetting(any()))
-            .thenReturn(Mono.just(Locale.FRENCH));
+        when(settingsResolver.readSavedSettings(any()))
+            .thenReturn(Mono.just( new SettingsBasedResolver.ResolvedSettings(Map.of(
+                LANGUAGE_IDENTIFIER, Locale.FRENCH,
+                SettingsBasedResolver.TimeZoneSettingReader.TIMEZONE_IDENTIFIER, ZoneId.of("UTC")
+            ))));
 
         JsonPath smtpMailsResponse = simulateAcceptedReplyAndWaitForEmail();
 
@@ -322,8 +328,8 @@ public class EventReplyEmailConsumerTest {
         String eventDavIdOnAttendee = waitForEventCreation(attendee);
 
         // Mock exception
-        when(settingsLocator.getLanguageUserSetting(any(), any()))
-            .thenReturn(Mono.defer(() -> Mono.error(new RuntimeException("Temporary exception"))));
+        when(eventEmailFilter.shouldProcess(any()))
+            .thenThrow(new RuntimeException("Temporary exception"));
 
         String replyDataFirst = generateCalendarData(
             eventUid,
@@ -334,9 +340,10 @@ public class EventReplyEmailConsumerTest {
 
         Thread.sleep(1000); // Wait for the exception to be processed
 
-        // Recover by returning a valid language setting
-        when(settingsLocator.getLanguageUserSetting(any(), any()))
-            .thenReturn(Mono.just(Locale.ENGLISH));
+        // Recover
+        Mockito.reset(eventEmailFilter);
+        when(eventEmailFilter.shouldProcess(any()))
+            .thenReturn(true);
 
         String replyDataSecond = generateCalendarData(
             eventUid,
