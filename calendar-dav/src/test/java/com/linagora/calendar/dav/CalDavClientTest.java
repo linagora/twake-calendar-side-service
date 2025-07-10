@@ -19,6 +19,7 @@
 package com.linagora.calendar.dav;
 
 import static com.linagora.calendar.dav.CalDavClient.CalDavExportException;
+import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -26,11 +27,18 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
 
+import javax.net.ssl.SSLException;
+
 import org.apache.commons.lang3.StringUtils;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linagora.calendar.dav.dto.CalendarEventReportResponse;
+import com.linagora.calendar.dav.dto.VCalendarDto;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.MailboxSessionUtil;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -44,8 +52,14 @@ public class CalDavClientTest {
 
     @RegisterExtension
     static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+    private static DavTestHelper davTestHelper;
 
     private CalDavClient testee;
+
+    @BeforeAll
+    static void setUp() throws SSLException {
+        davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration());
+    }
 
     @BeforeEach
     void setupEach() throws Exception {
@@ -449,4 +463,111 @@ public class CalDavClientTest {
 
         assertThat(uris).containsExactlyInAnyOrder(CalendarURL.from(user.id()), anotherCalendarURL);
     }
+
+    @Test
+    void calendarReportByUidShouldReturnExpectedJsonNode() throws JsonProcessingException {
+        OpenPaaSUser user = createOpenPaaSUser();
+        String uid = UUID.randomUUID().toString();
+        String ics = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            TRANSP:OPAQUE
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250102T120000Z
+            DTEND:20250102T130000Z
+            SUMMARY:Test Event
+            RRULE:FREQ=DAILY;COUNT=3
+            CLASS:PUBLIC
+            ORGANIZER;CN=john doe:mailto:%s
+            ATTENDEE;PARTSTAT=accepted;RSVP=false;ROLE=chair;CUTYPE=individual:mailto:%s
+            DESCRIPTION:This is a test event
+            LOCATION:office
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uid, user.username().asString(), user.username().asString());
+
+        davTestHelper.upsertCalendar(user, ics, uid);
+
+        CalendarEventReportResponse reportResponse = testee.calendarReportByUid(user.username(), user.id(), uid).block();
+
+        assertThat(reportResponse).isNotNull();
+        VCalendarDto vCalendarDto = VCalendarDto.from(reportResponse);
+
+        assertThatJson(new ObjectMapper().writeValueAsString(vCalendarDto.value()))
+            .isEqualTo("""
+                [
+                  "vcalendar",
+                  [
+                    ["version", {}, "text", "2.0"],
+                    ["prodid", {}, "text", "-//Sabre//Sabre VObject 4.1.3//EN"]
+                  ],
+                  [
+                    [
+                      "vevent",
+                      [
+                        ["uid", {}, "text", "%s"],
+                        ["transp", {}, "text", "OPAQUE"],
+                        ["dtstamp", {}, "date-time", "2025-01-01T10:00:00Z"],
+                        ["dtstart", {}, "date-time", "2025-01-02T12:00:00Z"],
+                        ["dtend", {}, "date-time", "2025-01-02T13:00:00Z"],
+                        ["summary", {}, "text", "Test Event"],
+                        ["rrule", {}, "recur", {"freq": "DAILY", "count": 3}],
+                        ["class", {}, "text", "PUBLIC"],
+                        ["organizer", {"cn": "john doe"}, "cal-address", "mailto:%s"],
+                        ["attendee", {
+                          "partstat": "accepted",
+                          "rsvp": "false",
+                          "role": "chair",
+                          "cutype": "individual"
+                        }, "cal-address", "mailto:%s"],
+                        ["description", {}, "text", "This is a test event"],
+                        ["location", {}, "text", "office"]
+                      ],
+                      []
+                    ]
+                  ]
+                ]
+                """.formatted(uid, user.username().asString(), user.username().asString()));
+    }
+
+    @Test
+    void calendarReportByUidShouldReturnEmptyWhenEventUidNotFound() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        String nonExistentUid = UUID.randomUUID().toString();
+
+        assertThat(testee.calendarReportByUid(user.username(), user.id(), nonExistentUid).blockOptional())
+            .isEmpty();
+    }
+
+    @Test
+    void calendarReportByUidShouldReturnEmptyWhenCalendarIdNotFound() {
+        OpenPaaSUser user = createOpenPaaSUser();
+
+        String uid = UUID.randomUUID().toString();
+        String ics = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            TRANSP:OPAQUE
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250102T120000Z
+            DTEND:20250102T130000Z
+            SUMMARY:Test Event
+            RRULE:FREQ=DAILY;COUNT=3
+            CLASS:PUBLIC
+            ORGANIZER;CN=john doe:mailto:%s
+            ATTENDEE;PARTSTAT=accepted;RSVP=false;ROLE=chair;CUTYPE=individual:mailto:%s
+            DESCRIPTION:This is a test event
+            LOCATION:office
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uid, user.username().asString(), user.username().asString());
+
+        davTestHelper.upsertCalendar(user, ics, uid);
+
+        assertThat(testee.calendarReportByUid(user.username(), createOpenPaaSUser().id(), uid).blockOptional())
+            .isEmpty();
+    }
+
 }

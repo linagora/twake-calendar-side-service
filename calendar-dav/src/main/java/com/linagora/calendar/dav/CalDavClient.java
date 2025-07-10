@@ -37,7 +37,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Streams;
+import com.linagora.calendar.dav.dto.CalendarEventReportResponse;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 
@@ -68,6 +70,7 @@ public class CalDavClient extends DavClient {
 
     private static final String CONTENT_TYPE_XML = "application/xml";
     private static final String CONTENT_TYPE_JSON = "application/json";
+    private static final HttpMethod REPORT_METHOD = HttpMethod.valueOf("REPORT");
 
     public CalDavClient(DavConfiguration config) throws SSLException {
         super(config);
@@ -261,4 +264,48 @@ public class CalDavClient extends DavClient {
                 }
             });
     }
+
+    public Mono<CalendarEventReportResponse> calendarReportByUid(Username username, OpenPaaSId calendarId, String eventUid) {
+        Preconditions.checkArgument(StringUtils.isNotEmpty(eventUid), "eventUid must not be empty");
+        Preconditions.checkArgument(calendarId != null, "calendarId must not be null");
+        Preconditions.checkArgument(username != null, "username must not be null");
+
+        String uri = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/" + calendarId.value() + ".json";
+
+        return client.headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_JSON)
+                .add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_JSON)
+                .add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username.asString())))
+            .request(REPORT_METHOD)
+            .uri(uri)
+            .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer("""
+                {"uid":"%s"}
+                """.formatted(eventUid).trim().getBytes(StandardCharsets.UTF_8))))
+            .responseSingle((response, content) -> {
+                int statusCode = response.status().code();
+
+                return content.asString(StandardCharsets.UTF_8)
+                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .flatMap(responseAsString -> {
+                        if (statusCode == HttpStatus.SC_OK) {
+                            if (StringUtils.isBlank(responseAsString)) {
+                                LOGGER.info("No calendar event found for user '{}' with calendarId '{}' and uid '{}'",
+                                    username.asString(), calendarId.value(), eventUid);
+                                return Mono.empty();
+                            }
+                            return Mono.fromCallable(() -> CalendarEventReportResponse.from(responseAsString));
+                        }
+                        if (statusCode == HttpStatus.SC_NOT_FOUND) {
+                            LOGGER.info("No calendar event found for user '{}' with calendarId '{}' and uid '{}'",
+                                username.asString(), calendarId.value(), eventUid);
+                            return Mono.empty();
+                        }
+
+                        return Mono.error(new DavClientException("""
+                            Unexpected response when get report calendar for user '%s' with calendarId %s and uid '%s',
+                            Status code: %d, content body: %s"""
+                            .formatted(username.asString(), calendarId.value(), eventUid, response.status().code(), responseAsString)));
+                    });
+            });
+    }
+
 }
