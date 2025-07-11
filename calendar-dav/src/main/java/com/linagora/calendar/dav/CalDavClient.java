@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.dav;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.function.UnaryOperator;
@@ -47,6 +48,7 @@ import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -65,6 +67,12 @@ public class CalDavClient extends DavClient {
         public CalDavExportException(CalendarURL calendarUrl, Username username, String davResponse) {
             super("Failed to export calendar. URL: " + calendarUrl.asUri() + ", User: " + username.asString() +
                 "\nDav Response: " + davResponse);
+        }
+    }
+
+    public static class RetriableDavClientException extends DavClientException {
+        public RetriableDavClientException(String message) {
+            super(message);
         }
     }
 
@@ -308,4 +316,58 @@ public class CalDavClient extends DavClient {
             });
     }
 
+    public Mono<Void> updateCalendarEvent(Username username, DavCalendarObject updatedCalendarObject) {
+        return client.headers(headers -> headers
+                .add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_XML)
+                .add(HttpHeaderNames.IF_MATCH, updatedCalendarObject.eTag())
+                .add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username.asString())))
+            .request(HttpMethod.PUT)
+            .uri(updatedCalendarObject.uri().toString())
+            .send(Mono.just(Unpooled.wrappedBuffer(
+                updatedCalendarObject.calendarData().toString().getBytes(StandardCharsets.UTF_8))))
+            .responseSingle((response, responseContent) -> {
+                HttpResponseStatus status = response.status();
+                if (status.equals(HttpResponseStatus.NO_CONTENT)) {
+                    return ReactorUtils.logAsMono(() ->
+                        LOGGER.info("Calendar object '{}' updated successfully.", updatedCalendarObject.uri()));
+                } else if (status.equals(HttpResponseStatus.PRECONDITION_FAILED)) {
+                    return Mono.error(new RetriableDavClientException(String.format("Precondition failed (ETag mismatch) when updating calendar object '%s'. Retry may be needed.", updatedCalendarObject.uri())));
+                } else {
+                    return Mono.error(new DavClientException(String.format("Unexpected status code: %d when updating calendar object '%s'", status.code(), updatedCalendarObject.uri())));
+                }
+            });
+    }
+
+    public Mono<DavCalendarObject> fetchCalendarEvent(Username username, URI calendarEventHref) {
+        return client.headers(headers ->
+                headers.add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username.asString())))
+            .get()
+            .uri(calendarEventHref.toString())
+            .responseSingle((response, content) -> {
+                int statusCode = response.status().code();
+
+                if (statusCode == HttpStatus.SC_OK) {
+                    return content
+                        .asByteArray()
+                        .flatMap(bytes -> Mono.fromCallable(() -> CalendarUtil.parseIcs(bytes)))
+                        .map(ics -> new DavCalendarObject(calendarEventHref, ics, response.responseHeaders().get("ETag")));
+                }
+
+                if (statusCode == HttpStatus.SC_NOT_FOUND) {
+                    LOGGER.info("No calendar event found for user '{}' with calendarHref '{}'",
+                        username.asString(), calendarEventHref);
+                    return Mono.empty();
+                }
+
+                return content.asString(StandardCharsets.UTF_8)
+                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .flatMap(body -> Mono.error(new DavClientException(String.format(
+                        "Unexpected response when getting calendar event for user '%s' with calendarHref '%s'. " +
+                            "Status code: %d, response body: %s",
+                        username.asString(),
+                        calendarEventHref,
+                        statusCode,
+                        body))));
+            });
+    }
 }
