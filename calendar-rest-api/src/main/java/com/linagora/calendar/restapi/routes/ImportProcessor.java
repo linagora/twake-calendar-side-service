@@ -18,16 +18,13 @@
 
 package com.linagora.calendar.restapi.routes;
 
-import static com.linagora.calendar.storage.configuration.EntryIdentifier.LANGUAGE_IDENTIFIER;
 import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 import static reactor.core.scheduler.Schedulers.DEFAULT_BOUNDED_ELASTIC_QUEUESIZE;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 
 import jakarta.inject.Inject;
@@ -49,9 +46,6 @@ import com.linagora.calendar.smtp.template.Language;
 import com.linagora.calendar.smtp.template.TemplateType;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
-import com.linagora.calendar.storage.configuration.resolver.ConfigurationResolver;
-import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
-import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.LanguageSettingReader;
 import com.linagora.calendar.storage.model.UploadedFile;
 
 import ezvcard.Ezvcard;
@@ -183,22 +177,21 @@ public class ImportProcessor {
     private final Scheduler mailScheduler;
     private final MailSender.Factory mailSenderFactory;
     private final ImportMailReportRender mailReportRender;
-    private final SettingsBasedResolver settingsBasedLocator;
+    private final UserSettingBasedLocator userSettingBasedLocator;
 
     @Inject
     public ImportProcessor(CardDavClient cardDavClient,
                            CalDavClient calDavClient,
                            MailSender.Factory mailSenderFactory,
                            ImportMailReportRender mailReportRender,
-                           ConfigurationResolver configurationResolver) {
+                           UserSettingBasedLocator userSettingBasedLocator) {
         this.importICSHandler = new ImportICSToDavHandler(calDavClient);
         this.importVCardHandler = new ImportVCardToDavHandler(cardDavClient);
         this.mailScheduler = Schedulers.newBoundedElastic(1, DEFAULT_BOUNDED_ELASTIC_QUEUESIZE,
             "sendMailScheduler");
         this.mailSenderFactory = mailSenderFactory;
         this.mailReportRender = mailReportRender;
-        this.settingsBasedLocator = SettingsBasedResolver.of(configurationResolver,
-            Set.of(LanguageSettingReader.INSTANCE, SettingsBasedResolver.TimeZoneSettingReader.INSTANCE));
+        this.userSettingBasedLocator = userSettingBasedLocator;
     }
 
     public Mono<Void> process(ImportType importType, UploadedFile uploadedFile,
@@ -211,17 +204,11 @@ public class ImportProcessor {
         };
 
         return importToDavHandler.handle(uploadedFile, username, baseId, resourceId)
-            .flatMap(importResult -> getLanguage(mailboxSession)
+            .flatMap(importResult -> userSettingBasedLocator.getLanguage(mailboxSession)
                 .doOnSuccess(language -> sendReportMail(importType, language, importResult, username)))
             .then();
     }
 
-    private Mono<Language> getLanguage(MailboxSession mailboxSession) {
-        return settingsBasedLocator.readSavedSettings(mailboxSession)
-            .flatMap(settings -> Mono.justOrEmpty(settings.get(LANGUAGE_IDENTIFIER, Locale.class)))
-            .defaultIfEmpty(Locale.ENGLISH)
-            .map(Language::new);
-    }
 
     private Disposable sendReportMail(ImportType importType, Language language, ImportResult importResult, Username receiver) {
         return mailReportRender.generateMail(importType, language, importResult, receiver)

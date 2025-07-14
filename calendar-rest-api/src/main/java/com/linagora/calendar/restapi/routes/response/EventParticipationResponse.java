@@ -16,38 +16,39 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.smtp.template.content.model;
+package com.linagora.calendar.restapi.routes.response;
 
 import java.net.URI;
-import java.net.URL;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.function.Function;
+import java.util.Locale;
 
-import jakarta.inject.Inject;
-import jakarta.inject.Named;
-import jakarta.inject.Singleton;
+import org.apache.james.core.MailAddress;
 
-import org.apache.commons.lang3.StringUtils;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.ImmutableMap;
+import com.linagora.calendar.dav.dto.VCalendarDto;
 
-public class EventInCalendarLinkFactory {
+public record EventParticipationResponse(VCalendarDto event,
+                                         MailAddress attendeeEmail,
+                                         Links links,
+                                         Locale locale) {
 
-    private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("MM-dd-yyyy");
-    private final Function<ZonedDateTime, URI> calendarBaseUrlFunction;
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    @Inject
-    @Singleton
-    public EventInCalendarLinkFactory(@Named("spaCalendarUrl") URL calendarBaseUrl)   {
-        this.calendarBaseUrlFunction = buildCalendarLinkFunction(calendarBaseUrl);
+    public record Links(URI yes,
+                        URI no,
+                        URI maybe) {
     }
 
-    private Function<ZonedDateTime, URI> buildCalendarLinkFunction(URL baseUrl) {
-        String base = baseUrl.toString();
-        return date -> URI.create(StringUtils.removeEnd(base, "/") + "/calendar/#/calendar?start=" + DATE_TIME_FORMATTER.format(date));
-    }
-
-    public String getEventInCalendarLink(ZonedDateTime startDate) {
-        return calendarBaseUrlFunction.apply(startDate)
-            .toString();
+    public byte[] jsonAsBytes() throws JsonProcessingException {
+        return MAPPER.writeValueAsBytes(ImmutableMap.builder()
+            .put("eventJSON", event.value())
+            .put("attendeeEmail", attendeeEmail.asString())
+            .put("locale", locale.getLanguage())
+            .put("links", ImmutableMap.of(
+                "yes", links.yes.toString(),
+                "no", links.no.toString(),
+                "maybe", links.maybe.toString()))
+            .build());
     }
 }

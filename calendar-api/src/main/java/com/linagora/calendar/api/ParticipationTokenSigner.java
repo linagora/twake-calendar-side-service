@@ -22,6 +22,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
+
 import org.apache.james.core.MailAddress;
 
 import com.google.common.base.Preconditions;
@@ -89,6 +92,8 @@ public interface ParticipationTokenSigner {
         private final JwtSigner jwtSigner;
         private final JwtVerifier jwtVerifier;
 
+        @Inject
+        @Singleton
         public Default(JwtSigner jwtSigner, JwtVerifier jwtVerifier) {
             this.jwtSigner = jwtSigner;
             this.jwtVerifier = jwtVerifier;

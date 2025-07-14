@@ -20,10 +20,12 @@ package com.linagora.calendar.restapi;
 
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import jakarta.inject.Named;
@@ -52,6 +54,7 @@ import com.google.inject.multibindings.Multibinder;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.linagora.calendar.api.JwtSigner;
 import com.linagora.calendar.api.JwtVerifier;
+import com.linagora.calendar.api.ParticipationTokenSigner;
 import com.linagora.calendar.restapi.auth.BasicAuthenticationStrategy;
 import com.linagora.calendar.restapi.auth.JwtAuthenticationStrategy;
 import com.linagora.calendar.restapi.auth.LemonCookieAuthenticationStrategy;
@@ -65,6 +68,7 @@ import com.linagora.calendar.restapi.routes.CheckTechnicalUserTokenRoute;
 import com.linagora.calendar.restapi.routes.ConfigurationRoute;
 import com.linagora.calendar.restapi.routes.DomainRoute;
 import com.linagora.calendar.restapi.routes.DownloadCalendarRoute;
+import com.linagora.calendar.restapi.routes.EventParticipationRoute;
 import com.linagora.calendar.restapi.routes.FileUploadRoute;
 import com.linagora.calendar.restapi.routes.ImportProxyRoute;
 import com.linagora.calendar.restapi.routes.ImportRoute;
@@ -119,6 +123,7 @@ public class RestApiModule extends AbstractModule {
         routes.addBinding().to(ImportProxyRoute.class);
         routes.addBinding().to(CalendarSearchRoute.class);
         routes.addBinding().to(CheckTechnicalUserTokenRoute.class);
+        routes.addBinding().to(EventParticipationRoute.class);
 
         Multibinder<AuthenticationStrategy> authenticationStrategies = Multibinder.newSetBinder(binder(), AuthenticationStrategy.class);
         authenticationStrategies.addBinding().to(BasicAuthenticationStrategy.class);
@@ -135,6 +140,8 @@ public class RestApiModule extends AbstractModule {
 
         bind(NoopPermissionChecker.class).toInstance(new NoopPermissionChecker());
         bind(SecretLinkPermissionChecker.class).to(NoopPermissionChecker.class);
+
+        bind(ParticipationTokenSigner.class).to(ParticipationTokenSigner.Default.class);
     }
 
     @Provides
@@ -220,5 +227,17 @@ public class RestApiModule extends AbstractModule {
         } catch (FileNotFoundException e) {
             return oidcAuthenticationStrategy;
         }
+    }
+
+    @Provides
+    @Singleton
+    @Named("spaCalendarUrl")
+    URL provideSpaCalendarUrl(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
+        String calendarUrlProperty = "spa.calendar.url";
+        Configuration config = propertiesProvider.getConfiguration("configuration");
+        return Optional.ofNullable(config.getString(calendarUrlProperty))
+            .map(Throwing.function(url -> URI.create(url).toURL()))
+            .orElseThrow(() -> new FileNotFoundException(
+                "Missing configuration for '" + calendarUrlProperty + "'"));
     }
 }
