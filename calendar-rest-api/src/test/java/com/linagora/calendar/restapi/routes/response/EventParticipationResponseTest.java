@@ -28,6 +28,7 @@ import org.apache.james.core.MailAddress;
 import org.junit.jupiter.api.Test;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linagora.calendar.api.EventParticipationActionLinkFactory.ActionLinks;
 import com.linagora.calendar.dav.dto.VCalendarDto;
 
 public class EventParticipationResponseTest {
@@ -42,7 +43,7 @@ public class EventParticipationResponseTest {
 
         MailAddress attendee = new MailAddress("test@example.com");
 
-        EventParticipationResponse.Links links = new EventParticipationResponse.Links(
+        ActionLinks links = new ActionLinks(
             URI.create("https://example.com/yes"),
             URI.create("https://example.com/no"),
             URI.create("https://example.com/maybe"));

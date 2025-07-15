@@ -20,15 +20,12 @@ package com.linagora.calendar.restapi.routes;
 
 import static com.linagora.calendar.restapi.RestApiConstants.JSON_HEADER;
 
-import java.net.URI;
-import java.net.URL;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
-import java.util.function.Function;
 import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
-import jakarta.inject.Named;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.Username;
@@ -40,8 +37,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.github.fge.lambdas.Throwing;
+import com.linagora.calendar.api.EventParticipationActionLinkFactory;
+import com.linagora.calendar.api.EventParticipationActionLinkFactory.ActionLinks;
 import com.linagora.calendar.api.Participation;
-import com.linagora.calendar.api.Participation.ParticipantAction;
 import com.linagora.calendar.api.ParticipationTokenSigner;
 import com.linagora.calendar.dav.CalDavEventRepository;
 import com.linagora.calendar.dav.CalendarEventNotFoundException;
@@ -67,22 +65,21 @@ public class EventParticipationRoute implements JMAPRoutes {
     private final MetricFactory metricFactory;
     private final ParticipationTokenSigner participationTokenSigner;
     private final CalDavEventRepository calDavEventRepository;
-    private final Function<String, URI> buildParticipationActionLinkFunction;
     private final UserSettingBasedLocator userSettingBasedLocator;
+    private final EventParticipationActionLinkFactory actionLinkFactory;
 
     @Inject
     public EventParticipationRoute(MetricFactory metricFactory,
                                    ParticipationTokenSigner participationTokenSigner,
                                    CalDavEventRepository calDavEventRepository,
-                                   @Named("spaExcalUrl") URL spaCalendarUrl,
+                                   EventParticipationActionLinkFactory actionLinkFactory,
                                    UserSettingBasedLocator userSettingBasedLocator) {
         this.metricFactory = metricFactory;
         this.participationTokenSigner = participationTokenSigner;
         this.calDavEventRepository = calDavEventRepository;
         this.userSettingBasedLocator = userSettingBasedLocator;
 
-        String baseUrl = spaCalendarUrl.toString();
-        this.buildParticipationActionLinkFunction = jwt -> URI.create(StringUtils.removeEnd(baseUrl, "/") + "/calendar/#/calendar/participation/?jwt=" + jwt);
+        this.actionLinkFactory = actionLinkFactory;
     }
 
     private Endpoint endpoint() {
@@ -144,26 +141,16 @@ public class EventParticipationRoute implements JMAPRoutes {
 
     private Mono<EventParticipationResponse> buildEventParticipationResponse(VCalendarDto eventDto,
                                                                              Participation participationRequest) {
-        return Mono.zip(userSettingBasedLocator.getLanguage(Username.fromMailAddress(participationRequest.attendee()),
-                    Username.fromMailAddress(participationRequest.organizer()))
-                .map(Language::locale), generateLinks(participationRequest))
+        Mono<Locale> getLocale = userSettingBasedLocator.getLanguage(Username.fromMailAddress(participationRequest.attendee()),
+                Username.fromMailAddress(participationRequest.organizer()))
+            .map(Language::locale);
+
+        Mono<ActionLinks> generateLinks = actionLinkFactory.generateLinks(participationRequest.organizer(),
+            participationRequest.attendee(), participationRequest.eventUid(), participationRequest.calendarURI());
+
+        return Mono.zip(getLocale, generateLinks)
             .map(tuple -> new EventParticipationResponse(eventDto, participationRequest.attendee(),
                 tuple.getT2(), tuple.getT1()));
-    }
-
-    private Mono<EventParticipationResponse.Links> generateLinks(Participation participationRequest) {
-        return Mono.zip(participationTokenSigner
-                    .signAsJwt(participationRequest.withAction(ParticipantAction.ACCEPTED)),
-                participationTokenSigner
-                    .signAsJwt(participationRequest.withAction(ParticipantAction.REJECTED)),
-                participationTokenSigner
-                    .signAsJwt(participationRequest.withAction(ParticipantAction.TENTATIVE)))
-            .map(tokens -> {
-                URI yesLink = buildParticipationActionLinkFunction.apply(tokens.getT1());
-                URI noLink = buildParticipationActionLinkFunction.apply(tokens.getT2());
-                URI maybeLink = buildParticipationActionLinkFunction.apply(tokens.getT3());
-                return new EventParticipationResponse.Links(yesLink, noLink, maybeLink);
-            });
     }
 
     private PartStat participantActionToPartStat(Participation.ParticipantAction action) {

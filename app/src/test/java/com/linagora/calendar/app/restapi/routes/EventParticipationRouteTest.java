@@ -354,7 +354,7 @@ public class EventParticipationRouteTest {
                 .jsonPath()
                 .getMap("links");
 
-            Thread.sleep(500);
+            Thread.sleep(1000);
             jwtYesSet.add(extractJwtFromUrl(links.get("yes")));
             jwtNoSet.add(extractJwtFromUrl(links.get("no")));
             jwtMaybeSet.add(extractJwtFromUrl(links.get("maybe")));
