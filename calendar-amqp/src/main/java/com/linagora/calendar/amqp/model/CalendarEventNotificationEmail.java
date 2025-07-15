@@ -71,7 +71,7 @@ public record CalendarEventNotificationEmail(MailAddress senderEmail,
     }
 
     public Map<String, Object> toPugModel(Locale locale, ZoneId zoneToDisplay) {
-        VEvent vEvent = (VEvent) event.getComponent(Component.VEVENT).get();
+        VEvent vEvent = getFirstVEvent();
         PersonModel organizer = PERSON_TO_MODEL.apply(EventParseUtils.getOrganizer(vEvent));
         String summary = EventParseUtils.getSummary(vEvent).orElse(StringUtils.EMPTY);
         ZonedDateTime startDate = EventParseUtils.getStartTime(vEvent);

@@ -72,6 +72,7 @@ import org.testcontainers.shaded.org.awaitility.Awaitility;
 import org.testcontainers.shaded.org.awaitility.core.ConditionFactory;
 
 import com.github.fge.lambdas.Throwing;
+import com.linagora.calendar.api.EventParticipationActionLinkFactory;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
@@ -203,7 +204,7 @@ public class EventReplyEmailConsumerTest {
             linkFactory,
             new SimpleSessionProvider(new RandomMailboxSessionIdGenerator()),
             usersRepository,
-            settingsResolver);
+            settingsResolver, mock(EventParticipationActionLinkFactory.class));
 
         EventEmailConsumer consumer = new EventEmailConsumer(channelPool, QueueArguments.Builder::new, mailHandler,
             eventEmailFilter);

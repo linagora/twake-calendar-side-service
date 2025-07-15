@@ -45,6 +45,8 @@ import com.linagora.calendar.amqp.model.CalendarEventCounterNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventInviteNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventReplyNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventUpdateNotificationEmail;
+import com.linagora.calendar.api.EventParticipationActionLinkFactory;
+import com.linagora.calendar.api.EventParticipationActionLinkFactory.ActionLinks;
 import com.linagora.calendar.smtp.Mail;
 import com.linagora.calendar.smtp.MailSender;
 import com.linagora.calendar.smtp.template.Language;
@@ -58,8 +60,10 @@ import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolve
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.LanguageSettingReader;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.ResolvedSettings;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.TimeZoneSettingReader;
+import com.linagora.calendar.storage.event.EventParseUtils;
 
 import net.fortuna.ical4j.model.property.Method;
+import net.fortuna.ical4j.model.property.Uid;
 import net.fortuna.ical4j.model.property.immutable.ImmutableMethod;
 import reactor.core.publisher.Mono;
 
@@ -84,6 +88,7 @@ public class EventMailHandler {
     private final EventInCalendarLinkFactory eventInCalendarLinkFactory;
     private final UsersRepository usersRepository;
     private final SettingsBasedResolver settingsBasedResolver;
+    private final EventParticipationActionLinkFactory participationActionLinkFactory;
 
     @Inject
     @Singleton
@@ -92,10 +97,10 @@ public class EventMailHandler {
                             MessageGenerator.Factory messageGeneratorFactory,
                             EventInCalendarLinkFactory eventInCalendarLinkFactory,
                             SimpleSessionProvider sessionProvider,
-                            UsersRepository usersRepository) {
+                            UsersRepository usersRepository, EventParticipationActionLinkFactory participationActionLinkFactory) {
         this(mailSenderFactory, messageGeneratorFactory, eventInCalendarLinkFactory, sessionProvider, usersRepository,
             SettingsBasedResolver.of(configurationResolver,
-                Set.of(LanguageSettingReader.INSTANCE, TimeZoneSettingReader.INSTANCE)));
+                Set.of(LanguageSettingReader.INSTANCE, TimeZoneSettingReader.INSTANCE)), participationActionLinkFactory);
     }
 
     public EventMailHandler(MailSender.Factory mailSenderFactory,
@@ -103,13 +108,15 @@ public class EventMailHandler {
                             EventInCalendarLinkFactory eventInCalendarLinkFactory,
                             SimpleSessionProvider sessionProvider,
                             UsersRepository usersRepository,
-                            SettingsBasedResolver settingsBasedResolver) {
+                            SettingsBasedResolver settingsBasedResolver,
+                            EventParticipationActionLinkFactory participationActionLinkFactory) {
         this.mailSenderFactory = mailSenderFactory;
         this.sessionProvider = sessionProvider;
         this.messageGeneratorFactory = messageGeneratorFactory;
         this.eventInCalendarLinkFactory = eventInCalendarLinkFactory;
         this.usersRepository = usersRepository;
         this.settingsBasedResolver = settingsBasedResolver;
+        this.participationActionLinkFactory = participationActionLinkFactory;
     }
 
     interface EventMessageGenerator {
@@ -152,11 +159,21 @@ public class EventMailHandler {
         private Mono<Message> generateInvitationMessage(ResolvedSettings resolvedSettings, MessageGenerator messageGenerator) {
             byte[] calendarAsBytes = event.base().eventAsBytes();
             List<MimeAttachment> attachments = EventMessageGenerator.createAttachments(calendarAsBytes, ImmutableMethod.REQUEST);
-
             MailAddress fromAddress = event.base().senderEmail();
-            return messageGenerator.generate(recipientUser,
-                Optional.of(fromAddress),
-                event.toPugModel(resolvedSettings.locale(), resolvedSettings.zoneId(), eventInCalendarLinkFactory, isInternalUser), attachments);
+
+            return generateActionLinks(event)
+                .map(actionLinks -> event.toPugModel(resolvedSettings.locale(), resolvedSettings.zoneId(), eventInCalendarLinkFactory, isInternalUser, actionLinks))
+                .flatMap(scopedVariable -> messageGenerator.generate(recipientUser, Optional.of(fromAddress),scopedVariable, attachments));
+        }
+
+        private Mono<ActionLinks> generateActionLinks(CalendarEventInviteNotificationEmail event) {
+            return Mono.just(event.base().getFirstVEvent())
+                .flatMap(vEvent -> {
+                    MailAddress organizerMail = EventParseUtils.getOrganizer(vEvent).email();
+                    MailAddress attendeeMail = event.base().recipientEmail();
+                    String eventUid = vEvent.getUid().map(Uid::getValue).orElseThrow();
+                    return participationActionLinkFactory.generateLinks(organizerMail, attendeeMail, eventUid, event.base().calendarURI());
+                });
         }
     }
 
