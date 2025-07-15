@@ -32,6 +32,7 @@ import org.apache.commons.lang3.StringUtils;
 
 import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.amqp.CalendarEventNotificationEmailDTO;
+import com.linagora.calendar.api.EventParticipationActionLinkFactory.ActionLinks;
 import com.linagora.calendar.smtp.template.content.model.EventInCalendarLinkFactory;
 import com.linagora.calendar.smtp.template.content.model.EventTimeModel;
 import com.linagora.calendar.smtp.template.content.model.PersonModel;
@@ -51,14 +52,21 @@ public record CalendarEventUpdateNotificationEmail(CalendarEventNotificationEmai
         );
     }
 
-    public Map<String, Object> toPugModel(Locale locale, ZoneId zoneToDisplay, EventInCalendarLinkFactory eventInCalendarLinkFactory, boolean isInternalUser) {
+    public Map<String, Object> toPugModel(Locale locale,
+                                          ZoneId zoneToDisplay,
+                                          EventInCalendarLinkFactory eventInCalendarLinkFactory,
+                                          boolean isInternalUser,
+                                          ActionLinks actionLinks) {
         VEvent vEvent = base.getFirstVEvent();
         PersonModel organizer = PERSON_TO_MODEL.apply(EventParseUtils.getOrganizer(vEvent));
         String summary = EventParseUtils.getSummary(vEvent).orElse(StringUtils.EMPTY);
         ZonedDateTime startDate = EventParseUtils.getStartTime(vEvent);
 
         ImmutableMap.Builder<String, Object> contentBuilder = ImmutableMap.builder();
-        contentBuilder.put("event", base.toPugModel(locale, zoneToDisplay));
+        contentBuilder.put("event", base.toPugModel(locale, zoneToDisplay))
+            .put("yesLink", actionLinks.yes())
+            .put("noLink", actionLinks.no())
+            .put("maybeLink", actionLinks.maybe());
         if (isInternalUser) {
             contentBuilder.put("seeInCalendarLink", eventInCalendarLinkFactory.getEventInCalendarLink(startDate));
         }
@@ -70,8 +78,7 @@ public record CalendarEventUpdateNotificationEmail(CalendarEventNotificationEmai
             "subject.summary", maybeChanges.flatMap(CalendarEventNotificationEmailDTO.Changes::summary)
                 .map(CalendarEventNotificationEmailDTO.StringChange::previous)
                 .orElse(summary),
-            "subject.organizer", organizer.cn()
-        );
+            "subject.organizer", organizer.cn());
     }
 
     private Map<String, Object> toPugModel(Locale locale, ZoneId zoneToDisplay, CalendarEventNotificationEmailDTO.Changes changes) {

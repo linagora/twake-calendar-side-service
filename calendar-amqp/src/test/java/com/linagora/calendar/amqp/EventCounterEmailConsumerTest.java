@@ -68,6 +68,8 @@ import org.testcontainers.shaded.org.awaitility.core.ConditionFactory;
 
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.api.EventParticipationActionLinkFactory;
+import com.linagora.calendar.api.Participation;
+import com.linagora.calendar.api.ParticipationTokenSigner;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DavTestHelper.CounterRequest;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
@@ -190,13 +192,21 @@ public class EventCounterEmailConsumerTest {
 
         UsersRepository usersRepository = mock(UsersRepository.class);
         when(usersRepository.containsReactive(any())).thenReturn(Mono.just(INTERNAL_USER));
+        ParticipationTokenSigner participationTokenSigner = mock(ParticipationTokenSigner.class);
+        when(participationTokenSigner.signAsJwt(any(Participation.class)))
+            .thenReturn(Mono.just("signedToken"));
+
+        EventParticipationActionLinkFactory actionLinkFactory = new EventParticipationActionLinkFactory(
+            participationTokenSigner,
+            URI.create("http://localhost:8888/").toURL());
 
         EventMailHandler mailHandler = new EventMailHandler(mailSenderFactory,
             messageFactory,
             linkFactory,
             new SimpleSessionProvider(new RandomMailboxSessionIdGenerator()),
             usersRepository,
-            settingsResolver, mock(EventParticipationActionLinkFactory.class));
+            settingsResolver,
+            actionLinkFactory);
 
         EventEmailConsumer consumer = new EventEmailConsumer(channelPool, QueueArguments.Builder::new, mailHandler,
             eventEmailFilter);

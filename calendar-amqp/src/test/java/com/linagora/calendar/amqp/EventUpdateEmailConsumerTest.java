@@ -71,6 +71,8 @@ import org.testcontainers.shaded.org.awaitility.core.ConditionFactory;
 
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.api.EventParticipationActionLinkFactory;
+import com.linagora.calendar.api.Participation;
+import com.linagora.calendar.api.ParticipationTokenSigner;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
@@ -198,13 +200,23 @@ public class EventUpdateEmailConsumerTest {
 
         UsersRepository usersRepository = mock(UsersRepository.class);
         when(usersRepository.containsReactive(any())).thenReturn(Mono.just(INTERNAL_USER));
+        ParticipationTokenSigner participationTokenSigner = mock(ParticipationTokenSigner.class);
+        when(participationTokenSigner.signAsJwt(any(Participation.class)))
+            .thenAnswer(invocation -> {
+                Participation arg = invocation.getArgument(0);
+                return Mono.just("mocked-jwt-token-" + arg.action().name().toLowerCase());
+            });
 
+        EventParticipationActionLinkFactory actionLinkFactory = new EventParticipationActionLinkFactory(
+            participationTokenSigner,
+            URI.create("http://localhost:8888/").toURL());
         EventMailHandler mailHandler = new EventMailHandler(mailSenderFactory,
             messageFactory,
             linkFactory,
             new SimpleSessionProvider(new RandomMailboxSessionIdGenerator()),
             usersRepository,
-            settingsResolver, mock(EventParticipationActionLinkFactory.class));
+            settingsResolver,
+            actionLinkFactory);
 
         EventEmailConsumer consumer = new EventEmailConsumer(channelPool, QueueArguments.Builder::new, mailHandler,
             eventEmailFilter);
@@ -292,7 +304,10 @@ public class EventUpdateEmailConsumerTest {
                 .contains(organizer.username().asString())
                 .contains(attendee.username().asString())
                 .contains("This is a meeting to discuss the sprint planning for the next week.")
-                .contains("This is a meeting to discuss the sprint planning for the next 2 weeks.");
+                .contains("This is a meeting to discuss the sprint planning for the next 2 weeks.")
+                .contains("http://localhost:8888/calendar/#/calendar/participation/?jwt=mocked-jwt-token-accepted")
+                .contains("http://localhost:8888/calendar/#/calendar/participation/?jwt=mocked-jwt-token-rejected")
+                .contains("http://localhost:8888/calendar/#/calendar/participation/?jwt=mocked-jwt-token-tentative");
         }));
     }
 

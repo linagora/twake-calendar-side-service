@@ -43,6 +43,7 @@ import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.amqp.model.CalendarEventCancelNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventCounterNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventInviteNotificationEmail;
+import com.linagora.calendar.amqp.model.CalendarEventNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventReplyNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventUpdateNotificationEmail;
 import com.linagora.calendar.api.EventParticipationActionLinkFactory;
@@ -136,6 +137,16 @@ public class EventMailHandler {
                     .build()
             );
         }
+
+        static Mono<ActionLinks> generateActionLinks(EventParticipationActionLinkFactory participationActionLinkFactory, CalendarEventNotificationEmail event) {
+            return Mono.just(event.getFirstVEvent())
+                .flatMap(vEvent -> {
+                    MailAddress organizerMail = EventParseUtils.getOrganizer(vEvent).email();
+                    MailAddress attendeeMail = event.recipientEmail();
+                    String eventUid = vEvent.getUid().map(Uid::getValue).orElseThrow();
+                    return participationActionLinkFactory.generateLinks(organizerMail, attendeeMail, eventUid, event.calendarURI());
+                });
+        }
     }
 
     class InviteEventMessageGenerator implements EventMessageGenerator {
@@ -161,19 +172,9 @@ public class EventMailHandler {
             List<MimeAttachment> attachments = EventMessageGenerator.createAttachments(calendarAsBytes, ImmutableMethod.REQUEST);
             MailAddress fromAddress = event.base().senderEmail();
 
-            return generateActionLinks(event)
+            return EventMessageGenerator.generateActionLinks(participationActionLinkFactory, event.base())
                 .map(actionLinks -> event.toPugModel(resolvedSettings.locale(), resolvedSettings.zoneId(), eventInCalendarLinkFactory, isInternalUser, actionLinks))
-                .flatMap(scopedVariable -> messageGenerator.generate(recipientUser, Optional.of(fromAddress),scopedVariable, attachments));
-        }
-
-        private Mono<ActionLinks> generateActionLinks(CalendarEventInviteNotificationEmail event) {
-            return Mono.just(event.base().getFirstVEvent())
-                .flatMap(vEvent -> {
-                    MailAddress organizerMail = EventParseUtils.getOrganizer(vEvent).email();
-                    MailAddress attendeeMail = event.base().recipientEmail();
-                    String eventUid = vEvent.getUid().map(Uid::getValue).orElseThrow();
-                    return participationActionLinkFactory.generateLinks(organizerMail, attendeeMail, eventUid, event.base().calendarURI());
-                });
+                .flatMap(scopedVariable -> messageGenerator.generate(recipientUser, Optional.of(fromAddress), scopedVariable, attachments));
         }
     }
 
@@ -200,9 +201,10 @@ public class EventMailHandler {
             List<MimeAttachment> attachments = EventMessageGenerator.createAttachments(calendarAsBytes, ImmutableMethod.REQUEST);
 
             MailAddress fromAddress = event.base().senderEmail();
-            return messageGenerator.generate(recipientUser,
-                Optional.of(fromAddress),
-                event.toPugModel(resolvedSettings.locale(), resolvedSettings.zoneId(), eventInCalendarLinkFactory, isInternalUser), attachments);
+
+            return EventMessageGenerator.generateActionLinks(participationActionLinkFactory, event.base())
+                .map(actionLinks -> event.toPugModel(resolvedSettings.locale(), resolvedSettings.zoneId(), eventInCalendarLinkFactory, isInternalUser, actionLinks))
+                .flatMap(scopedVariable -> messageGenerator.generate(recipientUser, Optional.of(fromAddress), scopedVariable, attachments));
         }
     }
 
