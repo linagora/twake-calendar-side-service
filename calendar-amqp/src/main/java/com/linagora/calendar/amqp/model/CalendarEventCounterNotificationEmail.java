@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.amqp.model;
 
+import static com.linagora.calendar.amqp.model.CalendarEventNotificationEmail.GET_FIRST_VEVENT_FUNCTION;
 import static com.linagora.calendar.amqp.model.CalendarEventReplyNotificationEmail.PERSON_TO_MODEL;
 
 import java.util.List;
@@ -34,7 +35,6 @@ import com.linagora.calendar.smtp.template.content.model.PersonModel;
 import com.linagora.calendar.storage.event.EventParseUtils;
 
 import net.fortuna.ical4j.model.Calendar;
-import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.property.Comment;
 
@@ -46,12 +46,6 @@ public record CalendarEventCounterNotificationEmail(CalendarEventNotificationEma
             CalendarEventNotificationEmail.from(dto),
             dto.oldEvent().orElseThrow(() -> new IllegalArgumentException("oldEvent must not be empty"))
         );
-    }
-
-    public static Function<Calendar, VEvent> getFirstVEventFunction() {
-        return calendar -> calendar.getComponent(Component.VEVENT)
-            .map(VEvent.class::cast)
-            .orElseThrow(() -> new IllegalStateException("No VEvent found in the calendar event"));
     }
 
     public LocaleStep toCounterContentModelBuilder() {
@@ -87,7 +81,7 @@ public record CalendarEventCounterNotificationEmail(CalendarEventNotificationEma
                 .build();
         };
 
-        VEvent oldFirstEvent = getFirstVEventFunction().apply(this.oldEvent);
+        VEvent oldFirstEvent = GET_FIRST_VEVENT_FUNCTION.apply(this.oldEvent);
         String editorDisplayName = EventParseUtils.getAttendees(oldFirstEvent).stream()
             .filter(person -> base.senderEmail().equals(person.email()))
             .map(person -> StringUtils.defaultIfEmpty(person.cn(), person.email().asString()))
@@ -95,7 +89,7 @@ public record CalendarEventCounterNotificationEmail(CalendarEventNotificationEma
 
         return CounterContentModelBuilder.builder()
             .oldEvent(oldEventModelFunction.apply(oldFirstEvent))
-            .newEvent(newEventModelFunction.apply(getFirstVEventFunction().apply(base().event())))
+            .newEvent(newEventModelFunction.apply(GET_FIRST_VEVENT_FUNCTION.apply(base().event())))
             .editorDisplayName(editorDisplayName);
     }
 }

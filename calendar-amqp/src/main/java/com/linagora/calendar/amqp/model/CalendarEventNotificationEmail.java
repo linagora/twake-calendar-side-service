@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.amqp.model;
 
+import java.nio.charset.StandardCharsets;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.List;
@@ -51,6 +52,11 @@ public record CalendarEventNotificationEmail(MailAddress senderEmail,
 
     public static final Function<EventFields.Person, PersonModel> PERSON_TO_MODEL =
         person -> new PersonModel(person.cn(), person.email().asString());
+
+    public static final Function<Calendar, VEvent> GET_FIRST_VEVENT_FUNCTION =
+        calendar -> calendar.getComponent(Component.VEVENT)
+            .map(VEvent.class::cast)
+            .orElseThrow(() -> new IllegalStateException("No VEvent found in the calendar event"));
 
     public static CalendarEventNotificationEmail from(CalendarEventNotificationEmailDTO dto) {
         return new CalendarEventNotificationEmail(
@@ -89,5 +95,13 @@ public record CalendarEventNotificationEmail(MailAddress senderEmail,
         EventParseUtils.getDescription(vEvent).ifPresent(description -> eventBuilder.put("description", description));
 
         return eventBuilder.build();
+    }
+
+    public byte[] eventAsBytes() {
+        return event().toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    public VEvent getFirstVEvent() {
+        return GET_FIRST_VEVENT_FUNCTION.apply(event());
     }
 }

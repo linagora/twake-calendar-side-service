@@ -29,7 +29,6 @@ import com.linagora.calendar.smtp.template.content.model.ReplyContentModelBuilde
 import com.linagora.calendar.storage.event.EventFields.Person;
 import com.linagora.calendar.storage.event.EventParseUtils;
 
-import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
 
@@ -42,15 +41,8 @@ public record CalendarEventReplyNotificationEmail(CalendarEventNotificationEmail
         return new CalendarEventReplyNotificationEmail(CalendarEventNotificationEmail.from(dto));
     }
 
-    public VEvent vEvent() {
-        return base.event()
-            .getComponent(Component.VEVENT)
-            .map(VEvent.class::cast)
-            .orElseThrow(() -> new IllegalStateException("No VEvent found in the calendar event notification email"));
-    }
-
     public ReplyContentModelBuilder.LocaleStep toReplyContentModelBuilder() {
-        VEvent vEvent = vEvent();
+        VEvent vEvent = base.getFirstVEvent();
 
         Person attendee = EventParseUtils.getAttendees(vEvent).getFirst();
         PersonModel attendeeModel = PERSON_TO_MODEL.apply(attendee);
