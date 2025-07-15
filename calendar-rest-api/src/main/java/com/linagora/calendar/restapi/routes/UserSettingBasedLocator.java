@@ -50,13 +50,19 @@ public class UserSettingBasedLocator {
     }
 
     public Mono<Language> getLanguage(MailboxSession mailboxSession) {
-        return settingsBasedLocator.readSavedSettings(mailboxSession)
-            .flatMap(settings -> Mono.justOrEmpty(settings.get(LANGUAGE_IDENTIFIER, Locale.class)))
-            .defaultIfEmpty(Locale.ENGLISH)
-            .map(Language::new);
+        return readLanguageFromSavedSettings(mailboxSession)
+            .defaultIfEmpty(Language.ENGLISH);
     }
 
-    public Mono<Language> getLanguage(Username username) {
-        return getLanguage(sessionProvider.createSession(username));
+    public Mono<Language> getLanguage(Username username, Username fallbackUsername) {
+        return readLanguageFromSavedSettings(sessionProvider.createSession(username))
+            .switchIfEmpty(readLanguageFromSavedSettings(sessionProvider.createSession(fallbackUsername)))
+            .defaultIfEmpty(Language.ENGLISH);
+    }
+
+    private Mono<Language> readLanguageFromSavedSettings(MailboxSession mailboxSession) {
+        return settingsBasedLocator.readSavedSettings(mailboxSession)
+            .flatMap(settings -> Mono.justOrEmpty(settings.get(LANGUAGE_IDENTIFIER, Locale.class)))
+            .map(Language::new);
     }
 }

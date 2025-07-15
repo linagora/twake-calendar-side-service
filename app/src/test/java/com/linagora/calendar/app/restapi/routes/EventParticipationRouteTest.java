@@ -273,7 +273,7 @@ public class EventParticipationRouteTest {
             .jsonPath()
             .getMap("links");
 
-        String expectedPrefix = "https://e-calendrier.avocat.fr/calendar/api/calendars/event/participation?jwt=";
+        String expectedPrefix = "https://e-calendrier.avocat.fr/calendar/#/calendar/participation/?jwt=";
         ParticipationTokenProbe tokenProbe = server.getProbe(ParticipationTokenProbe.class);
 
         assertSoftly(softly -> {

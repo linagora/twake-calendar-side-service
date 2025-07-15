@@ -82,7 +82,7 @@ public class EventParticipationRoute implements JMAPRoutes {
         this.userSettingBasedLocator = userSettingBasedLocator;
 
         String baseUrl = spaCalendarUrl.toString();
-        this.buildParticipationActionLinkFunction = jwt -> URI.create(StringUtils.removeEnd(baseUrl, "/") + "/calendar/api/calendars/event/participation?jwt=" + jwt);
+        this.buildParticipationActionLinkFunction = jwt -> URI.create(StringUtils.removeEnd(baseUrl, "/") + "/calendar/#/calendar/participation/?jwt=" + jwt);
     }
 
     private Endpoint endpoint() {
@@ -144,7 +144,8 @@ public class EventParticipationRoute implements JMAPRoutes {
 
     private Mono<EventParticipationResponse> buildEventParticipationResponse(VCalendarDto eventDto,
                                                                              Participation participationRequest) {
-        return Mono.zip(userSettingBasedLocator.getLanguage(Username.fromMailAddress(participationRequest.attendee()))
+        return Mono.zip(userSettingBasedLocator.getLanguage(Username.fromMailAddress(participationRequest.attendee()),
+                    Username.fromMailAddress(participationRequest.organizer()))
                 .map(Language::locale), generateLinks(participationRequest))
             .map(tuple -> new EventParticipationResponse(eventDto, participationRequest.attendee(),
                 tuple.getT2(), tuple.getT1()));
