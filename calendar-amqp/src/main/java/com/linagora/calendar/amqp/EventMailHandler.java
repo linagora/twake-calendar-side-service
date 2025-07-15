@@ -20,7 +20,6 @@ package com.linagora.calendar.amqp;
 
 import static com.linagora.calendar.smtp.template.MimeAttachment.ATTACHMENT_DISPOSITION_TYPE;
 
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -60,6 +59,8 @@ import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolve
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.ResolvedSettings;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.TimeZoneSettingReader;
 
+import net.fortuna.ical4j.model.property.Method;
+import net.fortuna.ical4j.model.property.immutable.ImmutableMethod;
 import reactor.core.publisher.Mono;
 
 public class EventMailHandler {
@@ -113,6 +114,21 @@ public class EventMailHandler {
 
     interface EventMessageGenerator {
         Mono<Message> generate(ResolvedSettings resolvedSettings);
+
+        static List<MimeAttachment> createAttachments(byte[] calendarAsBytes, Method method) {
+            return List.of(
+                MimeAttachment.builder()
+                    .contentType(ContentType.of("text/calendar; charset=UTF-8; method=" + method.getValue()))
+                    .content(calendarAsBytes)
+                    .build(),
+                MimeAttachment.builder()
+                    .contentType(ContentType.of("application/ics"))
+                    .content(calendarAsBytes)
+                    .dispositionType(ATTACHMENT_DISPOSITION_TYPE)
+                    .fileName("meeting.ics")
+                    .build()
+            );
+        }
     }
 
     class InviteEventMessageGenerator implements EventMessageGenerator {
@@ -134,20 +150,8 @@ public class EventMailHandler {
         }
 
         private Mono<Message> generateInvitationMessage(ResolvedSettings resolvedSettings, MessageGenerator messageGenerator) {
-            byte[] calendarAsBytes = event.base().event().toString().getBytes(StandardCharsets.UTF_8);
-
-            List<MimeAttachment> attachments = List.of(
-                MimeAttachment.builder()
-                    .contentType(ContentType.of("text/calendar; charset=UTF-8; method=REQUEST"))
-                    .content(calendarAsBytes)
-                    .build(),
-                MimeAttachment.builder()
-                    .contentType(ContentType.of("application/ics"))
-                    .content(calendarAsBytes)
-                    .dispositionType(ATTACHMENT_DISPOSITION_TYPE)
-                    .fileName("meeting.ics")
-                    .build()
-            );
+            byte[] calendarAsBytes = event.base().eventAsBytes();
+            List<MimeAttachment> attachments = EventMessageGenerator.createAttachments(calendarAsBytes, ImmutableMethod.REQUEST);
 
             MailAddress fromAddress = event.base().senderEmail();
             return messageGenerator.generate(recipientUser,
@@ -175,20 +179,8 @@ public class EventMailHandler {
         }
 
         private Mono<Message> generateUpdateMessage(ResolvedSettings resolvedSettings, MessageGenerator messageGenerator) {
-            byte[] calendarAsBytes = event.base().event().toString().getBytes(StandardCharsets.UTF_8);
-
-            List<MimeAttachment> attachments = List.of(
-                MimeAttachment.builder()
-                    .contentType(ContentType.of("text/calendar; charset=UTF-8; method=REQUEST"))
-                    .content(calendarAsBytes)
-                    .build(),
-                MimeAttachment.builder()
-                    .contentType(ContentType.of("application/ics"))
-                    .content(calendarAsBytes)
-                    .dispositionType(ATTACHMENT_DISPOSITION_TYPE)
-                    .fileName("meeting.ics")
-                    .build()
-            );
+            byte[] calendarAsBytes = event.base().eventAsBytes();
+            List<MimeAttachment> attachments = EventMessageGenerator.createAttachments(calendarAsBytes, ImmutableMethod.REQUEST);
 
             MailAddress fromAddress = event.base().senderEmail();
             return messageGenerator.generate(recipientUser,
@@ -216,20 +208,8 @@ public class EventMailHandler {
         }
 
         private Mono<Message> generateCancelMessage(ResolvedSettings resolvedSettings, MessageGenerator messageGenerator) {
-            byte[] calendarAsBytes = event.base().event().toString().getBytes(StandardCharsets.UTF_8);
-
-            List<MimeAttachment> attachments = List.of(
-                MimeAttachment.builder()
-                    .contentType(ContentType.of("text/calendar; charset=UTF-8; method=CANCEL"))
-                    .content(calendarAsBytes)
-                    .build(),
-                MimeAttachment.builder()
-                    .contentType(ContentType.of("application/ics"))
-                    .content(calendarAsBytes)
-                    .dispositionType(ATTACHMENT_DISPOSITION_TYPE)
-                    .fileName("meeting.ics")
-                    .build()
-            );
+            byte[] calendarAsBytes = event.base().eventAsBytes();
+            List<MimeAttachment> attachments = EventMessageGenerator.createAttachments(calendarAsBytes, ImmutableMethod.CANCEL);
 
             MailAddress fromAddress = event.base().senderEmail();
             return messageGenerator.generate(recipientUser, Optional.of(fromAddress),
@@ -263,18 +243,8 @@ public class EventMailHandler {
                 .eventInCalendarLink(eventInCalendarLinkFactory)
                 .buildAsMap();
 
-            byte[] calendarAsBytes = event.base().event().toString().getBytes(StandardCharsets.UTF_8);
-
-            List<MimeAttachment> attachments = List.of(MimeAttachment.builder()
-                    .contentType(ContentType.of("text/calendar; charset=UTF-8; method=REPLY"))
-                    .content(calendarAsBytes)
-                    .build(),
-                MimeAttachment.builder()
-                    .contentType(ContentType.of("application/ics"))
-                    .content(calendarAsBytes)
-                    .dispositionType(ATTACHMENT_DISPOSITION_TYPE)
-                    .fileName("meeting.ics")
-                    .build());
+            byte[] calendarAsBytes = event.base().eventAsBytes();
+            List<MimeAttachment> attachments = EventMessageGenerator.createAttachments(calendarAsBytes, ImmutableMethod.REPLY);
 
             MailAddress fromAddress = event.base().senderEmail();
             return messageGenerator.generate(recipientUser, Optional.of(fromAddress), model, attachments);
@@ -306,18 +276,8 @@ public class EventMailHandler {
                 .eventInCalendarLink(eventInCalendarLinkFactory)
                 .buildAsMap();
 
-            byte[] calendarAsBytes = event.base().event().toString().getBytes(StandardCharsets.UTF_8);
-
-            List<MimeAttachment> attachments = List.of(MimeAttachment.builder()
-                    .contentType(ContentType.of("text/calendar; charset=UTF-8; method=COUNTER"))
-                    .content(calendarAsBytes)
-                    .build(),
-                MimeAttachment.builder()
-                    .contentType(ContentType.of("application/ics"))
-                    .content(calendarAsBytes)
-                    .dispositionType(ATTACHMENT_DISPOSITION_TYPE)
-                    .fileName("meeting.ics")
-                    .build());
+            byte[] calendarAsBytes = event.base().eventAsBytes();
+            List<MimeAttachment> attachments = EventMessageGenerator.createAttachments(calendarAsBytes, ImmutableMethod.COUNTER);
 
             MailAddress fromAddress = event.base().senderEmail();
             return messageGenerator.generate(recipientUser, Optional.of(fromAddress), model, attachments);
