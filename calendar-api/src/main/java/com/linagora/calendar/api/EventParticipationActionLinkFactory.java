@@ -29,6 +29,8 @@ import jakarta.inject.Singleton;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.MailAddress;
 
+import com.google.common.base.Preconditions;
+
 import reactor.core.publisher.Mono;
 
 public class EventParticipationActionLinkFactory {
@@ -50,6 +52,11 @@ public class EventParticipationActionLinkFactory {
     }
 
     public Mono<ActionLinks> generateLinks(MailAddress organizer, MailAddress attendee, String eventUid, String calendarURI) {
+        Preconditions.checkArgument(organizer != null, "organizer must not be null");
+        Preconditions.checkArgument(attendee != null, "attendee must not be null");
+        Preconditions.checkArgument(StringUtils.isNotEmpty(eventUid), "eventUid must not be empty");
+        Preconditions.checkArgument(StringUtils.isNotEmpty(calendarURI), "calendarURI must not be empty");
+
         Participation acceptedParticipation = new Participation(organizer, attendee, eventUid, calendarURI, Participation.ParticipantAction.ACCEPTED);
         Participation rejectedParticipation = acceptedParticipation.withAction(Participation.ParticipantAction.REJECTED);
         Participation maybeParticipation = acceptedParticipation.withAction(Participation.ParticipantAction.TENTATIVE);

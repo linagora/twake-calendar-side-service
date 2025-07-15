@@ -29,6 +29,7 @@ import org.apache.commons.lang3.StringUtils;
 
 import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.amqp.CalendarEventNotificationEmailDTO;
+import com.linagora.calendar.api.EventParticipationActionLinkFactory.ActionLinks;
 import com.linagora.calendar.smtp.template.content.model.EventInCalendarLinkFactory;
 import com.linagora.calendar.smtp.template.content.model.PersonModel;
 import com.linagora.calendar.storage.event.EventParseUtils;
@@ -38,19 +39,25 @@ import net.fortuna.ical4j.model.component.VEvent;
 public record CalendarEventInviteNotificationEmail(CalendarEventNotificationEmail base) {
 
     public static CalendarEventInviteNotificationEmail from(CalendarEventNotificationEmailDTO dto) {
-        return new CalendarEventInviteNotificationEmail(
-            CalendarEventNotificationEmail.from(dto)
-        );
+        return new CalendarEventInviteNotificationEmail(CalendarEventNotificationEmail.from(dto));
     }
 
-    public Map<String, Object> toPugModel(Locale locale, ZoneId zoneToDisplay, EventInCalendarLinkFactory eventInCalendarLinkFactory, boolean isInternalUser) {
+    public Map<String, Object> toPugModel(Locale locale,
+                                          ZoneId zoneToDisplay,
+                                          EventInCalendarLinkFactory eventInCalendarLinkFactory,
+                                          boolean isInternalUser,
+                                          ActionLinks actionLinks) {
         VEvent vEvent = base.getFirstVEvent();
         PersonModel organizer = PERSON_TO_MODEL.apply(EventParseUtils.getOrganizer(vEvent));
         String summary = EventParseUtils.getSummary(vEvent).orElse(StringUtils.EMPTY);
         ZonedDateTime startDate = EventParseUtils.getStartTime(vEvent);
 
         ImmutableMap.Builder<String, Object> contentBuilder = ImmutableMap.builder();
-        contentBuilder.put("event", base.toPugModel(locale, zoneToDisplay));
+        contentBuilder.put("event", base.toPugModel(locale, zoneToDisplay))
+            .put("yesLink", actionLinks.yes())
+            .put("noLink", actionLinks.no())
+            .put("maybeLink", actionLinks.maybe());
+
         if (isInternalUser) {
             contentBuilder.put("seeInCalendarLink", eventInCalendarLinkFactory.getEventInCalendarLink(startDate));
         }
