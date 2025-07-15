@@ -233,11 +233,21 @@ public class RestApiModule extends AbstractModule {
     @Singleton
     @Named("spaCalendarUrl")
     URL provideSpaCalendarUrl(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
-        String calendarUrlProperty = "spa.calendar.url";
+        return getURLFromConfiguration(propertiesProvider, "spa.calendar.url");
+    }
+
+    @Provides
+    @Singleton
+    @Named("spaExcalUrl")
+    URL provideSpaExcalUrl(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
+        return getURLFromConfiguration(propertiesProvider, "spa.excal.url");
+    }
+
+    private URL getURLFromConfiguration(PropertiesProvider propertiesProvider, String propertyName) throws ConfigurationException, FileNotFoundException {
         Configuration config = propertiesProvider.getConfiguration("configuration");
-        return Optional.ofNullable(config.getString(calendarUrlProperty))
+        return Optional.ofNullable(config.getString(propertyName))
             .map(Throwing.function(url -> URI.create(url).toURL()))
             .orElseThrow(() -> new FileNotFoundException(
-                "Missing configuration for '" + calendarUrlProperty + "'"));
+                "Missing configuration for '" + propertyName + "'"));
     }
 }

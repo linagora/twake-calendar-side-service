@@ -74,7 +74,7 @@ public class EventParticipationRoute implements JMAPRoutes {
     public EventParticipationRoute(MetricFactory metricFactory,
                                    ParticipationTokenSigner participationTokenSigner,
                                    CalDavEventRepository calDavEventRepository,
-                                   @Named("spaCalendarUrl") URL spaCalendarUrl,
+                                   @Named("spaExcalUrl") URL spaCalendarUrl,
                                    UserSettingBasedLocator userSettingBasedLocator) {
         this.metricFactory = metricFactory;
         this.participationTokenSigner = participationTokenSigner;
