@@ -36,4 +36,8 @@ public record Participation(MailAddress organizer, MailAddress attendee, String 
         Preconditions.checkArgument(StringUtils.isNotEmpty(calendarURI), "Calendar URI must not be empty");
         Preconditions.checkNotNull(action, "Action must not be null");
     }
+
+    public Participation withAction(ParticipantAction newAction) {
+        return new Participation(organizer, attendee, eventUid, calendarURI, newAction);
+    }
 }
