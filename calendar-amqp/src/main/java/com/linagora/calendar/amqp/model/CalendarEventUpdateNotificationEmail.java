@@ -88,15 +88,11 @@ public record CalendarEventUpdateNotificationEmail(CalendarEventNotificationEmai
                 "previous", summaryChange.previous()
             ));
         });
-        changes.dtstart().ifPresent(dtstartChange -> {
-            changesBuilder.put("isOldEventAllDay", dtstartChange.previous().isAllDay());
-            changesBuilder.put("dtstart", ImmutableMap.of(
-                "previous", toEventTimeModel(dtstartChange).toPugModel(locale, zoneToDisplay)
-            ));
-        });
-        changes.dtend().ifPresent(dtendChange ->
-            changesBuilder.put("dtend", ImmutableMap.of(
-                "previous", toEventTimeModel(dtendChange).toPugModel(locale, zoneToDisplay)
+        changes.dtstart().ifPresent(dtstartChange -> changesBuilder.put("dtstart", ImmutableMap.of(
+            "previous", toEventTimeModel(dtstartChange).toPugModel(locale, zoneToDisplay)
+        )));
+        changes.dtend().ifPresent(dtendChange -> changesBuilder.put("dtend", ImmutableMap.of(
+            "previous", toEventTimeModel(dtendChange).toPugModel(locale, zoneToDisplay)
         )));
         changes.location().ifPresent(locationChange ->
             changesBuilder.put("location", ImmutableMap.of(
@@ -106,6 +102,10 @@ public record CalendarEventUpdateNotificationEmail(CalendarEventNotificationEmai
             changesBuilder.put("description", ImmutableMap.of(
                 "previous", descriptionChange.previous()
         )));
+        boolean isOldEventAllDay = changes.dtstart().map(dtstartChange -> dtstartChange.previous().isAllDay())
+            .orElse(changes.dtend().map(dtendChange -> dtendChange.previous().isAllDay())
+                .orElse(false));
+        changesBuilder.put("isOldEventAllDay", isOldEventAllDay);
         return changesBuilder.build();
     }
 

@@ -121,7 +121,7 @@ div(style='')
                                     td(valign='top' style='min-width: 80px;')
                                       strong #{translator.get('time')}
                                     td
-                                      if ((content.changes && content.changes.dtstart && (content.changes.dtstart.previous.fullDateTime !== content.event.start.fullDateTime || content.changes.dtstart.previous.fullDate !== content.event.start.fullDate)) || (content.changes.dtend && (content.changes.dtend.previous.fullDateTime !== content.event.end.fullDateTime || content.changes.dtend.previous.fullDate !== content.event.end.fullDate)))
+                                      if ((content.changes && content.changes.dtstart && content.changes.dtstart.previous.fullDateTime !== content.event.start.fullDateTime) || (content.changes.dtend && content.changes.dtend.previous.fullDateTime !== content.event.end.fullDateTime))
                                         span(style="color: orange; font-weight: bold;") #{translator.get('changed')}:&nbsp;
                                         span(style="text-decoration: line-through; display: inline-block;")
                                           if (!content.changes.isOldEventAllDay)

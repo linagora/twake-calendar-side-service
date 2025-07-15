@@ -168,10 +168,16 @@ public class HtmlEmailUpdateRenderTest {
                     .put("allDay", true)
                     .put("start", ImmutableMap.of(
                         "date", "2025-07-07",
+                        "fullDateTime", "2025-07-07 00:00",
+                        "time", "00:00",
+                        "timezone", "UTC",
                         "fullDate", "July 7, 2025"
                     ))
                     .put("end", ImmutableMap.of(
                         "date", "2025-07-08",
+                        "fullDateTime", "2025-07-08 00:00",
+                        "time", "00:00",
+                        "timezone", "UTC",
                         "fullDate", "July 8, 2025"
                     ))
                     .put("location", ImmutableMap.of(
@@ -187,12 +193,18 @@ public class HtmlEmailUpdateRenderTest {
                     "dtstart", ImmutableMap.of(
                         "previous", ImmutableMap.of(
                             "date", "2025-07-06",
+                            "fullDateTime", "2025-07-06 00:00",
+                            "time", "00:00",
+                            "timezone", "UTC",
                             "fullDate", "July 6, 2025"
                         )
                     ),
                     "dtend", ImmutableMap.of(
                         "previous", ImmutableMap.of(
                             "date", "2025-07-07",
+                            "fullDateTime", "2025-07-07 00:00",
+                            "time", "00:00",
+                            "timezone", "UTC",
                             "fullDate", "July 7, 2025"
                         )
                     ),
