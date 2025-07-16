@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.amqp;
 
+import static com.linagora.calendar.amqp.EventFieldConverter.extractCalendarURL;
 import static com.linagora.calendar.smtp.template.MimeAttachment.ATTACHMENT_DISPOSITION_TYPE;
 
 import java.util.List;
@@ -55,6 +56,7 @@ import com.linagora.calendar.smtp.template.MessageGenerator;
 import com.linagora.calendar.smtp.template.MimeAttachment;
 import com.linagora.calendar.smtp.template.TemplateType;
 import com.linagora.calendar.smtp.template.content.model.EventInCalendarLinkFactory;
+import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.resolver.ConfigurationResolver;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
@@ -144,7 +146,8 @@ public class EventMailHandler {
                     MailAddress organizerMail = EventParseUtils.getOrganizer(vEvent).email();
                     MailAddress attendeeMail = event.recipientEmail();
                     String eventUid = vEvent.getUid().map(Uid::getValue).orElseThrow();
-                    return participationActionLinkFactory.generateLinks(organizerMail, attendeeMail, eventUid, event.calendarURI());
+                    OpenPaaSId attendeeCalendarBaseId = extractCalendarURL(event.eventPath()).base();
+                    return participationActionLinkFactory.generateLinks(organizerMail, attendeeMail, eventUid, attendeeCalendarBaseId.value());
                 });
         }
     }
