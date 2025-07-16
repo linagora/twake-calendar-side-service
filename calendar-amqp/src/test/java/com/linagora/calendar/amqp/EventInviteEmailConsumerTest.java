@@ -289,9 +289,9 @@ public class EventInviteEmailConsumerTest {
                 .contains(organizer.username().asString())
                 .contains(attendee.username().asString())
                 .contains("This is a meeting to discuss the sprint planning for the next week.")
-                .contains("http://localhost:8888/calendar/#/calendar/participation/?jwt=mocked-jwt-token-accepted")
-                .contains("http://localhost:8888/calendar/#/calendar/participation/?jwt=mocked-jwt-token-rejected")
-                .contains("http://localhost:8888/calendar/#/calendar/participation/?jwt=mocked-jwt-token-tentative");
+                .contains("http://localhost:8888/excal?jwt=mocked-jwt-token-accepted")
+                .contains("http://localhost:8888/excal?jwt=mocked-jwt-token-rejected")
+                .contains("http://localhost:8888/excal?jwt=mocked-jwt-token-tentative");
         }));
     }
 
