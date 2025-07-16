@@ -48,7 +48,7 @@ public class EventParticipationActionLinkFactory {
     public EventParticipationActionLinkFactory(ParticipationTokenSigner participationTokenSigner,
                                                @Named("spaExcalUrl") URL spaExcalUrl) {
         this.participationTokenSigner = participationTokenSigner;
-        this.buildParticipationActionLinkFunction = jwt -> URI.create(StringUtils.removeEnd(spaExcalUrl.toString(), "/") + "/excal?jwt=" + jwt);
+        this.buildParticipationActionLinkFunction = jwt -> URI.create(StringUtils.removeEnd(spaExcalUrl.toString(), "/") + "/excal/?jwt=" + jwt);
     }
 
     public Mono<ActionLinks> generateLinks(MailAddress organizer, MailAddress attendee, String eventUid, String calendarURI) {
