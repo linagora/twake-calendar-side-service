@@ -273,7 +273,7 @@ public class EventParticipationRouteTest {
             .jsonPath()
             .getMap("links");
 
-        String expectedPrefix = "https://excal.linagora.com/calendar/#/calendar/participation/?jwt=";
+        String expectedPrefix = "https://excal.linagora.com/excal?jwt=";
         ParticipationTokenProbe tokenProbe = server.getProbe(ParticipationTokenProbe.class);
 
         assertSoftly(softly -> {
