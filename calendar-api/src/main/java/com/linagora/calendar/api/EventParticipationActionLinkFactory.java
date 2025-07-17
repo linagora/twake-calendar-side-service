@@ -45,8 +45,14 @@ public class EventParticipationActionLinkFactory {
 
     @Inject
     @Singleton
-    public EventParticipationActionLinkFactory(ParticipationTokenSigner participationTokenSigner,
+    public EventParticipationActionLinkFactory(@Named("participationActionLinks") JwtSigner jwtSigner,
+                                               JwtVerifier jwtVerifier,
                                                @Named("spaExcalUrl") URL spaExcalUrl) {
+        this(new ParticipationTokenSigner.Default(jwtSigner, jwtVerifier), spaExcalUrl);
+    }
+
+    public EventParticipationActionLinkFactory(ParticipationTokenSigner participationTokenSigner,
+                                               URL spaExcalUrl) {
         this.participationTokenSigner = participationTokenSigner;
         this.buildParticipationActionLinkFunction = jwt -> URI.create(StringUtils.removeEnd(spaExcalUrl.toString(), "/") + "/excal/?jwt=" + jwt);
     }
