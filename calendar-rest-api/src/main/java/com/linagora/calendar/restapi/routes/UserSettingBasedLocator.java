@@ -28,6 +28,8 @@ import jakarta.inject.Singleton;
 
 import org.apache.james.core.Username;
 import org.apache.james.mailbox.MailboxSession;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.linagora.calendar.smtp.template.Language;
 import com.linagora.calendar.storage.SimpleSessionProvider;
@@ -37,6 +39,7 @@ import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolve
 import reactor.core.publisher.Mono;
 
 public class UserSettingBasedLocator {
+    public static final Logger LOGGER = LoggerFactory.getLogger(UserSettingBasedLocator.class);
 
     private final SettingsBasedResolver settingsBasedLocator;
 
@@ -51,13 +54,40 @@ public class UserSettingBasedLocator {
 
     public Mono<Language> getLanguage(MailboxSession mailboxSession) {
         return readLanguageFromSavedSettings(mailboxSession)
+            .onErrorResume(error -> {
+                LOGGER.error("Falling back to default language for session {} due to error: {}",
+                    mailboxSession.getUser().asString(), error.getMessage());
+                return Mono.just(Language.ENGLISH);
+            })
             .defaultIfEmpty(Language.ENGLISH);
     }
 
+    public Mono<Language> getLanguage(Username username) {
+        return getLanguage(sessionProvider.createSession(username));
+    }
+
     public Mono<Language> getLanguage(Username username, Username fallbackUsername) {
-        return readLanguageFromSavedSettings(sessionProvider.createSession(username))
-            .switchIfEmpty(readLanguageFromSavedSettings(sessionProvider.createSession(fallbackUsername)))
+        return readLanguageFromUsername(username)
+            .onErrorResume(error -> {
+                LOGGER.warn("Failed to read language for user {}: {}, trying fallback user {}",
+                    username.asString(), error.getMessage(), fallbackUsername.asString());
+                return readLanguageFromUsername(fallbackUsername);
+            })
+            .switchIfEmpty(Mono.defer(() -> {
+                LOGGER.warn("No language setting found for user {}, trying fallback user {}",
+                    username.asString(), fallbackUsername.asString());
+                return readLanguageFromUsername(fallbackUsername);
+            }))
+            .onErrorResume(error -> {
+                LOGGER.error("Failed to read language for fallback user {}: {}, using default",
+                    fallbackUsername.asString(), error.getMessage());
+                return Mono.just(Language.ENGLISH);
+            })
             .defaultIfEmpty(Language.ENGLISH);
+    }
+
+    private Mono<Language> readLanguageFromUsername(Username username) {
+        return readLanguageFromSavedSettings(sessionProvider.createSession(username));
     }
 
     private Mono<Language> readLanguageFromSavedSettings(MailboxSession mailboxSession) {
