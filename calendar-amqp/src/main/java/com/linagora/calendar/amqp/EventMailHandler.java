@@ -64,6 +64,7 @@ import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolve
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.ResolvedSettings;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.TimeZoneSettingReader;
 import com.linagora.calendar.storage.event.EventParseUtils;
+import com.linagora.calendar.storage.exception.DomainNotFoundException;
 
 import net.fortuna.ical4j.model.property.Method;
 import net.fortuna.ical4j.model.property.Uid;
@@ -354,8 +355,12 @@ public class EventMailHandler {
 
     private Mono<ResolvedSettings> getUserSettings(Username user) {
         return settingsBasedResolver.readSavedSettings(sessionProvider.createSession(user))
-            .doOnError(error -> LOGGER.error("Error resolving user settings for {}, will use default settings: {}",
-                user.asString(), ResolvedSettings.DEFAULT, error));
+            .doOnError(error -> {
+                if (!(error instanceof DomainNotFoundException)) {
+                    LOGGER.error("Error resolving user settings for {}, will use default settings: {}",
+                        user.asString(), ResolvedSettings.DEFAULT, error);
+                }
+            });
     }
 
 }

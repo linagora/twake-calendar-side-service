@@ -127,8 +127,7 @@ public class MongoDBUserConfigurationDAO implements UserConfigurationDAO {
         return getCombineId(mailboxSession)
             .flatMap(this::getModulesByDomainId)
             .map(MongoDBUserConfigurationDAO::toConfigurationEntry)
-            .flatMapMany(Flux::fromIterable)
-            .doOnError(error -> LOGGER.error("Failed to retrieve configuration for user: " + mailboxSession.getUser().asString(), error));
+            .flatMapMany(Flux::fromIterable);
     }
 
     private Mono<CombineId> getCombineId(MailboxSession mailboxSession) {
