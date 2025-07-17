@@ -69,12 +69,12 @@ public class UserSettingBasedLocator {
     public Mono<Language> getLanguage(Username username, Username fallbackUsername) {
         return readLanguageFromUsername(username)
             .onErrorResume(error -> {
-                LOGGER.warn("Failed to read language for user {}: {}, trying fallback user {}",
+                LOGGER.info("Failed to read language for user {}: {}, trying fallback user {}",
                     username.asString(), error.getMessage(), fallbackUsername.asString());
                 return readLanguageFromUsername(fallbackUsername);
             })
             .switchIfEmpty(Mono.defer(() -> {
-                LOGGER.warn("No language setting found for user {}, trying fallback user {}",
+                LOGGER.info("No language setting found for user {}, trying fallback user {}",
                     username.asString(), fallbackUsername.asString());
                 return readLanguageFromUsername(fallbackUsername);
             }))
