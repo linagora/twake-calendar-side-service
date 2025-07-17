@@ -18,7 +18,6 @@
 
 package com.linagora.calendar.api;
 
-
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.Key;
@@ -27,6 +26,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.Date;
 import java.util.Map;
+import java.util.Optional;
 
 import org.apache.james.metrics.api.MetricFactory;
 import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
@@ -38,6 +38,7 @@ import org.bouncycastle.util.io.pem.PemReader;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
 
+import io.jsonwebtoken.JwtBuilder;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.lang.Collections;
 import io.jsonwebtoken.security.SecureDigestAlgorithm;
@@ -60,12 +61,16 @@ public class JwtSigner {
             }
         }
 
-        private final Duration tokenValidity;
+        private final Optional<Duration> tokenValidity;
         private final Path privateKeyPath;
         private final Clock clock;
         private final MetricFactory metricFactory;
 
         public Factory(Clock clock, Duration tokenValidity, Path privateKeyPath, MetricFactory metricFactory) {
+            this(clock, Optional.of(tokenValidity), privateKeyPath, metricFactory);
+        }
+
+        public Factory(Clock clock, Optional<Duration> tokenValidity, Path privateKeyPath, MetricFactory metricFactory) {
             this.clock = clock;
             this.tokenValidity = tokenValidity;
             this.privateKeyPath = privateKeyPath;
@@ -81,11 +86,11 @@ public class JwtSigner {
     private static final String SUB_CLAIM = "sub";
 
     private final Clock clock;
-    private final Duration tokenValidity;
+    private final Optional<Duration> tokenValidity;
     private final Key key;
     private final MetricFactory metricFactory;
 
-    public JwtSigner(Clock clock, Duration tokenValidity, Key key, MetricFactory metricFactory) {
+    public JwtSigner(Clock clock, Optional<Duration> tokenValidity, Key key, MetricFactory metricFactory) {
         this.clock = clock;
         this.tokenValidity = tokenValidity;
         this.key = key;
@@ -98,13 +103,17 @@ public class JwtSigner {
 
     public Mono<String> generate(Map<String, Object> claims) {
         Preconditions.checkArgument(!Collections.isEmpty(claims), "claims can't be empty");
-        return Mono.from(metricFactory.decoratePublisherWithTimerMetric("jwt-signer", Mono.fromCallable(() -> Jwts.builder()
-                .header().add("typ", "JWT").and()
-                .claims(claims)
-                .signWith(key, (SecureDigestAlgorithm) Jwts.SIG.RS256)
-                .issuedAt(Date.from(clock.instant()))
-                .expiration(Date.from(clock.instant().plus(tokenValidity)))
-                .compact())))
+        return Mono.from(metricFactory.decoratePublisherWithTimerMetric("jwt-signer", Mono.fromCallable(() -> {
+                JwtBuilder jwtBuilder = Jwts.builder()
+                    .header().add("typ", "JWT").and()
+                    .claims(claims)
+                    .signWith(key, (SecureDigestAlgorithm) Jwts.SIG.RS256)
+                    .issuedAt(Date.from(clock.instant()));
+
+                tokenValidity.ifPresent(duration ->
+                    jwtBuilder.expiration(Date.from(clock.instant().plus(duration))));
+                return jwtBuilder.compact();
+            })))
             .subscribeOn(Schedulers.parallel());
     }
 }

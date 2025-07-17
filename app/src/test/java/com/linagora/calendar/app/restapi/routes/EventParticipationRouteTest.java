@@ -568,6 +568,35 @@ public class EventParticipationRouteTest {
             """);
     }
 
+    @Test
+    void jwtInLinkResponseShouldNotHaveExpAttribute(TwakeCalendarGuiceServer server) {
+        String eventUid = UUID.randomUUID().toString();
+        upsertCalendarForTest(eventUid);
+
+        Participation participation = getParticipation(eventUid, ParticipantAction.ACCEPTED);
+        URL participationTokenUrl = getParticipationTokenUrl(participation, server);
+
+        Map<String, String> links = RestAssured
+            .given()
+          .when()
+            .get(participationTokenUrl)
+          .then()
+            .statusCode(200)
+            .contentType(JSON)
+            .extract()
+            .jsonPath()
+            .getMap("links");
+
+        String jwt = extractJwtFromUrl(links.get("maybe"));
+
+        String[] jwtParts = jwt.split("\\.");
+        assertThat(jwtParts).hasSize(3);
+        String payload = new String(Base64.getUrlDecoder().decode(jwtParts[1]), StandardCharsets.UTF_8);
+        assertThat(payload)
+            .contains("iat", "calendarURI", "uid", "action", "organizerEmail", "attendeeEmail")
+            .doesNotContain("exp");
+    }
+
     static Stream<Arguments> invalidJwtProvider() {
         String port = "{port}";
         return Stream.of(

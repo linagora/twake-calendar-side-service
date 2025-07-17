@@ -190,7 +190,20 @@ public class RestApiModule extends AbstractModule {
                                Clock clock,
                                MetricFactory metricFactory) throws Exception {
         File privateKeyPath = fileSystem.getFile(configuration.getJwtPrivatePath());
-        JwtSigner.Factory jwtSigerFactory = new JwtSigner.Factory(clock, configuration.getJwtValidity(),
+        JwtSigner.Factory jwtSigerFactory = new JwtSigner.Factory(clock, Optional.of(configuration.getJwtValidity()),
+            privateKeyPath.toPath(), metricFactory);
+        return jwtSigerFactory.instantiate();
+    }
+
+    @Provides
+    @Singleton
+    @Named("participationActionLinks")
+    JwtSigner provideJwtSignerForParticipationActionLinks(FileSystem fileSystem,
+                                                          RestApiConfiguration configuration,
+                                                          Clock clock,
+                                                          MetricFactory metricFactory) throws Exception {
+        File privateKeyPath = fileSystem.getFile(configuration.getJwtPrivatePath());
+        JwtSigner.Factory jwtSigerFactory = new JwtSigner.Factory(clock, Optional.empty(),
             privateKeyPath.toPath(), metricFactory);
         return jwtSigerFactory.instantiate();
     }
