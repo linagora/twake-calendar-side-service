@@ -75,8 +75,12 @@ public class CalDavEventRepository {
     }
 
     public Mono<CalendarEventReportResponse> updatePartStat(Username username, OpenPaaSId calendarId, EventUid eventUid, PartStat partStat) {
-        CalendarEventModifier eventModifier = CalendarEventModifier.of(new AttendeePartStatusUpdatePatch(username, partStat));
-        return updateEvent(username, calendarId, eventUid, eventModifier)
+        AttendeePartStatusUpdatePatch attendeePartStatusUpdatePatch = new AttendeePartStatusUpdatePatch(username, partStat);
+        return updatePartStat(username, calendarId, eventUid, attendeePartStatusUpdatePatch);
+    }
+
+    public Mono<CalendarEventReportResponse> updatePartStat(Username username, OpenPaaSId calendarId, EventUid eventUid, AttendeePartStatusUpdatePatch patch) {
+        return updateEvent(username, calendarId, eventUid, CalendarEventModifier.of(patch))
             .then(client.calendarReportByUid(username, calendarId, eventUid.value()));
     }
 

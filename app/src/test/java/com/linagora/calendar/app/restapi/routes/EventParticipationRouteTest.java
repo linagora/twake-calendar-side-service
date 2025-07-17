@@ -26,19 +26,28 @@ import static io.restassured.http.ContentType.JSON;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
+import static org.awaitility.Durations.ONE_HUNDRED_MILLISECONDS;
 import static org.hamcrest.Matchers.notNullValue;
 
 import java.net.URI;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
@@ -48,6 +57,8 @@ import org.apache.http.HttpStatus;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.james.utils.GuiceProbe;
+import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionFactory;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Order;
@@ -83,6 +94,7 @@ import io.restassured.RestAssured;
 import io.restassured.authentication.PreemptiveBasicAuthScheme;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.http.ContentType;
+import io.restassured.path.json.JsonPath;
 import io.restassured.specification.RequestSpecification;
 import net.fortuna.ical4j.model.parameter.PartStat;
 
@@ -130,6 +142,18 @@ public class EventParticipationRouteTest {
                 .toInstance(mailSenderConfigurationFunction.apply(mockSmtpExtension));
         });
 
+    static RequestSpecification mockSMTPRequestSpecification() {
+        return new RequestSpecBuilder()
+            .setPort(mockSmtpExtension.getMockSmtp().getRestApiPort())
+            .setBasePath("")
+            .build();
+    }
+
+    static ConditionFactory CALMLY_AWAIT = Awaitility
+        .with().pollInterval(ONE_HUNDRED_MILLISECONDS)
+        .and().pollDelay(ONE_HUNDRED_MILLISECONDS)
+        .await();
+
     @AfterAll
     static void afterAll() {
         RestAssured.reset();
@@ -168,6 +192,14 @@ public class EventParticipationRouteTest {
             .setContentType(JSON)
             .setConfig(newConfig().encoderConfig(encoderConfig().defaultContentCharset(StandardCharsets.UTF_8)))
             .build();
+
+        given(mockSMTPRequestSpecification())
+            .delete("/smtpMails")
+            .then();
+
+        given(mockSMTPRequestSpecification())
+            .delete("/smtpBehaviors")
+            .then();
     }
 
     @Test
@@ -233,6 +265,86 @@ public class EventParticipationRouteTest {
                     ]
                 """);
     }
+
+    @Test
+    void actionLinksShouldWorkForExternalUser() {
+        String externalUser = "externaluser@gmail.com";
+
+        String eventUid = UUID.randomUUID().toString();
+        davTestHelper.upsertCalendar(
+            organizer,
+            generateCalendarData(eventUid, organizer.username().asString(), externalUser),
+            eventUid);
+        Supplier<JsonPath> smtpMailsResponseSupplier = () -> given(mockSMTPRequestSpecification())
+            .get("/smtpMails")
+            .jsonPath();
+
+        CALMLY_AWAIT
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
+
+        AtomicReference<String> actionLink = new AtomicReference<>();
+
+        assertSoftly(Throwing.consumer(softly -> {
+            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(externalUser);
+            String message = smtpMailsResponse.getString("[0].message");
+            List<String> actionLinks = extractActionLinks(getHtml(message));
+            softly.assertThat(actionLinks).hasSize(3);
+            actionLink.set(actionLinks.getFirst());
+        }));
+
+        String participationLink = actionLink.get()
+            .replace("https://excal.linagora.com/excal/?jwt=",
+                "http://localhost:" + restApiPort + "/calendar/api/calendars/event/participation?jwt=");
+        String actualResponse = given().log().all()
+            .when()
+            .get(participationLink)
+            .then()
+            .statusCode(200)
+            .contentType(JSON)
+            .extract()
+            .body().asString();
+
+        assertThatJson(actualResponse)
+            .isEqualTo("""
+                {
+                  "eventJSON": "${json-unit.ignore}",
+                  "attendeeEmail": "%s",
+                  "locale": "en",
+                  "links": {
+                    "yes": "${json-unit.ignore}",
+                    "no": "${json-unit.ignore}",
+                    "maybe": "${json-unit.ignore}"
+                  }
+                }
+                """.formatted(externalUser));
+    }
+
+    private String getHtml(String message) {
+        Pattern htmlPattern = Pattern.compile(
+            "Content-Transfer-Encoding: base64\r?\nContent-Type: text/html; charset=UTF-8\r?\nContent-Language: [^\r\n]+\r?\n\r?\n([A-Za-z0-9+/=\r\n]+)\r?\n---=Part",
+            Pattern.DOTALL);
+        Matcher matcher = htmlPattern.matcher(message);
+        matcher.find();
+        String base64Html = matcher.group(1).replaceAll("\\s+", "");
+        return new String(Base64.getDecoder().decode(base64Html), StandardCharsets.UTF_8);
+    }
+
+    List<String> extractActionLinks(String html) {
+        List<String> links = new ArrayList<>();
+        Pattern pattern = Pattern.compile("href\\s*=\\s*['\"]([^'\"]+)['\"]", Pattern.CASE_INSENSITIVE);
+        Matcher matcher = pattern.matcher(html);
+
+        while (matcher.find()) {
+            links.add(matcher.group(1));
+        }
+        return links.stream()
+            .filter(e-> e.startsWith("https://excal.linagora.com/excal/?jwt="))
+            .toList();
+    }
+
 
     @Test
     void shouldUpdatePartStatOnDavServerWhenParticipationLinkIsAccessed(TwakeCalendarGuiceServer server) throws Exception {

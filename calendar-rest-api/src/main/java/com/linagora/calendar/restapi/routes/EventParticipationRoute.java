@@ -28,6 +28,7 @@ import java.util.stream.Stream;
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.james.core.Username;
 import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.JMAPRoute;
@@ -43,11 +44,13 @@ import com.linagora.calendar.api.Participation;
 import com.linagora.calendar.api.ParticipationTokenSigner;
 import com.linagora.calendar.dav.CalDavEventRepository;
 import com.linagora.calendar.dav.CalendarEventNotFoundException;
+import com.linagora.calendar.dav.CalendarEventUpdatePatch.AttendeePartStatusUpdatePatch;
 import com.linagora.calendar.dav.dto.VCalendarDto;
 import com.linagora.calendar.restapi.ErrorResponse;
 import com.linagora.calendar.restapi.routes.response.EventParticipationResponse;
 import com.linagora.calendar.smtp.template.Language;
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.eventsearch.EventUid;
 
 import io.netty.handler.codec.http.HttpMethod;
@@ -67,19 +70,22 @@ public class EventParticipationRoute implements JMAPRoutes {
     private final CalDavEventRepository calDavEventRepository;
     private final UserSettingBasedLocator userSettingBasedLocator;
     private final EventParticipationActionLinkFactory actionLinkFactory;
+    private final OpenPaaSUserDAO openPaaSUserDAO;
 
     @Inject
     public EventParticipationRoute(MetricFactory metricFactory,
                                    ParticipationTokenSigner participationTokenSigner,
                                    CalDavEventRepository calDavEventRepository,
                                    EventParticipationActionLinkFactory actionLinkFactory,
-                                   UserSettingBasedLocator userSettingBasedLocator) {
+                                   UserSettingBasedLocator userSettingBasedLocator,
+                                   OpenPaaSUserDAO openPaaSUserDAO) {
         this.metricFactory = metricFactory;
         this.participationTokenSigner = participationTokenSigner;
         this.calDavEventRepository = calDavEventRepository;
         this.userSettingBasedLocator = userSettingBasedLocator;
 
         this.actionLinkFactory = actionLinkFactory;
+        this.openPaaSUserDAO = openPaaSUserDAO;
     }
 
     private Endpoint endpoint() {
@@ -115,7 +121,7 @@ public class EventParticipationRoute implements JMAPRoutes {
 
     private Mono<Void> handleValidParticipation(HttpServerResponse response, Participation participation) {
         return updateParticipation(participation)
-            .flatMap(vCalendarDto -> buildEventParticipationResponse(vCalendarDto, participation))
+            .flatMap(vCalendarDto -> buildEventParticipationResponse(vCalendarDto.getLeft(), vCalendarDto.getRight(), participation))
             .map(Throwing.function(EventParticipationResponse::jsonAsBytes))
             .flatMap(bytes -> response.status(200)
                 .headers(JSON_HEADER)
@@ -129,28 +135,50 @@ public class EventParticipationRoute implements JMAPRoutes {
             .flatMap(participationTokenSigner::validateAndExtractParticipation);
     }
 
-    private Mono<VCalendarDto> updateParticipation(Participation participationRequest) {
+    private Mono<Pair<VCalendarDto, Boolean>> updateParticipation(Participation participationRequest) {
         Username attendeeUsername = Username.fromMailAddress(participationRequest.attendee());
+        Username organizerUsername = Username.fromMailAddress(participationRequest.organizer());
         OpenPaaSId calendarId = new OpenPaaSId(participationRequest.calendarURI());
+        EventUid eventUid = new EventUid(participationRequest.eventUid());
+        PartStat partStat = participantActionToPartStat(participationRequest.action());
+        AttendeePartStatusUpdatePatch patch = new AttendeePartStatusUpdatePatch(attendeeUsername, partStat);
 
-        return calDavEventRepository.updatePartStat(attendeeUsername, calendarId,
-                new EventUid(participationRequest.eventUid()),
-                participantActionToPartStat(participationRequest.action()))
-            .map(VCalendarDto::from);
+        return openPaaSUserDAO.retrieve(attendeeUsername)
+            .hasElement()
+            .flatMap(isAttendeeInternalUser -> {
+                Username requestUser = resolveRequestUser(attendeeUsername, organizerUsername, isAttendeeInternalUser);
+                return calDavEventRepository.updatePartStat(requestUser, calendarId, eventUid, patch)
+                    .map(VCalendarDto::from)
+                    .map(dto -> Pair.of(dto, isAttendeeInternalUser));
+            });
+    }
+
+    private Username resolveRequestUser(Username attendee, Username organizer, boolean isAttendeeInternalUser) {
+        if (isAttendeeInternalUser) {
+            return attendee;
+        }
+        return organizer;
     }
 
     private Mono<EventParticipationResponse> buildEventParticipationResponse(VCalendarDto eventDto,
+                                                                             Boolean isAttendeeInternalUser,
                                                                              Participation participationRequest) {
-        Mono<Locale> getLocale = userSettingBasedLocator.getLanguage(Username.fromMailAddress(participationRequest.attendee()),
-                Username.fromMailAddress(participationRequest.organizer()))
-            .map(Language::locale);
-
         Mono<ActionLinks> generateLinks = actionLinkFactory.generateLinks(participationRequest.organizer(),
             participationRequest.attendee(), participationRequest.eventUid(), participationRequest.calendarURI());
 
-        return Mono.zip(getLocale, generateLinks)
+        return Mono.zip(getLocale(participationRequest, isAttendeeInternalUser), generateLinks)
             .map(tuple -> new EventParticipationResponse(eventDto, participationRequest.attendee(),
                 tuple.getT2(), tuple.getT1()));
+    }
+
+    private Mono<Locale> getLocale(Participation participationRequest, boolean isInternalAttendeeRequest) {
+        if (isInternalAttendeeRequest) {
+            return userSettingBasedLocator.getLanguage(Username.fromMailAddress(participationRequest.attendee()),
+                    Username.fromMailAddress(participationRequest.organizer()))
+                .map(Language::locale);
+        }
+        return userSettingBasedLocator.getLanguage(Username.fromMailAddress(participationRequest.organizer()))
+            .map(Language::locale);
     }
 
     private PartStat participantActionToPartStat(Participation.ParticipantAction action) {
