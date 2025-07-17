@@ -58,6 +58,7 @@ import com.linagora.calendar.storage.eventsearch.CalendarEvents;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
 import com.linagora.calendar.storage.eventsearch.EventSearchQuery;
 import com.linagora.calendar.storage.eventsearch.EventUid;
+import com.linagora.calendar.storage.exception.CalendarSearchIndexingException;
 import com.linagora.calendar.storage.opensearch.CalendarEventIndexMappingFactory.CalendarFields;
 
 import reactor.core.publisher.Flux;

@@ -16,7 +16,7 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage.opensearch;
+package com.linagora.calendar.storage.exception;
 
 import java.util.Optional;
 

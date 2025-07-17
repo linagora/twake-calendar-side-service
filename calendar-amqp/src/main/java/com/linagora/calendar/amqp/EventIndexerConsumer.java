@@ -48,6 +48,7 @@ import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.eventsearch.CalendarEvents;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
+import com.linagora.calendar.storage.exception.CalendarSearchIndexingException;
 import com.rabbitmq.client.BuiltinExchangeType;
 
 import reactor.core.Disposable;
@@ -193,7 +194,13 @@ public class EventIndexerConsumer implements Closeable, Startable {
         private Mono<Void> indexEvents(AccountId ownerAccountId, CalendarEvents calendarEvents) {
            if (hasRecurrenceEvents(calendarEvents)) {
                 return calendarSearchService.delete(ownerAccountId, calendarEvents.eventUid())
-                    .then(calendarSearchService.index(ownerAccountId, calendarEvents));
+                    .then(calendarSearchService.index(ownerAccountId, calendarEvents))
+                    .onErrorResume(error -> error instanceof CalendarSearchIndexingException && error.getCause().getMessage().contains("version conflict, required seqNo"),
+                        error -> {
+                        LOGGER.info("Failed to delete recurring eventId: {} for accountId {} due to receiving duplicated messages from dav",
+                            calendarEvents.eventUid().value(), ownerAccountId.getIdentifier(), error);
+                        return Mono.empty();
+                    });
             } else {
                 return calendarSearchService.index(ownerAccountId, calendarEvents);
            }
