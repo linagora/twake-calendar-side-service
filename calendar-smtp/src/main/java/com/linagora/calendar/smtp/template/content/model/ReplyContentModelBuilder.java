@@ -27,6 +27,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import org.apache.commons.lang3.StringUtils;
+
 import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.smtp.i18n.I18NTranslator;
 
@@ -40,10 +42,11 @@ public class ReplyContentModelBuilder {
                 eventOrganizer -> eventResources -> eventDescription ->
                     locale -> displayZoneId -> translator -> eventInCalendarLinkFactory -> () -> {
 
+                        String eventAttendeeName = StringUtils.defaultIfEmpty(eventAttendee.cn(), eventAttendee.email());
                         ImmutableMap.Builder<String, Object> builder = ImmutableMap.builder();
                         builder.put("partStat", partStat.getValue().toUpperCase(Locale.US));
                         builder.put("partStatColor", partStatColor(partStat));
-                        builder.put("content.replyPersonDisplayName", eventAttendee.cn());
+                        builder.put("content.replyPersonDisplayName", eventAttendeeName);
                         builder.put("content.replyMessage", translator.get("reply_message_" + partStat.getValue().toLowerCase(Locale.US)));
                         builder.put("content.event.summary", eventSummary);
                         builder.put("content.event.allDay", eventAllDay);
@@ -63,7 +66,7 @@ public class ReplyContentModelBuilder {
                             builder.put("content.event.description", description));
 
                         String eventResourcesJoined = eventResources.stream()
-                            .map(PersonModel::cn)
+                            .map(person -> StringUtils.defaultIfEmpty(person.cn(), person.email()))
                             .filter(Objects::nonNull)
                             .collect(Collectors.joining(", "));
 
@@ -71,7 +74,7 @@ public class ReplyContentModelBuilder {
 
                         builder.put("subject.partStatDisplay", translator.get(partStat.getValue().toLowerCase(Locale.US)));
                         builder.put("subject.summary", eventSummary);
-                        builder.put("subject.participant", eventAttendee.cn());
+                        builder.put("subject.participant", eventAttendeeName);
                         return builder.build();
                     };
     }

@@ -27,6 +27,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import org.apache.commons.lang3.StringUtils;
+
 import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.smtp.i18n.I18NTranslator;
 
@@ -180,7 +182,7 @@ public class CounterContentModelBuilder {
             builder.put("content.oldEvent.organizer", organizer.toPugModel());
             builder.put("content.oldEvent.hasResources", !resources.isEmpty());
             builder.put("content.oldEvent.resourcesJoined", resources.stream()
-                .map(PersonModel::cn)
+                .map(person -> StringUtils.defaultIfEmpty(person.cn(), person.email()))
                 .filter(Objects::nonNull)
                 .collect(Collectors.joining(", ")));
 
