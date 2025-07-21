@@ -104,6 +104,7 @@ class HtmlBodyRendererTest {
                 .timeZoneDisplay(ZoneId.of("Asia/Ho_Chi_Minh"))
                 .translator(translator)
                 .eventInCalendarLink(new EventInCalendarLinkFactory(URI.create("http://localhost:3000/").toURL()))
+                .senderDisplayName("Bob")
                 .buildAsMap();
 
             return ImmutableMap.<String, Object>builder()
