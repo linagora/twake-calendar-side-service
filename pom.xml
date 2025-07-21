@@ -181,6 +181,11 @@
                 <artifactId>ez-vcard</artifactId>
                 <version>0.12.1</version>
             </dependency>
+            <dependency>
+                <groupId>com.ibm.icu</groupId>
+                <artifactId>icu4j</artifactId>
+                <version>77.1</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
