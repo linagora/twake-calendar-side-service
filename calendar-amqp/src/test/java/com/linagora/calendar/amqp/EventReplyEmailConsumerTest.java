@@ -52,6 +52,7 @@ import org.apache.james.backends.rabbitmq.RabbitMQConnectionFactory;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
 import org.apache.james.core.MaybeSender;
+import org.apache.james.core.Username;
 import org.apache.james.mailbox.store.RandomMailboxSessionIdGenerator;
 import org.apache.james.metrics.api.NoopGaugeRegistry;
 import org.apache.james.metrics.tests.RecordingMetricFactory;
@@ -85,6 +86,7 @@ import com.linagora.calendar.smtp.template.MailTemplateConfiguration;
 import com.linagora.calendar.smtp.template.MessageGenerator;
 import com.linagora.calendar.smtp.template.content.model.EventInCalendarLinkFactory;
 import com.linagora.calendar.storage.OpenPaaSUser;
+import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 
@@ -116,6 +118,7 @@ public class EventReplyEmailConsumerTest {
 
     private static final SettingsBasedResolver settingsResolver = mock(SettingsBasedResolver.class);
     private static final EventEmailFilter eventEmailFilter = spy(EventEmailFilter.acceptAll());
+    private static final OpenPaaSUserDAO openPaaSUserDAO = mock(OpenPaaSUserDAO.class);
     private static ReactorRabbitMQChannelPool channelPool;
     private static SimpleConnectionPool connectionPool;
     private static DavTestHelper davTestHelper;
@@ -157,7 +160,8 @@ public class EventReplyEmailConsumerTest {
         attendee = sabreDavExtension.newTestUser();
 
         when(settingsResolver.readSavedSettings(any())).thenReturn(Mono.just(SettingsBasedResolver.ResolvedSettings.DEFAULT));
-
+        when(openPaaSUserDAO.retrieve(any(Username.class)))
+            .thenReturn(Mono.empty());
         setupEventEmailConsumer();
         clearSmtpMock();
     }
@@ -172,6 +176,7 @@ public class EventReplyEmailConsumerTest {
 
         Mockito.reset(settingsResolver);
         Mockito.reset(eventEmailFilter);
+        Mockito.reset(openPaaSUserDAO);
     }
 
     private void setupEventEmailConsumer() throws Exception {
@@ -211,7 +216,7 @@ public class EventReplyEmailConsumerTest {
             messageFactory,
             linkFactory,
             new SimpleSessionProvider(new RandomMailboxSessionIdGenerator()),
-            usersRepository,
+            usersRepository, openPaaSUserDAO,
             settingsResolver,
             actionLinkFactory);
 
@@ -290,6 +295,69 @@ public class EventReplyEmailConsumerTest {
                     Content-Transfer-Encoding: base64
                     Content-Type: application/ics; name="meeting.ics"
                     Content-Disposition: attachment; filename="meeting.ics""");
+        }));
+    }
+
+    @Test
+    void shouldDisplayUserFullNameInEmailWhenAttendeeCNIsEmpty() {
+        Mockito.reset(openPaaSUserDAO);
+        when(openPaaSUserDAO.retrieve(attendee.username()))
+            .thenReturn(Mono.just(new OpenPaaSUser(attendee.username(), null, "FirstName1", "LastName2")));
+
+        String eventUid = UUID.randomUUID().toString();
+        DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss");
+
+        String sampleCalendarData = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Sabre//Sabre VObject 4.1.3//EN
+            CALSCALE:GREGORIAN
+            BEGIN:VTIMEZONE
+            TZID:Asia/Ho_Chi_Minh
+            BEGIN:STANDARD
+            TZOFFSETFROM:+0700
+            TZOFFSETTO:+0700
+            TZNAME:ICT
+            DTSTART:19700101T000000
+            END:STANDARD
+            END:VTIMEZONE
+            BEGIN:VEVENT
+            UID:{eventUid}
+            DTSTAMP:{dtStamp}Z
+            SEQUENCE:1
+            DTSTART;TZID=Asia/Ho_Chi_Minh:{startDateTime}
+            DTEND;TZID=Asia/Ho_Chi_Minh:{endDateTime}
+            SUMMARY:Sprint planning #04
+            ORGANIZER;CN=Van Tung TRAN:mailto:{organizerEmail}
+            ATTENDEE;PARTSTAT={partStat}:mailto:{attendeeEmail}
+            END:VEVENT
+            END:VCALENDAR
+            """.replace("{eventUid}", eventUid)
+            .replace("{organizerEmail}", organizer.username().asString())
+            .replace("{attendeeEmail}", attendee.username().asString())
+            .replace("{startDateTime}", LocalDateTime.now().plusDays(3).format(dateTimeFormatter))
+            .replace("{endDateTime}", LocalDateTime.now().plusDays(3).plusHours(1).format(dateTimeFormatter))
+            .replace("{dtStamp}", LocalDateTime.now().format(dateTimeFormatter))
+            .replace("{partStat}", PartStat.NEEDS_ACTION.getValue());
+
+        davTestHelper.upsertCalendar(organizer, sampleCalendarData, eventUid);
+
+        String eventDavIdOnAttendee = waitForEventCreation(attendee);
+        String replyCalendarData = sampleCalendarData.replace(PartStat.NEEDS_ACTION.getValue(), PartStat.ACCEPTED.getValue());
+
+        davTestHelper.upsertCalendar(attendee, replyCalendarData, eventDavIdOnAttendee);
+
+        awaitAtMost
+            .atMost(Duration.ofSeconds(20))
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(2));
+
+        JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
+
+        assertSoftly(Throwing.consumer(softly -> {
+            softly.assertThat(smtpMailsResponse.getString("[1].from")).isEqualTo(attendee.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[1].recipients[0].address")).isEqualTo(organizer.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[1].message"))
+                .contains("Subject: Accepted: Sprint planning #04 (FirstName1 LastName2)");
         }));
     }
 

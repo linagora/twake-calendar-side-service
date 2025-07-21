@@ -26,10 +26,12 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
@@ -56,7 +58,10 @@ import com.linagora.calendar.smtp.template.MessageGenerator;
 import com.linagora.calendar.smtp.template.MimeAttachment;
 import com.linagora.calendar.smtp.template.TemplateType;
 import com.linagora.calendar.smtp.template.content.model.EventInCalendarLinkFactory;
+import com.linagora.calendar.smtp.template.content.model.ReplyContentModelBuilder;
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.OpenPaaSUser;
+import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.resolver.ConfigurationResolver;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
@@ -91,6 +96,7 @@ public class EventMailHandler {
     private final MessageGenerator.Factory messageGeneratorFactory;
     private final EventInCalendarLinkFactory eventInCalendarLinkFactory;
     private final UsersRepository usersRepository;
+    private final OpenPaaSUserDAO userDAO;
     private final SettingsBasedResolver settingsBasedResolver;
     private final EventParticipationActionLinkFactory participationActionLinkFactory;
 
@@ -101,8 +107,9 @@ public class EventMailHandler {
                             MessageGenerator.Factory messageGeneratorFactory,
                             EventInCalendarLinkFactory eventInCalendarLinkFactory,
                             SimpleSessionProvider sessionProvider,
-                            UsersRepository usersRepository, EventParticipationActionLinkFactory participationActionLinkFactory) {
-        this(mailSenderFactory, messageGeneratorFactory, eventInCalendarLinkFactory, sessionProvider, usersRepository,
+                            UsersRepository usersRepository, OpenPaaSUserDAO userDAO,
+                            EventParticipationActionLinkFactory participationActionLinkFactory) {
+        this(mailSenderFactory, messageGeneratorFactory, eventInCalendarLinkFactory, sessionProvider, usersRepository, userDAO,
             SettingsBasedResolver.of(configurationResolver,
                 Set.of(LanguageSettingReader.INSTANCE, TimeZoneSettingReader.INSTANCE)), participationActionLinkFactory);
     }
@@ -111,7 +118,7 @@ public class EventMailHandler {
                             MessageGenerator.Factory messageGeneratorFactory,
                             EventInCalendarLinkFactory eventInCalendarLinkFactory,
                             SimpleSessionProvider sessionProvider,
-                            UsersRepository usersRepository,
+                            UsersRepository usersRepository, OpenPaaSUserDAO userDAO,
                             SettingsBasedResolver settingsBasedResolver,
                             EventParticipationActionLinkFactory participationActionLinkFactory) {
         this.mailSenderFactory = mailSenderFactory;
@@ -119,6 +126,7 @@ public class EventMailHandler {
         this.messageGeneratorFactory = messageGeneratorFactory;
         this.eventInCalendarLinkFactory = eventInCalendarLinkFactory;
         this.usersRepository = usersRepository;
+        this.userDAO = userDAO;
         this.settingsBasedResolver = settingsBasedResolver;
         this.participationActionLinkFactory = participationActionLinkFactory;
     }
@@ -259,18 +267,31 @@ public class EventMailHandler {
         private Mono<Message> generateReplyMessage(ResolvedSettings resolvedSettings,
                                                    MessageGenerator messageGenerator) {
 
-            Map<String, Object> model = event.toReplyContentModelBuilder()
+            ReplyContentModelBuilder.SenderDisplayNameStep modelBuilder = event.toReplyContentModelBuilder()
                 .locale(resolvedSettings.locale())
                 .timeZoneDisplay(resolvedSettings.zoneId())
                 .translator(messageGenerator.getI18nTranslator())
-                .eventInCalendarLink(eventInCalendarLinkFactory)
-                .buildAsMap();
+                .eventInCalendarLink(eventInCalendarLinkFactory);
 
-            byte[] calendarAsBytes = event.base().eventAsBytes();
-            List<MimeAttachment> attachments = EventMessageGenerator.createAttachments(calendarAsBytes, ImmutableMethod.REPLY);
+            List<MimeAttachment> attachments = EventMessageGenerator.createAttachments(event.base().eventAsBytes(), ImmutableMethod.REPLY);
 
             MailAddress fromAddress = event.base().senderEmail();
-            return messageGenerator.generate(recipientUser, Optional.of(fromAddress), model, attachments);
+
+            return getUserFullNameByAddress(fromAddress)
+                .map(modelBuilder::senderDisplayName)
+                .map(ReplyContentModelBuilder.FinalStep::buildAsMap)
+                .flatMap(model -> messageGenerator.generate(recipientUser, Optional.of(fromAddress), model, attachments));
+        }
+
+        private Mono<String> getUserFullNameByAddress(MailAddress fromAddress) {
+            Username username = Username.fromMailAddress(fromAddress);
+            Function<OpenPaaSUser, String> fullNameFunction = user -> StringUtils.trimToEmpty(StringUtils.joinWith(" ",
+                StringUtils.defaultString(user.firstname()),
+                StringUtils.defaultString(user.lastname())));
+
+            return userDAO.retrieve(username)
+                .map(fullNameFunction)
+                .defaultIfEmpty(StringUtils.EMPTY);
         }
     }
 

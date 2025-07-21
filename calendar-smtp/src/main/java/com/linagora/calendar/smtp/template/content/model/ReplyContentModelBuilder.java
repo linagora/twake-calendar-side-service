@@ -40,13 +40,17 @@ public class ReplyContentModelBuilder {
         return eventSummary -> eventAllDay -> eventStart -> eventEnd ->
             eventLocation -> (eventAttendee, partStat) ->
                 eventOrganizer -> eventResources -> eventDescription ->
-                    locale -> displayZoneId -> translator -> eventInCalendarLinkFactory -> () -> {
+                    locale -> displayZoneId -> translator -> eventInCalendarLinkFactory ->
+                        senderDisplayName -> () -> {
 
-                        String eventAttendeeName = StringUtils.defaultIfEmpty(eventAttendee.cn(), eventAttendee.email());
+                        String participantDisplayName = StringUtils.defaultIfEmpty(
+                            StringUtils.defaultIfEmpty(eventAttendee.cn(), senderDisplayName),
+                            eventAttendee.email());
+
                         ImmutableMap.Builder<String, Object> builder = ImmutableMap.builder();
                         builder.put("partStat", partStat.getValue().toUpperCase(Locale.US));
                         builder.put("partStatColor", partStatColor(partStat));
-                        builder.put("content.replyPersonDisplayName", eventAttendeeName);
+                        builder.put("content.replyPersonDisplayName", participantDisplayName);
                         builder.put("content.replyMessage", translator.get("reply_message_" + partStat.getValue().toLowerCase(Locale.US)));
                         builder.put("content.event.summary", eventSummary);
                         builder.put("content.event.allDay", eventAllDay);
@@ -74,7 +78,7 @@ public class ReplyContentModelBuilder {
 
                         builder.put("subject.partStatDisplay", translator.get(partStat.getValue().toLowerCase(Locale.US)));
                         builder.put("subject.summary", eventSummary);
-                        builder.put("subject.participant", eventAttendeeName);
+                        builder.put("subject.participant", participantDisplayName);
                         return builder.build();
                     };
     }
@@ -101,7 +105,7 @@ public class ReplyContentModelBuilder {
     }
 
     public interface EventInCalendarLinkStep {
-        FinalStep eventInCalendarLink(EventInCalendarLinkFactory value);
+        SenderDisplayNameStep eventInCalendarLink(EventInCalendarLinkFactory value);
     }
 
     public interface EventSummaryStep {
@@ -138,6 +142,10 @@ public class ReplyContentModelBuilder {
 
     public interface EventDescriptionStep {
         LocaleStep eventDescription(Optional<String> value);
+    }
+
+    public interface SenderDisplayNameStep {
+        FinalStep senderDisplayName(String value);
     }
 
     public interface FinalStep {
