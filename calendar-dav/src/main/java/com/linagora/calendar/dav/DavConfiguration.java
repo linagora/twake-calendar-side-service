@@ -20,11 +20,13 @@ package com.linagora.calendar.dav;
 
 import java.net.URI;
 import java.time.Duration;
+import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 
 import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.auth.UsernamePasswordCredentials;
+import org.apache.james.util.DurationParser;
 
 import com.google.common.base.Preconditions;
 
@@ -54,11 +56,12 @@ public record DavConfiguration(UsernamePasswordCredentials adminCredential,
 
         Optional<Boolean> trustAllSslCerts = Optional.of(configuration.getBoolean(
             DAV_REST_CLIENT_TRUST_ALL_SSL_CERTS_PROPERTY, CLIENT_TRUST_ALL_SSL_CERTS_DISABLED));
-        Optional<Duration> responseTimeout = Optional.ofNullable(configuration.getLong(
+        Optional<Duration> responseTimeout = Optional.ofNullable(configuration.getString(
                 DAV_REST_CLIENT_RESPONSE_TIMEOUT_PROPERTY, null))
-            .map(durationAsMilliseconds -> {
-                Preconditions.checkArgument(durationAsMilliseconds > 0, "Response timeout should not be negative");
-                return Duration.ofMillis(durationAsMilliseconds);
+            .map(string -> DurationParser.parse(string, ChronoUnit.MILLIS))
+            .map(duration -> {
+                Preconditions.checkArgument(duration.isPositive(), "Response timeout should not be negative");
+                return duration;
             });
         return new DavConfiguration(adminCredential, baseUrl, trustAllSslCerts, responseTimeout);
     }
