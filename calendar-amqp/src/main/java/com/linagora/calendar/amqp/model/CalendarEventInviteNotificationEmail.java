@@ -63,6 +63,6 @@ public record CalendarEventInviteNotificationEmail(CalendarEventNotificationEmai
         }
         return ImmutableMap.of("content", contentBuilder.build(),
             "subject.summary", summary,
-            "subject.organizer", organizer.cn());
+            "subject.organizer", StringUtils.defaultIfEmpty(organizer.cn(), organizer.email()));
     }
 }

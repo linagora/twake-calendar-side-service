@@ -78,7 +78,7 @@ public record CalendarEventUpdateNotificationEmail(CalendarEventNotificationEmai
             "subject.summary", maybeChanges.flatMap(CalendarEventNotificationEmailDTO.Changes::summary)
                 .map(CalendarEventNotificationEmailDTO.StringChange::previous)
                 .orElse(summary),
-            "subject.organizer", organizer.cn());
+            "subject.organizer", StringUtils.defaultIfEmpty(organizer.cn(), organizer.email()));
     }
 
     private Map<String, Object> toPugModel(Locale locale, ZoneId zoneToDisplay, CalendarEventNotificationEmailDTO.Changes changes) {
