@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.restapi.auth;
 
+import static com.linagora.calendar.restapi.auth.JwtAuthenticationStrategy.isAuthTypeJwt;
 import static org.apache.james.jmap.http.JWTAuthenticationStrategy.AUTHORIZATION_HEADER_PREFIX;
 
 import java.time.Clock;
@@ -64,7 +65,7 @@ public class OidcAuthenticationStrategy implements AuthenticationStrategy {
         return Mono.fromCallable(() -> authHeaders(httpRequest))
             .filter(header -> header.startsWith(AUTHORIZATION_HEADER_PREFIX))
             .map(header -> header.substring(AUTHORIZATION_HEADER_PREFIX.length()))
-            .filter(token -> !token.startsWith("eyJ")) // Heuristic for detecting JWT
+            .filter(token -> !isAuthTypeJwt(token))
             .map(Token::new)
             .flatMap(oidcTokenCache::associatedInformation)
             .<TokenInfo>handle((tokenInfo, sink) -> {

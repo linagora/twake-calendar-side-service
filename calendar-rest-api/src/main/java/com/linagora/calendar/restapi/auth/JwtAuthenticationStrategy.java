@@ -18,10 +18,14 @@
 
 package com.linagora.calendar.restapi.auth;
 
+import static com.linagora.calendar.api.JwtSigner.AUTH_TYPE;
+import static com.linagora.calendar.api.JwtSigner.JWT_AUTH_TYPE_VALUE;
 import static org.apache.james.jmap.http.JWTAuthenticationStrategy.AUTHORIZATION_HEADER_PREFIX;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import jakarta.inject.Inject;
@@ -40,6 +44,7 @@ import org.apache.james.user.api.UsersRepository;
 import org.apache.james.user.api.UsersRepositoryException;
 import org.apache.james.util.ReactorUtils;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.restapi.RestApiConfiguration;
@@ -49,6 +54,25 @@ import reactor.core.publisher.Mono;
 import reactor.netty.http.server.HttpServerRequest;
 
 public class JwtAuthenticationStrategy implements AuthenticationStrategy {
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /** Returns true if JWT payload contains auth_type = "jwt". */
+    public static boolean isAuthTypeJwt(String jwt) {
+        try {
+            String[] parts = jwt.split("\\.");
+            if (parts.length != 3) {
+                return false;
+            }
+
+            String payloadJson = new String(Base64.getUrlDecoder().decode(parts[1]));
+            Map<?, ?> payload = MAPPER.readValue(payloadJson, Map.class);
+
+            return JWT_AUTH_TYPE_VALUE.equalsIgnoreCase((String) payload.get(AUTH_TYPE));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private final JwtTokenVerifier jwtTokenVerifier;
     private final UsersRepository usersRepository;
     private final SimpleSessionProvider sessionProvider;
@@ -70,6 +94,7 @@ public class JwtAuthenticationStrategy implements AuthenticationStrategy {
             .filter(header -> header.startsWith(AUTHORIZATION_HEADER_PREFIX))
             .map(header -> header.substring(AUTHORIZATION_HEADER_PREFIX.length()))
             .filter(token -> token.startsWith("eyJ")) // Heuristic for detecting JWT
+            .filter(JwtAuthenticationStrategy::isAuthTypeJwt)
             .flatMap(userJWTToken -> Mono.fromCallable(() -> {
                 Username username = jwtTokenVerifier.verifyAndExtractLogin(userJWTToken)
                     .map(Username::of)
