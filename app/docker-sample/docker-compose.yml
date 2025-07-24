@@ -1,0 +1,149 @@
+version: "3.8"
+
+networks:
+  tcalendar:
+
+services:
+  tcalendar-frontend:
+    image: twake-calendar-frontend-fixed
+    container_name: twake_calendar_frontend
+    networks:
+      - tcalendar
+    ports:
+      - "3000:80"
+    volumes:
+      - ./frontend/env.js:/usr/share/nginx/html/.env.js
+
+  tcalendar-side-service:
+    image: linagora/twake-calendar-side-service:latest
+    container_name: tcalendar-side-service.local
+    depends_on:
+      - mongo
+      - rabbitmq
+      - sabre_dav
+    networks:
+      - tcalendar
+    volumes:
+      - ./conf-side-service:/root/conf
+    ports:
+      - "8088:80"
+      - "8000:8000"
+
+  oidc:
+    image: ghcr.io/dexidp/dex:latest
+    container_name: oidc.local
+    ports:
+      - "5556:5556"
+      - "5554:5554"
+    volumes:
+      - ./oidc/dex_config.yaml:/etc/dex/config.yaml:ro
+      - ./oidc/certs:/etc/dex/certs:ro
+    command: dex serve /etc/dex/config.yaml
+    networks:
+      - tcalendar
+
+  mongo:
+    image: mongo:6
+    container_name: mongo
+    networks:
+      - tcalendar
+    ports:
+      - "27017:27017"
+    command: [ "mongod", "--bind_ip", "0.0.0.0" ]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mongosh",
+          "--quiet",
+          "--eval",
+          "'quit(db.runCommand({ ping: 1 }).ok ? 0 : 2)'",
+        ]
+      start_period: 40s
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3.13.3-management
+    container_name: rabbitmq
+    networks:
+      - tcalendar
+    ports:
+      - "15672:15672"  # Management UI
+      - "5672:5672"    # AMQP port
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 3s
+      timeout: 30s
+      retries: 3
+    environment:
+      RABBITMQ_DEFAULT_USER: tcalendar
+      RABBITMQ_DEFAULT_PASS: tcalendar
+
+  sabre_dav:
+    image: linagora/sabre:lng-04-06-2025-3
+    container_name: sabre_dav
+    hostname: sabre-dav.local
+    networks:
+      - tcalendar
+    environment:
+      - SABRE_ENV=dev
+      - SABRE_MONGO_HOST=mongo
+      - SABRE_MONGO_PORT=27017
+      - ESN_MONGO_HOST=mongo
+      - ESN_MONGO_PORT=27017
+      - ESN_MONGO_DBNAME=esn_docker
+      - ESN_HOST=tcalendar-side-service.local
+      - ESN_PORT=80
+      - AMQP_HOST=rabbitmq
+      - AMQP_PORT=5672
+      - AMQP_LOGIN=tcalendar
+      - AMQP_PASSWORD=tcalendar
+      - SABRE_ADMIN_LOGIN=admin
+      - SABRE_ADMIN_PASSWORD=secret123
+      - OPENPASS_BASIC_AUTH=YWRtaW5AbGluYWdvcmEuY29tOnNlY3JldA==
+    depends_on:
+      mongo:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    ports:
+      - "8001:80"
+
+  web-proxy:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - oidc
+      - tcalendar-side-service
+    networks:
+      - tcalendar
+
+  mock-smtp:
+    image: linagora/mock-smtp-server:0.7
+    container_name: smtp-server.local
+    ports:
+      - "8888:8000"
+    networks:
+      - tcalendar
+
+  provision-data:
+    image: curlimages/curl:latest
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      tcalendar-side-service:
+        condition: service_started
+    volumes:
+      - ./script/provision_all.sh:/provision/provision_all.sh:ro
+      - ./script/import-rabbitmq-definitions.sh:/provision/import-rabbitmq-definitions.sh:ro
+      - ./script/provision_users.sh:/provision/provision_users.sh:ro
+      - ./rabbitmq/rabbitmq-definitions.json:/provision/rabbitmq-definitions.json:ro
+    entrypoint: ["sh", "/provision/provision_all.sh"]
+    networks:
+      - tcalendar
