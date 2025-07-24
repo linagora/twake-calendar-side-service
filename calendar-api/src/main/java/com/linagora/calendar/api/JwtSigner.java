@@ -83,6 +83,9 @@ public class JwtSigner {
         }
     }
 
+    public static final String AUTH_TYPE = "twake_calendar_auth_type";
+    public static final String JWT_AUTH_TYPE_VALUE = "jwt";
+
     private static final String SUB_CLAIM = "sub";
 
     private final Clock clock;
@@ -98,7 +101,8 @@ public class JwtSigner {
     }
 
     public Mono<String> generate(String sub) {
-        return generate(ImmutableMap.of(SUB_CLAIM, sub));
+        return generate(ImmutableMap.of(SUB_CLAIM, sub,
+            AUTH_TYPE, JWT_AUTH_TYPE_VALUE));
     }
 
     public Mono<String> generate(Map<String, Object> claims) {
