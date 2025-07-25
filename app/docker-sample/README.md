@@ -18,7 +18,8 @@ It includes:
 
 📝 **Before you start**, make sure to edit your `/etc/hosts` file and add the following line:
 ```
-127.0.0.1 oidc.local tcalendar-side-service.local
+127.0.0.1 tcalendar-side-service.local sso.linagora.local sabre-dav.local
+127.0.0.1 calendar.linagora.local contacts.linagora.local account.linagora.local excal.linagora.local
 ```
 Then:
 ```bash
@@ -32,6 +33,6 @@ At this address, the Twake Calendar frontend app will automatically redirect you
 
 You can log in using the following preconfigured accounts:
 
-- bob@linagora.com / bob
-- alice@linagora.com / alice
-- cedric@linagora.com / cedric
+- bob@linagora.local / bob
+- alice@linagora.local / alice
+- cedric@linagora.local / cedric

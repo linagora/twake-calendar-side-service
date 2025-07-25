@@ -18,6 +18,7 @@
 
         <logger name="org.apache.james" level="INFO" />
         <logger name="org.apache.james.metrics" level="WARN" />
+        <logger name="com.linagora.calendar.restapi" level="DEBUG" />
         <logger name="com.linagora" level="INFO" />
 
 </configuration>

@@ -1,20 +1,25 @@
-issuer: https://oidc.local:5554
+issuer: https://sso.linagora.local
 
 storage:
   type: memory
 
 web:
   http: 0.0.0.0:5556
-  https: 0.0.0.0:5554
-  tlsCert: /etc/dex/certs/local.crt
-  tlsKey: /etc/dex/certs/local.key
   allowedOrigins:
     - http://localhost:3000
+    - https://calendar.linagora.local
+    - https://contacts.linagora.local
+    - https://account.linagora.local
+  logger:
+    level: "debug"
 
 staticClients:
   - id: twake-calendar
     redirectURIs:
       - 'http://localhost:3000/callback'
+      - 'https://calendar.linagora.local/calendar/auth/oidc/callback'
+      - 'https://contacts.linagora.local/contacts/auth/oidc/callback'
+      - 'https://account.linagora.local/account/auth/oidc/callback'
     name: 'Twake Calendar'
     public: true
 
@@ -31,19 +36,17 @@ oauth2:
   responseTypes: ["code", "token", "id_token"]
 
 staticPasswords:
-  - email: "alice@linagora.com"
+  - email: "alice@linagora.local"
     hash: "$2a$12$O3NhVD9nbCYJtWAH9D0PDO23qtM9pMdn5/G6p4I.4J6qklIrYNWIG" # alice
     username: "alice"
     userID: "1"
 
-  - email: "bob@linagora.com"
+  - email: "bob@linagora.local"
     hash: "$2a$12$Qnw3T.u.obn2wPyhX5/0v.Oi3SOn4Ittu0t2LamK1JILve4jslta6" # bob
     username: "bob"
     userID: "2"
 
-  - email: "cedric@linagora.com"
+  - email: "cedric@linagora.local"
     hash: "$2a$12$MpLqAzWJ9C.WcIGllZ.sS.LDpcwP11XC8akwuWfeK4Pu088reiRby" # cedric
     username: "cedric"
     userID: "3"
-logger:
-  level: "debug"

@@ -2,6 +2,9 @@ version: "3.8"
 
 networks:
   tcalendar:
+    ipam:
+      config:
+        - subnet: 172.32.32.0/24
 
 services:
   tcalendar-frontend:
@@ -13,6 +16,9 @@ services:
       - "3000:80"
     volumes:
       - ./frontend/env.js:/usr/share/nginx/html/.env.js
+    depends_on:
+      - tcalendar-side-service
+      - web-proxy
 
   tcalendar-side-service:
     image: linagora/twake-calendar-side-service:latest
@@ -23,21 +29,63 @@ services:
       - sabre_dav
     networks:
       - tcalendar
+    extra_hosts:
+      - "sabre-dav.local:172.32.32.32"
     volumes:
       - ./conf-side-service:/root/conf
     ports:
       - "8088:80"
       - "8000:8000"
 
+  fe-calendar:
+    image: linagora/esn-frontend-calendar:govmu-02
+    hostname: calendar.linagora.local
+    environment:
+      - OPENPAAS_URL=http://tcalendar-side-service.local
+    volumes:
+      - ./frontend/calendar/openpaas.js:/usr/share/nginx/html/assets/env/openpaas.js
+    networks:
+      - tcalendar
+
+  fe-excal:
+    image: linagora/esn-frontend-calendar-public:main
+    hostname: excal.linagora.local
+    environment:
+      - OPENPAAS_URL=http://tcalendar-side-service.local
+    volumes:
+      - ./frontend/calendar/openpaas.js:/usr/share/nginx/html/assets/env/openpaas.js
+    networks:
+      - tcalendar
+
+  fe-contacts:
+    image: linagora/esn-frontend-contacts:17-01-2025
+    hostname: contacts.linagora.local
+    environment:
+      - OPENPAAS_URL=http://tcalendar-side-service.local
+    volumes:
+      - ./frontend/contacts/openpaas.js:/usr/share/nginx/html/assets/env/openpaas.js
+    networks:
+      - tcalendar
+
+  fe-account:
+    image: linagora/esn-frontend-account:main
+    hostname: account.linagora.local
+    environment:
+      - OPENPAAS_URL=http://tcalendar-side-service.local
+    volumes:
+      - ./frontend/account/openpaas.js:/usr/share/nginx/html/assets/env/openpaas.js
+    networks:
+      - tcalendar
+    ports:
+      - "8082:80"
+
   oidc:
     image: ghcr.io/dexidp/dex:latest
-    container_name: oidc.local
+    container_name: sso.linagora.local
     ports:
       - "5556:5556"
-      - "5554:5554"
     volumes:
       - ./oidc/dex_config.yaml:/etc/dex/config.yaml:ro
-      - ./oidc/certs:/etc/dex/certs:ro
     command: dex serve /etc/dex/config.yaml
     networks:
       - tcalendar
@@ -102,7 +150,9 @@ services:
       - AMQP_PASSWORD=tcalendar
       - SABRE_ADMIN_LOGIN=admin
       - SABRE_ADMIN_PASSWORD=secret123
-      - OPENPASS_BASIC_AUTH=YWRtaW5AbGluYWdvcmEuY29tOnNlY3JldA==
+      - OPENPASS_BASIC_AUTH=YWRtaW5AbGluYWdvcmEubG9jYWw6c2VjcmV0
+    volumes:
+      - ./conf-side-service/jwt_publickey:/var/www/config/esn.key.pub
     depends_on:
       mongo:
         condition: service_healthy
@@ -113,8 +163,9 @@ services:
 
   web-proxy:
     image: nginx:alpine
+    hostname: nginx.local
     ports:
-      - "80:80"
+      - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./nginx/certs:/etc/nginx/certs:ro
@@ -122,7 +173,8 @@ services:
       - oidc
       - tcalendar-side-service
     networks:
-      - tcalendar
+      tcalendar:
+        ipv4_address: 172.32.32.32
 
   mock-smtp:
     image: linagora/mock-smtp-server:0.7
