@@ -28,6 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 import org.apache.http.HttpStatus;
@@ -65,7 +66,7 @@ public class SecretLinkRouteTest {
     private static final String SECRET_LINK_BASE_URL = "https://mocked.url/xyz";
     private static final Username USERNAME = Username.fromLocalPartWithDomain("bob", DOMAIN);
 
-    private static final RestApiConfiguration initialRestApiConfiguration = RestApiConfiguration.builder().build();
+    private static final RestApiConfiguration initialRestApiConfiguration = RestApiConfiguration.builder().adminPassword(Optional.of("secret")).build();
     private static final RestApiConfiguration spyRestApiConfiguration = Mockito.spy(initialRestApiConfiguration);
 
     @RegisterExtension

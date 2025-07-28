@@ -76,6 +76,8 @@ public class RestApiConfiguration {
         private Optional<String> defaultTimezone = Optional.empty();
         private Optional<JsonNode> defaultBusinessHours = Optional.empty();
         private Optional<Boolean> defaultUse24hFormat = Optional.empty();
+        private Optional<String> adminUsername = Optional.empty();
+        private Optional<String> adminPassword = Optional.empty();
 
         private Builder() {
 
@@ -196,6 +198,17 @@ public class RestApiConfiguration {
             return this;
         }
 
+        public Builder adminUsername(Optional<String> adminUsername) {
+            this.adminUsername = adminUsername;
+            return this;
+        }
+
+
+        public Builder adminPassword(Optional<String> adminPassword) {
+            this.adminPassword = adminPassword;
+            return this;
+        }
+
         public RestApiConfiguration build() {
             try {
                 ArrayNode arrayNode = defaultBusinessHours();
@@ -221,7 +234,9 @@ public class RestApiConfiguration {
                     defaultLanguage.orElse("en"),
                     defaultTimezone.orElse("Europe/Paris"),
                     defaultUse24hFormat.orElse(true),
-                    defaultBusinessHours.orElse(arrayNode));
+                    defaultBusinessHours.orElse(arrayNode),
+                    adminUsername.orElse("admin@open-paas.org"),
+                    adminPassword.orElseThrow(() -> new IllegalArgumentException("Expecting 'admin.password' to be specified")));
             } catch (MalformedURLException e) {
                 throw new RuntimeException(e);
             }
@@ -256,7 +271,6 @@ public class RestApiConfiguration {
         Optional<URL> calendarSpaUrl = urlParser.apply("spa.calendar.url");
         Optional<URL> contactSpaUrl = urlParser.apply("spa.contacts.url");
         Optional<URL> openpaasBackendURL = urlParser.apply("openpaas.backend.url");
-
         Optional<URL> davURL = urlParser.apply("dav.url");
         Optional<URL> selfURL = urlParser.apply("self.url");
         Optional<URL> visioURL = urlParser.apply("visio.url");
@@ -277,6 +291,8 @@ public class RestApiConfiguration {
         Optional<Boolean> defaultUse24hFormat = Optional.ofNullable(configuration.getBoolean("default.use.24h.format", null));
         Optional<String> defaultLanguage = Optional.ofNullable(configuration.getString("default.language", null));
         Optional<String> defaultTimezone = Optional.ofNullable(configuration.getString("default.timezone", null));
+        Optional<String> adminUsername = Optional.ofNullable(configuration.getString("admin.username", null));
+        Optional<String> adminPassword = Optional.ofNullable(configuration.getString("admin.password", null));
         ArrayNode arrayNode = readWorkingHours(configuration);
 
         Optional<IntrospectionEndpoint> introspectionEndpoint = oidcIntrospectUrl.map(url -> new IntrospectionEndpoint(url, oidcIntrospectCreds));
@@ -304,6 +320,8 @@ public class RestApiConfiguration {
             .defaultTimezone(defaultTimezone)
             .defaultUse24hFormat(defaultUse24hFormat)
             .defaultBusinessHours(Optional.of(arrayNode))
+            .adminUsername(adminUsername)
+            .adminPassword(adminPassword)
             .build();
     }
 
@@ -352,13 +370,15 @@ public class RestApiConfiguration {
     private final String defaultTimezone;
     private final boolean defaultUse24hFormat;
     private final JsonNode defaultBusinessHours;
+    private final String adminUsername;
+    private final String adminPassword;
 
     @VisibleForTesting
     RestApiConfiguration(Optional<Port> port, URL calendarSpaUrl,
                          URL contactSpaUrl, URL selfUrl, URL openpaasBackendURL, URL davURL, URL visioURL, boolean openpaasBackendTrustAllCerts,
                          String jwtPrivatePath, List<String> jwtPublicPath, Duration jwtValidity, URL oidcUserInfoUrl, IntrospectionEndpoint introspectionEndpoint,
                          String oidcIntrospectionClaim, Aud aud, boolean calendarSharingENabled, boolean sharingCalendarEnabled, boolean domainMembersAddressbookEnabled,
-                         String defaultLanguage, String defaultTimezone, boolean defaultUse24hFormat, JsonNode defaultBusinessHours) {
+                         String defaultLanguage, String defaultTimezone, boolean defaultUse24hFormat, JsonNode defaultBusinessHours, String adminUsername, String adminPassword) {
         this.port = port;
         this.calendarSpaUrl = calendarSpaUrl;
         this.contactSpaUrl = contactSpaUrl;
@@ -381,6 +401,8 @@ public class RestApiConfiguration {
         this.defaultTimezone = defaultTimezone;
         this.defaultUse24hFormat = defaultUse24hFormat;
         this.defaultBusinessHours = defaultBusinessHours;
+        this.adminUsername = adminUsername;
+        this.adminPassword = adminPassword;
     }
 
     public Optional<Port> getPort() {
@@ -469,5 +491,13 @@ public class RestApiConfiguration {
 
     public Aud getAud() {
         return aud;
+    }
+
+    public String getAdminUsername() {
+        return adminUsername;
+    }
+
+    public String getAdminPassword() {
+        return adminPassword;
     }
 }

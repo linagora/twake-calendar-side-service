@@ -29,6 +29,7 @@ import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.apache.commons.lang3.StringUtils;
@@ -67,7 +68,7 @@ public class DownloadCalendarRouteTest {
     private static final String PASSWORD = "secret";
     private static final String SECRET_LINK_BASE_URL = "https://mocked.url/xyz";
 
-    private static final RestApiConfiguration initialRestApiConfiguration = RestApiConfiguration.builder().build();
+    private static final RestApiConfiguration initialRestApiConfiguration = RestApiConfiguration.builder().adminPassword(Optional.of("secret")).build();
     private static final RestApiConfiguration spyRestApiConfiguration = Mockito.spy(initialRestApiConfiguration);
 
     @RegisterExtension
