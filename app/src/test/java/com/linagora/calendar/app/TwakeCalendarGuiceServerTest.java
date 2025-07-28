@@ -843,7 +843,7 @@ class TwakeCalendarGuiceServerTest  {
         assertThatJson(body)
             .isEqualTo(String.format("""
                 [{
-                    "preferredEmail": "btellier@linagora.com",
+                    "preferredEmail": "to-be-provisionned@linagora.com",
                     "_id": "%s",
                     "state": [],
                     "domains": [
@@ -857,10 +857,10 @@ class TwakeCalendarGuiceServerTest  {
                     "following": false,
                     "followers": 0,
                     "emails": [
-                        "btellier@linagora.com"
+                        "to-be-provisionned@linagora.com"
                     ],
-                    "firstname": "btellier@linagora.com",
-                    "lastname": "btellier@linagora.com",
+                    "firstname": "to-be-provisionned@linagora.com",
+                    "lastname": "to-be-provisionned@linagora.com",
                     "objectType": "user"
                 }]
                 """, userId, domainId));
@@ -1023,6 +1023,20 @@ class TwakeCalendarGuiceServerTest  {
                     "lastname": "btellier@linagora.com",
                     "objectType": "user"
                 }""", userId, userId, domainId));
+    }
+
+    @Test
+    void getUserShouldAutoprovision(TwakeCalendarGuiceServer server) {
+        targetRestAPI(server);
+        Username username = Username.of("to-be-provisionned@linagora.com");
+        server.getProbe(CalendarDataProbe.class).addUserToRepository(username, "123456");
+
+        given()
+            .auth().preemptive().basic(username.asString(), "123456")
+        .when()
+            .get("/api/user")
+        .then()
+            .statusCode(200);
     }
 
     @Test

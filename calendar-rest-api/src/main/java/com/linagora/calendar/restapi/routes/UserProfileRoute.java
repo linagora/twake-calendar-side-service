@@ -24,10 +24,12 @@ import java.time.ZonedDateTime;
 
 import jakarta.inject.Inject;
 
+import org.apache.james.core.Username;
 import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.http.Authenticator;
 import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.metrics.api.MetricFactory;
+import org.apache.james.user.api.UsersRepository;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -139,13 +141,15 @@ public class UserProfileRoute extends CalendarRoute {
     private final OpenPaaSUserDAO userDAO;
     private final OpenPaaSDomainDAO domainDAO;
     private final ConfigurationResolver configurationResolver;
+    private final UsersRepository usersRepository;
 
     @Inject
-    public UserProfileRoute(Authenticator authenticator, MetricFactory metricFactory, OpenPaaSUserDAO userDAO, OpenPaaSDomainDAO domainDAO, ConfigurationResolver configurationResolver) {
+    public UserProfileRoute(Authenticator authenticator, MetricFactory metricFactory, OpenPaaSUserDAO userDAO, OpenPaaSDomainDAO domainDAO, ConfigurationResolver configurationResolver, UsersRepository usersRepository) {
         super(authenticator, metricFactory);
         this.userDAO = userDAO;
         this.domainDAO = domainDAO;
         this.configurationResolver = configurationResolver;
+        this.usersRepository = usersRepository;
     }
 
     @Override
@@ -157,6 +161,7 @@ public class UserProfileRoute extends CalendarRoute {
     Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response, MailboxSession session) {
         return configurationResolver.resolveAll(session)
             .flatMap(conf ->  userDAO.retrieve(session.getUser())
+                .switchIfEmpty(provisionUser(session.getUser()))
                 .flatMap(user -> domainDAO.retrieve(session.getUser().getDomainPart().get())
                     .map(domain -> new ProfileResponseDTO(user, domain.id(), conf.asJson()))))
             .map(Throwing.function(OBJECT_MAPPER::writeValueAsBytes))
@@ -165,5 +170,15 @@ public class UserProfileRoute extends CalendarRoute {
                 .header("Cache-Control", "max-age=60, public")
                 .sendByteArray(Mono.just(bytes))
                 .then());
+    }
+
+    private Mono<OpenPaaSUser> provisionUser(Username username) {
+        return Mono.from(usersRepository.containsReactive(username))
+            .flatMap(exists -> {
+                if (exists) {
+                    return userDAO.add(username);
+                }
+                return Mono.empty();
+            });
     }
 }
