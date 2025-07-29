@@ -19,16 +19,16 @@
 package com.linagora.calendar.dav;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
 
 import org.apache.james.core.Username;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -45,7 +45,7 @@ public class AlarmInstantFactoryTest {
     }
 
     @Test
-    void shouldNotScheduleAlarm_whenAttendeeHasNotAccepted() {
+    void shouldReturnEmptyWhenAttendeeHasNotAccepted() {
         String ics = """
             BEGIN:VCALENDAR
             VERSION:2.0
@@ -63,17 +63,44 @@ public class AlarmInstantFactoryTest {
             """;
 
         Calendar calendar = CalendarUtil.parseIcs(ics);
-        Username attendee = Username.of("john@example.com");
-
         AlarmInstantFactory testee = testee(Instant.parse("2025-07-28T00:00:00Z"));
+        Optional<Instant> result = testee.computeNextAlarmInstant(calendar, Username.of("john@example.com"));
 
-        Optional<Instant> result = testee.computeNextAlarmInstant(attendee, calendar);
-
-        assertTrue(result.isEmpty(), "Alarm should not be scheduled when attendee has not accepted the invitation");
+        assertThat(result)
+            .describedAs("Alarm should not be scheduled when attendee has not accepted the invitation")
+            .isEmpty();
     }
 
     @Test
-    void shouldNotScheduleAlarm_whenEventAlreadyOccurred() {
+    void shouldReturnEmptyWhenAttendeeNotFoundInEvent() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:123456
+            DTSTART:20250829T100000Z
+            SUMMARY:Test Event
+            ATTENDEE;CN=Jane Doe;PARTSTAT=ACCEPTED:mailto:jane@example.com
+            BEGIN:VALARM
+            ACTION:DISPLAY
+            TRIGGER:-PT10M
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+        AlarmInstantFactory testee = testee(Instant.parse("2025-07-28T00:00:00Z"));
+        Optional<Instant> result = testee.computeNextAlarmInstant(calendar, Username.of("notfound@example.com"));
+
+        assertThat(result)
+            .describedAs("Alarm should not be scheduled when the given attendee is not present in the event")
+            .isEmpty();
+    }
+
+
+    @Test
+    void shouldReturnEmptyWhenEventAlreadyOccurred() {
         String ics = """
             BEGIN:VCALENDAR
             VERSION:2.0
@@ -93,15 +120,15 @@ public class AlarmInstantFactoryTest {
         AlarmInstantFactory testee = testee(Instant.parse("2025-07-28T00:00:00Z"));
 
         Calendar calendar = CalendarUtil.parseIcs(ics);
-        Username attendee = Username.of("john@example.com");
+        Optional<Instant> result = testee.computeNextAlarmInstant(calendar, Username.of("john@example.com"));
 
-        Optional<Instant> result = testee.computeNextAlarmInstant(attendee, calendar);
-
-        assertTrue(result.isEmpty(), "Alarm should not be scheduled for past event");
+        assertThat(result)
+            .describedAs("Alarm should not be scheduled for past event")
+            .isEmpty();
     }
 
     @Test
-    void shouldReturnAlarmInstant_whenAttendeeHasAcceptedAndEventIsInFuture() {
+    void shouldReturnAlarmInstantWhenAttendeeHasAcceptedAndEventIsInFuture() {
         String ics = """
             BEGIN:VCALENDAR
             VERSION:2.0
@@ -119,21 +146,135 @@ public class AlarmInstantFactoryTest {
             """;
 
         Calendar calendar = CalendarUtil.parseIcs(ics);
-        Username attendee = Username.of("jane@example.com");
-
         AlarmInstantFactory testee = testee(Instant.parse("2025-07-28T00:00:00Z"));
 
-        Optional<Instant> result = testee.computeNextAlarmInstant(attendee, calendar);
+        Optional<Instant> result = testee.computeNextAlarmInstant(calendar, Username.of("jane@example.com"));
 
         // Expected: 2025-08-29T09:45:00Z (15 minutes before 10:00)
-        Instant expected = Instant.parse("2025-08-29T09:45:00Z");
-
-        assertTrue(result.isPresent(), "Alarm should be scheduled when event is in the future and attendee has accepted");
-        assertEquals(expected, result.get(), "Alarm time should match the expected trigger time");
+        assertThat(result)
+            .describedAs("Alarm should be scheduled when event is in the future and attendee has accepted")
+            .isPresent()
+            .contains(Instant.parse("2025-08-29T09:45:00Z"));
     }
 
     @Test
-    void shouldNotScheduleAlarm_whenNoValarmPresent() {
+    void shouldPickEarliestValidAlarmAmongMultiple() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:multi-alarm-event
+            DTSTART:20250829T100000Z
+            SUMMARY:Team Meeting
+            ATTENDEE;CN=Alice;PARTSTAT=ACCEPTED:mailto:alice@example.com
+            
+            BEGIN:VALARM
+            ACTION:DISPLAY
+            TRIGGER:-PT30M
+            DESCRIPTION:Alarm 30 minutes before
+            END:VALARM
+            
+            BEGIN:VALARM
+            ACTION:DISPLAY
+            TRIGGER:-PT10M
+            DESCRIPTION:Alarm 10 minutes before
+            END:VALARM
+            
+            BEGIN:VALARM
+            ACTION:DISPLAY
+            TRIGGER:-PT15M
+            DESCRIPTION:Alarm 15 minutes before
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+        AlarmInstantFactory testee = testee(Instant.parse("2025-07-28T00:00:00Z"));
+
+        Optional<Instant> result = testee.computeNextAlarmInstant(calendar, Username.of("alice@example.com"));
+
+        // Expected: 2025-08-29T09:30:00Z (30 minutes before 10:00)
+        assertThat(result)
+            .describedAs("Should return alarm time from the earliest valid VALARM")
+            .isPresent()
+            .contains(Instant.parse("2025-08-29T09:30:00Z"));
+    }
+
+    @Test
+    void shouldIgnorePastAlarmsAndPickValidFutureOne() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:event-with-mixed-alarms
+            DTSTART:20250829T100000Z
+            SUMMARY:Project Review
+            ATTENDEE;CN=Alice;PARTSTAT=ACCEPTED:mailto:alice@example.com
+            BEGIN:VALARM
+            ACTION:DISPLAY
+            TRIGGER:-PT1H
+            DESCRIPTION:Alarm 1 hour before
+            END:VALARM
+            BEGIN:VALARM
+            ACTION:DISPLAY
+            TRIGGER:-PT10M
+            DESCRIPTION:Alarm 10 minutes before
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        // fixedClock is 2025-08-29T09:30:00Z
+        // → Alarm -1h = 09:00:00Z (in the past) → ignored
+        // → Alarm -10m = 09:50:00Z (in the future) → picked
+
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+        AlarmInstantFactory testee = testee(Instant.parse("2025-08-29T09:30:00Z"));
+
+        Optional<Instant> result = testee.computeNextAlarmInstant(calendar, Username.of("alice@example.com"));
+
+        assertThat(result)
+            .describedAs("Only future alarm should be considered")
+            .contains(Instant.parse("2025-08-29T09:50:00Z"));
+    }
+
+    @Test
+    void shouldReturnEmptyWhenAllAlarmsAreInThePastEvenIfEventIsFuture() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:event-all-alarms-past
+            DTSTART:20250829T100000Z
+            SUMMARY:Design Review
+            ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+            BEGIN:VALARM
+            ACTION:DISPLAY
+            TRIGGER:-PT2H
+            DESCRIPTION:Alarm 2 hours before
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        // fixedClock is 2025-08-29T09:30:00Z
+        // → Alarm = 08:00:00Z → already passed
+        // → Event = 10:00:00Z → still in the future
+        // → But no alarms are valid → result empty
+
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+        AlarmInstantFactory testee = testee(Instant.parse("2025-08-29T09:30:00Z"));
+
+        Optional<Instant> result = testee.computeNextAlarmInstant(calendar, Username.of("bob@example.com"));
+
+        assertThat(result)
+            .describedAs("Should return empty when all alarms are already in the past")
+            .isEmpty();
+    }
+
+    @Test
+    void shouldReturnEmptyWhenNoVALARMPresent() {
         String ics = """
             BEGIN:VCALENDAR
             VERSION:2.0
@@ -147,17 +288,17 @@ public class AlarmInstantFactoryTest {
             """;
 
         Calendar calendar = CalendarUtil.parseIcs(ics);
-        Username attendee = Username.of("john@example.com");
-
         AlarmInstantFactory testee = testee(Instant.parse("2025-07-28T00:00:00Z"));
 
-        Optional<Instant> result = testee.computeNextAlarmInstant(attendee, calendar);
+        Optional<Instant> result = testee.computeNextAlarmInstant(calendar, Username.of("john@example.com"));
 
-        assertTrue(result.isEmpty(), "Alarm should not be scheduled when no VALARM is present");
+        assertThat(result)
+            .as("Alarm should not be scheduled when no VALARM is present")
+            .isEmpty();
     }
 
     @Test
-    void shouldComputeAlarmInstantAsStartDatePlus15MinutesTrigger() {
+    void shouldComputeAlarmInstantBasedOnTriggerRelativeToStart() {
         String ics = """
             BEGIN:VCALENDAR
             VERSION:2.0
@@ -176,11 +317,8 @@ public class AlarmInstantFactoryTest {
             """;
 
         Calendar calendar = CalendarUtil.parseIcs(ics);
-        Username attendee = Username.of("john@example.com");
-
         AlarmInstantFactory testee = testee(Instant.parse("2025-07-28T00:00:00Z"));
-
-        Optional<Instant> result = testee.computeNextAlarmInstant(attendee, calendar);
+        Optional<Instant> result = testee.computeNextAlarmInstant(calendar, Username.of("john@example.com"));
 
         assertThat(result).contains(Instant.parse("2025-08-29T10:15:00Z"));
     }
@@ -230,122 +368,315 @@ public class AlarmInstantFactoryTest {
         Username attendee = Username.of("bob@example.com");
         AlarmInstantFactory testee = testee(Instant.parse("2025-07-28T00:00:00Z"));
 
-        Optional<Instant> result = testee.computeNextAlarmInstant(attendee, calendar);
-
-        assertThat(result).isEmpty();
+        assertThat(testee.computeNextAlarmInstant(calendar, attendee)).isEmpty();
     }
 
+    @Nested
+    class RecurrenceEventTest {
+        @Test
+        void shouldReturnCorrectAlarmInstantForEachOccurrenceInRRule() {
+            String calendarContent = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:recurring-event
+                DTSTART:20250829T100000Z
+                DTEND:20250829T110000Z
+                RRULE:FREQ=DAILY;COUNT=3
+                ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                SUMMARY:Daily Standup
+                BEGIN:VALARM
+                TRIGGER:-PT15M
+                ACTION:DISPLAY
+                DESCRIPTION:Reminder
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """;
 
-    @Test
-    void shouldReturnNextAlarmInstantForRecurringEvent() {
-        String calendarContent = """
-            BEGIN:VCALENDAR
-            VERSION:2.0
-            BEGIN:VEVENT
-            UID:recurring-event
-            DTSTART:20250829T100000Z
-            DTEND:20250829T110000Z
-            RRULE:FREQ=DAILY;COUNT=3
-            ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
-            SUMMARY:Daily Standup
-            BEGIN:VALARM
-            TRIGGER:-PT15M
-            ACTION:DISPLAY
-            DESCRIPTION:Reminder
-            END:VALARM
-            END:VEVENT
-            END:VCALENDAR
-            """;
+            Calendar calendar = CalendarUtil.parseIcs(calendarContent);
+            Username attendee = Username.of("bob@example.com");
 
-        Calendar calendar = CalendarUtil.parseIcs(calendarContent);
-        Username attendee = Username.of("bob@example.com");
+            // Occurrence 1: 2025-08-29T10:00Z → Alarm: 2025-08-29T09:45Z
+            // Occurrence 2: 2025-08-30T10:00Z → Alarm: 2025-08-30T09:45Z
+            // Occurrence 3: 2025-08-31T10:00Z → Alarm: 2025-08-31T09:45Z
 
-        AlarmInstantFactory testee = testee(Instant.parse("2025-07-28T00:00:00Z"));
+            Map<Instant, Optional<Instant>> testCases = Map.of(
+                Instant.parse("2025-08-28T12:00:00Z"), Optional.of(Instant.parse("2025-08-29T09:45:00Z")), // before all → alarm 1
+                Instant.parse("2025-08-29T12:00:00Z"), Optional.of(Instant.parse("2025-08-30T09:45:00Z")), // after alarm 1 → alarm 2
+                Instant.parse("2025-08-30T12:00:00Z"), Optional.of(Instant.parse("2025-08-31T09:45:00Z")), // after alarm 2 → alarm 3
+                Instant.parse("2025-08-31T12:00:00Z"), Optional.empty() /* after al → empty */);
 
-        Optional<Instant> result = testee.computeNextAlarmInstant(attendee, calendar);
+            for (Map.Entry<Instant, Optional<Instant>> entry : testCases.entrySet()) {
+                Instant now = entry.getKey();
+                Optional<Instant> expectedAlarm = entry.getValue();
 
-        // DTSTART = 2025-08-29T10:00:00Z → TRIGGER = -15m → Alarm = 2025-08-29T09:45:00Z
-        assertThat(result).contains(Instant.parse("2025-08-29T09:45:00Z"));
+                AlarmInstantFactory testee = testee(now);
+                Optional<Instant> result = testee.computeNextAlarmInstant(calendar, attendee);
+
+                assertThat(result)
+                    .describedAs("Should return correct alarm for time %s", now)
+                    .isEqualTo(expectedAlarm);
+            }
+        }
+
+        @Test
+        void shouldRespectEXDATEInRecurringEvents() {
+            String calendarContent = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:recurring-event
+                DTSTART:20250829T100000Z
+                DTEND:20250829T110000Z
+                RRULE:FREQ=DAILY;COUNT=4
+                EXDATE:20250830T100000Z,20250831T100000Z
+                ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                SUMMARY:Daily Standup
+                BEGIN:VALARM
+                TRIGGER:-PT15M
+                ACTION:DISPLAY
+                DESCRIPTION:Reminder
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """;
+
+            Calendar calendar = CalendarUtil.parseIcs(calendarContent);
+            Username attendee = Username.of("bob@example.com");
+
+            // RRULE: 2025-08-29, 2025-08-30, 2025-08-31, 2025-09-01
+            // EXDATE: 2025-08-30, 2025-08-31
+            // Remaining alarms:
+            // - 2025-08-29T10:00Z → alarm: 09:45Z
+            // - 2025-09-01T10:00Z → alarm: 09:45Z
+
+            Map<Instant, Optional<Instant>> testCases = Map.of(
+                Instant.parse("2025-08-28T12:00:00Z"), Optional.of(Instant.parse("2025-08-29T09:45:00Z")), // before all
+                Instant.parse("2025-08-29T12:00:00Z"), Optional.of(Instant.parse("2025-09-01T09:45:00Z")), // after 1st, skip 2 & 3
+                Instant.parse("2025-09-01T12:00:00Z"), Optional.empty() /* all passed */);
+
+            for (Map.Entry<Instant, Optional<Instant>> entry : testCases.entrySet()) {
+                Instant now = entry.getKey();
+                Optional<Instant> expectedAlarm = entry.getValue();
+
+                AlarmInstantFactory testee = testee(now);
+                Optional<Instant> result = testee.computeNextAlarmInstant(calendar, attendee);
+
+                assertThat(result)
+                    .describedAs("Should return correct alarm considering multiple EXDATEs for time %s", now)
+                    .isEqualTo(expectedAlarm);
+            }
+        }
+
+        @Test
+        void shouldRespectOverriddenRecurrenceInstance() {
+            String calendarContent = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:recurring-event
+                DTSTART:20250801T100000Z
+                DTEND:20250801T110000Z
+                RRULE:FREQ=WEEKLY;COUNT=3
+                ATTENDEE;CN=Alice;PARTSTAT=ACCEPTED:mailto:alice@example.com
+                SUMMARY:Weekly Meeting
+                BEGIN:VALARM
+                TRIGGER:-PT15M
+                ACTION:DISPLAY
+                DESCRIPTION:Reminder
+                END:VALARM
+                END:VEVENT
+                
+                BEGIN:VEVENT
+                UID:recurring-event
+                RECURRENCE-ID:20250815T100000Z
+                DTSTART:20250816T140000Z
+                DTEND:20250816T150000Z
+                ATTENDEE;CN=Alice;PARTSTAT=ACCEPTED:mailto:alice@example.com
+                SUMMARY:Rescheduled Weekly Meeting
+                BEGIN:VALARM
+                TRIGGER:-PT15M
+                ACTION:DISPLAY
+                DESCRIPTION:Rescheduled Reminder
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """;
+
+            /*
+             * Original occurrences:
+             * - 2025-08-01T10:00:00Z → alarm at 09:45:00Z
+             * - 2025-08-08T10:00:00Z → alarm at 09:45:00Z
+             * - 2025-08-15T10:00:00Z → replaced by 2025-08-16T14:00:00Z → alarm at 13:45:00Z
+             */
+
+            Instant fixedNow = Instant.parse("2025-08-08T10:00:01Z"); // after second alarm, before third
+
+            Calendar calendar = CalendarUtil.parseIcs(calendarContent);
+            Username attendee = Username.of("alice@example.com");
+
+            AlarmInstantFactory testee = testee(fixedNow);
+
+            Optional<Instant> result = testee.computeNextAlarmInstant(calendar, attendee);
+
+            // Expect alarm of overridden occurrence → 2025-08-16T13:45:00Z
+            assertThat(result).contains(Instant.parse("2025-08-16T13:45:00Z"));
+        }
+
+        @Test
+        void shouldReturnAlarmOfThirdOccurrenceWhenSecondOverriddenAndDeclined() {
+            String calendarContent = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:recurring-event
+                DTSTART:20250829T100000Z
+                DTEND:20250829T110000Z
+                RRULE:FREQ=WEEKLY;COUNT=3
+                ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                SUMMARY:Weekly Meeting
+                BEGIN:VALARM
+                TRIGGER:-PT15M
+                ACTION:DISPLAY
+                DESCRIPTION:Reminder
+                END:VALARM
+                END:VEVENT
+                
+                BEGIN:VEVENT
+                UID:recurring-event
+                RECURRENCE-ID:20250905T100000Z
+                DTSTART:20250905T100000Z
+                DTEND:20250905T110000Z
+                ATTENDEE;CN=Bob;PARTSTAT=DECLINED:mailto:bob@example.com
+                SUMMARY:Weekly Meeting (Override)
+                BEGIN:VALARM
+                TRIGGER:-PT15M
+                ACTION:DISPLAY
+                DESCRIPTION:Reminder
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """;
+
+            Calendar calendar = CalendarUtil.parseIcs(calendarContent);
+            Username attendee = Username.of("bob@example.com");
+
+            // Fix clock between 1st and 2nd occurrence => next expected is 2nd
+            AlarmInstantFactory testee = testee(Instant.parse("2025-09-01T00:00:00Z"));
+
+            Optional<Instant> result = testee.computeNextAlarmInstant(calendar, attendee);
+
+            // 2nd is DECLINED, so should skip to 3rd: 2025-09-12T10:00:00Z - 15m
+            assertThat(result).contains(Instant.parse("2025-09-12T09:45:00Z"));
+        }
+
+        @Test
+        void shouldSkipDeclinedAndUseOverriddenNextOccurrence() {
+            String calendarContent = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                
+                BEGIN:VEVENT
+                UID:recurring-event
+                DTSTART:20250829T100000Z
+                DTEND:20250829T110000Z
+                RRULE:FREQ=WEEKLY;COUNT=3
+                ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                SUMMARY:Weekly Sync
+                BEGIN:VALARM
+                TRIGGER:-PT15M
+                ACTION:DISPLAY
+                DESCRIPTION:Reminder
+                END:VALARM
+                END:VEVENT
+                
+                BEGIN:VEVENT
+                UID:recurring-event
+                RECURRENCE-ID:20250905T100000Z
+                DTSTART:20250905T100000Z
+                DTEND:20250905T110000Z
+                ATTENDEE;CN=Bob;PARTSTAT=DECLINED:mailto:bob@example.com
+                SUMMARY:Weekly Sync (Declined)
+                BEGIN:VALARM
+                TRIGGER:-PT15M
+                ACTION:DISPLAY
+                DESCRIPTION:Reminder
+                END:VALARM
+                END:VEVENT
+                
+                BEGIN:VEVENT
+                UID:recurring-event
+                RECURRENCE-ID:20250912T100000Z
+                DTSTART:20250912T120000Z
+                DTEND:20250912T130000Z
+                ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                SUMMARY:Weekly Sync (Time Changed)
+                BEGIN:VALARM
+                TRIGGER:-PT15M
+                ACTION:DISPLAY
+                DESCRIPTION:Reminder
+                END:VALARM
+                END:VEVENT
+                
+                END:VCALENDAR
+                """;
+
+            Calendar calendar = CalendarUtil.parseIcs(calendarContent);
+            Username attendee = Username.of("bob@example.com");
+
+            // Fix clock between 1st and 2nd occurrence
+            AlarmInstantFactory testee = testee(Instant.parse("2025-09-01T00:00:00Z"));
+
+            Optional<Instant> result = testee.computeNextAlarmInstant(calendar, attendee);
+
+            // 3rd occurrence is overridden
+            assertThat(result).contains(Instant.parse("2025-09-12T11:45:00Z"));
+        }
+
+        @Test
+        void shouldSkipOverriddenOccurrenceWithoutAlarmAndReturnNothingWhenNoFurtherAlarmExists() {
+            String calendarContent = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                
+                BEGIN:VEVENT
+                UID:recurring-event
+                DTSTART:20250829T100000Z
+                DTEND:20250829T110000Z
+                RRULE:FREQ=WEEKLY;COUNT=2
+                ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                SUMMARY:Weekly Sync
+                BEGIN:VALARM
+                TRIGGER:-PT15M
+                ACTION:DISPLAY
+                DESCRIPTION:Reminder
+                END:VALARM
+                END:VEVENT
+                
+                BEGIN:VEVENT
+                UID:recurring-event
+                RECURRENCE-ID:20250905T100000Z
+                DTSTART:20250905T100000Z
+                DTEND:20250905T110000Z
+                ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                SUMMARY:Weekly Sync (No Alarm)
+                END:VEVENT
+                
+                END:VCALENDAR
+                """;
+
+            Calendar calendar = CalendarUtil.parseIcs(calendarContent);
+            Username attendee = Username.of("bob@example.com");
+
+            // Fix clock after first occurrence, but before second (which is overridden and has no alarm)
+            AlarmInstantFactory testee = testee(Instant.parse("2025-09-01T00:00:00Z"));
+
+            Optional<Instant> result = testee.computeNextAlarmInstant(calendar, attendee);
+
+            // The second overridden occurrence has no VALARM -> expect no upcoming alarms
+            assertThat(result).isEmpty();
+        }
     }
 
-//    @Test
-//    void testAlarmInstantFactory() {
-//        String calendarData = """
-//            BEGIN:VCALENDAR
-//            VERSION:2.0
-//            CALSCALE:GREGORIAN
-//            PRODID:-//SabreDAV//SabreDAV 3.2.2//EN
-//            X-WR-CALNAME:Test
-//            X-APPLE-CALENDAR-COLOR:#d9ea87
-//            BEGIN:VTIMEZONE
-//            TZID:Asia/Ho_Chi_Minh
-//            BEGIN:STANDARD
-//            TZOFFSETFROM:+0700
-//            TZOFFSETTO:+0700
-//            TZNAME:ICT
-//            DTSTART:19700101T000000
-//            END:STANDARD
-//            END:VTIMEZONE
-//            BEGIN:VEVENT
-//            UID:778ecdd2-2c15-4ab5-b7a6-9239131b441a
-//            TRANSP:OPAQUE
-//            DTSTART;TZID=Asia/Saigon:20250723T113000
-//            DTEND;TZID=Asia/Saigon:20250723T120000
-//            CLASS:PUBLIC
-//            X-OPENPAAS-VIDEOCONFERENCE:
-//            SUMMARY:Recurrence 4
-//            RRULE:FREQ=WEEKLY;COUNT=4;BYDAY=FR
-//            ORGANIZER;CN=Twake CALENDAR-DEV-2:mailto:twake-calendar-dev-2@domain.tld
-//            ATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVI
-//             DUAL;CN=Van Tung TRAN;SCHEDULE-STATUS=1.1:mailto:vttran@domain.tld
-//            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:t
-//             wake-calendar-dev-2@domain.tld
-//            DTSTAMP:20250728T065409Z
-//            BEGIN:VALARM
-//            TRIGGER:-PT5M
-//            ACTION:EMAIL
-//            ATTENDEE:mailto:twake-calendar-dev-2@domain.tld
-//            SUMMARY:Recurrence 4
-//            DESCRIPTION:This is an automatic alarm sent by OpenPaas\\\\nThe event Recurre
-//             nce 4 will start 5 days ago\\\\nstart: Wed Jul 23 2025 11:30:00 GMT+0700 \\\\n
-//             end: Wed Jul 23 2025 12:00:00 GMT+0700 \\\\nlocation:  \\\\nclass: PUBLIC \\\\n
-//            END:VALARM
-//            END:VEVENT
-//            BEGIN:VEVENT
-//            UID:778ecdd2-2c15-4ab5-b7a6-9239131b441a
-//            TRANSP:OPAQUE
-//            DTSTART;TZID=Asia/Saigon:20250808T130000
-//            DTEND;TZID=Asia/Saigon:20250808T133000
-//            CLASS:PUBLIC
-//            X-OPENPAAS-VIDEOCONFERENCE:
-//            SUMMARY:Recurrence 4
-//            ORGANIZER;CN=Twake CALENDAR-DEV-2:mailto:twake-calendar-dev-2@domain.tld
-//            DTSTAMP:20250728T065409Z
-//            RECURRENCE-ID:20250808T043000Z
-//            ATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVI
-//             DUAL;CN=Van Tung TRAN:mailto:vttran@domain.tld
-//            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;CN=Twake
-//              CALENDAR-DEV-2:mailto:twake-calendar-dev-2@domain.tld
-//            SEQUENCE:1
-//            BEGIN:VALARM
-//            TRIGGER:-PT5M
-//            ACTION:EMAIL
-//            ATTENDEE:mailto:mailto:twake-calendar-dev-2@domain.tld
-//            SUMMARY:Recurrence 4
-//            DESCRIPTION:This is an automatic alarm sent by OpenPaas\\\\nThe event Recurre
-//             nce 4 will start in 11 days\\\\nstart: Fri Aug 08 2025 13:00:00 GMT+0700 \\\\n
-//             end: Fri Aug 08 2025 13:30:00 GMT+0700 \\\\nlocation:  \\\\nclass: PUBLIC \\\\n
-//            END:VALARM
-//            END:VEVENT
-//            END:VCALENDAR
-//            """;
-//
-//        Calendar calendar = CalendarUtil.parseIcs(calendarData);
-//
-//        Optional<Instant> alarmInstantOpt = testee.computeNextAlarmInstant(calendar);
-//        assertTrue(alarmInstantOpt.isPresent(), "Alarm instant should be present");
-//        Instant alarmInstant = alarmInstantOpt.get();
-//        assertEquals(Instant.parse("2025-07-25T04:25:00Z"), alarmInstant);
-//
-//    }
 }

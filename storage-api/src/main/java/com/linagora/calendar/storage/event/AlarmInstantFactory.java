@@ -24,9 +24,11 @@ import static net.fortuna.ical4j.model.Property.TRIGGER;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZonedDateTime;
+import java.time.chrono.ChronoZonedDateTime;
 import java.time.temporal.Temporal;
 import java.time.temporal.TemporalAmount;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -57,11 +59,14 @@ import net.fortuna.ical4j.model.property.RecurrenceId;
 import net.fortuna.ical4j.model.property.Trigger;
 
 public interface AlarmInstantFactory {
-    Optional<Instant> computeNextAlarmInstant(Username attendee, Calendar calendar);
+    Optional<Instant> computeNextAlarmInstant(Calendar calendar, Username attendee);
 
     class Default implements AlarmInstantFactory {
 
         private static final Logger LOGGER = LoggerFactory.getLogger(Default.class);
+        private static final Comparator<Instant> EARLIEST_FIRST_COMPARATOR = Comparator.naturalOrder();
+        private static final Comparator<VEvent> EARLIEST_FIRST_EVENT_COMPARATOR =
+            Comparator.comparing(e -> EventParseUtils.getStartTime(e).toInstant());
 
         private final Clock clock;
 
@@ -70,44 +75,58 @@ public interface AlarmInstantFactory {
         }
 
         @Override
-        public Optional<Instant> computeNextAlarmInstant(Username attendee, Calendar calendar) {
-            Optional<VEvent> upcomingEvent = findUpcomingAcceptedVEvent(calendar, attendee);
-            if (upcomingEvent.isEmpty()) {
-                return Optional.empty();
-            }
-
-            VEvent event = upcomingEvent.get();
-            List<VAlarm> alarms = event.getAlarms();
-            if (alarms.isEmpty()) {
-                return Optional.empty();
-            }
-
-            VAlarm firstAlarm = alarms.getFirst();
-            if (firstAlarm.getProperty(ACTION).isEmpty()) {
-                LOGGER.debug("Event {} has an alarm without ACTION property, skipping", event.getUid());
-                return Optional.empty();
-            }
-            Optional<Trigger> triggerOpt = firstAlarm.getProperty(TRIGGER);
-            if (triggerOpt.isEmpty()) {
-                LOGGER.debug("Event {} has an alarm without TRIGGER property, skipping", event.getUid());
-                return Optional.empty();
-            }
-            TemporalAmount offset = triggerOpt.get().getDuration();
-            return Optional.of(EventParseUtils.getStartTime(event).toInstant().plus(offset));
+        public Optional<Instant> computeNextAlarmInstant(Calendar calendar, Username attendee) {
+            Instant now = clock.instant();
+            return listUpcomingAcceptedVEvents(calendar, attendee).stream()
+                .flatMap(event1 -> computeAlarmInstants(event1).stream())
+                .filter(alarmTime -> alarmTime.isAfter(now))
+                .min(EARLIEST_FIRST_COMPARATOR);
         }
 
-        private Optional<VEvent> findUpcomingAcceptedVEvent(Calendar calendar, Username attendee) {
+        private List<Instant> computeAlarmInstants(VEvent event) {
+            ZonedDateTime eventStart = EventParseUtils.getStartTime(event);
+
+            return event.getAlarms().stream()
+                .map(this::extractTriggerDurationIfValid)
+                .flatMap(Optional::stream)
+                .map(offset -> eventStart.toInstant().plus(offset))
+                .toList();
+        }
+
+        private Optional<TemporalAmount> extractTriggerDurationIfValid(VAlarm alarm) {
+            if (alarm.getProperty(ACTION).isEmpty()) {
+                LOGGER.debug("Alarm is missing ACTION, skipping");
+                return Optional.empty();
+            }
+
+            Optional<Trigger> triggerOpt = alarm.getProperty(TRIGGER);
+            if (triggerOpt.isEmpty()) {
+                LOGGER.debug("Alarm is missing TRIGGER, skipping");
+                return Optional.empty();
+            }
+
+            Trigger trigger = triggerOpt.get();
+            Optional<TemporalAmount> duration = Optional.ofNullable(trigger.getDuration());
+            if (duration.isEmpty()) {
+                LOGGER.debug("Alarm is missing TRIGGER, skipping");
+            }
+            return duration;
+        }
+
+        private List<VEvent> listUpcomingAcceptedVEvents(Calendar calendar, Username attendee) {
             List<VEvent> allEvents = calendar.getComponents(Component.VEVENT);
 
             if (allEvents.isEmpty()) {
-                return Optional.empty();
+                return List.of();
             }
 
             if (allEvents.size() == 1 && allEvents.getFirst().getProperty(Property.RRULE).isEmpty()) {
-                return findUpcomingFromSingleEvent(allEvents.getFirst(), attendee);
+                return findUpcomingFromSingleEvent(allEvents.getFirst(), attendee)
+                    .map(List::of)
+                    .orElseGet(List::of);
             }
 
-            return findClosestFromRecurringEvents(allEvents, attendee);
+            return listUpcomingAcceptedRecurringEvents(allEvents, attendee);
         }
 
         private Optional<VEvent> findUpcomingFromSingleEvent(VEvent event, Username attendee) {
@@ -120,7 +139,7 @@ public interface AlarmInstantFactory {
             return Optional.empty();
         }
 
-        private Optional<VEvent> findClosestFromRecurringEvents(List<VEvent> events, Username attendee) {
+        private List<VEvent> listUpcomingAcceptedRecurringEvents(List<VEvent> events, Username attendee) {
             Optional<VEvent> masterOpt = events.stream()
                 .filter(e -> e.getRecurrenceId() == null)
                 .findFirst();
@@ -128,10 +147,11 @@ public interface AlarmInstantFactory {
             List<VEvent> overrides = events.stream()
                 .filter(e -> e.getRecurrenceId() != null)
                 .toList();
-            return masterOpt.flatMap(master -> findClosestFromRecurrence(master, overrides, attendee));
+            return masterOpt.map(master -> listUpcomingAcceptedRecurrenceInstances(master, overrides, attendee))
+                .orElseGet(List::of);
         }
 
-        private Optional<VEvent> findClosestFromRecurrence(VEvent master, List<VEvent> overrides, Username attendee) {
+        private List<VEvent> listUpcomingAcceptedRecurrenceInstances(VEvent master, List<VEvent> overrides, Username attendee) {
             RRule<Temporal> rrule = master.getProperty(Property.RRULE)
                 .map(property -> (RRule<Temporal>) property)
                 .orElseThrow(() -> new IllegalArgumentException("Master event must have an RRULE"));
@@ -141,28 +161,27 @@ public interface AlarmInstantFactory {
             ZonedDateTime startTime = EventParseUtils.getStartTime(master);
 
             List<ZonedDateTime> recurrenceDates = recur.getDates(startTime, startTime.plusYears(1));
-            List<ZonedDateTime> filteredRecurrenceDates = recurrenceDates.stream()
-                .filter(recurrence -> !excludedInstants.contains(recurrence.toInstant()))
+            List<Instant> filteredRecurrenceDates = recurrenceDates.stream()
+                .map(ChronoZonedDateTime::toInstant)
+                .filter(recurrence -> !excludedInstants.contains(recurrence))
                 .toList();
 
-            Map<ZonedDateTime, VEvent> overrideMap = overrides.stream()
+            Map<Instant, VEvent> overrideMap = overrides.stream()
                 .collect(Collectors.toMap(
                     event -> EventParseUtils.temporalToZonedDateTime(event.getRecurrenceId().getDate())
+                        .map(ChronoZonedDateTime::toInstant)
                         .orElseThrow(() -> new IllegalArgumentException("Cannot convert recurrenceId: " + event.getRecurrenceId())),
-                    Function.identity()
-                ));
+                    Function.identity()));
 
             Instant now = clock.instant();
-            for (ZonedDateTime recurrenceDate : filteredRecurrenceDates) {
-                if (recurrenceDate.toInstant().isAfter(now)) {
-                    VEvent event = overrideMap.getOrDefault(recurrenceDate, createInstanceVEvent(master, recurrenceDate));
-                    if (isAttendeeAccepted(event, attendee)) {
-                        return Optional.of(event);
-                    }
-                }
-            }
-
-            return Optional.empty();
+            return filteredRecurrenceDates.stream()
+                .filter(recurrenceDate -> recurrenceDate.isAfter(now))
+                .map(recurrenceDate -> overrideMap.getOrDefault(
+                    recurrenceDate,
+                    createInstanceVEvent(master, recurrenceDate)))
+                .filter(event -> isAttendeeAccepted(event, attendee))
+                .sorted(EARLIEST_FIRST_EVENT_COMPARATOR)
+                .toList();
         }
 
         private boolean isAttendeeAccepted(VEvent vEvent, Username attendee) {
@@ -181,7 +200,7 @@ public interface AlarmInstantFactory {
                 .toList();
         }
 
-        public static VEvent createInstanceVEvent(VEvent master, ZonedDateTime recurrenceDate) {
+        public static VEvent createInstanceVEvent(VEvent master, Instant recurrenceDate) {
             VEvent instance = master.copy();
             Period recurrencePeriod = new Period(recurrenceDate, recurrenceDate);
 
@@ -191,8 +210,9 @@ public interface AlarmInstantFactory {
 
             removeProperties(instance, Property.RRULE, Property.EXDATE, Property.DTSTART, Property.DTEND, Property.DURATION);
 
-            Function<Temporal, ZonedDateTime> temporalToZonedDateTime = temporal ->
+            Function<Temporal, Instant> temporalToZonedDateTime = temporal ->
                 EventParseUtils.temporalToZonedDateTime(temporal)
+                    .map(ChronoZonedDateTime::toInstant)
                     .orElseThrow(() -> new IllegalArgumentException("Cannot convert temporal: " + temporal));
             addProperties(instance,
                 new RecurrenceId<>(recurrenceDate),
