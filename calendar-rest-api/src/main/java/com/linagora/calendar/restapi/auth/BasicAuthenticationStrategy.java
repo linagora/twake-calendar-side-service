@@ -36,6 +36,7 @@ import org.apache.james.util.ReactorUtils;
 import com.google.common.base.CharMatcher;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
+import com.linagora.calendar.restapi.RestApiConfiguration;
 import com.linagora.calendar.storage.SimpleSessionProvider;
 
 import reactor.core.publisher.Mono;
@@ -71,12 +72,14 @@ public class BasicAuthenticationStrategy implements AuthenticationStrategy {
         return Optional.empty();
     }
 
+    private final RestApiConfiguration restApiConfiguration;
     private final UsersRepository usersRepository;
     private final SimpleSessionProvider sessionProvider;
     private final MetricFactory metricFactory;
 
     @Inject
-    public BasicAuthenticationStrategy(UsersRepository usersRepository, SimpleSessionProvider sessionProvider, MetricFactory metricFactory) {
+    public BasicAuthenticationStrategy(RestApiConfiguration restApiConfiguration, UsersRepository usersRepository, SimpleSessionProvider sessionProvider, MetricFactory metricFactory) {
+        this.restApiConfiguration = restApiConfiguration;
         this.usersRepository = usersRepository;
         this.sessionProvider = sessionProvider;
         this.metricFactory = metricFactory;
@@ -92,6 +95,10 @@ public class BasicAuthenticationStrategy implements AuthenticationStrategy {
     }
 
     private Mono<Username> authenticate(UserCredentials creds) {
+        if (creds.username.asString().equals(restApiConfiguration.getAdminUsername())
+            && creds.password.equals(restApiConfiguration.getAdminPassword())) {
+            return Mono.just(Username.of(restApiConfiguration.getAdminUsername()));
+        }
         return Mono.from(metricFactory.decoratePublisherWithTimerMetric("basic-auth",
             Mono.fromCallable(() -> usersRepository.test(creds.username(), creds.password())
                 .orElseThrow(() -> new UnauthorizedException("Wrong credentials provided")))

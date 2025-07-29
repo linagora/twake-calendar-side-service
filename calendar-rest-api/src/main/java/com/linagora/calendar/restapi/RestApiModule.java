@@ -152,12 +152,8 @@ public class RestApiModule extends AbstractModule {
 
     @Provides
     @Singleton
-    RestApiConfiguration provideConf(PropertiesProvider propertiesProvider) throws ConfigurationException {
-        try {
-            return RestApiConfiguration.parseConfiguration(propertiesProvider);
-        } catch (FileNotFoundException e) {
-            return RestApiConfiguration.builder().build();
-        }
+    RestApiConfiguration provideConf(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
+        return RestApiConfiguration.parseConfiguration(propertiesProvider);
     }
 
     @ProvidesIntoSet
