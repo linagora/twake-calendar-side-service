@@ -33,13 +33,11 @@ import java.util.function.Supplier;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
-import org.apache.commons.lang3.BooleanUtils;
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.ReceiverProvider;
 import org.apache.james.lifecycle.api.Startable;
 import org.apache.james.util.ReactorUtils;
-import org.apache.james.vacation.api.AccountId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,8 +45,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.github.fge.lambdas.Throwing;
 import com.google.inject.name.Named;
-import com.linagora.calendar.storage.OpenPaaSId;
-import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.rabbitmq.client.BuiltinExchangeType;
 
 import reactor.core.Disposable;
@@ -64,7 +60,6 @@ import reactor.rabbitmq.Sender;
 
 public class EventAlarmConsumer implements Closeable, Startable {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module());
-    private static final boolean IGNORE_EVENT_IF_USER_NOT_FOUND = BooleanUtils.toBoolean(System.getProperty("calendar.event.consumer.ignoreIfUserNotFound", "false"));
     private static final Logger LOGGER = LoggerFactory.getLogger(EventAlarmConsumer.class);
     private static final boolean REQUEUE_ON_NACK = true;
 
@@ -92,16 +87,13 @@ public class EventAlarmConsumer implements Closeable, Startable {
 
     private final ReceiverProvider receiverProvider;
     private final Consumer<Queue> declareExchangeAndQueue;
-    private final OpenPaaSUserDAO openPaaSUserDAO;
     private final Map<Queue, Disposable> consumeDisposableMap;
 
     @Inject
     @Singleton
     public EventAlarmConsumer(ReactorRabbitMQChannelPool channelPool,
-                              OpenPaaSUserDAO openPaaSUserDAO,
                               @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier) {
         this.receiverProvider = channelPool::createReceiver;
-        this.openPaaSUserDAO = openPaaSUserDAO;
 
         Sender sender = channelPool.getSender();
         this.declareExchangeAndQueue = eventQueue -> Flux.concat(
@@ -158,54 +150,21 @@ public class EventAlarmConsumer implements Closeable, Startable {
         });
     }
 
-    public interface CalendarEventHandler {
-        Mono<?> handle(AccountId ownerAccountId, CalendarAlarmMessageDTO message);
-
-        Mono<CalendarEventMessage> deserialize(byte[] messagesAsBytes);
+    public interface EventAlarmHandler {
+        Mono<?> handle(CalendarAlarmMessageDTO message);
     }
 
-    private final CalendarEventHandler handlerAdd = new CalendarEventHandler() {
-        @Override
-        public Mono<?> handle(AccountId ownerAccountId, CalendarAlarmMessageDTO message) {
-            return Mono.empty();
-        }
+    private final EventAlarmHandler handlerAdd = (message) -> Mono.empty();
 
-        @Override
-        public Mono<CalendarEventMessage> deserialize(byte[] messagesAsBytes) {
-            return Mono.fromCallable(() -> CalendarEventMessage.CreatedOrUpdated.deserialize(messagesAsBytes));
-        }
-    };
+    private final EventAlarmHandler handlerAddOrUpdate = (message) -> Mono.empty();
 
-    private final CalendarEventHandler handlerAddOrUpdate = new CalendarEventHandler() {
+    private final EventAlarmHandler handlerDelete = (message) -> Mono.empty();
 
-        @Override
-        public Mono<?> handle(AccountId ownerAccountId, CalendarAlarmMessageDTO message) {
-            return Mono.empty();
-        }
-
-        @Override
-        public Mono<CalendarEventMessage> deserialize(byte[] messagesAsBytes) {
-            return Mono.fromCallable(() -> CalendarEventMessage.CreatedOrUpdated.deserialize(messagesAsBytes));
-        }
-    };
-
-    private final CalendarEventHandler handlerDelete = new CalendarEventHandler() {
-        @Override
-        public Mono<?> handle(AccountId ownerAccountId, CalendarAlarmMessageDTO message) {
-            return Mono.empty();
-        }
-
-        @Override
-        public Mono<CalendarEventMessage> deserialize(byte[] messagesAsBytes) {
-            return Mono.fromCallable(() -> CalendarEventMessage.Deleted.deserialize(messagesAsBytes));
-        }
-    };
-
-    private Disposable doConsumeCalendarEventMessages(Queue queue, CalendarEventHandler calendarEventHandler) {
+    private Disposable doConsumeCalendarEventMessages(Queue queue, EventAlarmHandler eventAlarmHandler) {
         return delivery(queue.queueName)
             .flatMap(delivery -> messageConsume(delivery,
                 Throwing.supplier(() -> OBJECT_MAPPER.readValue(delivery.getBody(), CalendarAlarmMessageDTO.class)).get(),
-                calendarEventHandler), DEFAULT_CONCURRENCY)
+                eventAlarmHandler), DEFAULT_CONCURRENCY)
             .subscribe();
     }
 
@@ -215,28 +174,14 @@ public class EventAlarmConsumer implements Closeable, Startable {
             Receiver::close);
     }
 
-    private Mono<?> messageConsume(AcknowledgableDelivery ackDelivery, CalendarAlarmMessageDTO message, CalendarEventHandler calendarEventHandler) {
-        return getAccountId(message.extractCalendarURL().base())
-                    .flatMap(accountId -> calendarEventHandler.handle(accountId, message))
-                    .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed calendar alarm event successfully {} '{}'", message.getClass().getSimpleName(), message.eventPath())))
+    private Mono<?> messageConsume(AcknowledgableDelivery ackDelivery, CalendarAlarmMessageDTO message, EventAlarmHandler eventAlarmHandler) {
+        return eventAlarmHandler.handle(message)
+            .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed calendar alarm event successfully {} '{}'", message.getClass().getSimpleName(), message.eventPath())))
             .doOnSuccess(result -> ackDelivery.ack())
             .onErrorResume(error -> {
                 LOGGER.error("Error when consume calendar alarm event", error);
                 ackDelivery.nack(!REQUEUE_ON_NACK);
                 return Mono.empty();
             });
-    }
-
-    private Mono<AccountId> getAccountId(OpenPaaSId openpaasUserId) {
-        return openPaaSUserDAO.retrieve(openpaasUserId)
-            .map(openPaaSUser -> AccountId.fromUsername(openPaaSUser.username()))
-            .switchIfEmpty(Mono.defer(() -> {
-                if (IGNORE_EVENT_IF_USER_NOT_FOUND) {
-                    LOGGER.warn("Ignoring calendar event for user with id '{}', as the user was not found", openpaasUserId.value());
-                    return Mono.empty();
-                } else {
-                    return Mono.error(new CalendarEventConsumerException("Unable to find user with id '%s'".formatted(openpaasUserId.value())));
-                }
-            }));
     }
 }
