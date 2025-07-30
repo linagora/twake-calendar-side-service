@@ -55,7 +55,7 @@ public class AlarmInstantFactoryTest {
             SUMMARY:Test Event
             ATTENDEE;CN=John Doe:mailto:john@example.com
             BEGIN:VALARM
-            ACTION:DISPLAY
+            ACTION:EMAIL
             TRIGGER:-PT10M
             END:VALARM
             END:VEVENT
@@ -82,7 +82,7 @@ public class AlarmInstantFactoryTest {
             SUMMARY:Test Event
             ATTENDEE;CN=Jane Doe;PARTSTAT=ACCEPTED:mailto:jane@example.com
             BEGIN:VALARM
-            ACTION:DISPLAY
+            ACTION:EMAIL
             TRIGGER:-PT10M
             END:VALARM
             END:VEVENT
@@ -110,7 +110,7 @@ public class AlarmInstantFactoryTest {
             SUMMARY:Past Event
             ATTENDEE;CN=John Doe;PARTSTAT=ACCEPTED:mailto:john@example.com
             BEGIN:VALARM
-            ACTION:DISPLAY
+            ACTION:EMAIL
             TRIGGER:-PT10M
             END:VALARM
             END:VEVENT
@@ -138,7 +138,7 @@ public class AlarmInstantFactoryTest {
             SUMMARY:Meeting
             ATTENDEE;CN=Jane Doe;PARTSTAT=ACCEPTED:mailto:jane@example.com
             BEGIN:VALARM
-            ACTION:DISPLAY
+            ACTION:EMAIL
             TRIGGER:-PT15M
             END:VALARM
             END:VEVENT
@@ -169,19 +169,19 @@ public class AlarmInstantFactoryTest {
             ATTENDEE;CN=Alice;PARTSTAT=ACCEPTED:mailto:alice@example.com
             
             BEGIN:VALARM
-            ACTION:DISPLAY
+            ACTION:EMAIL
             TRIGGER:-PT30M
             DESCRIPTION:Alarm 30 minutes before
             END:VALARM
             
             BEGIN:VALARM
-            ACTION:DISPLAY
+            ACTION:EMAIL
             TRIGGER:-PT10M
             DESCRIPTION:Alarm 10 minutes before
             END:VALARM
             
             BEGIN:VALARM
-            ACTION:DISPLAY
+            ACTION:EMAIL
             TRIGGER:-PT15M
             DESCRIPTION:Alarm 15 minutes before
             END:VALARM
@@ -212,12 +212,12 @@ public class AlarmInstantFactoryTest {
             SUMMARY:Project Review
             ATTENDEE;CN=Alice;PARTSTAT=ACCEPTED:mailto:alice@example.com
             BEGIN:VALARM
-            ACTION:DISPLAY
+            ACTION:EMAIL
             TRIGGER:-PT1H
             DESCRIPTION:Alarm 1 hour before
             END:VALARM
             BEGIN:VALARM
-            ACTION:DISPLAY
+            ACTION:EMAIL
             TRIGGER:-PT10M
             DESCRIPTION:Alarm 10 minutes before
             END:VALARM
@@ -250,7 +250,7 @@ public class AlarmInstantFactoryTest {
             SUMMARY:Design Review
             ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
             BEGIN:VALARM
-            ACTION:DISPLAY
+            ACTION:EMAIL
             TRIGGER:-PT2H
             DESCRIPTION:Alarm 2 hours before
             END:VALARM
@@ -308,7 +308,7 @@ public class AlarmInstantFactoryTest {
             SUMMARY:Test Event
             ATTENDEE;CN=John Doe;PARTSTAT=ACCEPTED:mailto:john@example.com
             BEGIN:VALARM
-            ACTION:DISPLAY
+            ACTION:EMAIL
             TRIGGER;RELATED=START:+PT15M
             DESCRIPTION:Reminder
             END:VALARM
@@ -327,13 +327,13 @@ public class AlarmInstantFactoryTest {
         return Stream.of(
             Arguments.of("No TRIGGER", """
                 BEGIN:VALARM
-                ACTION:DISPLAY
+                ACTION:EMAIL
                 DESCRIPTION:Reminder
                 END:VALARM""".trim()),
             Arguments.of("TRIGGER with non-duration", """
                 BEGIN:VALARM
                 TRIGGER:INVALID
-                ACTION:DISPLAY
+                ACTION:EMAIL
                 DESCRIPTION:Reminder
                 END:VALARM""".trim()),
             Arguments.of("TRIGGER with missing ACTION", """
@@ -371,6 +371,143 @@ public class AlarmInstantFactoryTest {
         assertThat(testee.computeNextAlarmInstant(calendar, attendee)).isEmpty();
     }
 
+    @Test
+    void shouldComputeAlarmInstantWhenGoogleCalendarFormat() {
+        String calendarContent = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Sabre//Sabre VObject 4.1.3//EN
+            BEGIN:VTIMEZONE
+            TZID:Asia/Ho_Chi_Minh
+            BEGIN:STANDARD
+            TZOFFSETFROM:+0700
+            TZOFFSETTO:+0700
+            TZNAME:ICT
+            DTSTART:19700101T000000
+            END:STANDARD
+            END:VTIMEZONE
+            BEGIN:VEVENT
+            DTSTART:20250801T060000Z
+            DTEND:20250801T063000Z
+            DTSTAMP:20250730T024759Z
+            ORGANIZER;CN=Tung Tran Van;SCHEDULE-STATUS=1.1:mailto:tungtv202@tmail.tld
+            UID:33bg1ra5vmcbn5e6asvtmtbm4g@google.com
+            ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;RSVP=TRUE
+             ;CN=vttran@domain.tld;X-NUM-GUESTS=0:mailto:vttran@domain.tld
+            ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;RSVP=TRUE
+             ;CN=Tung Tran Van;X-NUM-GUESTS=0:mailto:tungtv202@tmail.tld
+            X-GOOGLE-CONFERENCE:https://meet.google.com/gmg-zwji-oxc
+            X-MICROSOFT-CDO-OWNERAPPTID:-450465403
+            CREATED:20250730T024757Z
+            DESCRIPTION:-::~:~::~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~
+             :~:~:~:~:~:~:~:~::~:~::-\\nJoin with Google Meet: https://meet.google.com/g
+             mg-zwji-oxc\\n\\nLearn more about Meet at: https://support.google.com/a/user
+             s/answer/9282720\\n\\nPlease do not edit this section.\\n-::~:~::~:~:~:~:~:~:
+             ~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~::~:~::-
+            LAST-MODIFIED:20250730T024757Z
+            LOCATION:
+            SEQUENCE:0
+            STATUS:CONFIRMED
+            SUMMARY:Gmail 2
+            TRANSP:OPAQUE
+            BEGIN:VALARM
+            ACTION:EMAIL
+            DESCRIPTION:This is an event reminder
+            TRIGGER:-P0DT0H30M0S
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Calendar calendar = CalendarUtil.parseIcs(calendarContent);
+        Username attendee = Username.of("vttran@domain.tld");
+        AlarmInstantFactory testee = testee(Instant.parse("2025-07-28T00:00:00Z"));
+
+        assertThat(testee.computeNextAlarmInstant(calendar, attendee))
+            .isEqualTo(Optional.of(Instant.parse("2025-08-01T05:30:00Z")) /* 30 minutes before 06:00 UTC */);
+    }
+
+    @Test
+    void shouldComputeAlarmInstantWhenOutlookCalendarFormat() {
+        String calendarContent = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Sabre//Sabre VObject 4.1.3//EN
+            BEGIN:VTIMEZONE
+            TZID:Asia/Ho_Chi_Minh
+            BEGIN:STANDARD
+            TZOFFSETFROM:+0700
+            TZOFFSETTO:+0700
+            TZNAME:ICT
+            DTSTART:19700101T000000
+            END:STANDARD
+            END:VTIMEZONE
+            BEGIN:VEVENT
+            ORGANIZER;CN=karen karen;SCHEDULE-STATUS=1.1:mailto:outlook_EDB053B6A879EC0
+             2@outlook.com
+            ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;RSVP=TRUE;CN=tungtv@linagor
+             a.ltd:mailto:tungtv@linagora.ltd
+            DESCRIPTION;LANGUAGE=vi-VN:from outlook\\n\\n................................
+             ..........................................................................
+             ...............................\\nTham gia cuộc họp trực tuyến<http
+             s://teams.live.com/meet/9392947982999?p=qcrvLRJ0ODK2a5uraK>\\n.............
+             ..........................................................................
+             ..................................................\\n
+            UID:040000008200E00074C5B7101A82E00800000000ACB6EBCFFF00DC01000000000000000
+             010000000FA8EAE1FBF89674F92C0CF70B16CEC80
+            SUMMARY;LANGUAGE=vi-VN:Outlook 2
+            DTSTART:20250801T043000Z
+            DTEND:20250801T050000Z
+            CLASS:PUBLIC
+            PRIORITY:5
+            DTSTAMP:20250730T031245Z
+            TRANSP:OPAQUE
+            STATUS:CONFIRMED
+            SEQUENCE:0
+            LOCATION;LANGUAGE=vi-VN:Cuộc họp trong Microsoft Teams
+            X-MICROSOFT-CDO-APPT-SEQUENCE:0
+            X-MICROSOFT-CDO-OWNERAPPTID:2123887532
+            X-MICROSOFT-CDO-BUSYSTATUS:TENTATIVE
+            X-MICROSOFT-CDO-INTENDEDSTATUS:BUSY
+            X-MICROSOFT-CDO-ALLDAYEVENT:FALSE
+            X-MICROSOFT-CDO-IMPORTANCE:1
+            X-MICROSOFT-CDO-INSTTYPE:0
+            X-MICROSOFT-ONLINEMEETINGINFORMATION:{"OnlineMeetingChannelId":null\\\\\\,"Onl
+             ineMeetingProvider":4}
+            X-MICROSOFT-SKYPETEAMSMEETINGURL:https://teams.live.com/meet/9392947982995?
+             p=qcrvLRJ0ODK2a5uraK
+            X-MICROSOFT-SCHEDULINGSERVICEUPDATEURL:https://api.scheduler.teams.microsof
+             t.com/teamsforlife/9392947982995
+            X-MICROSOFT-SKYPETEAMSPROPERTIES:{"cid":"19:meeting_ODUyYTcxZmMtMzk5Yi00MzU
+             4LTk5ZGYtNjRhYTViMGY1OWVl@thread.v2"\\\\\\,"rid":0\\\\\\,"mid":0\\\\\\,"uid":null\\\\
+             \\,"private":true\\\\\\,"type":0}
+            X-MICROSOFT-DONOTFORWARDMEETING:FALSE
+            X-MICROSOFT-DISALLOW-COUNTER:FALSE
+            X-MICROSOFT-REQUESTEDATTENDANCEMODE:DEFAULT
+            X-MICROSOFT-ISRESPONSEREQUESTED:TRUE
+            X-MICROSOFT-LOCATIONDISPLAYNAME:Cuộc họp trong Microsoft Teams
+            X-MICROSOFT-LOCATIONSOURCE:None
+            X-MICROSOFT-LOCATIONS:[{"DisplayName":"Cuộc họp trong Microsoft Teams"\\
+             \\\\,"LocationAnnotation":""\\\\\\,"LocationUri":""\\\\\\,"LocationStreet":""\\\\\\,"
+             LocationCity":""\\\\\\,"LocationState":""\\\\\\,"LocationCountry":""\\\\\\,"Locatio
+             nPostalCode":""\\\\\\,"LocationFullAddress":""}]
+            BEGIN:VALARM
+            DESCRIPTION:REMINDER
+            TRIGGER;RELATED=START:-PT15M
+            ACTION:EMAIL
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Calendar calendar = CalendarUtil.parseIcs(calendarContent);
+        Username attendee = Username.of("tungtv@linagora.ltd");
+        AlarmInstantFactory testee = testee(Instant.parse("2025-07-28T00:00:00Z"));
+
+        assertThat(testee.computeNextAlarmInstant(calendar, attendee))
+            .isEqualTo(Optional.of(Instant.parse("2025-08-01T04:15:00Z")) /* 15 minutes before 04:30 UTC */);
+    }
+
     @Nested
     class RecurrenceEventTest {
         @Test
@@ -387,7 +524,7 @@ public class AlarmInstantFactoryTest {
                 SUMMARY:Daily Standup
                 BEGIN:VALARM
                 TRIGGER:-PT15M
-                ACTION:DISPLAY
+                ACTION:EMAIL
                 DESCRIPTION:Reminder
                 END:VALARM
                 END:VEVENT
@@ -435,7 +572,7 @@ public class AlarmInstantFactoryTest {
                 SUMMARY:Daily Standup
                 BEGIN:VALARM
                 TRIGGER:-PT15M
-                ACTION:DISPLAY
+                ACTION:EMAIL
                 DESCRIPTION:Reminder
                 END:VALARM
                 END:VEVENT
@@ -483,7 +620,7 @@ public class AlarmInstantFactoryTest {
                 SUMMARY:Weekly Meeting
                 BEGIN:VALARM
                 TRIGGER:-PT15M
-                ACTION:DISPLAY
+                ACTION:EMAIL
                 DESCRIPTION:Reminder
                 END:VALARM
                 END:VEVENT
@@ -497,7 +634,7 @@ public class AlarmInstantFactoryTest {
                 SUMMARY:Rescheduled Weekly Meeting
                 BEGIN:VALARM
                 TRIGGER:-PT15M
-                ACTION:DISPLAY
+                ACTION:EMAIL
                 DESCRIPTION:Rescheduled Reminder
                 END:VALARM
                 END:VEVENT
@@ -538,7 +675,7 @@ public class AlarmInstantFactoryTest {
                 SUMMARY:Weekly Meeting
                 BEGIN:VALARM
                 TRIGGER:-PT15M
-                ACTION:DISPLAY
+                ACTION:EMAIL
                 DESCRIPTION:Reminder
                 END:VALARM
                 END:VEVENT
@@ -552,7 +689,7 @@ public class AlarmInstantFactoryTest {
                 SUMMARY:Weekly Meeting (Override)
                 BEGIN:VALARM
                 TRIGGER:-PT15M
-                ACTION:DISPLAY
+                ACTION:EMAIL
                 DESCRIPTION:Reminder
                 END:VALARM
                 END:VEVENT
@@ -586,7 +723,7 @@ public class AlarmInstantFactoryTest {
                 SUMMARY:Weekly Sync
                 BEGIN:VALARM
                 TRIGGER:-PT15M
-                ACTION:DISPLAY
+                ACTION:EMAIL
                 DESCRIPTION:Reminder
                 END:VALARM
                 END:VEVENT
@@ -600,7 +737,7 @@ public class AlarmInstantFactoryTest {
                 SUMMARY:Weekly Sync (Declined)
                 BEGIN:VALARM
                 TRIGGER:-PT15M
-                ACTION:DISPLAY
+                ACTION:EMAIL
                 DESCRIPTION:Reminder
                 END:VALARM
                 END:VEVENT
@@ -614,7 +751,7 @@ public class AlarmInstantFactoryTest {
                 SUMMARY:Weekly Sync (Time Changed)
                 BEGIN:VALARM
                 TRIGGER:-PT15M
-                ACTION:DISPLAY
+                ACTION:EMAIL
                 DESCRIPTION:Reminder
                 END:VALARM
                 END:VEVENT
@@ -649,7 +786,7 @@ public class AlarmInstantFactoryTest {
                 SUMMARY:Weekly Sync
                 BEGIN:VALARM
                 TRIGGER:-PT15M
-                ACTION:DISPLAY
+                ACTION:EMAIL
                 DESCRIPTION:Reminder
                 END:VALARM
                 END:VEVENT

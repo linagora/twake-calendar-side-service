@@ -30,12 +30,14 @@ import java.time.temporal.TemporalAmount;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.Username;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -67,6 +69,7 @@ public interface AlarmInstantFactory {
         private static final Comparator<Instant> EARLIEST_FIRST_COMPARATOR = Comparator.naturalOrder();
         private static final Comparator<VEvent> EARLIEST_FIRST_EVENT_COMPARATOR =
             Comparator.comparing(e -> EventParseUtils.getStartTime(e).toInstant());
+        private static final Set<String> VALID_ALARM_ACTIONS = Set.of("EMAIL");
 
         private final Clock clock;
 
@@ -94,8 +97,12 @@ public interface AlarmInstantFactory {
         }
 
         private Optional<TemporalAmount> extractTriggerDurationIfValid(VAlarm alarm) {
-            if (alarm.getProperty(ACTION).isEmpty()) {
-                LOGGER.debug("Alarm is missing ACTION, skipping");
+            Optional<String> actionOpt = alarm.getProperty(ACTION)
+                .map(action -> StringUtils.upperCase(action.getValue(), Locale.US));
+
+            if (actionOpt.isEmpty() || !VALID_ALARM_ACTIONS.contains(actionOpt.get())) {
+                LOGGER.debug("Alarm is missing ACTION or has invalid value, allowed values are: {}. Skipping",
+                    VALID_ALARM_ACTIONS);
                 return Optional.empty();
             }
 
