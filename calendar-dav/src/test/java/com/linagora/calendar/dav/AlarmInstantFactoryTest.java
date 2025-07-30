@@ -558,6 +558,57 @@ public class AlarmInstantFactoryTest {
         }
 
         @Test
+        void shouldHandleBiWeeklyRecurrenceWithUntilInFuture() {
+            String calendarContent = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:recurring-event
+                DTSTART:20250806T090000Z
+                DTEND:20250806T100000Z
+                RRULE:FREQ=WEEKLY;INTERVAL=2;UNTIL=20251001T000000Z
+                ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                SUMMARY:Bi-Weekly Sync
+                BEGIN:VALARM
+                TRIGGER:-PT15M
+                ACTION:EMAIL
+                DESCRIPTION:Reminder
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """;
+
+            Calendar calendar = CalendarUtil.parseIcs(calendarContent);
+            Username attendee = Username.of("bob@example.com");
+
+            /*
+                Occurrences (bi-weekly from 2025-08-06):
+                - 2025-08-06T09:00Z → Alarm: 2025-08-06T08:45Z
+                - 2025-08-20T09:00Z → Alarm: 2025-08-20T08:45Z
+                - 2025-09-03T09:00Z → Alarm: 2025-09-03T08:45Z
+                - 2025-09-17T09:00Z → Alarm: 2025-09-17T08:45Z
+             */
+
+            Map<Instant, Optional<Instant>> testCases = Map.of(
+                Instant.parse("2025-08-01T00:00:00Z"), Optional.of(Instant.parse("2025-08-06T08:45:00Z")),
+                Instant.parse("2025-08-06T10:00:00Z"), Optional.of(Instant.parse("2025-08-20T08:45:00Z")),
+                Instant.parse("2025-08-21T00:00:00Z"), Optional.of(Instant.parse("2025-09-03T08:45:00Z")),
+                Instant.parse("2025-09-17T09:00:01Z"), Optional.empty() /* after last alarm */);
+
+            for (Map.Entry<Instant, Optional<Instant>> entry : testCases.entrySet()) {
+                Instant now = entry.getKey();
+                Optional<Instant> expectedAlarm = entry.getValue();
+
+                AlarmInstantFactory testee = testee(now);
+                Optional<Instant> result = testee.computeNextAlarmInstant(calendar, attendee);
+
+                assertThat(result)
+                    .describedAs("Should return correct alarm for fixed clock at %s", now)
+                    .isEqualTo(expectedAlarm);
+            }
+        }
+
+        @Test
         void shouldRespectEXDATEInRecurringEvents() {
             String calendarContent = """
                 BEGIN:VCALENDAR

@@ -23,6 +23,7 @@ import static net.fortuna.ical4j.model.Property.TRIGGER;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.chrono.ChronoZonedDateTime;
 import java.time.temporal.Temporal;
@@ -165,9 +166,11 @@ public interface AlarmInstantFactory {
 
             List<Instant> excludedInstants = extractExcludedInstants(master);
             Recur recur = rrule.getRecur();
-            ZonedDateTime startTime = EventParseUtils.getStartTime(master);
+            ZonedDateTime seedStart = EventParseUtils.getStartTime(master);
+            ZonedDateTime periodStart = clock.instant().atZone(seedStart.getZone());
+            ZonedDateTime periodEnd = periodStart.plusYears(1);
 
-            List<ZonedDateTime> recurrenceDates = recur.getDates(startTime, startTime.plusYears(1));
+            List<ZonedDateTime> recurrenceDates = recur.getDates(seedStart, periodStart, periodEnd);
             List<Instant> filteredRecurrenceDates = recurrenceDates.stream()
                 .map(ChronoZonedDateTime::toInstant)
                 .filter(recurrence -> !excludedInstants.contains(recurrence))
@@ -185,7 +188,7 @@ public interface AlarmInstantFactory {
                 .filter(recurrenceDate -> recurrenceDate.isAfter(now))
                 .map(recurrenceDate -> overrideMap.getOrDefault(
                     recurrenceDate,
-                    createInstanceVEvent(master, recurrenceDate)))
+                    createInstanceVEvent(master, recurrenceDate.atZone(ZoneOffset.UTC))))
                 .filter(event -> isAttendeeAccepted(event, attendee))
                 .sorted(EARLIEST_FIRST_EVENT_COMPARATOR)
                 .toList();
@@ -207,7 +210,7 @@ public interface AlarmInstantFactory {
                 .toList();
         }
 
-        public static VEvent createInstanceVEvent(VEvent master, Instant recurrenceDate) {
+        public static VEvent createInstanceVEvent(VEvent master, ZonedDateTime recurrenceDate) {
             VEvent instance = master.copy();
             Period recurrencePeriod = new Period(recurrenceDate, recurrenceDate);
 
