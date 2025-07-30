@@ -24,8 +24,10 @@ import org.apache.james.core.MailAddress;
 
 import com.linagora.calendar.storage.eventsearch.EventUid;
 
-public record AlarmEvent(EventUid eventId,
+public record AlarmEvent(EventUid eventUid,
                          Instant alarmTime,
+                         Instant eventStartTime,
+                         boolean recurring,
                          MailAddress recipient,
                          String ics) {
 }

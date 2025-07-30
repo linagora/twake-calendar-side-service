@@ -22,6 +22,8 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.linagora.calendar.storage.eventsearch.EventUid;
+
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -29,28 +31,28 @@ public class MemoryAlarmEventDAO implements AlarmEventDAO {
     private final Map<String, AlarmEvent> store = new ConcurrentHashMap<>();
 
     @Override
-    public Mono<AlarmEvent> find(String id) {
-        return Mono.fromCallable(() -> store.get(id));
+    public Mono<AlarmEvent> find(EventUid eventUid) {
+        return Mono.fromCallable(() -> store.get(eventUid.value()));
     }
 
     @Override
     public Mono<Void> create(AlarmEvent alarmEvent) {
-        return Mono.fromRunnable(() -> store.put(alarmEvent.eventId().value(), alarmEvent));
+        return Mono.fromRunnable(() -> store.put(alarmEvent.eventUid().value(), alarmEvent));
     }
 
     @Override
     public Mono<Void> update(AlarmEvent alarmEvent) {
-        return Mono.fromRunnable(() -> store.put(alarmEvent.eventId().value(), alarmEvent));
+        return Mono.fromRunnable(() -> store.put(alarmEvent.eventUid().value(), alarmEvent));
     }
 
     @Override
-    public Mono<Void> delete(String id) {
-        return Mono.fromRunnable(() -> store.remove(id));
+    public Mono<Void> delete(EventUid eventUid) {
+        return Mono.fromRunnable(() -> store.remove(eventUid.value()));
     }
 
     @Override
-    public Flux<AlarmEvent> getByTime(Instant time) {
+    public Flux<AlarmEvent> findBetweenAlarmTimeAndStartTime(Instant time) {
         return Flux.fromStream(store.values().stream()
-            .filter(e -> !e.alarmTime().isAfter(time)));
+            .filter(e -> !e.alarmTime().isAfter(time) && time.isBefore(e.eventStartTime())));
     }
 }

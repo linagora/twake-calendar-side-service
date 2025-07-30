@@ -21,6 +21,7 @@ package com.linagora.calendar.storage;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 import jakarta.mail.internet.AddressException;
@@ -35,48 +36,98 @@ public interface AlarmEventDAOContract {
 
     @Test
     default void shouldCreateNewAlarmEvent() throws AddressException {
-        AlarmEvent event = new AlarmEvent(new EventUid("1"), Instant.now(), new MailAddress("recipient@abc.com"), "ics");
+        AlarmEvent event = new AlarmEvent(
+            new EventUid("1"),
+            Instant.now().truncatedTo(ChronoUnit.MILLIS),
+            Instant.now().truncatedTo(ChronoUnit.MILLIS),
+            false,
+            new MailAddress("recipient@abc.com"),
+            "ics");
         getDAO().create(event).block();
 
-        AlarmEvent found = getDAO().find("1").block();
+        AlarmEvent found = getDAO().find(new EventUid("1")).block();
 
         assertThat(found).isEqualTo(event);
     }
 
     @Test
     default void shouldUpdateAlarmEvent() throws AddressException {
-        AlarmEvent event = new AlarmEvent(new EventUid("1"), Instant.now(), new MailAddress("recipient@abc.com"), "ics");
-        AlarmEvent updated = new AlarmEvent(new EventUid("1"), Instant.now(), new MailAddress("newRecipient@abc.com"), "newIcs");
+        AlarmEvent event = new AlarmEvent(
+            new EventUid("1"),
+            Instant.now().truncatedTo(ChronoUnit.MILLIS),
+            Instant.now().truncatedTo(ChronoUnit.MILLIS),
+            false,
+            new MailAddress("recipient@abc.com"),
+            "ics");
+        AlarmEvent updated = new AlarmEvent(
+            new EventUid("1"),
+            Instant.now().truncatedTo(ChronoUnit.MILLIS),
+            Instant.now().truncatedTo(ChronoUnit.MILLIS),
+            true,
+            new MailAddress("newRecipient@abc.com"),
+            "newIcs");
         getDAO().create(event).block();
         getDAO().update(updated).block();
 
-        AlarmEvent found = getDAO().find("1").block();
+        AlarmEvent found = getDAO().find(new EventUid("1")).block();
 
         assertThat(found).isEqualTo(updated);
     }
 
     @Test
     default void shouldDeleteAlarmEvent() throws AddressException {
-        AlarmEvent event = new AlarmEvent(new EventUid("1"), Instant.now(), new MailAddress("recipient@abc.com"), "ics");
+        AlarmEvent event = new AlarmEvent(
+            new EventUid("1"),
+            Instant.now().truncatedTo(ChronoUnit.MILLIS),
+            Instant.now().truncatedTo(ChronoUnit.MILLIS),
+            false,
+            new MailAddress("recipient@abc.com"),
+            "ics");
         getDAO().create(event).block();
-        getDAO().delete("1").block();
+        getDAO().delete(new EventUid("1")).block();
 
-        AlarmEvent found = getDAO().find("1").block();
+        AlarmEvent found = getDAO().find(new EventUid("1")).block();
 
         assertThat(found).isNull();
     }
 
     @Test
     default void shouldGetAlarmEventsByTime() throws AddressException {
-        Instant now = Instant.now();
-        AlarmEvent e1 = new AlarmEvent(new EventUid("1"), now.minusSeconds(60), new MailAddress("r1@abc.com"), "ics1");
-        AlarmEvent e2 = new AlarmEvent(new EventUid("2"), now, new MailAddress("r2@abc.com"), "ics2");
-        AlarmEvent e3 = new AlarmEvent(new EventUid("3"), now.plusSeconds(60), new MailAddress("r3@abc.com"), "ics2");
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+        AlarmEvent e1 = new AlarmEvent(
+            new EventUid("1"),
+            now.minusSeconds(60),
+            now.plusSeconds(1000),
+            false,
+            new MailAddress("r1@abc.com"),
+            "ics1");
+        AlarmEvent e2 = new AlarmEvent(
+            new EventUid("2"),
+            now,
+            now.plusSeconds(1000),
+            true,
+            new MailAddress("r2@abc.com"),
+            "ics2");
+        AlarmEvent e3 = new AlarmEvent(
+            new EventUid("3"),
+            now.plusSeconds(60),
+            now.plusSeconds(1000),
+            false,
+            new MailAddress("r3@abc.com"),
+            "ics2");
+        AlarmEvent e4 = new AlarmEvent(
+            new EventUid("3"),
+            now.minusSeconds(60),
+            now.minusSeconds(10),
+            false,
+            new MailAddress("r3@abc.com"),
+            "ics2");
         getDAO().create(e1).block();
         getDAO().create(e2).block();
         getDAO().create(e3).block();
+        getDAO().create(e4).block();
 
-        List<AlarmEvent> events = getDAO().getByTime(now).collectList().block();
+        List<AlarmEvent> events = getDAO().findBetweenAlarmTimeAndStartTime(now).collectList().block();
 
         assertThat(events).containsExactlyInAnyOrder(e1, e2);
     }
