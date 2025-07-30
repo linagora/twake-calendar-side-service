@@ -35,6 +35,7 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
+import com.linagora.calendar.storage.event.AlarmInstantFactory.AlarmInstant;
 
 import net.fortuna.ical4j.model.Calendar;
 
@@ -42,6 +43,11 @@ public class AlarmInstantFactoryTest {
 
     private AlarmInstantFactory testee(Instant clockFixedInstant) {
         return new AlarmInstantFactory.Default(Clock.fixed(clockFixedInstant, ZoneOffset.UTC));
+    }
+
+    private Optional<Instant> computeNextAlarmTime(String icsCalendar, Instant instantClock, Username attendee) {
+        return testee(instantClock).computeNextAlarmInstant(CalendarUtil.parseIcs(icsCalendar), attendee)
+            .map(AlarmInstant::alarmTime);
     }
 
     @Test
@@ -62,9 +68,7 @@ public class AlarmInstantFactoryTest {
             END:VCALENDAR
             """;
 
-        Calendar calendar = CalendarUtil.parseIcs(ics);
-        AlarmInstantFactory testee = testee(Instant.parse("2025-07-28T00:00:00Z"));
-        Optional<Instant> result = testee.computeNextAlarmInstant(calendar, Username.of("john@example.com"));
+        Optional<Instant> result = computeNextAlarmTime(ics, Instant.parse("2025-07-28T00:00:00Z"), Username.of("john@example.com"));
 
         assertThat(result)
             .describedAs("Alarm should not be scheduled when attendee has not accepted the invitation")
@@ -89,9 +93,7 @@ public class AlarmInstantFactoryTest {
             END:VCALENDAR
             """;
 
-        Calendar calendar = CalendarUtil.parseIcs(ics);
-        AlarmInstantFactory testee = testee(Instant.parse("2025-07-28T00:00:00Z"));
-        Optional<Instant> result = testee.computeNextAlarmInstant(calendar, Username.of("notfound@example.com"));
+        Optional<Instant> result = computeNextAlarmTime(ics, Instant.parse("2025-07-28T00:00:00Z"), Username.of("notfound@example.com"));
 
         assertThat(result)
             .describedAs("Alarm should not be scheduled when the given attendee is not present in the event")
@@ -117,11 +119,7 @@ public class AlarmInstantFactoryTest {
             END:VCALENDAR
             """;
 
-        AlarmInstantFactory testee = testee(Instant.parse("2025-07-28T00:00:00Z"));
-
-        Calendar calendar = CalendarUtil.parseIcs(ics);
-        Optional<Instant> result = testee.computeNextAlarmInstant(calendar, Username.of("john@example.com"));
-
+        Optional<Instant> result = computeNextAlarmTime(ics, Instant.parse("2025-07-28T00:00:00Z"), Username.of("john@example.com"));
         assertThat(result)
             .describedAs("Alarm should not be scheduled for past event")
             .isEmpty();
@@ -148,13 +146,14 @@ public class AlarmInstantFactoryTest {
         Calendar calendar = CalendarUtil.parseIcs(ics);
         AlarmInstantFactory testee = testee(Instant.parse("2025-07-28T00:00:00Z"));
 
-        Optional<Instant> result = testee.computeNextAlarmInstant(calendar, Username.of("jane@example.com"));
+        Optional<AlarmInstant> result = testee.computeNextAlarmInstant(calendar, Username.of("jane@example.com"));
 
         // Expected: 2025-08-29T09:45:00Z (15 minutes before 10:00)
         assertThat(result)
             .describedAs("Alarm should be scheduled when event is in the future and attendee has accepted")
             .isPresent()
-            .contains(Instant.parse("2025-08-29T09:45:00Z"));
+            .contains(new AlarmInstant(Instant.parse("2025-08-29T09:45:00Z"),
+                Instant.parse("2025-08-29T10:00:00Z")));
     }
 
     @Test
@@ -189,10 +188,7 @@ public class AlarmInstantFactoryTest {
             END:VCALENDAR
             """;
 
-        Calendar calendar = CalendarUtil.parseIcs(ics);
-        AlarmInstantFactory testee = testee(Instant.parse("2025-07-28T00:00:00Z"));
-
-        Optional<Instant> result = testee.computeNextAlarmInstant(calendar, Username.of("alice@example.com"));
+        Optional<Instant> result = computeNextAlarmTime(ics, Instant.parse("2025-07-28T00:00:00Z"), Username.of("alice@example.com"));
 
         // Expected: 2025-08-29T09:30:00Z (30 minutes before 10:00)
         assertThat(result)
@@ -228,11 +224,7 @@ public class AlarmInstantFactoryTest {
         // fixedClock is 2025-08-29T09:30:00Z
         // → Alarm -1h = 09:00:00Z (in the past) → ignored
         // → Alarm -10m = 09:50:00Z (in the future) → picked
-
-        Calendar calendar = CalendarUtil.parseIcs(ics);
-        AlarmInstantFactory testee = testee(Instant.parse("2025-08-29T09:30:00Z"));
-
-        Optional<Instant> result = testee.computeNextAlarmInstant(calendar, Username.of("alice@example.com"));
+        Optional<Instant> result = computeNextAlarmTime(ics, Instant.parse("2025-08-29T09:30:00Z"), Username.of("alice@example.com"));
 
         assertThat(result)
             .describedAs("Only future alarm should be considered")
@@ -262,11 +254,7 @@ public class AlarmInstantFactoryTest {
         // → Alarm = 08:00:00Z → already passed
         // → Event = 10:00:00Z → still in the future
         // → But no alarms are valid → result empty
-
-        Calendar calendar = CalendarUtil.parseIcs(ics);
-        AlarmInstantFactory testee = testee(Instant.parse("2025-08-29T09:30:00Z"));
-
-        Optional<Instant> result = testee.computeNextAlarmInstant(calendar, Username.of("bob@example.com"));
+        Optional<Instant> result = computeNextAlarmTime(ics, Instant.parse("2025-08-29T09:30:00Z"), Username.of("bob@example.com"));
 
         assertThat(result)
             .describedAs("Should return empty when all alarms are already in the past")
@@ -287,10 +275,7 @@ public class AlarmInstantFactoryTest {
             END:VCALENDAR
             """;
 
-        Calendar calendar = CalendarUtil.parseIcs(ics);
-        AlarmInstantFactory testee = testee(Instant.parse("2025-07-28T00:00:00Z"));
-
-        Optional<Instant> result = testee.computeNextAlarmInstant(calendar, Username.of("john@example.com"));
+        Optional<Instant> result = computeNextAlarmTime(ics, Instant.parse("2025-07-28T00:00:00Z"), Username.of("john@example.com"));
 
         assertThat(result)
             .as("Alarm should not be scheduled when no VALARM is present")
@@ -316,9 +301,7 @@ public class AlarmInstantFactoryTest {
             END:VCALENDAR
             """;
 
-        Calendar calendar = CalendarUtil.parseIcs(ics);
-        AlarmInstantFactory testee = testee(Instant.parse("2025-07-28T00:00:00Z"));
-        Optional<Instant> result = testee.computeNextAlarmInstant(calendar, Username.of("john@example.com"));
+        Optional<Instant> result = computeNextAlarmTime(ics, Instant.parse("2025-07-28T00:00:00Z"), Username.of("john@example.com"));
 
         assertThat(result).contains(Instant.parse("2025-08-29T10:15:00Z"));
     }
@@ -423,7 +406,8 @@ public class AlarmInstantFactoryTest {
         Username attendee = Username.of("vttran@domain.tld");
         AlarmInstantFactory testee = testee(Instant.parse("2025-07-28T00:00:00Z"));
 
-        assertThat(testee.computeNextAlarmInstant(calendar, attendee))
+        assertThat(testee.computeNextAlarmInstant(calendar, attendee)
+            .map(AlarmInstant::alarmTime))
             .isEqualTo(Optional.of(Instant.parse("2025-08-01T05:30:00Z")) /* 30 minutes before 06:00 UTC */);
     }
 
@@ -504,7 +488,8 @@ public class AlarmInstantFactoryTest {
         Username attendee = Username.of("tungtv@linagora.ltd");
         AlarmInstantFactory testee = testee(Instant.parse("2025-07-28T00:00:00Z"));
 
-        assertThat(testee.computeNextAlarmInstant(calendar, attendee))
+        assertThat(testee.computeNextAlarmInstant(calendar, attendee)
+            .map(AlarmInstant::alarmTime))
             .isEqualTo(Optional.of(Instant.parse("2025-08-01T04:15:00Z")) /* 15 minutes before 04:30 UTC */);
     }
 
@@ -538,20 +523,18 @@ public class AlarmInstantFactoryTest {
             // Occurrence 2: 2025-08-30T10:00Z → Alarm: 2025-08-30T09:45Z
             // Occurrence 3: 2025-08-31T10:00Z → Alarm: 2025-08-31T09:45Z
 
-            Map<Instant, Optional<Instant>> testCases = Map.of(
-                Instant.parse("2025-08-28T12:00:00Z"), Optional.of(Instant.parse("2025-08-29T09:45:00Z")), // before all → alarm 1
-                Instant.parse("2025-08-29T12:00:00Z"), Optional.of(Instant.parse("2025-08-30T09:45:00Z")), // after alarm 1 → alarm 2
-                Instant.parse("2025-08-30T12:00:00Z"), Optional.of(Instant.parse("2025-08-31T09:45:00Z")), // after alarm 2 → alarm 3
+            Map<Instant, Optional<AlarmInstant>> testCases = Map.of(
+                Instant.parse("2025-08-28T12:00:00Z"), Optional.of(new AlarmInstant(Instant.parse("2025-08-29T09:45:00Z"), Instant.parse("2025-08-29T10:00:00Z"))), // before all → alarm 1
+                Instant.parse("2025-08-29T12:00:00Z"), Optional.of(new AlarmInstant(Instant.parse("2025-08-30T09:45:00Z"), Instant.parse("2025-08-30T10:00:00Z"))), // after alarm 1 → alarm 2
+                Instant.parse("2025-08-30T12:00:00Z"), Optional.of(new AlarmInstant(Instant.parse("2025-08-31T09:45:00Z"), Instant.parse("2025-08-31T10:00:00Z"))), // after alarm 2 → alarm 3
                 Instant.parse("2025-08-31T12:00:00Z"), Optional.empty() /* after al → empty */);
 
-            for (Map.Entry<Instant, Optional<Instant>> entry : testCases.entrySet()) {
+            for (Map.Entry<Instant, Optional<AlarmInstant>> entry : testCases.entrySet()) {
                 Instant now = entry.getKey();
-                Optional<Instant> expectedAlarm = entry.getValue();
+                Optional<AlarmInstant> expectedAlarm = entry.getValue();
 
                 AlarmInstantFactory testee = testee(now);
-                Optional<Instant> result = testee.computeNextAlarmInstant(calendar, attendee);
-
-                assertThat(result)
+                assertThat(testee.computeNextAlarmInstant(calendar, attendee))
                     .describedAs("Should return correct alarm for time %s", now)
                     .isEqualTo(expectedAlarm);
             }
@@ -600,9 +583,9 @@ public class AlarmInstantFactoryTest {
                 Optional<Instant> expectedAlarm = entry.getValue();
 
                 AlarmInstantFactory testee = testee(now);
-                Optional<Instant> result = testee.computeNextAlarmInstant(calendar, attendee);
 
-                assertThat(result)
+                assertThat(testee.computeNextAlarmInstant(calendar, attendee))
+                    .map(AlarmInstant::alarmTime)
                     .describedAs("Should return correct alarm for fixed clock at %s", now)
                     .isEqualTo(expectedAlarm);
             }
@@ -649,9 +632,9 @@ public class AlarmInstantFactoryTest {
                 Optional<Instant> expectedAlarm = entry.getValue();
 
                 AlarmInstantFactory testee = testee(now);
-                Optional<Instant> result = testee.computeNextAlarmInstant(calendar, attendee);
 
-                assertThat(result)
+                assertThat(testee.computeNextAlarmInstant(calendar, attendee)
+                    .map(AlarmInstant::alarmTime))
                     .describedAs("Should return correct alarm considering multiple EXDATEs for time %s", now)
                     .isEqualTo(expectedAlarm);
             }
@@ -700,13 +683,8 @@ public class AlarmInstantFactoryTest {
              */
 
             Instant fixedNow = Instant.parse("2025-08-08T10:00:01Z"); // after second alarm, before third
-
-            Calendar calendar = CalendarUtil.parseIcs(calendarContent);
             Username attendee = Username.of("alice@example.com");
-
-            AlarmInstantFactory testee = testee(fixedNow);
-
-            Optional<Instant> result = testee.computeNextAlarmInstant(calendar, attendee);
+            Optional<Instant> result = computeNextAlarmTime(calendarContent, fixedNow, attendee);
 
             // Expect alarm of overridden occurrence → 2025-08-16T13:45:00Z
             assertThat(result).contains(Instant.parse("2025-08-16T13:45:00Z"));
@@ -747,13 +725,9 @@ public class AlarmInstantFactoryTest {
                 END:VCALENDAR
                 """;
 
-            Calendar calendar = CalendarUtil.parseIcs(calendarContent);
-            Username attendee = Username.of("bob@example.com");
-
             // Fix clock between 1st and 2nd occurrence => next expected is 2nd
-            AlarmInstantFactory testee = testee(Instant.parse("2025-09-01T00:00:00Z"));
-
-            Optional<Instant> result = testee.computeNextAlarmInstant(calendar, attendee);
+            Optional<Instant> result = computeNextAlarmTime(calendarContent, Instant.parse("2025-09-01T00:00:00Z"),
+                Username.of("bob@example.com"));
 
             // 2nd is DECLINED, so should skip to 3rd: 2025-09-12T10:00:00Z - 15m
             assertThat(result).contains(Instant.parse("2025-09-12T09:45:00Z"));
@@ -810,13 +784,8 @@ public class AlarmInstantFactoryTest {
                 END:VCALENDAR
                 """;
 
-            Calendar calendar = CalendarUtil.parseIcs(calendarContent);
-            Username attendee = Username.of("bob@example.com");
-
             // Fix clock between 1st and 2nd occurrence
-            AlarmInstantFactory testee = testee(Instant.parse("2025-09-01T00:00:00Z"));
-
-            Optional<Instant> result = testee.computeNextAlarmInstant(calendar, attendee);
+            Optional<Instant> result = computeNextAlarmTime(calendarContent, Instant.parse("2025-09-01T00:00:00Z"), Username.of("bob@example.com"));
 
             // 3rd occurrence is overridden
             assertThat(result).contains(Instant.parse("2025-09-12T11:45:00Z"));
@@ -860,10 +829,8 @@ public class AlarmInstantFactoryTest {
             // Fix clock after first occurrence, but before second (which is overridden and has no alarm)
             AlarmInstantFactory testee = testee(Instant.parse("2025-09-01T00:00:00Z"));
 
-            Optional<Instant> result = testee.computeNextAlarmInstant(calendar, attendee);
-
             // The second overridden occurrence has no VALARM -> expect no upcoming alarms
-            assertThat(result).isEmpty();
+            assertThat(testee.computeNextAlarmInstant(calendar, attendee)).isEmpty();
         }
     }
 

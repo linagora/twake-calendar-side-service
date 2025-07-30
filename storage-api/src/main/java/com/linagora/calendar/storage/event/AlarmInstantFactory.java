@@ -43,6 +43,7 @@ import org.apache.james.core.Username;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 
 import net.fortuna.ical4j.model.Calendar;
@@ -62,12 +63,20 @@ import net.fortuna.ical4j.model.property.RecurrenceId;
 import net.fortuna.ical4j.model.property.Trigger;
 
 public interface AlarmInstantFactory {
-    Optional<Instant> computeNextAlarmInstant(Calendar calendar, Username attendee);
+    record AlarmInstant(Instant alarmTime, Instant eventStartTime) {
+        public AlarmInstant {
+            Preconditions.checkArgument(alarmTime != null, "alarmTime must not be null");
+            Preconditions.checkArgument(eventStartTime != null, "eventStartTime must not be null");
+        }
+    }
+
+    Optional<AlarmInstant> computeNextAlarmInstant(Calendar calendar, Username attendee);
 
     class Default implements AlarmInstantFactory {
 
         private static final Logger LOGGER = LoggerFactory.getLogger(Default.class);
-        private static final Comparator<Instant> EARLIEST_FIRST_COMPARATOR = Comparator.naturalOrder();
+        private static final Comparator<AlarmInstant> EARLIEST_FIRST_ALARM_COMPARATOR =
+            Comparator.comparing(AlarmInstant::alarmTime);
         private static final Comparator<VEvent> EARLIEST_FIRST_EVENT_COMPARATOR =
             Comparator.comparing(e -> EventParseUtils.getStartTime(e).toInstant());
         private static final Set<String> VALID_ALARM_ACTIONS = Set.of("EMAIL");
@@ -79,21 +88,22 @@ public interface AlarmInstantFactory {
         }
 
         @Override
-        public Optional<Instant> computeNextAlarmInstant(Calendar calendar, Username attendee) {
+        public Optional<AlarmInstant> computeNextAlarmInstant(Calendar calendar, Username attendee) {
             Instant now = clock.instant();
             return listUpcomingAcceptedVEvents(calendar, attendee).stream()
                 .flatMap(event1 -> computeAlarmInstants(event1).stream())
-                .filter(alarmTime -> alarmTime.isAfter(now))
-                .min(EARLIEST_FIRST_COMPARATOR);
+                .filter(alarmInstant -> alarmInstant.alarmTime().isAfter(now))
+                .min(EARLIEST_FIRST_ALARM_COMPARATOR);
         }
 
-        private List<Instant> computeAlarmInstants(VEvent event) {
+        private List<AlarmInstant> computeAlarmInstants(VEvent event) {
             ZonedDateTime eventStart = EventParseUtils.getStartTime(event);
 
             return event.getAlarms().stream()
                 .map(this::extractTriggerDurationIfValid)
                 .flatMap(Optional::stream)
-                .map(offset -> eventStart.toInstant().plus(offset))
+                .map(eventStart::plus)
+                .map(alarmTime -> new AlarmInstant(alarmTime.toInstant(), eventStart.toInstant()))
                 .toList();
         }
 
