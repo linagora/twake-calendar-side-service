@@ -45,7 +45,7 @@ public interface AlarmEventDAOContract {
             "ics");
         getDAO().create(event).block();
 
-        AlarmEvent found = getDAO().find(new EventUid("1")).block();
+        AlarmEvent found = getDAO().find(new EventUid("1"), new MailAddress("recipient@abc.com")).block();
 
         assertThat(found).isEqualTo(event);
     }
@@ -64,12 +64,12 @@ public interface AlarmEventDAOContract {
             Instant.now().truncatedTo(ChronoUnit.MILLIS),
             Instant.now().truncatedTo(ChronoUnit.MILLIS),
             true,
-            new MailAddress("newRecipient@abc.com"),
+            new MailAddress("recipient@abc.com"),
             "newIcs");
         getDAO().create(event).block();
         getDAO().update(updated).block();
 
-        AlarmEvent found = getDAO().find(new EventUid("1")).block();
+        AlarmEvent found = getDAO().find(new EventUid("1"), new MailAddress("recipient@abc.com")).block();
 
         assertThat(found).isEqualTo(updated);
     }
@@ -84,9 +84,9 @@ public interface AlarmEventDAOContract {
             new MailAddress("recipient@abc.com"),
             "ics");
         getDAO().create(event).block();
-        getDAO().delete(new EventUid("1")).block();
+        getDAO().delete(new EventUid("1"), new MailAddress("recipient@abc.com")).block();
 
-        AlarmEvent found = getDAO().find(new EventUid("1")).block();
+        AlarmEvent found = getDAO().find(new EventUid("1"), new MailAddress("recipient@abc.com")).block();
 
         assertThat(found).isNull();
     }
@@ -127,8 +127,9 @@ public interface AlarmEventDAOContract {
         getDAO().create(e3).block();
         getDAO().create(e4).block();
 
-        List<AlarmEvent> events = getDAO().findBetweenAlarmTimeAndStartTime(now).collectList().block();
+        List<AlarmEvent> events = getDAO().findAlarmsToTrigger(now).collectList().block();
 
         assertThat(events).containsExactlyInAnyOrder(e1, e2);
     }
 }
+

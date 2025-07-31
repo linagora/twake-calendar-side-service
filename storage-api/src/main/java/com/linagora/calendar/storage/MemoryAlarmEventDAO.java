@@ -22,6 +22,8 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.apache.james.core.MailAddress;
+
 import com.linagora.calendar.storage.eventsearch.EventUid;
 
 import reactor.core.publisher.Flux;
@@ -31,28 +33,33 @@ public class MemoryAlarmEventDAO implements AlarmEventDAO {
     private final Map<String, AlarmEvent> store = new ConcurrentHashMap<>();
 
     @Override
-    public Mono<AlarmEvent> find(EventUid eventUid) {
-        return Mono.fromCallable(() -> store.get(eventUid.value()));
+    public Mono<AlarmEvent> find(EventUid eventUid, MailAddress recipient) {
+        return Mono.fromCallable(() -> store.get(generateKey(eventUid, recipient)));
+
     }
 
     @Override
     public Mono<Void> create(AlarmEvent alarmEvent) {
-        return Mono.fromRunnable(() -> store.put(alarmEvent.eventUid().value(), alarmEvent));
+        return Mono.fromRunnable(() -> store.put(generateKey(alarmEvent.eventUid(), alarmEvent.recipient()), alarmEvent));
     }
 
     @Override
     public Mono<Void> update(AlarmEvent alarmEvent) {
-        return Mono.fromRunnable(() -> store.put(alarmEvent.eventUid().value(), alarmEvent));
+        return Mono.fromRunnable(() -> store.put(generateKey(alarmEvent.eventUid(), alarmEvent.recipient()), alarmEvent));
     }
 
     @Override
-    public Mono<Void> delete(EventUid eventUid) {
-        return Mono.fromRunnable(() -> store.remove(eventUid.value()));
+    public Mono<Void> delete(EventUid eventUid, MailAddress recipient) {
+        return Mono.fromRunnable(() -> store.remove(generateKey(eventUid, recipient)));
     }
 
     @Override
-    public Flux<AlarmEvent> findBetweenAlarmTimeAndStartTime(Instant time) {
+    public Flux<AlarmEvent> findAlarmsToTrigger(Instant time) {
         return Flux.fromStream(store.values().stream()
             .filter(e -> !e.alarmTime().isAfter(time) && time.isBefore(e.eventStartTime())));
+    }
+
+    private String generateKey(EventUid eventUid, MailAddress recipient) {
+        return eventUid.value() + ":" + recipient.asString();
     }
 }

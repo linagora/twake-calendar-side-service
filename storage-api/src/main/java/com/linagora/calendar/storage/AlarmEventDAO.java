@@ -20,19 +20,21 @@ package com.linagora.calendar.storage;
 
 import java.time.Instant;
 
+import org.apache.james.core.MailAddress;
+
 import com.linagora.calendar.storage.eventsearch.EventUid;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 public interface AlarmEventDAO {
-    Mono<AlarmEvent> find(EventUid eventUid);
+    Mono<AlarmEvent> find(EventUid eventUid, MailAddress recipient);
 
     Mono<Void> create(AlarmEvent alarmEvent);
 
     Mono<Void> update(AlarmEvent alarmEvent);
 
-    Mono<Void> delete(EventUid eventUid);
+    Mono<Void> delete(EventUid eventUid, MailAddress recipient);
 
-    Flux<AlarmEvent> findBetweenAlarmTimeAndStartTime(Instant time); // get all alarmEvent with alarmTime <= time < eventStartTime
+    Flux<AlarmEvent> findAlarmsToTrigger(Instant time); // get all alarmEvent with alarmTime <= time < eventStartTime
 }
