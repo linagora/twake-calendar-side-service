@@ -159,11 +159,11 @@ public class UserProfileRoute extends CalendarRoute {
 
     @Override
     Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response, MailboxSession session) {
-        return configurationResolver.resolveAll(session)
-            .flatMap(conf ->  userDAO.retrieve(session.getUser())
-                .switchIfEmpty(provisionUser(session.getUser()))
-                .flatMap(user -> domainDAO.retrieve(session.getUser().getDomainPart().get())
-                    .map(domain -> new ProfileResponseDTO(user, domain.id(), conf.asJson()))))
+        return userDAO.retrieve(session.getUser())
+            .switchIfEmpty(provisionUser(session.getUser()))
+            .flatMap(openPaaSUser -> domainDAO.retrieve(session.getUser().getDomainPart().get())
+                .flatMap(openPaaSDomain -> configurationResolver.resolveAll(session)
+                    .map(conf -> new ProfileResponseDTO(openPaaSUser, openPaaSDomain.id(), conf.asJson()))))
             .map(Throwing.function(OBJECT_MAPPER::writeValueAsBytes))
             .flatMap(bytes -> response.status(200)
                 .header("Content-Type", "application/json;charset=utf-8")

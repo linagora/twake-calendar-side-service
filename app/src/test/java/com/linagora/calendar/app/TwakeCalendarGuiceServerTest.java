@@ -1026,7 +1026,7 @@ class TwakeCalendarGuiceServerTest  {
     }
 
     @Test
-    void getUserShouldAutoprovision(TwakeCalendarGuiceServer server) {
+    void getUserShouldAutoProvision(TwakeCalendarGuiceServer server) {
         targetRestAPI(server);
         Username username = Username.of("to-be-provisionned@linagora.com");
         server.getProbe(CalendarDataProbe.class).addUserToRepository(username, "123456");
