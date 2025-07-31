@@ -55,6 +55,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
+import com.linagora.calendar.amqp.EventAlarmConsumer;
 import com.linagora.calendar.amqp.EventEmailConsumer;
 import com.linagora.calendar.amqp.EventIndexerConsumer;
 
@@ -229,6 +230,9 @@ public class ScheduledReconnectionHandler implements Startable {
         this.queuesToMonitor = ImmutableList.<String>builder()
             .addAll(Arrays.stream(EventIndexerConsumer.Queue.values())
                 .map(EventIndexerConsumer.Queue::queueName)
+                .collect(ImmutableList.toImmutableList()))
+            .addAll(Arrays.stream(EventAlarmConsumer.Queue.values())
+                .map(EventAlarmConsumer.Queue::queueName)
                 .collect(ImmutableList.toImmutableList()))
             .add(EventEmailConsumer.QUEUE_NAME)
             .build();

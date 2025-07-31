@@ -123,6 +123,12 @@ public class ScheduledReconnectionHandlerTest {
                 "tcalendar:event:updated:search",
                 "tcalendar:event:deleted:search",
                 "tcalendar:event:cancel:search",
-                "tcalendar:event:request:search");
+                "tcalendar:event:request:search",
+                "tcalendar:event:alarm:created",
+                "tcalendar:event:alarm:updated",
+                "tcalendar:event:alarm:deleted",
+                "tcalendar:event:alarm:cancel",
+                "tcalendar:event:alarm:request",
+                "tcalendar:event:notificationEmail:send");
     }
 }
