@@ -157,6 +157,38 @@ public class AlarmInstantFactoryTest {
     }
 
     @Test
+    void shouldReturnAlarmInstantWhenUserIsOrganizerAndEventIsInFuture() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:789013
+            DTSTART:20250829T100000Z
+            SUMMARY:Meeting
+            ORGANIZER;CN=Jane Doe:mailto:jane@example.com
+            BEGIN:VALARM
+            ACTION:EMAIL
+            TRIGGER:-PT15M
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+        AlarmInstantFactory testee = testee(Instant.parse("2025-07-28T00:00:00Z"));
+
+        Optional<AlarmInstant> result = testee.computeNextAlarmInstant(calendar, Username.of("jane@example.com"));
+
+        // Expected: 2025-08-29T09:45:00Z (15 minutes before 10:00)
+        assertThat(result)
+            .describedAs("Alarm should be scheduled when user is organizer and event is in the future")
+            .isPresent()
+            .contains(new AlarmInstant(Instant.parse("2025-08-29T09:45:00Z"),
+                Instant.parse("2025-08-29T10:00:00Z")));
+    }
+
+
+    @Test
     void shouldPickEarliestValidAlarmAmongMultiple() {
         String ics = """
             BEGIN:VCALENDAR

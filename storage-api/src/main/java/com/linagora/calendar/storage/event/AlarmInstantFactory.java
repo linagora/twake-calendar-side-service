@@ -39,6 +39,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -70,7 +71,7 @@ public interface AlarmInstantFactory {
         }
     }
 
-    Optional<AlarmInstant> computeNextAlarmInstant(Calendar calendar, Username attendee);
+    Optional<AlarmInstant> computeNextAlarmInstant(Calendar calendar, Username username);
 
     class Default implements AlarmInstantFactory {
 
@@ -88,9 +89,9 @@ public interface AlarmInstantFactory {
         }
 
         @Override
-        public Optional<AlarmInstant> computeNextAlarmInstant(Calendar calendar, Username attendee) {
+        public Optional<AlarmInstant> computeNextAlarmInstant(Calendar calendar, Username username) {
             Instant now = clock.instant();
-            return listUpcomingAcceptedVEvents(calendar, attendee).stream()
+            return listUpcomingAcceptedVEvents(calendar, username).stream()
                 .flatMap(event1 -> computeAlarmInstants(event1).stream())
                 .filter(alarmInstant -> alarmInstant.alarmTime().isAfter(now))
                 .min(EARLIEST_FIRST_ALARM_COMPARATOR);
@@ -131,7 +132,7 @@ public interface AlarmInstantFactory {
             return duration;
         }
 
-        private List<VEvent> listUpcomingAcceptedVEvents(Calendar calendar, Username attendee) {
+        private List<VEvent> listUpcomingAcceptedVEvents(Calendar calendar, Username username) {
             List<VEvent> allEvents = calendar.getComponents(Component.VEVENT);
 
             if (allEvents.isEmpty()) {
@@ -139,25 +140,25 @@ public interface AlarmInstantFactory {
             }
 
             if (allEvents.size() == 1 && allEvents.getFirst().getProperty(Property.RRULE).isEmpty()) {
-                return findUpcomingFromSingleEvent(allEvents.getFirst(), attendee)
+                return findUpcomingFromSingleEvent(allEvents.getFirst(), username)
                     .map(List::of)
                     .orElseGet(List::of);
             }
 
-            return listUpcomingAcceptedRecurringEvents(allEvents, attendee);
+            return listUpcomingAcceptedRecurringEvents(allEvents, username);
         }
 
-        private Optional<VEvent> findUpcomingFromSingleEvent(VEvent event, Username attendee) {
-            boolean isAccepted = isAttendeeAccepted(event, attendee);
+        private Optional<VEvent> findUpcomingFromSingleEvent(VEvent event, Username username) {
+            boolean isAcceptedOrOrganizer = hasAcceptedOrIsOrganizer(event, username);
             boolean isUpcoming = clock.instant().isBefore(EventParseUtils.getStartTime(event).toInstant());
 
-            if (isAccepted && isUpcoming) {
+            if (isAcceptedOrOrganizer && isUpcoming) {
                 return Optional.of(event);
             }
             return Optional.empty();
         }
 
-        private List<VEvent> listUpcomingAcceptedRecurringEvents(List<VEvent> events, Username attendee) {
+        private List<VEvent> listUpcomingAcceptedRecurringEvents(List<VEvent> events, Username username) {
             Optional<VEvent> masterOpt = events.stream()
                 .filter(e -> e.getRecurrenceId() == null)
                 .findFirst();
@@ -165,11 +166,11 @@ public interface AlarmInstantFactory {
             List<VEvent> overrides = events.stream()
                 .filter(e -> e.getRecurrenceId() != null)
                 .toList();
-            return masterOpt.map(master -> listUpcomingAcceptedRecurrenceInstances(master, overrides, attendee))
+            return masterOpt.map(master -> listUpcomingAcceptedRecurrenceInstances(master, overrides, username))
                 .orElseGet(List::of);
         }
 
-        private List<VEvent> listUpcomingAcceptedRecurrenceInstances(VEvent master, List<VEvent> overrides, Username attendee) {
+        private List<VEvent> listUpcomingAcceptedRecurrenceInstances(VEvent master, List<VEvent> overrides, Username username) {
             RRule<Temporal> rrule = master.getProperty(Property.RRULE)
                 .map(property -> (RRule<Temporal>) property)
                 .orElseThrow(() -> new IllegalArgumentException("Master event must have an RRULE"));
@@ -199,15 +200,23 @@ public interface AlarmInstantFactory {
                 .map(recurrenceDate -> overrideMap.getOrDefault(
                     recurrenceDate,
                     createInstanceVEvent(master, recurrenceDate.atZone(ZoneOffset.UTC))))
-                .filter(event -> isAttendeeAccepted(event, attendee))
+                .filter(event -> hasAcceptedOrIsOrganizer(event, username))
                 .sorted(EARLIEST_FIRST_EVENT_COMPARATOR)
                 .toList();
         }
 
-        private boolean isAttendeeAccepted(VEvent vEvent, Username attendee) {
-            return EventParseUtils.getAttendees(vEvent).stream()
-                .anyMatch(person -> person.email().asString().equalsIgnoreCase(attendee.asString())
-                    && person.partStat().map(partStat -> partStat == PartStat.ACCEPTED).orElse(false));
+        private boolean hasAcceptedOrIsOrganizer(VEvent vEvent, Username username) {
+            boolean isOrganizer = Optional.ofNullable(EventParseUtils.getOrganizer(vEvent))
+                .map(EventFields.Person::email)
+                .map(MailAddress::asString)
+                .map(organizerEmail -> organizerEmail.equalsIgnoreCase(username.asString()))
+                .orElse(false);
+
+            return isOrganizer
+                ||
+                EventParseUtils.getAttendees(vEvent).stream()
+                    .anyMatch(person -> person.email().asString().equalsIgnoreCase(username.asString())
+                        && person.partStat().map(partStat -> partStat == PartStat.ACCEPTED).orElse(false));
         }
 
         private List<Instant> extractExcludedInstants(VEvent master) {
