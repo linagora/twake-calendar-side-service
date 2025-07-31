@@ -27,11 +27,13 @@ import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.http.Authenticator;
 import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.metrics.api.MetricFactory;
+import org.apache.james.user.api.UsersRepository;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
+import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 
 import io.netty.handler.codec.http.HttpMethod;
@@ -45,12 +47,14 @@ public class UsersRoute extends CalendarRoute {
 
     private final OpenPaaSUserDAO userDAO;
     private final OpenPaaSDomainDAO domainDAO;
+    private final UsersRepository usersRepository;
 
     @Inject
-    public UsersRoute(Authenticator authenticator, MetricFactory metricFactory, OpenPaaSUserDAO userDAO, OpenPaaSDomainDAO domainDAO) {
+    public UsersRoute(Authenticator authenticator, MetricFactory metricFactory, OpenPaaSUserDAO userDAO, OpenPaaSDomainDAO domainDAO, UsersRepository usersRepository) {
         super(authenticator, metricFactory);
         this.userDAO = userDAO;
         this.domainDAO = domainDAO;
+        this.usersRepository = usersRepository;
     }
 
     @Override
@@ -60,8 +64,9 @@ public class UsersRoute extends CalendarRoute {
 
     @Override
     Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response, MailboxSession session) {
-        String email = extractEmail(request);
-        return userDAO.retrieve(Username.of(email))
+        Username username = Username.of(extractEmail(request));
+        return userDAO.retrieve(username)
+            .switchIfEmpty(provisionUser(username))
             .flatMap(user -> domainDAO.retrieve(user.username().getDomainPart().get())
                 .map(domain -> new UserRoute.ResponseDTO(user, domain.id())))
             .map(Throwing.function(OBJECT_MAPPER::writeValueAsString))
@@ -72,5 +77,15 @@ public class UsersRoute extends CalendarRoute {
                 .header("Cache-Control", "max-age=60, public")
                 .sendString(Mono.just(bytes))
                 .then());
+    }
+
+    private Mono<OpenPaaSUser> provisionUser(Username username) {
+        return Mono.from(usersRepository.containsReactive(username))
+            .flatMap(exists -> {
+                if (exists) {
+                    return userDAO.add(username);
+                }
+                return Mono.empty();
+            });
     }
 }
