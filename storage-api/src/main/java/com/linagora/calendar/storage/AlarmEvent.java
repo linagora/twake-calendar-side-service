@@ -19,6 +19,7 @@
 package com.linagora.calendar.storage;
 
 import java.time.Instant;
+import java.util.Optional;
 
 import org.apache.james.core.MailAddress;
 
@@ -28,6 +29,7 @@ public record AlarmEvent(EventUid eventUid,
                          Instant alarmTime,
                          Instant eventStartTime,
                          boolean recurring,
+                         Optional<String> recurrenceId,
                          MailAddress recipient,
                          String ics) {
 }
