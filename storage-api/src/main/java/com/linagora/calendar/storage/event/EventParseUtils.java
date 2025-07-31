@@ -21,10 +21,13 @@ package com.linagora.calendar.storage.event;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
+import java.time.temporal.Temporal;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Predicate;
@@ -36,6 +39,7 @@ import org.apache.james.core.MailAddress;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import net.fortuna.ical4j.model.Content;
 import net.fortuna.ical4j.model.Parameter;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.TimeZone;
@@ -177,5 +181,54 @@ public class EventParseUtils {
         return vEvent.getProperty(Property.DTSTART)
             .map(EventParseUtils::isDateType)
             .orElse(false);
+    }
+
+    public static Optional<ZoneId> getZoneIdFromStartDate(VEvent calendarEvent) {
+        return calendarEvent.getDateTimeStart()
+            .getParameter(Parameter.TZID)
+            .map(Content::getValue)
+            .flatMap(EventParseUtils::extractZoneId);
+    }
+
+    public static Optional<ZonedDateTime> temporalToZonedDateTime(Temporal temporal) {
+        return temporalToZonedDateTime(temporal, ZoneId.of("UTC"));
+    }
+
+    public static Optional<ZonedDateTime> temporalToZonedDateTime(Temporal temporal, ZoneId zoneIdDefault) {
+        return switch (temporal) {
+            case ZonedDateTime zdt -> Optional.of(zdt);
+            case OffsetDateTime odt -> Optional.of(odt.atZoneSameInstant(zoneIdDefault));
+            case LocalDateTime ldt -> Optional.of(ldt.atZone(zoneIdDefault));
+            case Instant instant -> Optional.of(instant.atZone(zoneIdDefault));
+            case null, default -> Optional.empty();
+        };
+    }
+
+    public static ZoneId getAlternativeZoneId(VEvent calendarEvent) {
+        return getZoneIdFromTZID(calendarEvent).orElse(ZoneId.of("UTC"));
+    }
+
+    public static Optional<ZoneId> getZoneIdFromTZID(VEvent calendarEvent) {
+        return calendarEvent.getProperty(Property.TZID)
+            .map(Property::getValue)
+            .flatMap(EventParseUtils::extractZoneId);
+    }
+
+    private static Optional<ZoneId> extractZoneId(String value) {
+        // Try IANA zone
+        try {
+            return Optional.of(ZoneId.of(value));
+        } catch (Exception ignored) {
+            // Fallback to Windows → IANA using ICU4J
+            try {
+                String ianaEquivalent = com.ibm.icu.util.TimeZone.getIDForWindowsID(value, "US");
+                if (ianaEquivalent != null) {
+                    return Optional.of(ZoneId.of(ianaEquivalent));
+                }
+            } catch (Exception ignored2) {
+                // do nothing
+            }
+        }
+        return Optional.empty();
     }
 }

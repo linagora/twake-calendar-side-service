@@ -30,27 +30,15 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.DateTimeException;
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.OffsetDateTime;
 import java.time.ZoneId;
-import java.time.ZonedDateTime;
-import java.time.temporal.Temporal;
-import java.util.Optional;
-
-import com.ibm.icu.util.TimeZone;
 
 import net.fortuna.ical4j.data.CalendarBuilder;
 import net.fortuna.ical4j.data.CalendarParserFactory;
 import net.fortuna.ical4j.data.ContentHandlerContext;
 import net.fortuna.ical4j.data.ParserException;
 import net.fortuna.ical4j.model.Calendar;
-import net.fortuna.ical4j.model.Content;
-import net.fortuna.ical4j.model.Parameter;
-import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.TimeZoneRegistry;
 import net.fortuna.ical4j.model.TimeZoneRegistryImpl;
-import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.util.CompatibilityHints;
 import net.fortuna.ical4j.util.MapTimeZoneCache;
 
@@ -101,50 +89,5 @@ public class CalendarUtil {
         } catch (ParserException e) {
             throw new RuntimeException("Error while parsing ICal object", e);
         }
-    }
-
-    public static Optional<ZoneId> getZoneIdFromStartDate(VEvent calendarEvent) {
-        return calendarEvent.getDateTimeStart()
-            .getParameter(Parameter.TZID)
-            .map(Content::getValue)
-            .flatMap(CalendarUtil::extractZoneId);
-    }
-
-    public static Optional<ZonedDateTime> temporalToZonedDateTime(Temporal temporal, ZoneId zoneIdDefault) {
-        return switch (temporal) {
-            case ZonedDateTime zdt -> Optional.of(zdt);
-            case OffsetDateTime odt -> Optional.of(odt.atZoneSameInstant(zoneIdDefault));
-            case LocalDateTime ldt -> Optional.of(ldt.atZone(zoneIdDefault));
-            case Instant instant -> Optional.of(instant.atZone(zoneIdDefault));
-            case null, default -> Optional.empty();
-        };
-    }
-
-    public static ZoneId getAlternativeZoneId(VEvent calendarEvent) {
-        return getZoneIdFromTZID(calendarEvent).orElse(ZoneId.of("UTC"));
-    }
-
-    public static Optional<ZoneId> getZoneIdFromTZID(VEvent calendarEvent) {
-        return calendarEvent.getProperty(Property.TZID)
-            .map(Property::getValue)
-            .flatMap(CalendarUtil::extractZoneId);
-    }
-
-    private static Optional<ZoneId> extractZoneId(String value) {
-        // Try IANA zone
-        try {
-            return Optional.of(ZoneId.of(value));
-        } catch (Exception ignored) {
-            // Fallback to Windows → IANA using ICU4J
-            try {
-                String ianaEquivalent = TimeZone.getIDForWindowsID(value, "US");
-                if (ianaEquivalent != null) {
-                    return Optional.of(ZoneId.of(ianaEquivalent));
-                }
-            } catch (Exception ignored2) {
-                // do nothing
-            }
-        }
-        return Optional.empty();
     }
 }
