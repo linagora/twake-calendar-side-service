@@ -65,7 +65,7 @@ public class EventAlarmConsumer implements Closeable, Startable {
     private static final boolean REQUEUE_ON_NACK = true;
 
     public enum Queue {
-        ADD("calendar:event:alarm:created", "tcalendar:event:alarm:created", "tcalendar:event:alarm:created:dead-letter"),
+        CREATE("calendar:event:alarm:created", "tcalendar:event:alarm:created", "tcalendar:event:alarm:created:dead-letter"),
         UPDATE("calendar:event:alarm:updated", "tcalendar:event:alarm:updated", "tcalendar:event:alarm:updated:dead-letter"),
         DELETE("calendar:event:alarm:deleted", "tcalendar:event:alarm:deleted", "tcalendar:event:alarm:deleted:dead-letter"),
         CANCEL("calendar:event:alarm:cancel", "tcalendar:event:alarm:cancel", "tcalendar:event:alarm:cancel:dead-letter"),
@@ -89,12 +89,15 @@ public class EventAlarmConsumer implements Closeable, Startable {
     private final ReceiverProvider receiverProvider;
     private final Consumer<Queue> declareExchangeAndQueue;
     private final Map<Queue, Disposable> consumeDisposableMap;
+    private final EventAlarmHandler eventAlarmHandler;
 
     @Inject
     @Singleton
     public EventAlarmConsumer(ReactorRabbitMQChannelPool channelPool,
-                              @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier) {
+                              @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier,
+                              EventAlarmHandler eventAlarmHandler) {
         this.receiverProvider = channelPool::createReceiver;
+        this.eventAlarmHandler = eventAlarmHandler;
 
         Sender sender = channelPool.getSender();
         this.declareExchangeAndQueue = eventQueue -> Flux.concat(
@@ -129,11 +132,11 @@ public class EventAlarmConsumer implements Closeable, Startable {
     }
 
     public void start() {
-        consumeDisposableMap.put(Queue.ADD, doConsumeCalendarEventMessages(Queue.ADD, handlerAdd));
-        consumeDisposableMap.put(Queue.UPDATE, doConsumeCalendarEventMessages(Queue.UPDATE, handlerAddOrUpdate));
-        consumeDisposableMap.put(Queue.DELETE, doConsumeCalendarEventMessages(Queue.DELETE, handlerDelete));
-        consumeDisposableMap.put(Queue.CANCEL, doConsumeCalendarEventMessages(Queue.CANCEL, handlerDelete));
-        consumeDisposableMap.put(Queue.REQUEST, doConsumeCalendarEventMessages(Queue.REQUEST, handlerAddOrUpdate));
+        consumeDisposableMap.put(Queue.CREATE, doConsumeCalendarEventMessages(Queue.CREATE, handlerAdd()));
+        consumeDisposableMap.put(Queue.REQUEST, doConsumeCalendarEventMessages(Queue.REQUEST, handlerAddOrUpdate()));
+        consumeDisposableMap.put(Queue.UPDATE, doConsumeCalendarEventMessages(Queue.UPDATE, handlerAddOrUpdate()));
+        consumeDisposableMap.put(Queue.DELETE, doConsumeCalendarEventMessages(Queue.DELETE, handlerDelete()));
+        consumeDisposableMap.put(Queue.CANCEL, doConsumeCalendarEventMessages(Queue.CANCEL, handlerDelete()));
     }
 
     public void restart() {
@@ -151,21 +154,27 @@ public class EventAlarmConsumer implements Closeable, Startable {
         });
     }
 
-    public interface EventAlarmHandler {
+    public interface PersistAlarmHandler {
         Mono<?> handle(CalendarAlarmMessageDTO message);
     }
 
-    private final EventAlarmHandler handlerAdd = (message) -> Mono.empty();
+    private PersistAlarmHandler handlerAdd() {
+        return eventAlarmHandler::handleCreateOrUpdate;
+    }
 
-    private final EventAlarmHandler handlerAddOrUpdate = (message) -> Mono.empty();
+    private PersistAlarmHandler handlerAddOrUpdate() {
+        return eventAlarmHandler::handleCreateOrUpdate;
+    }
 
-    private final EventAlarmHandler handlerDelete = (message) -> Mono.empty();
+    private PersistAlarmHandler handlerDelete() {
+        return eventAlarmHandler::handleDelete;
+    }
 
-    private Disposable doConsumeCalendarEventMessages(Queue queue, EventAlarmHandler eventAlarmHandler) {
+    private Disposable doConsumeCalendarEventMessages(Queue queue, PersistAlarmHandler persistAlarmHandler) {
         return delivery(queue.queueName)
             .flatMap(delivery -> messageConsume(delivery,
                 Throwing.supplier(() -> OBJECT_MAPPER.readValue(delivery.getBody(), CalendarAlarmMessageDTO.class)).get(),
-                eventAlarmHandler), DEFAULT_CONCURRENCY)
+                persistAlarmHandler), DEFAULT_CONCURRENCY)
             .subscribeOn(Schedulers.boundedElastic())
             .subscribe();
     }
@@ -176,8 +185,8 @@ public class EventAlarmConsumer implements Closeable, Startable {
             Receiver::close);
     }
 
-    private Mono<?> messageConsume(AcknowledgableDelivery ackDelivery, CalendarAlarmMessageDTO message, EventAlarmHandler eventAlarmHandler) {
-        return eventAlarmHandler.handle(message)
+    private Mono<?> messageConsume(AcknowledgableDelivery ackDelivery, CalendarAlarmMessageDTO message, PersistAlarmHandler persistAlarmHandler) {
+        return persistAlarmHandler.handle(message)
             .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed calendar alarm event successfully {} '{}'", message.getClass().getSimpleName(), message.eventPath())))
             .doOnSuccess(result -> ackDelivery.ack())
             .onErrorResume(error -> {

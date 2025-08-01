@@ -18,17 +18,18 @@
 
 package com.linagora.calendar.amqp;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.linagora.calendar.storage.CalendarURL;
+import java.time.Duration;
+import java.util.concurrent.TimeUnit;
 
-@JsonIgnoreProperties(ignoreUnknown = true)
-public record CalendarAlarmMessageDTO(@JsonProperty("eventPath") String eventPath,
-                                      @JsonProperty("event") JsonNode calendarEvent,
-                                      @JsonProperty("import") boolean isImport) {
+import org.testcontainers.shaded.org.awaitility.Awaitility;
+import org.testcontainers.shaded.org.awaitility.core.ConditionFactory;
 
-    public CalendarURL extractCalendarURL() {
-        return EventFieldConverter.extractCalendarURL(eventPath);
-    }
+public interface TestFixture {
+    ConditionFactory calmlyAwait = Awaitility.with()
+        .pollInterval(Duration.ofMillis(500))
+        .and()
+        .with()
+        .pollDelay(Duration.ofMillis(500))
+        .await();
+    ConditionFactory awaitAtMost = calmlyAwait.atMost(200, TimeUnit.SECONDS);
 }
