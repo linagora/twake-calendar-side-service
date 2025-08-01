@@ -54,6 +54,7 @@ import com.rabbitmq.client.BuiltinExchangeType;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 import reactor.rabbitmq.AcknowledgableDelivery;
 import reactor.rabbitmq.BindingSpecification;
 import reactor.rabbitmq.ConsumeOptions;
@@ -239,6 +240,7 @@ public class EventIndexerConsumer implements Closeable, Startable {
             .flatMap(delivery -> messageConsume(delivery,
                 calendarEventHandler.deserialize(delivery.getBody()),
                 calendarEventHandler), DEFAULT_CONCURRENCY)
+            .subscribeOn(Schedulers.boundedElastic())
             .subscribe();
     }
 

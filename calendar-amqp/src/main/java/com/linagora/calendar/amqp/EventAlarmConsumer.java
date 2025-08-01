@@ -50,6 +50,7 @@ import com.rabbitmq.client.BuiltinExchangeType;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 import reactor.rabbitmq.AcknowledgableDelivery;
 import reactor.rabbitmq.BindingSpecification;
 import reactor.rabbitmq.ConsumeOptions;
@@ -165,6 +166,7 @@ public class EventAlarmConsumer implements Closeable, Startable {
             .flatMap(delivery -> messageConsume(delivery,
                 Throwing.supplier(() -> OBJECT_MAPPER.readValue(delivery.getBody(), CalendarAlarmMessageDTO.class)).get(),
                 eventAlarmHandler), DEFAULT_CONCURRENCY)
+            .subscribeOn(Schedulers.boundedElastic())
             .subscribe();
     }
 
