@@ -16,19 +16,27 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.amqp;
+package com.linagora.calendar.storage;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.linagora.calendar.storage.CalendarURL;
+import java.time.Clock;
 
-@JsonIgnoreProperties(ignoreUnknown = true)
-public record CalendarAlarmMessageDTO(@JsonProperty("eventPath") String eventPath,
-                                      @JsonProperty("event") JsonNode calendarEvent,
-                                      @JsonProperty("import") boolean isImport) {
+import com.google.inject.AbstractModule;
+import com.google.inject.Provides;
+import com.google.inject.Scopes;
+import com.google.inject.Singleton;
+import com.linagora.calendar.storage.event.AlarmInstantFactory;
 
-    public CalendarURL extractCalendarURL() {
-        return EventFieldConverter.extractCalendarURL(eventPath);
+public class AlarmEventModule extends AbstractModule {
+
+    @Override
+    protected void configure() {
+        bind(MemoryAlarmEventDAO.class).in(Scopes.SINGLETON);
+        bind(AlarmEventDAO.class).to(MemoryAlarmEventDAO.class);
+    }
+
+    @Provides
+    @Singleton
+    AlarmInstantFactory provideAlarmInstantFactory(Clock clock) {
+        return new AlarmInstantFactory.Default(clock);
     }
 }
