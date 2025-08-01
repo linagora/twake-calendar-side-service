@@ -22,6 +22,9 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
+
 import org.apache.james.core.MailAddress;
 
 import com.linagora.calendar.storage.eventsearch.EventUid;
@@ -30,6 +33,12 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 public class MemoryAlarmEventDAO implements AlarmEventDAO {
+
+    @Inject
+    @Singleton
+    public MemoryAlarmEventDAO() {
+    }
+
     private final Map<String, AlarmEvent> store = new ConcurrentHashMap<>();
 
     @Override
