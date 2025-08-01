@@ -19,6 +19,7 @@
 package com.linagora.calendar.storage.event;
 
 import static net.fortuna.ical4j.model.Property.ACTION;
+import static net.fortuna.ical4j.model.Property.ATTENDEE;
 import static net.fortuna.ical4j.model.Property.TRIGGER;
 
 import java.time.Clock;
@@ -38,7 +39,10 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import jakarta.mail.internet.AddressException;
+
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;
 import org.slf4j.Logger;
@@ -64,7 +68,10 @@ import net.fortuna.ical4j.model.property.RecurrenceId;
 import net.fortuna.ical4j.model.property.Trigger;
 
 public interface AlarmInstantFactory {
-    record AlarmInstant(Instant alarmTime, Instant eventStartTime) {
+    record AlarmInstant(Instant alarmTime,
+                        Instant eventStartTime,
+                        Optional<RecurrenceId<Temporal>> recurrenceId,
+                        List<MailAddress> recipients) {
         public AlarmInstant {
             Preconditions.checkArgument(alarmTime != null, "alarmTime must not be null");
             Preconditions.checkArgument(eventStartTime != null, "eventStartTime must not be null");
@@ -99,12 +106,31 @@ public interface AlarmInstantFactory {
 
         private List<AlarmInstant> computeAlarmInstants(VEvent event) {
             ZonedDateTime eventStart = EventParseUtils.getStartTime(event);
+            RecurrenceId<Temporal> recurrenceId = event.getRecurrenceId();
 
             return event.getAlarms().stream()
-                .map(this::extractTriggerDurationIfValid)
+                .map(vAlarm -> extractTriggerDurationIfValid(vAlarm)
+                    .map(triggerDuration -> Pair.of(triggerDuration, vAlarm)))
                 .flatMap(Optional::stream)
-                .map(eventStart::plus)
-                .map(alarmTime -> new AlarmInstant(alarmTime.toInstant(), eventStart.toInstant()))
+                .map(pair -> {
+                    ZonedDateTime alarmTime = eventStart.plus(pair.getLeft());
+                    return new AlarmInstant(alarmTime.toInstant(),
+                        eventStart.toInstant(),
+                        Optional.ofNullable(recurrenceId),
+                        extractRecipients(pair.getRight()));
+                })
+                .toList();
+        }
+
+        private List<MailAddress> extractRecipients(VAlarm vAlarm) {
+            return vAlarm.getProperties(ATTENDEE).stream()
+                .map(property -> {
+                    try {
+                        return new MailAddress(StringUtils.removeStartIgnoreCase(property.getValue(), "mailto:"));
+                    } catch (AddressException e) {
+                        throw new IllegalArgumentException("Invalid email address in ATTENDEE property: " + property.getValue(), e);
+                    }
+                })
                 .toList();
         }
 
@@ -244,7 +270,7 @@ public interface AlarmInstantFactory {
                     .map(ChronoZonedDateTime::toInstant)
                     .orElseThrow(() -> new IllegalArgumentException("Cannot convert temporal: " + temporal));
             addProperties(instance,
-                new RecurrenceId<>(recurrenceDate),
+                new RecurrenceId<>(recurrenceDate.toInstant()),
                 new DtStart<>(temporalToZonedDateTime.apply(actualPeriod.getStart())),
                 new DtEnd<>(temporalToZonedDateTime.apply(actualPeriod.getEnd())));
 

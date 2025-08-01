@@ -23,10 +23,13 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
 
+import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -34,10 +37,12 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
+import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
 import com.linagora.calendar.storage.event.AlarmInstantFactory.AlarmInstant;
 
 import net.fortuna.ical4j.model.Calendar;
+import net.fortuna.ical4j.model.property.RecurrenceId;
 
 public class AlarmInstantFactoryTest {
 
@@ -137,6 +142,8 @@ public class AlarmInstantFactoryTest {
             ATTENDEE;CN=Jane Doe;PARTSTAT=ACCEPTED:mailto:jane@example.com
             BEGIN:VALARM
             ACTION:EMAIL
+            ATTENDEE:mailto:jane1@example.com
+            ATTENDEE:mailto:jane2@example.com
             TRIGGER:-PT15M
             END:VALARM
             END:VEVENT
@@ -153,7 +160,10 @@ public class AlarmInstantFactoryTest {
             .describedAs("Alarm should be scheduled when event is in the future and attendee has accepted")
             .isPresent()
             .contains(new AlarmInstant(Instant.parse("2025-08-29T09:45:00Z"),
-                Instant.parse("2025-08-29T10:00:00Z")));
+                Instant.parse("2025-08-29T10:00:00Z"),
+                Optional.empty(),
+                List.of(asMailAddress("jane1@example.com"),
+                    asMailAddress("jane2@example.com"))));
     }
 
     @Test
@@ -184,7 +194,9 @@ public class AlarmInstantFactoryTest {
             .describedAs("Alarm should be scheduled when user is organizer and event is in the future")
             .isPresent()
             .contains(new AlarmInstant(Instant.parse("2025-08-29T09:45:00Z"),
-                Instant.parse("2025-08-29T10:00:00Z")));
+                Instant.parse("2025-08-29T10:00:00Z"),
+                Optional.empty(),
+                List.of()));
     }
 
 
@@ -542,6 +554,7 @@ public class AlarmInstantFactoryTest {
                 BEGIN:VALARM
                 TRIGGER:-PT15M
                 ACTION:EMAIL
+                ATTENDEE:mailto:bob1@example.com
                 DESCRIPTION:Reminder
                 END:VALARM
                 END:VEVENT
@@ -550,16 +563,33 @@ public class AlarmInstantFactoryTest {
 
             Calendar calendar = CalendarUtil.parseIcs(calendarContent);
             Username attendee = Username.of("bob@example.com");
+            MailAddress alarmRecipient = asMailAddress("bob1@example.com");
+            // Define recurrence instances
+            Instant start1 = Instant.parse("2025-08-29T10:00:00Z");
+            Instant start2 = Instant.parse("2025-08-30T10:00:00Z");
+            Instant start3 = Instant.parse("2025-08-31T10:00:00Z");
 
-            // Occurrence 1: 2025-08-29T10:00Z → Alarm: 2025-08-29T09:45Z
-            // Occurrence 2: 2025-08-30T10:00Z → Alarm: 2025-08-30T09:45Z
-            // Occurrence 3: 2025-08-31T10:00Z → Alarm: 2025-08-31T09:45Z
+            AlarmInstant alarm1 = new AlarmInstant(
+                start1.minus(15, ChronoUnit.MINUTES), start1,
+                Optional.of(new RecurrenceId<>(start1)),
+                List.of(alarmRecipient));
+
+            AlarmInstant alarm2 = new AlarmInstant(
+                start2.minus(15, ChronoUnit.MINUTES), start2,
+                Optional.of(new RecurrenceId<>(start2)),
+                List.of(alarmRecipient));
+
+            AlarmInstant alarm3 = new AlarmInstant(
+                start3.minus(15, ChronoUnit.MINUTES), start3,
+                Optional.of(new RecurrenceId<>(start3)),
+                List.of(alarmRecipient));
 
             Map<Instant, Optional<AlarmInstant>> testCases = Map.of(
-                Instant.parse("2025-08-28T12:00:00Z"), Optional.of(new AlarmInstant(Instant.parse("2025-08-29T09:45:00Z"), Instant.parse("2025-08-29T10:00:00Z"))), // before all → alarm 1
-                Instant.parse("2025-08-29T12:00:00Z"), Optional.of(new AlarmInstant(Instant.parse("2025-08-30T09:45:00Z"), Instant.parse("2025-08-30T10:00:00Z"))), // after alarm 1 → alarm 2
-                Instant.parse("2025-08-30T12:00:00Z"), Optional.of(new AlarmInstant(Instant.parse("2025-08-31T09:45:00Z"), Instant.parse("2025-08-31T10:00:00Z"))), // after alarm 2 → alarm 3
-                Instant.parse("2025-08-31T12:00:00Z"), Optional.empty() /* after al → empty */);
+                Instant.parse("2025-08-28T12:00:00Z"), Optional.of(alarm1), // Before all → returns alarm 1
+                Instant.parse("2025-08-29T12:00:00Z"), Optional.of(alarm2), // After alarm 1 → returns alarm 2
+                Instant.parse("2025-08-30T12:00:00Z"), Optional.of(alarm3), // After alarm 2 → returns alarm 3
+                Instant.parse("2025-08-31T12:00:00Z"), Optional.empty()     /* After all alarms → empty */);
+
 
             for (Map.Entry<Instant, Optional<AlarmInstant>> entry : testCases.entrySet()) {
                 Instant now = entry.getKey();
@@ -864,6 +894,10 @@ public class AlarmInstantFactoryTest {
             // The second overridden occurrence has no VALARM -> expect no upcoming alarms
             assertThat(testee.computeNextAlarmInstant(calendar, attendee)).isEmpty();
         }
+    }
+
+    private MailAddress asMailAddress(String email) {
+        return Throwing.supplier(() -> new MailAddress(email)).get();
     }
 
 }
