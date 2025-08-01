@@ -18,11 +18,16 @@
 
 package com.linagora.calendar.amqp;
 
+import static com.linagora.calendar.amqp.AlarmSettingReader.ALARM_SETTING_IDENTIFIER;
+import static com.linagora.calendar.amqp.AlarmSettingReader.ENABLE_ALARM;
 import static com.linagora.calendar.amqp.TestFixture.awaitAtMost;
 import static java.time.temporal.ChronoUnit.MINUTES;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -30,6 +35,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
@@ -41,6 +47,7 @@ import org.apache.james.backends.rabbitmq.RabbitMQConnectionFactory;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
 import org.apache.james.core.Username;
+import org.apache.james.mailbox.store.RandomMailboxSessionIdGenerator;
 import org.apache.james.metrics.api.NoopGaugeRegistry;
 import org.apache.james.metrics.tests.RecordingMetricFactory;
 import org.apache.james.utils.UpdatableTickingClock;
@@ -50,6 +57,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.mockito.Mockito;
 
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalDavEventRepository;
@@ -62,6 +70,8 @@ import com.linagora.calendar.storage.AlarmEventDAO;
 import com.linagora.calendar.storage.MemoryAlarmEventDAO;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.SimpleSessionProvider;
+import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
 import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.eventsearch.EventUid;
@@ -72,6 +82,7 @@ import com.mongodb.reactivestreams.client.MongoDatabase;
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
+import reactor.core.publisher.Mono;
 import reactor.rabbitmq.QueueSpecification;
 import reactor.rabbitmq.Sender;
 
@@ -79,6 +90,7 @@ public class AlarmEventCreateTest {
 
     @RegisterExtension
     static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+    private static final SettingsBasedResolver settingsResolver = mock(SettingsBasedResolver.class);
 
     private static OpenPaaSUserDAO openPaaSUserDAO;
     private static ReactorRabbitMQChannelPool channelPool;
@@ -134,6 +146,11 @@ public class AlarmEventCreateTest {
         calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration());
         calDavEventRepository = new CalDavEventRepository(calDavClient);
         clock = new UpdatableTickingClock(Instant.now().minus(60, MINUTES));
+
+        when(settingsResolver.readSavedSettings(any()))
+            .thenReturn(Mono.just( new SettingsBasedResolver.ResolvedSettings(
+                Map.of(ALARM_SETTING_IDENTIFIER, ENABLE_ALARM))));
+
         setupEventAlarmConsumer();
     }
 
@@ -144,6 +161,8 @@ public class AlarmEventCreateTest {
             .map(EventAlarmConsumer.Queue::queueName)
             .forEach(queueName -> sender.delete(QueueSpecification.queue().name(queueName))
                 .block());
+
+        Mockito.reset(settingsResolver);
     }
 
     private void setupEventAlarmConsumer() {
@@ -151,7 +170,9 @@ public class AlarmEventCreateTest {
         EventAlarmHandler eventAlarmHandler = new EventAlarmHandler(
             alarmInstantFactory, alarmEventDAO,
             calDavClient,
-            openPaaSUserDAO);
+            openPaaSUserDAO,
+            settingsResolver,
+            new SimpleSessionProvider(new RandomMailboxSessionIdGenerator()));
 
         EventAlarmConsumer consumer = new EventAlarmConsumer(channelPool,
             QueueArguments.Builder::new,
@@ -425,6 +446,43 @@ public class AlarmEventCreateTest {
                     softly.assertThat(attendeeAlarm.eventStartTime()).as("attendee - eventStartTime").isEqualTo(firstEventStartTime);
                 });
             });
+    }
+
+    @Test
+    void shouldNotCreateAlarmEventWhenUserSettingAlarmIsDisabled() throws Exception {
+        // Given
+        Mockito.reset(settingsResolver);
+
+        when(settingsResolver.readSavedSettings(any()))
+            .thenReturn(Mono.just( new SettingsBasedResolver.ResolvedSettings(
+                Map.of(ALARM_SETTING_IDENTIFIER, !ENABLE_ALARM))));
+
+        clock.setInstant(Instant.now().minus(60, MINUTES));
+
+        String eventUid = UUID.randomUUID().toString();
+        String vAlarm = """
+            BEGIN:VALARM
+            TRIGGER:-PT15M
+            ACTION:EMAIL
+            ATTENDEE:mailto:%s
+            SUMMARY:Test
+            DESCRIPTION:This is an automatic alarm sent by OpenPaas
+            END:VALARM""".trim().formatted(organizer.username().asString());
+        String calendarData = generateEventWithValarm(
+            eventUid,
+            organizer.username().asString(),
+            List.of(attendee.username().asString()),
+            PartStat.NEEDS_ACTION,
+            vAlarm);
+
+        // When: Organizer creates an event with VALARM
+        davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
+
+        Thread.sleep(1000);
+        // Then: No AlarmEvent should be created for the organizer
+        assertThat(alarmEventDAO.find(new EventUid(eventUid),
+            organizer.username().asMailAddress()).blockOptional())
+            .isEmpty();
     }
 
     private void attendeeAcceptsEvent(OpenPaaSUser attendee, String eventUid) {

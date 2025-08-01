@@ -18,9 +18,13 @@
 
 package com.linagora.calendar.amqp;
 
+import static com.linagora.calendar.amqp.AlarmSettingReader.ALARM_SETTING_IDENTIFIER;
+import static com.linagora.calendar.amqp.AlarmSettingReader.ENABLE_ALARM;
+
 import java.net.URI;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -34,6 +38,9 @@ import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.AlarmEventDAO;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.SimpleSessionProvider;
+import com.linagora.calendar.storage.configuration.resolver.ConfigurationResolver;
+import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
 import com.linagora.calendar.storage.event.AlarmInstantFactory.AlarmInstant;
 import com.linagora.calendar.storage.event.EventParseUtils;
@@ -51,21 +58,39 @@ public class EventAlarmHandler {
     private final AlarmEventDAO alarmEventDAO;
     private final CalDavClient calDavClient;
     private final OpenPaaSUserDAO openPaaSUserDAO;
+    private final SettingsBasedResolver settingsBasedResolver;
+    private final SimpleSessionProvider sessionProvider;
 
     @Inject
     @Singleton
     public EventAlarmHandler(AlarmInstantFactory alarmInstantFactory,
                              AlarmEventDAO alarmEventDAO,
                              CalDavClient calDavClient,
-                             OpenPaaSUserDAO openPaaSUserDAO) {
+                             OpenPaaSUserDAO openPaaSUserDAO,
+                             ConfigurationResolver configurationResolver,
+                             SimpleSessionProvider sessionProvider) {
+        this(alarmInstantFactory, alarmEventDAO, calDavClient, openPaaSUserDAO,
+            SettingsBasedResolver.of(configurationResolver, Set.of(new AlarmSettingReader())), sessionProvider);
+    }
+
+    public EventAlarmHandler(AlarmInstantFactory alarmInstantFactory,
+                             AlarmEventDAO alarmEventDAO,
+                             CalDavClient calDavClient,
+                             OpenPaaSUserDAO openPaaSUserDAO,
+                             SettingsBasedResolver settingsBasedResolver,
+                             SimpleSessionProvider sessionProvider) {
         this.alarmInstantFactory = alarmInstantFactory;
         this.alarmEventDAO = alarmEventDAO;
         this.calDavClient = calDavClient;
         this.openPaaSUserDAO = openPaaSUserDAO;
+        this.settingsBasedResolver = settingsBasedResolver;
+        this.sessionProvider = sessionProvider;
     }
+
 
     public Mono<Void> handleCreateOrUpdate(CalendarAlarmMessageDTO alarmMessageDTO) {
         return openPaaSUserDAO.retrieve(alarmMessageDTO.extractCalendarURL().base())
+            .filterWhen(openPaaSUser -> isUserAlarmEnabled(openPaaSUser.username()))
             .flatMap(openPaaSUser -> processCreateOrUpdate(openPaaSUser.username(), alarmMessageDTO));
     }
 
@@ -144,5 +169,14 @@ public class EventAlarmHandler {
             .filter(property -> property instanceof EventProperty.EventUidProperty)
             .map(property -> ((EventProperty.EventUidProperty) property).getEventUid())
             .findFirst().orElseThrow(() -> new IllegalArgumentException("Event UID not found in the calendar event"));
+    }
+
+    private Mono<Boolean> isUserAlarmEnabled(Username user) {
+        return settingsBasedResolver.readSavedSettings(sessionProvider.createSession(user))
+            .flatMap(settings -> Mono.justOrEmpty(settings.get(ALARM_SETTING_IDENTIFIER, Boolean.class)))
+            .onErrorResume(throwable -> {
+                LOGGER.error("Failed to read alarm settings for {} ", user.asString(), throwable);
+                return Mono.just(ENABLE_ALARM);
+            }).defaultIfEmpty(ENABLE_ALARM);
     }
 }
