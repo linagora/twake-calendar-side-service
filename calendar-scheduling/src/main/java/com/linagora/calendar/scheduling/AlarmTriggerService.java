@@ -1,0 +1,192 @@
+/********************************************************************
+ *  As a subpart of Twake Mail, this file is edited by Linagora.    *
+ *                                                                  *
+ *  https://twake-mail.com/                                         *
+ *  https://linagora.com                                            *
+ *                                                                  *
+ *  This file is subject to The Affero Gnu Public License           *
+ *  version 3.                                                      *
+ *                                                                  *
+ *  https://www.gnu.org/licenses/agpl-3.0.en.html                   *
+ *                                                                  *
+ *  This program is distributed in the hope that it will be         *
+ *  useful, but WITHOUT ANY WARRANTY; without even the implied      *
+ *  warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR         *
+ *  PURPOSE. See the GNU Affero General Public License for          *
+ *  more details.                                                   *
+ ********************************************************************/
+
+package com.linagora.calendar.scheduling;
+
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.function.Function;
+
+import org.apache.commons.lang3.StringUtils;
+import org.apache.james.core.MaybeSender;
+import org.apache.james.core.Username;
+import org.slf4j.Logger;
+
+import com.google.common.collect.ImmutableMap;
+import com.ibm.icu.text.RelativeDateTimeFormatter;
+import com.ibm.icu.util.ULocale;
+import com.linagora.calendar.dav.CalendarUtil;
+import com.linagora.calendar.smtp.Mail;
+import com.linagora.calendar.smtp.MailSender;
+import com.linagora.calendar.smtp.template.Language;
+import com.linagora.calendar.smtp.template.MailTemplateConfiguration;
+import com.linagora.calendar.smtp.template.MessageGenerator;
+import com.linagora.calendar.smtp.template.TemplateType;
+import com.linagora.calendar.smtp.template.content.model.LocationModel;
+import com.linagora.calendar.smtp.template.content.model.PersonModel;
+import com.linagora.calendar.storage.AlarmEvent;
+import com.linagora.calendar.storage.AlarmEventDAO;
+import com.linagora.calendar.storage.SimpleSessionProvider;
+import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
+import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.ResolvedSettings;
+import com.linagora.calendar.storage.event.EventFields;
+import com.linagora.calendar.storage.event.EventParseUtils;
+import com.linagora.calendar.storage.exception.DomainNotFoundException;
+
+import jakarta.inject.Inject;
+import net.fortuna.ical4j.model.Calendar;
+import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.component.VEvent;
+import reactor.core.publisher.Mono;
+
+public class AlarmTriggerService {
+    public static final Function<EventFields.Person, PersonModel> PERSON_TO_MODEL =
+        person -> new PersonModel(person.cn(), person.email().asString());
+
+    public static final Function<Calendar, VEvent> GET_FIRST_VEVENT_FUNCTION =
+        calendar -> calendar.getComponent(Component.VEVENT)
+            .map(VEvent.class::cast)
+            .orElseThrow(() -> new IllegalStateException("No VEvent found in the calendar event"));
+
+    private static final Logger LOGGER = org.slf4j.LoggerFactory.getLogger(AlarmTriggerService.class);
+
+    private final AlarmEventDAO alarmEventDAO;
+    private final Clock clock;
+    private final MailSender.Factory mailSenderFactory;
+    private final SimpleSessionProvider sessionProvider;
+    private final SettingsBasedResolver settingsBasedResolver;
+    private final MessageGenerator.Factory messageGeneratorFactory;
+    private final MaybeSender maybeSender;
+
+    @Inject
+    public AlarmTriggerService(AlarmEventDAO alarmEventDAO,
+                               Clock clock,
+                               MailSender.Factory mailSenderFactory, SimpleSessionProvider sessionProvider,
+                               SettingsBasedResolver settingsBasedResolver,
+                               MessageGenerator.Factory messageGeneratorFactory,
+                               MailTemplateConfiguration mailTemplateConfiguration) {
+        this.alarmEventDAO = alarmEventDAO;
+        this.clock = clock;
+        this.mailSenderFactory = mailSenderFactory;
+        this.sessionProvider = sessionProvider;
+        this.settingsBasedResolver = settingsBasedResolver;
+        this.messageGeneratorFactory = messageGeneratorFactory;
+        this.maybeSender = mailTemplateConfiguration.sender();
+    }
+
+    public Mono<Void> triggerAlarms() {
+        Instant now = clock.instant().truncatedTo(ChronoUnit.MILLIS);
+        return alarmEventDAO.findAlarmsToTrigger(now)
+            .flatMap(alarmEvent -> sendMail(alarmEvent, now)
+                .then(alarmEventDAO.delete(alarmEvent.eventUid(), alarmEvent.recipient())))
+            .then();
+    }
+
+    private Mono<Void> sendMail(AlarmEvent alarmEvent, Instant now) {
+        Username recipientUser = Username.fromMailAddress(alarmEvent.recipient());
+        return getUserSettings(recipientUser).flatMap(resolvedSettings -> {
+            Locale locale = resolvedSettings.locale();
+            var model = toPugModel(CalendarUtil.parseIcs(alarmEvent.ics()),
+                locale,
+                Duration.between(now, alarmEvent.eventStartTime()));
+            return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(locale), new TemplateType("event-alarm")))
+                .flatMap(messageGenerator -> messageGenerator.generate(recipientUser, maybeSender.asOptional(), model, List.of()))
+                .flatMap(message -> mailSenderFactory.create()
+                    .flatMap(mailSender -> mailSender.send(new Mail(maybeSender, List.of(alarmEvent.recipient()), message))));
+        });
+    }
+
+    private Mono<ResolvedSettings> getUserSettings(Username user) {
+        return settingsBasedResolver.readSavedSettings(sessionProvider.createSession(user))
+            .defaultIfEmpty(ResolvedSettings.DEFAULT)
+            .doOnError(error -> {
+                if (!(error instanceof DomainNotFoundException)) {
+                    LOGGER.error("Error resolving user settings for {}, will use default settings: {}",
+                        user.asString(), ResolvedSettings.DEFAULT, error);
+                }
+            }).onErrorResume(error -> Mono.just(ResolvedSettings.DEFAULT));
+    }
+
+    private Map<String, Object> toPugModel(Calendar calendar,
+                                          Locale locale,
+                                          Duration duration) {
+        VEvent vEvent = GET_FIRST_VEVENT_FUNCTION.apply(calendar);
+        PersonModel organizer = PERSON_TO_MODEL.apply(EventParseUtils.getOrganizer(vEvent));
+        String summary = EventParseUtils.getSummary(vEvent).orElse(StringUtils.EMPTY);
+
+        ImmutableMap.Builder<String, Object> contentBuilder = ImmutableMap.builder();
+        contentBuilder.put("event", toPugModel(vEvent))
+            .put("duration", formatDuration(duration, locale));
+
+        return ImmutableMap.of("content", contentBuilder.build(),
+            "subject.summary", summary,
+            "subject.organizer", StringUtils.defaultIfEmpty(organizer.cn(), organizer.email()));
+    }
+
+    private Map<String, Object> toPugModel(VEvent vEvent) {
+        PersonModel organizer = PERSON_TO_MODEL.apply(EventParseUtils.getOrganizer(vEvent));
+        String summary = EventParseUtils.getSummary(vEvent).orElse(StringUtils.EMPTY);
+        List<EventFields.Person> resourceList = EventParseUtils.getResources(vEvent);
+
+        ImmutableMap.Builder<String, Object> eventBuilder = ImmutableMap.builder();
+        eventBuilder.put("organizer", organizer.toPugModel())
+            .put("attendees", EventParseUtils.getAttendees(vEvent).stream()
+                .collect(ImmutableMap.toImmutableMap(attendee -> attendee.email().asString(),
+                    attendee -> PERSON_TO_MODEL.apply(attendee).toPugModel())))
+            .put("summary", summary)
+            .put("hasResources", !resourceList.isEmpty())
+            .put("resources", resourceList.stream()
+                .collect(ImmutableMap.toImmutableMap(resource -> resource.email().asString(),
+                    resource -> PERSON_TO_MODEL.apply(resource).toPugModel())));
+        EventParseUtils.getLocation(vEvent).ifPresent(location -> eventBuilder.put("location", new LocationModel(location).toPugModel()));
+        EventParseUtils.getDescription(vEvent).ifPresent(description -> eventBuilder.put("description", description));
+
+        return eventBuilder.build();
+    }
+
+    private String formatDuration(Duration duration, Locale locale) {
+        long minutes = duration.toMinutes();
+        RelativeDateTimeFormatter formatter = RelativeDateTimeFormatter.getInstance(ULocale.forLocale(locale));
+        if (minutes >= 1440) {
+            long days = minutes / 1440;
+            long remainingHours = (minutes % 1440) / 60;
+            if (remainingHours > 0) {
+                return formatter.format(days, RelativeDateTimeFormatter.Direction.NEXT, RelativeDateTimeFormatter.RelativeUnit.DAYS)
+                    + " " + formatter.format(remainingHours, RelativeDateTimeFormatter.Direction.NEXT, RelativeDateTimeFormatter.RelativeUnit.HOURS);
+            }
+            return formatter.format(days, RelativeDateTimeFormatter.Direction.NEXT, RelativeDateTimeFormatter.RelativeUnit.DAYS);
+        }
+
+        if (minutes >= 60) {
+            long hours = minutes / 60;
+            long remainingMinutes = minutes % 60;
+            if (remainingMinutes > 0) {
+                return formatter.format(hours, RelativeDateTimeFormatter.Direction.NEXT, RelativeDateTimeFormatter.RelativeUnit.HOURS)
+                    + " " + formatter.format(remainingMinutes, RelativeDateTimeFormatter.Direction.NEXT, RelativeDateTimeFormatter.RelativeUnit.MINUTES);
+            }
+            return formatter.format(hours, RelativeDateTimeFormatter.Direction.NEXT, RelativeDateTimeFormatter.RelativeUnit.HOURS);
+        }
+
+        return formatter.format(minutes, RelativeDateTimeFormatter.Direction.NEXT, RelativeDateTimeFormatter.RelativeUnit.MINUTES);
+    }
+}
