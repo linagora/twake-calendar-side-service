@@ -18,17 +18,30 @@
 
 package com.linagora.calendar.amqp;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonProperty;
+import java.util.Optional;
+
+import org.apache.commons.lang3.BooleanUtils;
+
 import com.fasterxml.jackson.databind.JsonNode;
-import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.configuration.ConfigurationKey;
+import com.linagora.calendar.storage.configuration.EntryIdentifier;
+import com.linagora.calendar.storage.configuration.ModuleName;
+import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 
-@JsonIgnoreProperties(ignoreUnknown = true)
-public record CalendarAlarmMessageDTO(@JsonProperty("eventPath") String eventPath,
-                                      @JsonProperty("event") JsonNode calendarEvent,
-                                      @JsonProperty("import") boolean isImport) {
+public class AlarmSettingReader implements SettingsBasedResolver.SettingReader<Boolean> {
+    public static final Boolean ENABLE_ALARM = Boolean.TRUE;
 
-    public CalendarURL extractCalendarURL() {
-        return EventFieldConverter.extractCalendarURL(eventPath);
+    public static final EntryIdentifier ALARM_SETTING_IDENTIFIER = new EntryIdentifier(new ModuleName("calendar"),
+        new ConfigurationKey("alarmEmails"));
+
+    @Override
+    public EntryIdentifier identifier() {
+        return ALARM_SETTING_IDENTIFIER;
+    }
+
+    @Override
+    public Optional<Boolean> parse(JsonNode jsonNode) {
+        return Optional.ofNullable(jsonNode.asText())
+            .map(BooleanUtils::toBoolean);
     }
 }
