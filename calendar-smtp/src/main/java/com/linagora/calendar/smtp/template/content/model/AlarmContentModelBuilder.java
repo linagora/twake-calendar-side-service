@@ -63,13 +63,10 @@ public class AlarmContentModelBuilder {
 
                 description.ifPresent(desc -> eventBuilder.put("description", desc));
 
-                String notificationTemplate = i18nTranslator.get("notification");
-                String notification = notificationTemplate.formatted(formatDuration(duration, i18nTranslator.associatedLocale()));
-
                 return ImmutableMap.of(
                     "content", ImmutableMap.of(
                         "event", eventBuilder.build(),
-                        "notification", notification,
+                        "duration", formatDuration(duration, i18nTranslator.associatedLocale()),
                         "seeInCalendarLink", link));
             };
     }
