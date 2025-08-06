@@ -31,25 +31,27 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import jakarta.mail.internet.AddressException;
 
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.MaybeSender;
 import org.apache.james.mailbox.store.RandomMailboxSessionIdGenerator;
 import org.apache.james.server.core.filesystem.FileSystemImpl;
 import org.apache.james.util.Port;
+import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
-import org.testcontainers.shaded.org.awaitility.Awaitility;
-import org.testcontainers.shaded.org.awaitility.core.ConditionFactory;
 
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.smtp.MailSender;
@@ -66,37 +68,25 @@ import com.linagora.calendar.storage.eventsearch.EventUid;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.path.json.JsonPath;
 import io.restassured.specification.RequestSpecification;
-import jakarta.mail.internet.AddressException;
 import reactor.core.publisher.Mono;
 
 public class AlarmTriggerServiceTest {
-    private static final ConditionFactory calmlyAwait = Awaitility.with()
+    static final ConditionFactory calmlyAwait = Awaitility.with()
         .pollInterval(Duration.ofMillis(500))
         .and()
         .with()
         .pollDelay(Duration.ofMillis(500))
         .await();
-    private static final ConditionFactory awaitAtMost = calmlyAwait.atMost(200, TimeUnit.SECONDS);
-
-    private static final Supplier<JsonPath> smtpMailsResponseSupplier = () -> given(mockSMTPRequestSpecification())
-        .get("/smtpMails")
-        .jsonPath();
+    static final ConditionFactory awaitAtMost = calmlyAwait.atMost(200, TimeUnit.SECONDS);
+    static final boolean NO_RECURRING = false;
 
     @RegisterExtension
     static final MockSmtpServerExtension mockSmtpExtension = new MockSmtpServerExtension();
-    public static final boolean NO_RECURRING = false;
 
+    private RequestSpecification requestSpecification;
     private MemoryAlarmEventDAO alarmEventDAO;
     private Clock clock;
-
     private AlarmTriggerService testee;
-
-    static RequestSpecification mockSMTPRequestSpecification() {
-        return new RequestSpecBuilder()
-            .setPort(mockSmtpExtension.getMockSmtp().getRestApiPort())
-            .setBasePath("")
-            .build();
-    }
 
     @BeforeEach
     void setUp() {
@@ -125,7 +115,7 @@ public class AlarmTriggerServiceTest {
                 LANGUAGE_IDENTIFIER, Locale.ENGLISH,
                 TIMEZONE_IDENTIFIER, ZoneId.of("Asia/Ho_Chi_Minh"))));
 
-        clock = Clock.systemUTC();
+        clock = Clock.fixed(Instant.now(), ZoneId.of("Asia/Ho_Chi_Minh"));
 
         testee = new AlarmTriggerService(
             alarmEventDAO,
@@ -136,6 +126,18 @@ public class AlarmTriggerServiceTest {
             messageGeneratorFactory,
             mailTemplateConfig
         );
+
+        requestSpecification = new RequestSpecBuilder()
+            .setPort(mockSmtpExtension.getMockSmtp().getRestApiPort())
+            .setBasePath("")
+            .build();
+
+        clearSmtpMock();
+    }
+
+    private void clearSmtpMock() {
+        given(requestSpecification).delete("/smtpMails").then();
+        given(requestSpecification).delete("/smtpBehaviors").then();
     }
 
     @Test
@@ -143,8 +145,8 @@ public class AlarmTriggerServiceTest {
         Instant now = clock.instant();
         AlarmEvent event = new AlarmEvent(
             new EventUid("event-uid-1"),
-            now.minusSeconds(10),
-            now.plusSeconds(3600),
+            now.minus(10, ChronoUnit.MINUTES),
+            now.plus(10, ChronoUnit.MINUTES),
             NO_RECURRING,
             Optional.empty(),
             new MailAddress("attendee@abc.com"),
@@ -170,9 +172,9 @@ public class AlarmTriggerServiceTest {
 
         // Wait for the mail to be received via mock SMTP
         awaitAtMost.atMost(Duration.ofSeconds(20))
-            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+            .untilAsserted(() -> assertThat(smtpMailsResponse().getList("")).hasSize(1));
 
-        JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
+        JsonPath smtpMailsResponse = smtpMailsResponse();
 
         assertSoftly(Throwing.consumer(softly -> {
             softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
@@ -187,7 +189,7 @@ public class AlarmTriggerServiceTest {
 
             String html = getHtml(smtpMailsResponse);
 
-            softly.assertThat(html).contains("his event is about to begin")
+            softly.assertThat(html).contains("This event is about to begin in 10 minutes")
                 .contains("Test Room")
                 .contains("organizer@abc.com")
                 .contains("attendee@abc.com")
@@ -227,7 +229,194 @@ public class AlarmTriggerServiceTest {
         testee.triggerAlarms().block();
 
         assertThat(alarmEventDAO.find(eventUid, new MailAddress("attendee@abc.com")).blockOptional()).isEmpty();
+    }
 
+    @Test
+    void shouldSendAlarmEmailWithHourDurationWhenDifferenceBetweenNowAndEventStartTimeIsGreaterThanOneHour() throws AddressException {
+        Instant now = clock.instant();
+        AlarmEvent event = new AlarmEvent(
+            new EventUid("event-uid-1"),
+            now.minus(10, ChronoUnit.MINUTES),
+            now.plus(1, ChronoUnit.HOURS).plus(10, ChronoUnit.MINUTES),
+            NO_RECURRING,
+            Optional.empty(),
+            new MailAddress("attendee@abc.com"),
+            """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:event-uid-1
+            DTSTART:20250801T100000Z
+            DTEND:20250801T110000Z
+            SUMMARY:Alarm Test Event
+            LOCATION:Test Room
+            DESCRIPTION:This is a test alarm event.
+            ORGANIZER;CN=Test Organizer:mailto:organizer@abc.com
+            ATTENDEE;CN=Test Attendee:mailto:attendee@abc.com
+            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:organizer@abc.com
+            END:VEVENT
+            END:VCALENDAR
+            """);
+        alarmEventDAO.create(event).block();
+
+        testee.triggerAlarms().block();
+
+        // Wait for the mail to be received via mock SMTP
+        awaitAtMost.atMost(Duration.ofSeconds(20))
+            .untilAsserted(() -> assertThat(smtpMailsResponse().getList("")).hasSize(1));
+
+        JsonPath smtpMailsResponse = smtpMailsResponse();
+
+        assertSoftly(Throwing.consumer(softly -> {
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo("attendee@abc.com");
+            softly.assertThat(smtpMailsResponse.getString("[0].message"))
+                .contains("Subject: Notification: Alarm Test Event")
+                .contains("Content-Type: multipart/mixed;")
+                .containsIgnoringNewLines("""
+                    Content-Transfer-Encoding: base64
+                    Content-Type: text/html; charset=UTF-8
+                    """);
+
+            String html = getHtml(smtpMailsResponse);
+
+            softly.assertThat(html).contains("This event is about to begin in 1 hour 10 minutes")
+                .contains("Test Room")
+                .contains("organizer@abc.com")
+                .contains("attendee@abc.com")
+                .contains("This is a test alarm event.");
+        }));
+    }
+
+    @Test
+    void shouldSendAlarmEmailWithDayDurationWhenDifferenceBetweenNowAndEventStartTimeIsGreaterThanOneDay() throws AddressException {
+        Instant now = clock.instant();
+        AlarmEvent event = new AlarmEvent(
+            new EventUid("event-uid-1"),
+            now.minus(10, ChronoUnit.MINUTES),
+            now.plus(2, ChronoUnit.DAYS).plus(2, ChronoUnit.HOURS),
+            NO_RECURRING,
+            Optional.empty(),
+            new MailAddress("attendee@abc.com"),
+            """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:event-uid-1
+            DTSTART:20250801T100000Z
+            DTEND:20250801T110000Z
+            SUMMARY:Alarm Test Event
+            LOCATION:Test Room
+            DESCRIPTION:This is a test alarm event.
+            ORGANIZER;CN=Test Organizer:mailto:organizer@abc.com
+            ATTENDEE;CN=Test Attendee:mailto:attendee@abc.com
+            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:organizer@abc.com
+            END:VEVENT
+            END:VCALENDAR
+            """);
+        alarmEventDAO.create(event).block();
+
+        testee.triggerAlarms().block();
+
+        // Wait for the mail to be received via mock SMTP
+        awaitAtMost.atMost(Duration.ofSeconds(20))
+            .untilAsserted(() -> assertThat(smtpMailsResponse().getList("")).hasSize(1));
+
+        JsonPath smtpMailsResponse = smtpMailsResponse();
+
+        assertSoftly(Throwing.consumer(softly -> {
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo("attendee@abc.com");
+            softly.assertThat(smtpMailsResponse.getString("[0].message"))
+                .contains("Subject: Notification: Alarm Test Event")
+                .contains("Content-Type: multipart/mixed;")
+                .containsIgnoringNewLines("""
+                    Content-Transfer-Encoding: base64
+                    Content-Type: text/html; charset=UTF-8
+                    """);
+
+            String html = getHtml(smtpMailsResponse);
+
+            softly.assertThat(html).contains("This event is about to begin in 2 days 2 hour")
+                .contains("Test Room")
+                .contains("organizer@abc.com")
+                .contains("attendee@abc.com")
+                .contains("This is a test alarm event.");
+        }));
+    }
+
+    @Test
+    void shouldNotSendAlarmEmailWhenAlarmTimeGreaterThanNow() throws AddressException {
+        Instant now = clock.instant();
+        AlarmEvent event = new AlarmEvent(
+            new EventUid("event-uid-1"),
+            now.plus(10, ChronoUnit.MINUTES),
+            now.plus(20, ChronoUnit.MINUTES),
+            NO_RECURRING,
+            Optional.empty(),
+            new MailAddress("attendee@abc.com"),
+            """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:event-uid-1
+            DTSTART:20250801T100000Z
+            DTEND:20250801T110000Z
+            SUMMARY:Alarm Test Event
+            LOCATION:Test Room
+            DESCRIPTION:This is a test alarm event.
+            ORGANIZER;CN=Test Organizer:mailto:organizer@abc.com
+            ATTENDEE;CN=Test Attendee:mailto:attendee@abc.com
+            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:organizer@abc.com
+            END:VEVENT
+            END:VCALENDAR
+            """);
+        alarmEventDAO.create(event).block();
+
+        testee.triggerAlarms().block();
+
+        // Wait for the mail to be received via mock SMTP
+        awaitAtMost.atMost(Duration.ofSeconds(20))
+            .untilAsserted(() -> assertThat(smtpMailsResponse().getList("")).hasSize(0));
+    }
+
+    @Test
+    void shouldNotSendAlarmEmailWhenEventStartTimeLessThanNow() throws AddressException {
+        Instant now = clock.instant();
+        AlarmEvent event = new AlarmEvent(
+            new EventUid("event-uid-1"),
+            now.minus(20, ChronoUnit.MINUTES),
+            now.minus(10, ChronoUnit.MINUTES),
+            NO_RECURRING,
+            Optional.empty(),
+            new MailAddress("attendee@abc.com"),
+            """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:event-uid-1
+            DTSTART:20250801T100000Z
+            DTEND:20250801T110000Z
+            SUMMARY:Alarm Test Event
+            LOCATION:Test Room
+            DESCRIPTION:This is a test alarm event.
+            ORGANIZER;CN=Test Organizer:mailto:organizer@abc.com
+            ATTENDEE;CN=Test Attendee:mailto:attendee@abc.com
+            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:organizer@abc.com
+            END:VEVENT
+            END:VCALENDAR
+            """);
+        alarmEventDAO.create(event).block();
+
+        testee.triggerAlarms().block();
+
+        // Wait for the mail to be received via mock SMTP
+        awaitAtMost.atMost(Duration.ofSeconds(20))
+            .untilAsserted(() -> assertThat(smtpMailsResponse().getList("")).hasSize(0));
+    }
+
+    private JsonPath smtpMailsResponse() {
+        return given(requestSpecification).get("/smtpMails").jsonPath();
     }
 
     private String getHtml(JsonPath smtpMailsResponse) {

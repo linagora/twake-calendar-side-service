@@ -22,10 +22,14 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
+import java.util.stream.Collectors;
+
+import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.MaybeSender;
@@ -33,8 +37,9 @@ import org.apache.james.core.Username;
 import org.slf4j.Logger;
 
 import com.google.common.collect.ImmutableMap;
-import com.ibm.icu.text.RelativeDateTimeFormatter;
-import com.ibm.icu.util.ULocale;
+import com.ibm.icu.text.MeasureFormat;
+import com.ibm.icu.util.Measure;
+import com.ibm.icu.util.TimeUnit;
 import com.linagora.calendar.dav.CalendarUtil;
 import com.linagora.calendar.smtp.Mail;
 import com.linagora.calendar.smtp.MailSender;
@@ -53,13 +58,13 @@ import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.exception.DomainNotFoundException;
 
-import jakarta.inject.Inject;
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.component.VEvent;
 import reactor.core.publisher.Mono;
 
 public class AlarmTriggerService {
+
     public static final Function<EventFields.Person, PersonModel> PERSON_TO_MODEL =
         person -> new PersonModel(person.cn(), person.email().asString());
 
@@ -164,29 +169,46 @@ public class AlarmTriggerService {
         return eventBuilder.build();
     }
 
-    private String formatDuration(Duration duration, Locale locale) {
-        long minutes = duration.toMinutes();
-        RelativeDateTimeFormatter formatter = RelativeDateTimeFormatter.getInstance(ULocale.forLocale(locale));
-        if (minutes >= 1440) {
-            long days = minutes / 1440;
-            long remainingHours = (minutes % 1440) / 60;
-            if (remainingHours > 0) {
-                return formatter.format(days, RelativeDateTimeFormatter.Direction.NEXT, RelativeDateTimeFormatter.RelativeUnit.DAYS)
-                    + " " + formatter.format(remainingHours, RelativeDateTimeFormatter.Direction.NEXT, RelativeDateTimeFormatter.RelativeUnit.HOURS);
+    public static String formatDuration(Duration duration, Locale locale) {
+        long totalSeconds = duration.getSeconds();
+
+        long days = totalSeconds / (24 * 3600);
+        long hours = (totalSeconds % (24 * 3600)) / 3600;
+        long minutes = (totalSeconds % 3600) / 60;
+
+        List<Measure> measures = new ArrayList<>();
+
+        if (days >= 1) {
+            measures.add(new Measure(days, TimeUnit.DAY));
+            if (hours > 0) {
+                measures.add(new Measure(hours, TimeUnit.HOUR));
             }
-            return formatter.format(days, RelativeDateTimeFormatter.Direction.NEXT, RelativeDateTimeFormatter.RelativeUnit.DAYS);
+        } else if (hours >= 1) {
+            measures.add(new Measure(hours, TimeUnit.HOUR));
+            if (minutes > 0) {
+                measures.add(new Measure(minutes, TimeUnit.MINUTE));
+            }
+        } else {
+            measures.add(new Measure(minutes, TimeUnit.MINUTE));
         }
 
-        if (minutes >= 60) {
-            long hours = minutes / 60;
-            long remainingMinutes = minutes % 60;
-            if (remainingMinutes > 0) {
-                return formatter.format(hours, RelativeDateTimeFormatter.Direction.NEXT, RelativeDateTimeFormatter.RelativeUnit.HOURS)
-                    + " " + formatter.format(remainingMinutes, RelativeDateTimeFormatter.Direction.NEXT, RelativeDateTimeFormatter.RelativeUnit.MINUTES);
-            }
-            return formatter.format(hours, RelativeDateTimeFormatter.Direction.NEXT, RelativeDateTimeFormatter.RelativeUnit.HOURS);
-        }
+        MeasureFormat unitFormatter = MeasureFormat.getInstance(locale, MeasureFormat.FormatWidth.WIDE);
 
-        return formatter.format(minutes, RelativeDateTimeFormatter.Direction.NEXT, RelativeDateTimeFormatter.RelativeUnit.MINUTES);
+        return measures.stream()
+            .map(unitFormatter::format)
+            .collect(Collectors.joining(" "));
+    }
+
+    public static void main(String[] args) {
+        Duration[] testDurations = {
+            Duration.ofMinutes(45),
+            Duration.ofHours(2).plusMinutes(30),
+            Duration.ofDays(1).plusHours(5),
+            Duration.ofDays(3)
+        };
+
+        for (Duration d : testDurations) {
+            System.out.println("→ " + formatDuration(d, Locale.ENGLISH));
+        }
     }
 }
