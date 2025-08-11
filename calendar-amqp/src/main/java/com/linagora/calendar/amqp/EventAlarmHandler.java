@@ -92,7 +92,6 @@ public class EventAlarmHandler {
         this.eventEmailFilter = eventEmailFilter;
     }
 
-
     public Mono<Void> handleCreateOrUpdate(CalendarAlarmMessageDTO alarmMessageDTO) {
         return openPaaSUserDAO.retrieve(alarmMessageDTO.extractCalendarURL().base())
             .filterWhen(openPaaSUser -> isUserAlarmEnabled(openPaaSUser.username()))
@@ -101,14 +100,23 @@ public class EventAlarmHandler {
 
     private Mono<Void> processCreateOrUpdate(Username username, CalendarAlarmMessageDTO alarmMessageDTO) {
         return calDavClient.fetchCalendarEvent(username, URI.create(alarmMessageDTO.eventPath()))
-            .flatMap(davCalendarObject -> {
-                Calendar eventCalendar = davCalendarObject.calendarData();
-                return Mono.justOrEmpty(alarmInstantFactory.computeNextAlarmInstant(eventCalendar, username))
-                    .flatMap(nextAlarmInstant -> upsertUpcomingAlarmRequest(username, eventCalendar, nextAlarmInstant));
-            })
+            .flatMap(davCalendarObject -> applyNextAlarmDecision(username, davCalendarObject.calendarData(), alarmMessageDTO))
             .onErrorResume(error -> {
                 LOGGER.error("Failed to create/update alarm for {} at {}", username.asString(), alarmMessageDTO.eventPath(), error);
                 return Mono.empty();
+            });
+    }
+
+    private Mono<Void> applyNextAlarmDecision(Username username, Calendar eventCalendar, CalendarAlarmMessageDTO alarmMessageDTO) {
+        return Mono.just(alarmInstantFactory.computeNextAlarmInstant(eventCalendar, username))
+            .flatMap(maybeNextAlarmInstant -> {
+                if (maybeNextAlarmInstant.isPresent()) {
+                    LOGGER.debug("Next alarm found for {} at {}", username.asString(), alarmMessageDTO.eventPath());
+                    return upsertUpcomingAlarmRequest(username, eventCalendar, maybeNextAlarmInstant.get());
+                } else {
+                    LOGGER.debug("No upcoming alarm found for {} at {}", username.asString(), alarmMessageDTO.eventPath());
+                    return doDeleteAlarmEvent(username, extractEventUid(alarmMessageDTO));
+                }
             });
     }
 
@@ -159,12 +167,14 @@ public class EventAlarmHandler {
 
     private Mono<Void> handleDelete(Username username, CalendarAlarmMessageDTO message) {
         return Mono.fromCallable(() -> extractEventUid(message))
-            .flatMap(eventUid -> {
-                LOGGER.debug("Deleting alarm event for {} at {}", username.asString(), message.eventPath());
-                return alarmEventDAO.delete(eventUid, Throwing.supplier(username::asMailAddress).get());
-            })
+            .flatMap(eventUid -> doDeleteAlarmEvent(username, eventUid));
+    }
+
+    private Mono<Void> doDeleteAlarmEvent(Username username, EventUid eventUid) {
+        return alarmEventDAO.delete(eventUid, Throwing.supplier(username::asMailAddress).get())
+            .doOnSuccess(unused -> LOGGER.debug("Deleted alarm event for {} with UID {}", username.asString(), eventUid.value()))
             .onErrorResume(error -> {
-                LOGGER.error("Failed to delete alarm event for {} at {}", username.asString(), message.eventPath(), error);
+                LOGGER.error("Failed to delete alarm event for {} with UID {}", username.asString(), eventUid.value(), error);
                 return Mono.empty();
             });
     }

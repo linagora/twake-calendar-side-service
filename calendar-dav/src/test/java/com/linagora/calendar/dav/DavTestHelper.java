@@ -31,6 +31,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
+import com.linagora.calendar.storage.eventsearch.EventUid;
 
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -66,9 +67,17 @@ public class DavTestHelper extends DavClient {
         this.calDavClient = new CalDavClient(config);
     }
 
+    public void upsertCalendar(OpenPaaSUser openPaaSUser, String calendarData, EventUid eventUid) {
+        upsertCalendar(openPaaSUser, calendarData, eventUid.value());
+    }
+
     public void upsertCalendar(OpenPaaSUser openPaaSUser, String calendarData, String eventUid) {
         URI davCalendarUri = URI.create("/calendars/" + openPaaSUser.id().value() + "/" + openPaaSUser.id().value() + "/" + eventUid + ".ics");
         upsertCalendar(openPaaSUser.username().asString(), davCalendarUri, calendarData).block();
+    }
+
+    public void deleteCalendar(OpenPaaSUser openPaaSUser, EventUid eventUid) {
+        deleteCalendar(openPaaSUser, eventUid.value());
     }
 
     public void deleteCalendar(OpenPaaSUser openPaaSUser, String eventUid) {
