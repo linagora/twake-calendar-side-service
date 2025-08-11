@@ -21,6 +21,7 @@ package com.linagora.calendar.amqp;
 import static com.linagora.calendar.amqp.TestFixture.awaitAtMost;
 import static java.time.temporal.ChronoUnit.MINUTES;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 
 import java.time.Duration;
@@ -31,6 +32,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import org.apache.james.backends.rabbitmq.QueueArguments;
@@ -131,7 +133,7 @@ public class AlarmEventCreateTest {
         alarmEventDAO = new MemoryAlarmEventDAO();
         calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration());
         calDavEventRepository = new CalDavEventRepository(calDavClient);
-        clock = new UpdatableTickingClock(Instant.now());
+        clock = new UpdatableTickingClock(Instant.now().minus(60, MINUTES));
         setupEventAlarmConsumer();
     }
 
@@ -162,8 +164,6 @@ public class AlarmEventCreateTest {
     @Test
     void shouldCreateAlarmEventWhenOrganizerCreatesEventWithVALARM() throws Exception {
         // Given
-        clock.setInstant(Instant.now().minus(60, MINUTES));
-
         String eventUid = UUID.randomUUID().toString();
         String vAlarm = """
             BEGIN:VALARM
@@ -200,9 +200,8 @@ public class AlarmEventCreateTest {
     }
 
     @Test
-    void shouldCreateAlarmEventForAttendeeAfterAcceptingEventWithVALARM() throws Exception {
+    void shouldCreateAlarmEventForAttendeeAfterAcceptingEventWithVALARM() {
         // Given
-        clock.setInstant(Instant.now().minus(60, MINUTES)); // Alarm time will be in the past
         String eventUid = UUID.randomUUID().toString();
         String vAlarm = """
             BEGIN:VALARM
@@ -254,8 +253,6 @@ public class AlarmEventCreateTest {
     @Test
     void shouldCreateAlarmEventForAllAcceptedAttendees() throws Exception {
         // Given
-        clock.setInstant(Instant.now().minus(60, MINUTES));
-
         String eventUid = UUID.randomUUID().toString();
         OpenPaaSUser attendee1 = attendee;
         String attendee1Email = attendee1.username().asString();
@@ -308,8 +305,6 @@ public class AlarmEventCreateTest {
     @Test
     void shouldCreateAlarmEventOnlyForAcceptedAttendee() throws Exception {
         // Given
-        clock.setInstant(Instant.now().minus(60, MINUTES));
-
         String eventUid = UUID.randomUUID().toString();
         OpenPaaSUser attendee1 = attendee;
 
@@ -358,10 +353,8 @@ public class AlarmEventCreateTest {
     }
 
     @Test
-    void shouldCreateAlarmEventForOrganizerAndAcceptedAttendeeWithRecurringEvent() throws Exception {
+    void shouldCreateAlarmEventForOrganizerAndAcceptedAttendeeWithRecurringEvent() {
         // Given
-        clock.setInstant(Instant.now().minus(60, MINUTES));
-
         String eventUid = UUID.randomUUID().toString();
         String attendeeEmail = attendee.username().asString();
         String organizerEmail = organizer.username().asString();
@@ -434,11 +427,11 @@ public class AlarmEventCreateTest {
             });
     }
 
-    private void attendeeAcceptsEvent(OpenPaaSUser attendee, String eventUid) throws InterruptedException {
-        waitForEventCreation(attendee);
-        Thread.sleep(500);
-        calDavEventRepository.updatePartStat(attendee.username(), attendee.id(), new EventUid(eventUid),
-            PartStat.ACCEPTED).block();
+    private void attendeeAcceptsEvent(OpenPaaSUser attendee, String eventUid) {
+        waitForFirstEventCreation(attendee);
+        awaitAtMost.untilAsserted(() -> assertThatCode(() -> calDavEventRepository.updatePartStat(attendee.username(),
+            attendee.id(), new EventUid(eventUid), PartStat.ACCEPTED).block())
+            .doesNotThrowAnyException());
     }
 
     private void awaitAlarmEventCreated(String eventUid, Username username) {
@@ -452,10 +445,10 @@ public class AlarmEventCreateTest {
     private String generateEventWithValarm(String eventUid, String organizerEmail, List<String> attendeeEmails,
                                            PartStat partStat, String vAlarm) {
         DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss");
-        LocalDateTime baseTime = LocalDateTime.now().plusDays(3);
+        LocalDateTime baseTime = clock.instant().atZone(clock.getZone()).plusDays(3).toLocalDateTime();
         String startDateTime = baseTime.format(dateTimeFormatter);
         String endDateTime = baseTime.plusHours(1).format(dateTimeFormatter);
-        String dtStamp = baseTime.minusDays(3).format(dateTimeFormatter);
+        String dtStamp = baseTime.format(dateTimeFormatter);
 
         String attendeeLines = attendeeEmails.stream()
             .map(email -> String.format("ATTENDEE;PARTSTAT=%s:mailto:%s", partStat.getValue(), email))
@@ -501,13 +494,10 @@ public class AlarmEventCreateTest {
     private String generateRecurringEventWithValarm(String eventUid, String organizerEmail, List<String> attendeeEmails,
                                                     PartStat partStat, String vAlarm) {
         DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss");
-
-        LocalDateTime startDateTime = LocalDateTime.now().plusDays(3);
-        LocalDateTime endDateTime = startDateTime.plusHours(1);
-
-        String formattedStart = startDateTime.format(dateTimeFormatter);
-        String formattedEnd = endDateTime.format(dateTimeFormatter);
-        String dtStamp = LocalDateTime.now().format(dateTimeFormatter);
+        LocalDateTime baseTime = clock.instant().atZone(clock.getZone()).plusDays(3).toLocalDateTime();
+        String startDateTime = baseTime.format(dateTimeFormatter);
+        String endDateTime = baseTime.plusHours(1).format(dateTimeFormatter);
+        String dtStamp = baseTime.format(dateTimeFormatter);
 
         String attendeeLines = attendeeEmails.stream()
             .map(email -> String.format("ATTENDEE;PARTSTAT=%s:mailto:%s", partStat.getValue(), email))
@@ -543,8 +533,8 @@ public class AlarmEventCreateTest {
             """.formatted(
             eventUid,
             dtStamp,
-            formattedStart,
-            formattedEnd,
+            startDateTime,
+            endDateTime,
             organizerEmail,
             attendeeLines,
             vAlarm
@@ -557,10 +547,15 @@ public class AlarmEventCreateTest {
             .toInstant();
     }
 
-    private String waitForEventCreation(OpenPaaSUser user) {
-        awaitAtMost.untilAsserted(() ->
-            assertThat(davTestHelper.findFirstEventId(user)).isPresent());
+    private String waitForFirstEventCreation(OpenPaaSUser user) {
+        AtomicReference<String> idRef = new AtomicReference<>();
 
-        return davTestHelper.findFirstEventId(user).get();
+        awaitAtMost.untilAsserted(() -> {
+            Optional<String> firstEventId = davTestHelper.findFirstEventId(user);
+            assertThat(firstEventId).isPresent();
+            idRef.set(firstEventId.get());
+        });
+
+        return idRef.get();
     }
 }

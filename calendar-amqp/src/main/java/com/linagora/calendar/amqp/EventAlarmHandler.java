@@ -91,12 +91,8 @@ public class EventAlarmHandler {
     private Mono<AlarmEvent> upsertAlarmEvent(Username username, AlarmEvent alarmEvent) {
         return alarmEventDAO.find(alarmEvent.eventUid(), Throwing.supplier(username::asMailAddress).get())
             .flatMap(existing -> {
-                if (hasDifferentAlarmTimes(existing, alarmEvent)) {
-                    LOGGER.debug("Updating existing alarm event: {}", alarmEvent.eventUid().value());
-                    return alarmEventDAO.update(alarmEvent).thenReturn(alarmEvent);
-                }
-                LOGGER.debug("Alarm event already exists with same times, no update needed: {}", alarmEvent.eventUid().value());
-                return Mono.just(alarmEvent);
+                LOGGER.debug("Updating existing alarm event: {}", alarmEvent.eventUid().value());
+                return alarmEventDAO.update(alarmEvent).thenReturn(alarmEvent);
             })
             .switchIfEmpty(Mono.defer(() -> {
                 LOGGER.debug("Creating new alarm event: {}", alarmEvent.eventUid().value());
