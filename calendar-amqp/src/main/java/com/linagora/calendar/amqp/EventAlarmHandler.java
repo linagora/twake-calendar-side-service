@@ -60,6 +60,7 @@ public class EventAlarmHandler {
     private final OpenPaaSUserDAO openPaaSUserDAO;
     private final SettingsBasedResolver settingsBasedResolver;
     private final SimpleSessionProvider sessionProvider;
+    private final EventEmailFilter eventEmailFilter;
 
     @Inject
     @Singleton
@@ -68,9 +69,11 @@ public class EventAlarmHandler {
                              CalDavClient calDavClient,
                              OpenPaaSUserDAO openPaaSUserDAO,
                              ConfigurationResolver configurationResolver,
-                             SimpleSessionProvider sessionProvider) {
+                             SimpleSessionProvider sessionProvider,
+                             EventEmailFilter eventEmailFilter) {
         this(alarmInstantFactory, alarmEventDAO, calDavClient, openPaaSUserDAO,
-            SettingsBasedResolver.of(configurationResolver, Set.of(new AlarmSettingReader())), sessionProvider);
+            SettingsBasedResolver.of(configurationResolver, Set.of(new AlarmSettingReader())),
+            sessionProvider, eventEmailFilter);
     }
 
     public EventAlarmHandler(AlarmInstantFactory alarmInstantFactory,
@@ -78,13 +81,15 @@ public class EventAlarmHandler {
                              CalDavClient calDavClient,
                              OpenPaaSUserDAO openPaaSUserDAO,
                              SettingsBasedResolver settingsBasedResolver,
-                             SimpleSessionProvider sessionProvider) {
+                             SimpleSessionProvider sessionProvider,
+                             EventEmailFilter eventEmailFilter) {
         this.alarmInstantFactory = alarmInstantFactory;
         this.alarmEventDAO = alarmEventDAO;
         this.calDavClient = calDavClient;
         this.openPaaSUserDAO = openPaaSUserDAO;
         this.settingsBasedResolver = settingsBasedResolver;
         this.sessionProvider = sessionProvider;
+        this.eventEmailFilter = eventEmailFilter;
     }
 
 
@@ -132,6 +137,7 @@ public class EventAlarmHandler {
         String eventCalendarString = eventCalendar.toString();
 
         return Flux.fromIterable(nextAlarmInstant.recipients())
+            .filter(eventEmailFilter::shouldProcess)
             .map(recipient -> new AlarmEvent(
                 eventUid,
                 nextAlarmInstant.alarmTime(),

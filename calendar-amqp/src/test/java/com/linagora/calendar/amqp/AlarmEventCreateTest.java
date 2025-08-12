@@ -27,6 +27,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 import java.time.Duration;
@@ -46,6 +47,7 @@ import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
 import org.apache.james.backends.rabbitmq.RabbitMQConnectionFactory;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
+import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;
 import org.apache.james.mailbox.store.RandomMailboxSessionIdGenerator;
 import org.apache.james.metrics.api.NoopGaugeRegistry;
@@ -91,6 +93,7 @@ public class AlarmEventCreateTest {
     @RegisterExtension
     static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
     private static final SettingsBasedResolver settingsResolver = mock(SettingsBasedResolver.class);
+    private static final EventEmailFilter eventEmailFilter = spy(EventEmailFilter.acceptAll());
 
     private static OpenPaaSUserDAO openPaaSUserDAO;
     private static ReactorRabbitMQChannelPool channelPool;
@@ -163,6 +166,7 @@ public class AlarmEventCreateTest {
                 .block());
 
         Mockito.reset(settingsResolver);
+        Mockito.reset(eventEmailFilter);
     }
 
     private void setupEventAlarmConsumer() {
@@ -172,7 +176,8 @@ public class AlarmEventCreateTest {
             calDavClient,
             openPaaSUserDAO,
             settingsResolver,
-            new SimpleSessionProvider(new RandomMailboxSessionIdGenerator()));
+            new SimpleSessionProvider(new RandomMailboxSessionIdGenerator()),
+            eventEmailFilter);
 
         EventAlarmConsumer consumer = new EventAlarmConsumer(channelPool,
             QueueArguments.Builder::new,
@@ -457,7 +462,37 @@ public class AlarmEventCreateTest {
             .thenReturn(Mono.just( new SettingsBasedResolver.ResolvedSettings(
                 Map.of(ALARM_SETTING_IDENTIFIER, !ENABLE_ALARM))));
 
-        clock.setInstant(Instant.now().minus(60, MINUTES));
+        String eventUid = UUID.randomUUID().toString();
+        String vAlarm = """
+            BEGIN:VALARM
+            TRIGGER:-PT15M
+            ACTION:EMAIL
+            ATTENDEE:mailto:%s
+            SUMMARY:Test
+            DESCRIPTION:This is an automatic alarm sent by OpenPaas
+            END:VALARM""".trim().formatted(organizer.username().asString());
+        String calendarData = generateEventWithValarm(
+            eventUid,
+            organizer.username().asString(),
+            List.of(attendee.username().asString()),
+            PartStat.NEEDS_ACTION,
+            vAlarm);
+
+        // When: Organizer creates an event with VALARM
+        davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
+
+        Thread.sleep(1000);
+        // Then: No AlarmEvent should be created for the organizer
+        assertThat(alarmEventDAO.find(new EventUid(eventUid),
+            organizer.username().asMailAddress()).blockOptional())
+            .isEmpty();
+    }
+
+
+    @Test
+    void shouldNotCreateAlarmEventWhenRecipientIsNotInWhitelist() throws Exception {
+        when(eventEmailFilter.shouldProcess(any(MailAddress.class)))
+            .thenReturn(false);
 
         String eventUid = UUID.randomUUID().toString();
         String vAlarm = """
@@ -468,6 +503,7 @@ public class AlarmEventCreateTest {
             SUMMARY:Test
             DESCRIPTION:This is an automatic alarm sent by OpenPaas
             END:VALARM""".trim().formatted(organizer.username().asString());
+
         String calendarData = generateEventWithValarm(
             eventUid,
             organizer.username().asString(),

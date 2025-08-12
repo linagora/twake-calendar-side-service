@@ -37,7 +37,11 @@ public interface EventEmailFilter {
     Logger LOGGER = LoggerFactory.getLogger(EventEmailFilter.class);
     String ALLOWED_RECIPIENTS_PROPERTY = "mail.imip.recipient.whitelist";
 
-    boolean shouldProcess(CalendarEventNotificationEmailDTO dto);
+    boolean shouldProcess(MailAddress mailAddress);
+
+    default boolean shouldProcess(CalendarEventNotificationEmailDTO dto) {
+         return shouldProcess(dto.recipientEmail());
+    }
 
     static EventEmailFilter from(PropertiesProvider propertiesProvider) throws ConfigurationException {
         try {
@@ -77,17 +81,16 @@ public interface EventEmailFilter {
         }
 
         @Override
-        public boolean shouldProcess(CalendarEventNotificationEmailDTO dto) {
-            boolean result = allowedRecipients.contains(dto.recipientEmail());
-
-            LOGGER.debug("Processing email for recipient {}: {}", dto.recipientEmail().asString(), result ? "allowed" : "not allowed");
+        public boolean shouldProcess(MailAddress recipientEmail) {
+            boolean result = allowedRecipients.contains(recipientEmail);
+            LOGGER.debug("Processing email for recipient {}: {}", recipientEmail.asString(), result ? "allowed" : "not allowed");
             return result;
         }
     }
 
     class NoOpEventEmailFilter implements EventEmailFilter {
         @Override
-        public boolean shouldProcess(CalendarEventNotificationEmailDTO dto) {
+        public boolean shouldProcess(MailAddress recipientEmail) {
             return true; // No filtering, process all emails
         }
     }
