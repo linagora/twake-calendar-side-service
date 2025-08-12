@@ -51,6 +51,7 @@ import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
 import org.apache.james.backends.rabbitmq.RabbitMQConnectionFactory;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
+import org.apache.james.core.MailAddress;
 import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
 import org.apache.james.mailbox.store.RandomMailboxSessionIdGenerator;
@@ -406,7 +407,7 @@ public class EventReplyEmailConsumerTest {
         String eventDavIdOnAttendee = waitForEventCreation(attendee);
 
         // Mock exception
-        when(eventEmailFilter.shouldProcess(any()))
+        when(eventEmailFilter.shouldProcess(any(MailAddress.class)))
             .thenThrow(new RuntimeException("Temporary exception"));
 
         String replyDataFirst = generateCalendarData(
@@ -420,7 +421,7 @@ public class EventReplyEmailConsumerTest {
 
         // Recover
         Mockito.reset(eventEmailFilter);
-        when(eventEmailFilter.shouldProcess(any()))
+        when(eventEmailFilter.shouldProcess(any(MailAddress.class)))
             .thenReturn(true);
 
         String replyDataSecond = generateCalendarData(
@@ -442,7 +443,7 @@ public class EventReplyEmailConsumerTest {
 
     @Test
     void shouldNotSendEmailWhenRecipientIsNotInWhitelist() throws InterruptedException {
-        when(eventEmailFilter.shouldProcess(any()))
+        when(eventEmailFilter.shouldProcess(any(MailAddress.class)))
             .thenReturn(false);
 
         // Given: Organizer creates calendar event with attendee
