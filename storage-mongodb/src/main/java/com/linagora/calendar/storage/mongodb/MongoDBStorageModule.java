@@ -65,6 +65,7 @@ public class MongoDBStorageModule extends AbstractModule {
 
         bind(MongoDBSecretLinkStore.class).in(Scopes.SINGLETON);
         bind(SecretLinkStore.class).to(MongoDBSecretLinkStore.class);
+
     }
 
     @Provides

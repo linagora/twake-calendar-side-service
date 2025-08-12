@@ -39,10 +39,15 @@ import org.apache.james.core.MailAddress;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.base.Preconditions;
+
+import net.fortuna.ical4j.model.Calendar;
+import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.Content;
 import net.fortuna.ical4j.model.Parameter;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.TimeZone;
+import net.fortuna.ical4j.model.component.CalendarComponent;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
 import net.fortuna.ical4j.model.property.Description;
@@ -231,4 +236,21 @@ public class EventParseUtils {
         }
         return Optional.empty();
     }
+
+    public static boolean isRecurringEvent(Calendar calendar) {
+        List<CalendarComponent> events = calendar.getComponents(Component.VEVENT);
+        Preconditions.checkArgument(!events.isEmpty(), "VEVENT is empty");
+
+        return events.size() > 1 || events.getFirst().getProperty(Property.RRULE).isPresent();
+    }
+
+    public static String extractEventUid(Calendar calendar) {
+        return calendar.getComponents(Component.VEVENT).stream()
+            .map(Component::getUid)
+            .flatMap(Optional::stream)
+            .map(Property::getValue)
+            .findFirst()
+            .orElseThrow(() -> new IllegalStateException("No UID found in the calendar event"));
+    }
+
 }
