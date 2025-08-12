@@ -27,10 +27,11 @@ import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.Locale;
@@ -47,6 +48,7 @@ import org.apache.james.core.MaybeSender;
 import org.apache.james.mailbox.store.RandomMailboxSessionIdGenerator;
 import org.apache.james.server.core.filesystem.FileSystemImpl;
 import org.apache.james.util.Port;
+import org.apache.james.utils.UpdatableTickingClock;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionFactory;
 import org.junit.jupiter.api.BeforeEach;
@@ -63,6 +65,7 @@ import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.MemoryAlarmEventDAO;
 import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
+import com.linagora.calendar.storage.event.AlarmInstantFactory;
 import com.linagora.calendar.storage.eventsearch.EventUid;
 
 import io.restassured.builder.RequestSpecBuilder;
@@ -78,6 +81,7 @@ public class AlarmTriggerServiceTest {
         .pollDelay(Duration.ofMillis(500))
         .await();
     static final ConditionFactory awaitAtMost = calmlyAwait.atMost(200, TimeUnit.SECONDS);
+    public static final boolean RECURRING = true;
     static final boolean NO_RECURRING = false;
 
     @RegisterExtension
@@ -85,7 +89,7 @@ public class AlarmTriggerServiceTest {
 
     private RequestSpecification requestSpecification;
     private MemoryAlarmEventDAO alarmEventDAO;
-    private Clock clock;
+    private UpdatableTickingClock clock;
     private AlarmTriggerService testee;
 
     @BeforeEach
@@ -113,9 +117,9 @@ public class AlarmTriggerServiceTest {
         SettingsBasedResolver settingsBasedResolver = (session) -> Mono.just(new SettingsBasedResolver.ResolvedSettings(
             Map.of(
                 LANGUAGE_IDENTIFIER, Locale.ENGLISH,
-                TIMEZONE_IDENTIFIER, ZoneId.of("Asia/Ho_Chi_Minh"))));
+                TIMEZONE_IDENTIFIER, ZoneId.of("UTC"))));
 
-        clock = Clock.fixed(Instant.now(), ZoneId.of("Asia/Ho_Chi_Minh"));
+        clock = new UpdatableTickingClock(Instant.now());
 
         testee = new AlarmTriggerService(
             alarmEventDAO,
@@ -124,6 +128,7 @@ public class AlarmTriggerServiceTest {
             new SimpleSessionProvider(new RandomMailboxSessionIdGenerator()),
             settingsBasedResolver,
             messageGeneratorFactory,
+            new AlarmInstantFactory.Default(clock),
             mailTemplateConfig
         );
 
@@ -415,6 +420,239 @@ public class AlarmTriggerServiceTest {
             .untilAsserted(() -> assertThat(smtpMailsResponse().getList("")).hasSize(0));
     }
 
+    @Test
+    void shouldSendAlarmEmailWhenEventIsRecurring() throws AddressException {
+        EventUid eventUid = new EventUid("recurring-event-uid-1");
+        MailAddress recipient = new MailAddress("attendee@abc.com");
+        AlarmEvent event = new AlarmEvent(
+            eventUid,
+            parse("30250801T094500Z"),
+            parse("30250801T100000Z"),
+            RECURRING,
+            Optional.empty(),
+            recipient,
+            """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:recurring-event-uid-1
+            DTSTART:30250801T100000Z
+            DTEND:30250801T110000Z
+            SUMMARY:Recurring Alarm Test Event
+            LOCATION:Test Room
+            DESCRIPTION:This is a recurring test alarm event.
+            ORGANIZER;CN=Test Organizer:mailto:organizer@abc.com
+            ATTENDEE;PARTSTAT=accepted;CN=Test Attendee:mailto:attendee@abc.com
+            RRULE:FREQ=DAILY;COUNT=3
+            BEGIN:VALARM
+            TRIGGER:-PT15M
+            ACTION:EMAIL
+            ATTENDEE:mailto:attendee@abc.com
+            DESCRIPTION:Reminder
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """);
+        alarmEventDAO.create(event).block();
+
+        clock.setInstant(parse("30250801T094500Z"));
+        testee.triggerAlarms().block();
+
+        // Wait for the mail to be received via mock SMTP
+        awaitAtMost.atMost(Duration.ofSeconds(20))
+            .untilAsserted(() -> assertThat(smtpMailsResponse().getList("")).hasSize(1));
+
+        JsonPath smtpMailsResponse = smtpMailsResponse();
+
+        assertSoftly(Throwing.consumer(softly -> {
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo("attendee@abc.com");
+            softly.assertThat(smtpMailsResponse.getString("[0].message"))
+                .contains("Subject: Notification: Recurring Alarm Test Event")
+                .contains("Content-Type: multipart/mixed;")
+                .containsIgnoringNewLines("""
+                    Content-Transfer-Encoding: base64
+                    Content-Type: text/html; charset=UTF-8
+                    """);
+
+            String html = getHtml(smtpMailsResponse);
+
+            softly.assertThat(html).contains("This event is about to begin in 15 minutes")
+                .contains("Recurring Alarm Test Event")
+                .contains("Test Room")
+                .contains("organizer@abc.com")
+                .contains("attendee@abc.com")
+                .contains("This is a recurring test alarm event.");
+        }));
+    }
+
+    @Test
+    void shouldSendAlarmEmailWithTheContentOfChildEventInRecurringEvent() throws AddressException {
+        EventUid eventUid = new EventUid("recurring-event-uid-1");
+        MailAddress recipient = new MailAddress("attendee@abc.com");
+        AlarmEvent event = new AlarmEvent(
+            eventUid,
+            parse("30250801T094500Z"),
+            parse("30250801T100000Z"),
+            RECURRING,
+            Optional.of("30250801T100000Z"),
+            recipient,
+            """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:recurring-event-uid-1
+            DTSTART:30250801T100000Z
+            DTEND:30250801T110000Z
+            SUMMARY:Recurring Alarm Test Event
+            LOCATION:Test Room
+            DESCRIPTION:This is a recurring test alarm event.
+            ORGANIZER;CN=Test Organizer:mailto:organizer@abc.com
+            ATTENDEE;PARTSTAT=accepted;CN=Test Attendee:mailto:attendee@abc.com
+            RRULE:FREQ=DAILY;COUNT=3
+            BEGIN:VALARM
+            TRIGGER:-PT15M
+            ACTION:EMAIL
+            ATTENDEE:mailto:attendee@abc.com
+            DESCRIPTION:Reminder
+            END:VALARM
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:recurring-event-uid-1
+            DTSTART:30250801T100000Z
+            DTEND:30250801T110000Z
+            SUMMARY:Recurring Alarm Test Event With Recurrence ID
+            LOCATION:Test Room
+            DESCRIPTION:This is a recurring test alarm event.
+            ORGANIZER;CN=Test Organizer:mailto:organizer@abc.com
+            ATTENDEE;PARTSTAT=accepted;CN=Test Attendee:mailto:attendee@abc.com
+            RECURRENCE-ID:30250801T100000Z
+            BEGIN:VALARM
+            TRIGGER:-PT15M
+            ACTION:EMAIL
+            ATTENDEE:mailto:attendee@abc.com
+            DESCRIPTION:Reminder
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """);
+        alarmEventDAO.create(event).block();
+
+        clock.setInstant(parse("30250801T094500Z"));
+        testee.triggerAlarms().block();
+
+        // Wait for the mail to be received via mock SMTP
+        awaitAtMost.atMost(Duration.ofSeconds(20))
+            .untilAsserted(() -> assertThat(smtpMailsResponse().getList("")).hasSize(1));
+
+        JsonPath smtpMailsResponse = smtpMailsResponse();
+
+        assertSoftly(Throwing.consumer(softly -> {
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo("attendee@abc.com");
+            softly.assertThat(smtpMailsResponse.getString("[0].message"))
+                .contains("Subject: Notification: Recurring Alarm Test Event With Recurrence ID")
+                .contains("Content-Type: multipart/mixed;")
+                .containsIgnoringNewLines("""
+                    Content-Transfer-Encoding: base64
+                    Content-Type: text/html; charset=UTF-8
+                    """);
+
+            String html = getHtml(smtpMailsResponse);
+
+            softly.assertThat(html).contains("This event is about to begin in 15 minutes")
+                .contains("Recurring Alarm Test Event With Recurrence ID")
+                .contains("Test Room")
+                .contains("organizer@abc.com")
+                .contains("attendee@abc.com")
+                .contains("This is a recurring test alarm event.");
+        }));
+    }
+
+    @Test
+    void shouldUpdateRecurringAlarmForNextOccurrence() throws AddressException {
+        EventUid eventUid = new EventUid("recurring-event-uid-1");
+        MailAddress recipient = new MailAddress("attendee@abc.com");
+        AlarmEvent event = new AlarmEvent(
+            eventUid,
+            parse("30250801T094500Z"),
+            parse("30250801T100000Z"),
+            RECURRING,
+            Optional.empty(),
+            recipient,
+            """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:recurring-event-uid-1
+            DTSTART:30250801T100000Z
+            DTEND:30250801T110000Z
+            SUMMARY:Recurring Alarm Test Event
+            LOCATION:Test Room
+            DESCRIPTION:This is a recurring test alarm event.
+            ORGANIZER;CN=Test Organizer:mailto:organizer@abc.com
+            ATTENDEE;PARTSTAT=accepted;CN=Test Attendee:mailto:attendee@abc.com
+            RRULE:FREQ=DAILY;COUNT=3
+            BEGIN:VALARM
+            TRIGGER:-PT15M
+            ACTION:EMAIL
+            ATTENDEE:mailto:attendee@abc.com
+            DESCRIPTION:Reminder
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """);
+        alarmEventDAO.create(event).block();
+
+        clock.setInstant(parse("30250801T094500Z"));
+        testee.triggerAlarms().block();
+
+        AlarmEvent actual = alarmEventDAO.find(eventUid, recipient).block();
+        assertThat(actual.alarmTime()).isEqualTo(parse("30250802T094500Z"));
+        assertThat(actual.eventStartTime()).isEqualTo(parse("30250802T100000Z"));
+    }
+
+    @Test
+    void shouldDeleteRecurringAlarmIfNoMoreOccurrences() throws AddressException {
+        EventUid eventUid = new EventUid("recurring-event-uid-1");
+        MailAddress recipient = new MailAddress("attendee@abc.com");
+        AlarmEvent event = new AlarmEvent(
+            eventUid,
+            parse("30250803T094500Z"),
+            parse("30250803T100000Z"),
+            RECURRING,
+            Optional.empty(),
+            recipient,
+            """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:recurring-event-uid-1
+            DTSTART:30250801T100000Z
+            DTEND:30250801T110000Z
+            SUMMARY:Recurring Alarm Test Event
+            LOCATION:Test Room
+            DESCRIPTION:This is a recurring test alarm event.
+            ORGANIZER;CN=Test Organizer:mailto:organizer@abc.com
+            ATTENDEE;PARTSTAT=accepted;CN=Test Attendee:mailto:attendee@abc.com
+            RRULE:FREQ=DAILY;COUNT=3
+            BEGIN:VALARM
+            TRIGGER:-PT15M
+            ACTION:EMAIL
+            ATTENDEE:mailto:attendee@abc.com
+            DESCRIPTION:Reminder
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """);
+        alarmEventDAO.create(event).block();
+
+        clock.setInstant(parse("30250803T094500Z"));
+        testee.triggerAlarms().block();
+
+        assertThat(alarmEventDAO.find(eventUid, recipient).blockOptional()).isEmpty();
+    }
+
     private JsonPath smtpMailsResponse() {
         return given(requestSpecification).get("/smtpMails").jsonPath();
     }
@@ -428,5 +666,10 @@ public class AlarmTriggerServiceTest {
         matcher.find();
         String base64Html = matcher.group(1).replaceAll("\\s+", "");
         return new String(Base64.getDecoder().decode(base64Html), StandardCharsets.UTF_8);
+    }
+
+    private Instant parse(String date) {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmssX");
+        return ZonedDateTime.parse(date, formatter).toInstant();
     }
 }

@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -54,13 +55,17 @@ import com.linagora.calendar.storage.AlarmEventDAO;
 import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.ResolvedSettings;
+import com.linagora.calendar.storage.event.AlarmInstantFactory;
 import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.exception.DomainNotFoundException;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.component.VEvent;
+import net.fortuna.ical4j.model.property.DateProperty;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 public class AlarmTriggerService {
@@ -73,6 +78,8 @@ public class AlarmTriggerService {
             .map(VEvent.class::cast)
             .orElseThrow(() -> new IllegalStateException("No VEvent found in the calendar event"));
 
+    public static final boolean RECURRING = true;
+
     private static final Logger LOGGER = org.slf4j.LoggerFactory.getLogger(AlarmTriggerService.class);
 
     private final AlarmEventDAO alarmEventDAO;
@@ -81,6 +88,7 @@ public class AlarmTriggerService {
     private final SimpleSessionProvider sessionProvider;
     private final SettingsBasedResolver settingsBasedResolver;
     private final MessageGenerator.Factory messageGeneratorFactory;
+    private final AlarmInstantFactory alarmInstantFactory;
     private final MaybeSender maybeSender;
 
     @Inject
@@ -88,7 +96,7 @@ public class AlarmTriggerService {
                                Clock clock,
                                MailSender.Factory mailSenderFactory, SimpleSessionProvider sessionProvider,
                                SettingsBasedResolver settingsBasedResolver,
-                               MessageGenerator.Factory messageGeneratorFactory,
+                               MessageGenerator.Factory messageGeneratorFactory, AlarmInstantFactory alarmInstantFactory,
                                MailTemplateConfiguration mailTemplateConfiguration) {
         this.alarmEventDAO = alarmEventDAO;
         this.clock = clock;
@@ -96,6 +104,7 @@ public class AlarmTriggerService {
         this.sessionProvider = sessionProvider;
         this.settingsBasedResolver = settingsBasedResolver;
         this.messageGeneratorFactory = messageGeneratorFactory;
+        this.alarmInstantFactory = alarmInstantFactory;
         this.maybeSender = mailTemplateConfiguration.sender();
     }
 
@@ -103,8 +112,22 @@ public class AlarmTriggerService {
         Instant now = clock.instant().truncatedTo(ChronoUnit.MILLIS);
         return alarmEventDAO.findAlarmsToTrigger(now)
             .flatMap(alarmEvent -> sendMail(alarmEvent, now)
-                .then(alarmEventDAO.delete(alarmEvent.eventUid(), alarmEvent.recipient())))
+                .then(cleanup(alarmEvent)))
             .then();
+    }
+
+    private Mono<Void> cleanup(AlarmEvent alarmEvent) {
+        if (alarmEvent.recurring()) {
+            // If the event is recurring, we need to update the alarm time for the next occurrence
+            return alarmInstantFactory.computeNextAlarmInstant(CalendarUtil.parseIcs(alarmEvent.ics()), Username.fromMailAddress(alarmEvent.recipient()))
+                .map(alarmInstant -> Flux.fromIterable(alarmInstant.recipients())
+                    .map(recipient -> new AlarmEvent(alarmEvent.eventUid(), alarmInstant.alarmTime(), alarmInstant.eventStartTime(),
+                        RECURRING, alarmInstant.recurrenceId().map(DateProperty::getValue), recipient, alarmEvent.ics()))
+                    .flatMap(alarmEventDAO::update)
+                    .then())
+                .orElse(alarmEventDAO.delete(alarmEvent.eventUid(), alarmEvent.recipient()));
+        }
+        return alarmEventDAO.delete(alarmEvent.eventUid(), alarmEvent.recipient());
     }
 
     private Mono<Void> sendMail(AlarmEvent alarmEvent, Instant now) {
@@ -112,6 +135,7 @@ public class AlarmTriggerService {
         return getUserSettings(recipientUser).flatMap(resolvedSettings -> {
             Locale locale = resolvedSettings.locale();
             var model = toPugModel(CalendarUtil.parseIcs(alarmEvent.ics()),
+                alarmEvent.recurrenceId(),
                 locale,
                 Duration.between(now, alarmEvent.eventStartTime()));
             return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(locale), new TemplateType("event-alarm")))
@@ -133,9 +157,11 @@ public class AlarmTriggerService {
     }
 
     private Map<String, Object> toPugModel(Calendar calendar,
-                                          Locale locale,
-                                          Duration duration) {
-        VEvent vEvent = GET_FIRST_VEVENT_FUNCTION.apply(calendar);
+                                           Optional<String> maybeRecurrenceId,
+                                           Locale locale,
+                                           Duration duration) {
+        VEvent vEvent = maybeRecurrenceId.map(recurrenceId -> getVEvent(calendar, recurrenceId))
+            .orElse(GET_FIRST_VEVENT_FUNCTION.apply(calendar));
         PersonModel organizer = PERSON_TO_MODEL.apply(EventParseUtils.getOrganizer(vEvent));
         String summary = EventParseUtils.getSummary(vEvent).orElse(StringUtils.EMPTY);
 
@@ -146,6 +172,15 @@ public class AlarmTriggerService {
         return ImmutableMap.of("content", contentBuilder.build(),
             "subject.summary", summary,
             "subject.organizer", StringUtils.defaultIfEmpty(organizer.cn(), organizer.email()));
+    }
+
+    private VEvent getVEvent(Calendar calendar, String recurrenceId) {
+        return calendar.getComponents(Component.VEVENT)
+            .stream()
+            .map(VEvent.class::cast)
+            .filter(event -> event.getProperty(Property.RECURRENCE_ID).map(Property::getValue).map(recurrenceId::equals).orElse(false))
+            .findAny()
+            .orElseThrow(() -> new IllegalStateException("No VEvent found with recurrence ID: " + recurrenceId));
     }
 
     private Map<String, Object> toPugModel(VEvent vEvent) {
