@@ -31,5 +31,5 @@ public interface TestFixture {
         .with()
         .pollDelay(Duration.ofMillis(500))
         .await();
-    ConditionFactory awaitAtMost = calmlyAwait.atMost(200, TimeUnit.SECONDS);
+    ConditionFactory awaitAtMost = calmlyAwait.atMost(30, TimeUnit.SECONDS);
 }
