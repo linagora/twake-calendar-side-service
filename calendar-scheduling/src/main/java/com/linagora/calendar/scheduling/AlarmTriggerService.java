@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.scheduling;
 
+import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
+
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -79,6 +81,7 @@ public class AlarmTriggerService {
             .orElseThrow(() -> new IllegalStateException("No VEvent found in the calendar event"));
 
     public static final boolean RECURRING = true;
+    public static final TemplateType TEMPLATE_TYPE = new TemplateType("event-alarm");
 
     private static final Logger LOGGER = org.slf4j.LoggerFactory.getLogger(AlarmTriggerService.class);
 
@@ -112,7 +115,16 @@ public class AlarmTriggerService {
         Instant now = clock.instant().truncatedTo(ChronoUnit.MILLIS);
         return alarmEventDAO.findAlarmsToTrigger(now)
             .flatMap(alarmEvent -> sendMail(alarmEvent, now)
-                .then(cleanup(alarmEvent)))
+                    .then(cleanup(alarmEvent))
+                    .doOnSuccess(unused -> LOGGER.info("Processed alarm for event: {}, recipient: {}, eventStartTime: {}",
+                        alarmEvent.eventUid(), alarmEvent.recipient(), alarmEvent.eventStartTime()))
+                    .onErrorResume(error -> {
+                        LOGGER.error("Error processing alarm for event: {}, recipient: {}, eventStartTime: {}",
+                            alarmEvent.eventUid(), alarmEvent.recipient(), alarmEvent.eventStartTime(),
+                            error);
+                        return Mono.empty();
+                    }),
+                DEFAULT_CONCURRENCY)
             .then();
     }
 
@@ -138,7 +150,7 @@ public class AlarmTriggerService {
                 alarmEvent.recurrenceId(),
                 locale,
                 Duration.between(now, alarmEvent.eventStartTime()));
-            return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(locale), new TemplateType("event-alarm")))
+            return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(locale), TEMPLATE_TYPE))
                 .flatMap(messageGenerator -> messageGenerator.generate(recipientUser, maybeSender.asOptional(), model, List.of()))
                 .flatMap(message -> mailSenderFactory.create()
                     .flatMap(mailSender -> mailSender.send(new Mail(maybeSender, List.of(alarmEvent.recipient()), message))));
@@ -232,18 +244,5 @@ public class AlarmTriggerService {
         return measures.stream()
             .map(unitFormatter::format)
             .collect(Collectors.joining(" "));
-    }
-
-    public static void main(String[] args) {
-        Duration[] testDurations = {
-            Duration.ofMinutes(45),
-            Duration.ofHours(2).plusMinutes(30),
-            Duration.ofDays(1).plusHours(5),
-            Duration.ofDays(3)
-        };
-
-        for (Duration d : testDurations) {
-            System.out.println("→ " + formatDuration(d, Locale.ENGLISH));
-        }
     }
 }
