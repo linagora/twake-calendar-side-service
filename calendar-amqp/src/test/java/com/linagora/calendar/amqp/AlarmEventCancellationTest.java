@@ -460,6 +460,7 @@ public class AlarmEventCancellationTest {
             DTEND;TZID=Asia/Ho_Chi_Minh:%s
             SUMMARY:Twake Calendar - Sprint planning #04
             ORGANIZER:mailto:%s
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:%s
             %s
             %s
             END:VEVENT
@@ -469,7 +470,7 @@ public class AlarmEventCancellationTest {
             dtStamp,
             startDateTime,
             endDateTime,
-            organizerEmail,
+            organizerEmail, organizerEmail,
             attendeeLines,
             vAlarm);
     }
