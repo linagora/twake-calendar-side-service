@@ -175,7 +175,7 @@ public interface AlarmInstantFactory {
         }
 
         private Optional<VEvent> findUpcomingFromSingleEvent(VEvent event, Username username) {
-            boolean isAcceptedOrOrganizer = hasAcceptedOrIsOrganizer(event, username);
+            boolean isAcceptedOrOrganizer = hasAccepted(event, username);
             boolean isUpcoming = clock.instant().isBefore(EventParseUtils.getStartTime(event).toInstant());
 
             if (isAcceptedOrOrganizer && isUpcoming) {
@@ -226,21 +226,13 @@ public interface AlarmInstantFactory {
                 .map(recurrenceDate -> overrideMap.getOrDefault(
                     recurrenceDate,
                     createInstanceVEvent(master, recurrenceDate.atZone(ZoneOffset.UTC))))
-                .filter(event -> hasAcceptedOrIsOrganizer(event, username))
+                .filter(event -> hasAccepted(event, username))
                 .sorted(EARLIEST_FIRST_EVENT_COMPARATOR)
                 .toList();
         }
 
-        private boolean hasAcceptedOrIsOrganizer(VEvent vEvent, Username username) {
-            boolean isOrganizer = Optional.ofNullable(EventParseUtils.getOrganizer(vEvent))
-                .map(EventFields.Person::email)
-                .map(MailAddress::asString)
-                .map(organizerEmail -> organizerEmail.equalsIgnoreCase(username.asString()))
-                .orElse(false);
-
-            return isOrganizer
-                ||
-                EventParseUtils.getAttendees(vEvent).stream()
+        private boolean hasAccepted(VEvent vEvent, Username username) {
+            return EventParseUtils.getAttendees(vEvent).stream()
                     .anyMatch(person -> person.email().asString().equalsIgnoreCase(username.asString())
                         && person.partStat().map(partStat -> partStat == PartStat.ACCEPTED).orElse(false));
         }
