@@ -18,21 +18,24 @@
 
 package com.linagora.calendar.scheduling;
 
+import static com.linagora.calendar.scheduling.TimeFormatUtil.formatDuration;
+import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader.ALARM_SETTING_IDENTIFIER;
+import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader.ENABLE_ALARM;
 import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 
 import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.MaybeSender;
@@ -40,9 +43,6 @@ import org.apache.james.core.Username;
 import org.slf4j.Logger;
 
 import com.google.common.collect.ImmutableMap;
-import com.ibm.icu.text.MeasureFormat;
-import com.ibm.icu.util.Measure;
-import com.ibm.icu.util.TimeUnit;
 import com.linagora.calendar.dav.CalendarUtil;
 import com.linagora.calendar.smtp.Mail;
 import com.linagora.calendar.smtp.MailSender;
@@ -55,6 +55,8 @@ import com.linagora.calendar.smtp.template.content.model.PersonModel;
 import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.AlarmEventDAO;
 import com.linagora.calendar.storage.SimpleSessionProvider;
+import com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader;
+import com.linagora.calendar.storage.configuration.resolver.ConfigurationResolver;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.ResolvedSettings;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
@@ -95,11 +97,29 @@ public class AlarmTriggerService {
     private final MaybeSender maybeSender;
 
     @Inject
+    @Singleton
     public AlarmTriggerService(AlarmEventDAO alarmEventDAO,
                                Clock clock,
-                               MailSender.Factory mailSenderFactory, SimpleSessionProvider sessionProvider,
+                               MailSender.Factory mailSenderFactory,
+                               SimpleSessionProvider sessionProvider,
+                               ConfigurationResolver configurationResolver,
+                               MessageGenerator.Factory messageGeneratorFactory,
+                               AlarmInstantFactory alarmInstantFactory,
+                               MailTemplateConfiguration mailTemplateConfiguration) {
+        this(alarmEventDAO, clock, mailSenderFactory, sessionProvider,
+            SettingsBasedResolver.of(configurationResolver,
+                Set.of(SettingsBasedResolver.LanguageSettingReader.INSTANCE, SettingsBasedResolver.TimeZoneSettingReader.INSTANCE, new AlarmSettingReader())),
+            messageGeneratorFactory, alarmInstantFactory,
+            mailTemplateConfiguration);
+    }
+
+    public AlarmTriggerService(AlarmEventDAO alarmEventDAO,
+                               Clock clock,
+                               MailSender.Factory mailSenderFactory,
+                               SimpleSessionProvider sessionProvider,
                                SettingsBasedResolver settingsBasedResolver,
-                               MessageGenerator.Factory messageGeneratorFactory, AlarmInstantFactory alarmInstantFactory,
+                               MessageGenerator.Factory messageGeneratorFactory,
+                               AlarmInstantFactory alarmInstantFactory,
                                MailTemplateConfiguration mailTemplateConfiguration) {
         this.alarmEventDAO = alarmEventDAO;
         this.clock = clock;
@@ -145,15 +165,20 @@ public class AlarmTriggerService {
     private Mono<Void> sendMail(AlarmEvent alarmEvent, Instant now) {
         Username recipientUser = Username.fromMailAddress(alarmEvent.recipient());
         return getUserSettings(recipientUser).flatMap(resolvedSettings -> {
-            Locale locale = resolvedSettings.locale();
-            var model = toPugModel(CalendarUtil.parseIcs(alarmEvent.ics()),
-                alarmEvent.recurrenceId(),
-                locale,
-                Duration.between(now, alarmEvent.eventStartTime()));
-            return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(locale), TEMPLATE_TYPE))
-                .flatMap(messageGenerator -> messageGenerator.generate(recipientUser, maybeSender.asOptional(), model, List.of()))
-                .flatMap(message -> mailSenderFactory.create()
-                    .flatMap(mailSender -> mailSender.send(new Mail(maybeSender, List.of(alarmEvent.recipient()), message))));
+            boolean isUserAlarmEnabled = resolvedSettings.get(ALARM_SETTING_IDENTIFIER, Boolean.class).orElse(ENABLE_ALARM);
+            if (isUserAlarmEnabled) {
+                Locale locale = resolvedSettings.locale();
+                var model = toPugModel(CalendarUtil.parseIcs(alarmEvent.ics()),
+                    alarmEvent.recurrenceId(),
+                    locale,
+                    Duration.between(now, alarmEvent.eventStartTime()));
+                return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(locale), TEMPLATE_TYPE))
+                    .flatMap(messageGenerator -> messageGenerator.generate(recipientUser, maybeSender.asOptional(), model, List.of()))
+                    .flatMap(message -> mailSenderFactory.create()
+                        .flatMap(mailSender -> mailSender.send(new Mail(maybeSender, List.of(alarmEvent.recipient()), message))));
+            } else {
+                return Mono.empty();
+            }
         });
     }
 
@@ -211,35 +236,5 @@ public class AlarmTriggerService {
         EventParseUtils.getDescription(vEvent).ifPresent(description -> eventBuilder.put("description", description));
 
         return eventBuilder.build();
-    }
-
-    public String formatDuration(Duration duration, Locale locale) {
-        long totalSeconds = duration.getSeconds();
-
-        long days = totalSeconds / (24 * 3600);
-        long hours = (totalSeconds % (24 * 3600)) / 3600;
-        long minutes = (totalSeconds % 3600) / 60;
-
-        List<Measure> measures = new ArrayList<>();
-
-        if (days >= 1) {
-            measures.add(new Measure(days, TimeUnit.DAY));
-            if (hours > 0) {
-                measures.add(new Measure(hours, TimeUnit.HOUR));
-            }
-        } else if (hours >= 1) {
-            measures.add(new Measure(hours, TimeUnit.HOUR));
-            if (minutes > 0) {
-                measures.add(new Measure(minutes, TimeUnit.MINUTE));
-            }
-        } else {
-            measures.add(new Measure(minutes, TimeUnit.MINUTE));
-        }
-
-        MeasureFormat unitFormatter = MeasureFormat.getInstance(locale, MeasureFormat.FormatWidth.WIDE);
-
-        return measures.stream()
-            .map(unitFormatter::format)
-            .collect(Collectors.joining(" "));
     }
 }

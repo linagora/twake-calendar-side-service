@@ -19,10 +19,15 @@
 package com.linagora.calendar.scheduling;
 
 import static com.linagora.calendar.storage.configuration.EntryIdentifier.LANGUAGE_IDENTIFIER;
+import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader.ALARM_SETTING_IDENTIFIER;
+import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader.ENABLE_ALARM;
 import static com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.TimeZoneSettingReader.TIMEZONE_IDENTIFIER;
 import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.when;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -54,6 +59,7 @@ import org.awaitility.core.ConditionFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.mockito.Mockito;
 
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.smtp.MailSender;
@@ -90,6 +96,7 @@ public class AlarmTriggerServiceTest {
     private RequestSpecification requestSpecification;
     private MemoryAlarmEventDAO alarmEventDAO;
     private UpdatableTickingClock clock;
+    private SettingsBasedResolver settingsBasedResolver;
     private AlarmTriggerService testee;
 
     @BeforeEach
@@ -114,10 +121,15 @@ public class AlarmTriggerServiceTest {
             MaybeSender.getMailSender("no-reply@openpaas.org"));
         MessageGenerator.Factory messageGeneratorFactory = MessageGenerator.factory(mailTemplateConfig, fileSystem);
 
-        SettingsBasedResolver settingsBasedResolver = (session) -> Mono.just(new SettingsBasedResolver.ResolvedSettings(
-            Map.of(
-                LANGUAGE_IDENTIFIER, Locale.ENGLISH,
-                TIMEZONE_IDENTIFIER, ZoneId.of("UTC"))));
+        settingsBasedResolver = Mockito.mock(SettingsBasedResolver.class);
+
+        when(settingsBasedResolver.readSavedSettings(any()))
+            .thenReturn(Mono.just(new SettingsBasedResolver.ResolvedSettings(
+                Map.of(
+                    LANGUAGE_IDENTIFIER, Locale.ENGLISH,
+                    TIMEZONE_IDENTIFIER, ZoneId.of("UTC"),
+                    ALARM_SETTING_IDENTIFIER, ENABLE_ALARM
+                ))));
 
         clock = new UpdatableTickingClock(Instant.now());
 
@@ -278,6 +290,50 @@ public class AlarmTriggerServiceTest {
             new EventUid("event-uid-1"),
             now.minus(20, ChronoUnit.MINUTES),
             now.minus(10, ChronoUnit.MINUTES),
+            NO_RECURRING,
+            Optional.empty(),
+            new MailAddress("attendee@abc.com"),
+            """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:event-uid-1
+            DTSTART:20250801T100000Z
+            DTEND:20250801T110000Z
+            SUMMARY:Alarm Test Event
+            LOCATION:Test Room
+            DESCRIPTION:This is a test alarm event.
+            ORGANIZER;CN=Test Organizer:mailto:organizer@abc.com
+            ATTENDEE;CN=Test Attendee:mailto:attendee@abc.com
+            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:organizer@abc.com
+            END:VEVENT
+            END:VCALENDAR
+            """);
+        alarmEventDAO.create(event).block();
+
+        testee.triggerAlarms().block();
+
+        // Wait for the mail to be received via mock SMTP
+        awaitAtMost.atMost(Duration.ofSeconds(20))
+            .untilAsserted(() -> assertThat(smtpMailsResponse().getList("")).hasSize(0));
+    }
+
+    @Test
+    void shouldNotSendAlarmEmailWhenAlarmIsDisabled() throws AddressException {
+        reset(settingsBasedResolver);
+        when(settingsBasedResolver.readSavedSettings(any()))
+            .thenReturn(Mono.just(new SettingsBasedResolver.ResolvedSettings(
+                Map.of(
+                    LANGUAGE_IDENTIFIER, Locale.ENGLISH,
+                    TIMEZONE_IDENTIFIER, ZoneId.of("UTC"),
+                    ALARM_SETTING_IDENTIFIER, !ENABLE_ALARM
+                ))));
+
+        Instant now = clock.instant();
+        AlarmEvent event = new AlarmEvent(
+            new EventUid("event-uid-1"),
+            now.minus(10, ChronoUnit.MINUTES),
+            now.plus(10, ChronoUnit.MINUTES),
             NO_RECURRING,
             Optional.empty(),
             new MailAddress("attendee@abc.com"),
