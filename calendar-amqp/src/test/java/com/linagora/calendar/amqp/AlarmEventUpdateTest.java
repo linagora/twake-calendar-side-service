@@ -366,8 +366,6 @@ public class AlarmEventUpdateTest {
                 .find(eventUid, organizer.username().asMailAddress())
                 .block();
 
-            System.out.println(updated);
-
             assertThat(updated).isNull();
         });
     }

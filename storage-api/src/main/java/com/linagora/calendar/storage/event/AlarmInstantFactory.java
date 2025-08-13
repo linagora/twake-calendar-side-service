@@ -42,6 +42,7 @@ import java.util.stream.Collectors;
 import jakarta.mail.internet.AddressException;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;
@@ -124,11 +125,13 @@ public interface AlarmInstantFactory {
 
         private List<MailAddress> extractRecipients(VAlarm vAlarm) {
             return vAlarm.getProperties(ATTENDEE).stream()
-                .map(property -> {
+                .map(property -> Strings.CI.removeStart(property.getValue(), "mailto:"))
+                .filter(StringUtils::isNotBlank)
+                .map(mailAddressValue -> {
                     try {
-                        return new MailAddress(StringUtils.removeStartIgnoreCase(property.getValue(), "mailto:"));
+                        return new MailAddress(mailAddressValue);
                     } catch (AddressException e) {
-                        throw new IllegalArgumentException("Invalid email address in ATTENDEE property: " + property.getValue(), e);
+                        throw new IllegalArgumentException("Invalid email address in ATTENDEE property: " + mailAddressValue, e);
                     }
                 })
                 .toList();
