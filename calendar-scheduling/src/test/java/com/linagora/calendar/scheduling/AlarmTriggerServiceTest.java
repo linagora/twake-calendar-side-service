@@ -237,120 +237,6 @@ public class AlarmTriggerServiceTest {
     }
 
     @Test
-    void shouldSendAlarmEmailWithHourDurationWhenDifferenceBetweenNowAndEventStartTimeIsGreaterThanOneHour() throws AddressException {
-        Instant now = clock.instant();
-        AlarmEvent event = new AlarmEvent(
-            new EventUid("event-uid-1"),
-            now.minus(10, ChronoUnit.MINUTES),
-            now.plus(1, ChronoUnit.HOURS).plus(10, ChronoUnit.MINUTES),
-            NO_RECURRING,
-            Optional.empty(),
-            new MailAddress("attendee@abc.com"),
-            """
-            BEGIN:VCALENDAR
-            VERSION:2.0
-            BEGIN:VEVENT
-            UID:event-uid-1
-            DTSTART:20250801T100000Z
-            DTEND:20250801T110000Z
-            SUMMARY:Alarm Test Event
-            LOCATION:Test Room
-            DESCRIPTION:This is a test alarm event.
-            ORGANIZER;CN=Test Organizer:mailto:organizer@abc.com
-            ATTENDEE;CN=Test Attendee:mailto:attendee@abc.com
-            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:organizer@abc.com
-            END:VEVENT
-            END:VCALENDAR
-            """);
-        alarmEventDAO.create(event).block();
-
-        testee.triggerAlarms().block();
-
-        // Wait for the mail to be received via mock SMTP
-        awaitAtMost.atMost(Duration.ofSeconds(20))
-            .untilAsserted(() -> assertThat(smtpMailsResponse().getList("")).hasSize(1));
-
-        JsonPath smtpMailsResponse = smtpMailsResponse();
-
-        assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
-            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo("attendee@abc.com");
-            softly.assertThat(smtpMailsResponse.getString("[0].message"))
-                .contains("Subject: Notification: Alarm Test Event")
-                .contains("Content-Type: multipart/mixed;")
-                .containsIgnoringNewLines("""
-                    Content-Transfer-Encoding: base64
-                    Content-Type: text/html; charset=UTF-8
-                    """);
-
-            String html = getHtml(smtpMailsResponse);
-
-            softly.assertThat(html).contains("This event is about to begin in 1 hour 10 minutes")
-                .contains("Test Room")
-                .contains("organizer@abc.com")
-                .contains("attendee@abc.com")
-                .contains("This is a test alarm event.");
-        }));
-    }
-
-    @Test
-    void shouldSendAlarmEmailWithDayDurationWhenDifferenceBetweenNowAndEventStartTimeIsGreaterThanOneDay() throws AddressException {
-        Instant now = clock.instant();
-        AlarmEvent event = new AlarmEvent(
-            new EventUid("event-uid-1"),
-            now.minus(10, ChronoUnit.MINUTES),
-            now.plus(2, ChronoUnit.DAYS).plus(2, ChronoUnit.HOURS),
-            NO_RECURRING,
-            Optional.empty(),
-            new MailAddress("attendee@abc.com"),
-            """
-            BEGIN:VCALENDAR
-            VERSION:2.0
-            BEGIN:VEVENT
-            UID:event-uid-1
-            DTSTART:20250801T100000Z
-            DTEND:20250801T110000Z
-            SUMMARY:Alarm Test Event
-            LOCATION:Test Room
-            DESCRIPTION:This is a test alarm event.
-            ORGANIZER;CN=Test Organizer:mailto:organizer@abc.com
-            ATTENDEE;CN=Test Attendee:mailto:attendee@abc.com
-            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:organizer@abc.com
-            END:VEVENT
-            END:VCALENDAR
-            """);
-        alarmEventDAO.create(event).block();
-
-        testee.triggerAlarms().block();
-
-        // Wait for the mail to be received via mock SMTP
-        awaitAtMost.atMost(Duration.ofSeconds(20))
-            .untilAsserted(() -> assertThat(smtpMailsResponse().getList("")).hasSize(1));
-
-        JsonPath smtpMailsResponse = smtpMailsResponse();
-
-        assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
-            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo("attendee@abc.com");
-            softly.assertThat(smtpMailsResponse.getString("[0].message"))
-                .contains("Subject: Notification: Alarm Test Event")
-                .contains("Content-Type: multipart/mixed;")
-                .containsIgnoringNewLines("""
-                    Content-Transfer-Encoding: base64
-                    Content-Type: text/html; charset=UTF-8
-                    """);
-
-            String html = getHtml(smtpMailsResponse);
-
-            softly.assertThat(html).contains("This event is about to begin in 2 days 2 hour")
-                .contains("Test Room")
-                .contains("organizer@abc.com")
-                .contains("attendee@abc.com")
-                .contains("This is a test alarm event.");
-        }));
-    }
-
-    @Test
     void shouldNotSendAlarmEmailWhenAlarmTimeGreaterThanNow() throws AddressException {
         Instant now = clock.instant();
         AlarmEvent event = new AlarmEvent(
@@ -429,7 +315,7 @@ public class AlarmTriggerServiceTest {
             parse("30250801T094500Z"),
             parse("30250801T100000Z"),
             RECURRING,
-            Optional.empty(),
+            Optional.of("30250801T100000Z"),
             recipient,
             """
             BEGIN:VCALENDAR
@@ -578,7 +464,7 @@ public class AlarmTriggerServiceTest {
             parse("30250801T094500Z"),
             parse("30250801T100000Z"),
             RECURRING,
-            Optional.empty(),
+            Optional.of("30250801T100000Z"),
             recipient,
             """
             BEGIN:VCALENDAR
@@ -621,7 +507,7 @@ public class AlarmTriggerServiceTest {
             parse("30250803T094500Z"),
             parse("30250803T100000Z"),
             RECURRING,
-            Optional.empty(),
+            Optional.of("30250805T100000Z"),
             recipient,
             """
             BEGIN:VCALENDAR

@@ -117,10 +117,10 @@ public class AlarmTriggerService {
             .flatMap(alarmEvent -> sendMail(alarmEvent, now)
                     .then(cleanup(alarmEvent))
                     .doOnSuccess(unused -> LOGGER.info("Processed alarm for event: {}, recipient: {}, eventStartTime: {}",
-                        alarmEvent.eventUid(), alarmEvent.recipient(), alarmEvent.eventStartTime()))
+                        alarmEvent.eventUid().value(), alarmEvent.recipient().asString(), alarmEvent.eventStartTime()))
                     .onErrorResume(error -> {
                         LOGGER.error("Error processing alarm for event: {}, recipient: {}, eventStartTime: {}",
-                            alarmEvent.eventUid(), alarmEvent.recipient(), alarmEvent.eventStartTime(),
+                            alarmEvent.eventUid().value(), alarmEvent.recipient().asString(), alarmEvent.eventStartTime(),
                             error);
                         return Mono.empty();
                     }),
@@ -172,9 +172,8 @@ public class AlarmTriggerService {
                                            Optional<String> maybeRecurrenceId,
                                            Locale locale,
                                            Duration duration) {
-        VEvent vEvent = maybeRecurrenceId.map(recurrenceId -> getVEvent(calendar, recurrenceId))
+        VEvent vEvent = maybeRecurrenceId.flatMap(recurrenceId -> getVEvent(calendar, recurrenceId))
             .orElse(GET_FIRST_VEVENT_FUNCTION.apply(calendar));
-        PersonModel organizer = PERSON_TO_MODEL.apply(EventParseUtils.getOrganizer(vEvent));
         String summary = EventParseUtils.getSummary(vEvent).orElse(StringUtils.EMPTY);
 
         ImmutableMap.Builder<String, Object> contentBuilder = ImmutableMap.builder();
@@ -182,17 +181,15 @@ public class AlarmTriggerService {
             .put("duration", formatDuration(duration, locale));
 
         return ImmutableMap.of("content", contentBuilder.build(),
-            "subject.summary", summary,
-            "subject.organizer", StringUtils.defaultIfEmpty(organizer.cn(), organizer.email()));
+            "subject.summary", summary);
     }
 
-    private VEvent getVEvent(Calendar calendar, String recurrenceId) {
+    private Optional<VEvent> getVEvent(Calendar calendar, String recurrenceId) {
         return calendar.getComponents(Component.VEVENT)
             .stream()
             .map(VEvent.class::cast)
             .filter(event -> event.getProperty(Property.RECURRENCE_ID).map(Property::getValue).map(recurrenceId::equals).orElse(false))
-            .findAny()
-            .orElseThrow(() -> new IllegalStateException("No VEvent found with recurrence ID: " + recurrenceId));
+            .findAny();
     }
 
     private Map<String, Object> toPugModel(VEvent vEvent) {
@@ -216,7 +213,7 @@ public class AlarmTriggerService {
         return eventBuilder.build();
     }
 
-    public static String formatDuration(Duration duration, Locale locale) {
+    public String formatDuration(Duration duration, Locale locale) {
         long totalSeconds = duration.getSeconds();
 
         long days = totalSeconds / (24 * 3600);
