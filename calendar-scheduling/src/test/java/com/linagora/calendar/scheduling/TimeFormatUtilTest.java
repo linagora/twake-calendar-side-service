@@ -30,30 +30,30 @@ class TimeFormatUtilTest {
     @Test
     void shouldFormatMinutesOnly() {
         String result = TimeFormatUtil.formatDuration(Duration.ofMinutes(15), Locale.ENGLISH);
-        assertThat(result).contains("15 minutes");
+        assertThat(result).isEqualTo("15 minutes");
     }
 
     @Test
     void shouldFormatHoursAndMinutes() {
         String result = TimeFormatUtil.formatDuration(Duration.ofMinutes(125), Locale.ENGLISH);
-        assertThat(result).contains("2 hours 5 minutes");
+        assertThat(result).isEqualTo("2 hours 5 minutes");
     }
 
     @Test
     void shouldFormatDaysAndHours() {
         String result = TimeFormatUtil.formatDuration(Duration.ofHours(49), Locale.ENGLISH);
-        assertThat(result).contains("2 days 1 hour");
+        assertThat(result).isEqualTo("2 days 1 hour");
     }
 
     @Test
     void shouldFormatHoursOnly() {
         String result = TimeFormatUtil.formatDuration(Duration.ofHours(3), Locale.ENGLISH);
-        assertThat(result).contains("3 hours");
+        assertThat(result).isEqualTo("3 hours");
     }
 
     @Test
-    void shouldFormatDaysOnly() {
-        String result = TimeFormatUtil.formatDuration(Duration.ofDays(2), Locale.ENGLISH);
-        assertThat(result).contains("2 days");
+    void shouldFormatDaysAndHoursInFrench() {
+        String result = TimeFormatUtil.formatDuration(Duration.ofHours(49), Locale.FRENCH);
+        assertThat(result).isEqualToNormalizingWhitespace("2 jours 1 heure");
     }
 }

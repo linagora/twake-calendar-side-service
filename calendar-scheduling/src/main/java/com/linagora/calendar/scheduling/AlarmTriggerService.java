@@ -164,9 +164,9 @@ public class AlarmTriggerService {
 
     private Mono<Void> sendMail(AlarmEvent alarmEvent, Instant now) {
         Username recipientUser = Username.fromMailAddress(alarmEvent.recipient());
-        return getUserSettings(recipientUser).flatMap(resolvedSettings -> {
-            boolean isUserAlarmEnabled = resolvedSettings.get(ALARM_SETTING_IDENTIFIER, Boolean.class).orElse(ENABLE_ALARM);
-            if (isUserAlarmEnabled) {
+        return getUserSettings(recipientUser)
+            .filter(resolvedSettings -> resolvedSettings.get(ALARM_SETTING_IDENTIFIER, Boolean.class).orElse(ENABLE_ALARM))
+            .flatMap(resolvedSettings -> {
                 Locale locale = resolvedSettings.locale();
                 var model = toPugModel(CalendarUtil.parseIcs(alarmEvent.ics()),
                     alarmEvent.recurrenceId(),
@@ -176,10 +176,7 @@ public class AlarmTriggerService {
                     .flatMap(messageGenerator -> messageGenerator.generate(recipientUser, maybeSender.asOptional(), model, List.of()))
                     .flatMap(message -> mailSenderFactory.create()
                         .flatMap(mailSender -> mailSender.send(new Mail(maybeSender, List.of(alarmEvent.recipient()), message))));
-            } else {
-                return Mono.empty();
-            }
-        });
+            });
     }
 
     private Mono<ResolvedSettings> getUserSettings(Username user) {
