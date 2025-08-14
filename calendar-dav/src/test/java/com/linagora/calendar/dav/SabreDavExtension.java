@@ -36,6 +36,7 @@ import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.lang3.StringUtils;
@@ -116,9 +117,13 @@ public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup) impleme
     }
 
     public OpenPaaSUser newTestUser() {
+        return newTestUser(Optional.empty());
+    }
+
+    public OpenPaaSUser newTestUser(Optional<String> prefix) {
         OpenPaaSUser openPaasUser = dockerSabreDavSetup
             .getOpenPaaSProvisioningService()
-            .createUser()
+            .createUser(prefix)
             .block();
 
         setupUserLookupByEmail(openPaasUser.username().asString(), openPaasUser.id().value());

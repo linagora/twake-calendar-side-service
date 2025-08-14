@@ -151,7 +151,7 @@ public class AlarmEventCreateTest {
         clock = new UpdatableTickingClock(Instant.now().minus(60, MINUTES));
 
         when(settingsResolver.readSavedSettings(any()))
-            .thenReturn(Mono.just( new SettingsBasedResolver.ResolvedSettings(
+            .thenReturn(Mono.just(new SettingsBasedResolver.ResolvedSettings(
                 Map.of(ALARM_SETTING_IDENTIFIER, ENABLE_ALARM))));
 
         setupEventAlarmConsumer();
@@ -459,7 +459,7 @@ public class AlarmEventCreateTest {
         Mockito.reset(settingsResolver);
 
         when(settingsResolver.readSavedSettings(any()))
-            .thenReturn(Mono.just( new SettingsBasedResolver.ResolvedSettings(
+            .thenReturn(Mono.just(new SettingsBasedResolver.ResolvedSettings(
                 Map.of(ALARM_SETTING_IDENTIFIER, !ENABLE_ALARM))));
 
         String eventUid = UUID.randomUUID().toString();
@@ -520,6 +520,42 @@ public class AlarmEventCreateTest {
             organizer.username().asMailAddress()).blockOptional())
             .isEmpty();
     }
+
+    @Test
+    void shouldNotCreateAlarmEventForExternalAttendee() throws Exception {
+        // Given: An external attendee (outside our system domain)
+        String externalAttendeeEmail = UUID.randomUUID() + "@gmail.com";
+        String eventUid = UUID.randomUUID().toString();
+
+        String vAlarm = """
+            BEGIN:VALARM
+            TRIGGER:-PT15M
+            ACTION:EMAIL
+            ATTENDEE:mailto:%s
+            SUMMARY:Test
+            DESCRIPTION:This is an automatic alarm sent by OpenPaas
+            END:VALARM
+            """.formatted(organizer.username().asString()).trim();
+
+        // Event with VALARM for organizer, but attendee list contains only the external user
+        String calendarData = generateEventWithValarm(
+            eventUid,
+            organizer.username().asString(),
+            List.of(externalAttendeeEmail),
+            PartStat.ACCEPTED,
+            vAlarm);
+
+        // When: Organizer creates the event in CalDAV
+        davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
+
+        Thread.sleep(1000);
+
+        // Then: No AlarmEvent should be created for the external attendee
+        assertThat(alarmEventDAO.find(new EventUid(eventUid), new MailAddress(externalAttendeeEmail))
+            .blockOptional())
+            .isEmpty();
+    }
+
 
     private void attendeeAcceptsEvent(OpenPaaSUser attendee, String eventUid) {
         waitForFirstEventCreation(attendee);

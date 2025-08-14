@@ -32,6 +32,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.List;
@@ -55,6 +56,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.mockito.Mockito;
@@ -141,9 +143,9 @@ public class AlarmEventUpdateTest {
 
     @BeforeEach
     public void setUp() throws Exception {
-        organizer = sabreDavExtension.newTestUser();
-        attendee = sabreDavExtension.newTestUser();
-        attendee2 = sabreDavExtension.newTestUser();
+        organizer = sabreDavExtension.newTestUser(Optional.of("organizer_"));
+        attendee = sabreDavExtension.newTestUser(Optional.of("attendee_"));
+        attendee2 = sabreDavExtension.newTestUser(Optional.of("attendee2_"));
 
         alarmEventDAO = new MemoryAlarmEventDAO();
         calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration());
@@ -507,6 +509,203 @@ public class AlarmEventUpdateTest {
         });
     }
 
+    @Nested
+    class RecurrenceEventTest {
+        @Test
+        void shouldUseOverrideTimesForRecurringEvent() {
+            // Given (fixed times; easier to read and reason about)
+            // Recurrence: 01/10 11:00–12:00, 02/10 11:00–12:00, 03/10 11:00–12:00
+            // 2nd occurrence is overridden to 02/10 14:00–15:00
+            String startFirstInstanceLocal = "20251001T110000";
+            String endFirstInstanceLocal = "20251001T120000";
+            String startSecondOverrideLocal = "20251002T140000";
+            String endSecondOverrideLocal = "20251002T150000";
+            String originalSecondStartUtcRecId = "20251002T040000Z"; // 11:00 ICT -> 04:00Z
+            String dtStampUtc = "20250930T000000Z";
+
+            EventUid eventUid = new EventUid(UUID.randomUUID().toString());
+
+            String ics = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                CALSCALE:GREGORIAN
+                PRODID:-//App//ICS//EN
+                BEGIN:VTIMEZONE
+                TZID:Asia/Ho_Chi_Minh
+                BEGIN:STANDARD
+                TZOFFSETFROM:+0700
+                TZOFFSETTO:+0700
+                TZNAME:ICT
+                DTSTART:19700101T000000
+                END:STANDARD
+                END:VTIMEZONE
+                BEGIN:VEVENT
+                UID:{eventUid}
+                DTSTART;TZID=Asia/Ho_Chi_Minh:{startFirst}
+                DTEND;TZID=Asia/Ho_Chi_Minh:{endFirst}
+                SUMMARY:Recurrence Meeting
+                RRULE:FREQ=DAILY;COUNT=3
+                ORGANIZER;CN={organizer}:mailto:{organizer}
+                ATTENDEE;PARTSTAT=ACCEPTED;ROLE=CHAIR:mailto:{organizer}
+                DTSTAMP:{dtStamp}
+                BEGIN:VALARM
+                TRIGGER:-PT10M
+                ACTION:EMAIL
+                ATTENDEE:mailto:{organizer}
+                SUMMARY:Recurrence Meeting
+                DESCRIPTION:Starts in 10 minutes
+                END:VALARM
+                END:VEVENT
+                BEGIN:VEVENT
+                UID:{eventUid}
+                DTSTART;TZID=Asia/Ho_Chi_Minh:{startSecondOverride}
+                DTEND;TZID=Asia/Ho_Chi_Minh:{endSecondOverride}
+                SUMMARY:Recurrence Meeting
+                ORGANIZER;CN={organizer}:mailto:{organizer}
+                DTSTAMP:{dtStamp}
+                RECURRENCE-ID:{recIdUtc}
+                ATTENDEE;PARTSTAT=ACCEPTED;ROLE=CHAIR:mailto:{organizer}
+                SEQUENCE:1
+                BEGIN:VALARM
+                TRIGGER:-PT10M
+                ACTION:EMAIL
+                ATTENDEE:mailto:{organizer}
+                SUMMARY:Recurrence Meeting (Override)
+                DESCRIPTION:Starts in 10 minutes
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """
+                .replace("{eventUid}", eventUid.value())
+                .replace("{organizer}", organizer.username().asString())
+                .replace("{startFirst}", startFirstInstanceLocal)
+                .replace("{endFirst}", endFirstInstanceLocal)
+                .replace("{startSecondOverride}", startSecondOverrideLocal)
+                .replace("{endSecondOverride}", endSecondOverrideLocal)
+                .replace("{recIdUtc}", originalSecondStartUtcRecId)
+                .replace("{dtStamp}", dtStampUtc);
+
+            // Set "now" to before 2nd occurrence
+            clock.setInstant(ZonedDateTime.parse("2025-10-02T00:01:00+07:00[Asia/Ho_Chi_Minh]").toInstant());
+
+            // When: organizer creates the recurring event
+            davTestHelper.upsertCalendar(organizer, ics, eventUid);
+
+            // Then: next alarm should come from the overridden 2nd occurrence (14:00 - 10' = 13:50 ICT)
+            Instant expectedAlarm = ZonedDateTime.parse("2025-10-02T13:50:00+07:00[Asia/Ho_Chi_Minh]").toInstant();
+
+            awaitAtMost.untilAsserted(() -> {
+                AlarmEvent alarmEvent = alarmEventDAO
+                    .find(eventUid, organizer.username().asMailAddress())
+                    .block();
+
+                assertThat(alarmEvent).isNotNull();
+                assertThat(alarmEvent.alarmTime()).isEqualTo(expectedAlarm);
+
+                // Also assert recurrence-id matches the overridden instance
+                assertThat(alarmEvent.recurrenceId())
+                    .contains(originalSecondStartUtcRecId);
+            });
+        }
+
+        @Test
+        void shouldIgnoreDeclinedOccurrenceAndTriggerAlarmForNextAvailable() {
+            // Given (fixed times for readability)
+            // Recurrence (master): 01/10 11:00–12:00, 02/10 11:00–12:00, 03/10 11:00–12:00 (ICT)
+            // 2nd occurrence is overridden (time 14:00–15:00) but ATTENDEE is DECLINED
+            String startFirstInstanceLocal = "20251001T110000";
+            String endFirstInstanceLocal = "20251001T120000";
+            String startSecondOverrideLocal = "20251002T140000";
+            String endSecondOverrideLocal = "20251002T150000";
+            String originalSecondStartUtcRecId = "20251002T040000Z"; // 11:00 ICT -> 04:00Z
+            String dtStampUtc = "20250930T000000Z";
+
+            EventUid eventUid = new EventUid(UUID.randomUUID().toString());
+
+            String ics = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                CALSCALE:GREGORIAN
+                PRODID:-//App//ICS//EN
+                BEGIN:VTIMEZONE
+                TZID:Asia/Ho_Chi_Minh
+                BEGIN:STANDARD
+                TZOFFSETFROM:+0700
+                TZOFFSETTO:+0700
+                TZNAME:ICT
+                DTSTART:19700101T000000
+                END:STANDARD
+                END:VTIMEZONE
+                BEGIN:VEVENT
+                UID:{eventUid}
+                DTSTART;TZID=Asia/Ho_Chi_Minh:{startFirst}
+                DTEND;TZID=Asia/Ho_Chi_Minh:{endFirst}
+                SUMMARY:Recurrence Meeting
+                RRULE:FREQ=DAILY;COUNT=3
+                ORGANIZER;CN={organizer}:mailto:{organizer}
+                ATTENDEE;PARTSTAT=ACCEPTED;ROLE=CHAIR:mailto:{organizer}
+                DTSTAMP:{dtStamp}
+                BEGIN:VALARM
+                TRIGGER:-PT10M
+                ACTION:EMAIL
+                ATTENDEE:mailto:{organizer}
+                SUMMARY:Recurrence Meeting
+                DESCRIPTION:Starts in 10 minutes
+                END:VALARM
+                END:VEVENT
+                BEGIN:VEVENT
+                UID:{eventUid}
+                DTSTART;TZID=Asia/Ho_Chi_Minh:{startSecondOverride}
+                DTEND;TZID=Asia/Ho_Chi_Minh:{endSecondOverride}
+                SUMMARY:Recurrence Meeting
+                ORGANIZER;CN={organizer}:mailto:{organizer}
+                DTSTAMP:{dtStamp}
+                RECURRENCE-ID:{recIdUtc}
+                ATTENDEE;PARTSTAT=DECLINED;ROLE=CHAIR:mailto:{organizer}
+                SEQUENCE:1
+                BEGIN:VALARM
+                TRIGGER:-PT10M
+                ACTION:EMAIL
+                ATTENDEE:mailto:{organizer}
+                SUMMARY:Recurrence Meeting (Override)
+                DESCRIPTION:Starts in 10 minutes
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """
+                .replace("{eventUid}", eventUid.value())
+                .replace("{organizer}", organizer.username().asString())
+                .replace("{startFirst}", startFirstInstanceLocal)
+                .replace("{endFirst}", endFirstInstanceLocal)
+                .replace("{startSecondOverride}", startSecondOverrideLocal)
+                .replace("{endSecondOverride}", endSecondOverrideLocal)
+                .replace("{recIdUtc}", originalSecondStartUtcRecId)
+                .replace("{dtStamp}", dtStampUtc);
+
+            // Set "now" to day-2 00:01 ICT (well before original 11:00 ICT)
+            clock.setInstant(ZonedDateTime.parse("2025-10-02T00:01:00+07:00[Asia/Ho_Chi_Minh]").toInstant());
+
+            // When: organizer creates the recurring event
+            davTestHelper.upsertCalendar(organizer, ics, eventUid);
+
+            // Then: because the 2nd is DECLINED for the attendee, the next alarm should be the 3rd occurrence
+            // 3rd occurrence starts at 2025-10-03 11:00 ICT -> alarm at 10:50 ICT
+            Instant expectedAlarm = ZonedDateTime
+                .parse("2025-10-03T10:50:00+07:00[Asia/Ho_Chi_Minh]")
+                .toInstant();
+
+            awaitAtMost.untilAsserted(() -> {
+                AlarmEvent alarmEvent = alarmEventDAO
+                    .find(eventUid, organizer.username().asMailAddress())
+                    .block();
+
+                assertThat(alarmEvent).isNotNull();
+                assertThat(alarmEvent.alarmTime()).isEqualTo(expectedAlarm);
+                assertThat(alarmEvent.recurrenceId()).contains("20251003T040000Z");
+            });
+        }
+    }
+
     private EventUid createEventWithVALARM(OpenPaaSUser... attendees) {
         String eventUid = UUID.randomUUID().toString();
         String organizerEmail = organizer.username().asString();
@@ -579,6 +778,7 @@ public class AlarmEventUpdateTest {
             DTEND;TZID=Asia/Ho_Chi_Minh:%s
             SUMMARY:Twake Calendar - Sprint planning #04
             ORGANIZER:mailto:%s
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:%s
             %s
             %s
             END:VEVENT
@@ -588,6 +788,7 @@ public class AlarmEventUpdateTest {
             dtStamp,
             startDateTime,
             endDateTime,
+            organizerEmail,
             organizerEmail,
             attendeeLines,
             vAlarm);

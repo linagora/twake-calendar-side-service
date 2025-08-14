@@ -26,6 +26,7 @@
 
 package com.linagora.calendar.dav;
 
+import java.util.Optional;
 import java.util.UUID;
 
 import org.apache.james.core.Domain;
@@ -57,10 +58,10 @@ public class SabreDavProvisioningService {
         createDomainIfAbsent(Domain.of(DOMAIN)).block();
     }
 
-    public Mono<OpenPaaSUser> createUser() {
+    public Mono<OpenPaaSUser> createUser(Optional<String> prefix) {
         UUID randomUUID = UUID.randomUUID();
         return createDomainIfAbsent(Domain.of(DOMAIN))
-            .then(createUser(Username.fromLocalPartWithDomain("user_" + randomUUID, DOMAIN)));
+            .then(createUser(Username.fromLocalPartWithDomain(prefix.orElse("user_") + randomUUID, DOMAIN)));
     }
 
     public Mono<OpenPaaSUser> createUser(Username username) {
