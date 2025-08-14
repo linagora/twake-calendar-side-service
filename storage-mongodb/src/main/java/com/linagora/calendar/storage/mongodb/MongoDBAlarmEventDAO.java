@@ -46,23 +46,32 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 public class MongoDBAlarmEventDAO implements AlarmEventDAO {
+
     public static final String COLLECTION = "twake_calendar_alarm_events";
+    public static final String EVENT_UID_FIELD = "eventUid";
+    public static final String RECIPIENT_FIELD = "recipient";
+    public static final String ALARM_TIME_FIELD = "alarmTime";
+    public static final String EVENT_START_TIME_FIELD = "eventStartTime";
+    public static final String RECURRING_FIELD = "recurring";
+    public static final String ICS_FIELD = "ics";
+    public static final String RECURRENCE_ID_FIELD = "recurrenceId";
+
     private final MongoCollection<Document> collection;
 
     @Inject
     public MongoDBAlarmEventDAO(MongoDatabase database) {
         this.collection = database.getCollection(COLLECTION);
-        Mono.from(collection.createIndex(ascending("eventUid", "recipient"), new IndexOptions())).block();
-        Mono.from(collection.createIndex(ascending("alarmTime"), new IndexOptions())).block();
-        Mono.from(collection.createIndex(ascending("eventStartTime"), new IndexOptions())).block();
+        Mono.from(collection.createIndex(ascending(EVENT_UID_FIELD, RECIPIENT_FIELD), new IndexOptions())).block();
+        Mono.from(collection.createIndex(ascending(ALARM_TIME_FIELD), new IndexOptions())).block();
+        Mono.from(collection.createIndex(ascending(EVENT_START_TIME_FIELD), new IndexOptions())).block();
     }
 
     @Override
     public Mono<AlarmEvent> find(EventUid eventUid, MailAddress recipient) {
         return Mono.from(collection.find(
             Filters.and(
-                eq("eventUid", eventUid.value()),
-                eq("recipient", recipient.asString())
+                eq(EVENT_UID_FIELD, eventUid.value()),
+                eq(RECIPIENT_FIELD, recipient.asString())
             )).first())
             .map(this::fromDocument);
     }
@@ -76,8 +85,8 @@ public class MongoDBAlarmEventDAO implements AlarmEventDAO {
     public Mono<Void> update(AlarmEvent alarmEvent) {
         return Mono.from(collection.replaceOne(
             Filters.and(
-                eq("eventUid", alarmEvent.eventUid().value()),
-                eq("recipient", alarmEvent.recipient().asString())
+                eq(EVENT_UID_FIELD, alarmEvent.eventUid().value()),
+                eq(RECIPIENT_FIELD, alarmEvent.recipient().asString())
             ),
             toDocument(alarmEvent),
             new ReplaceOptions().upsert(true)
@@ -88,8 +97,8 @@ public class MongoDBAlarmEventDAO implements AlarmEventDAO {
     public Mono<Void> delete(EventUid eventUid, MailAddress recipient) {
         return Mono.from(collection.deleteOne(
             Filters.and(
-                eq("eventUid", eventUid.value()),
-                eq("recipient", recipient.asString())
+                eq(EVENT_UID_FIELD, eventUid.value()),
+                eq(RECIPIENT_FIELD, recipient.asString())
             ))).then();
     }
 
@@ -97,33 +106,32 @@ public class MongoDBAlarmEventDAO implements AlarmEventDAO {
     public Flux<AlarmEvent> findAlarmsToTrigger(Instant time) {
         return Flux.from(collection.find(
             Filters.and(
-                lte("alarmTime", Date.from(time)),
-                gt("eventStartTime", Date.from(time))
-            ))).map(this::fromDocument)
-            .filter(e -> time.isBefore(e.eventStartTime()));
+                lte(ALARM_TIME_FIELD, Date.from(time)),
+                gt(EVENT_START_TIME_FIELD, Date.from(time))
+            ))).map(this::fromDocument);
     }
 
     private Document toDocument(AlarmEvent event) {
         Document doc = new Document()
-            .append("eventUid", event.eventUid().value())
-            .append("alarmTime", Date.from(event.alarmTime()))
-            .append("eventStartTime", Date.from(event.eventStartTime()))
-            .append("recurring", event.recurring())
-            .append("recipient", event.recipient().asString())
-            .append("ics", event.ics());
-        event.recurrenceId().ifPresent(id -> doc.append("recurrenceId", id));
+            .append(EVENT_UID_FIELD, event.eventUid().value())
+            .append(ALARM_TIME_FIELD, Date.from(event.alarmTime()))
+            .append(EVENT_START_TIME_FIELD, Date.from(event.eventStartTime()))
+            .append(RECURRING_FIELD, event.recurring())
+            .append(RECIPIENT_FIELD, event.recipient().asString())
+            .append(ICS_FIELD, event.ics());
+        event.recurrenceId().ifPresent(id -> doc.append(RECURRENCE_ID_FIELD, id));
         return doc;
     }
 
     private AlarmEvent fromDocument(Document doc) {
         return new AlarmEvent(
-            new EventUid(doc.getString("eventUid")),
-            doc.getDate("alarmTime").toInstant(),
-            doc.getDate("eventStartTime").toInstant(),
-            doc.getBoolean("recurring", false),
-            Optional.ofNullable(doc.getString("recurrenceId")),
-            Throwing.supplier(() -> new MailAddress(doc.getString("recipient"))).get(),
-            doc.getString("ics")
+            new EventUid(doc.getString(EVENT_UID_FIELD)),
+            doc.getDate(ALARM_TIME_FIELD).toInstant(),
+            doc.getDate(EVENT_START_TIME_FIELD).toInstant(),
+            doc.getBoolean(RECURRING_FIELD, false),
+            Optional.ofNullable(doc.getString(RECURRENCE_ID_FIELD)),
+            Throwing.supplier(() -> new MailAddress(doc.getString(RECIPIENT_FIELD))).get(),
+            doc.getString(ICS_FIELD)
         );
     }
 }
