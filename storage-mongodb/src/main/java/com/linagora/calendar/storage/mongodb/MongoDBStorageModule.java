@@ -33,6 +33,7 @@ import com.google.inject.Provides;
 import com.google.inject.Scopes;
 import com.google.inject.Singleton;
 import com.google.inject.multibindings.ProvidesIntoSet;
+import com.linagora.calendar.storage.AlarmEventDAO;
 import com.linagora.calendar.storage.CaffeineOIDCTokenCache;
 import com.linagora.calendar.storage.DomainConfiguration;
 import com.linagora.calendar.storage.OIDCTokenCache;
@@ -66,6 +67,8 @@ public class MongoDBStorageModule extends AbstractModule {
         bind(MongoDBSecretLinkStore.class).in(Scopes.SINGLETON);
         bind(SecretLinkStore.class).to(MongoDBSecretLinkStore.class);
 
+        bind(MongoDBAlarmEventDAO.class).in(Scopes.SINGLETON);
+        bind(AlarmEventDAO.class).to(MongoDBAlarmEventDAO.class);
     }
 
     @Provides
