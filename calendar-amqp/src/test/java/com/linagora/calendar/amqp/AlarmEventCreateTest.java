@@ -570,6 +570,7 @@ public class AlarmEventCreateTest {
             DTEND;TZID=Asia/Ho_Chi_Minh:%s
             SUMMARY:Twake Calendar - Sprint planning #04
             ORGANIZER:mailto:%s
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:%s
             %s
             %s
             END:VEVENT
@@ -579,7 +580,7 @@ public class AlarmEventCreateTest {
             dtStamp,
             startDateTime,
             endDateTime,
-            organizerEmail,
+            organizerEmail, organizerEmail,
             attendeeLines,
             vAlarm
         );
@@ -620,6 +621,7 @@ public class AlarmEventCreateTest {
             RRULE:FREQ=WEEKLY;COUNT=4
             SUMMARY:Twake Calendar - Recurring Standup
             ORGANIZER:mailto:%s
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:%s
             %s
             %s
             END:VEVENT
@@ -629,7 +631,7 @@ public class AlarmEventCreateTest {
             dtStamp,
             startDateTime,
             endDateTime,
-            organizerEmail,
+            organizerEmail, organizerEmail,
             attendeeLines,
             vAlarm
         );
