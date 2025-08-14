@@ -41,6 +41,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.dav.CalendarUtil;
@@ -85,7 +86,7 @@ public class AlarmTriggerService {
     public static final boolean RECURRING = true;
     public static final TemplateType TEMPLATE_TYPE = new TemplateType("event-alarm");
 
-    private static final Logger LOGGER = org.slf4j.LoggerFactory.getLogger(AlarmTriggerService.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(AlarmTriggerService.class);
 
     private final AlarmEventDAO alarmEventDAO;
     private final Clock clock;
@@ -108,7 +109,7 @@ public class AlarmTriggerService {
                                MailTemplateConfiguration mailTemplateConfiguration) {
         this(alarmEventDAO, clock, mailSenderFactory, sessionProvider,
             SettingsBasedResolver.of(configurationResolver,
-                Set.of(SettingsBasedResolver.LanguageSettingReader.INSTANCE, SettingsBasedResolver.TimeZoneSettingReader.INSTANCE, new AlarmSettingReader())),
+                Set.of(SettingsBasedResolver.LanguageSettingReader.INSTANCE, new AlarmSettingReader())),
             messageGeneratorFactory, alarmInstantFactory,
             mailTemplateConfiguration);
     }
