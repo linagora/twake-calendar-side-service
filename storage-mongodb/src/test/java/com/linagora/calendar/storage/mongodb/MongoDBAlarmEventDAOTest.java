@@ -16,19 +16,28 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage;
+package com.linagora.calendar.storage.mongodb;
 
-import java.time.Clock;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-import com.google.inject.AbstractModule;
-import com.google.inject.Provides;
-import com.google.inject.Singleton;
-import com.linagora.calendar.storage.event.AlarmInstantFactory;
+import com.linagora.calendar.storage.AlarmEventDAO;
+import com.linagora.calendar.storage.AlarmEventDAOContract;
 
-public class AlarmEventModule extends AbstractModule {
-    @Provides
-    @Singleton
-    AlarmInstantFactory provideAlarmInstantFactory(Clock clock) {
-        return new AlarmInstantFactory.Default(clock);
+public class MongoDBAlarmEventDAOTest implements AlarmEventDAOContract {
+    @RegisterExtension
+    static DockerMongoDBExtension mongo = new DockerMongoDBExtension();
+
+    private MongoDBAlarmEventDAO dao;
+
+    @BeforeEach
+    void setUp() {
+        dao = new MongoDBAlarmEventDAO(mongo.getDb());
+    }
+
+    @Override
+    public AlarmEventDAO getDAO() {
+        return dao;
     }
 }
+
