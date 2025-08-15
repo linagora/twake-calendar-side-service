@@ -32,11 +32,13 @@ public class MongoDBCollectionFactory {
     public static final String USERS = MongoDBOpenPaaSUserDAO.COLLECTION;
     public static final String DOMAINS = MongoDBOpenPaaSDomainDAO.COLLECTION;
     public static final String SECRETLINKS = MongoDBSecretLinkStore.COLLECTION;
+    public static final String ALARM_EVENT_LEDGE = MongoDBAlarmEventLedgerDAO.COLLECTION;
 
     public static void initialize(MongoDatabase database) {
         createUsersCollection(database);
         createDomainsCollection(database);
         createSecretLinksCollection(database);
+        createAlarmEventLedgeCollection(database);
     }
 
     private static void createUsersCollection(MongoDatabase database) {
@@ -81,6 +83,13 @@ public class MongoDBCollectionFactory {
                     MongoDBSecretLinkStore.FIELD_CALENDAR_HOME_ID,
                     MongoDBSecretLinkStore.FIELD_CALENDAR_ID), new IndexOptions().unique(true)))
             .block();
+    }
+
+    private static void createAlarmEventLedgeCollection(MongoDatabase database) {
+        if (!collectionExists(database, ALARM_EVENT_LEDGE)) {
+            Mono.from(database.createCollection(ALARM_EVENT_LEDGE)).block();
+        }
+        MongoDBAlarmEventLedgerDAO.declareIndex(database.getCollection(ALARM_EVENT_LEDGE)).block();
     }
 
     private static boolean collectionExists(MongoDatabase database, String collectionName) {

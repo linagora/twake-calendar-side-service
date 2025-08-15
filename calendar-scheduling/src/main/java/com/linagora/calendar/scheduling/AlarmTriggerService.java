@@ -132,19 +132,24 @@ public class AlarmTriggerService {
         this.maybeSender = mailTemplateConfiguration.sender();
     }
 
+    public Mono<Void> sendMailAndCleanup(AlarmEvent alarmEvent) {
+        Instant now = clock.instant().truncatedTo(ChronoUnit.MILLIS);
+        return sendMail(alarmEvent, now)
+            .then(cleanup(alarmEvent))
+            .doOnSuccess(unused -> LOGGER.info("Processed alarm for event: {}, recipient: {}, eventStartTime: {}",
+                alarmEvent.eventUid().value(), alarmEvent.recipient().asString(), alarmEvent.eventStartTime()))
+            .onErrorResume(error -> {
+                LOGGER.error("Error processing alarm for event: {}, recipient: {}, eventStartTime: {}",
+                    alarmEvent.eventUid().value(), alarmEvent.recipient().asString(), alarmEvent.eventStartTime(),
+                    error);
+                return Mono.empty();
+            });
+    }
+
     public Mono<Void> triggerAlarms() {
         Instant now = clock.instant().truncatedTo(ChronoUnit.MILLIS);
         return alarmEventDAO.findAlarmsToTrigger(now)
-            .flatMap(alarmEvent -> sendMail(alarmEvent, now)
-                    .then(cleanup(alarmEvent))
-                    .doOnSuccess(unused -> LOGGER.info("Processed alarm for event: {}, recipient: {}, eventStartTime: {}",
-                        alarmEvent.eventUid().value(), alarmEvent.recipient().asString(), alarmEvent.eventStartTime()))
-                    .onErrorResume(error -> {
-                        LOGGER.error("Error processing alarm for event: {}, recipient: {}, eventStartTime: {}",
-                            alarmEvent.eventUid().value(), alarmEvent.recipient().asString(), alarmEvent.eventStartTime(),
-                            error);
-                        return Mono.empty();
-                    }),
+            .flatMap(this::sendMailAndCleanup,
                 DEFAULT_CONCURRENCY)
             .then();
     }
