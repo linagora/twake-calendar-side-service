@@ -16,7 +16,7 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.amqp;
+package com.linagora.calendar.storage.configuration.resolver;
 
 import java.util.Optional;
 
@@ -26,7 +26,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.linagora.calendar.storage.configuration.ConfigurationKey;
 import com.linagora.calendar.storage.configuration.EntryIdentifier;
 import com.linagora.calendar.storage.configuration.ModuleName;
-import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 
 public class AlarmSettingReader implements SettingsBasedResolver.SettingReader<Boolean> {
     public static final Boolean ENABLE_ALARM = Boolean.TRUE;

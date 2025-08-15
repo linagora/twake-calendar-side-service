@@ -18,8 +18,8 @@
 
 package com.linagora.calendar.amqp;
 
-import static com.linagora.calendar.amqp.AlarmSettingReader.ALARM_SETTING_IDENTIFIER;
-import static com.linagora.calendar.amqp.AlarmSettingReader.ENABLE_ALARM;
+import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader.ALARM_SETTING_IDENTIFIER;
+import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader.ENABLE_ALARM;
 
 import java.net.URI;
 import java.util.List;
@@ -39,6 +39,7 @@ import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.AlarmEventDAO;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.SimpleSessionProvider;
+import com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader;
 import com.linagora.calendar.storage.configuration.resolver.ConfigurationResolver;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;

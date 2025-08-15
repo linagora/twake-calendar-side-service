@@ -47,6 +47,7 @@
         <module>storage-redis</module>
         <module>storage-opensearch</module>
         <module>calendar-smtp</module>
+        <module>calendar-scheduling</module>
     </modules>
 
     <properties>

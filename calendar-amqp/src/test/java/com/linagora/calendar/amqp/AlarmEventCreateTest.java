@@ -18,8 +18,8 @@
 
 package com.linagora.calendar.amqp;
 
-import static com.linagora.calendar.amqp.AlarmSettingReader.ALARM_SETTING_IDENTIFIER;
-import static com.linagora.calendar.amqp.AlarmSettingReader.ENABLE_ALARM;
+import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader.ALARM_SETTING_IDENTIFIER;
+import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader.ENABLE_ALARM;
 import static com.linagora.calendar.amqp.TestFixture.awaitAtMost;
 import static java.time.temporal.ChronoUnit.MINUTES;
 import static org.assertj.core.api.Assertions.assertThat;
