@@ -22,18 +22,10 @@ import java.time.Clock;
 
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
-import com.google.inject.Scopes;
 import com.google.inject.Singleton;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
 
 public class AlarmEventModule extends AbstractModule {
-
-    @Override
-    protected void configure() {
-        bind(MemoryAlarmEventDAO.class).in(Scopes.SINGLETON);
-        bind(AlarmEventDAO.class).to(MemoryAlarmEventDAO.class);
-    }
-
     @Provides
     @Singleton
     AlarmInstantFactory provideAlarmInstantFactory(Clock clock) {

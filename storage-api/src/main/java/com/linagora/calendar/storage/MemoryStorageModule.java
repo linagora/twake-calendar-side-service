@@ -61,6 +61,9 @@ public class MemoryStorageModule extends AbstractModule {
 
         bind(MemoryCalendarSearchService.class).in(Scopes.SINGLETON);
         bind(CalendarSearchService.class).to(MemoryCalendarSearchService.class);
+
+        bind(MemoryAlarmEventDAO.class).in(Scopes.SINGLETON);
+        bind(AlarmEventDAO.class).to(MemoryAlarmEventDAO.class);
     }
 
     @Provides
