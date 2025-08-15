@@ -16,21 +16,28 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.dav;
+package com.linagora.calendar.storage;
 
-import java.time.Duration;
-import java.util.concurrent.TimeUnit;
+import reactor.core.publisher.Mono;
 
-import org.testcontainers.shaded.org.awaitility.Awaitility;
-import org.testcontainers.shaded.org.awaitility.core.ConditionFactory;
+public interface AlarmEventLocker {
 
-public interface Fixture {
+    Mono<Void> lock(AlarmEvent alarmEvent);
 
-    ConditionFactory calmlyAwait = Awaitility.with()
-        .pollInterval(Duration.ofMillis(500))
-        .and()
-        .with()
-        .pollDelay(Duration.ofMillis(500))
-        .await();
-    ConditionFactory awaitAtMost = calmlyAwait.atMost(20, TimeUnit.SECONDS);
+    class LockAlreadyExistsException extends RuntimeException {
+
+    }
+
+    AlarmEventLocker NOOP = new NoOpAlarmEventLocker();
+
+    class NoOpAlarmEventLocker implements AlarmEventLocker {
+
+        public NoOpAlarmEventLocker() {
+        }
+
+        @Override
+        public Mono<Void> lock(AlarmEvent alarmEvent) {
+            return Mono.empty();
+        }
+    }
 }

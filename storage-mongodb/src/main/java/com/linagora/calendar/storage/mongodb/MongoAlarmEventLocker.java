@@ -16,19 +16,31 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage;
+package com.linagora.calendar.storage.mongodb;
 
-import java.time.Clock;
 
-import com.google.inject.AbstractModule;
-import com.google.inject.Provides;
-import com.google.inject.Singleton;
-import com.linagora.calendar.storage.event.AlarmInstantFactory;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 
-public class AlarmEventModule extends AbstractModule {
-    @Provides
+import com.linagora.calendar.storage.AlarmEvent;
+import com.linagora.calendar.storage.AlarmEventLocker;
+import com.mongodb.DuplicateKeyException;
+
+import reactor.core.publisher.Mono;
+
+public class MongoAlarmEventLocker implements AlarmEventLocker {
+
+    private final MongoDBAlarmEventLedgerDAO alarmEventLedgeDAO;
+
+    @Inject
     @Singleton
-    AlarmInstantFactory provideAlarmInstantFactory(Clock clock) {
-        return new AlarmInstantFactory.Default(clock);
+    public MongoAlarmEventLocker(MongoDBAlarmEventLedgerDAO alarmEventLedgeDAO) {
+        this.alarmEventLedgeDAO = alarmEventLedgeDAO;
+    }
+
+    @Override
+    public Mono<Void> lock(AlarmEvent alarmEvent) {
+        return alarmEventLedgeDAO.insert(alarmEvent)
+            .onErrorMap(DuplicateKeyException.class, error -> new LockAlreadyExistsException());
     }
 }

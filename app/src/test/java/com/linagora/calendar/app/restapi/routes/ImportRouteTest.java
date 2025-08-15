@@ -96,7 +96,7 @@ public class ImportRouteTest {
     @Order(2)
     static final MockSmtpServerExtension mockSmtpExtension = new MockSmtpServerExtension();
 
-    static Function<MockSmtpServerExtension, MailSenderConfiguration> mailSenderConfigurationFunction = mockSmtpExtension -> new MailSenderConfiguration(
+    public static Function<MockSmtpServerExtension, MailSenderConfiguration> mailSenderConfigurationFunction = mockSmtpExtension -> new MailSenderConfiguration(
         "localhost",
         Port.of(mockSmtpExtension.getMockSmtp().getSmtpPort()),
         "localhost",

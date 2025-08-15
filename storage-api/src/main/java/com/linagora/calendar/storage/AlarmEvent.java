@@ -23,6 +23,7 @@ import java.util.Optional;
 
 import org.apache.james.core.MailAddress;
 
+import com.google.common.base.MoreObjects;
 import com.linagora.calendar.storage.eventsearch.EventUid;
 
 public record AlarmEvent(EventUid eventUid,
@@ -32,4 +33,12 @@ public record AlarmEvent(EventUid eventUid,
                          Optional<String> recurrenceId,
                          MailAddress recipient,
                          String ics) {
+
+   public String toShortString() {
+       return MoreObjects.toStringHelper(this)
+           .add("eventUid", eventUid.value())
+           .add("recipient", recipient.asString())
+           .add("alarmTime", alarmTime.getEpochSecond())
+           .toString();
+   }
 }
