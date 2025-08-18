@@ -26,6 +26,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
+import jakarta.inject.Inject;
+
 import org.apache.james.core.Username;
 import org.apache.james.task.Task;
 import org.apache.james.util.ReactorUtils;
@@ -45,7 +47,6 @@ import com.linagora.calendar.storage.event.AlarmInstantFactory;
 import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.eventsearch.EventUid;
 
-import jakarta.inject.Inject;
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.ComponentList;
@@ -176,7 +177,8 @@ public class AlarmScheduleService {
                 nextAlarmInstant.eventStartTime(),
                 recurringEvent,
                 recurrenceIdValue,
-                recipient, eventCalendarString));
+                recipient,
+                eventCalendarString));
     }
 
     private Mono<Void> insertAlarmEvent(Username username, AlarmEvent alarmEvent) {

@@ -18,15 +18,23 @@
 
 package com.linagora.calendar.webadmin;
 
-import static com.linagora.calendar.storage.eventsearch.EventSearchQuery.MAX_LIMIT;
 import static io.restassured.RestAssured.given;
+import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.spy;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.util.Optional;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.UUID;
 
 import javax.net.ssl.SSLException;
+
+import jakarta.mail.internet.AddressException;
 
 import org.apache.james.json.DTOConverter;
 import org.apache.james.server.task.json.dto.AdditionalInformationDTO;
@@ -49,12 +57,14 @@ import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
+import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.AlarmEventDAO;
+import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.MemoryAlarmEventDAO;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
-import com.linagora.calendar.storage.eventsearch.EventSearchQuery;
+import com.linagora.calendar.storage.eventsearch.EventUid;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
 import com.linagora.calendar.webadmin.service.AlarmScheduleService;
@@ -62,6 +72,7 @@ import com.linagora.calendar.webadmin.task.AlarmScheduleTaskAdditionalInformatio
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
 import io.restassured.RestAssured;
+import reactor.core.publisher.Mono;
 
 public class AlarmScheduleTest {
 
@@ -83,7 +94,7 @@ public class AlarmScheduleTest {
         MongoDatabase mongoDB = sabreDavExtension.dockerSabreDavSetup().getMongoDB();
         MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
         userDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
-        alarmEventDAO = new MemoryAlarmEventDAO();
+        alarmEventDAO = spy(new MemoryAlarmEventDAO());
         calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration());
         clock = new UpdatableTickingClock(Instant.now());
         alarmScheduleService = new AlarmScheduleService(userDAO, calDavClient, alarmEventDAO, new AlarmInstantFactory.Default(clock));
@@ -139,9 +150,294 @@ public class AlarmScheduleTest {
             .body("completedDate", is(notNullValue()));
     }
 
-    private EventSearchQuery simpleQuery(String query) {
-        return new EventSearchQuery(query, Optional.empty(),
-            Optional.empty(), Optional.empty(),
-            MAX_LIMIT, 0);
+    @Test
+    void scheduleShouldCreateAlarmEvent() throws AddressException {
+        String eventId = UUID.randomUUID().toString();
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:{eventUid}
+            DTSTART:30250801T100000Z
+            DTEND:30250801T110000Z
+            SUMMARY:Alarm Test Event
+            LOCATION:Test Room
+            DESCRIPTION:This is a recurring test alarm event.
+            ORGANIZER;CN=Test Organizer:mailto:{organizerEmail}
+            ATTENDEE;PARTSTAT=NEEDS-ACTION;CN=Test Attendee:mailto:{attendeeEmail}
+            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:{organizerEmail}
+            BEGIN:VALARM
+            TRIGGER:-PT15M
+            ACTION:EMAIL
+            ATTENDEE:mailto:{organizerEmail}
+            DESCRIPTION:Reminder
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """.replace("{eventUid}", eventId)
+            .replace("{organizerEmail}", openPaaSUser.username().asString())
+            .replace("{attendeeEmail}", openPaaSUser2.username().asString());
+        CalendarURL calendarURL = CalendarURL.from(openPaaSUser.id());
+
+        // To trigger calendar directory activation
+        calDavClient.export(calendarURL, openPaaSUser.username()).block();
+
+        calDavClient.importCalendar(calendarURL, eventId, openPaaSUser.username(), ics.getBytes(StandardCharsets.UTF_8)).block();
+
+        String taskId = given()
+            .queryParam("task", "scheduleAlarms")
+            .when()
+            .post()
+            .jsonPath()
+            .get("taskId");
+
+        given()
+            .basePath(TasksRoutes.BASE)
+            .when()
+            .get(taskId + "/await")
+            .then()
+            .body("status", is("completed"))
+            .body("type", is("schedule-alarms"))
+            .body("additionalInformation.processedEventCount", is(1))
+            .body("additionalInformation.failedEventCount", is(0));
+
+        AlarmEvent alarmEvent = alarmEventDAO.find(new EventUid(eventId), openPaaSUser.username().asMailAddress()).block();
+
+        assertSoftly(softly -> {
+            softly.assertThat(alarmEvent.eventUid().value()).isEqualTo(eventId);
+            softly.assertThat(alarmEvent.alarmTime()).isEqualTo(parse("30250801T094500Z"));
+            softly.assertThat(alarmEvent.eventStartTime()).isEqualTo(parse("30250801T100000Z"));
+            softly.assertThat(alarmEvent.recurring()).isFalse();
+            softly.assertThat(alarmEvent.recipient().asString()).isEqualTo(openPaaSUser.username().asString());
+        });
+    }
+
+    @Test
+    void scheduleShouldCreateMultipleAlarmEvents() throws AddressException {
+        String uid1 = UUID.randomUUID().toString();
+        String uid2 = UUID.randomUUID().toString();
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:{eventUid}
+            DTSTART:30250801T100000Z
+            DTEND:30250801T110000Z
+            SUMMARY:Recurring Alarm Test Event
+            LOCATION:Test Room
+            DESCRIPTION:This is a recurring test alarm event.
+            ORGANIZER;CN=Test Organizer:mailto:{organizerEmail}
+            ATTENDEE;PARTSTAT=NEEDS-ACTION;CN=Test Attendee:mailto:{attendeeEmail}
+            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:{organizerEmail}
+            RRULE:FREQ=DAILY;COUNT=3
+            BEGIN:VALARM
+            TRIGGER:-PT15M
+            ACTION:EMAIL
+            ATTENDEE:mailto:{organizerEmail}
+            DESCRIPTION:Reminder
+            END:VALARM
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:{eventUid}
+            DTSTART:30250801T100000Z
+            DTEND:30250801T110000Z
+            SUMMARY:Recurring Alarm Test Event With Recurrence ID
+            LOCATION:Test Room
+            DESCRIPTION:This is a recurring test alarm event.
+            ORGANIZER;CN=Test Organizer:mailto:{organizerEmail}
+            ATTENDEE;PARTSTAT=NEEDS-ACTION;CN=Test Attendee:mailto:{attendeeEmail}
+            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:{organizerEmail}
+            RECURRENCE-ID:30250801T100000Z
+            BEGIN:VALARM
+            TRIGGER:-PT15M
+            ACTION:EMAIL
+            ATTENDEE:mailto:{organizerEmail}
+            DESCRIPTION:Reminder
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """.replace("{eventUid}", uid1)
+            .replace("{organizerEmail}", openPaaSUser.username().asString())
+            .replace("{attendeeEmail}", openPaaSUser2.username().asString());
+        String ics2 = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:{eventUid}
+            DTSTART:30250801T100000Z
+            DTEND:30250801T110000Z
+            SUMMARY:Alarm Test Event
+            LOCATION:Test Room
+            DESCRIPTION:This is a recurring test alarm event.
+            ORGANIZER;CN=Test Organizer:mailto:{organizerEmail}
+            ATTENDEE;PARTSTAT=NEEDS-ACTION;CN=Test Attendee:mailto:{attendeeEmail}
+            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:{organizerEmail}
+            BEGIN:VALARM
+            TRIGGER:-PT30M
+            ACTION:EMAIL
+            ATTENDEE:mailto:{organizerEmail}
+            DESCRIPTION:Reminder
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """.replace("{eventUid}", uid2)
+            .replace("{organizerEmail}", openPaaSUser.username().asString())
+            .replace("{attendeeEmail}", openPaaSUser2.username().asString());
+        CalendarURL calendarURL = CalendarURL.from(openPaaSUser.id());
+
+        // To trigger calendar directory activation
+        calDavClient.export(calendarURL, openPaaSUser.username()).block();
+
+        calDavClient.importCalendar(calendarURL, uid1, openPaaSUser.username(), ics.getBytes(StandardCharsets.UTF_8)).block();
+        calDavClient.importCalendar(calendarURL, uid2, openPaaSUser.username(), ics2.getBytes(StandardCharsets.UTF_8)).block();
+
+        clock.setInstant(parse("30250701T100000Z"));
+
+        String taskId = given()
+            .queryParam("task", "scheduleAlarms")
+            .when()
+            .post()
+            .jsonPath()
+            .get("taskId");
+
+        given()
+            .basePath(TasksRoutes.BASE)
+            .when()
+            .get(taskId + "/await")
+            .then()
+            .body("status", is("completed"))
+            .body("type", is("schedule-alarms"))
+            .body("additionalInformation.processedEventCount", is(2))
+            .body("additionalInformation.failedEventCount", is(0));
+
+        AlarmEvent alarmEvent = alarmEventDAO.find(new EventUid(uid1), openPaaSUser.username().asMailAddress()).block();
+        AlarmEvent alarmEvent2 = alarmEventDAO.find(new EventUid(uid2), openPaaSUser.username().asMailAddress()).block();
+
+        assertSoftly(softly -> {
+            softly.assertThat(alarmEvent.eventUid().value()).isEqualTo(uid1);
+            softly.assertThat(alarmEvent.alarmTime()).isEqualTo(parse("30250801T094500Z"));
+            softly.assertThat(alarmEvent.eventStartTime()).isEqualTo(parse("30250801T100000Z"));
+            softly.assertThat(alarmEvent.recurring()).isTrue();
+            softly.assertThat(alarmEvent.recurrenceId().get()).isEqualTo("30250801T100000Z");
+            softly.assertThat(alarmEvent.recipient().asString()).isEqualTo(openPaaSUser.username().asString());
+
+            softly.assertThat(alarmEvent2.eventUid().value()).isEqualTo(uid2);
+            softly.assertThat(alarmEvent2.alarmTime()).isEqualTo(parse("30250801T093000Z"));
+            softly.assertThat(alarmEvent2.eventStartTime()).isEqualTo(parse("30250801T100000Z"));
+            softly.assertThat(alarmEvent2.recurring()).isFalse();
+            softly.assertThat(alarmEvent2.recipient().asString()).isEqualTo(openPaaSUser.username().asString());
+        });
+    }
+
+    @Test
+    void scheduleShouldReportFailedEventCount() {
+        String uid1 = UUID.randomUUID().toString();
+        String uid2 = UUID.randomUUID().toString();
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:{eventUid}
+            DTSTART:30250801T100000Z
+            DTEND:30250801T110000Z
+            SUMMARY:Recurring Alarm Test Event
+            LOCATION:Test Room
+            DESCRIPTION:This is a recurring test alarm event.
+            ORGANIZER;CN=Test Organizer:mailto:{organizerEmail}
+            ATTENDEE;PARTSTAT=NEEDS-ACTION;CN=Test Attendee:mailto:{attendeeEmail}
+            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:{organizerEmail}
+            RRULE:FREQ=DAILY;COUNT=3
+            BEGIN:VALARM
+            TRIGGER:-PT15M
+            ACTION:EMAIL
+            ATTENDEE:mailto:{organizerEmail}
+            DESCRIPTION:Reminder
+            END:VALARM
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:{eventUid}
+            DTSTART:30250801T100000Z
+            DTEND:30250801T110000Z
+            SUMMARY:Recurring Alarm Test Event With Recurrence ID
+            LOCATION:Test Room
+            DESCRIPTION:This is a recurring test alarm event.
+            ORGANIZER;CN=Test Organizer:mailto:{organizerEmail}
+            ATTENDEE;PARTSTAT=NEEDS-ACTION;CN=Test Attendee:mailto:{attendeeEmail}
+            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:{organizerEmail}
+            RECURRENCE-ID:30250801T100000Z
+            BEGIN:VALARM
+            TRIGGER:-PT15M
+            ACTION:EMAIL
+            ATTENDEE:mailto:{organizerEmail}
+            DESCRIPTION:Reminder
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """.replace("{eventUid}", uid1)
+            .replace("{organizerEmail}", openPaaSUser.username().asString())
+            .replace("{attendeeEmail}", openPaaSUser2.username().asString());
+        String ics2 = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:{eventUid}
+            DTSTART:30250801T100000Z
+            DTEND:30250801T110000Z
+            SUMMARY:Alarm Test Event
+            LOCATION:Test Room
+            DESCRIPTION:This is a recurring test alarm event.
+            ORGANIZER;CN=Test Organizer:mailto:{organizerEmail}
+            ATTENDEE;PARTSTAT=NEEDS-ACTION;CN=Test Attendee:mailto:{attendeeEmail}
+            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:{organizerEmail}
+            BEGIN:VALARM
+            TRIGGER:-PT30M
+            ACTION:EMAIL
+            ATTENDEE:mailto:{organizerEmail}
+            DESCRIPTION:Reminder
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """.replace("{eventUid}", uid2)
+            .replace("{organizerEmail}", openPaaSUser.username().asString())
+            .replace("{attendeeEmail}", openPaaSUser2.username().asString());
+        CalendarURL calendarURL = CalendarURL.from(openPaaSUser.id());
+
+        // To trigger calendar directory activation
+        calDavClient.export(calendarURL, openPaaSUser.username()).block();
+
+        calDavClient.importCalendar(calendarURL, uid1, openPaaSUser.username(), ics.getBytes(StandardCharsets.UTF_8)).block();
+        calDavClient.importCalendar(calendarURL, uid2, openPaaSUser.username(), ics2.getBytes(StandardCharsets.UTF_8)).block();
+
+        clock.setInstant(parse("30250701T100000Z"));
+
+        doAnswer(invocation -> {
+            AlarmEvent alarmEvent = invocation.getArgument(0);
+            if (alarmEvent.eventUid().value().equals(uid2)) {
+                return Mono.error(new RuntimeException("Simulated failure for uid2"));
+            }
+            return Mono.empty();
+        }).when(alarmEventDAO).create(any());
+
+        String taskId = given()
+            .queryParam("task", "scheduleAlarms")
+            .when()
+            .post()
+            .jsonPath()
+            .get("taskId");
+
+        given()
+            .basePath(TasksRoutes.BASE)
+            .when()
+            .get(taskId + "/await")
+            .then()
+            .body("status", is("failed"))
+            .body("type", is("schedule-alarms"))
+            .body("additionalInformation.processedEventCount", is(1))
+            .body("additionalInformation.failedEventCount", is(1));
+    }
+
+    private Instant parse(String date) {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmssX");
+        return ZonedDateTime.parse(date, formatter).toInstant();
     }
 }
