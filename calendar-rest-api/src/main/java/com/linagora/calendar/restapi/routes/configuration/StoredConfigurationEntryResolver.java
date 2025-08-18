@@ -74,6 +74,7 @@ public class StoredConfigurationEntryResolver implements ConfigurationEntryResol
         .put(new ModuleName("core"), new ConfigurationKey("businessHours"), defaultBusinessHours())
         .put(new ModuleName("linagora.esn.calendar"), new ConfigurationKey("workingDays"), any -> NullNode.getInstance())
         .put(new ModuleName("linagora.esn.calendar"), new ConfigurationKey("hideDeclinedEvents"), any -> NullNode.getInstance())
+        .put(new ModuleName("calendar"), new ConfigurationKey("alarmEmails"), any -> NullNode.getInstance())
 
         .build();
 
