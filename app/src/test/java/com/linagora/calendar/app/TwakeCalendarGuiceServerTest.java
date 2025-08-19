@@ -36,6 +36,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 
+import jakarta.mail.internet.AddressException;
+
 import org.apache.james.backends.rabbitmq.RabbitMQExtension;
 import org.apache.james.core.Domain;
 import org.apache.james.core.MailAddress;
@@ -60,13 +62,12 @@ import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
-import com.linagora.calendar.storage.eventsearch.CalendarEvents;
 import com.linagora.calendar.storage.event.EventFields;
+import com.linagora.calendar.storage.eventsearch.CalendarEvents;
 
 import io.restassured.RestAssured;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.http.ContentType;
-import jakarta.mail.internet.AddressException;
 
 class TwakeCalendarGuiceServerTest  {
     public static final Domain DOMAIN = Domain.of("linagora.com");
@@ -918,7 +919,7 @@ class TwakeCalendarGuiceServerTest  {
         String body = given()
             .auth().preemptive().basic(USERNAME.asString(), PASSWORD)
         .when()
-            .get("/api/user")
+            .get("/api/user").prettyPeek()
         .then()
             .statusCode(200)
             .extract()
@@ -1045,6 +1046,15 @@ class TwakeCalendarGuiceServerTest  {
                                     }
                                 }
                             ]
+                        },
+                        {
+                            "configurations": [
+                                {
+                                    "name": "alarmEmails",
+                                    "value": null
+                                }
+                            ],
+                            "name": "calendar"
                         }
                     ]},
                     "preferredEmail": "btellier@linagora.com",
