@@ -18,17 +18,32 @@
 
 package com.linagora.calendar.storage;
 
-import java.time.Clock;
+import java.time.Duration;
 
-import com.google.inject.AbstractModule;
-import com.google.inject.Provides;
-import com.google.inject.Singleton;
-import com.linagora.calendar.storage.event.AlarmInstantFactory;
+import reactor.core.publisher.Mono;
 
-public class AlarmEventModule extends AbstractModule {
-    @Provides
-    @Singleton
-    AlarmInstantFactory provideAlarmInstantFactory(Clock clock) {
-        return new AlarmInstantFactory.Default(clock);
+public interface AlarmEventLeaseProvider {
+
+    Mono<Void> acquire(AlarmEvent alarmEvent, Duration ttl);
+
+    Mono<Void> release(AlarmEvent alarmEvent);
+
+    class LockAlreadyExistsException extends RuntimeException {
+
+    }
+
+    AlarmEventLeaseProvider NOOP = new NoOpAlarmEventLeaseProvider();
+
+    class NoOpAlarmEventLeaseProvider implements AlarmEventLeaseProvider {
+
+        @Override
+        public Mono<Void> acquire(AlarmEvent alarmEvent, Duration ttl) {
+            return Mono.empty();
+        }
+
+        @Override
+        public Mono<Void> release(AlarmEvent alarmEvent) {
+            return Mono.empty();
+        }
     }
 }

@@ -40,7 +40,9 @@ public class AlarmSettingReader implements SettingsBasedResolver.SettingReader<B
 
     @Override
     public Optional<Boolean> parse(JsonNode jsonNode) {
-        return Optional.ofNullable(jsonNode.asText())
+        return Optional.ofNullable(jsonNode)
+            .filter(nodeValue -> !nodeValue.isNull())
+            .map(JsonNode::asText)
             .map(BooleanUtils::toBoolean);
     }
 }

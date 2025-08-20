@@ -16,21 +16,26 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.dav;
+package com.linagora.calendar.app.modules;
 
-import java.time.Duration;
-import java.util.concurrent.TimeUnit;
+import java.time.Clock;
 
-import org.testcontainers.shaded.org.awaitility.Awaitility;
-import org.testcontainers.shaded.org.awaitility.core.ConditionFactory;
+import com.google.inject.AbstractModule;
+import com.google.inject.Provides;
+import com.google.inject.Singleton;
+import com.linagora.calendar.scheduling.AlarmEventSchedulerModule;
+import com.linagora.calendar.storage.event.AlarmInstantFactory;
 
-public interface Fixture {
+public class AlarmEventModule extends AbstractModule {
 
-    ConditionFactory calmlyAwait = Awaitility.with()
-        .pollInterval(Duration.ofMillis(500))
-        .and()
-        .with()
-        .pollDelay(Duration.ofMillis(500))
-        .await();
-    ConditionFactory awaitAtMost = calmlyAwait.atMost(20, TimeUnit.SECONDS);
+    @Override
+    protected void configure() {
+        install(new AlarmEventSchedulerModule());
+    }
+
+    @Provides
+    @Singleton
+    AlarmInstantFactory provideAlarmInstantFactory(Clock clock) {
+        return new AlarmInstantFactory.Default(clock);
+    }
 }

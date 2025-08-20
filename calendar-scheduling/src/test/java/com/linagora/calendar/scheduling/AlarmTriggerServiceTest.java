@@ -158,7 +158,7 @@ public class AlarmTriggerServiceTest {
     }
 
     @Test
-    void shouldSendAlarmEmailWhenAlarmIsTriggered() throws AddressException {
+    void shouldSendAlarmEmailWhenValidAlarmEvent() throws AddressException {
         Instant now = clock.instant();
         AlarmEvent event = new AlarmEvent(
             new EventUid("event-uid-1"),
@@ -185,7 +185,7 @@ public class AlarmTriggerServiceTest {
             """);
         alarmEventDAO.create(event).block();
 
-        testee.triggerAlarms().block();
+        testee.sendMailAndCleanup(event).block();
 
         // Wait for the mail to be received via mock SMTP
         awaitAtMost.atMost(Duration.ofSeconds(20))
@@ -243,79 +243,9 @@ public class AlarmTriggerServiceTest {
             """.replace("{eventUid}", eventUid.value()));
         alarmEventDAO.create(event).block();
 
-        testee.triggerAlarms().block();
+        testee.sendMailAndCleanup(event).block();
 
         assertThat(alarmEventDAO.find(eventUid, new MailAddress("attendee@abc.com")).blockOptional()).isEmpty();
-    }
-
-    @Test
-    void shouldNotSendAlarmEmailWhenAlarmTimeGreaterThanNow() throws AddressException {
-        Instant now = clock.instant();
-        AlarmEvent event = new AlarmEvent(
-            new EventUid("event-uid-1"),
-            now.plus(10, ChronoUnit.MINUTES),
-            now.plus(20, ChronoUnit.MINUTES),
-            NO_RECURRING,
-            Optional.empty(),
-            new MailAddress("attendee@abc.com"),
-            """
-            BEGIN:VCALENDAR
-            VERSION:2.0
-            BEGIN:VEVENT
-            UID:event-uid-1
-            DTSTART:20250801T100000Z
-            DTEND:20250801T110000Z
-            SUMMARY:Alarm Test Event
-            LOCATION:Test Room
-            DESCRIPTION:This is a test alarm event.
-            ORGANIZER;CN=Test Organizer:mailto:organizer@abc.com
-            ATTENDEE;CN=Test Attendee:mailto:attendee@abc.com
-            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:organizer@abc.com
-            END:VEVENT
-            END:VCALENDAR
-            """);
-        alarmEventDAO.create(event).block();
-
-        testee.triggerAlarms().block();
-
-        // Wait for the mail to be received via mock SMTP
-        awaitAtMost.atMost(Duration.ofSeconds(20))
-            .untilAsserted(() -> assertThat(smtpMailsResponse().getList("")).hasSize(0));
-    }
-
-    @Test
-    void shouldNotSendAlarmEmailWhenEventStartTimeLessThanNow() throws AddressException {
-        Instant now = clock.instant();
-        AlarmEvent event = new AlarmEvent(
-            new EventUid("event-uid-1"),
-            now.minus(20, ChronoUnit.MINUTES),
-            now.minus(10, ChronoUnit.MINUTES),
-            NO_RECURRING,
-            Optional.empty(),
-            new MailAddress("attendee@abc.com"),
-            """
-            BEGIN:VCALENDAR
-            VERSION:2.0
-            BEGIN:VEVENT
-            UID:event-uid-1
-            DTSTART:20250801T100000Z
-            DTEND:20250801T110000Z
-            SUMMARY:Alarm Test Event
-            LOCATION:Test Room
-            DESCRIPTION:This is a test alarm event.
-            ORGANIZER;CN=Test Organizer:mailto:organizer@abc.com
-            ATTENDEE;CN=Test Attendee:mailto:attendee@abc.com
-            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:organizer@abc.com
-            END:VEVENT
-            END:VCALENDAR
-            """);
-        alarmEventDAO.create(event).block();
-
-        testee.triggerAlarms().block();
-
-        // Wait for the mail to be received via mock SMTP
-        awaitAtMost.atMost(Duration.ofSeconds(20))
-            .untilAsserted(() -> assertThat(smtpMailsResponse().getList("")).hasSize(0));
     }
 
     @Test
@@ -355,7 +285,7 @@ public class AlarmTriggerServiceTest {
             """);
         alarmEventDAO.create(event).block();
 
-        testee.triggerAlarms().block();
+        testee.sendMailAndCleanup(event).block();
 
         // Wait for the mail to be received via mock SMTP
         awaitAtMost.atMost(Duration.ofSeconds(20))
@@ -398,7 +328,7 @@ public class AlarmTriggerServiceTest {
         alarmEventDAO.create(event).block();
 
         clock.setInstant(parse("30250801T094500Z"));
-        testee.triggerAlarms().block();
+        testee.sendMailAndCleanup(event).block();
 
         // Wait for the mail to be received via mock SMTP
         awaitAtMost.atMost(Duration.ofSeconds(20))
@@ -481,7 +411,7 @@ public class AlarmTriggerServiceTest {
         alarmEventDAO.create(event).block();
 
         clock.setInstant(parse("30250801T094500Z"));
-        testee.triggerAlarms().block();
+        testee.sendMailAndCleanup(event).block();
 
         // Wait for the mail to be received via mock SMTP
         awaitAtMost.atMost(Duration.ofSeconds(20))
@@ -547,7 +477,7 @@ public class AlarmTriggerServiceTest {
         alarmEventDAO.create(event).block();
 
         clock.setInstant(parse("30250801T094500Z"));
-        testee.triggerAlarms().block();
+        testee.sendMailAndCleanup(event).block();
 
         AlarmEvent actual = alarmEventDAO.find(eventUid, recipient).block();
         assertThat(actual.alarmTime()).isEqualTo(parse("30250802T094500Z"));
@@ -590,7 +520,7 @@ public class AlarmTriggerServiceTest {
         alarmEventDAO.create(event).block();
 
         clock.setInstant(parse("30250803T094500Z"));
-        testee.triggerAlarms().block();
+        testee.sendMailAndCleanup(event).block();
 
         assertThat(alarmEventDAO.find(eventUid, recipient).blockOptional()).isEmpty();
     }

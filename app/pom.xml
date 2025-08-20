@@ -100,6 +100,10 @@
         </dependency>
         <dependency>
             <groupId>${project.groupId}</groupId>
+            <artifactId>calendar-scheduling</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>${project.groupId}</groupId>
             <artifactId>jmap-extensions-opensearch</artifactId>
             <version>${project.version}</version>
         </dependency>
