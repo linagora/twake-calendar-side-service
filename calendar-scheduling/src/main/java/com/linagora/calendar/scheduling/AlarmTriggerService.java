@@ -21,7 +21,6 @@ package com.linagora.calendar.scheduling;
 import static com.linagora.calendar.scheduling.TimeFormatUtil.formatDuration;
 import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader.ALARM_SETTING_IDENTIFIER;
 import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader.ENABLE_ALARM;
-import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -132,21 +131,18 @@ public class AlarmTriggerService {
         this.maybeSender = mailTemplateConfiguration.sender();
     }
 
-    public Mono<Void> triggerAlarms() {
+    public Mono<Void> sendMailAndCleanup(AlarmEvent alarmEvent) {
         Instant now = clock.instant().truncatedTo(ChronoUnit.MILLIS);
-        return alarmEventDAO.findAlarmsToTrigger(now)
-            .flatMap(alarmEvent -> sendMail(alarmEvent, now)
-                    .then(cleanup(alarmEvent))
-                    .doOnSuccess(unused -> LOGGER.info("Processed alarm for event: {}, recipient: {}, eventStartTime: {}",
-                        alarmEvent.eventUid().value(), alarmEvent.recipient().asString(), alarmEvent.eventStartTime()))
-                    .onErrorResume(error -> {
-                        LOGGER.error("Error processing alarm for event: {}, recipient: {}, eventStartTime: {}",
-                            alarmEvent.eventUid().value(), alarmEvent.recipient().asString(), alarmEvent.eventStartTime(),
-                            error);
-                        return Mono.empty();
-                    }),
-                DEFAULT_CONCURRENCY)
-            .then();
+        return sendMail(alarmEvent, now)
+            .then(cleanup(alarmEvent))
+            .doOnSuccess(unused -> LOGGER.info("Processed alarm for event: {}, recipient: {}, eventStartTime: {}",
+                alarmEvent.eventUid().value(), alarmEvent.recipient().asString(), alarmEvent.eventStartTime()))
+            .onErrorResume(error -> {
+                LOGGER.error("Error processing alarm for event: {}, recipient: {}, eventStartTime: {}",
+                    alarmEvent.eventUid().value(), alarmEvent.recipient().asString(), alarmEvent.eventStartTime(),
+                    error);
+                return Mono.empty();
+            });
     }
 
     private Mono<Void> cleanup(AlarmEvent alarmEvent) {

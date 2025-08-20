@@ -16,19 +16,41 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage;
+package com.linagora.calendar.storage.mongodb;
 
-import java.time.Clock;
+import static com.linagora.calendar.storage.mongodb.MongoDBAlarmEventLedgerDAO.UNIQUE_INDEX_NAME;
 
-import com.google.inject.AbstractModule;
-import com.google.inject.Provides;
-import com.google.inject.Singleton;
-import com.linagora.calendar.storage.event.AlarmInstantFactory;
+import java.time.Duration;
 
-public class AlarmEventModule extends AbstractModule {
-    @Provides
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
+
+import org.apache.commons.lang3.Strings;
+
+import com.linagora.calendar.storage.AlarmEvent;
+import com.linagora.calendar.storage.AlarmEventLease;
+
+import reactor.core.publisher.Mono;
+
+public class MongoAlarmEventLease implements AlarmEventLease {
+
+    private final MongoDBAlarmEventLedgerDAO alarmEventLedgeDAO;
+
+    @Inject
     @Singleton
-    AlarmInstantFactory provideAlarmInstantFactory(Clock clock) {
-        return new AlarmInstantFactory.Default(clock);
+    public MongoAlarmEventLease(MongoDBAlarmEventLedgerDAO alarmEventLedgeDAO) {
+        this.alarmEventLedgeDAO = alarmEventLedgeDAO;
+    }
+
+    @Override
+    public Mono<Void> acquire(AlarmEvent alarmEvent, Duration ttl) {
+        return alarmEventLedgeDAO.insert(alarmEvent, ttl)
+            .onErrorResume(error -> {
+                if (Strings.CI.contains(error.getMessage(), "duplicate key error collection")
+                    && Strings.CI.contains(error.getMessage(), UNIQUE_INDEX_NAME)) {
+                    return Mono.error(new LockAlreadyExistsException());
+                }
+                return Mono.error(error);
+            });
     }
 }

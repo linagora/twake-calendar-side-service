@@ -16,21 +16,32 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.dav;
+package com.linagora.calendar.scheduling;
 
-import java.time.Duration;
-import java.util.concurrent.TimeUnit;
+import java.io.FileNotFoundException;
 
-import org.testcontainers.shaded.org.awaitility.Awaitility;
-import org.testcontainers.shaded.org.awaitility.core.ConditionFactory;
+import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.james.utils.InitializationOperation;
+import org.apache.james.utils.InitilizationOperationBuilder;
+import org.apache.james.utils.PropertiesProvider;
 
-public interface Fixture {
+import com.google.inject.AbstractModule;
+import com.google.inject.Provides;
+import com.google.inject.Singleton;
+import com.google.inject.multibindings.ProvidesIntoSet;
 
-    ConditionFactory calmlyAwait = Awaitility.with()
-        .pollInterval(Duration.ofMillis(500))
-        .and()
-        .with()
-        .pollDelay(Duration.ofMillis(500))
-        .await();
-    ConditionFactory awaitAtMost = calmlyAwait.atMost(20, TimeUnit.SECONDS);
+public class AlarmEventSchedulerModule extends AbstractModule {
+
+    @ProvidesIntoSet
+    InitializationOperation start(AlarmEventScheduler alarmEventScheduler) {
+        return InitilizationOperationBuilder
+            .forClass(AlarmEventScheduler.class)
+            .init(alarmEventScheduler::start);
+    }
+
+    @Provides
+    @Singleton
+    AlarmEventSchedulerConfiguration provideAlarmEventSchedulerConfiguration(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
+        return AlarmEventSchedulerConfiguration.from(propertiesProvider.getConfiguration("configuration"));
+    }
 }
