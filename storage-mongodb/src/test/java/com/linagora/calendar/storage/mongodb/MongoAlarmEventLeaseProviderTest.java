@@ -37,24 +37,24 @@ import org.testcontainers.shaded.org.awaitility.Awaitility;
 
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.storage.AlarmEvent;
-import com.linagora.calendar.storage.AlarmEventLease;
+import com.linagora.calendar.storage.AlarmEventLeaseProvider;
 import com.linagora.calendar.storage.eventsearch.EventUid;
 
 import reactor.core.publisher.Mono;
 
-public class MongoAlarmEventLeaseTest {
+public class MongoAlarmEventLeaseProviderTest {
 
     static final Duration ttl = Duration.ofSeconds(100);
 
     @RegisterExtension
     static DockerMongoDBExtension mongo = new DockerMongoDBExtension(List.of("twake_calendar_alarm_events_ledge"));
 
-    private MongoAlarmEventLease testee;
+    private MongoAlarmEventLeaseProvider testee;
 
     @BeforeEach
     void setUp() {
         MongoDBAlarmEventLedgerDAO mongoDBAlarmEventLedgerDAO = new MongoDBAlarmEventLedgerDAO(mongo.getDb(), Clock.systemDefaultZone());
-        testee = new MongoAlarmEventLease(mongoDBAlarmEventLedgerDAO);
+        testee = new MongoAlarmEventLeaseProvider(mongoDBAlarmEventLedgerDAO);
     }
 
     private AlarmEvent sampleEvent() {
@@ -90,7 +90,7 @@ public class MongoAlarmEventLeaseTest {
         testee.acquire(event, ttl).block();
 
         assertThatThrownBy(() -> testee.acquire(event, ttl).block())
-            .isInstanceOf(AlarmEventLease.LockAlreadyExistsException.class);
+            .isInstanceOf(AlarmEventLeaseProvider.LockAlreadyExistsException.class);
     }
 
     @Test
@@ -106,5 +106,43 @@ public class MongoAlarmEventLeaseTest {
             .atMost(Duration.ofMinutes(2))
             .untilAsserted(() -> assertThat(countDocuments()).isEqualTo(0));
     }
+
+    @Test
+    void releaseShouldRemoveRecord() {
+        AlarmEvent event = sampleEvent();
+
+        testee.acquire(event, ttl).block();
+        assertThat(countDocuments()).isEqualTo(1);
+
+        assertThatCode(() -> testee.release(event).block())
+            .doesNotThrowAnyException();
+        assertThat(countDocuments()).isEqualTo(0);
+    }
+
+    @Test
+    void releaseShouldNotThrowWhenRecordDoesNotExist() {
+        AlarmEvent event = sampleEvent();
+
+        assertThatCode(() -> testee.release(event).block())
+            .doesNotThrowAnyException();
+
+        assertThat(countDocuments()).isEqualTo(0);
+    }
+
+    @Test
+    void releaseShouldOnlyDeleteMatchingRecord() {
+        AlarmEvent event1 = sampleEvent();
+        AlarmEvent event2 = sampleEvent();
+
+        testee.acquire(event1, ttl).block();
+        testee.acquire(event2, ttl).block();
+        assertThat(countDocuments()).isEqualTo(2);
+
+        testee.release(event1).block();
+
+        assertThat(countDocuments()).isEqualTo(1);
+    }
+
+
 
 }

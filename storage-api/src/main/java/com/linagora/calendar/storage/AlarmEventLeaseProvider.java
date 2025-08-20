@@ -16,41 +16,34 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage.mongodb;
-
-import static com.linagora.calendar.storage.mongodb.MongoDBAlarmEventLedgerDAO.UNIQUE_INDEX_NAME;
+package com.linagora.calendar.storage;
 
 import java.time.Duration;
 
-import jakarta.inject.Inject;
-import jakarta.inject.Singleton;
-
-import org.apache.commons.lang3.Strings;
-
-import com.linagora.calendar.storage.AlarmEvent;
-import com.linagora.calendar.storage.AlarmEventLease;
-
 import reactor.core.publisher.Mono;
 
-public class MongoAlarmEventLease implements AlarmEventLease {
+public interface AlarmEventLeaseProvider {
 
-    private final MongoDBAlarmEventLedgerDAO alarmEventLedgeDAO;
+    Mono<Void> acquire(AlarmEvent alarmEvent, Duration ttl);
 
-    @Inject
-    @Singleton
-    public MongoAlarmEventLease(MongoDBAlarmEventLedgerDAO alarmEventLedgeDAO) {
-        this.alarmEventLedgeDAO = alarmEventLedgeDAO;
+    Mono<Void> release(AlarmEvent alarmEvent);
+
+    class LockAlreadyExistsException extends RuntimeException {
+
     }
 
-    @Override
-    public Mono<Void> acquire(AlarmEvent alarmEvent, Duration ttl) {
-        return alarmEventLedgeDAO.insert(alarmEvent, ttl)
-            .onErrorResume(error -> {
-                if (Strings.CI.contains(error.getMessage(), "duplicate key error collection")
-                    && Strings.CI.contains(error.getMessage(), UNIQUE_INDEX_NAME)) {
-                    return Mono.error(new LockAlreadyExistsException());
-                }
-                return Mono.error(error);
-            });
+    AlarmEventLeaseProvider NOOP = new NoOpAlarmEventLeaseProvider();
+
+    class NoOpAlarmEventLeaseProvider implements AlarmEventLeaseProvider {
+
+        @Override
+        public Mono<Void> acquire(AlarmEvent alarmEvent, Duration ttl) {
+            return Mono.empty();
+        }
+
+        @Override
+        public Mono<Void> release(AlarmEvent alarmEvent) {
+            return Mono.empty();
+        }
     }
 }

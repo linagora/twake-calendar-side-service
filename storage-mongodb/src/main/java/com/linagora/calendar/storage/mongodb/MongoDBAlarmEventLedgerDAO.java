@@ -27,10 +27,12 @@ import java.util.concurrent.TimeUnit;
 
 import jakarta.inject.Inject;
 
+import org.apache.james.core.MailAddress;
 import org.bson.Document;
 import org.bson.conversions.Bson;
 
 import com.linagora.calendar.storage.AlarmEvent;
+import com.linagora.calendar.storage.eventsearch.EventUid;
 import com.mongodb.client.model.IndexOptions;
 import com.mongodb.client.model.Indexes;
 import com.mongodb.reactivestreams.client.MongoCollection;
@@ -90,4 +92,14 @@ public class MongoDBAlarmEventLedgerDAO {
         return Mono.from(collection.insertOne(doc))
             .then();
     }
+
+    public Mono<Void> delete(EventUid eventUid, MailAddress recipient, Instant alarmTime) {
+        return Mono.from(collection.deleteOne(
+                new Document()
+                    .append(EVENT_UID_FIELD, eventUid.value())
+                    .append(ALARM_TIME_FIELD, Date.from(alarmTime))
+                    .append(RECIPIENT_FIELD, recipient.asString().toLowerCase(Locale.US))))
+            .then();
+    }
+
 }

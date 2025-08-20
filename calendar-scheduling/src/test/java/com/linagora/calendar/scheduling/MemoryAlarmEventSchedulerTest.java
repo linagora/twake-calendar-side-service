@@ -52,7 +52,7 @@ import com.linagora.calendar.smtp.MockSmtpServerExtension;
 import com.linagora.calendar.smtp.template.MailTemplateConfiguration;
 import com.linagora.calendar.smtp.template.MessageGenerator;
 import com.linagora.calendar.storage.AlarmEventDAO;
-import com.linagora.calendar.storage.AlarmEventLease;
+import com.linagora.calendar.storage.AlarmEventLeaseProvider;
 import com.linagora.calendar.storage.MemoryAlarmEventDAO;
 import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
@@ -120,7 +120,7 @@ public class MemoryAlarmEventSchedulerTest implements AlarmEventSchedulerContrac
 
         scheduler = new AlarmEventScheduler(clock,
             alarmEventDAO,
-            AlarmEventLease.NOOP,
+            AlarmEventLeaseProvider.NOOP,
             alarmTriggerService,
             alarmEventSchedulerConfiguration);
 

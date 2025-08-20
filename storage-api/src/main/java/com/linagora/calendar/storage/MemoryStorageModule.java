@@ -65,7 +65,7 @@ public class MemoryStorageModule extends AbstractModule {
         bind(MemoryAlarmEventDAO.class).in(Scopes.SINGLETON);
         bind(AlarmEventDAO.class).to(MemoryAlarmEventDAO.class);
 
-        bind(AlarmEventLease.class).toInstance(AlarmEventLease.NOOP);
+        bind(AlarmEventLeaseProvider.class).toInstance(AlarmEventLeaseProvider.NOOP);
     }
 
     @Provides

@@ -28,14 +28,16 @@ import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
 import org.apache.james.lifecycle.api.Startable;
+import org.apache.james.util.DurationParser;
 import org.apache.james.util.ReactorUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.inject.name.Named;
 import com.linagora.calendar.scheduling.AlarmEventSchedulerConfiguration.Mode;
 import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.AlarmEventDAO;
-import com.linagora.calendar.storage.AlarmEventLease;
+import com.linagora.calendar.storage.AlarmEventLeaseProvider;
 
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
@@ -43,13 +45,13 @@ import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 public class AlarmEventScheduler implements Startable, Closeable {
-    private static final Duration LEASE_TTL = Duration.ofMinutes(1);
+    private static final Duration LEASE_TTL = DurationParser.parse(System.getProperty("alarm.event.scheduler.lease.ttl", "60s"));
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AlarmEventScheduler.class);
 
     private final Clock clock;
     private final AlarmEventDAO alarmEventDAO;
-    private final AlarmEventLease alarmEventLease;
+    private final AlarmEventLeaseProvider alarmEventLeaseProvider;
     private final AlarmTriggerService alarmTriggerService;
     private final AlarmEventSchedulerConfiguration configuration;
 
@@ -58,19 +60,14 @@ public class AlarmEventScheduler implements Startable, Closeable {
     @Inject
     @Singleton
     public AlarmEventScheduler(Clock clock, AlarmEventDAO alarmEventDAO,
-                               AlarmEventLease alarmEventLeaseCandidate,
+                               @Named("scheduler") AlarmEventLeaseProvider alarmEventLeaseProvider,
                                AlarmTriggerService alarmTriggerService,
                                AlarmEventSchedulerConfiguration configuration) {
         this.clock = clock;
         this.alarmEventDAO = alarmEventDAO;
         this.alarmTriggerService = alarmTriggerService;
         this.configuration = configuration;
-
-        if (Mode.SINGLE.equals(configuration.mode())) {
-            alarmEventLease = AlarmEventLease.NOOP;
-        } else {
-            alarmEventLease = alarmEventLeaseCandidate;
-        }
+        this.alarmEventLeaseProvider = alarmEventLeaseProvider;
     }
 
     public void start() {
@@ -120,15 +117,19 @@ public class AlarmEventScheduler implements Startable, Closeable {
     }
 
     private Mono<Void> processOneAlarm(AlarmEvent alarmEvent) {
-        return alarmEventLease.acquire(alarmEvent, LEASE_TTL)
-            .then(alarmTriggerService.sendMailAndCleanup(alarmEvent))
-            .onErrorResume(AlarmEventLease.LockAlreadyExistsException.class, e -> {
+        return alarmEventLeaseProvider.acquire(alarmEvent, LEASE_TTL)
+            .then(alarmTriggerService.sendMailAndCleanup(alarmEvent)
+                .onErrorResume(error -> {
+                    LOGGER.error("Error processing send mail and cleanup for event: {}", alarmEvent.toShortString(), error);
+                   return alarmEventLeaseProvider.release(alarmEvent);
+                }))
+            .onErrorResume(AlarmEventLeaseProvider.LockAlreadyExistsException.class, e -> {
                 LOGGER.info("Skipped sending alarm email because another scheduler already acquired the lock for {}",
                     alarmEvent.toShortString());
                 return Mono.empty();
             })
             .onErrorResume(ex -> {
-                LOGGER.warn("Send failed for {}", alarmEvent.toShortString(), ex);
+                LOGGER.error("Send failed for {}", alarmEvent.toShortString(), ex);
                 return Mono.empty();
             });
     }

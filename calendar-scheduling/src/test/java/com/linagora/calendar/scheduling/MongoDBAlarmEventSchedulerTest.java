@@ -52,12 +52,12 @@ import com.linagora.calendar.smtp.MockSmtpServerExtension;
 import com.linagora.calendar.smtp.template.MailTemplateConfiguration;
 import com.linagora.calendar.smtp.template.MessageGenerator;
 import com.linagora.calendar.storage.AlarmEventDAO;
-import com.linagora.calendar.storage.AlarmEventLease;
+import com.linagora.calendar.storage.AlarmEventLeaseProvider;
 import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
 import com.linagora.calendar.storage.mongodb.DockerMongoDBExtension;
-import com.linagora.calendar.storage.mongodb.MongoAlarmEventLease;
+import com.linagora.calendar.storage.mongodb.MongoAlarmEventLeaseProvider;
 import com.linagora.calendar.storage.mongodb.MongoDBAlarmEventDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBAlarmEventLedgerDAO;
 
@@ -122,11 +122,11 @@ public class MongoDBAlarmEventSchedulerTest implements AlarmEventSchedulerContra
             Duration.ofMillis(100),
             AlarmEventSchedulerConfiguration.Mode.CLUSTER);
 
-        AlarmEventLease alarmEventLease = new MongoAlarmEventLease(
+        AlarmEventLeaseProvider alarmEventLeaseProvider = new MongoAlarmEventLeaseProvider(
             new MongoDBAlarmEventLedgerDAO(mongo.getDb(), clock));
         scheduler = new AlarmEventScheduler(clock,
             alarmEventDAO,
-            alarmEventLease,
+            alarmEventLeaseProvider,
             alarmTriggerService,
             alarmEventSchedulerConfiguration);
 

@@ -136,13 +136,7 @@ public class AlarmTriggerService {
         return sendMail(alarmEvent, now)
             .then(cleanup(alarmEvent))
             .doOnSuccess(unused -> LOGGER.info("Processed alarm for event: {}, recipient: {}, eventStartTime: {}",
-                alarmEvent.eventUid().value(), alarmEvent.recipient().asString(), alarmEvent.eventStartTime()))
-            .onErrorResume(error -> {
-                LOGGER.error("Error processing alarm for event: {}, recipient: {}, eventStartTime: {}",
-                    alarmEvent.eventUid().value(), alarmEvent.recipient().asString(), alarmEvent.eventStartTime(),
-                    error);
-                return Mono.empty();
-            });
+                alarmEvent.eventUid().value(), alarmEvent.recipient().asString(), alarmEvent.eventStartTime()));
     }
 
     private Mono<Void> cleanup(AlarmEvent alarmEvent) {
