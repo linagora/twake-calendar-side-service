@@ -36,5 +36,5 @@ public interface AlarmEventDAO {
 
     Mono<Void> delete(EventUid eventUid, MailAddress recipient);
 
-    Flux<AlarmEvent> findAlarmsToTrigger(Instant time); // get all alarmEvent with alarmTime <= time < eventStartTime
+    Flux<AlarmEvent> findAlarmsToTrigger(Instant time); // get all alarmEvent with time >= alarmTime
 }

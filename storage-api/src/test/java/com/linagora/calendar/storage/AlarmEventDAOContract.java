@@ -127,12 +127,12 @@ public interface AlarmEventDAOContract {
             new MailAddress("r3@abc.com"),
             "ics2");
         AlarmEvent e4 = new AlarmEvent(
-            new EventUid("3"),
+            new EventUid("4"),
             now.minusSeconds(60),
             now.minusSeconds(10),
             NO_RECURRING,
             Optional.empty(),
-            new MailAddress("r3@abc.com"),
+            new MailAddress("r4@abc.com"),
             "ics2");
         getDAO().create(e1).block();
         getDAO().create(e2).block();
@@ -141,7 +141,7 @@ public interface AlarmEventDAOContract {
 
         List<AlarmEvent> events = getDAO().findAlarmsToTrigger(now).collectList().block();
 
-        assertThat(events).containsExactlyInAnyOrder(e1, e2);
+        assertThat(events).containsExactlyInAnyOrder(e1, e2, e4);
     }
 }
 

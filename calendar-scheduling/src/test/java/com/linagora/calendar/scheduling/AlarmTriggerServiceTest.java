@@ -249,6 +249,50 @@ public class AlarmTriggerServiceTest {
     }
 
     @Test
+    void shouldNotSendAlarmEmailWhenEventStartTimeIsLessThanCurrentTime() throws AddressException {
+        Instant now = clock.instant();
+        EventUid eventUid = new EventUid("event-uid-1");
+        AlarmEvent event = new AlarmEvent(
+            eventUid,
+            now.minus(30, ChronoUnit.MINUTES),
+            now.minus(15, ChronoUnit.MINUTES),
+            NO_RECURRING,
+            Optional.empty(),
+            new MailAddress("attendee@abc.com"),
+            """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:event-uid-1
+            DTSTART:20250801T100000Z
+            DTEND:20250801T110000Z
+            SUMMARY:Alarm Test Event
+            LOCATION:Test Room
+            DESCRIPTION:This is a test alarm event.
+            ORGANIZER;CN=Test Organizer:mailto:organizer@abc.com
+            ATTENDEE;CN=Test Attendee:mailto:attendee@abc.com
+            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:organizer@abc.com
+            BEGIN:VALARM
+            TRIGGER:-PT15M
+            ACTION:EMAIL
+            ATTENDEE:mailto:attendee@abc.com
+            DESCRIPTION:Reminder
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """);
+        alarmEventDAO.create(event).block();
+
+        testee.sendMailAndCleanup(event).block();
+
+        // Wait for the mail to be received via mock SMTP
+        awaitAtMost.atMost(Duration.ofSeconds(20))
+            .untilAsserted(() -> assertThat(smtpMailsResponse().getList("")).hasSize(0));
+
+        assertThat(alarmEventDAO.find(eventUid, new MailAddress("attendee@abc.com")).blockOptional()).isEmpty();
+    }
+
+    @Test
     void shouldNotSendAlarmEmailWhenAlarmIsDisabled() throws AddressException {
         reset(settingsBasedResolver);
         when(settingsBasedResolver.readSavedSettings(any()))

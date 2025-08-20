@@ -65,7 +65,7 @@ public class MemoryAlarmEventDAO implements AlarmEventDAO {
     @Override
     public Flux<AlarmEvent> findAlarmsToTrigger(Instant time) {
         return Flux.fromStream(store.values().stream()
-            .filter(e -> !e.alarmTime().isAfter(time) && time.isBefore(e.eventStartTime())));
+            .filter(e -> !e.alarmTime().isAfter(time)));
     }
 
     private String generateKey(EventUid eventUid, MailAddress recipient) {
