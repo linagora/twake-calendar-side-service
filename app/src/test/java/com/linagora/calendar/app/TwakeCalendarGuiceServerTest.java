@@ -270,6 +270,30 @@ class TwakeCalendarGuiceServerTest  {
     }
 
     @Test
+    void shouldExposeWebAdminAlarmScheduleTask() {
+        String taskId = given()
+            .when()
+            .post("/calendars?task=scheduleAlarms")
+            .jsonPath()
+            .get("taskId");;
+
+        given()
+            .basePath(TasksRoutes.BASE)
+            .when()
+            .get(taskId + "/await")
+            .then()
+            .body("status", is("failed"))
+            .body("taskId", is(taskId))
+            .body("type", is("schedule-alarms"))
+            .body("additionalInformation.processedEventCount", is(0))
+            .body("additionalInformation.failedEventCount", is(0))
+            .body("additionalInformation.timestamp", is(notNullValue()))
+            .body("additionalInformation.type", is("schedule-alarms"))
+            .body("startedDate", is(notNullValue()))
+            .body("submitDate", is(notNullValue()));
+    }
+
+    @Test
     void shouldExposeMetrics() {
         String body = given()
         .when()
