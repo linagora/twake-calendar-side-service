@@ -125,7 +125,7 @@ public interface AlarmInstantFactory {
 
         private List<MailAddress> extractRecipients(VAlarm vAlarm) {
             return vAlarm.getProperties(ATTENDEE).stream()
-                .map(property -> Strings.CI.removeStart(property.getValue(), "mailto:"))
+                .map(property -> Strings.CS.replace(property.getValue(), "mailto:", ""))
                 .filter(StringUtils::isNotBlank)
                 .map(mailAddressValue -> {
                     try {
