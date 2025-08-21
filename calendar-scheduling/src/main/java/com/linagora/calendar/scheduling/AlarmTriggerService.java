@@ -163,7 +163,7 @@ public class AlarmTriggerService {
             .filter(resolvedSettings -> resolvedSettings.get(ALARM_SETTING_IDENTIFIER, Boolean.class).orElse(ENABLE_ALARM))
             .flatMap(resolvedSettings -> {
                 Locale locale = resolvedSettings.locale();
-                var model = toPugModel(CalendarUtil.parseIcs(alarmEvent.ics()),
+                Map<String, Object> model = toPugModel(CalendarUtil.parseIcs(alarmEvent.ics()),
                     alarmEvent.recurrenceId(),
                     locale,
                     Duration.between(now, alarmEvent.eventStartTime()));
