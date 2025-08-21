@@ -29,7 +29,8 @@ import com.ibm.icu.util.Measure;
 import com.ibm.icu.util.TimeUnit;
 
 public class TimeFormatUtil {
-    public static String formatDuration(Duration duration, Locale locale) {
+    public static String formatDuration(Duration durationInput, Locale locale) {
+        Duration duration = roundUpToMinutes(durationInput);
         long totalSeconds = duration.getSeconds();
 
         long days = totalSeconds / (24 * 3600);
@@ -58,4 +59,11 @@ public class TimeFormatUtil {
             .map(unitFormatter::format)
             .collect(Collectors.joining(" "));
     }
+
+    private static Duration roundUpToMinutes(Duration duration) {
+        long seconds = duration.getSeconds();
+        long minutes = (long) Math.ceil(seconds / 60.0);
+        return Duration.ofMinutes(minutes);
+    }
+
 }

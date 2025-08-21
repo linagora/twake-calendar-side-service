@@ -56,4 +56,22 @@ class TimeFormatUtilTest {
         String result = TimeFormatUtil.formatDuration(Duration.ofHours(49), Locale.FRENCH);
         assertThat(result).isEqualToNormalizingWhitespace("2 jours 1 heure");
     }
+
+    @Test
+    void shouldRoundUpSecondsToNextMinute() {
+        String result = TimeFormatUtil.formatDuration(Duration.ofSeconds(121), Locale.ENGLISH);
+        assertThat(result).isEqualTo("3 minutes");
+    }
+
+    @Test
+    void shouldFormatExactlyOneMinute() {
+        String result = TimeFormatUtil.formatDuration(Duration.ofMinutes(1), Locale.ENGLISH);
+        assertThat(result).isEqualTo("1 minute");
+    }
+
+    @Test
+    void shouldFormatExactlyOneHour() {
+        String result = TimeFormatUtil.formatDuration(Duration.ofHours(1), Locale.ENGLISH);
+        assertThat(result).isEqualTo("1 hour");
+    }
 }
