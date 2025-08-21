@@ -24,9 +24,10 @@ import static net.fortuna.ical4j.model.Property.TRIGGER;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
-import java.time.chrono.ChronoZonedDateTime;
+import java.time.temporal.ChronoUnit;
 import java.time.temporal.Temporal;
 import java.time.temporal.TemporalAmount;
 import java.util.Arrays;
@@ -37,6 +38,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import jakarta.mail.internet.AddressException;
@@ -100,7 +102,7 @@ public interface AlarmInstantFactory {
         public Optional<AlarmInstant> computeNextAlarmInstant(Calendar calendar, Username username) {
             Instant now = clock.instant();
             return listUpcomingAcceptedVEvents(calendar, username).stream()
-                .flatMap(event1 -> computeAlarmInstants(event1).stream())
+                .flatMap(event -> computeAlarmInstants(event).stream())
                 .filter(alarmInstant -> alarmInstant.alarmTime().isAfter(now))
                 .min(EARLIEST_FIRST_ALARM_COMPARATOR);
         }
@@ -192,43 +194,38 @@ public interface AlarmInstantFactory {
                 .filter(e -> e.getRecurrenceId() == null)
                 .findFirst();
 
-            List<VEvent> overrides = events.stream()
+            List<VEvent> overrideEvents = events.stream()
                 .filter(e -> e.getRecurrenceId() != null)
                 .toList();
-            return masterOpt.map(master -> listUpcomingAcceptedRecurrenceInstances(master, overrides, username))
+            return masterOpt.map(master -> listUpcomingAcceptedRecurrenceInstances(master, overrideEvents, username))
                 .orElseGet(List::of);
         }
 
-        private List<VEvent> listUpcomingAcceptedRecurrenceInstances(VEvent master, List<VEvent> overrides, Username username) {
-            RRule<Temporal> rrule = master.getProperty(Property.RRULE)
-                .map(property -> (RRule<Temporal>) property)
-                .orElseThrow(() -> new IllegalArgumentException("Master event must have an RRULE"));
+        private List<VEvent> listUpcomingAcceptedRecurrenceInstances(VEvent master, List<VEvent> overrideEvents, Username username) {
+            List<Temporal> excludedDates = extractExDates(master);
 
-            List<Instant> excludedInstants = extractExcludedInstants(master);
-            Recur recur = rrule.getRecur();
-            ZonedDateTime seedStart = EventParseUtils.getStartTime(master);
-            ZonedDateTime periodStart = clock.instant().atZone(seedStart.getZone());
-            ZonedDateTime periodEnd = periodStart.plusYears(1);
-
-            List<ZonedDateTime> recurrenceDates = recur.getDates(seedStart, periodStart, periodEnd);
-            List<Instant> filteredRecurrenceDates = recurrenceDates.stream()
-                .map(ChronoZonedDateTime::toInstant)
-                .filter(recurrence -> !excludedInstants.contains(recurrence))
+            List<Temporal> recurrenceDates = expandRecurrenceDates(master);
+            List<Temporal> filteredRecurrenceDates = recurrenceDates.stream()
+                .filter(recurrence -> !excludedDates.contains(recurrence))
                 .toList();
 
-            Map<Instant, VEvent> overrideMap = overrides.stream()
-                .collect(Collectors.toMap(
-                    event -> EventParseUtils.temporalToZonedDateTime(event.getRecurrenceId().getDate())
-                        .map(ChronoZonedDateTime::toInstant)
-                        .orElseThrow(() -> new IllegalArgumentException("Cannot convert recurrenceId: " + event.getRecurrenceId())),
+            Map<Temporal, VEvent> overrideMap = overrideEvents.stream()
+                .collect(Collectors.toMap(event -> normalizeTemporal(event.getRecurrenceId().getDate()),
                     Function.identity()));
 
             Instant now = clock.instant();
+            Predicate<Temporal> isAfterPredicate = temporal -> {
+                if (temporal instanceof LocalDate time) {
+                    return time.atStartOfDay(ZoneOffset.UTC).toInstant().isAfter(now);
+                }
+                return ((Instant) temporal).isAfter(now);
+            };
+
             return filteredRecurrenceDates.stream()
-                .filter(recurrenceDate -> recurrenceDate.isAfter(now))
+                .filter(isAfterPredicate)
                 .map(recurrenceDate -> overrideMap.getOrDefault(
                     recurrenceDate,
-                    createInstanceVEvent(master, recurrenceDate.atZone(ZoneOffset.UTC))))
+                    createInstanceVEvent(master, recurrenceDate)))
                 .filter(event -> hasAccepted(event, username))
                 .sorted(EARLIEST_FIRST_EVENT_COMPARATOR)
                 .toList();
@@ -236,40 +233,86 @@ public interface AlarmInstantFactory {
 
         private boolean hasAccepted(VEvent vEvent, Username username) {
             return EventParseUtils.getAttendees(vEvent).stream()
-                    .anyMatch(person -> person.email().asString().equalsIgnoreCase(username.asString())
-                        && person.partStat().map(partStat -> partStat == PartStat.ACCEPTED).orElse(false));
+                .anyMatch(person -> person.email().asString().equalsIgnoreCase(username.asString())
+                    && person.partStat().map(partStat -> partStat == PartStat.ACCEPTED).orElse(false));
         }
 
-        private List<Instant> extractExcludedInstants(VEvent master) {
+        private List<Temporal> extractExDates(VEvent master) {
             return master.getProperties(Property.EXDATE).stream()
                 .map(ExDate.class::cast)
                 .flatMap(exDate -> ((List<Temporal>) exDate.getDates()).stream()
-                    .map(temporal -> EventParseUtils.temporalToZonedDateTime(temporal)
-                        .orElseThrow(() -> new IllegalArgumentException("Cannot convert EXDATE: " + temporal))))
-                .map(ZonedDateTime::toInstant)
+                    .map(Default::normalizeTemporal))
                 .toList();
         }
 
-        public static VEvent createInstanceVEvent(VEvent master, ZonedDateTime recurrenceDate) {
-            VEvent instance = master.copy();
-            Period recurrencePeriod = new Period(recurrenceDate, recurrenceDate);
+        private List<Temporal> expandRecurrenceDates(VEvent vEvent) {
+            RRule<Temporal> rrule = vEvent.getProperty(Property.RRULE)
+                .map(property -> (RRule<Temporal>) property)
+                .orElseThrow(() -> new IllegalArgumentException("Master event must have an RRULE: " + vEvent));
+            Recur recur = rrule.getRecur();
 
-            Period actualPeriod = (Period) master.calculateRecurrenceSet(recurrencePeriod).stream()
-                .findFirst()
-                .orElseThrow();
+            if (EventParseUtils.isAllDay(vEvent)) {
+                Temporal startDate = vEvent.getDateTimeStart().getDate();
+                return recur.getDates(startDate, startDate, startDate.plus(1, ChronoUnit.YEARS));
+            }
+
+            ZonedDateTime seedStart = EventParseUtils.getStartTime(vEvent);
+            ZonedDateTime periodStart = clock.instant().atZone(seedStart.getZone());
+            ZonedDateTime periodEnd = periodStart.plusYears(1);
+
+            List<ZonedDateTime> recurrenceDates = recur.getDates(seedStart, periodStart, periodEnd);
+
+            return recurrenceDates
+                .stream().map(Default::normalizeTemporal)
+                .toList();
+        }
+
+        private static Temporal normalizeTemporal(Temporal temporal) {
+            if (temporal instanceof LocalDate) {
+                return temporal;
+            }
+            return EventParseUtils.temporalToZonedDateTime(temporal)
+                .map(ZonedDateTime::toInstant)
+                .orElseThrow(() -> new IllegalArgumentException("Cannot convert: " + temporal));
+        }
+
+        public static VEvent createInstanceVEvent(VEvent master, Temporal recurrenceDate) {
+            VEvent instance = master.copy();
+            Period actualPeriod = calculateRecurrenceSet(master, recurrenceDate);
 
             removeProperties(instance, Property.RRULE, Property.EXDATE, Property.DTSTART, Property.DTEND, Property.DURATION);
 
-            Function<Temporal, Instant> temporalToZonedDateTime = temporal ->
-                EventParseUtils.temporalToZonedDateTime(temporal)
-                    .map(ChronoZonedDateTime::toInstant)
-                    .orElseThrow(() -> new IllegalArgumentException("Cannot convert temporal: " + temporal));
             addProperties(instance,
-                new RecurrenceId<>(recurrenceDate.toInstant()),
-                new DtStart<>(temporalToZonedDateTime.apply(actualPeriod.getStart())),
-                new DtEnd<>(temporalToZonedDateTime.apply(actualPeriod.getEnd())));
+                new RecurrenceId<>(recurrenceDate),
+                new DtStart<>(normalizeTemporal(actualPeriod.getStart())),
+                new DtEnd<>(normalizeTemporal(actualPeriod.getEnd())));
 
             return instance;
+        }
+
+        public static Period calculateRecurrenceSet(VEvent master, Temporal recurrenceDate) {
+            try {
+                Period period = switch (recurrenceDate) {
+                    case Instant instant -> {
+                        ZonedDateTime startOfDay = instant.atZone(ZoneOffset.UTC)
+                            .toLocalDate()
+                            .atStartOfDay(ZoneOffset.UTC);
+                        yield new Period(startOfDay, startOfDay.plusDays(1));
+                    }
+                    case LocalDate localDate -> {
+                        LocalDate nextDay = localDate.plusDays(1);
+                        yield new Period(nextDay, nextDay);
+                    }
+                    default -> new Period(recurrenceDate, recurrenceDate);
+                };
+
+                return (Period) master.calculateRecurrenceSet(period).stream()
+                    .findFirst()
+                    .orElseThrow();
+            } catch (Exception exception) {
+                throw new IllegalArgumentException("Cannot calculateRecurrenceSet for recurrenceDate: " + recurrenceDate
+                    + " of event: " + master, exception);
+            }
         }
 
         static void addProperties(VEvent vEvent, Property... properties) {
