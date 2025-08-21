@@ -862,6 +862,201 @@ public class AlarmInstantFactoryTest {
         }
     }
 
+    @Test
+    void shouldComputeAlarmInstantForAllDayEvent() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:allday-event
+            DTSTART;VALUE=DATE:20250829
+            DTEND;VALUE=DATE:20250830
+            SUMMARY:All Day Event
+            ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+            BEGIN:VALARM
+            ACTION:EMAIL
+            TRIGGER:-PT15M
+            DESCRIPTION:Reminder before all-day event
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+        Username attendee = Username.of("bob@example.com");
+
+        // All-day event starts at 2025-08-29T00:00:00Z (implicit)
+        // Alarm = 2025-08-28T23:45:00Z
+        Instant expectedAlarm = Instant.parse("2025-08-28T23:45:00Z");
+
+        AlarmInstantFactory testee = testee(Instant.parse("2025-08-28T00:00:00Z"));
+
+        assertThat(testee.computeNextAlarmInstant(calendar, attendee))
+            .map(AlarmInstant::alarmTime)
+            .describedAs("Should compute alarm 15 minutes before all-day event start (midnight UTC)")
+            .contains(expectedAlarm);
+    }
+
+    @Test
+    void shouldComputeAlarmInstantForRecurringAllDayEvent() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:recurring-allday-event
+            DTSTART;VALUE=DATE:20250829
+            DTEND;VALUE=DATE:20250830
+            RRULE:FREQ=DAILY;COUNT=3
+            SUMMARY:Recurring All Day Event
+            ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+            BEGIN:VALARM
+            ACTION:EMAIL
+            TRIGGER:-PT15M
+            DESCRIPTION:Reminder for all-day recurring event
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+        Username attendee = Username.of("bob@example.com");
+
+        Map<Instant, Optional<Instant>> testCases = Map.of(
+            Instant.parse("2025-08-28T12:00:00Z"), Optional.of(Instant.parse("2025-08-28T23:45:00Z")),
+            Instant.parse("2025-08-29T12:00:00Z"), Optional.of(Instant.parse("2025-08-29T23:45:00Z")),
+            Instant.parse("2025-08-30T12:00:00Z"), Optional.of(Instant.parse("2025-08-30T23:45:00Z")),
+            Instant.parse("2025-09-01T00:00:00Z"), Optional.empty());
+
+        for (Map.Entry<Instant, Optional<Instant>> entry : testCases.entrySet()) {
+            Instant now = entry.getKey();
+            Optional<Instant> expectedAlarm = entry.getValue();
+
+            AlarmInstantFactory testee = testee(now);
+
+            assertThat(testee.computeNextAlarmInstant(calendar, attendee))
+                .map(AlarmInstant::alarmTime)
+                .describedAs("Should return correct alarm for all-day recurring event at %s", now)
+                .isEqualTo(expectedAlarm);
+        }
+    }
+
+    @Test
+    void shouldRespectOverriddenAllDayRecurrenceAlarmTrigger() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:recurring-allday-event
+            DTSTART;VALUE=DATE:20250829
+            DTEND;VALUE=DATE:20250830
+            RRULE:FREQ=DAILY;COUNT=3
+            SUMMARY:Recurring All Day Event
+            ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+            BEGIN:VALARM
+            ACTION:EMAIL
+            TRIGGER:-PT15M
+            DESCRIPTION:Default Reminder
+            END:VALARM
+            END:VEVENT
+            
+            BEGIN:VEVENT
+            UID:recurring-allday-event
+            RECURRENCE-ID;VALUE=DATE:20250830
+            DTSTART;VALUE=DATE:20250830
+            DTEND;VALUE=DATE:20250831
+            SUMMARY:Recurring All Day Event (Overridden Alarm)
+            ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+            BEGIN:VALARM
+            ACTION:EMAIL
+            TRIGGER:-PT20M
+            DESCRIPTION:Overridden Reminder
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+        Username attendee = Username.of("bob@example.com");
+
+        Map<Instant, Optional<Instant>> testCases = Map.of(
+            // 1st occurrence: 2025-08-29 all-day → alarm 15m before midnight → 2025-08-28T23:45Z
+            Instant.parse("2025-08-28T12:00:00Z"), Optional.of(Instant.parse("2025-08-28T23:45:00Z")),
+            // 2nd occurrence overridden: 2025-08-30 all-day → alarm 20m before midnight → 2025-08-29T23:40Z
+            Instant.parse("2025-08-29T12:00:00Z"), Optional.of(Instant.parse("2025-08-29T23:40:00Z")),
+            // After all recurrences → no alarms
+            Instant.parse("2025-08-31T00:00:00Z"), Optional.empty()
+        );
+
+        for (Map.Entry<Instant, Optional<Instant>> entry : testCases.entrySet()) {
+            Instant now = entry.getKey();
+            Optional<Instant> expectedAlarm = entry.getValue();
+
+            AlarmInstantFactory testee = testee(now);
+
+            assertThat(testee.computeNextAlarmInstant(calendar, attendee))
+                .map(AlarmInstant::alarmTime)
+                .describedAs("Should return correct alarm for overridden all-day recurrence at %s", now)
+                .isEqualTo(expectedAlarm);
+        }
+    }
+
+
+    @Test
+    void shouldRespectOverriddenAllDayRecurrenceInstance() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:recurring-allday-event
+            DTSTART;VALUE=DATE:20250829
+            DTEND;VALUE=DATE:20250830
+            RRULE:FREQ=DAILY;COUNT=3
+            SUMMARY:Recurring All Day Event
+            ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+            BEGIN:VALARM
+            ACTION:EMAIL
+            TRIGGER:-PT15M
+            DESCRIPTION:Reminder
+            END:VALARM
+            END:VEVENT
+            
+            BEGIN:VEVENT
+            UID:recurring-allday-event
+            RECURRENCE-ID;VALUE=DATE:20250830
+            DTSTART;VALUE=DATE:20250901
+            DTEND;VALUE=DATE:20250902
+            SUMMARY:Rescheduled All Day Event
+            ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+            BEGIN:VALARM
+            ACTION:EMAIL
+            TRIGGER:-PT15M
+            DESCRIPTION:Rescheduled Reminder
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+        Username attendee = Username.of("bob@example.com");
+
+        Map<Instant, Optional<Instant>> testCases = Map.of(
+            Instant.parse("2025-08-28T12:00:00Z"), Optional.of(Instant.parse("2025-08-28T23:45:00Z")),
+            Instant.parse("2025-08-29T12:00:00Z"), Optional.of(Instant.parse("2025-08-30T23:45:00Z")),
+            Instant.parse("2025-09-02T12:00:00Z"), Optional.empty());
+
+        for (Map.Entry<Instant, Optional<Instant>> entry : testCases.entrySet()) {
+            Instant now = entry.getKey();
+            Optional<Instant> expectedAlarm = entry.getValue();
+
+            AlarmInstantFactory testee = testee(now);
+
+            assertThat(testee.computeNextAlarmInstant(calendar, attendee))
+                .map(AlarmInstant::alarmTime)
+                .describedAs("Should return correct alarm for overridden all-day recurrence at %s", now)
+                .isEqualTo(expectedAlarm);
+        }
+    }
+
     private MailAddress asMailAddress(String email) {
         return Throwing.supplier(() -> new MailAddress(email)).get();
     }
