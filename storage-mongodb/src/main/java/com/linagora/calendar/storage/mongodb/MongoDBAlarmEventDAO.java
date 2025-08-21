@@ -19,7 +19,6 @@
 package com.linagora.calendar.storage.mongodb;
 
 import static com.mongodb.client.model.Filters.eq;
-import static com.mongodb.client.model.Filters.gt;
 import static com.mongodb.client.model.Filters.lte;
 import static com.mongodb.client.model.Indexes.ascending;
 
@@ -63,7 +62,6 @@ public class MongoDBAlarmEventDAO implements AlarmEventDAO {
         this.collection = database.getCollection(COLLECTION);
         Mono.from(collection.createIndex(ascending(EVENT_UID_FIELD, RECIPIENT_FIELD), new IndexOptions())).block();
         Mono.from(collection.createIndex(ascending(ALARM_TIME_FIELD), new IndexOptions())).block();
-        Mono.from(collection.createIndex(ascending(EVENT_START_TIME_FIELD), new IndexOptions())).block();
     }
 
     @Override
@@ -106,8 +104,7 @@ public class MongoDBAlarmEventDAO implements AlarmEventDAO {
     public Flux<AlarmEvent> findAlarmsToTrigger(Instant time) {
         return Flux.from(collection.find(
             Filters.and(
-                lte(ALARM_TIME_FIELD, Date.from(time)),
-                gt(EVENT_START_TIME_FIELD, Date.from(time))
+                lte(ALARM_TIME_FIELD, Date.from(time))
             ))).map(this::fromDocument);
     }
 

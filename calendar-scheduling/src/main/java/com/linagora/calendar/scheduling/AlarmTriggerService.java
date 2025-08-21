@@ -155,6 +155,10 @@ public class AlarmTriggerService {
 
     private Mono<Void> sendMail(AlarmEvent alarmEvent, Instant now) {
         Username recipientUser = Username.fromMailAddress(alarmEvent.recipient());
+        if (alarmEvent.eventStartTime().isBefore(now)) {
+            // If the event start time is before now, we do not send the alarm
+            return Mono.empty();
+        }
         return getUserSettings(recipientUser)
             .filter(resolvedSettings -> resolvedSettings.get(ALARM_SETTING_IDENTIFIER, Boolean.class).orElse(ENABLE_ALARM))
             .flatMap(resolvedSettings -> {
