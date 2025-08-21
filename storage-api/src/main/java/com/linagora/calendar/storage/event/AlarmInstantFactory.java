@@ -102,6 +102,7 @@ public interface AlarmInstantFactory {
         public Optional<AlarmInstant> computeNextAlarmInstant(Calendar calendar, Username username) {
             Instant now = clock.instant();
             return listUpcomingAcceptedVEvents(calendar, username).stream()
+                .filter(event -> !EventParseUtils.isCancelled(event))
                 .flatMap(event -> computeAlarmInstants(event).stream())
                 .filter(alarmInstant -> alarmInstant.alarmTime().isAfter(now))
                 .min(EARLIEST_FIRST_ALARM_COMPARATOR);

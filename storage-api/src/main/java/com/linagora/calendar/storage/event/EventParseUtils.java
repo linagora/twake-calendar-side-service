@@ -253,4 +253,8 @@ public class EventParseUtils {
             .orElseThrow(() -> new IllegalStateException("No UID found in the calendar event"));
     }
 
+    public static boolean isCancelled(VEvent event) {
+        return event.getStatus() != null && "CANCELLED".equalsIgnoreCase(event.getStatus().getValue());
+    }
+
 }
