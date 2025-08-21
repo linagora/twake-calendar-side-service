@@ -294,8 +294,10 @@ public interface AlarmInstantFactory {
             try {
                 Period period = switch (recurrenceDate) {
                     case Instant instant -> {
-                        ZonedDateTime zonedDateTime = instant.atZone(ZoneOffset.UTC);
-                        yield new Period(zonedDateTime, zonedDateTime);
+                        ZonedDateTime startOfDay = instant.atZone(ZoneOffset.UTC)
+                            .toLocalDate()
+                            .atStartOfDay(ZoneOffset.UTC);
+                        yield new Period(startOfDay, startOfDay.plusDays(1));
                     }
                     case LocalDate localDate -> {
                         LocalDate nextDay = localDate.plusDays(1);
