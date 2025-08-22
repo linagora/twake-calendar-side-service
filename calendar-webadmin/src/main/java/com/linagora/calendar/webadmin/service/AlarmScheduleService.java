@@ -22,9 +22,9 @@ import static com.linagora.calendar.webadmin.CalendarRoutes.AlarmScheduleRequest
 import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.time.Duration;
-import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
 import jakarta.inject.Inject;
 
@@ -59,7 +59,7 @@ import reactor.core.scheduler.Schedulers;
 
 public class AlarmScheduleService {
 
-    public record ScheduledItem(Calendar calendar, Username username, CalendarURL calendarURL){
+    public record ScheduledItem(Calendar calendar, Username username, CalendarURL calendarURL) {
     }
 
     public static class Context {
@@ -210,24 +210,17 @@ public class AlarmScheduleService {
     }
 
     private Flux<ScheduledItem> collectEvents(Context context, OpenPaaSUser user, CalendarURL calendarURL, Calendar exportedCalendar) {
-        return Flux.fromIterable(exportedCalendar.getComponents(Component.VEVENT))
-            .cast(VEvent.class)
-            .groupBy(vEvent -> vEvent.getProperty(Property.UID).get().getValue())
-            .flatMap(groupedFlux ->
-                groupedFlux.collectList()
-                    .<List<VEvent>>handle((list, sink) -> {
-                        if (list.isEmpty()) {
-                            sink.complete();
-                        } else {
-                            sink.next(list);
-                        }
-                    }).map(vEvents -> new Calendar(new ComponentList<>(vEvents)))
-                    .map(calendar -> new ScheduledItem(calendar, user.username(), calendarURL))
-                    .onErrorResume(e -> {
-                        LOGGER.error("Error while doing task {} for user {} and calendar url {} and eventId {}",
-                            TASK_NAME.asString(), user.username().asString(), calendarURL.serialize(), groupedFlux.key(), e);
-                        context.incrementFailedEvent();
-                        return Mono.empty();
-                    }));
+        return Mono.fromCallable(() -> exportedCalendar.getComponents(Component.VEVENT).stream()
+                .map(VEvent.class::cast)
+                .collect(Collectors.groupingBy(v -> v.getProperty(Property.UID).get().getValue())))
+            .flatMapMany(map -> Flux.fromIterable(map.entrySet())
+                .map(entry -> new Calendar(new ComponentList<>(entry.getValue())))
+                .map(calendar -> new ScheduledItem(calendar, user.username(), calendarURL)))
+            .onErrorResume(e -> {
+                LOGGER.error("Error while doing task {} for user {} and calendar url {}",
+                    TASK_NAME.asString(), user.username().asString(), calendarURL.serialize(), e);
+                context.incrementFailedEvent();
+                return Flux.empty();
+            });
     }
 }
