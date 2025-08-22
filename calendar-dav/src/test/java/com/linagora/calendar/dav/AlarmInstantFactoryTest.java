@@ -503,6 +503,36 @@ public class AlarmInstantFactoryTest {
             .isEqualTo(Optional.of(Instant.parse("2025-08-01T04:15:00Z")) /* 15 minutes before 04:30 UTC */);
     }
 
+    @Test
+    void shouldReturnEmptyWhenEventIsCancelled() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:789012
+            DTSTART:20250829T100000Z
+            DTEND:20250829T110000Z
+            SUMMARY:Meeting
+            ATTENDEE;CN=Jane Doe;PARTSTAT=ACCEPTED:mailto:jane@example.com
+            STATUS:CANCELLED
+            BEGIN:VALARM
+            ACTION:EMAIL
+            ATTENDEE:mailto:jane1@example.com
+            ATTENDEE:mailto:jane2@example.com
+            TRIGGER:-PT15M
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+        AlarmInstantFactory testee = testee(Instant.parse("2025-07-28T00:00:00Z"));
+
+        Optional<AlarmInstant> result = testee.computeNextAlarmInstant(calendar, Username.of("jane@example.com"));
+        assertThat(result)
+            .isEmpty();
+    }
+
     @Nested
     class RecurrenceEventTest {
         @Test
@@ -859,6 +889,97 @@ public class AlarmInstantFactoryTest {
 
             // The second overridden occurrence has no VALARM -> expect no upcoming alarms
             assertThat(testee.computeNextAlarmInstant(calendar, attendee)).isEmpty();
+        }
+
+        @Test
+        void shouldReturnEmptyWhenMasterAndOverrideCancelled() {
+            String ics = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:rec-456
+                DTSTART:20250829T100000Z
+                DTEND:20250829T110000Z
+                SUMMARY:Daily Meeting
+                RRULE:FREQ=DAILY;COUNT=2
+                STATUS:CANCELLED
+                ATTENDEE;CN=Jane Doe;PARTSTAT=ACCEPTED:mailto:jane@example.com
+                BEGIN:VALARM
+                ACTION:EMAIL
+                ATTENDEE:mailto:jane@example.com
+                TRIGGER:-PT15M
+                END:VALARM
+                END:VEVENT
+                
+                BEGIN:VEVENT
+                UID:rec-456
+                RECURRENCE-ID:20250830T100000Z
+                DTSTART:20250830T100000Z
+                DTEND:20250830T110000Z
+                SUMMARY:Daily Meeting (Override also cancelled)
+                STATUS:CANCELLED
+                ATTENDEE;CN=Jane Doe;PARTSTAT=ACCEPTED:mailto:jane@example.com
+                BEGIN:VALARM
+                ACTION:EMAIL
+                ATTENDEE:mailto:jane@example.com
+                TRIGGER:-PT15M
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """;
+
+            Calendar calendar = CalendarUtil.parseIcs(ics);
+            AlarmInstantFactory testee = testee(Instant.parse("2025-08-29T00:00:00Z"));
+
+            Optional<AlarmInstant> result = testee.computeNextAlarmInstant(calendar, Username.of("jane@example.com"));
+            assertThat(result).isEmpty();
+        }
+
+        @Test
+        void shouldReturnAlarmWhenMasterCancelledButOverrideActive() {
+            String ics = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:rec-123
+                DTSTART:20250829T100000Z
+                DTEND:20250829T110000Z
+                SUMMARY:Daily Meeting
+                RRULE:FREQ=DAILY;COUNT=2
+                STATUS:CANCELLED
+                ATTENDEE;CN=Jane Doe;PARTSTAT=ACCEPTED:mailto:jane@example.com
+                BEGIN:VALARM
+                ACTION:EMAIL
+                ATTENDEE:mailto:jane@example.com
+                TRIGGER:-PT15M
+                END:VALARM
+                END:VEVENT
+                
+                BEGIN:VEVENT
+                UID:rec-123
+                RECURRENCE-ID:20250830T100000Z
+                DTSTART:20250830T100000Z
+                DTEND:20250830T110000Z
+                SUMMARY:Daily Meeting (Override active)
+                ATTENDEE;CN=Jane Doe;PARTSTAT=ACCEPTED:mailto:jane@example.com
+                BEGIN:VALARM
+                ACTION:EMAIL
+                ATTENDEE:mailto:jane@example.com
+                TRIGGER:-PT15M
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """;
+
+            Calendar calendar = CalendarUtil.parseIcs(ics);
+            AlarmInstantFactory testee = testee(Instant.parse("2025-08-29T00:00:00Z"));
+
+            Optional<AlarmInstant> result = testee.computeNextAlarmInstant(calendar, Username.of("jane@example.com"));
+            assertThat(result)
+                .isPresent()
+                .get()
+                .extracting(AlarmInstant::eventStartTime)
+                .isEqualTo(Instant.parse("2025-08-30T10:00:00Z"));
         }
     }
 
