@@ -172,12 +172,26 @@ public interface AlarmInstantFactory {
             }
 
             if (allEvents.size() == 1 && allEvents.getFirst().getProperty(Property.RRULE).isEmpty()) {
-                return findUpcomingFromSingleEvent(allEvents.getFirst(), username)
-                    .map(List::of)
-                    .orElseGet(List::of);
+                return findUpcomingFromSingleEventAsList(allEvents.getFirst(), username);
+            }
+
+            boolean isRecurrence = allEvents.stream()
+                .anyMatch(e -> e.getProperty(Property.RRULE).isPresent());
+
+            if (!isRecurrence) {
+                return allEvents.stream()
+                    .max(new VEventComparator())
+                    .map(event -> findUpcomingFromSingleEventAsList(event, username))
+                    .orElse(List.of());
             }
 
             return listUpcomingAcceptedRecurringEvents(allEvents, username);
+        }
+
+        private List<VEvent> findUpcomingFromSingleEventAsList(VEvent event, Username username) {
+            return findUpcomingFromSingleEvent(event, username)
+                .map(List::of)
+                .orElse(List.of());
         }
 
         private Optional<VEvent> findUpcomingFromSingleEvent(VEvent event, Username username) {
