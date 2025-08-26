@@ -533,6 +533,52 @@ public class AlarmInstantFactoryTest {
             .isEmpty();
     }
 
+    @Test
+    void shouldPickLatestVersionWhenMultipleVEventsSameUIDWithoutRecurrence() {
+        // two VEVENT with same UID, different SEQUENCE
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:same-uid-event
+            DTSTART:20250829T100000Z
+            SUMMARY:Old Version
+            SEQUENCE:0
+            ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+            BEGIN:VALARM
+            ACTION:EMAIL
+            TRIGGER:-PT15M
+            END:VALARM
+            END:VEVENT
+            
+            BEGIN:VEVENT
+            UID:same-uid-event
+            DTSTART:20250829T110000Z
+            SUMMARY:New Version
+            SEQUENCE:2
+            ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+            BEGIN:VALARM
+            ACTION:EMAIL
+            TRIGGER:-PT10M
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+        Username attendee = Username.of("bob@example.com");
+
+        AlarmInstantFactory testee = testee(Instant.parse("2025-08-28T00:00:00Z"));
+        Optional<AlarmInstantFactory.AlarmInstant> result = testee.computeNextAlarmInstant(calendar, attendee);
+
+        assertThat(result)
+            .describedAs("Should pick the VEVENT with highest SEQUENCE as the latest version")
+            .isPresent()
+            .get()
+            .extracting(AlarmInstantFactory.AlarmInstant::eventStartTime)
+            .isEqualTo(Instant.parse("2025-08-29T11:00:00Z"));
+    }
+
     @Nested
     class RecurrenceEventTest {
         @Test
