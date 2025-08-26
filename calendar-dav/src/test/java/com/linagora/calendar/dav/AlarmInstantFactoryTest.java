@@ -316,6 +316,31 @@ public class AlarmInstantFactoryTest {
         assertThat(result).contains(Instant.parse("2025-08-29T10:15:00Z"));
     }
 
+    @Test
+    void shouldSupportOldOutlookDTSTARTFormat() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:123456
+            DTSTART;TZID=UTC:20250829T100000
+            DTEND;TZID=UTC:20250829T110000
+            SUMMARY:Test Event
+            ATTENDEE;CN=John Doe;PARTSTAT=ACCEPTED:mailto:john@example.com
+            BEGIN:VALARM
+            ACTION:EMAIL
+            TRIGGER;RELATED=START:+PT15M
+            DESCRIPTION:Reminder
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Optional<Instant> result = computeNextAlarmTime(ics, Instant.parse("2025-07-28T00:00:00Z"), Username.of("john@example.com"));
+
+        assertThat(result).contains(Instant.parse("2025-08-29T10:15:00Z"));
+    }
+
     static Stream<Arguments> invalidAlarms() {
         return Stream.of(
             Arguments.of("No TRIGGER", """
