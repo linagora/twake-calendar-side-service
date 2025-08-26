@@ -27,7 +27,9 @@ import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
+import java.time.temporal.ChronoField;
 import java.time.temporal.Temporal;
+import java.time.temporal.TemporalAccessor;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Predicate;
@@ -67,6 +69,15 @@ public class EventParseUtils {
         .appendPattern("yyyyMMdd")
         .toFormatter();
 
+    private static final DateTimeFormatter FLEXIBLE_DATE_TIME_FORMATTER =
+        new DateTimeFormatterBuilder()
+            .appendPattern("yyyyMMdd'T'HHmmss")
+            .optionalStart()
+            .appendPattern("X")
+            .optionalEnd()
+            .toFormatter();
+
+
     private static final boolean GET_RESOURCE = true;
     private static final boolean GET_ATTENDEE = false;
 
@@ -80,7 +91,14 @@ public class EventParseUtils {
                 return Optional.of(property.getParameter(Parameter.TZID)
                     .map(tzId -> TimeZone.getTimeZone(tzId.getValue()).toZoneId())
                     .map(zoneId -> LocalDateTime.parse(value, DATE_TIME_FORMATTER).atZone(zoneId))
-                    .orElseGet(() -> ZonedDateTime.parse(value, UTC_DATE_TIME_FORMATTER)));
+                    .orElseGet(() -> {
+                        TemporalAccessor temporalAccessor = FLEXIBLE_DATE_TIME_FORMATTER.parse(value);
+                        if (temporalAccessor.isSupported(ChronoField.OFFSET_SECONDS)) {
+                            return ZonedDateTime.from(temporalAccessor);
+                        } else {
+                            return LocalDateTime.from(temporalAccessor).atZone(ZoneOffset.UTC);
+                        }
+                    }));
             }
         } catch (Exception e) {
             LOGGER.info("Failed to parse time: {}", e.getMessage());
@@ -174,7 +192,7 @@ public class EventParseUtils {
     public static ZonedDateTime getStartTime(VEvent vEvent) {
         return vEvent.getProperty(Property.DTSTART)
             .flatMap(EventParseUtils::parseTime)
-            .orElseThrow(() -> new IllegalStateException("DTSTART property is missing or invalid"));
+            .orElseThrow(() -> new IllegalStateException("DTSTART property is missing or invalid:\n" + vEvent));
     }
 
     public static Optional<ZonedDateTime> getEndTime(VEvent vEvent) {
