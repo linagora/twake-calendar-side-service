@@ -31,8 +31,10 @@ import java.time.temporal.ChronoField;
 import java.time.temporal.Temporal;
 import java.time.temporal.TemporalAccessor;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 import jakarta.mail.internet.AddressException;
 
@@ -55,6 +57,7 @@ import net.fortuna.ical4j.model.parameter.PartStat;
 import net.fortuna.ical4j.model.property.Description;
 import net.fortuna.ical4j.model.property.Location;
 import net.fortuna.ical4j.model.property.Summary;
+import net.fortuna.ical4j.model.property.Uid;
 
 public class EventParseUtils {
     public static final Logger LOGGER = LoggerFactory.getLogger(EventParseUtils.class);
@@ -273,6 +276,16 @@ public class EventParseUtils {
 
     public static boolean isCancelled(VEvent event) {
         return event.getStatus() != null && "CANCELLED".equalsIgnoreCase(event.getStatus().getValue());
+    }
+
+    public static Map<String, List<VEvent>> groupByUid(Calendar calendar) {
+        return calendar.getComponents(Component.VEVENT).stream()
+            .map(VEvent.class::cast)
+            .collect(Collectors.groupingBy(v ->
+                v.getUid()
+                    .map(Uid::getValue)
+                    .orElseThrow(() ->
+                        new IllegalArgumentException("VEVENT is missing UID, invalid ICS"))));
     }
 
 }
