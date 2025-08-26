@@ -46,6 +46,7 @@ import com.linagora.calendar.smtp.template.Language;
 import com.linagora.calendar.smtp.template.TemplateType;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.model.UploadedFile;
 
 import ezvcard.Ezvcard;
@@ -53,7 +54,6 @@ import ezvcard.VCard;
 import ezvcard.property.SimpleProperty;
 import ezvcard.property.Uid;
 import net.fortuna.ical4j.model.Calendar;
-import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.component.VEvent;
 import reactor.core.Disposable;
@@ -98,14 +98,15 @@ public class ImportProcessor {
 
             return Mono.fromCallable(() -> CalendarUtil.parseIcs(uploadedFile.data()))
                 .subscribeOn(Schedulers.boundedElastic())
-                .flatMapMany(calendar -> Flux.fromIterable(calendar.getComponents(Component.VEVENT))
-                    .cast(VEvent.class)
-                    .groupBy(vEvent -> vEvent.getProperty(Property.UID).get().getValue())
-                    .flatMap(groupedFlux -> groupedFlux.collectList().flatMap(vEvents -> {
+                .flatMapMany(calendar -> Mono.fromCallable(() -> EventParseUtils.groupByUid(calendar))
+                    .flatMapMany(map -> Flux.fromIterable(map.entrySet()))
+                    .flatMap(entry -> {
+                        String eventId = entry.getKey();
+                        List<VEvent> vEvents = entry.getValue();
+
                         Calendar combinedCalendar = new Calendar();
                         vEvents.forEach(combinedCalendar::add);
 
-                        String eventId = groupedFlux.key();
                         byte[] bytes = combinedCalendar.toString().getBytes(StandardCharsets.UTF_8);
 
                         return calDavClient.importCalendar(calendarURL, eventId, username, bytes)
@@ -114,7 +115,7 @@ public class ImportProcessor {
                                 LOGGER.error("Error importing event with UID {}: {}", eventId, error.getMessage());
                                 return Mono.just(ImportResult.failed(failedItemFromVEvent(vEvents.getFirst(), eventId)));
                             });
-                    }), DEFAULT_CONCURRENCY))
+                    }, DEFAULT_CONCURRENCY))
                 .reduce(ImportResult::reduce)
                 .defaultIfEmpty(new ImportResult(0, ImmutableList.of()));
         }

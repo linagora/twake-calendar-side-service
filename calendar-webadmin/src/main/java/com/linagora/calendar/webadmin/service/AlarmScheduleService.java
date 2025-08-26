@@ -24,7 +24,6 @@ import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.Collectors;
 
 import jakarta.inject.Inject;
 
@@ -48,10 +47,7 @@ import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.eventsearch.EventUid;
 
 import net.fortuna.ical4j.model.Calendar;
-import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.ComponentList;
-import net.fortuna.ical4j.model.Property;
-import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.property.DateProperty;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -210,9 +206,7 @@ public class AlarmScheduleService {
     }
 
     private Flux<ScheduledItem> collectEvents(Context context, OpenPaaSUser user, CalendarURL calendarURL, Calendar exportedCalendar) {
-        return Mono.fromCallable(() -> exportedCalendar.getComponents(Component.VEVENT).stream()
-                .map(VEvent.class::cast)
-                .collect(Collectors.groupingBy(v -> v.getProperty(Property.UID).get().getValue())))
+        return Mono.fromCallable(() -> EventParseUtils.groupByUid(exportedCalendar))
             .flatMapMany(map -> Flux.fromIterable(map.entrySet())
                 .map(entry -> new Calendar(new ComponentList<>(entry.getValue())))
                 .map(calendar -> new ScheduledItem(calendar, user.username(), calendarURL)))

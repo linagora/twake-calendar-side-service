@@ -40,12 +40,11 @@ import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.event.EventFields;
+import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.eventsearch.CalendarEvents;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
 
 import net.fortuna.ical4j.model.Calendar;
-import net.fortuna.ical4j.model.Component;
-import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.component.VEvent;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -175,26 +174,24 @@ public class CalendarEventsReindexService {
     }
 
     private Flux<IndexItem> collectEvents(Context context, OpenPaaSUser user, CalendarURL calendarURL, Calendar calendar) {
-        return Flux.fromIterable(calendar.getComponents(Component.VEVENT))
-            .cast(VEvent.class)
-            .groupBy(vEvent -> vEvent.getProperty(Property.UID).get().getValue())
-            .flatMap(groupedFlux ->
-                groupedFlux.map(vEvent -> EventFields.fromVEvent(vEvent, calendarURL))
+        return Mono.fromCallable(() -> EventParseUtils.groupByUid(calendar))
+            .flatMapMany(map -> Flux.fromIterable(map.entrySet()))
+            .flatMap(entry -> {
+                String eventId = entry.getKey();
+                List<VEvent> vEvents = entry.getValue();
+
+                return Flux.fromIterable(vEvents)
+                    .map(vEvent -> EventFields.fromVEvent(vEvent, calendarURL))
                     .collectList()
-                    .<List<EventFields>>handle((list, sink) -> {
-                        if (list.isEmpty()) {
-                            sink.complete();
-                        } else {
-                            sink.next(list);
-                        }
-                    })
+                    .filter(list -> !list.isEmpty())
                     .map(CalendarEvents::of)
                     .map(calendarEvents -> new IndexItem(user, calendarURL, calendarEvents))
                     .onErrorResume(e -> {
                         LOGGER.error("Error while doing task {} for user {} and calendar {} and eventId {}",
-                            TASK_NAME.asString(), user.username().asString(), calendarURL.serialize(), groupedFlux.key(), e);
+                            TASK_NAME.asString(), user.username().asString(), calendarURL.serialize(), eventId, e);
                         context.incrementFailedEvent();
                         return Mono.empty();
-                    }));
+                    });
+            });
     }
 }
