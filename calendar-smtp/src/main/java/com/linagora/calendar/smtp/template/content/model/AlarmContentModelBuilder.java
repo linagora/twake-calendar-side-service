@@ -42,7 +42,7 @@ public class AlarmContentModelBuilder {
 
     public static DurationStep builder() {
         return duration -> summary -> location -> organizer -> attendees ->
-            resources -> description -> link -> i18nTranslator -> () -> {
+            resources -> description -> videoConference -> i18nTranslator -> () -> {
                 ImmutableMap.Builder<String, Object> eventBuilder = ImmutableMap.builder();
 
                 eventBuilder.put("summary", summary);
@@ -62,12 +62,12 @@ public class AlarmContentModelBuilder {
                 eventBuilder.put("resources", resourceMap);
 
                 description.ifPresent(desc -> eventBuilder.put("description", desc));
+                videoConference.ifPresent(conf -> eventBuilder.put("videoConferenceLink", conf));
 
                 return ImmutableMap.of(
                     "content", ImmutableMap.of(
                         "event", eventBuilder.build(),
-                        "duration", formatDuration(duration, i18nTranslator.associatedLocale()),
-                        "seeInCalendarLink", link));
+                        "duration", formatDuration(duration, i18nTranslator.associatedLocale())));
             };
     }
 
@@ -96,11 +96,11 @@ public class AlarmContentModelBuilder {
     }
 
     public interface DescriptionStep {
-        LinkStep description(Optional<String> description);
+        VideoConferenceLinkStep description(Optional<String> description);
     }
 
-    public interface LinkStep {
-        TranslatorStep seeInCalendarLink(String url);
+    public interface VideoConferenceLinkStep {
+        TranslatorStep videoconference(Optional<String> link);
     }
 
     public interface TranslatorStep {
