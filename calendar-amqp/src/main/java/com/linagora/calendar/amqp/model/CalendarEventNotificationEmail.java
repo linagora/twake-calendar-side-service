@@ -93,6 +93,8 @@ public record CalendarEventNotificationEmail(MailAddress senderEmail,
                     resource -> PERSON_TO_MODEL.apply(resource).toPugModel())));
         EventParseUtils.getLocation(vEvent).ifPresent(location -> eventBuilder.put("location", new LocationModel(location).toPugModel()));
         EventParseUtils.getDescription(vEvent).ifPresent(description -> eventBuilder.put("description", description));
+        EventParseUtils.getPropertyValueIgnoreCase(vEvent, "X-OPENPAAS-VIDEOCONFERENCE")
+            .ifPresent(value -> eventBuilder.put("videoConferenceLink", value));
 
         return eventBuilder.build();
     }

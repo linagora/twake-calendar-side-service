@@ -160,6 +160,13 @@ div(style='')
                                           | #{content.event.location.value} (
                                           a(href=`https://www.openstreetmap.org/search?query=${content.event.location.value}`) #{translator.get('see_in_map')}
                                           | )
+                                  if (content.event.videoConferenceLink)
+                                    tr
+                                      td(style='min-width: 96px;' valign='top')
+                                        strong #{translator.get('videoconferencelink')}
+                                      td
+                                        a.link(href=content.event.videoConferenceLink style='text-decoration: none; color: #4d91c9;')
+                                          | #{content.event.videoConferenceLink}
                                   tr
                                     td(valign='top')
                                       strong #{translator.get('attendees')}
