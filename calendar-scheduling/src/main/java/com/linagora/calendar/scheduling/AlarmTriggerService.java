@@ -18,7 +18,6 @@
 
 package com.linagora.calendar.scheduling;
 
-import static com.linagora.calendar.scheduling.TimeFormatUtil.formatDuration;
 import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader.ALARM_SETTING_IDENTIFIER;
 import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader.ENABLE_ALARM;
 
@@ -42,7 +41,6 @@ import org.apache.james.core.Username;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.dav.CalendarUtil;
 import com.linagora.calendar.smtp.Mail;
 import com.linagora.calendar.smtp.MailSender;
@@ -50,7 +48,7 @@ import com.linagora.calendar.smtp.template.Language;
 import com.linagora.calendar.smtp.template.MailTemplateConfiguration;
 import com.linagora.calendar.smtp.template.MessageGenerator;
 import com.linagora.calendar.smtp.template.TemplateType;
-import com.linagora.calendar.smtp.template.content.model.LocationModel;
+import com.linagora.calendar.smtp.template.content.model.AlarmContentModelBuilder;
 import com.linagora.calendar.smtp.template.content.model.PersonModel;
 import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.AlarmEventDAO;
@@ -191,14 +189,8 @@ public class AlarmTriggerService {
                                            Duration duration) {
         VEvent vEvent = maybeRecurrenceId.flatMap(recurrenceId -> getVEvent(calendar, recurrenceId))
             .orElse(GET_FIRST_VEVENT_FUNCTION.apply(calendar));
-        String summary = EventParseUtils.getSummary(vEvent).orElse(StringUtils.EMPTY);
 
-        ImmutableMap.Builder<String, Object> contentBuilder = ImmutableMap.builder();
-        contentBuilder.put("event", toPugModel(vEvent))
-            .put("duration", formatDuration(duration, locale));
-
-        return ImmutableMap.of("content", contentBuilder.build(),
-            "subject.summary", summary);
+        return toPugModel(vEvent, duration, locale);
     }
 
     private Optional<VEvent> getVEvent(Calendar calendar, String recurrenceId) {
@@ -209,24 +201,29 @@ public class AlarmTriggerService {
             .findAny();
     }
 
-    private Map<String, Object> toPugModel(VEvent vEvent) {
+    private Map<String, Object> toPugModel(VEvent vEvent, Duration duration, Locale locale) {
         PersonModel organizer = PERSON_TO_MODEL.apply(EventParseUtils.getOrganizer(vEvent));
         String summary = EventParseUtils.getSummary(vEvent).orElse(StringUtils.EMPTY);
-        List<EventFields.Person> resourceList = EventParseUtils.getResources(vEvent);
+        List<PersonModel> attendees = EventParseUtils.getAttendees(vEvent).stream()
+            .map(PERSON_TO_MODEL)
+            .toList();
+        List<PersonModel> resources = EventParseUtils.getResources(vEvent).stream()
+            .map(PERSON_TO_MODEL)
+            .toList();
+        Optional<String> location = EventParseUtils.getLocation(vEvent);
+        Optional<String> description = EventParseUtils.getDescription(vEvent);
+        Optional<String> videoConf = EventParseUtils.getPropertyValueIgnoreCase(vEvent, "X-OPENPAAS-VIDEOCONFERENCE");
 
-        ImmutableMap.Builder<String, Object> eventBuilder = ImmutableMap.builder();
-        eventBuilder.put("organizer", organizer.toPugModel())
-            .put("attendees", EventParseUtils.getAttendees(vEvent).stream()
-                .collect(ImmutableMap.toImmutableMap(attendee -> attendee.email().asString(),
-                    attendee -> PERSON_TO_MODEL.apply(attendee).toPugModel())))
-            .put("summary", summary)
-            .put("hasResources", !resourceList.isEmpty())
-            .put("resources", resourceList.stream()
-                .collect(ImmutableMap.toImmutableMap(resource -> resource.email().asString(),
-                    resource -> PERSON_TO_MODEL.apply(resource).toPugModel())));
-        EventParseUtils.getLocation(vEvent).ifPresent(location -> eventBuilder.put("location", new LocationModel(location).toPugModel()));
-        EventParseUtils.getDescription(vEvent).ifPresent(description -> eventBuilder.put("description", description));
-
-        return eventBuilder.build();
+        return AlarmContentModelBuilder.builder()
+            .duration(duration)
+            .summary(summary)
+            .location(location)
+            .organizer(organizer)
+            .attendees(attendees)
+            .resources(resources)
+            .description(description)
+            .videoconference(videoConf)
+            .locale(locale)
+            .buildAsMap();
     }
 }

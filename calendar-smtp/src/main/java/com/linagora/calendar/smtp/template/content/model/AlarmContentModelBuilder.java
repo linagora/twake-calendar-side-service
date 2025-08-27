@@ -28,21 +28,13 @@ import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 
 import com.google.common.collect.ImmutableMap;
-import com.ibm.icu.text.RelativeDateTimeFormatter;
-import com.ibm.icu.util.ULocale;
-import com.linagora.calendar.smtp.i18n.I18NTranslator;
+import com.linagora.calendar.smtp.template.TimeFormatUtil;
 
 public class AlarmContentModelBuilder {
 
-    public static String formatDuration(Duration duration, Locale locale) {
-        long minutes = duration.toMinutes();
-        RelativeDateTimeFormatter formatter = RelativeDateTimeFormatter.getInstance(ULocale.forLocale(locale));
-        return formatter.format(minutes, RelativeDateTimeFormatter.Direction.NEXT, RelativeDateTimeFormatter.RelativeUnit.MINUTES);
-    }
-
     public static DurationStep builder() {
         return duration -> summary -> location -> organizer -> attendees ->
-            resources -> description -> videoConference -> i18nTranslator -> () -> {
+            resources -> description -> videoConference -> locale -> () -> {
                 ImmutableMap.Builder<String, Object> eventBuilder = ImmutableMap.builder();
 
                 eventBuilder.put("summary", summary);
@@ -67,7 +59,8 @@ public class AlarmContentModelBuilder {
                 return ImmutableMap.of(
                     "content", ImmutableMap.of(
                         "event", eventBuilder.build(),
-                        "duration", formatDuration(duration, i18nTranslator.associatedLocale())));
+                        "duration", TimeFormatUtil.formatDuration(duration, locale)),
+                    "subject.summary", summary);
             };
     }
 
@@ -100,11 +93,11 @@ public class AlarmContentModelBuilder {
     }
 
     public interface VideoConferenceLinkStep {
-        TranslatorStep videoconference(Optional<String> link);
+        LocaleStep videoconference(Optional<String> link);
     }
 
-    public interface TranslatorStep {
-        FinalStep translator(I18NTranslator translator);
+    public interface LocaleStep {
+        FinalStep locale(Locale locale);
     }
 
     public interface FinalStep {
