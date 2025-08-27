@@ -16,7 +16,7 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.scheduling;
+package com.linagora.calendar.smtp.template;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

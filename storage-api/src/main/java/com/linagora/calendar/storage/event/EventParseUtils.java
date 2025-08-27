@@ -39,6 +39,7 @@ import java.util.stream.Collectors;
 import jakarta.mail.internet.AddressException;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.apache.james.core.MailAddress;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -190,6 +191,14 @@ public class EventParseUtils {
     public static Optional<String> getDescription(VEvent vEvent) {
         return Optional.ofNullable(vEvent.getDescription())
             .map(Description::getValue);
+    }
+
+    public static Optional<String> getPropertyValueIgnoreCase(VEvent vEvent, String property) {
+        return vEvent.getProperties().stream()
+            .filter(p -> Strings.CI.equals(property, p.getName()))
+            .map(Property::getValue)
+            .filter(StringUtils::isNotBlank)
+            .findFirst();
     }
 
     public static ZonedDateTime getStartTime(VEvent vEvent) {
