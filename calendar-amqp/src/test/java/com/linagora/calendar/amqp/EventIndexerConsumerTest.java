@@ -127,12 +127,16 @@ public class EventIndexerConsumerTest {
     }
 
     private OpenPaaSUser openPaasUser;
+    private OpenPaaSUser attendee1;
+    private OpenPaaSUser attendee2;
     private CalendarSearchService calendarSearchService;
     private Sender sender;
 
     @BeforeEach
     public void setUp(DockerSabreDavSetup dockerSabreDavSetup) {
         openPaasUser = sabreDavExtension.newTestUser();
+        attendee1 = sabreDavExtension.newTestUser();
+        attendee2 = sabreDavExtension.newTestUser();
         calendarSearchService = Mockito.spy(new MemoryCalendarSearchService());
 
         MongoDatabase mongoDB = dockerSabreDavSetup.getMongoDB();
@@ -173,8 +177,6 @@ public class EventIndexerConsumerTest {
         String description = "Detailed meeting description";
         String location = "Meeting Room 101";
         String organizer = openPaasUser.username().asString();
-        OpenPaaSUser attendee1 = sabreDavExtension.newTestUser();
-        OpenPaaSUser attendee2 = sabreDavExtension.newTestUser();
         OpenPaaSUser attendee3 = sabreDavExtension.newTestUser();
 
         String calendarData =
@@ -269,7 +271,6 @@ public class EventIndexerConsumerTest {
         String description = "Detailed meeting description";
         String location = "Meeting Room 101";
         String organizer = openPaasUser.username().asString();
-        OpenPaaSUser attendee1 = sabreDavExtension.newTestUser();
 
         String calendarData = """
             BEGIN:VCALENDAR
@@ -397,7 +398,6 @@ public class EventIndexerConsumerTest {
         String description = "Detailed meeting description";
         String location = "Meeting Room 101";
         String organizer = openPaasUser.username().asString();
-        OpenPaaSUser attendee1 = sabreDavExtension.newTestUser();
 
         // 3 events: 1 master event and 2 recurrence events
         String calendarData = """
@@ -581,14 +581,8 @@ public class EventIndexerConsumerTest {
 
     @Test
     void shouldIndexEventInSearchEngineForAttendeeWhenInvited() {
-        OpenPaaSUser attendee1 = sabreDavExtension.newTestUser();
-        OpenPaaSUser attendee2 = sabreDavExtension.newTestUser();
-
         String eventUid = UUID.randomUUID().toString();
-        String calendarData = getSampleCalendar(eventUid)
-            .replace("organizer@open-paas.org", openPaasUser.username().asString())
-            .replace("attendee1@open-paas.org", attendee1.username().asString())
-            .replace("attendee2@open-paas.org", attendee2.username().asString());
+        String calendarData = getSampleCalendar(eventUid);
 
         davTestHelper.upsertCalendar(openPaasUser, calendarData, eventUid);
 
@@ -598,14 +592,8 @@ public class EventIndexerConsumerTest {
 
     @Test
     void shouldRemoveEventFromSearchIndexForAttendeeWhenCalendarDeleted() {
-        OpenPaaSUser attendee1 = sabreDavExtension.newTestUser();
-        OpenPaaSUser attendee2 = sabreDavExtension.newTestUser();
-
         String eventUid = UUID.randomUUID().toString();
-        String calendarData = getSampleCalendar(eventUid)
-            .replace("organizer@open-paas.org", openPaasUser.username().asString())
-            .replace("attendee1@open-paas.org", attendee1.username().asString())
-            .replace("attendee2@open-paas.org", attendee2.username().asString());
+        String calendarData = getSampleCalendar(eventUid);
 
         davTestHelper.upsertCalendar(openPaasUser, calendarData, eventUid);
         assertEventExistsInSearch(attendee1.username(), "Test1", eventUid);
@@ -618,18 +606,12 @@ public class EventIndexerConsumerTest {
 
     @Test
     void shouldUpdateEventInSearchIndexForAttendeeWhenCalendarEventIsUpdated() {
-        OpenPaaSUser attendee1 = sabreDavExtension.newTestUser();
-        OpenPaaSUser attendee2 = sabreDavExtension.newTestUser();
-
         String eventUid = UUID.randomUUID().toString();
         String originalSummary = "Original Title";
         String updatedSummary = "Updated Summary";
 
         String originalCalendar = getSampleCalendar(eventUid)
-            .replace("Test1", originalSummary)
-            .replace("organizer@open-paas.org", openPaasUser.username().asString())
-            .replace("attendee1@open-paas.org", attendee1.username().asString())
-            .replace("attendee2@open-paas.org", attendee2.username().asString());
+            .replace("Test1", originalSummary);
 
         davTestHelper.upsertCalendar(openPaasUser, originalCalendar, eventUid);
         assertEventExistsInSearch(attendee1.username(), originalSummary, eventUid);
@@ -784,7 +766,7 @@ public class EventIndexerConsumerTest {
             END:STANDARD
             END:VTIMEZONE
             BEGIN:VEVENT
-            UID:%s
+            UID:{eventUid}
             TRANSP:OPAQUE
             DTSTART;TZID=Asia/Jakarta:20250314T210000
             DTEND;TZID=Asia/Jakarta:20250314T220000
@@ -792,12 +774,15 @@ public class EventIndexerConsumerTest {
             SUMMARY:Test1
             DESCRIPTION:Note1
             LOCATION:Location2
-            ORGANIZER;CN=John1 Doe1:mailto:organizer@open-paas.org
-            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;CN=John2 Doe2;SCHEDULE-STATUS=1.2:mailto:attendee1@open-paas.org
-            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:attendee2@open-paas.org
+            ORGANIZER;CN=John1 Doe1:mailto:{organizer}
+            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;CN=John2 Doe2;SCHEDULE-STATUS=1.2:mailto:{attendee1}
+            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:{attendee2}
             END:VEVENT
             END:VCALENDAR
-            """.formatted(eventUid);
+            """.replace("{eventUid}", eventUid)
+            .replace("{organizer}", openPaasUser.username().asString())
+            .replace("{attendee1}", attendee1.username().asString())
+            .replace("{attendee2}", attendee2.username().asString());
     }
 
 }
