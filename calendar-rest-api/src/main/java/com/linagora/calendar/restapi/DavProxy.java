@@ -61,6 +61,7 @@ public class DavProxy extends DavClient {
                             client.headers(proxiedHeader -> {
                                     HttpHeaders entries = request.requestHeaders();
                                     Optional.ofNullable(entries.get("Accept", null)).ifPresent(value -> proxiedHeader.add("Accept", value));
+                                    Optional.ofNullable(entries.get("Definition", null)).ifPresent(value -> proxiedHeader.add("Accept", value));
                                     Optional.ofNullable(entries.get("Depth", null)).ifPresent(value -> proxiedHeader.add("Depth", value));
                                     Optional.ofNullable(entries.get("Content-Type", null)).ifPresent(value -> proxiedHeader.add("Content-Type", value));
                                     proxiedHeader.add(HttpHeaderNames.AUTHORIZATION, authenticationToken(session.getUser().asString()));
