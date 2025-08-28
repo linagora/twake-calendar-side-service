@@ -42,7 +42,7 @@ public class VCalendarDtoTest {
                   "vcalendar",
                   [
                     ["version", {}, "text", "2.0"],
-                    ["prodid", {}, "text", "-//Sabre//Sabre VObject 4.1.3//EN"]
+                    ["prodid", {}, "text", "-//Sabre//Sabre VObject 4.2.2//EN"]
                   ],
                   [
                     [
@@ -73,7 +73,7 @@ public class VCalendarDtoTest {
                   "vcalendar",
                   [
                     ["version", {}, "text", "2.0"],
-                    ["prodid", {}, "text", "-//Sabre//Sabre VObject 4.1.3//EN"]
+                    ["prodid", {}, "text", "-//Sabre//Sabre VObject 4.2.2//EN"]
                   ],
                   [
                     [

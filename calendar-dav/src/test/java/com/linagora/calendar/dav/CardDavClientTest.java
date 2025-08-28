@@ -79,7 +79,7 @@ public class CardDavClientTest {
         String vcard = """
             BEGIN:VCARD
             VERSION:3.0
-            PRODID:-//Sabre//Sabre VObject 4.1.3//EN
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
             UID:%s
             FN:John Doe
             EMAIL;TYPE=Work:john.doe@example.com
@@ -100,7 +100,7 @@ public class CardDavClientTest {
         String vcard = """
             BEGIN:VCARD
             VERSION:3.0
-            PRODID:-//Sabre//Sabre VObject 4.1.3//EN
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
             UID:%s
             FN:John Doe
             EMAIL;TYPE=Work:john.doe@example.com
@@ -120,7 +120,7 @@ public class CardDavClientTest {
         String vcard = """
             BEGIN:VCARD
             VERSION:3.0
-            PRODID:-//Sabre//Sabre VObject 4.1.3//EN
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
             UID:%s
             FN:John Doe
             EMAIL;TYPE=Work:john.doe@example.com
@@ -129,7 +129,7 @@ public class CardDavClientTest {
         String vcard2 = """
             BEGIN:VCARD
             VERSION:3.0
-            PRODID:-//Sabre//Sabre VObject 4.1.3//EN
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
             UID:%s
             FN:John Doe 2
             EMAIL;TYPE=Work:john.doe2@example.com
@@ -227,7 +227,7 @@ public class CardDavClientTest {
         String vcard = """
             BEGIN:VCARD
             VERSION:3.0
-            PRODID:-//Sabre//Sabre VObject 4.1.3//EN
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
             UID:%s
             FN:John Doe
             EMAIL;TYPE=Work:john.doe@example.com
@@ -251,7 +251,7 @@ public class CardDavClientTest {
         String originalVcard = """
             BEGIN:VCARD
             VERSION:3.0
-            PRODID:-//Sabre//Sabre VObject 4.1.3//EN
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
             UID:%s
             FN:John Doe
             EMAIL;TYPE=Work:john.doe@example.com
@@ -263,7 +263,7 @@ public class CardDavClientTest {
         String updatedVcard = """
             BEGIN:VCARD
             VERSION:3.0
-            PRODID:-//Sabre//Sabre VObject 4.1.3//EN
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
             UID:%s
             FN:John Smith
             EMAIL;TYPE=Work:john.smith@example.com
@@ -290,7 +290,7 @@ public class CardDavClientTest {
         String vcard1 = """
             BEGIN:VCARD
             VERSION:3.0
-            PRODID:-//Sabre//Sabre VObject 4.1.3//EN
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
             UID:%s
             FN:Alice Smith
             EMAIL;TYPE=Work:alice@example.com
@@ -301,7 +301,7 @@ public class CardDavClientTest {
         String vcard2 = """
             BEGIN:VCARD
             VERSION:3.0
-            PRODID:-//Sabre//Sabre VObject 4.1.3//EN
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
             UID:%s
             FN:Bob Johnson
             EMAIL;TYPE=Home:bob@example.com
@@ -332,7 +332,7 @@ public class CardDavClientTest {
         String vcardA = """
             BEGIN:VCARD
             VERSION:3.0
-            PRODID:-//Sabre//Sabre VObject 4.1.3//EN
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
             UID:%s
             FN:Alice
             EMAIL:alice@example.com
@@ -345,7 +345,7 @@ public class CardDavClientTest {
         String vcardB = """
             BEGIN:VCARD
             VERSION:3.0
-            PRODID:-//Sabre//Sabre VObject 4.1.3//EN
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
             UID:%s
             FN:Bob
             EMAIL:bob@example.com
@@ -357,7 +357,7 @@ public class CardDavClientTest {
         String updatedVcardA = """
             BEGIN:VCARD
             VERSION:3.0
-            PRODID:-//Sabre//Sabre VObject 4.1.3//EN
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
             UID:%s
             FN:Alice Updated
             EMAIL:alice.updated@example.com
@@ -390,7 +390,7 @@ public class CardDavClientTest {
         String vcardA = """
             BEGIN:VCARD
             VERSION:3.0
-            PRODID:-//Sabre//Sabre VObject 4.1.3//EN
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
             UID:%s
             FN:Alice
             EMAIL:alice@domain-a.com
@@ -403,7 +403,7 @@ public class CardDavClientTest {
         String vcardB = """
             BEGIN:VCARD
             VERSION:3.0
-            PRODID:-//Sabre//Sabre VObject 4.1.3//EN
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
             UID:%s
             FN:Bob
             EMAIL:bob@domain-b.com

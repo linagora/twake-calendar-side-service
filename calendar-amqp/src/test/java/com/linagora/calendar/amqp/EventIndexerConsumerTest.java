@@ -729,7 +729,7 @@ public class EventIndexerConsumerTest {
         void consumeMessageShouldNotCrashWhenNotExistPrincipalUserId() throws Exception {
             String userId = ObjectId.getSmallestWithDate(new Date()).toString();
             String amqpMessage = """
-                {"eventPath":"/calendars/%s/%s/a0b5a363-e56f-490b-bfa7-89111b0fdd9b.ics","event":["vcalendar",[["version",{},"text","2.0"],["prodid",{},"text","-//Sabre//Sabre VObject 4.1.3//EN"]],[["vtimezone",[["tzid",{},"text","Asia/Jakarta"]],[["standard",[["tzoffsetfrom",{},"utc-offset","+07:00"],["tzoffsetto",{},"utc-offset","+07:00"],["tzname",{},"text","WIB"],["dtstart",{},"date-time","1970-01-01T00:00:00"]],[]]]],["vevent",[["uid",{},"text","a0b5a363-e56f-490b-bfa7-89111b0fdd9b"],["transp",{},"text","OPAQUE"],["dtstart",{"tzid":"Asia/Saigon"},"date-time","2025-04-19T11:00:00"],["dtend",{"tzid":"Asia/Saigon"},"date-time","2025-04-19T11:30:00"],["class",{},"text","PUBLIC"],["summary",{},"text","Title 1"],["description",{},"text","note tung"],["organizer",{"cn":"John1 Doe1"},"cal-address","mailto:user1@open-paas.org"],["attendee",{"partstat":"NEEDS-ACTION","rsvp":"TRUE","role":"REQ-PARTICIPANT","cutype":"INDIVIDUAL","cn":"John2 Doe2","schedule-status":"1.1"},"cal-address","mailto:user2@open-paas.org"],["attendee",{"partstat":"ACCEPTED","rsvp":"FALSE","role":"CHAIR","cutype":"INDIVIDUAL"},"cal-address","mailto:user1@open-paas.org"],["dtstamp",{},"date-time","2025-04-18T07:47:48Z"]],[]]]],"import":false,"etag":"\\"f066260d3a4fca51ae0de0618e9555cc\\""}""".formatted(userId, userId);
+                {"eventPath":"/calendars/%s/%s/a0b5a363-e56f-490b-bfa7-89111b0fdd9b.ics","event":["vcalendar",[["version",{},"text","2.0"],["prodid",{},"text","-//Sabre//Sabre VObject 4.2.2//EN"]],[["vtimezone",[["tzid",{},"text","Asia/Jakarta"]],[["standard",[["tzoffsetfrom",{},"utc-offset","+07:00"],["tzoffsetto",{},"utc-offset","+07:00"],["tzname",{},"text","WIB"],["dtstart",{},"date-time","1970-01-01T00:00:00"]],[]]]],["vevent",[["uid",{},"text","a0b5a363-e56f-490b-bfa7-89111b0fdd9b"],["transp",{},"text","OPAQUE"],["dtstart",{"tzid":"Asia/Saigon"},"date-time","2025-04-19T11:00:00"],["dtend",{"tzid":"Asia/Saigon"},"date-time","2025-04-19T11:30:00"],["class",{},"text","PUBLIC"],["summary",{},"text","Title 1"],["description",{},"text","note tung"],["organizer",{"cn":"John1 Doe1"},"cal-address","mailto:user1@open-paas.org"],["attendee",{"partstat":"NEEDS-ACTION","rsvp":"TRUE","role":"REQ-PARTICIPANT","cutype":"INDIVIDUAL","cn":"John2 Doe2","schedule-status":"1.1"},"cal-address","mailto:user2@open-paas.org"],["attendee",{"partstat":"ACCEPTED","rsvp":"FALSE","role":"CHAIR","cutype":"INDIVIDUAL"},"cal-address","mailto:user1@open-paas.org"],["dtstamp",{},"date-time","2025-04-18T07:47:48Z"]],[]]]],"import":false,"etag":"\\"f066260d3a4fca51ae0de0618e9555cc\\""}""".formatted(userId, userId);
 
             channelPool.getSender()
                 .send(Mono.just(new OutboundMessage("calendar:event:created",
@@ -773,7 +773,7 @@ public class EventIndexerConsumerTest {
         return """
             BEGIN:VCALENDAR
             VERSION:2.0
-            PRODID:-//Sabre//Sabre VObject 4.1.3//EN
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
             BEGIN:VTIMEZONE
             TZID:Asia/Jakarta
             BEGIN:STANDARD

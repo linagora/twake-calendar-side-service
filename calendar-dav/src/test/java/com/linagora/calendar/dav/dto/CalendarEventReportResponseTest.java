@@ -54,7 +54,7 @@ public class CalendarEventReportResponseTest {
                        "prodid",
                        {},
                        "text",
-                       "-//Sabre//Sabre VObject 4.1.3//EN"
+                       "-//Sabre//Sabre VObject 4.2.2//EN"
                      ]
                    ],
                    [
