@@ -86,6 +86,9 @@ import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
+import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
+import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
+import com.mongodb.reactivestreams.client.MongoDatabase;
 
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.path.json.JsonPath;
@@ -196,7 +199,11 @@ public class EventUpdateEmailConsumerTest {
         MailTemplateConfiguration mailTemplateConfig = new MailTemplateConfiguration("file://" + templateDirectory.toAbsolutePath(),
             MaybeSender.getMailSender("no-reply@openpaas.org"));
 
-        MessageGenerator.Factory messageFactory = MessageGenerator.factory(mailTemplateConfig, fileSystem);
+        MongoDatabase mongoDB = sabreDavExtension.dockerSabreDavSetup().getMongoDB();
+        MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
+        OpenPaaSUserDAO openPaaSUserDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
+
+        MessageGenerator.Factory messageFactory = MessageGenerator.factory(mailTemplateConfig, fileSystem, openPaaSUserDAO);
         EventInCalendarLinkFactory linkFactory = new EventInCalendarLinkFactory(URI.create("http://localhost:3000/").toURL());
 
         UsersRepository usersRepository = mock(UsersRepository.class);
@@ -215,7 +222,7 @@ public class EventUpdateEmailConsumerTest {
             messageFactory,
             linkFactory,
             new SimpleSessionProvider(new RandomMailboxSessionIdGenerator()),
-            usersRepository, mock(OpenPaaSUserDAO.class),
+            usersRepository, openPaaSUserDAO,
             settingsResolver,
             actionLinkFactory);
 
@@ -252,6 +259,12 @@ public class EventUpdateEmailConsumerTest {
             "30250411T110000");
         davTestHelper.upsertCalendar(organizer, initialCalendarData, eventUid);
 
+        // Wait for the mail to be received via mock SMTP
+        awaitAtMost.atMost(Duration.ofSeconds(20))
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        clearSmtpMock();
+
         String updatedCalendarData = generateCalendarData(
             eventUid,
             organizer.username().asString(),
@@ -265,14 +278,14 @@ public class EventUpdateEmailConsumerTest {
 
         // Wait for the mail to be received via mock SMTP
         awaitAtMost.atMost(Duration.ofSeconds(20))
-            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(2));
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
 
         JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
 
         assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[1].from")).isEqualTo(organizer.username().asString());
-            softly.assertThat(smtpMailsResponse.getString("[1].recipients[0].address")).isEqualTo(attendee.username().asString());
-            String message = smtpMailsResponse.getString("[1].message");
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo(organizer.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(attendee.username().asString());
+            String message = smtpMailsResponse.getString("[0].message");
             softly.assertThat(message)
                 .containsIgnoringNewLines("Event Sprint planning #01 from Van Tung TRAN updated")
                 .contains("Content-Type: multipart/mixed;")

@@ -24,14 +24,11 @@ import static com.linagora.calendar.smtp.template.MimeAttachment.ATTACHMENT_DISP
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
-import java.util.function.Function;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
-import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
@@ -60,7 +57,6 @@ import com.linagora.calendar.smtp.template.TemplateType;
 import com.linagora.calendar.smtp.template.content.model.EventInCalendarLinkFactory;
 import com.linagora.calendar.smtp.template.content.model.ReplyContentModelBuilder;
 import com.linagora.calendar.storage.OpenPaaSId;
-import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.resolver.ConfigurationResolver;
@@ -186,7 +182,7 @@ public class EventMailHandler {
 
             return EventMessageGenerator.generateActionLinks(participationActionLinkFactory, event.base())
                 .map(actionLinks -> event.toPugModel(resolvedSettings.locale(), resolvedSettings.zoneId(), eventInCalendarLinkFactory, isInternalUser, actionLinks))
-                .flatMap(scopedVariable -> messageGenerator.generate(recipientUser, Optional.of(fromAddress), scopedVariable, attachments));
+                .flatMap(scopedVariable -> messageGenerator.generate(recipientUser, fromAddress, scopedVariable, attachments));
         }
     }
 
@@ -216,7 +212,7 @@ public class EventMailHandler {
 
             return EventMessageGenerator.generateActionLinks(participationActionLinkFactory, event.base())
                 .map(actionLinks -> event.toPugModel(resolvedSettings.locale(), resolvedSettings.zoneId(), eventInCalendarLinkFactory, isInternalUser, actionLinks))
-                .flatMap(scopedVariable -> messageGenerator.generate(recipientUser, Optional.of(fromAddress), scopedVariable, attachments));
+                .flatMap(scopedVariable -> messageGenerator.generate(recipientUser, fromAddress, scopedVariable, attachments));
         }
     }
 
@@ -243,7 +239,7 @@ public class EventMailHandler {
             List<MimeAttachment> attachments = EventMessageGenerator.createAttachments(calendarAsBytes, ImmutableMethod.CANCEL);
 
             MailAddress fromAddress = event.base().senderEmail();
-            return messageGenerator.generate(recipientUser, Optional.of(fromAddress),
+            return messageGenerator.generate(recipientUser, fromAddress,
                 event.toPugModel(resolvedSettings.locale(), resolvedSettings.zoneId(), eventInCalendarLinkFactory, isInternalUser), attachments);
         }
     }
@@ -277,21 +273,11 @@ public class EventMailHandler {
 
             MailAddress fromAddress = event.base().senderEmail();
 
-            return getUserFullNameByAddress(fromAddress)
-                .map(modelBuilder::senderDisplayName)
-                .map(ReplyContentModelBuilder.FinalStep::buildAsMap)
-                .flatMap(model -> messageGenerator.generate(recipientUser, Optional.of(fromAddress), model, attachments));
-        }
-
-        private Mono<String> getUserFullNameByAddress(MailAddress fromAddress) {
-            Username username = Username.fromMailAddress(fromAddress);
-            Function<OpenPaaSUser, String> fullNameFunction = user -> StringUtils.trimToEmpty(StringUtils.joinWith(" ",
-                StringUtils.defaultString(user.firstname()),
-                StringUtils.defaultString(user.lastname())));
-
-            return userDAO.retrieve(username)
-                .map(fullNameFunction)
-                .defaultIfEmpty(StringUtils.EMPTY);
+            return messageGenerator.resolveInternetAddress(Username.fromMailAddress(fromAddress))
+                .flatMap(fromInternetAddress -> {
+                    Map<String, Object> model = modelBuilder.senderDisplayName(fromInternetAddress.getPersonal()).buildAsMap();
+                    return messageGenerator.generate(recipientUser, fromInternetAddress, model, attachments);
+                });
         }
     }
 
@@ -324,7 +310,7 @@ public class EventMailHandler {
             List<MimeAttachment> attachments = EventMessageGenerator.createAttachments(calendarAsBytes, ImmutableMethod.COUNTER);
 
             MailAddress fromAddress = event.base().senderEmail();
-            return messageGenerator.generate(recipientUser, Optional.of(fromAddress), model, attachments);
+            return messageGenerator.generate(recipientUser, fromAddress, model, attachments);
         }
     }
 

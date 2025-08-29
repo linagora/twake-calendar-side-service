@@ -69,6 +69,7 @@ import com.linagora.calendar.smtp.template.MailTemplateConfiguration;
 import com.linagora.calendar.smtp.template.MessageGenerator;
 import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.MemoryAlarmEventDAO;
+import com.linagora.calendar.storage.MemoryOpenPaaSUserDAO;
 import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
@@ -119,7 +120,7 @@ public class AlarmTriggerServiceTest {
             "app", "src", "main", "resources", "templates");
         MailTemplateConfiguration mailTemplateConfig = new MailTemplateConfiguration("file://" + templateDirectory.toAbsolutePath(),
             MaybeSender.getMailSender("no-reply@openpaas.org"));
-        MessageGenerator.Factory messageGeneratorFactory = MessageGenerator.factory(mailTemplateConfig, fileSystem);
+        MessageGenerator.Factory messageGeneratorFactory = MessageGenerator.factory(mailTemplateConfig, fileSystem, new MemoryOpenPaaSUserDAO());
 
         settingsBasedResolver = Mockito.mock(SettingsBasedResolver.class);
 

@@ -18,8 +18,14 @@
 
 package com.linagora.calendar.storage;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.Username;
 
 public record OpenPaaSUser(Username username, OpenPaaSId id, String firstname, String lastname) {
 
+    public String fullName() {
+        return StringUtils.trimToEmpty(StringUtils.joinWith(" ",
+            StringUtils.defaultString(firstname),
+            StringUtils.defaultString(lastname)));
+    }
 }

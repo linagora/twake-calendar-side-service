@@ -32,6 +32,10 @@
 
     <dependencies>
         <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>calendar-storage-api</artifactId>
+        </dependency>
+        <dependency>
             <groupId>${james.groupId}</groupId>
             <artifactId>james-core</artifactId>
         </dependency>

@@ -53,6 +53,7 @@ import com.linagora.calendar.smtp.template.MailTemplateConfiguration;
 import com.linagora.calendar.smtp.template.MessageGenerator;
 import com.linagora.calendar.storage.AlarmEventDAO;
 import com.linagora.calendar.storage.AlarmEventLeaseProvider;
+import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
@@ -60,6 +61,9 @@ import com.linagora.calendar.storage.mongodb.DockerMongoDBExtension;
 import com.linagora.calendar.storage.mongodb.MongoAlarmEventLeaseProvider;
 import com.linagora.calendar.storage.mongodb.MongoDBAlarmEventDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBAlarmEventLedgerDAO;
+import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
+import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
+import com.mongodb.reactivestreams.client.MongoDatabase;
 
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.path.json.JsonPath;
@@ -106,7 +110,12 @@ public class MongoDBAlarmEventSchedulerTest implements AlarmEventSchedulerContra
             "app", "src", "main", "resources", "templates");
         MailTemplateConfiguration mailTemplateConfig = new MailTemplateConfiguration("file://" + templateDirectory.toAbsolutePath(),
             MaybeSender.getMailSender("no-reply@openpaas.org"));
-        MessageGenerator.Factory messageGeneratorFactory = MessageGenerator.factory(mailTemplateConfig, fileSystem);
+
+        MongoDatabase mongoDB = mongo.getDb();
+        MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
+        OpenPaaSUserDAO openPaaSUserDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
+
+        MessageGenerator.Factory messageGeneratorFactory = MessageGenerator.factory(mailTemplateConfig, fileSystem, openPaaSUserDAO);
 
         AlarmTriggerService alarmTriggerService = new AlarmTriggerService(alarmEventDAO, clock,
             mailSenderFactory,
