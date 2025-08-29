@@ -259,6 +259,12 @@ public class EventUpdateEmailConsumerTest {
             "30250411T110000");
         davTestHelper.upsertCalendar(organizer, initialCalendarData, eventUid);
 
+        // Wait for the mail to be received via mock SMTP
+        awaitAtMost.atMost(Duration.ofSeconds(20))
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        clearSmtpMock();
+
         String updatedCalendarData = generateCalendarData(
             eventUid,
             organizer.username().asString(),
@@ -272,14 +278,14 @@ public class EventUpdateEmailConsumerTest {
 
         // Wait for the mail to be received via mock SMTP
         awaitAtMost.atMost(Duration.ofSeconds(20))
-            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(2));
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
 
         JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
 
         assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[1].from")).isEqualTo(organizer.username().asString());
-            softly.assertThat(smtpMailsResponse.getString("[1].recipients[0].address")).isEqualTo(attendee.username().asString());
-            String message = smtpMailsResponse.getString("[1].message");
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo(organizer.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(attendee.username().asString());
+            String message = smtpMailsResponse.getString("[0].message");
             softly.assertThat(message)
                 .containsIgnoringNewLines("Event Sprint planning #01 from Van Tung TRAN updated")
                 .contains("Content-Type: multipart/mixed;")
