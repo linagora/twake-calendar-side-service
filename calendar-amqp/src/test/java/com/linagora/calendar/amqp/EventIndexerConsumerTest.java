@@ -127,12 +127,16 @@ public class EventIndexerConsumerTest {
     }
 
     private OpenPaaSUser openPaasUser;
+    private OpenPaaSUser attendee1;
+    private OpenPaaSUser attendee2;
     private CalendarSearchService calendarSearchService;
     private Sender sender;
 
     @BeforeEach
     public void setUp(DockerSabreDavSetup dockerSabreDavSetup) {
         openPaasUser = sabreDavExtension.newTestUser();
+        attendee1 = sabreDavExtension.newTestUser();
+        attendee2 = sabreDavExtension.newTestUser();
         calendarSearchService = Mockito.spy(new MemoryCalendarSearchService());
 
         MongoDatabase mongoDB = dockerSabreDavSetup.getMongoDB();
@@ -173,8 +177,6 @@ public class EventIndexerConsumerTest {
         String description = "Detailed meeting description";
         String location = "Meeting Room 101";
         String organizer = openPaasUser.username().asString();
-        OpenPaaSUser attendee1 = sabreDavExtension.newTestUser();
-        OpenPaaSUser attendee2 = sabreDavExtension.newTestUser();
         OpenPaaSUser attendee3 = sabreDavExtension.newTestUser();
 
         String calendarData =
@@ -269,7 +271,6 @@ public class EventIndexerConsumerTest {
         String description = "Detailed meeting description";
         String location = "Meeting Room 101";
         String organizer = openPaasUser.username().asString();
-        OpenPaaSUser attendee1 = sabreDavExtension.newTestUser();
 
         String calendarData = """
             BEGIN:VCALENDAR
@@ -397,7 +398,6 @@ public class EventIndexerConsumerTest {
         String description = "Detailed meeting description";
         String location = "Meeting Room 101";
         String organizer = openPaasUser.username().asString();
-        OpenPaaSUser attendee1 = sabreDavExtension.newTestUser();
 
         // 3 events: 1 master event and 2 recurrence events
         String calendarData = """
@@ -581,14 +581,8 @@ public class EventIndexerConsumerTest {
 
     @Test
     void shouldIndexEventInSearchEngineForAttendeeWhenInvited() {
-        OpenPaaSUser attendee1 = sabreDavExtension.newTestUser();
-        OpenPaaSUser attendee2 = sabreDavExtension.newTestUser();
-
         String eventUid = UUID.randomUUID().toString();
-        String calendarData = getSampleCalendar(eventUid)
-            .replace("organizer@open-paas.org", openPaasUser.username().asString())
-            .replace("attendee1@open-paas.org", attendee1.username().asString())
-            .replace("attendee2@open-paas.org", attendee2.username().asString());
+        String calendarData = getSampleCalendar(eventUid);
 
         davTestHelper.upsertCalendar(openPaasUser, calendarData, eventUid);
 
@@ -598,14 +592,8 @@ public class EventIndexerConsumerTest {
 
     @Test
     void shouldRemoveEventFromSearchIndexForAttendeeWhenCalendarDeleted() {
-        OpenPaaSUser attendee1 = sabreDavExtension.newTestUser();
-        OpenPaaSUser attendee2 = sabreDavExtension.newTestUser();
-
         String eventUid = UUID.randomUUID().toString();
-        String calendarData = getSampleCalendar(eventUid)
-            .replace("organizer@open-paas.org", openPaasUser.username().asString())
-            .replace("attendee1@open-paas.org", attendee1.username().asString())
-            .replace("attendee2@open-paas.org", attendee2.username().asString());
+        String calendarData = getSampleCalendar(eventUid);
 
         davTestHelper.upsertCalendar(openPaasUser, calendarData, eventUid);
         assertEventExistsInSearch(attendee1.username(), "Test1", eventUid);
@@ -618,18 +606,12 @@ public class EventIndexerConsumerTest {
 
     @Test
     void shouldUpdateEventInSearchIndexForAttendeeWhenCalendarEventIsUpdated() {
-        OpenPaaSUser attendee1 = sabreDavExtension.newTestUser();
-        OpenPaaSUser attendee2 = sabreDavExtension.newTestUser();
-
         String eventUid = UUID.randomUUID().toString();
         String originalSummary = "Original Title";
         String updatedSummary = "Updated Summary";
 
         String originalCalendar = getSampleCalendar(eventUid)
-            .replace("Test1", originalSummary)
-            .replace("organizer@open-paas.org", openPaasUser.username().asString())
-            .replace("attendee1@open-paas.org", attendee1.username().asString())
-            .replace("attendee2@open-paas.org", attendee2.username().asString());
+            .replace("Test1", originalSummary);
 
         davTestHelper.upsertCalendar(openPaasUser, originalCalendar, eventUid);
         assertEventExistsInSearch(attendee1.username(), originalSummary, eventUid);
@@ -729,7 +711,7 @@ public class EventIndexerConsumerTest {
         void consumeMessageShouldNotCrashWhenNotExistPrincipalUserId() throws Exception {
             String userId = ObjectId.getSmallestWithDate(new Date()).toString();
             String amqpMessage = """
-                {"eventPath":"/calendars/%s/%s/a0b5a363-e56f-490b-bfa7-89111b0fdd9b.ics","event":["vcalendar",[["version",{},"text","2.0"],["prodid",{},"text","-//Sabre//Sabre VObject 4.1.3//EN"]],[["vtimezone",[["tzid",{},"text","Asia/Jakarta"]],[["standard",[["tzoffsetfrom",{},"utc-offset","+07:00"],["tzoffsetto",{},"utc-offset","+07:00"],["tzname",{},"text","WIB"],["dtstart",{},"date-time","1970-01-01T00:00:00"]],[]]]],["vevent",[["uid",{},"text","a0b5a363-e56f-490b-bfa7-89111b0fdd9b"],["transp",{},"text","OPAQUE"],["dtstart",{"tzid":"Asia/Saigon"},"date-time","2025-04-19T11:00:00"],["dtend",{"tzid":"Asia/Saigon"},"date-time","2025-04-19T11:30:00"],["class",{},"text","PUBLIC"],["summary",{},"text","Title 1"],["description",{},"text","note tung"],["organizer",{"cn":"John1 Doe1"},"cal-address","mailto:user1@open-paas.org"],["attendee",{"partstat":"NEEDS-ACTION","rsvp":"TRUE","role":"REQ-PARTICIPANT","cutype":"INDIVIDUAL","cn":"John2 Doe2","schedule-status":"1.1"},"cal-address","mailto:user2@open-paas.org"],["attendee",{"partstat":"ACCEPTED","rsvp":"FALSE","role":"CHAIR","cutype":"INDIVIDUAL"},"cal-address","mailto:user1@open-paas.org"],["dtstamp",{},"date-time","2025-04-18T07:47:48Z"]],[]]]],"import":false,"etag":"\\"f066260d3a4fca51ae0de0618e9555cc\\""}""".formatted(userId, userId);
+                {"eventPath":"/calendars/%s/%s/a0b5a363-e56f-490b-bfa7-89111b0fdd9b.ics","event":["vcalendar",[["version",{},"text","2.0"],["prodid",{},"text","-//Sabre//Sabre VObject 4.2.2//EN"]],[["vtimezone",[["tzid",{},"text","Asia/Jakarta"]],[["standard",[["tzoffsetfrom",{},"utc-offset","+07:00"],["tzoffsetto",{},"utc-offset","+07:00"],["tzname",{},"text","WIB"],["dtstart",{},"date-time","1970-01-01T00:00:00"]],[]]]],["vevent",[["uid",{},"text","a0b5a363-e56f-490b-bfa7-89111b0fdd9b"],["transp",{},"text","OPAQUE"],["dtstart",{"tzid":"Asia/Saigon"},"date-time","2025-04-19T11:00:00"],["dtend",{"tzid":"Asia/Saigon"},"date-time","2025-04-19T11:30:00"],["class",{},"text","PUBLIC"],["summary",{},"text","Title 1"],["description",{},"text","note tung"],["organizer",{"cn":"John1 Doe1"},"cal-address","mailto:user1@open-paas.org"],["attendee",{"partstat":"NEEDS-ACTION","rsvp":"TRUE","role":"REQ-PARTICIPANT","cutype":"INDIVIDUAL","cn":"John2 Doe2","schedule-status":"1.1"},"cal-address","mailto:user2@open-paas.org"],["attendee",{"partstat":"ACCEPTED","rsvp":"FALSE","role":"CHAIR","cutype":"INDIVIDUAL"},"cal-address","mailto:user1@open-paas.org"],["dtstamp",{},"date-time","2025-04-18T07:47:48Z"]],[]]]],"import":false,"etag":"\\"f066260d3a4fca51ae0de0618e9555cc\\""}""".formatted(userId, userId);
 
             channelPool.getSender()
                 .send(Mono.just(new OutboundMessage("calendar:event:created",
@@ -773,7 +755,7 @@ public class EventIndexerConsumerTest {
         return """
             BEGIN:VCALENDAR
             VERSION:2.0
-            PRODID:-//Sabre//Sabre VObject 4.1.3//EN
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
             BEGIN:VTIMEZONE
             TZID:Asia/Jakarta
             BEGIN:STANDARD
@@ -784,7 +766,7 @@ public class EventIndexerConsumerTest {
             END:STANDARD
             END:VTIMEZONE
             BEGIN:VEVENT
-            UID:%s
+            UID:{eventUid}
             TRANSP:OPAQUE
             DTSTART;TZID=Asia/Jakarta:20250314T210000
             DTEND;TZID=Asia/Jakarta:20250314T220000
@@ -792,12 +774,15 @@ public class EventIndexerConsumerTest {
             SUMMARY:Test1
             DESCRIPTION:Note1
             LOCATION:Location2
-            ORGANIZER;CN=John1 Doe1:mailto:organizer@open-paas.org
-            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;CN=John2 Doe2;SCHEDULE-STATUS=1.2:mailto:attendee1@open-paas.org
-            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:attendee2@open-paas.org
+            ORGANIZER;CN=John1 Doe1:mailto:{organizer}
+            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;CN=John2 Doe2;SCHEDULE-STATUS=1.2:mailto:{attendee1}
+            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:{attendee2}
             END:VEVENT
             END:VCALENDAR
-            """.formatted(eventUid);
+            """.replace("{eventUid}", eventUid)
+            .replace("{organizer}", openPaasUser.username().asString())
+            .replace("{attendee1}", attendee1.username().asString())
+            .replace("{attendee2}", attendee2.username().asString());
     }
 
 }

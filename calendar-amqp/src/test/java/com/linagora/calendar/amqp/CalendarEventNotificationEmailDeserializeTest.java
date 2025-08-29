@@ -36,7 +36,7 @@ class CalendarEventNotificationEmailDeserializeTest {
         String eventIcs = """
             BEGIN:VCALENDAR
             VERSION:2.0
-            PRODID:-//Sabre//Sabre VObject 4.1.3//EN
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
             CALSCALE:GREGORIAN
             METHOD:REQUEST
             BEGIN:VEVENT
@@ -78,7 +78,7 @@ class CalendarEventNotificationEmailDeserializeTest {
         String eventIcs = """
             BEGIN:VCALENDAR
             VERSION:2.0
-            PRODID:-//Sabre//Sabre VObject 4.1.3//EN
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
             CALSCALE:GREGORIAN
             METHOD:REQUEST
             BEGIN:VEVENT
@@ -187,7 +187,7 @@ class CalendarEventNotificationEmailDeserializeTest {
         String eventIcs = """
             BEGIN:VCALENDAR
             VERSION:2.0
-            PRODID:-//Sabre//Sabre VObject 4.1.3//EN
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
             CALSCALE:GREGORIAN
             METHOD:REQUEST
             BEGIN:VEVENT
@@ -227,7 +227,7 @@ class CalendarEventNotificationEmailDeserializeTest {
         String eventIcs = """
             BEGIN:VCALENDAR
             VERSION:2.0
-            PRODID:-//Sabre//Sabre VObject 4.1.3//EN
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
             CALSCALE:GREGORIAN
             METHOD:REPLY
             BEGIN:VTIMEZONE
@@ -307,7 +307,7 @@ class CalendarEventNotificationEmailDeserializeTest {
         String oldEventIcs = """
             BEGIN:VCALENDAR
             VERSION:2.0
-            PRODID:-//Sabre//Sabre VObject 4.1.3//EN
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
             BEGIN:VTIMEZONE
             TZID:Asia/Jakarta
             BEGIN:STANDARD

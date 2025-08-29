@@ -441,7 +441,7 @@ public class AlarmEventCancellationTest {
         return """
             BEGIN:VCALENDAR
             VERSION:2.0
-            PRODID:-//Sabre//Sabre VObject 4.1.3//EN
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
             CALSCALE:GREGORIAN
             BEGIN:VTIMEZONE
             TZID:Asia/Ho_Chi_Minh

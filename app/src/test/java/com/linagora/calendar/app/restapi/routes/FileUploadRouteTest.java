@@ -128,7 +128,7 @@ public class FileUploadRouteTest {
     void shouldSupportMultipartUploadFileSuccessfully(TwakeCalendarGuiceServer server) {
         byte[] content = "BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR".getBytes(StandardCharsets.UTF_8);
 
-        String id = given().log().all()
+        String id = given()
             .queryParam("name", "calendar.ics")
             .queryParam("size", content.length)
             .queryParam("mimetype", UploadedMimeType.TEXT_CALENDAR.getType())

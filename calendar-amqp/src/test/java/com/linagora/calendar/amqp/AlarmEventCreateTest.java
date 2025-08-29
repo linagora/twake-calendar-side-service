@@ -18,9 +18,9 @@
 
 package com.linagora.calendar.amqp;
 
+import static com.linagora.calendar.amqp.TestFixture.awaitAtMost;
 import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader.ALARM_SETTING_IDENTIFIER;
 import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader.ENABLE_ALARM;
-import static com.linagora.calendar.amqp.TestFixture.awaitAtMost;
 import static java.time.temporal.ChronoUnit.MINUTES;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -587,7 +587,7 @@ public class AlarmEventCreateTest {
         return """
             BEGIN:VCALENDAR
             VERSION:2.0
-            PRODID:-//Sabre//Sabre VObject 4.1.3//EN
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
             CALSCALE:GREGORIAN
             BEGIN:VTIMEZONE
             TZID:Asia/Ho_Chi_Minh
@@ -637,7 +637,7 @@ public class AlarmEventCreateTest {
         return """
             BEGIN:VCALENDAR
             VERSION:2.0
-            PRODID:-//Sabre//Sabre VObject 4.1.3//EN
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
             CALSCALE:GREGORIAN
             BEGIN:VTIMEZONE
             TZID:Asia/Ho_Chi_Minh

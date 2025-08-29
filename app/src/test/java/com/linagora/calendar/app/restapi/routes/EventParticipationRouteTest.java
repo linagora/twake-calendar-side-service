@@ -79,6 +79,7 @@ import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.CalendarUtil;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
@@ -97,6 +98,7 @@ import io.restassured.http.ContentType;
 import io.restassured.path.json.JsonPath;
 import io.restassured.specification.RequestSpecification;
 import net.fortuna.ical4j.model.parameter.PartStat;
+import net.javacrumbs.jsonunit.core.Option;
 
 public class EventParticipationRouteTest {
 
@@ -237,13 +239,14 @@ public class EventParticipationRouteTest {
 
 
         assertThatJson(actualResponse)
+            .withOptions(Option.IGNORING_ARRAY_ORDER)
             .inPath("eventJSON")
             .isEqualTo("""
                     [
                         "vcalendar",
                         [
                             ["version", {}, "text", "2.0"],
-                            ["prodid", {}, "text", "-//Sabre//Sabre VObject 4.1.3//EN"],
+                            ["prodid", {}, "text", "${json-unit.ignore}"],
                             ["calscale", {}, "text", "GREGORIAN"]
                         ],
                         [
@@ -298,7 +301,7 @@ public class EventParticipationRouteTest {
         String participationLink = actionLink.get()
             .replace("https://excal.linagora.com/excal/?jwt=",
                 "http://localhost:" + restApiPort + "/calendar/api/calendars/event/participation?jwt=");
-        String actualResponse = given().log().all()
+        String actualResponse = given()
             .when()
             .get(participationLink)
             .then()
@@ -654,10 +657,10 @@ public class EventParticipationRouteTest {
         String startDateTime = LocalDateTime.now().plusDays(3).format(dateTimeFormatter);
         String endDateTime = LocalDateTime.now().plusDays(3).plusHours(1).format(dateTimeFormatter);
 
-        return """
+        String calendarAsString =  """
             BEGIN:VCALENDAR
+            PRODID:-//Sabre//Sabre VObject 4.1.4//EN
             VERSION:2.0
-            PRODID:-//Sabre//Sabre VObject 4.1.3//EN
             CALSCALE:GREGORIAN
             BEGIN:VEVENT
             UID:{eventUid}
@@ -677,6 +680,8 @@ public class EventParticipationRouteTest {
             .replace("{endDateTime}", endDateTime)
             .replace("{dtStamp}", LocalDateTime.now().format(dateTimeFormatter))
             .replace("{partStat}", PartStat.NEEDS_ACTION.getValue());
+
+        return CalendarUtil.parseIcs(calendarAsString).toString();
     }
 
     private void upsertCalendarForTest(String eventUid) {
