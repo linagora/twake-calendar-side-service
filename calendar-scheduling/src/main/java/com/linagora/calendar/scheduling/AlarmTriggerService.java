@@ -36,6 +36,7 @@ import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.james.core.MailAddress;
 import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
 import org.slf4j.Logger;
@@ -93,6 +94,7 @@ public class AlarmTriggerService {
     private final MessageGenerator.Factory messageGeneratorFactory;
     private final AlarmInstantFactory alarmInstantFactory;
     private final MaybeSender maybeSender;
+    private final MailAddress senderAddress;
 
     @Inject
     @Singleton
@@ -127,6 +129,8 @@ public class AlarmTriggerService {
         this.messageGeneratorFactory = messageGeneratorFactory;
         this.alarmInstantFactory = alarmInstantFactory;
         this.maybeSender = mailTemplateConfiguration.sender();
+        this.senderAddress = maybeSender.asOptional()
+            .orElseThrow(() -> new IllegalArgumentException("Sender address must not be empty"));
     }
 
     public Mono<Void> sendMailAndCleanup(AlarmEvent alarmEvent) {
@@ -166,7 +170,7 @@ public class AlarmTriggerService {
                     locale,
                     Duration.between(now, alarmEvent.eventStartTime()));
                 return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(locale), TEMPLATE_TYPE))
-                    .flatMap(messageGenerator -> messageGenerator.generate(recipientUser, maybeSender.asOptional(), model, List.of()))
+                    .flatMap(messageGenerator -> messageGenerator.generate(recipientUser, senderAddress, model, List.of()))
                     .flatMap(message -> mailSenderFactory.create()
                         .flatMap(mailSender -> mailSender.send(new Mail(maybeSender, List.of(alarmEvent.recipient()), message))));
             });

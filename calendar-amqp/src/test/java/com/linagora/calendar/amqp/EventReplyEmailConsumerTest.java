@@ -19,6 +19,7 @@
 package com.linagora.calendar.amqp;
 
 import static com.linagora.calendar.amqp.EventInviteEmailConsumerTest.INTERNAL_USER;
+import static com.linagora.calendar.amqp.TestFixture.extractSubject;
 import static com.linagora.calendar.storage.configuration.EntryIdentifier.LANGUAGE_IDENTIFIER;
 import static io.restassured.RestAssured.given;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -53,7 +54,6 @@ import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.MaybeSender;
-import org.apache.james.core.Username;
 import org.apache.james.mailbox.store.RandomMailboxSessionIdGenerator;
 import org.apache.james.metrics.api.NoopGaugeRegistry;
 import org.apache.james.metrics.tests.RecordingMetricFactory;
@@ -90,6 +90,9 @@ import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
+import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
+import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
+import com.mongodb.reactivestreams.client.MongoDatabase;
 
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.path.json.JsonPath;
@@ -119,7 +122,6 @@ public class EventReplyEmailConsumerTest {
 
     private static final SettingsBasedResolver settingsResolver = mock(SettingsBasedResolver.class);
     private static final EventEmailFilter eventEmailFilter = spy(EventEmailFilter.acceptAll());
-    private static final OpenPaaSUserDAO openPaaSUserDAO = mock(OpenPaaSUserDAO.class);
     private static ReactorRabbitMQChannelPool channelPool;
     private static SimpleConnectionPool connectionPool;
     private static DavTestHelper davTestHelper;
@@ -161,8 +163,6 @@ public class EventReplyEmailConsumerTest {
         attendee = sabreDavExtension.newTestUser();
 
         when(settingsResolver.readSavedSettings(any())).thenReturn(Mono.just(SettingsBasedResolver.ResolvedSettings.DEFAULT));
-        when(openPaaSUserDAO.retrieve(any(Username.class)))
-            .thenReturn(Mono.empty());
         setupEventEmailConsumer();
         clearSmtpMock();
     }
@@ -177,7 +177,6 @@ public class EventReplyEmailConsumerTest {
 
         Mockito.reset(settingsResolver);
         Mockito.reset(eventEmailFilter);
-        Mockito.reset(openPaaSUserDAO);
     }
 
     private void setupEventEmailConsumer() throws Exception {
@@ -201,7 +200,11 @@ public class EventReplyEmailConsumerTest {
         MailTemplateConfiguration mailTemplateConfig = new MailTemplateConfiguration("file://" + templateDirectory.toAbsolutePath(),
             MaybeSender.getMailSender("no-reply@openpaas.org"));
 
-        MessageGenerator.Factory messageFactory = MessageGenerator.factory(mailTemplateConfig, fileSystem);
+        MongoDatabase mongoDB = sabreDavExtension.dockerSabreDavSetup().getMongoDB();
+        MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
+        OpenPaaSUserDAO openPaaSUserDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
+
+        MessageGenerator.Factory messageFactory = MessageGenerator.factory(mailTemplateConfig, fileSystem, openPaaSUserDAO);
         EventInCalendarLinkFactory linkFactory = new EventInCalendarLinkFactory(URI.create("http://localhost:3000/").toURL());
 
         UsersRepository usersRepository = mock(UsersRepository.class);
@@ -301,10 +304,6 @@ public class EventReplyEmailConsumerTest {
 
     @Test
     void shouldDisplayUserFullNameInEmailWhenAttendeeCNIsEmpty() {
-        Mockito.reset(openPaaSUserDAO);
-        when(openPaaSUserDAO.retrieve(attendee.username()))
-            .thenReturn(Mono.just(new OpenPaaSUser(attendee.username(), null, "FirstName1", "LastName2")));
-
         String eventUid = UUID.randomUUID().toString();
         DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss");
 
@@ -357,8 +356,10 @@ public class EventReplyEmailConsumerTest {
         assertSoftly(Throwing.consumer(softly -> {
             softly.assertThat(smtpMailsResponse.getString("[1].from")).isEqualTo(attendee.username().asString());
             softly.assertThat(smtpMailsResponse.getString("[1].recipients[0].address")).isEqualTo(organizer.username().asString());
-            softly.assertThat(smtpMailsResponse.getString("[1].message"))
-                .contains("Subject: Accepted: Sprint planning #04 (FirstName1 LastName2)");
+
+            String subject = extractSubject(smtpMailsResponse.getString("[1].message"));
+            softly.assertThat(subject)
+                .isEqualTo("Accepted: Sprint planning #04 (%s)".formatted(attendee.fullName()));
         }));
     }
 

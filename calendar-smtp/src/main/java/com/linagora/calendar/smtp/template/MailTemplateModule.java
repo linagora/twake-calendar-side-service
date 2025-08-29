@@ -27,6 +27,7 @@ import org.apache.james.utils.PropertiesProvider;
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.Singleton;
+import com.linagora.calendar.storage.OpenPaaSUserDAO;
 
 public class MailTemplateModule extends AbstractModule {
     @Provides
@@ -37,7 +38,7 @@ public class MailTemplateModule extends AbstractModule {
 
     @Provides
     @Singleton
-    MessageGenerator.Factory messageGeneratorFactory(MailTemplateConfiguration configuration, FileSystem fileSystem) {
-        return MessageGenerator.factory(configuration, fileSystem).cached();
+    MessageGenerator.Factory messageGeneratorFactory(MailTemplateConfiguration configuration, FileSystem fileSystem, OpenPaaSUserDAO userDAO) {
+        return MessageGenerator.factory(configuration, fileSystem, userDAO).cached();
     }
 }

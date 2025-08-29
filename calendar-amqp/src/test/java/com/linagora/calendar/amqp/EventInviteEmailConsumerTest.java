@@ -55,6 +55,8 @@ import org.apache.james.core.Username;
 import org.apache.james.mailbox.store.RandomMailboxSessionIdGenerator;
 import org.apache.james.metrics.api.NoopGaugeRegistry;
 import org.apache.james.metrics.tests.RecordingMetricFactory;
+import org.apache.james.mime4j.dom.Message;
+import org.apache.james.mime4j.dom.address.Mailbox;
 import org.apache.james.server.core.filesystem.FileSystemImpl;
 import org.apache.james.user.api.UsersRepository;
 import org.apache.james.util.Port;
@@ -86,6 +88,9 @@ import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
+import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
+import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
+import com.mongodb.reactivestreams.client.MongoDatabase;
 
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.path.json.JsonPath;
@@ -200,7 +205,11 @@ public class EventInviteEmailConsumerTest {
         MailTemplateConfiguration mailTemplateConfig = new MailTemplateConfiguration("file://" + templateDirectory.toAbsolutePath(),
             MaybeSender.getMailSender("no-reply@openpaas.org"));
 
-        MessageGenerator.Factory messageFactory = MessageGenerator.factory(mailTemplateConfig, fileSystem);
+        MongoDatabase mongoDB = sabreDavExtension.dockerSabreDavSetup().getMongoDB();
+        MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
+        OpenPaaSUserDAO openPaaSUserDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
+
+        MessageGenerator.Factory messageFactory = MessageGenerator.factory(mailTemplateConfig, fileSystem, openPaaSUserDAO);
         EventInCalendarLinkFactory linkFactory = new EventInCalendarLinkFactory(URI.create("http://localhost:3000/").toURL());
 
         usersRepository = mock(UsersRepository.class);
@@ -221,7 +230,7 @@ public class EventInviteEmailConsumerTest {
             messageFactory,
             linkFactory,
             new SimpleSessionProvider(new RandomMailboxSessionIdGenerator()),
-            usersRepository,  mock(OpenPaaSUserDAO.class),
+            usersRepository,  openPaaSUserDAO,
             settingsResolver, actionLinkFactory);
 
         EventEmailConsumer consumer = new EventEmailConsumer(channelPool, QueueArguments.Builder::new, mailHandler,
@@ -293,6 +302,10 @@ public class EventInviteEmailConsumerTest {
                 .contains("http://localhost:8888/excal/?jwt=mocked-jwt-token-accepted")
                 .contains("http://localhost:8888/excal/?jwt=mocked-jwt-token-rejected")
                 .contains("http://localhost:8888/excal/?jwt=mocked-jwt-token-tentative");
+
+            Message message = TestFixture.toMessage(smtpMailsResponse.getString("[0].message"));
+            assertThat(message.getFrom().getFirst().getName()).isEqualTo(organizer.fullName());
+            assertThat(((Mailbox) message.getTo().getFirst()).getName()).isEqualTo(attendee.fullName());
         }));
     }
 

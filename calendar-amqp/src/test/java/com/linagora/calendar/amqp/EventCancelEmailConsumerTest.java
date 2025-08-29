@@ -86,6 +86,9 @@ import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
+import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
+import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
+import com.mongodb.reactivestreams.client.MongoDatabase;
 
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.path.json.JsonPath;
@@ -197,7 +200,11 @@ public class EventCancelEmailConsumerTest {
         MailTemplateConfiguration mailTemplateConfig = new MailTemplateConfiguration("file://" + templateDirectory.toAbsolutePath(),
             MaybeSender.getMailSender("no-reply@openpaas.org"));
 
-        MessageGenerator.Factory messageFactory = MessageGenerator.factory(mailTemplateConfig, fileSystem);
+        MongoDatabase mongoDB = sabreDavExtension.dockerSabreDavSetup().getMongoDB();
+        MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
+        OpenPaaSUserDAO openPaaSUserDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
+
+        MessageGenerator.Factory messageFactory = MessageGenerator.factory(mailTemplateConfig, fileSystem, openPaaSUserDAO);
         EventInCalendarLinkFactory linkFactory = new EventInCalendarLinkFactory(URI.create("http://localhost:3000/").toURL());
 
         UsersRepository usersRepository = mock(UsersRepository.class);
@@ -215,7 +222,7 @@ public class EventCancelEmailConsumerTest {
             messageFactory,
             linkFactory,
             new SimpleSessionProvider(new RandomMailboxSessionIdGenerator()),
-            usersRepository, mock(OpenPaaSUserDAO.class),
+            usersRepository, openPaaSUserDAO,
             settingsResolver, actionLinkFactory);
 
         EventEmailConsumer consumer = new EventEmailConsumer(channelPool, QueueArguments.Builder::new, mailHandler,

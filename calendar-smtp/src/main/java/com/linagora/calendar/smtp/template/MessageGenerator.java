@@ -31,10 +31,11 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 
+import jakarta.mail.internet.InternetAddress;
+
 import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.Domain;
 import org.apache.james.core.MailAddress;
-import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
 import org.apache.james.filesystem.api.FileSystem;
 import org.apache.james.mime4j.dom.Message;
@@ -49,6 +50,8 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.smtp.i18n.I18NTranslator;
 import com.linagora.calendar.smtp.i18n.I18NTranslator.PropertiesI18NTranslator;
+import com.linagora.calendar.storage.OpenPaaSUser;
+import com.linagora.calendar.storage.OpenPaaSUserDAO;
 
 import reactor.core.publisher.Mono;
 
@@ -60,11 +63,14 @@ public class MessageGenerator {
 
             private final MailTemplateConfiguration configuration;
             private final FileSystem fileSystem;
+            private final OpenPaaSUserDAO userDAO;
 
             public Default(MailTemplateConfiguration configuration,
-                           FileSystem fileSystem) {
+                           FileSystem fileSystem,
+                           OpenPaaSUserDAO userDAO) {
                 this.configuration = configuration;
                 this.fileSystem = fileSystem;
+                this.userDAO = userDAO;
             }
 
             public MessageGenerator forLocalizedFeature(Language language, TemplateType templateType) throws IOException {
@@ -77,7 +83,7 @@ public class MessageGenerator {
                 I18NTranslator i18NTranslator = getI18NTranslator(templateType, language.locale());
 
                 HtmlBodyRenderer htmlBodyRenderer = HtmlBodyRenderer.forPath(templateFileDirectory.getAbsolutePath());
-                return new MessageGenerator(configuration, i18NTranslator, htmlBodyRenderer);
+                return new MessageGenerator(i18NTranslator, htmlBodyRenderer, userDAO);
             }
 
             public Factory cached() {
@@ -119,28 +125,46 @@ public class MessageGenerator {
     }
 
     public static Factory.Default factory(MailTemplateConfiguration configuration,
-                                          FileSystem fileSystem) {
-        return new Factory.Default(configuration, fileSystem);
+                                          FileSystem fileSystem,
+                                          OpenPaaSUserDAO userDAO) {
+        return new Factory.Default(configuration, fileSystem, userDAO);
     }
 
     private static final String SUBJECT_KEY_NAME = "mail_subject";
     private static final String TRANSLATOR_FUNCTION_NAME = "translator";
 
-    private final MaybeSender sender;
     private final HtmlBodyRenderer htmlBodyRenderer;
     private final I18NTranslator i18nTranslator;
+    private final OpenPaaSUserDAO userDAO;
 
-    public MessageGenerator(MailTemplateConfiguration configuration, I18NTranslator i18nTranslator, HtmlBodyRenderer htmlBodyRenderer) {
-        this.sender = configuration.sender();
+    public MessageGenerator(I18NTranslator i18nTranslator,
+                            HtmlBodyRenderer htmlBodyRenderer,
+                            OpenPaaSUserDAO userDAO) {
         this.i18nTranslator = i18nTranslator;
         this.htmlBodyRenderer = htmlBodyRenderer;
+        this.userDAO = userDAO;
     }
 
-    public Mono<Message> generate(Username recipient, Map<String, Object> scopedVariable, List<MimeAttachment> mimeAttachments) {
-        return generate(recipient, Optional.empty(), scopedVariable, mimeAttachments);
+    public Mono<Message> generate(Username recipient, MailAddress fromAddress, Map<String, Object> scopedVariable, List<MimeAttachment> mimeAttachments) {
+        return resolveInternetAddress(Username.fromMailAddress(fromAddress))
+            .flatMap(fromAsInternetAddress -> generate(recipient, fromAsInternetAddress, scopedVariable, mimeAttachments));
     }
 
-    public Mono<Message> generate(Username recipient, Optional<MailAddress> fromAddress, Map<String, Object> scopedVariable, List<MimeAttachment> mimeAttachments) {
+    public Mono<Message> generate(Username recipient, InternetAddress fromAddress, Map<String, Object> scopedVariable, List<MimeAttachment> mimeAttachments) {
+        return resolveInternetAddress(recipient)
+            .flatMap(recipientAsInternetAddress -> generate(recipientAsInternetAddress, fromAddress, scopedVariable, mimeAttachments));
+    }
+
+    public Mono<InternetAddress> resolveInternetAddress(Username username) {
+        return userDAO.retrieve(username)
+            .map(OpenPaaSUser::fullName)
+            .flatMap(fullName -> {
+                return Mono.fromCallable(() -> new InternetAddress(username.asString(), fullName));
+            })
+            .switchIfEmpty(Mono.fromCallable(() -> new InternetAddress(username.asString())));
+    }
+
+    public Mono<Message> generate(InternetAddress recipient, InternetAddress fromAddress, Map<String, Object> scopedVariable, List<MimeAttachment> mimeAttachments) {
         return Mono.fromCallable(() -> {
             Map<String, Object> scopedVariableFinal = ImmutableMap.<String, Object>builder()
                 .putAll(scopedVariable)
@@ -157,16 +181,14 @@ public class MessageGenerator {
 
             mimeAttachments.forEach(Throwing.consumer(attachment -> multipartBuilder.addBodyPart(attachment.asBodyPart())));
 
-            String fromFieldValue = fromAddress
-                .map(MailAddress::asString)
-                .orElse(sender.asString());
+            MailAddress fromAsMailAddress = new MailAddress(fromAddress.getAddress());
 
             return Message.Builder.of()
-                .setMessageId("<" + UUID.randomUUID() + "@" + fromAddress.or(sender::asOptional).map(MailAddress::getDomain).map(Domain::asString).orElse("") + ">")
+                .setMessageId("<" + UUID.randomUUID() + "@" + Optional.of(fromAsMailAddress).map(MailAddress::getDomain).map(Domain::asString).orElse("") + ">")
                 .setSubject(subject(scopedVariableFinal))
                 .setBody(multipartBuilder.build())
-                .setFrom(fromFieldValue)
-                .setTo(recipient.asString())
+                .setFrom(fromAddress.toString())
+                .setTo(recipient.toString())
                 .build();
         });
     }
