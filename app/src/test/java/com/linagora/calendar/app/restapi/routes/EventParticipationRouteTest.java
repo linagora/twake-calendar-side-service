@@ -61,7 +61,6 @@ import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionFactory;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -270,7 +269,6 @@ public class EventParticipationRouteTest {
                 """);
     }
 
-    @Disabled("https://github.com/linagora/esn-sabre/issues/40")
     @Test
     void actionLinksShouldWorkForExternalUser() {
         String externalUser = "externaluser@gmail.com";
@@ -303,7 +301,7 @@ public class EventParticipationRouteTest {
         String participationLink = actionLink.get()
             .replace("https://excal.linagora.com/excal/?jwt=",
                 "http://localhost:" + restApiPort + "/calendar/api/calendars/event/participation?jwt=");
-        String actualResponse = given().log().all()
+        String actualResponse = given()
             .when()
             .get(participationLink)
             .then()

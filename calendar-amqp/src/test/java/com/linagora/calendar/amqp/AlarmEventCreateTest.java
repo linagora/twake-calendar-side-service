@@ -18,9 +18,9 @@
 
 package com.linagora.calendar.amqp;
 
+import static com.linagora.calendar.amqp.TestFixture.awaitAtMost;
 import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader.ALARM_SETTING_IDENTIFIER;
 import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader.ENABLE_ALARM;
-import static com.linagora.calendar.amqp.TestFixture.awaitAtMost;
 import static java.time.temporal.ChronoUnit.MINUTES;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -57,7 +57,6 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.mockito.Mockito;
@@ -522,7 +521,6 @@ public class AlarmEventCreateTest {
             .isEmpty();
     }
 
-    @Disabled("https://github.com/linagora/esn-sabre/issues/40")
     @Test
     void shouldNotCreateAlarmEventForExternalAttendee() throws Exception {
         // Given: An external attendee (outside our system domain)

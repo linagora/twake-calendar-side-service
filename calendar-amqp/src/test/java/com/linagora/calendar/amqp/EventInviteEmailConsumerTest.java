@@ -62,7 +62,6 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -297,7 +296,6 @@ public class EventInviteEmailConsumerTest {
         }));
     }
 
-    @Disabled("https://github.com/linagora/esn-sabre/issues/40")
     @Test
     void shouldNotIncludeSeeInCalendarLinkEmailWhenRecipientIsNotInternal() {
         when(usersRepository.containsReactive(Username.of("externaluser@gg.com"))).thenReturn(Mono.just(EXTERNAL_USER));
