@@ -46,6 +46,30 @@ pipeline {
                 }
             }
         }
+        stage('Deliver Docker images') {        
+          when {
+            anyOf {
+              branch 'master'
+              buildingTag()
+            }
+          }
+          steps {
+            script {
+              env.DOCKER_TAG = 'branch-master'
+              if (env.TAG_NAME) {
+                env.DOCKER_TAG = env.TAG_NAME
+              }
+
+              echo "Docker tag: ${env.DOCKER_TAG}"
+
+              sh 'docker load -i app/target/jib-image.tar'
+              sh 'docker tag linagora/twake-calendar-side-service:latest linagora/twake-calendar-side-service:$DOCKER_TAG'
+              sh 'docker login -u $DOCKER_HUB_CREDENTIAL_USR -p $DOCKER_HUB_CREDENTIAL_PSW'
+              sh 'docker push linagora/twake-calendar-side-service:$DOCKER_TAG'
+            }
+          }
+        }
+
     }
     post {
         always {
