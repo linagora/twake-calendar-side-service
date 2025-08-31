@@ -49,7 +49,7 @@ pipeline {
         stage('Deliver Docker images') {        
           when {
             anyOf {
-              branch 'master'
+              branch 'main'
               buildingTag()
             }
           }
