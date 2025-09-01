@@ -1,0 +1,263 @@
+/********************************************************************
+ *  As a subpart of Twake Mail, this file is edited by Linagora.    *
+ *                                                                  *
+ *  https://twake-mail.com/                                         *
+ *  https://linagora.com                                            *
+ *                                                                  *
+ *  This file is subject to The Affero Gnu Public License           *
+ *  version 3.                                                      *
+ *                                                                  *
+ *  https://www.gnu.org/licenses/agpl-3.0.en.html                   *
+ *                                                                  *
+ *  This program is distributed in the hope that it will be         *
+ *  useful, but WITHOUT ANY WARRANTY; without even the implied      *
+ *  warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR         *
+ *  PURPOSE. See the GNU Affero General Public License for          *
+ *  more details.                                                   *
+ ********************************************************************/
+
+package com.linagora.calendar.storage;
+
+import com.linagora.calendar.storage.model.Resource;
+import com.linagora.calendar.storage.model.ResourceAdministrator;
+import com.linagora.calendar.storage.model.ResourceId;
+import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+
+public interface ResourceDAOContract {
+    ResourceDAO dao();
+
+    @Test
+    default void insertShouldWork() {
+        ResourceInsertRequest request = new ResourceInsertRequest(
+            List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
+            new OpenPaaSId("creator1"),
+            false,
+            "Test resource description",
+            new OpenPaaSId("domain1"),
+            "icon.png",
+            "Test Resource",
+            Instant.now(),
+            Instant.now(),
+            "resource"
+        );
+
+        ResourceId resourceId = dao().insert(request).block();
+        Resource expected = Resource.from(resourceId, request);
+        Resource actual = dao().findById(resourceId).block();
+
+        assertThat(actual).isEqualTo(expected);
+    }
+
+    @Test
+    default void findAllShouldWork() {
+        ResourceInsertRequest req1 = new ResourceInsertRequest(
+            List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
+            new OpenPaaSId("creator1"),
+            false,
+            "desc1",
+            new OpenPaaSId("domain1"),
+            "icon1.png",
+            "Resource1",
+            Instant.now(),
+            Instant.now(),
+            "resource"
+        );
+        ResourceInsertRequest req2 = new ResourceInsertRequest(
+            List.of(new ResourceAdministrator(new OpenPaaSId("admin2"), "user")),
+            new OpenPaaSId("creator2"),
+            false,
+            "desc2",
+            new OpenPaaSId("domain2"),
+            "icon2.png",
+            "Resource2",
+            Instant.now(),
+            Instant.now(),
+            "resource"
+        );
+        ResourceId id1 = dao().insert(req1).block();
+        ResourceId id2 = dao().insert(req2).block();
+        List<Resource> actual = dao().findAll().collectList().block();
+
+        assertThat(actual).containsExactlyInAnyOrder(Resource.from(id1, req1), Resource.from(id2, req2));
+    }
+
+    @Test
+    default void findByDomainShouldWork() {
+        ResourceInsertRequest req1 = new ResourceInsertRequest(
+            List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
+            new OpenPaaSId("creator1"),
+            false,
+            "desc1",
+            new OpenPaaSId("domain1"),
+            "icon1.png",
+            "Resource1",
+            Instant.now(),
+            Instant.now(),
+            "resource"
+        );
+        ResourceInsertRequest req2 = new ResourceInsertRequest(
+            List.of(new ResourceAdministrator(new OpenPaaSId("admin2"), "user")),
+            new OpenPaaSId("creator2"),
+            false,
+            "desc2",
+            new OpenPaaSId("domain2"),
+            "icon2.png",
+            "Resource2",
+            Instant.now(),
+            Instant.now(),
+            "resource"
+        );
+        ResourceId id1 = dao().insert(req1).block();
+        ResourceId id2 = dao().insert(req2).block();
+        List<Resource> actual = dao().findByDomain(new OpenPaaSId("domain2")).collectList().block();
+
+        assertThat(actual).containsOnly(Resource.from(id2, req2));
+    }
+
+    @Test
+    default void updateShouldWork() {
+        ResourceInsertRequest request = new ResourceInsertRequest(
+            List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
+            new OpenPaaSId("creator1"),
+            false,
+            "desc",
+            new OpenPaaSId("domain1"),
+            "icon.png",
+            "ResourceName",
+            Instant.now(),
+            Instant.now(),
+            "resource"
+        );
+        ResourceId resourceId = dao().insert(request).block();
+        ResourceUpdateRequest updateRequest = new ResourceUpdateRequest(
+            Optional.of("UpdatedName"),
+            Optional.of("UpdatedDesc"),
+            Optional.of("updatedIcon.png"),
+            Optional.of(List.of(new ResourceAdministrator(new OpenPaaSId("admin2"), "user")))
+        );
+        Resource updated = dao().update(resourceId, updateRequest).block();
+
+        Resource expected = new Resource(
+            resourceId,
+            List.of(new ResourceAdministrator(new OpenPaaSId("admin2"), "user")),
+            new OpenPaaSId("creator1"),
+            false,
+            "UpdatedDesc",
+            new OpenPaaSId("domain1"),
+            "updatedIcon.png",
+            "UpdatedName",
+            updated.creation(),
+            updated.updated(),
+            "resource"
+        );
+
+        assertThat(updated).isEqualTo(expected);
+    }
+
+    @Test
+    default void softDeleteShouldWork() {
+        ResourceInsertRequest request = new ResourceInsertRequest(
+            List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
+            new OpenPaaSId("creator1"),
+            false,
+            "desc",
+            new OpenPaaSId("domain1"),
+            "icon.png",
+            "ResourceName",
+            Instant.now(),
+            Instant.now(),
+            "resource"
+        );
+        ResourceId resourceId = dao().insert(request).block();
+        dao().softDelete(resourceId).block();
+        Resource deleted = dao().findById(resourceId).block();
+
+        assertThat(deleted.deleted()).isTrue();
+    }
+
+    @Test
+    default void searchShouldWork() {
+        ResourceInsertRequest req1 = new ResourceInsertRequest(
+            List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
+            new OpenPaaSId("creator1"),
+            false,
+            "desc1",
+            new OpenPaaSId("domain1"),
+            "icon1.png",
+            "AlphaResource",
+            Instant.now(),
+            Instant.now(),
+            "resource"
+        );
+        ResourceInsertRequest req2 = new ResourceInsertRequest(
+            List.of(new ResourceAdministrator(new OpenPaaSId("admin2"), "user")),
+            new OpenPaaSId("creator2"),
+            false,
+            "desc2",
+            new OpenPaaSId("domain1"),
+            "icon2.png",
+            "BetaResource",
+            Instant.now(),
+            Instant.now(),
+            "resource"
+        );
+        ResourceId id1 = dao().insert(req1).block();
+        ResourceId id2 = dao().insert(req2).block();
+        List<Resource> actual = dao().search(new OpenPaaSId("domain1"), "Alpha", 10).collectList().block();
+
+        assertThat(actual).containsOnly(Resource.from(id1, req1));
+    }
+
+    @Test
+    default void existShouldWork() {
+        ResourceInsertRequest request = new ResourceInsertRequest(
+            List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
+            new OpenPaaSId("creator1"),
+            false,
+            "desc",
+            new OpenPaaSId("domain1"),
+            "icon.png",
+            "ResourceName",
+            Instant.now(),
+            Instant.now(),
+            "resource"
+        );
+        ResourceId resourceId = dao().insert(request).block();
+        boolean exists = dao().exist(resourceId, new OpenPaaSId("domain1")).block();
+        boolean notExistsDomain = dao().exist(resourceId, new OpenPaaSId("wrongDomain")).block();
+        boolean notExistsId = dao().exist(new ResourceId("random-id"), new OpenPaaSId("domain1")).block();
+
+        assertThat(exists).isTrue();
+        assertThat(notExistsDomain).isFalse();
+        assertThat(notExistsId).isFalse();
+    }
+
+    @Test
+    default void updateShouldThrowWhenResourceIdNotFound() {
+        ResourceId fakeId = new ResourceId("non-existent-id");
+        ResourceUpdateRequest updateRequest = new ResourceUpdateRequest(
+            Optional.of("Name"),
+            Optional.of("Desc"),
+            Optional.of("icon.png"),
+            Optional.of(List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")))
+        );
+
+        assertThatThrownBy(() -> dao().update(fakeId, updateRequest).block())
+            .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    default void softDeleteShouldThrowWhenResourceIdNotFound() {
+        ResourceId fakeId = new ResourceId("non-existent-id");
+
+        assertThatThrownBy(() -> dao().softDelete(fakeId).block())
+            .isInstanceOf(ResourceNotFoundException.class);
+    }
+}
