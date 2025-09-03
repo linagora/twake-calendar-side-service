@@ -53,49 +53,54 @@ public class MemoryResourceDAO implements ResourceDAO {
 
     @Override
     public Flux<Resource> findAll() {
-        return Flux.fromIterable(store.values());
+        return Flux.fromIterable(store.values()).filter(r -> !r.deleted());
     }
 
     @Override
     public Mono<Resource> findById(ResourceId id) {
-        return Mono.justOrEmpty(store.get(id));
+        return Mono.justOrEmpty(store.get(id)).filter(r -> !r.deleted());
     }
 
     @Override
     public Flux<Resource> findByDomain(OpenPaaSId domainId) {
         return Flux.fromStream(store.values().stream()
-            .filter(r -> r.domain().equals(domainId)));
+            .filter(r -> r.domain().equals(domainId)))
+            .filter(r -> !r.deleted());
     }
 
     @Override
     public Mono<Resource> update(ResourceId id, ResourceUpdateRequest request) {
-        return Mono.just(Optional.ofNullable(store.get(id)).map(resource -> {
-            Resource updated = resource.update(request, clock.instant());
-            store.put(id, updated);
-            return updated;
+        return Mono.just(Optional.ofNullable(store.get(id)).filter(r -> !r.deleted())
+            .map(resource -> {
+                Resource updated = resource.update(request, clock.instant());
+                store.put(id, updated);
+                return updated;
         }).orElseThrow(() -> new ResourceNotFoundException(id)));
     }
 
     @Override
     public Mono<Void> softDelete(ResourceId id) {
         return Mono.fromRunnable(() ->
-            Optional.ofNullable(store.get(id)).ifPresentOrElse(resource -> store.put(id, resource.markAsDeleted(clock.instant())),
-                () -> {
-                    throw new ResourceNotFoundException(id);
-            }));
+            Optional.ofNullable(store.get(id)).filter(r -> !r.deleted())
+                .ifPresentOrElse(resource -> store.put(id, resource.markAsDeleted(clock.instant())),
+                    () -> {
+                        throw new ResourceNotFoundException(id);
+                }));
     }
 
     @Override
     public Flux<Resource> search(OpenPaaSId domainId, String keyword, int limit) {
         return Flux.fromStream(store.values().stream()
+            .filter(r -> !r.deleted())
             .filter(r -> r.domain().equals(domainId))
-            .filter(r -> r.name().toLowerCase().contains(keyword.toLowerCase()))
+            .filter(r -> r.name().toLowerCase().contains(keyword.trim().toLowerCase()))
             .limit(limit));
     }
 
     @Override
     public Mono<Boolean> exist(ResourceId resourceId, OpenPaaSId domainId) {
         return Mono.just(Optional.ofNullable(store.get(resourceId))
+            .filter(r -> !r.deleted())
             .map(resource -> resource.domain().equals(domainId))
             .orElse(false));
     }
