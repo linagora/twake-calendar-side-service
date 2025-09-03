@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.storage;
 
+import java.time.Clock;
+
 import org.junit.jupiter.api.BeforeEach;
 
 public class MemoryResourceDAOTest implements ResourceDAOContract {
@@ -25,7 +27,7 @@ public class MemoryResourceDAOTest implements ResourceDAOContract {
 
     @BeforeEach
     void setup() {
-        resourceDAO = new MemoryResourceDAO();
+        resourceDAO = new MemoryResourceDAO(Clock.systemUTC());
     }
 
     @Override

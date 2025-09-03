@@ -23,6 +23,7 @@ import java.util.List;
 
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.ResourceInsertRequest;
+import com.linagora.calendar.storage.ResourceUpdateRequest;
 
 public record Resource(ResourceId id,
                        List<ResourceAdministrator> administrators,
@@ -35,6 +36,8 @@ public record Resource(ResourceId id,
                        Instant creation,
                        Instant updated,
                        String type) {
+
+    public static final boolean DELETED = true;
 
     public static Resource from(ResourceId id, ResourceInsertRequest req) {
         return new Resource(
@@ -49,6 +52,38 @@ public record Resource(ResourceId id,
             req.creation(),
             req.updated(),
             req.type()
+        );
+    }
+
+    public Resource update(ResourceUpdateRequest req, Instant updated) {
+        return new Resource(
+            this.id,
+            req.administrators().orElse(this.administrators),
+            this.creator,
+            this.deleted,
+            req.description().orElse(this.description),
+            this.domain,
+            req.icon().orElse(this.icon),
+            req.name().orElse(this.name),
+            this.creation,
+            updated,
+            this.type
+        );
+    }
+
+    public Resource markAsDeleted(Instant updated) {
+        return new Resource(
+            this.id,
+            this.administrators,
+            this.creator,
+            DELETED,
+            this.description,
+            this.domain,
+            this.icon,
+            this.name,
+            this.creation,
+            updated,
+            this.type
         );
     }
 }

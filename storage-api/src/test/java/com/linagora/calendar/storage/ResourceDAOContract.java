@@ -23,6 +23,7 @@ import com.linagora.calendar.storage.model.ResourceAdministrator;
 import com.linagora.calendar.storage.model.ResourceId;
 import org.junit.jupiter.api.Test;
 
+import static com.linagora.calendar.storage.model.Resource.DELETED;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -34,11 +35,11 @@ public interface ResourceDAOContract {
     ResourceDAO dao();
 
     @Test
-    default void insertShouldWork() {
+    default void insertShouldAddNewResource() {
         ResourceInsertRequest request = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
             new OpenPaaSId("creator1"),
-            false,
+            !DELETED,
             "Test resource description",
             new OpenPaaSId("domain1"),
             "icon.png",
@@ -56,11 +57,11 @@ public interface ResourceDAOContract {
     }
 
     @Test
-    default void findAllShouldWork() {
+    default void findAllShouldReturnAllResources() {
         ResourceInsertRequest req1 = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
             new OpenPaaSId("creator1"),
-            false,
+            !DELETED,
             "desc1",
             new OpenPaaSId("domain1"),
             "icon1.png",
@@ -72,7 +73,7 @@ public interface ResourceDAOContract {
         ResourceInsertRequest req2 = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin2"), "user")),
             new OpenPaaSId("creator2"),
-            false,
+            !DELETED,
             "desc2",
             new OpenPaaSId("domain2"),
             "icon2.png",
@@ -89,11 +90,11 @@ public interface ResourceDAOContract {
     }
 
     @Test
-    default void findByDomainShouldWork() {
+    default void findByDomainShouldReturnResourcesWithCorrespondingDomain() {
         ResourceInsertRequest req1 = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
             new OpenPaaSId("creator1"),
-            false,
+            !DELETED,
             "desc1",
             new OpenPaaSId("domain1"),
             "icon1.png",
@@ -105,7 +106,7 @@ public interface ResourceDAOContract {
         ResourceInsertRequest req2 = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin2"), "user")),
             new OpenPaaSId("creator2"),
-            false,
+            !DELETED,
             "desc2",
             new OpenPaaSId("domain2"),
             "icon2.png",
@@ -122,11 +123,11 @@ public interface ResourceDAOContract {
     }
 
     @Test
-    default void updateShouldWork() {
+    default void updateShouldUpdateCurrentResource() {
         ResourceInsertRequest request = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
             new OpenPaaSId("creator1"),
-            false,
+            !DELETED,
             "desc",
             new OpenPaaSId("domain1"),
             "icon.png",
@@ -148,7 +149,7 @@ public interface ResourceDAOContract {
             resourceId,
             List.of(new ResourceAdministrator(new OpenPaaSId("admin2"), "user")),
             new OpenPaaSId("creator1"),
-            false,
+            !DELETED,
             "UpdatedDesc",
             new OpenPaaSId("domain1"),
             "updatedIcon.png",
@@ -162,11 +163,11 @@ public interface ResourceDAOContract {
     }
 
     @Test
-    default void softDeleteShouldWork() {
+    default void softDeleteShouldMarkResourceAsDeleted() {
         ResourceInsertRequest request = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
             new OpenPaaSId("creator1"),
-            false,
+            !DELETED,
             "desc",
             new OpenPaaSId("domain1"),
             "icon.png",
@@ -183,11 +184,11 @@ public interface ResourceDAOContract {
     }
 
     @Test
-    default void searchShouldWork() {
+    default void searchShouldReturnMatchingResources() {
         ResourceInsertRequest req1 = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
             new OpenPaaSId("creator1"),
-            false,
+            !DELETED,
             "desc1",
             new OpenPaaSId("domain1"),
             "icon1.png",
@@ -199,7 +200,7 @@ public interface ResourceDAOContract {
         ResourceInsertRequest req2 = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin2"), "user")),
             new OpenPaaSId("creator2"),
-            false,
+            !DELETED,
             "desc2",
             new OpenPaaSId("domain1"),
             "icon2.png",
@@ -216,11 +217,77 @@ public interface ResourceDAOContract {
     }
 
     @Test
-    default void existShouldWork() {
+    default void searchShouldNotReturnResourcesWithWrongDomain() {
+        ResourceInsertRequest req1 = new ResourceInsertRequest(
+            List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
+            new OpenPaaSId("creator1"),
+            !DELETED,
+            "desc1",
+            new OpenPaaSId("domain1"),
+            "icon1.png",
+            "AlphaResource",
+            Instant.now(),
+            Instant.now(),
+            "resource"
+        );
+        ResourceInsertRequest req2 = new ResourceInsertRequest(
+            List.of(new ResourceAdministrator(new OpenPaaSId("admin2"), "user")),
+            new OpenPaaSId("creator2"),
+            !DELETED,
+            "desc2",
+            new OpenPaaSId("domain100"),
+            "icon2.png",
+            "AlphaResource",
+            Instant.now(),
+            Instant.now(),
+            "resource"
+        );
+        ResourceId id1 = dao().insert(req1).block();
+        ResourceId id2 = dao().insert(req2).block();
+        List<Resource> actual = dao().search(new OpenPaaSId("domain1"), "Alpha", 10).collectList().block();
+
+        assertThat(actual).containsOnly(Resource.from(id1, req1));
+    }
+
+    @Test
+    default void searchShouldReturnLimitedNumberOfResources() {
+        ResourceInsertRequest req1 = new ResourceInsertRequest(
+            List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
+            new OpenPaaSId("creator1"),
+            !DELETED,
+            "desc1",
+            new OpenPaaSId("domain1"),
+            "icon1.png",
+            "AlphaResource",
+            Instant.now(),
+            Instant.now(),
+            "resource"
+        );
+        ResourceInsertRequest req2 = new ResourceInsertRequest(
+            List.of(new ResourceAdministrator(new OpenPaaSId("admin2"), "user")),
+            new OpenPaaSId("creator2"),
+            !DELETED,
+            "desc2",
+            new OpenPaaSId("domain1"),
+            "icon2.png",
+            "AlphaResource",
+            Instant.now(),
+            Instant.now(),
+            "resource"
+        );
+        ResourceId id1 = dao().insert(req1).block();
+        ResourceId id2 = dao().insert(req2).block();
+        List<Resource> actual = dao().search(new OpenPaaSId("domain1"), "Alpha", 1).collectList().block();
+
+        assertThat(actual).hasSize(1);
+    }
+
+    @Test
+    default void existShouldReturnTrueWhenBothResourceIdAndDomainMatch() {
         ResourceInsertRequest request = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
             new OpenPaaSId("creator1"),
-            false,
+            !DELETED,
             "desc",
             new OpenPaaSId("domain1"),
             "icon.png",
@@ -231,11 +298,47 @@ public interface ResourceDAOContract {
         );
         ResourceId resourceId = dao().insert(request).block();
         boolean exists = dao().exist(resourceId, new OpenPaaSId("domain1")).block();
-        boolean notExistsDomain = dao().exist(resourceId, new OpenPaaSId("wrongDomain")).block();
-        boolean notExistsId = dao().exist(new ResourceId("random-id"), new OpenPaaSId("domain1")).block();
 
         assertThat(exists).isTrue();
+    }
+
+    @Test
+    default void existShouldReturnFalseWhenDomainDoesNotMatch() {
+        ResourceInsertRequest request = new ResourceInsertRequest(
+            List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
+            new OpenPaaSId("creator1"),
+            !DELETED,
+            "desc",
+            new OpenPaaSId("domain1"),
+            "icon.png",
+            "ResourceName",
+            Instant.now(),
+            Instant.now(),
+            "resource"
+        );
+        ResourceId resourceId = dao().insert(request).block();
+        boolean notExistsDomain = dao().exist(resourceId, new OpenPaaSId("wrongDomain")).block();
+
         assertThat(notExistsDomain).isFalse();
+    }
+
+    @Test
+    default void existShouldReturnFalseWhenResourceIdDoesNotMatch() {
+        ResourceInsertRequest request = new ResourceInsertRequest(
+            List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
+            new OpenPaaSId("creator1"),
+            !DELETED,
+            "desc",
+            new OpenPaaSId("domain1"),
+            "icon.png",
+            "ResourceName",
+            Instant.now(),
+            Instant.now(),
+            "resource"
+        );
+        dao().insert(request).block();
+        boolean notExistsId = dao().exist(new ResourceId("random-id"), new OpenPaaSId("domain1")).block();
+
         assertThat(notExistsId).isFalse();
     }
 
