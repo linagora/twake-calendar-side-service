@@ -130,7 +130,7 @@ services:
       RABBITMQ_DEFAULT_PASS: tcalendar
 
   sabre_dav:
-    image: linagora/sabre:lng-04-06-2025-3
+    image: linagora/esn-sabre:v4-dev2
     container_name: sabre_dav
     hostname: sabre-dav.local
     networks:
