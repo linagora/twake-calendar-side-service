@@ -93,18 +93,18 @@ public class MongoDBResourceDAO implements ResourceDAO {
 
     @Override
     public Flux<Resource> findAll() {
-        return Flux.from(collection.find(eq(DELETED_FIELD, !DELETED))).map(this::fromDocument);
+        return Flux.from(collection.find()).map(this::fromDocument);
     }
 
     @Override
     public Mono<Resource> findById(ResourceId id) {
-        return Mono.from(collection.find(and(eq(ID_FIELD, new ObjectId(id.value())), eq(DELETED_FIELD, !DELETED))).first())
+        return Mono.from(collection.find(eq(ID_FIELD, new ObjectId(id.value()))).first())
             .map(this::fromDocument);
     }
 
     @Override
     public Flux<Resource> findByDomain(OpenPaaSId domainId) {
-        return Flux.from(collection.find(and(eq(DOMAIN_FIELD, new ObjectId(domainId.value())), eq(DELETED_FIELD, !DELETED))))
+        return Flux.from(collection.find(and(eq(DOMAIN_FIELD, new ObjectId(domainId.value())))))
             .map(this::fromDocument);
     }
 
@@ -126,8 +126,7 @@ public class MongoDBResourceDAO implements ResourceDAO {
         return Mono.from(collection.updateOne(
                 and(
                     eq(ID_FIELD, new ObjectId(id.value())),
-                    eq(DELETED_FIELD, !DELETED)
-                ),
+                    eq(DELETED_FIELD, !DELETED)),
                 Updates.set(DELETED_FIELD, DELETED)))
             .flatMap(result -> {
                 if (result.getMatchedCount() == 0) {
