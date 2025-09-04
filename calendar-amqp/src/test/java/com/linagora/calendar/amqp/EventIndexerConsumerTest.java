@@ -37,7 +37,7 @@ import java.util.stream.Collectors;
 
 import jakarta.mail.internet.AddressException;
 
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
 import org.apache.james.backends.rabbitmq.RabbitMQConnectionFactory;
@@ -68,8 +68,8 @@ import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
-import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
 import com.linagora.calendar.storage.event.EventFields;
+import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
 import com.linagora.calendar.storage.eventsearch.EventSearchQuery;
 import com.linagora.calendar.storage.eventsearch.EventUid;
 import com.linagora.calendar.storage.eventsearch.MemoryCalendarSearchService;
@@ -566,8 +566,8 @@ public class EventIndexerConsumerTest {
         String sampleCalendar = getSampleCalendar(eventUid);
         String originalSummary = "Original Title";
         String updatedSummary = "Updated Title";
-        String originalCalendar = StringUtils.replace(sampleCalendar, "Test1", originalSummary);
-        String updatedCalendar = StringUtils.replace(sampleCalendar, "Test1", updatedSummary);
+        String originalCalendar = Strings.CS.replace(sampleCalendar, "Test1", originalSummary);
+        String updatedCalendar = Strings.CS.replace(sampleCalendar, "Test1", updatedSummary);
 
         davTestHelper.upsertCalendar(openPaasUser, originalCalendar, eventUid);
 

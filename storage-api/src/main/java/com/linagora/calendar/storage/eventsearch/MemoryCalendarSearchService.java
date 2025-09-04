@@ -25,6 +25,7 @@ import java.util.Optional;
 import java.util.function.Predicate;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.apache.james.core.MailAddress;
 import org.apache.james.vacation.api.AccountId;
 
@@ -95,23 +96,23 @@ public class MemoryCalendarSearchService implements CalendarSearchService {
             return true;
         }
 
-        return StringUtils.containsIgnoreCase(event.summary(), keyword) ||
-            StringUtils.containsIgnoreCase(event.description(), keyword) ||
-            StringUtils.containsIgnoreCase(event.location(), keyword) ||
+        return Strings.CI.contains(event.summary(), keyword) ||
+            Strings.CI.contains(event.description(), keyword) ||
+            Strings.CI.contains(event.location(), keyword) ||
             Optional.ofNullable(event.organizer()).filter(matchesPerson(keyword)).isPresent() ||
             Optional.ofNullable(event.attendees()).orElse(List.of())
                 .stream().anyMatch(matchesPerson(keyword));
     }
 
     private Predicate<EventFields.Person> matchesPerson(String queryText) {
-        return person -> StringUtils.containsIgnoreCase(person.email().asString(), queryText)
-            || StringUtils.containsIgnoreCase(person.cn(), queryText);
+        return person -> Strings.CI.contains(person.email().asString(), queryText)
+            || Strings.CI.contains(person.cn(), queryText);
     }
 
     private boolean matchesCalendarRef(EventFields event, List<CalendarURL> calendarURLList) {
         return calendarURLList.stream()
-            .anyMatch(ref -> StringUtils.equals(ref.base().value(), event.calendarURL().base().value())
-                && StringUtils.equals(ref.calendarId().value(), event.calendarURL().calendarId().value()));
+            .anyMatch(ref -> Strings.CS.equals(ref.base().value(), event.calendarURL().base().value())
+                && Strings.CS.equals(ref.calendarId().value(), event.calendarURL().calendarId().value()));
     }
 
     private boolean matchesOrganizers(EventFields event, List<MailAddress> organizers) {

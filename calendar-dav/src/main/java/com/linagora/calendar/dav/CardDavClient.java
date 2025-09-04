@@ -25,6 +25,7 @@ import java.util.List;
 import javax.net.ssl.SSLException;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.apache.http.HttpStatus;
 import org.apache.james.core.Username;
 import org.slf4j.Logger;
@@ -186,7 +187,7 @@ public class CardDavClient extends DavClient {
                 // https://github.com/linagora/esn-sabre/blob/master/lib/CalDAV/Backend/Esn.php#L41
                 Mono.error(new RetryableDavClientException());
             default -> responseBodyAsString(byteBufMono)
-                .filter(serverResponse -> !StringUtils.contains(serverResponse, "The resource you tried to create already exists"))
+                .filter(serverResponse -> !Strings.CS.contains(serverResponse, "The resource you tried to create already exists"))
                 .switchIfEmpty(Mono.empty())
                 .flatMap(errorBody -> Mono.error(new DavClientException(
                     "Failed to create `domain-members` address book for domain %s: %s".formatted(domainId.value(), errorBody))));
@@ -240,9 +241,9 @@ public class CardDavClient extends DavClient {
     }
 
     private boolean isNotFoundPathResourceError(DavClientException ex) {
-        return StringUtils.startsWithIgnoreCase(ex.getMessage(), "Unexpected status code: 404")
-            && (StringUtils.containsIgnoreCase(ex.getMessage(), "Could not find node at path: calendars/")
-            || StringUtils.containsIgnoreCase(ex.getMessage(), "Could not find node at path: addressbooks/"));
+        return Strings.CI.startsWith(ex.getMessage(), "Unexpected status code: 404")
+            && (Strings.CI.contains(ex.getMessage(), "Could not find node at path: calendars/")
+            || Strings.CI.contains(ex.getMessage(), "Could not find node at path: addressbooks/"));
     }
 
     private Mono<byte[]> tryListContactDomainMembers(OpenPaaSId domainId) {

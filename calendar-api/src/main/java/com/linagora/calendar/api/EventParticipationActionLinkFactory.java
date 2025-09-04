@@ -27,6 +27,7 @@ import jakarta.inject.Named;
 import jakarta.inject.Singleton;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.apache.james.core.MailAddress;
 
 import com.google.common.base.Preconditions;
@@ -54,7 +55,7 @@ public class EventParticipationActionLinkFactory {
     public EventParticipationActionLinkFactory(ParticipationTokenSigner participationTokenSigner,
                                                URL spaExcalUrl) {
         this.participationTokenSigner = participationTokenSigner;
-        this.buildParticipationActionLinkFunction = jwt -> URI.create(StringUtils.removeEnd(spaExcalUrl.toString(), "/") + "/excal/?jwt=" + jwt);
+        this.buildParticipationActionLinkFunction = jwt -> URI.create(Strings.CS.removeEnd(spaExcalUrl.toString(), "/") + "/excal/?jwt=" + jwt);
     }
 
     public Mono<ActionLinks> generateLinks(MailAddress organizer, MailAddress attendee, String eventUid, String calendarURI) {

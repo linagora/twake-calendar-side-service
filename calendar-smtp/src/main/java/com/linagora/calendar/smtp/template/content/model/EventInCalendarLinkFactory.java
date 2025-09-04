@@ -28,7 +28,7 @@ import jakarta.inject.Inject;
 import jakarta.inject.Named;
 import jakarta.inject.Singleton;
 
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 public class EventInCalendarLinkFactory {
 
@@ -43,7 +43,7 @@ public class EventInCalendarLinkFactory {
 
     private Function<ZonedDateTime, URI> buildCalendarLinkFunction(URL baseUrl) {
         String base = baseUrl.toString();
-        return date -> URI.create(StringUtils.removeEnd(base, "/") + "/calendar/#/calendar?start=" + DATE_TIME_FORMATTER.format(date));
+        return date -> URI.create(Strings.CS.removeEnd(base, "/") + "/calendar/#/calendar?start=" + DATE_TIME_FORMATTER.format(date));
     }
 
     public String getEventInCalendarLink(ZonedDateTime startDate) {

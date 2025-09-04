@@ -26,6 +26,7 @@ import java.util.Optional;
 
 import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.apache.http.HttpStatus;
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
@@ -96,7 +97,7 @@ public class LemonCookieAuthenticationStrategy implements AuthenticationStrategy
         }
 
         public Mono<String> resolveUser(String lemonCookieValue) {
-            Preconditions.checkArgument(StringUtils.startsWith(lemonCookieValue, "lemonldap="),
+            Preconditions.checkArgument(Strings.CS.startsWith(lemonCookieValue, "lemonldap="),
                 "Invalid Lemon cookie: must start with 'lemonldap=', but got: " + lemonCookieValue);
             return httpClient
                 .headers(headers -> {
@@ -180,7 +181,7 @@ public class LemonCookieAuthenticationStrategy implements AuthenticationStrategy
             .flatMap(cookieHeader -> Splitter.on(';')
                 .trimResults()
                 .splitToStream(cookieHeader)
-                .filter(c -> StringUtils.startsWith(c, "lemonldap="))
+                .filter(c -> Strings.CS.startsWith(c, "lemonldap="))
                 .findFirst());
     }
 }

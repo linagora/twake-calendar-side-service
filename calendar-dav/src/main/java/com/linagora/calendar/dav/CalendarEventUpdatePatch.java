@@ -24,7 +24,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.apache.james.core.Username;
 
 import com.google.common.base.Preconditions;
@@ -63,7 +63,7 @@ public interface CalendarEventUpdatePatch {
         public boolean apply(VEvent vEvent) {
             return vEvent.getAttendees()
                 .stream()
-                .filter(attendee -> StringUtils.equalsIgnoreCase(
+                .filter(attendee -> Strings.CI.equals(
                     attendee.getCalAddress().toASCIIString(), "mailto:" + targetAttendeeEmail))
                 .findFirst()
                 .map(attendee -> {
