@@ -37,7 +37,6 @@ import com.linagora.calendar.storage.AlarmEventDAO;
 import com.linagora.calendar.storage.AlarmEventLeaseProvider;
 import com.linagora.calendar.storage.CaffeineOIDCTokenCache;
 import com.linagora.calendar.storage.DomainConfiguration;
-import com.linagora.calendar.storage.MemoryResourceDAO;
 import com.linagora.calendar.storage.OIDCTokenCache;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSDomainList;
@@ -76,8 +75,7 @@ public class MongoDBStorageModule extends AbstractModule {
         bind(MongoAlarmEventLeaseProvider.class).in(Scopes.SINGLETON);
         bind(AlarmEventLeaseProvider.class).to(MongoAlarmEventLeaseProvider.class);
 
-        // Temporary CF https://github.com/linagora/twake-calendar-side-service/pull/342
-        bind(ResourceDAO.class).to(MemoryResourceDAO.class);
+        bind(ResourceDAO.class).to(MongoDBResourceDAO.class);
     }
 
     @Provides
