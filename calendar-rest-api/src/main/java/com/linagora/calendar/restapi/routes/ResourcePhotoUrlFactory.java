@@ -32,7 +32,7 @@ import org.apache.commons.lang3.Strings;
 import com.google.common.base.CharMatcher;
 import com.google.common.base.Preconditions;
 
-public class PhotoUrlFactory {
+public class ResourcePhotoUrlFactory {
     private final Function<String, URI> buildURLFunction;
     private static final CharMatcher ALLOWED_ICON_CHARS = CharMatcher.inRange('a', 'z')
         .or(CharMatcher.inRange('A', 'Z'))
@@ -42,7 +42,7 @@ public class PhotoUrlFactory {
 
     @Singleton
     @Inject
-    public PhotoUrlFactory(@Named("spaCalendarUrl") URL baseUrl) {
+    public ResourcePhotoUrlFactory(@Named("spaCalendarUrl") URL baseUrl) {
         this.buildURLFunction = resourceIconName
             -> URI.create(Strings.CI.removeEnd(baseUrl.toString(), "/") + "/linagora.esn.resource/images/icon/" + resourceIconName + ".svg");
     }

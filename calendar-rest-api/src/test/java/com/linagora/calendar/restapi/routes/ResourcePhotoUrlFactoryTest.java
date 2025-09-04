@@ -28,14 +28,14 @@ import java.net.URL;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-public class PhotoUrlFactoryTest {
+public class ResourcePhotoUrlFactoryTest {
 
-    private PhotoUrlFactory factory;
+    private ResourcePhotoUrlFactory factory;
 
     @BeforeEach
     void setUp() throws Exception {
         URL baseUrl = new URL("https://calendar.linagora.com/");
-        factory = new PhotoUrlFactory(baseUrl);
+        factory = new ResourcePhotoUrlFactory(baseUrl);
     }
 
     @Test
