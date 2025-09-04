@@ -8,7 +8,7 @@ networks:
 
 services:
   tcalendar-frontend:
-    image: twake-calendar-frontend-fixed
+    image: linagora/twake-calendar-web:branch-master
     container_name: twake_calendar_frontend
     networks:
       - tcalendar
@@ -21,7 +21,7 @@ services:
       - web-proxy
 
   tcalendar-side-service:
-    image: linagora/twake-calendar-side-service:latest
+    image: linagora/twake-calendar-side-service:branch-master
     container_name: tcalendar-side-service.local
     depends_on:
       - mongo
