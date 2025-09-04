@@ -26,6 +26,7 @@ import java.util.Optional;
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.apache.james.webadmin.Constants;
 import org.apache.james.webadmin.Routes;
 import org.apache.james.webadmin.utils.ErrorResponder;
@@ -76,7 +77,7 @@ public class CalendarChannelLogoutRoutes implements Routes {
 
     public Route addRevokedToken() {
         return (request, response) -> {
-            if (!StringUtils.startsWith(request.contentType(), APPLICATION_FORM_URLENCODED_VALUE)) {
+            if (!Strings.CS.startsWith(request.contentType(), APPLICATION_FORM_URLENCODED_VALUE)) {
                 response.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE_415);
                 return "Unsupported Content-Type";
             }
@@ -105,7 +106,7 @@ public class CalendarChannelLogoutRoutes implements Routes {
 
 
     private Optional<Sid> extractSidFromLogoutToken(String token) {
-        if (!StringUtils.startsWith(token, "eyJ")) {  // Heuristic for detecting JWT
+        if (!Strings.CS.startsWith(token, "eyJ")) {  // Heuristic for detecting JWT
             return Optional.empty();
         }
 

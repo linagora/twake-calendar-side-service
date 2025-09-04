@@ -26,7 +26,7 @@ import java.util.List;
 
 import jakarta.inject.Inject;
 
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.http.Authenticator;
@@ -107,7 +107,7 @@ public class SecretLinkRoute extends CalendarRoute {
 
     private URI buildSecretLinkURL(SecretLinkToken token, CalendarURL calendarURL) throws URISyntaxException {
         return new URIBuilder(secretLinkBaseUrl.toURI())
-            .setPath(StringUtils.removeEnd(secretLinkBaseUrl.getPath(), "/") + "/api" + calendarURL.asUri() + "/calendar.ics")
+            .setPath(Strings.CS.removeEnd(secretLinkBaseUrl.getPath(), "/") + "/api" + calendarURL.asUri() + "/calendar.ics")
             .addParameter("token", token.value())
             .build();
     }

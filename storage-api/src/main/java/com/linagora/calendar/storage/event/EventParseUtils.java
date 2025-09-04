@@ -158,7 +158,7 @@ public class EventParseUtils {
     private static Optional<EventFields.Person> toPerson(Property property) {
         try {
             String cn = property.getParameter(Parameter.CN).map(Parameter::getValue).orElse("");
-            String email = StringUtils.removeStartIgnoreCase(property.getValue(), "mailto:");
+            String email = Strings.CI.removeStart(property.getValue(), "mailto:");
             Optional<PartStat> partStat = property.getParameter(Parameter.PARTSTAT)
                 .map(value -> (PartStat) value);
             return Optional.of(new EventFields.Person(cn, new MailAddress(email), partStat));

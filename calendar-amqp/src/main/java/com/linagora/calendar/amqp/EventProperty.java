@@ -34,7 +34,7 @@ import java.util.function.Function;
 
 import jakarta.mail.internet.AddressException;
 
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.apache.james.core.MailAddress;
 import org.apache.james.mime4j.dom.address.Mailbox;
 import org.apache.james.mime4j.field.address.LenientAddressParser;
@@ -127,7 +127,7 @@ public class EventProperty {
 
         public DtStampProperty(EventProperty base) {
             super(base.name, base.attributes, base.valueType, base.value);
-            if (!StringUtils.equals(base.valueType, "date-time")) {
+            if (!Strings.CS.equals(base.valueType, "date-time")) {
                 throw new CalendarEventDeserializeException("Invalid value type for date property, expected 'date-time' but got " + base.valueType);
             }
             this.dtStamp = formatter.parse(base.value, Instant::from);
@@ -176,7 +176,7 @@ public class EventProperty {
 
         public EventUidProperty(EventProperty base) {
             super(base.name, base.attributes, base.valueType, base.value);
-            Preconditions.checkArgument(StringUtils.equals(EventProperty.UID_PROPERTY, base.name));
+            Preconditions.checkArgument(Strings.CS.equals(EventProperty.UID_PROPERTY, base.name));
             this.eventUid = new EventUid(base.value);
         }
 
@@ -192,7 +192,7 @@ public class EventProperty {
 
     static final Function<String, MailAddress> calAddressToMailAddress = (String calAddress) -> {
         try {
-            return switch (LenientAddressParser.DEFAULT.parseAddress(StringUtils.removeIgnoreCase(calAddress, "mailto:"))) {
+            return switch (LenientAddressParser.DEFAULT.parseAddress(Strings.CI.remove(calAddress, "mailto:"))) {
                 case Mailbox mailbox -> new MailAddress(mailbox.getAddress());
                 case null, default -> throw new CalendarEventDeserializeException("Unable to parse mail address from calendar address: " + calAddress);
             };

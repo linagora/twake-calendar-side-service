@@ -25,7 +25,7 @@ import java.time.Clock;
 
 import jakarta.inject.Inject;
 
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.apache.james.core.Username;
 import org.apache.james.jmap.exceptions.UnauthorizedException;
 import org.apache.james.jmap.http.AuthenticationChallenge;
@@ -64,7 +64,7 @@ public class OidcAuthenticationStrategy implements AuthenticationStrategy {
     @Override
     public Mono<MailboxSession> createMailboxSession(HttpServerRequest httpRequest) {
         return Mono.fromCallable(() -> authHeaders(httpRequest))
-            .filter(header -> StringUtils.startsWithIgnoreCase(header, AUTHORIZATION_HEADER_PREFIX))
+            .filter(header -> Strings.CI.startsWith(header, AUTHORIZATION_HEADER_PREFIX))
             .map(header -> header.substring(AUTHORIZATION_HEADER_PREFIX.length()))
             .filter(token -> !isAuthTypeJwt(token))
             .map(Token::new)

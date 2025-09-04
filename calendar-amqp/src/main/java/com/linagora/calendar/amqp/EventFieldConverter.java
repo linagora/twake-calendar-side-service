@@ -26,7 +26,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 import com.fasterxml.jackson.core.JacksonException;
 import com.fasterxml.jackson.core.JsonParser;
@@ -81,7 +81,7 @@ public class EventFieldConverter {
                 case EventProperty.UID_PROPERTY -> builder.uid(((EventUidProperty) property).getEventUid());
                 case EventProperty.DTSTART_PROPERTY -> {
                     DateProperty dateProperty = (DateProperty) property;
-                    if (StringUtils.equals("date", dateProperty.valueType)) {
+                    if (Strings.CS.equals("date", dateProperty.valueType)) {
                         builder.allDay(true);
                     }
                     builder.start(dateProperty.getDate());
@@ -99,7 +99,7 @@ public class EventFieldConverter {
                 case EventProperty.ATTENDEE_PROPERTY -> {
                     AttendeeProperty attendeeProperty = (AttendeeProperty) property;
                     EventFields.Person person = new EventFields.Person(attendeeProperty.getCn(), attendeeProperty.getMailAddress());
-                    if (StringUtils.equals("RESOURCE", attendeeProperty.getCutype())) {
+                    if (Strings.CS.equals("RESOURCE", attendeeProperty.getCutype())) {
                         builder.addResource(person);
                     } else {
                         builder.addAttendee(person);

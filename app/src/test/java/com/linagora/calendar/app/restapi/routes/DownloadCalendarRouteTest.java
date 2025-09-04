@@ -33,6 +33,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.apache.http.HttpStatus;
 import org.apache.james.core.Username;
 import org.junit.jupiter.api.AfterAll;
@@ -339,7 +340,7 @@ public class DownloadCalendarRouteTest {
             .jsonPath()
             .getString("secretLink");
 
-        return StringUtils.replace(secretLink, SECRET_LINK_BASE_URL, "http://localhost:" + restApiPort);
+        return Strings.CS.replace(secretLink, SECRET_LINK_BASE_URL, "http://localhost:" + restApiPort);
     }
 
 }
