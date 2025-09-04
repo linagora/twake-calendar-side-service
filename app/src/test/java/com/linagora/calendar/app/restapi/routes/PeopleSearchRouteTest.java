@@ -65,7 +65,7 @@ import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.http.ContentType;
 import net.javacrumbs.jsonunit.core.Option;
 
-public class PeopleSearchRouteTest {
+class PeopleSearchRouteTest {
 
     static class ResourceProbe implements GuiceProbe {
         private final ResourceDAO resourceDAO;
@@ -93,6 +93,26 @@ public class PeopleSearchRouteTest {
                 Instant.now(),
                 "resource");
             return resourceDAO.insert(insertRequest).block();
+        }
+
+        public ResourceId saveAndRemove(OpenPaaSUser requestUser, String name, String icon) {
+            ResourceAdministrator administrator = new ResourceAdministrator(requestUser.id(), "user");
+
+            OpenPaaSDomain openPaaSDomain = domainDAO.retrieve(requestUser.username().getDomainPart().get()).block();
+
+            ResourceInsertRequest insertRequest = new ResourceInsertRequest(List.of(administrator),
+                requestUser.id(),
+                false,
+                name + " description",
+                openPaaSDomain.id(),
+                icon,
+                name,
+                Instant.now(),
+                Instant.now(),
+                "resource");
+
+            return resourceDAO.insert(insertRequest)
+                .flatMap(resourceId -> resourceDAO.softDelete(resourceId).thenReturn(resourceId)).block();
         }
 
         public List<Resource> listAll() {
@@ -384,7 +404,6 @@ public class PeopleSearchRouteTest {
     @Test
     void shouldReturnResourceWhenResourceTypeIncluded(TwakeCalendarGuiceServer server) {
         // given
-
         OpenPaaSUser openPaaSUser = server.getProbe(CalendarDataProbe.class).getUser(USERNAME);
         ResourceProbe resourceProbe = server.getProbe(ResourceProbe.class);
         resourceProbe.save(openPaaSUser, "meeting-room", "laptop");
@@ -405,8 +424,8 @@ public class PeopleSearchRouteTest {
             .body()
             .asString();
 
-        Resource firstResource = resourceProbe.listAll().getFirst();
         // then
+        Resource firstResource = resourceProbe.listAll().getFirst();
         assertThatJson(response)
             .withOptions(Option.IGNORING_ARRAY_ORDER)
             .isEqualTo("""
@@ -420,6 +439,35 @@ public class PeopleSearchRouteTest {
                     "photos": [ { "url": "https://e-calendrier.avocat.fr/linagora.esn.resource/images/icon/laptop.svg", "type": "default" } ]
                   }
                 ]""".formatted(firstResource.id().value(), firstResource.id().value() + "@" + DOMAIN));
+    }
+
+    @Test
+    void shouldNotReturnDeletedResource(TwakeCalendarGuiceServer server) {
+        // given
+        OpenPaaSUser openPaaSUser = server.getProbe(CalendarDataProbe.class).getUser(USERNAME);
+        ResourceProbe resourceProbe = server.getProbe(ResourceProbe.class);
+        resourceProbe.saveAndRemove(openPaaSUser, "meeting-room", "laptop");
+
+        // when
+        String response = given()
+            .body("""
+                {
+                  "q" : "meeting",
+                  "objectTypes" : [ "resource" ],
+                  "limit" : 10
+                }""")
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract()
+            .body()
+            .asString();
+
+        // then
+        assertThatJson(response)
+            .withOptions(Option.IGNORING_ARRAY_ORDER)
+            .isEqualTo("[]");
     }
 
     @Test
