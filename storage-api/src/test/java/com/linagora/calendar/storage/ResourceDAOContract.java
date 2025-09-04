@@ -57,6 +57,26 @@ public interface ResourceDAOContract {
     }
 
     @Test
+    default void findByIdShouldReturnDeletedResource() {
+        ResourceInsertRequest request = new ResourceInsertRequest(
+            List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
+            new OpenPaaSId("creator1"),
+            DELETED,
+            "Test resource description",
+            new OpenPaaSId("domain1"),
+            "icon.png",
+            "Test Resource",
+            Instant.now(),
+            Instant.now(),
+            "resource"
+        );
+
+        ResourceId resourceId = dao().insert(request).block();
+
+        assertThat(dao().findById(resourceId).block()).isEqualTo(Resource.from(resourceId, request));
+    }
+
+    @Test
     default void findAllShouldReturnAllResources() {
         ResourceInsertRequest req1 = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
@@ -90,6 +110,39 @@ public interface ResourceDAOContract {
     }
 
     @Test
+    default void findAllShouldReturnDeletedResources() {
+        ResourceInsertRequest req1 = new ResourceInsertRequest(
+            List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
+            new OpenPaaSId("creator1"),
+            DELETED,
+            "desc1",
+            new OpenPaaSId("domain1"),
+            "icon1.png",
+            "Resource1",
+            Instant.now(),
+            Instant.now(),
+            "resource"
+        );
+        ResourceInsertRequest req2 = new ResourceInsertRequest(
+            List.of(new ResourceAdministrator(new OpenPaaSId("admin2"), "user")),
+            new OpenPaaSId("creator2"),
+            !DELETED,
+            "desc2",
+            new OpenPaaSId("domain2"),
+            "icon2.png",
+            "Resource2",
+            Instant.now(),
+            Instant.now(),
+            "resource"
+        );
+        ResourceId id1 = dao().insert(req1).block();
+        ResourceId id2 = dao().insert(req2).block();
+        List<Resource> actual = dao().findAll().collectList().block();
+
+        assertThat(actual).contains(Resource.from(id1, req1));
+    }
+
+    @Test
     default void findByDomainShouldReturnResourcesWithCorrespondingDomain() {
         ResourceInsertRequest req1 = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
@@ -120,6 +173,39 @@ public interface ResourceDAOContract {
         List<Resource> actual = dao().findByDomain(new OpenPaaSId("domain2")).collectList().block();
 
         assertThat(actual).containsOnly(Resource.from(id2, req2));
+    }
+
+    @Test
+    default void findByDomainShouldReturnDeletedResources() {
+        ResourceInsertRequest req1 = new ResourceInsertRequest(
+            List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
+            new OpenPaaSId("creator1"),
+            DELETED,
+            "desc1",
+            new OpenPaaSId("domain1"),
+            "icon1.png",
+            "Resource1",
+            Instant.now(),
+            Instant.now(),
+            "resource"
+        );
+        ResourceInsertRequest req2 = new ResourceInsertRequest(
+            List.of(new ResourceAdministrator(new OpenPaaSId("admin2"), "user")),
+            new OpenPaaSId("creator2"),
+            !DELETED,
+            "desc2",
+            new OpenPaaSId("domain1"),
+            "icon2.png",
+            "Resource2",
+            Instant.now(),
+            Instant.now(),
+            "resource"
+        );
+        ResourceId id1 = dao().insert(req1).block();
+        ResourceId id2 = dao().insert(req2).block();
+        List<Resource> actual = dao().findByDomain(new OpenPaaSId("domain1")).collectList().block();
+
+        assertThat(actual).contains(Resource.from(id1, req1));
     }
 
     @Test
