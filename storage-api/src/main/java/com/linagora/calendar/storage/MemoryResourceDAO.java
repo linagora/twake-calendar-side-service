@@ -53,19 +53,18 @@ public class MemoryResourceDAO implements ResourceDAO {
 
     @Override
     public Flux<Resource> findAll() {
-        return Flux.fromIterable(store.values()).filter(r -> !r.deleted());
+        return Flux.fromIterable(store.values());
     }
 
     @Override
     public Mono<Resource> findById(ResourceId id) {
-        return Mono.justOrEmpty(store.get(id)).filter(r -> !r.deleted());
+        return Mono.justOrEmpty(store.get(id));
     }
 
     @Override
     public Flux<Resource> findByDomain(OpenPaaSId domainId) {
         return Flux.fromStream(store.values().stream()
-            .filter(r -> r.domain().equals(domainId)))
-            .filter(r -> !r.deleted());
+            .filter(r -> r.domain().equals(domainId)));
     }
 
     @Override
