@@ -37,7 +37,11 @@ public class DockerMongoDBExtension implements BeforeAllCallback, AfterAllCallba
     public static final MongoDBContainer mongoDBContainer = new MongoDBContainer("mongo:4.0.10")
         .withCreateContainerCmdModifier(createContainerCmd -> createContainerCmd.withName("tcalendar-mongo-test-" + UUID.randomUUID().toString().substring(0, 8)))
         .withCommand("--setParameter", "ttlMonitorSleepSecs=5");
-    public static final List<String> CLEANUP_COLLECTIONS = List.of(MongoDBOpenPaaSDomainDAO.COLLECTION, MongoDBOpenPaaSUserDAO.COLLECTION, MongoDBUploadedFileDAO.COLLECTION, MongoDBAlarmEventDAO.COLLECTION);
+    public static final List<String> CLEANUP_COLLECTIONS = List.of(MongoDBOpenPaaSDomainDAO.COLLECTION,
+        MongoDBOpenPaaSUserDAO.COLLECTION,
+        MongoDBUploadedFileDAO.COLLECTION,
+        MongoDBAlarmEventDAO.COLLECTION,
+        MongoDBResourceDAO.COLLECTION);
 
     private static MongoDBConfiguration mongoDBConfiguration;
 
