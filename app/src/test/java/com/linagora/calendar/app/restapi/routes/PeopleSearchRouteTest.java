@@ -25,18 +25,24 @@ import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.apache.james.backends.rabbitmq.RabbitMQExtension.IsolationPolicy.WEAK;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
+
+import jakarta.inject.Inject;
 
 import org.apache.http.HttpStatus;
 import org.apache.james.backends.rabbitmq.RabbitMQExtension;
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
+import org.apache.james.utils.GuiceProbe;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import com.google.inject.multibindings.Multibinder;
 import com.linagora.calendar.app.AppTestHelper;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
@@ -44,6 +50,14 @@ import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.app.modules.MemoryAutoCompleteModule;
 import com.linagora.calendar.restapi.RestApiServerProbe;
+import com.linagora.calendar.storage.OpenPaaSDomain;
+import com.linagora.calendar.storage.OpenPaaSDomainDAO;
+import com.linagora.calendar.storage.OpenPaaSUser;
+import com.linagora.calendar.storage.ResourceDAO;
+import com.linagora.calendar.storage.ResourceInsertRequest;
+import com.linagora.calendar.storage.model.Resource;
+import com.linagora.calendar.storage.model.ResourceAdministrator;
+import com.linagora.calendar.storage.model.ResourceId;
 
 import io.restassured.RestAssured;
 import io.restassured.authentication.PreemptiveBasicAuthScheme;
@@ -53,13 +67,46 @@ import net.javacrumbs.jsonunit.core.Option;
 
 public class PeopleSearchRouteTest {
 
+    static class ResourceProbe implements GuiceProbe {
+        private final ResourceDAO resourceDAO;
+        private final OpenPaaSDomainDAO domainDAO;
+
+        @Inject
+        ResourceProbe(ResourceDAO resourceDAO, OpenPaaSDomainDAO domainDAO) {
+            this.resourceDAO = resourceDAO;
+            this.domainDAO = domainDAO;
+        }
+
+        public ResourceId save(OpenPaaSUser requestUser, String name, String icon) {
+            ResourceAdministrator administrator = new ResourceAdministrator(requestUser.id(), "user");
+
+            OpenPaaSDomain openPaaSDomain = domainDAO.retrieve(requestUser.username().getDomainPart().get()).block();
+
+            ResourceInsertRequest insertRequest = new ResourceInsertRequest(List.of(administrator),
+                requestUser.id(),
+                false,
+                name + " description",
+                openPaaSDomain.id(),
+                icon,
+                name,
+                Instant.now(),
+                Instant.now(),
+                "resource");
+            return resourceDAO.insert(insertRequest).block();
+        }
+
+        public List<Resource> listAll() {
+            return resourceDAO.findAll().collectList().block();
+        }
+    }
+
     private static final String DOMAIN = "open-paas.ltd";
     private static final String PASSWORD = "secret";
     private static final Username USERNAME = Username.fromLocalPartWithDomain("bob", DOMAIN);
 
     @RegisterExtension
     @Order(1)
-    private static RabbitMQExtension rabbitMQExtension = RabbitMQExtension.singletonRabbitMQ()
+    private static final RabbitMQExtension rabbitMQExtension = RabbitMQExtension.singletonRabbitMQ()
         .isolationPolicy(WEAK);
 
     @RegisterExtension
@@ -69,7 +116,11 @@ public class PeopleSearchRouteTest {
             .configurationFromClasspath()
             .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY),
-        AppTestHelper.BY_PASS_MODULE.apply(rabbitMQExtension));
+        AppTestHelper.BY_PASS_MODULE.apply(rabbitMQExtension),
+        binder -> {
+            Multibinder.newSetBinder(binder, GuiceProbe.class)
+                .addBinding().to(ResourceProbe.class);
+        });
 
     @AfterAll
     static void afterAll() {
@@ -329,4 +380,107 @@ public class PeopleSearchRouteTest {
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST);
     }
+
+    @Test
+    void shouldReturnResourceWhenResourceTypeIncluded(TwakeCalendarGuiceServer server) {
+        // given
+
+        OpenPaaSUser openPaaSUser = server.getProbe(CalendarDataProbe.class).getUser(USERNAME);
+        ResourceProbe resourceProbe = server.getProbe(ResourceProbe.class);
+        resourceProbe.save(openPaaSUser, "meeting-room", "laptop");
+
+        // when
+        String response = given()
+            .body("""
+                {
+                  "q" : "meeting",
+                  "objectTypes" : [ "resource" ],
+                  "limit" : 10
+                }""")
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract()
+            .body()
+            .asString();
+
+        Resource firstResource = resourceProbe.listAll().getFirst();
+        // then
+        assertThatJson(response)
+            .withOptions(Option.IGNORING_ARRAY_ORDER)
+            .isEqualTo("""
+                [
+                  {
+                    "id": "%s",
+                    "objectType": "resource",
+                    "names": [ { "displayName": "meeting-room", "type": "default" } ],
+                    "emailAddresses": [ { "value": "%s", "type": "default" } ],
+                    "phoneNumbers": [],
+                    "photos": [ { "url": "https://e-calendrier.avocat.fr/linagora.esn.resource/images/icon/laptop.svg", "type": "default" } ]
+                  }
+                ]""".formatted(firstResource.id().value(), firstResource.id().value() + "@" + DOMAIN));
+    }
+
+    @Test
+    void shouldNotReturnResourceWhenResourceTypeExcluded(TwakeCalendarGuiceServer server) {
+        // given
+        OpenPaaSUser openPaaSUser = server.getProbe(CalendarDataProbe.class).getUser(USERNAME);
+        ResourceProbe resourceProbe = server.getProbe(ResourceProbe.class);
+        resourceProbe.save(openPaaSUser, "meeting-room", "laptop");
+
+        // when
+        String response = given()
+            .body("""
+                {
+                  "q" : "meeting",
+                  "objectTypes" : [ "user", "contact" ],
+                  "limit" : 10
+                }""")
+            .when()
+            .post()
+            .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract()
+            .body()
+            .asString();
+
+        // then
+        assertThatJson(response)
+            .isArray()
+            .isEmpty();
+    }
+
+    @Test
+    void shouldRespectLimitWhenSearchingResources(TwakeCalendarGuiceServer server) {
+        // given
+        OpenPaaSUser openPaaSUser = server.getProbe(CalendarDataProbe.class).getUser(USERNAME);
+        ResourceProbe resourceProbe = server.getProbe(ResourceProbe.class);
+
+        resourceProbe.save(openPaaSUser, "meeting-room-1", "laptop");
+        resourceProbe.save(openPaaSUser, "meeting-room-2", "laptop");
+        resourceProbe.save(openPaaSUser, "meeting-room-3", "laptop");
+
+        // when
+        String response = given()
+            .body("""
+                {
+                  "q" : "meeting-room",
+                  "objectTypes" : [ "resource" ],
+                  "limit" : 2
+                }""")
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract()
+            .body()
+            .asString();
+
+        // then
+        assertThatJson(response)
+            .isArray()
+            .hasSize(2);
+    }
+
 }
