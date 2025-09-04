@@ -192,6 +192,11 @@
                 <artifactId>icu4j</artifactId>
                 <version>77.1</version>
             </dependency>
+            <dependency>
+                <groupId>io.github.classgraph</groupId>
+                <artifactId>classgraph</artifactId>
+                <version>4.8.181</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 

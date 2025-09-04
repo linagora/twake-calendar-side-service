@@ -18,58 +18,52 @@
 
 package com.linagora.calendar.restapi;
 
-import java.io.File;
 import java.io.IOException;
-import java.net.URISyntaxException;
-import java.net.URL;
-import java.nio.file.Files;
 import java.util.Map;
 import java.util.Objects;
 
 import jakarta.inject.Named;
 
-import org.apache.commons.lang3.Strings;
 import org.jetbrains.annotations.NotNull;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 
+import io.github.classgraph.ClassGraph;
+import io.github.classgraph.Resource;
+import io.github.classgraph.ScanResult;
+
 public class ResourceIconLoader {
     public static final String RESOURCES_ICONS_KEY = "resources-icons";
     private static final String EXT_SVG = ".svg";
 
-    public static AbstractModule MODULE =  new AbstractModule() {
+    public static AbstractModule MODULE = new AbstractModule() {
 
         @Provides
         @Named(RESOURCES_ICONS_KEY)
         Map<String, byte[]> resourcesIcons() {
-            URL dirURL = ClassLoader.getSystemResource("icons/resources");
-            return ResourceIconLoader.loadFromDir(dirURL);
+            return ResourceIconLoader.loadFromDir("icons/resources");
         }
     };
 
-    public static Map<String, byte[]> loadFromDir(URL dirURL) {
-        Objects.requireNonNull(dirURL, "Directory URL must not be null");
+    public static Map<String, byte[]> loadFromDir(String resourcePath) {
+        Objects.requireNonNull(resourcePath, "Directory URL must not be null");
 
-        try {
-            File folder = new File(dirURL.toURI());
-            File[] files = folder.listFiles((dir, name) -> Strings.CI.endsWith(name, EXT_SVG));
-
-            if (files == null || files.length == 0) {
-                return Map.of();
-            }
-
+        try (ScanResult scanResult = new ClassGraph()
+            .acceptPaths(resourcePath)
+            .scan()) {
             ImmutableMap.Builder<@NotNull String, byte @NotNull []> builder = ImmutableMap.builder();
-            for (File file : files) {
-                String iconName = Strings.CI.removeEnd(file.getName(), EXT_SVG);
-                byte[] content = Files.readAllBytes(file.toPath());
-                builder.put(iconName, content);
+            for (Resource resource : scanResult.getAllResources()) {
+                if (resource.getPath().endsWith(EXT_SVG)) {
+                    String fileName = resource.getPath()
+                        .substring(resourcePath.length() + 1, resource.getPath().length() - EXT_SVG.length());
+                    builder.put(fileName, resource.load());
+                }
             }
             return builder.build();
-
-        } catch (URISyntaxException | IOException e) {
-            throw new RuntimeException("Error loading resources from: " + dirURL, e);
+        } catch (IOException e) {
+            throw new RuntimeException("Error loading resources from: " + resourcePath, e);
         }
     }
 }
