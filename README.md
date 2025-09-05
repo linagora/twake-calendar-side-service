@@ -60,8 +60,8 @@ Simply replace your OpenPaaS server by the side service. Especially:
 to the side service instead of OpenPaaS.
 
 Once this is done, extra steps are needed in order to:
- - [Reindex events]() as the side service re-implemented event indexing from scratch
- - [Re-chedule alarms]() as the side service do not reuse legacy OpenPaaS data structure and re-implement
+ - [Reindex events](/docs/apis/webadmin.md#calendar-event-reindexing) as the side service re-implemented event indexing from scratch.
+ - [Re-schedule alarms](/docs/apis/webadmin.md#alarm-rescheduling) as the side service do not reuse legacy OpenPaaS data structure and re-implement
 scheduling using a polling approach atop a new dedicated collection.
 
 ## Contributing
