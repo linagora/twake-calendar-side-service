@@ -16,6 +16,21 @@ However, despite those above statements it shall be seen as a very aggressive re
 
 We aim for a pragmatic approach by reusing most of the tooling that made Twake mail successful.
 
+## Roadmap
+
+We aim for replacing [OpenPaaS](https://open-paas.org/) by the end of 2025.
+
+Then we might add websocket push to this project.
+
+Next development items are not specified yet. We could envision replacing [MongoDB backend](https://www.mongodb.com/) by
+[PostgreSQL](https://www.postgresql.org/) document DB but this is not decided yet.
+
+## Architecture
+
+[This page](docs/features.md) details the side service features.
+
+[This page](docs/architecture.md) details the side service architecture.
+
 ## Running it
 
 We provide a full [demo](app/docker-sample/README.md) of the entire calendar stack, including this calendar side-service,
@@ -43,21 +58,6 @@ We recommend discussing the contribution (GitHub issues or discussion) prior wri
 LINAGORA owns the code base so alone is entitled to decide what shall be accepted or not as a contribution
 and became owner of the contribution. However, we will retain paternity of the contribution (git history
 and if applicable / requested in comments)
-
-## Roadmap
-
-We aim for replacing [OpenPaaS](https://open-paas.org/) by the end of 2025.
-
-Then we might add websocket push to this project.
-
-Next development items are not specified yet. We could envision replacing [MongoDB backend](https://www.mongodb.com/) by
-[PostgreSQL](https://www.postgresql.org/) document DB but this is not decided yet.
-
-## Architecture
-
-[This page](docs/features.md) details the side service features.
-
-[This page](docs/architecture.md) details the side service architecture.
 
 ## Credits
 
