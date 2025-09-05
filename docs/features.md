@@ -22,3 +22,14 @@ settings. This includes:
 - Calendar / address book import notifications
 
 The side service also enables synchronizing domain members into ESN-Sabre DAV server.
+
+## Automatic user provisioning
+
+If enabled, users are automatically registered upon their first OpenID connect interaction.
+
+The following claims are used:
+ - `email` to determine the email
+ - `given_name` (may be omitted) to determine the firstname
+ - `family_name` (may be omitted) to determine the lastname
+
+Otherwise, the project exposes a [webadmin endpoint for user registration](apis/webadmin.md#registration-of-a-new-user).
