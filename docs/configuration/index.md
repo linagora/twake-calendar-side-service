@@ -14,7 +14,7 @@ inherited of Apache James. Only `redisUrl` property is needed. Optional: if omit
  - [extensions.properties](https://james.staged.apache.org/james-project/3.9.0/servers/distributed/configure/extensions.html)
 inherited of Apache James. Currently unused. Optional.
  - [healthcheck.properties](https://james.staged.apache.org/james-project/3.9.0/servers/distributed/configure/healthcheck.html)
-   inherited of Apache James. Only `healthcheck.period` is used. Opional.
+   inherited of Apache James. Only `healthcheck.period` is used. Optional.
  - [jvm.properties](https://james.staged.apache.org/james-project/3.9.0/servers/distributed/configure/jvm.html)
 inherited of Apache James. See [this example](../../app/src/main/conf/jvm.properties) for specific values for the side service.
 Optional.
@@ -24,3 +24,5 @@ Optional. If present, it is used to set up LDAP connection following the exact J
 The following properties are supported: `uri`, `management.uri`, `management.user`, `mangement.password`, `scheduled.consumer.reconnection.enabled`, 
 `scheduled.consumer.reconnection.interval`. Compulsory.
  - [opensearch.properties](opensearch.md) enable setting up the OpenSearch service.
+ - [webadmn.properties](https://james.staged.apache.org/james-project/3.9.0/servers/distributed/configure/webadmin.html)
+inherited of Apache James.
