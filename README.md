@@ -18,6 +18,11 @@ We aim for a pragmatic approach by reusing most of the tooling that made Twake m
 
 ## Running it
 
+We provide a full [demo](app/docker-sample/README.md) of the entire calendar stack, including this calendar side-service,
+the esn-sabre dav server, and all single page applications with a sample OIDC setup.
+
+Below sections refers how to run specifically the side service. 
+
 ### Compile and run with CLI
 
 Requires maven 3.9.6 + and JDK 21
@@ -49,8 +54,6 @@ Then it can easily be run with:
 ```bash
 docker run --rm -ti linagora/twake-calendar-side-service:latest
 ```
-
-There is currently no way to run Twake Calendar side service with docker but as soon as it is available we will document it here!
 
 ## Configuring it
 
