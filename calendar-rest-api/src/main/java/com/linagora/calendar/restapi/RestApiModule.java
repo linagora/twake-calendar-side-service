@@ -87,6 +87,9 @@ import com.linagora.calendar.restapi.routes.UsersRoute;
 import com.linagora.calendar.restapi.routes.configuration.FileConfigurationEntryResolver;
 import com.linagora.calendar.restapi.routes.configuration.OpenpaasConfigurationEntryResolver;
 import com.linagora.calendar.restapi.routes.configuration.StoredConfigurationEntryResolver;
+import com.linagora.calendar.restapi.routes.people.search.ContactSearchProvider;
+import com.linagora.calendar.restapi.routes.people.search.PeopleSearchProvider;
+import com.linagora.calendar.restapi.routes.people.search.ResourceSearchProvider;
 import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.TokenInfoResolver;
 import com.linagora.calendar.storage.configuration.resolver.ConfigurationEntryResolver;
@@ -145,6 +148,10 @@ public class RestApiModule extends AbstractModule {
         bind(SecretLinkPermissionChecker.class).to(NoopPermissionChecker.class);
 
         bind(ParticipationTokenSigner.class).to(ParticipationTokenSigner.Default.class);
+
+        Multibinder<PeopleSearchProvider> peopleSearchProviderMultibinder = Multibinder.newSetBinder(binder(), PeopleSearchProvider.class);
+        peopleSearchProviderMultibinder.addBinding().to(ContactSearchProvider.class);
+        peopleSearchProviderMultibinder.addBinding().to(ResourceSearchProvider.class);
     }
 
     @Provides

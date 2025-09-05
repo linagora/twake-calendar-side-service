@@ -41,6 +41,7 @@ import com.linagora.calendar.storage.OIDCTokenCache;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSDomainList;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.ResourceDAO;
 import com.linagora.calendar.storage.UploadedFileDAO;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
 import com.linagora.calendar.storage.secretlink.SecretLinkStore;
@@ -73,6 +74,8 @@ public class MongoDBStorageModule extends AbstractModule {
         bind(MongoDBAlarmEventLedgerDAO.class).in(Scopes.SINGLETON);
         bind(MongoAlarmEventLeaseProvider.class).in(Scopes.SINGLETON);
         bind(AlarmEventLeaseProvider.class).to(MongoAlarmEventLeaseProvider.class);
+
+        bind(ResourceDAO.class).to(MongoDBResourceDAO.class);
     }
 
     @Provides
