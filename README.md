@@ -16,47 +16,53 @@ However, despite those above statements it shall be seen as a very aggressive re
 
 We aim for a pragmatic approach by reusing most of the tooling that made Twake mail successful.
 
+## Roadmap
+
+We aim for replacing [OpenPaaS](https://open-paas.org/) by the end of 2025.
+
+Then we might add websocket push to this project.
+
+Next development items are not specified yet. We could envision replacing [MongoDB backend](https://www.mongodb.com/) by
+[PostgreSQL](https://www.postgresql.org/) document DB but this is not decided yet.
+
+## Architecture
+
+[This page](docs/features.md) details the side service features.
+
+[This page](docs/architecture.md) details the side service architecture.
+
 ## Running it
 
-### Compile and run with CLI
+We provide a full [demo](app/docker-sample/README.md) of the entire calendar stack, including this calendar side-service,
+the esn-sabre dav server, and all single page applications with a sample OIDC setup.
 
-Requires maven 3.9.6 + and JDK 21
+Below sections refers how to run specifically the side service:
 
-First compile [Twake mail backend](https://github.com/linagora/tmail-backend) as this project depends on some of its snapshots.
-
-In order to compile the application, run:
-
-```bash
-mvn clean install
-```
-
-Then run it with:
-
-```bash
-java -cp twake-calendar-side-service/app/target/twake-calendar-side-service-app-1.0.0-SNAPSHOT.jar com.linagora.calendar.app.TwakeCalendarMain
-```
-
-### Run with docker
-
-Compilation will build a tar that needs to be imported in your local docker engine:
-
-```bash
-docker load -i twake-calendar-side-service/app/target/jib-image.tar
-```
-
-Then it can easily be run with:
-
-```bash
-docker run --rm -ti linagora/twake-calendar-side-service:latest
-```
-
-There is currently no way to run Twake Calendar side service with docker but as soon as it is available we will document it here!
+ - [Compile and run with CLI](docs/run/run-cli.md)
+ - [Run with docker](docs/run/run-docker.md)
 
 ## Configuring it
 
 Please refer to the [sample configuration](app/src/main/conf).
 
-We will soon provide more details here.
+Please refer to [this page](docs/configuration/index.md) for a documentation of the configuration.
+
+## Migrating from OpenPaaS
+
+Simply replace your OpenPaaS server by the side service. Especially:
+
+ - Turn OpenPaaS off.
+ - Use the OpenPaaS mongoDB database for the side service
+ - Connect your side service to the RabbitMQ server your sabre server uses
+ - Connect your side service to the OpenSearch server your Twake Mail server uses
+ - Connect it to your LDAP server
+ - Point your existing OpenPaaaS SPA (calendar, cotact, account, excal) and other services (esn-sabre dav server, twake mail)
+to the side service instead of OpenPaaS.
+
+Once this is done, extra steps are needed in order to:
+ - [Reindex events](/docs/apis/webadmin.md#calendar-event-reindexing) as the side service re-implemented event indexing from scratch.
+ - [Re-schedule alarms](/docs/apis/webadmin.md#alarm-rescheduling) as the side service do not reuse legacy OpenPaaS data structure and re-implement
+scheduling using a polling approach atop a new dedicated collection.
 
 ## Contributing
 
@@ -69,28 +75,6 @@ We recommend discussing the contribution (GitHub issues or discussion) prior wri
 LINAGORA owns the code base so alone is entitled to decide what shall be accepted or not as a contribution
 and became owner of the contribution. However, we will retain paternity of the contribution (git history
 and if applicable / requested in comments)
-
-## Roadmap
-
-We aim for replacing [OpenPaaS](https://open-paas.org/) by the end of 2025.
-
-Then we might add websocket push to this project.
-
-Next development items are not specified yet. We could envision replacing [MongoDB backend](https://www.mongodb.com/) by
-[PostgreSQL](https://www.postgresql.org/) document DB but this is not decided yet.
-
-## Architecture
-
-![Architecture diagram](assets/twake-calendar-side-service-architecture.drawio.png)
-
-In addition to this target architecture, in order to allow easy deployment of our solution, the 
-`Twake Calendar Side Service` will also proxy HTTP calls it do not handle (yet) to the soon-to-be-replaced 
-`OpenPaaS` server.
-
-Regarding observability, we intend Twake Calendar Side Service to be on par with Twake Mail: structured JSON logs 
-collected via [Loki](https://grafana.com/oss/loki/), metrics gathered by [Prometheus](https://prometheus.io/). 
-
-Implemented Webadmin APIs: metrics, heathcheck, users and domain routes
 
 ## Credits
 
