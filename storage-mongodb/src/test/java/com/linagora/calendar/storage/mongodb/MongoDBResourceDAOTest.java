@@ -31,14 +31,21 @@ public class MongoDBResourceDAOTest implements ResourceDAOContract {
     static DockerMongoDBExtension mongo = new DockerMongoDBExtension();
 
     private MongoDBResourceDAO resourceDAO;
+    private Clock clock;
 
     @BeforeEach
     void setup() {
-        resourceDAO = new MongoDBResourceDAO(mongo.getDb(), Clock.systemUTC());
+        clock = Clock.systemUTC();
+        resourceDAO = new MongoDBResourceDAO(mongo.getDb(), clock);
     }
 
     @Override
     public ResourceDAO dao() {
         return resourceDAO;
+    }
+
+    @Override
+    public Clock clock() {
+        return clock;
     }
 }

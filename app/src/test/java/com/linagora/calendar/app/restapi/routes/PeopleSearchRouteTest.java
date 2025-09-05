@@ -25,7 +25,6 @@ import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.apache.james.backends.rabbitmq.RabbitMQExtension.IsolationPolicy.WEAK;
 
 import java.nio.charset.StandardCharsets;
-import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -84,14 +83,10 @@ class PeopleSearchRouteTest {
 
             ResourceInsertRequest insertRequest = new ResourceInsertRequest(List.of(administrator),
                 requestUser.id(),
-                false,
                 name + " description",
                 openPaaSDomain.id(),
                 icon,
-                name,
-                Instant.now(),
-                Instant.now(),
-                "resource");
+                name);
             return resourceDAO.insert(insertRequest).block();
         }
 
@@ -102,14 +97,10 @@ class PeopleSearchRouteTest {
 
             ResourceInsertRequest insertRequest = new ResourceInsertRequest(List.of(administrator),
                 requestUser.id(),
-                false,
                 name + " description",
                 openPaaSDomain.id(),
                 icon,
-                name,
-                Instant.now(),
-                Instant.now(),
-                "resource");
+                name);
 
             return resourceDAO.insert(insertRequest)
                 .flatMap(resourceId -> resourceDAO.softDelete(resourceId).thenReturn(resourceId)).block();

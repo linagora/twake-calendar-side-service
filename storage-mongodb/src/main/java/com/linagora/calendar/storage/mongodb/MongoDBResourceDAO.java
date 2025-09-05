@@ -158,17 +158,18 @@ public class MongoDBResourceDAO implements ResourceDAO {
     }
 
     private Document toDocument(ResourceInsertRequest request) {
+        Date now = Date.from(clock.instant());
         return new Document().append(ADMINISTRATORS_FIELD, request.administrators().stream().map(this::toDocument).toList())
             .append(CREATOR_FIELD, new ObjectId(request.creator().value()))
-            .append(DELETED_FIELD, request.deleted())
+            .append(DELETED_FIELD, !DELETED)
             .append(DESCRIPTION_FIELD, request.description())
             .append(DOMAIN_FIELD, new ObjectId(request.domain().value()))
             .append(ICON_FIELD, request.icon())
             .append(NAME_FIELD, request.name())
             .append(TIMESTAMPS, new Document()
-                .append(CREATION_FIELD, Date.from(request.creation()))
-                .append(UPDATED_FIELD, Date.from(request.updated())))
-            .append(TYPE_FIELD, request.type());
+                .append(CREATION_FIELD, now)
+                .append(UPDATED_FIELD, now))
+            .append(TYPE_FIELD, Resource.RESOURCE_TYPE);
     }
 
     private Document toDocument(Resource resource) {

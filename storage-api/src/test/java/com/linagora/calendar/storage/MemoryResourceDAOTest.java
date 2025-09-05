@@ -24,15 +24,22 @@ import org.junit.jupiter.api.BeforeEach;
 
 public class MemoryResourceDAOTest implements ResourceDAOContract {
     private MemoryResourceDAO resourceDAO;
+    private Clock clock;
 
     @BeforeEach
     void setup() {
-        resourceDAO = new MemoryResourceDAO(Clock.systemUTC());
+        clock = Clock.systemUTC();
+        resourceDAO = new MemoryResourceDAO(clock);
     }
 
     @Override
     public ResourceDAO dao() {
         return resourceDAO;
+    }
+
+    @Override
+    public Clock clock() {
+        return clock;
     }
 }
 
