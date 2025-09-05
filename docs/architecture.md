@@ -17,7 +17,7 @@ The side service relies on the following other services:
 
 **esn-sabre DAV server** holds the calendar / contacts data and is in charge of manipulating them. The side-service calls the
 DAV server in order to:
-- Manage the secret link access: it validates the secret link then proxy theDAV calendar export
+- Manage the secret link access: it validates the secret link then proxy the DAV calendar export
 - Support excal: where a non authenticated third party user receives an invite from one of our users excal SPA offers
   a link for this user to update his participation. The token enbedded in the SPA is validated by the side service which
   acts accordingly on the DAV server.
@@ -25,7 +25,7 @@ DAV server in order to:
   in sabre through the use of a "Technical Token".
 - Calendar and address book import: after uploading data to the side service the side service pushes each relevant items
   into the corresponding DAV collection.
-- DAV Proxy: the side service expose an endpoint authenticated with OIDC that wraps the DAV api.
+- [DAV Proxy](apis/davProxy.md): the side service expose an endpoint authenticated with OIDC that wraps the DAV api.
 - Alarm service and event indexing service might read DAV data in order to maintain their own projections.
 
 **Twake Mail** (or any SMTP submission service) is used to send calendar related emails.
