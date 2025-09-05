@@ -27,13 +27,13 @@
 package com.linagora.calendar.dav;
 
 import static com.linagora.calendar.dav.DockerSabreDavSetup.DockerService.MOCK_ESN;
+import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static org.mockserver.model.HttpResponse.response;
 import static org.mockserver.model.Parameter.param;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -77,7 +77,6 @@ public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup) impleme
         MongoDBOpenPaaSUserDAO.COLLECTION,
         MongoDBUploadedFileDAO.COLLECTION,
         MongoDBSecretLinkStore.COLLECTION);
-    private static final TechnicalTokenService technicalTokenService = new TechnicalTokenService.Impl("technicalTokenSecret", Duration.ofSeconds(300));
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private static MockServerClient mockServerClient;
 
@@ -154,7 +153,7 @@ public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup) impleme
                 return response()
                     .withStatusCode(200)
                     .withHeader("Content-Type", "application/json")
-                    .withBody(technicalTokenService.claim(new TechnicalTokenService.JwtToken(token))
+                    .withBody(TECHNICAL_TOKEN_SERVICE_TESTING.claim(new TechnicalTokenService.JwtToken(token))
                         .map(Throwing.function(tokenInfo -> objectMapper.writeValueAsString(tokenInfo.data())))
                         .onErrorResume(e -> Mono.just("error: " + e.getMessage()))
                         .block());

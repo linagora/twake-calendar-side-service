@@ -48,8 +48,8 @@ public class DavModule extends AbstractModule {
 
     @Provides
     @Singleton
-    public CalDavClient provideCalDavClient(DavConfiguration configuration) throws SSLException {
-        return new CalDavClient(configuration);
+    public CalDavClient provideCalDavClient(DavConfiguration configuration, TechnicalTokenService technicalTokenService) throws SSLException {
+        return new CalDavClient(configuration, technicalTokenService);
     }
 
     @Provides

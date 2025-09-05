@@ -20,6 +20,7 @@ package com.linagora.calendar.app;
 
 import static com.linagora.calendar.app.restapi.routes.ImportRouteTest.mailSenderConfigurationFunction;
 import static com.linagora.calendar.scheduling.AlarmEventSchedulerConfiguration.BATCH_SIZE_DEFAULT;
+import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -137,8 +138,8 @@ public class AlarmEventSchedulerTest {
     @BeforeEach
     void setUp(TwakeCalendarGuiceServer server) throws Exception {
         this.organizer = sabreDavExtension.newTestUser(Optional.of("organizer_"));
-        davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration());
-        calDavEventRepository = new CalDavEventRepository(new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration()));
+        davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
+        calDavEventRepository = new CalDavEventRepository(new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING));
 
         clearSmtpInbox();
 

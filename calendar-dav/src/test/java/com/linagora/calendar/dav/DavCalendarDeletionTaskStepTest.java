@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.dav;
 
+import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import javax.net.ssl.SSLException;
@@ -48,7 +49,7 @@ public class DavCalendarDeletionTaskStepTest {
 
     @BeforeEach
     void setUp() throws SSLException {
-        calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration());
+        calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         MongoDatabase mongoDB = sabreDavExtension.dockerSabreDavSetup().getMongoDB();
         MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
         testee = new DavCalendarDeletionTaskStep(calDavClient, new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO));

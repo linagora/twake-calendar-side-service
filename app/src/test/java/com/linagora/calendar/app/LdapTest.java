@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.app;
 
+import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static io.restassured.RestAssured.given;
 import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
@@ -27,7 +28,6 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 
 import org.apache.commons.configuration2.BaseHierarchicalConfiguration;
 import org.apache.commons.configuration2.HierarchicalConfiguration;
@@ -96,7 +96,7 @@ class LdapTest {
         DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
         ldapModule(),
         binder -> binder.bind(TechnicalTokenService.class)
-            .toInstance(new TechnicalTokenService.Impl("technicalTokenSecret", Duration.ofSeconds(2000))));
+            .toInstance(TECHNICAL_TOKEN_SERVICE_TESTING));
 
     @BeforeEach
     void setUp(TwakeCalendarGuiceServer server) {

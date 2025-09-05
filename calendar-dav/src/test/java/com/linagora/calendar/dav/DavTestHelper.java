@@ -25,12 +25,14 @@ import java.util.Optional;
 import javax.net.ssl.SSLException;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.james.core.Username;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
+import com.linagora.calendar.storage.TechnicalTokenService;
 import com.linagora.calendar.storage.eventsearch.EventUid;
 
 import io.netty.buffer.Unpooled;
@@ -62,9 +64,9 @@ public class DavTestHelper extends DavClient {
 
     private final CalDavClient calDavClient;
 
-    public DavTestHelper(DavConfiguration config) throws SSLException {
-        super(config);
-        this.calDavClient = new CalDavClient(config);
+    public DavTestHelper(DavConfiguration config, TechnicalTokenService technicalTokenService) throws SSLException {
+        super(config, technicalTokenService);
+        this.calDavClient = new CalDavClient(config, technicalTokenService);
     }
 
     public void upsertCalendar(OpenPaaSUser openPaaSUser, String calendarData, EventUid eventUid) {
@@ -73,7 +75,7 @@ public class DavTestHelper extends DavClient {
 
     public void upsertCalendar(OpenPaaSUser openPaaSUser, String calendarData, String eventUid) {
         URI davCalendarUri = URI.create("/calendars/" + openPaaSUser.id().value() + "/" + openPaaSUser.id().value() + "/" + eventUid + ".ics");
-        upsertCalendar(openPaaSUser.username().asString(), davCalendarUri, calendarData).block();
+        upsertCalendar(openPaaSUser.username(), davCalendarUri, calendarData).block();
     }
 
     public void deleteCalendar(OpenPaaSUser openPaaSUser, EventUid eventUid) {
@@ -82,17 +84,17 @@ public class DavTestHelper extends DavClient {
 
     public void deleteCalendar(OpenPaaSUser openPaaSUser, String eventUid) {
         URI davCalendarUri = URI.create("/calendars/" + openPaaSUser.id().value() + "/" + openPaaSUser.id().value() + "/" + eventUid + ".ics");
-        deleteCalendar(openPaaSUser.username().asString(), davCalendarUri).block();
+        deleteCalendar(openPaaSUser.username(), davCalendarUri).block();
     }
 
     public void updateCalendar(OpenPaaSUser openPaaSUser, String calendarData, String eventUid) {
         URI davCalendarUri = URI.create("/calendars/" + openPaaSUser.id().value() + "/" + openPaaSUser.id().value() + "/" + eventUid + ".ics");
-        upsertCalendar(openPaaSUser.username().asString(), davCalendarUri, calendarData).block();
+        upsertCalendar(openPaaSUser.username(), davCalendarUri, calendarData).block();
     }
 
-    public Mono<Void> upsertCalendar(String username, URI uri, String calendarData) {
-        return client.headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, "text/plain")
-                .add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username)))
+    public Mono<Void> upsertCalendar(Username username, URI uri, String calendarData) {
+        return httpClientWithImpersonation(username).headers(headers ->
+                headers.add(HttpHeaderNames.CONTENT_TYPE, "text/plain"))
             .request(HttpMethod.PUT)
             .uri(uri.toString())
             .send(Mono.just(Unpooled.wrappedBuffer(calendarData.getBytes(StandardCharsets.UTF_8))))
@@ -111,11 +113,10 @@ public class DavTestHelper extends DavClient {
 
     public Mono<Void> postCounter(OpenPaaSUser openPaaSUser, String attendeeEventUid, CounterRequest counterRequest) {
         URI uri = URI.create("/calendars/" + openPaaSUser.id().value() + "/" + openPaaSUser.id().value() + "/" + attendeeEventUid + ".ics");
-        return client.headers(headers -> headers
+        return httpClientWithImpersonation(openPaaSUser.username()).headers(headers -> headers
                 .add("Content-Type", "application/calendar+json")
                 .add("Accept", "application/json, text/plain, */*")
-                .add("x-http-method-override", "ITIP")
-                .add(HttpHeaderNames.AUTHORIZATION, authenticationToken(openPaaSUser.username().asString())))
+                .add("x-http-method-override", "ITIP"))
             .request(HttpMethod.POST)
             .uri(uri.toString())
             .send(Mono.just(Unpooled.wrappedBuffer(counterRequest.toJson().getBytes(StandardCharsets.UTF_8))))
@@ -132,8 +133,8 @@ public class DavTestHelper extends DavClient {
             });
     }
 
-    public Mono<Void> deleteCalendar(String username, URI uri) {
-        return client.headers(headers -> headers.add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username)))
+    public Mono<Void> deleteCalendar(Username username, URI uri) {
+        return httpClientWithImpersonation(username)
             .request(HttpMethod.DELETE)
             .uri(uri.toString())
             .responseSingle((response, responseContent) -> {
@@ -151,8 +152,7 @@ public class DavTestHelper extends DavClient {
 
     public Mono<String> listAddressBooks(OpenPaaSUser openPaaSUser, OpenPaaSId homeBaseId) {
         String username = openPaaSUser.username().asString();
-        return client.headers(headers -> headers.add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username))
-                .add(HttpHeaderNames.ACCEPT, "application/json"))
+        return httpClientWithImpersonation(openPaaSUser.username()).headers(headers -> headers.add(HttpHeaderNames.ACCEPT, "application/json"))
             .request(HttpMethod.GET)
             .uri("/addressbooks/%s.json?personal=true&shared=true&subscribed=true".formatted(homeBaseId.value()))
             .responseSingle((response, responseContent) -> {

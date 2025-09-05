@@ -20,6 +20,7 @@ package com.linagora.calendar.app.restapi.routes;
 
 import static com.linagora.calendar.app.AppTestHelper.OPENSEARCH_TEST_MODULE;
 import static com.linagora.calendar.dav.DavModuleTestHelper.FROM_SABRE_EXTENSION;
+import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static io.restassured.RestAssured.given;
 import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
@@ -80,7 +81,7 @@ public class OpensearchDavCalendarSearchRouteTest implements CalendarSearchRoute
 
     @BeforeAll
     static void beforeAll() throws Exception {
-        davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration());
+        davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
     }
 
     @DisplayName("Should response index events in OpenSearch when created via CalDAV")

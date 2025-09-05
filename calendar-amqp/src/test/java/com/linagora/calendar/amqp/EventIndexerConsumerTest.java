@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.amqp;
 
+import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -117,7 +118,7 @@ public class EventIndexerConsumerTest {
             new NoopGaugeRegistry());
         channelPool.start();
 
-        davTestHelper = new DavTestHelper(dockerSabreDavSetup.davConfiguration());
+        davTestHelper = new DavTestHelper(dockerSabreDavSetup.davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
     }
 
     @AfterAll
