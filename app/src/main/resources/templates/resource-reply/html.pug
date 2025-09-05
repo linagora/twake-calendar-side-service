@@ -1,0 +1,193 @@
+mixin displayAttendees(attendees, organizer)
+  ul(style='padding-inline-start: 16px; margin: 0;')
+    li
+      span(style='font-weight: 500') #{organizer.cn}
+      span(style='color: #787878;') &nbsp;&lt;#{organizer.email}&gt;
+      span(style='font-weight: 500') &nbsp;(#{translator.get('organizer')})
+    each attendee, attendeeEmail in attendees
+      if (attendeeEmail !== organizer.email)
+        li
+          span(style='font-weight: 500') #{attendee.cn}
+          span(style='color: #787878;') &nbsp;&lt;#{attendeeEmail}&gt;
+
+mixin displayResources(resources)
+  - var first = true;
+  span
+    each resource, key in resources
+      if !first
+        | ,&nbsp;
+      = resource.cn
+      - first = false
+
+doctype html
+head
+  title
+  // [if !mso] <!
+  meta(http-equiv='X-UA-Compatible' content='IE=edge')
+  // <![endif]
+  meta(http-equiv='Content-Type' content='text/html; charset=UTF-8')
+  meta(name='viewport' content='width=device-width, initial-scale=1')
+  style(type='text/css').
+    #outlook a {
+    padding: 0;
+    }
+    body {
+    margin: 0;
+    padding: 0;
+    -webkit-text-size-adjust: 100%;
+    -ms-text-size-adjust: 100%;
+    }
+    table,
+    td {
+    border-collapse: collapse;
+    mso-table-lspace: 0pt;
+    mso-table-rspace: 0pt;
+    }
+    img {
+    border: 0;
+    height: auto;
+    line-height: 100%;
+    outline: none;
+    text-decoration: none;
+    -ms-interpolation-mode: bicubic;
+    }
+    p {
+    display: block;
+    margin: 13px 0;
+    }
+  //if mso
+    xml
+      o:officedocumentsettings
+        o:allowpng
+          o:pixelsperinch 96
+  //if lte mso 11
+    style(type='text/css').
+      .mj-outlook-group-fix { width:100% !important; }
+  // [if !mso] <!
+  link(href='https://fonts.googleapis.com/css?family=Roboto:300,400,500,700' rel='stylesheet' type='text/css')
+  style(type='text/css').
+    @import url(https://fonts.googleapis.com/css?family=Roboto:300,400,500,700);
+  // <![endif]
+  style(type='text/css').
+    @media only screen and (min-width:480px) {
+    .mj-column-per-100 {
+    width: 100% !important;
+    max-width: 100%;
+    }
+    }
+  style(type='text/css').
+div(style='')
+  //if mso | IE
+    table(align='center' border='0' cellpadding='0' cellspacing='0' style='width:600px;' width='600')
+      tr
+        td(style='line-height:0px;font-size:0px;mso-line-height-rule:exactly;')
+  div(style='margin:0px auto;max-width:600px;')
+    table(align='center' border='0' cellpadding='0' cellspacing='0' role='presentation' style='width:100%;')
+      tbody
+        tr
+          td(style='direction:ltr;font-size:0px;padding:20px 0;padding-bottom:0;text-align:center;')
+            //if mso | IE
+              table(role='presentation' border='0' cellpadding='0' cellspacing='0')
+                tr
+                  td(width='600px')
+                    table(align='center' border='0' cellpadding='0' cellspacing='0' style='width:600px;' width='600')
+                      tr
+                        td(style='line-height:0px;font-size:0px;mso-line-height-rule:exactly;')
+            div(style='margin:0px auto;max-width:600px;')
+              table(align='center' border='0' cellpadding='0' cellspacing='0' role='presentation' style='width:100%;')
+                tbody
+                  tr
+                    td(style='direction:ltr;font-size:0px;padding:20px 0;padding-bottom:0;padding-top:0;text-align:center;')
+                      //if mso | IE
+                        table(role='presentation' border='0' cellpadding='0' cellspacing='0')
+                          tr
+                            td.resource-reply-title-container-outlook(style='vertical-align:top;width:600px;')
+                      .mj-column-per-100.mj-outlook-group-fix.resource-reply-title-container(
+                        style=content.approved?'background: #deffe1; border-radius: 4px; border: 1px solid #deffe1; font-size: 0px; text-align: left; direction: ltr;'
+                                              :'background: #ffdede; border-radius: 4px; border: 1px solid #ffdede; font-size: 0px; text-align: left; direction: ltr;')
+                        table(border='0' cellpadding='0' cellspacing='0' role='presentation' width='100%')
+                          tbody
+                            tr
+                              td(style='vertical-align:top;padding-top:4px;padding-bottom:4px;')
+                                table(border='0' cellpadding='0' cellspacing='0' role='presentation' style='' width='100%')
+                                  tbody
+                                    tr
+                                      td(align='left' style='font-size:0px;padding:0;padding-top:8px;padding-right:20px;padding-bottom:8px;padding-left:20px;word-break:break-word;')
+                                        div(style='font-family:Roboto;font-size:16px;line-height:1;text-align:left;color:#222222;')
+                                          if content.approved
+                                            span &nbsp;#{translator.get('resource_accept')}
+                                          else
+                                            span &nbsp;#{translator.get('resource_decline')}
+                                          span &nbsp;#{content.resourceName}
+                      //if mso | IE
+                        td.content-outlook(style='vertical-align:top;width:600px;')
+                      .mj-column-per-100.mj-outlook-group-fix.content(style='border: 1px solid #ccc; border-radius: 4px; margin-top: 24px; font-size: 0px; text-align: left; direction: ltr; display: inline-block; vertical-align: top; width: 100%;')
+                        table(border='0' cellpadding='0' cellspacing='0' role='presentation' style='vertical-align:top;' width='100%')
+                          tbody
+                            tr
+                              td(align='left' style='font-size:0px;padding:20px;word-break:break-word;')
+                                div(style='font-family:Roboto;font-size:20px;font-weight:500;line-height:1;text-align:left;color:#434343;') #{content.event.summary}
+                            tr
+                              td(align='left' style='font-size:0px;padding:20px;padding-top:0px;word-break:break-word;')
+                                table(cellpadding='4px' cellspacing='0' width='100%' border='0' style='color:#434343;font-family:Roboto;font-size:14px;line-height:22px;table-layout:auto;width:100%;border:none;')
+                                  tr
+                                    td(valign='top' style='min-width: 80px;')
+                                      strong #{translator.get('time')}
+                                    td
+                                      if (!content.event.allDay)
+                                        span(style='display: inline-block;')
+                                          if (content.event.start.date === content.event.end.date)
+                                            | #{content.event.start.fullDateTime} - #{content.event.end.time}
+                                          else
+                                            | #{content.event.start.fullDateTime} - #{content.event.end.fullDateTime}
+                                        span(style='color: #787878; font-weight: 400; display: inline-block;') &nbsp;#{content.event.start.timezone}
+                                      else
+                                        span(style='display: inline-block;')
+                                          if (content.event.start.date === content.event.end.date)
+                                            | #{content.event.start.fullDate} (#{translator.get('all_day')})
+                                          else
+                                            | #{content.event.start.fullDate} - #{content.event.end.fullDate} (#{translator.get('all_day')})
+                                      if (content.seeInCalendarLink)
+                                        | &nbsp;(
+                                        a.link(href=content.seeInCalendarLink style='text-decoration: none; color: #4d91c9;') #{translator.get('see_in_calendar')}
+                                        | )
+                                  if (content.event.location)
+                                    tr
+                                      td(style='min-width: 96px;' valign='top')
+                                        strong #{translator.get('location')}
+                                      td
+                                        if (content.event.location.isLocationAValidURL)
+                                          if (content.event.location.isLocationAnAbsoluteURL)
+                                            a.link(href=content.event.location.value style='text-decoration: none; color: #4d91c9;') #{content.event.location.value}
+                                          else
+                                            a.link(href=`//${content.event.location.value}` style='text-decoration: none; color: #4d91c9;') #{content.event.location.value}
+                                        else
+                                          | #{content.event.location.value} (
+                                          a(href=`https://www.openstreetmap.org/search?query=${content.event.location.value}`) #{translator.get('see_in_map')}
+                                          | )
+                                  if (content.event.videoConferenceLink)
+                                    tr
+                                      td(style='min-width: 96px;' valign='top')
+                                        strong #{translator.get('videoconferencelink')}
+                                      td
+                                        a.link(href=content.event.videoConferenceLink style='text-decoration: none; color: #4d91c9;')
+                                          | #{content.event.videoConferenceLink}
+                                  tr
+                                    td(valign='top')
+                                      strong #{translator.get('attendees')}
+                                    td
+                                      +displayAttendees(content.event.attendees, content.event.organizer)
+                                  if (content.event.hasResources)
+                                    tr
+                                      td(valign='top')
+                                        strong #{translator.get('resources')}
+                                      td
+                                        +displayResources(content.event.resources)
+                                  if (content.event.description)
+                                    tr
+                                      td(valign='top')
+                                        strong #{translator.get('notes')}
+                                      td #{content.event.description}
+                      //if mso | IE
+            //if mso | IE
+  //if mso | IE
