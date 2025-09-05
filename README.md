@@ -21,39 +21,10 @@ We aim for a pragmatic approach by reusing most of the tooling that made Twake m
 We provide a full [demo](app/docker-sample/README.md) of the entire calendar stack, including this calendar side-service,
 the esn-sabre dav server, and all single page applications with a sample OIDC setup.
 
-Below sections refers how to run specifically the side service. 
+Below sections refers how to run specifically the side service:
 
-### Compile and run with CLI
-
-Requires maven 3.9.6 + and JDK 21
-
-First compile [Twake mail backend](https://github.com/linagora/tmail-backend) as this project depends on some of its snapshots.
-
-In order to compile the application, run:
-
-```bash
-mvn clean install
-```
-
-Then run it with:
-
-```bash
-java -cp twake-calendar-side-service/app/target/twake-calendar-side-service-app-1.0.0-SNAPSHOT.jar com.linagora.calendar.app.TwakeCalendarMain
-```
-
-### Run with docker
-
-Compilation will build a tar that needs to be imported in your local docker engine:
-
-```bash
-docker load -i twake-calendar-side-service/app/target/jib-image.tar
-```
-
-Then it can easily be run with:
-
-```bash
-docker run --rm -ti linagora/twake-calendar-side-service:latest
-```
+ - [Compile and run with CLI](docs/run/run-cli.md)
+ - [Run with docker](docs/run/run-docker.md)
 
 ## Configuring it
 
