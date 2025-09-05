@@ -19,6 +19,7 @@
 package com.linagora.calendar.dav;
 
 import static com.linagora.calendar.dav.CalDavClient.CalDavExportException;
+import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -58,12 +59,12 @@ public class CalDavClientTest {
 
     @BeforeAll
     static void setUp() throws SSLException {
-        davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration());
+        davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
     }
 
     @BeforeEach
     void setupEach() throws Exception {
-        testee = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration());
+        testee = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
     }
 
     private OpenPaaSUser createOpenPaaSUser() {

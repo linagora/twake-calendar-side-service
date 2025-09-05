@@ -21,7 +21,6 @@ package com.linagora.calendar.dav;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.function.UnaryOperator;
 
 import javax.net.ssl.SSLException;
 
@@ -43,14 +42,15 @@ import com.google.common.collect.Streams;
 import com.linagora.calendar.dav.dto.CalendarEventReportResponse;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.TechnicalTokenService;
 
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpHeaderNames;
-import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.netty.http.client.HttpClient;
 
 public class CalDavClient extends DavClient {
 
@@ -80,13 +80,8 @@ public class CalDavClient extends DavClient {
     private static final String CONTENT_TYPE_JSON = "application/json";
     private static final HttpMethod REPORT_METHOD = HttpMethod.valueOf("REPORT");
 
-    public CalDavClient(DavConfiguration config) throws SSLException {
-        super(config);
-    }
-
-    private UnaryOperator<HttpHeaders> addHeaders(String username) {
-        return headers -> headers.add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_XML)
-            .add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username));
+    public CalDavClient(DavConfiguration config, TechnicalTokenService technicalTokenService) throws SSLException {
+        super(config, technicalTokenService);
     }
 
     public Mono<byte[]> export(CalendarURL calendarURL, MailboxSession session) {
@@ -94,7 +89,8 @@ public class CalDavClient extends DavClient {
     }
 
     public Mono<byte[]> export(CalendarURL calendarURL, Username username) {
-        return client.headers(headers -> addHeaders(username.asString()).apply(headers))
+        return httpClientWithImpersonation(username).headers(headers ->
+                headers.add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_XML))
             .request(HttpMethod.GET)
             .uri(calendarURL.asUri() + "?export")
             .responseSingle((response, byteBufMono) -> {
@@ -114,8 +110,8 @@ public class CalDavClient extends DavClient {
 
     public Mono<Void> importCalendar(CalendarURL calendarURL, String eventId, Username username, byte[] calendarData) {
         String uri = calendarURL.asUri() + "/" + eventId + ".ics" + "?import";
-        return client.headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, "text/plain")
-                .add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username.asString())))
+        return httpClientWithImpersonation(username).headers(headers ->
+                headers.add(HttpHeaderNames.CONTENT_TYPE, "text/plain"))
             .request(HttpMethod.PUT)
             .uri(uri)
             .send(Mono.just(Unpooled.wrappedBuffer(calendarData)))
@@ -138,9 +134,8 @@ public class CalDavClient extends DavClient {
     public Flux<CalendarURL> findUserCalendars(Username user, OpenPaaSId userId) {
         String uri = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/" + userId.value() + ".json"
             + "?personal=true&sharedDelegationStatus=accepted&sharedPublicSubscription=true&withRights=true";
-        return client.headers(headers -> headers
-                .add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_JSON)
-                .add(HttpHeaderNames.AUTHORIZATION, authenticationToken(user.asString())))
+        return httpClientWithImpersonation(user).headers(headers ->
+                headers.add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_JSON))
             .request(HttpMethod.GET)
             .uri(uri)
             .responseSingle((response, responseContent) -> {
@@ -158,8 +153,8 @@ public class CalDavClient extends DavClient {
     }
 
     public Flux<String> findUserCalendarEventIds(Username username, CalendarURL calendarURL) {
-        return client.headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, "application/xml")
-                .add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username.asString())))
+        return httpClientWithImpersonation(username)
+            .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, "application/xml"))
             .request(HttpMethod.valueOf("PROPFIND"))
             .uri(calendarURL.asUri().toString())
             .responseSingle((response, responseContent) -> {
@@ -184,8 +179,8 @@ public class CalDavClient extends DavClient {
 
     public Mono<Void> deleteCalendarEvent(Username username, CalendarURL calendarURL, String eventId) {
         String uri = calendarURL.asUri() + "/" + eventId + ".ics";
-        return client.headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, "text/plain")
-                .add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username.asString())))
+        return httpClientWithImpersonation(username)
+            .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, "text/plain"))
             .request(HttpMethod.DELETE)
             .uri(uri)
             .responseSingle((response, responseContent) ->
@@ -203,8 +198,8 @@ public class CalDavClient extends DavClient {
 
     public Mono<Void> deleteCalendar(Username username, CalendarURL calendarURL) {
         String uri = calendarURL.asUri() + ".json";
-        return client.headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_JSON)
-                .add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username.asString())))
+        return httpClientWithImpersonation(username)
+            .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_JSON))
             .request(HttpMethod.DELETE)
             .uri(uri)
             .responseSingle((response, responseContent) -> {
@@ -253,9 +248,9 @@ public class CalDavClient extends DavClient {
     @VisibleForTesting
     public Mono<Void> createNewCalendar(Username username, OpenPaaSId userId, NewCalendar newCalendar) {
         String uri = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/" + userId.value() + ".json";
-        return client.headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_JSON)
-                .add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_JSON)
-                .add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username.asString())))
+        return httpClientWithImpersonation(username)
+            .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_JSON)
+                .add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_JSON))
             .request(HttpMethod.POST)
             .uri(uri)
             .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(OBJECT_MAPPER.writeValueAsBytes(newCalendar))))
@@ -280,9 +275,9 @@ public class CalDavClient extends DavClient {
 
         String uri = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/" + calendarId.value() + ".json";
 
-        return client.headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_JSON)
-                .add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_JSON)
-                .add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username.asString())))
+        return httpClientWithImpersonation(username)
+            .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_JSON)
+                .add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_JSON))
             .request(REPORT_METHOD)
             .uri(uri)
             .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer("""
@@ -317,57 +312,65 @@ public class CalDavClient extends DavClient {
     }
 
     public Mono<Void> updateCalendarEvent(Username username, DavCalendarObject updatedCalendarObject) {
-        return client.headers(headers -> headers
-                .add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_XML)
-                .add(HttpHeaderNames.IF_MATCH, updatedCalendarObject.eTag())
-                .add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username.asString())))
-            .request(HttpMethod.PUT)
-            .uri(updatedCalendarObject.uri().toString())
-            .send(Mono.just(Unpooled.wrappedBuffer(
-                updatedCalendarObject.calendarData().toString().getBytes(StandardCharsets.UTF_8))))
-            .responseSingle((response, responseContent) -> {
-                HttpResponseStatus status = response.status();
-                if (status.equals(HttpResponseStatus.NO_CONTENT)) {
-                    return ReactorUtils.logAsMono(() ->
-                        LOGGER.info("Calendar object '{}' updated successfully.", updatedCalendarObject.uri()));
-                } else if (status.equals(HttpResponseStatus.PRECONDITION_FAILED)) {
-                    return Mono.error(new RetriableDavClientException(String.format("Precondition failed (ETag mismatch) when updating calendar object '%s'. Retry may be needed.", updatedCalendarObject.uri())));
-                } else {
-                    return Mono.error(new DavClientException(String.format("Unexpected status code: %d when updating calendar object '%s'", status.code(), updatedCalendarObject.uri())));
-                }
-            });
+        return updateCalendarEvent(Mono.just(httpClientWithImpersonation(username)), updatedCalendarObject);
+    }
+
+    protected Mono<Void> updateCalendarEvent(Mono<HttpClient> httpClientPublisher, DavCalendarObject updatedCalendarObject) {
+        return httpClientPublisher.flatMap(httpClient ->
+            httpClient.headers(headers ->
+                    headers.add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_XML)
+                        .add(HttpHeaderNames.IF_MATCH, updatedCalendarObject.eTag()))
+                .request(HttpMethod.PUT)
+                .uri(updatedCalendarObject.uri().toString())
+                .send(Mono.just(Unpooled.wrappedBuffer(
+                    updatedCalendarObject.calendarData().toString().getBytes(StandardCharsets.UTF_8))))
+                .responseSingle((response, responseContent) -> {
+                    HttpResponseStatus status = response.status();
+                    if (status.equals(HttpResponseStatus.NO_CONTENT)) {
+                        return ReactorUtils.logAsMono(() ->
+                            LOGGER.info("Calendar object '{}' updated successfully.", updatedCalendarObject.uri()));
+                    } else if (status.equals(HttpResponseStatus.PRECONDITION_FAILED)) {
+                        return Mono.error(new RetriableDavClientException(String.format(
+                            "Precondition failed (ETag mismatch) when updating calendar object '%s'. Retry may be needed.",
+                            updatedCalendarObject.uri())));
+                    } else {
+                        return Mono.error(new DavClientException(String.format(
+                            "Unexpected status code: %d when updating calendar object '%s'",
+                            status.code(), updatedCalendarObject.uri())));
+                    }
+                })
+        );
     }
 
     public Mono<DavCalendarObject> fetchCalendarEvent(Username username, URI calendarEventHref) {
-        return client.headers(headers ->
-                headers.add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username.asString())))
-            .get()
-            .uri(calendarEventHref.toString())
-            .responseSingle((response, content) -> {
-                int statusCode = response.status().code();
+        return fetchCalendarEvent(Mono.just(httpClientWithImpersonation(username)), calendarEventHref);
+    }
 
-                if (statusCode == HttpStatus.SC_OK) {
-                    return content
-                        .asByteArray()
-                        .flatMap(bytes -> Mono.fromCallable(() -> CalendarUtil.parseIcs(bytes)))
-                        .map(ics -> new DavCalendarObject(calendarEventHref, ics, response.responseHeaders().get("ETag")));
-                }
+    public Mono<DavCalendarObject> fetchCalendarEvent(Mono<HttpClient> httpClientPublisher, URI calendarEventHref) {
+        return httpClientPublisher.flatMap(httpClient ->
+            httpClient.get()
+                .uri(calendarEventHref.toString())
+                .responseSingle((response, content) -> {
+                    int statusCode = response.status().code();
 
-                if (statusCode == HttpStatus.SC_NOT_FOUND) {
-                    LOGGER.info("No calendar event found for user '{}' with calendarHref '{}'",
-                        username.asString(), calendarEventHref);
-                    return Mono.empty();
-                }
+                    if (statusCode == HttpStatus.SC_OK) {
+                        return content.asByteArray()
+                            .flatMap(bytes -> Mono.fromCallable(() -> CalendarUtil.parseIcs(bytes)))
+                            .map(ics -> new DavCalendarObject(calendarEventHref, ics, response.responseHeaders().get("ETag")));
+                    }
 
-                return content.asString(StandardCharsets.UTF_8)
-                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
-                    .flatMap(body -> Mono.error(new DavClientException(String.format(
-                        "Unexpected response when getting calendar event for user '%s' with calendarHref '%s'. " +
-                            "Status code: %d, response body: %s",
-                        username.asString(),
-                        calendarEventHref,
-                        statusCode,
-                        body))));
-            });
+                    if (statusCode == HttpStatus.SC_NOT_FOUND) {
+                        LOGGER.info("No calendar event found for calendarHref '{}'", calendarEventHref);
+                        return Mono.empty();
+                    }
+
+                    return content.asString(StandardCharsets.UTF_8)
+                        .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                        .flatMap(body -> Mono.error(new DavClientException(String.format(
+                            "Unexpected response when getting calendar event for calendarHref '%s'. " +
+                                "Status code: %d, response body: %s",
+                            calendarEventHref, statusCode, body))));
+                })
+        );
     }
 }

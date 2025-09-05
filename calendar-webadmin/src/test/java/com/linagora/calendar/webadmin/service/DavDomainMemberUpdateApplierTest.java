@@ -19,11 +19,11 @@
 package com.linagora.calendar.webadmin.service;
 
 import static com.linagora.calendar.dav.SabreDavProvisioningService.DATABASE;
+import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -40,7 +40,6 @@ import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.OpenPaaSDomain;
-import com.linagora.calendar.storage.TechnicalTokenService;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.webadmin.service.DavDomainMemberUpdateApplier.UpdateResult;
 import com.mongodb.reactivestreams.client.MongoClients;
@@ -65,8 +64,7 @@ public class DavDomainMemberUpdateApplierTest {
 
     @BeforeEach
     void setupEach() throws Exception {
-        TechnicalTokenService technicalTokenService = new TechnicalTokenService.Impl("technicalTokenSecret", Duration.ofSeconds(120));
-        cardDavClient = new CardDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), technicalTokenService);
+        cardDavClient = new CardDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         openPaaSDomain = createNewDomainMemberAddressBook();
         testee = new DavDomainMemberUpdateApplier.Default(cardDavClient, openPaaSDomain.id());
     }

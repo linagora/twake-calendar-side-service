@@ -20,6 +20,7 @@ package com.linagora.calendar.amqp;
 
 import static com.linagora.calendar.amqp.EventInviteEmailConsumerTest.INTERNAL_USER;
 import static com.linagora.calendar.amqp.TestFixture.extractSubject;
+import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static com.linagora.calendar.storage.configuration.EntryIdentifier.LANGUAGE_IDENTIFIER;
 import static io.restassured.RestAssured.given;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -144,7 +145,7 @@ public class EventReplyEmailConsumerTest {
             new NoopGaugeRegistry());
         channelPool.start();
 
-        davTestHelper = new DavTestHelper(dockerSabreDavSetup.davConfiguration());
+        davTestHelper = new DavTestHelper(dockerSabreDavSetup.davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
     }
 
     @AfterAll

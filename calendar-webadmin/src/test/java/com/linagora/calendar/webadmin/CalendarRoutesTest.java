@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.webadmin;
 
+import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static com.linagora.calendar.storage.event.EventParseUtils.UTC_DATE_TIME_FORMATTER;
 import static com.linagora.calendar.storage.eventsearch.EventSearchQuery.MAX_LIMIT;
 import static io.restassured.RestAssured.given;
@@ -98,7 +99,7 @@ public class CalendarRoutesTest {
         MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
         userDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
         calendarSearchService = spy(new MemoryCalendarSearchService());
-        calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration());
+        calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         reindexService = new CalendarEventsReindexService(userDAO, calendarSearchService, calDavClient);
 
         this.openPaaSUser = sabreDavExtension.newTestUser();

@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.webadmin;
 
+import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.hamcrest.Matchers.is;
@@ -95,7 +96,7 @@ public class AlarmScheduleTest {
         MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
         userDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
         alarmEventDAO = spy(new MemoryAlarmEventDAO());
-        calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration());
+        calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         clock = new UpdatableTickingClock(Instant.now());
         alarmScheduleService = new AlarmScheduleService(userDAO, calDavClient, alarmEventDAO, new AlarmInstantFactory.Default(clock));
 

@@ -19,6 +19,7 @@
 package com.linagora.calendar.app.restapi.routes;
 
 import static com.linagora.calendar.app.restapi.routes.ImportRouteTest.mailSenderConfigurationFunction;
+import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static io.restassured.RestAssured.given;
 import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
@@ -176,7 +177,7 @@ public class EventParticipationRouteTest {
         this.organizer = sabreDavExtension.newTestUser();
 
         String password = "secret";
-        davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration());
+        davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         server.getProbe(CalendarDataProbe.class).addUserToRepository(attendee.username(), password);
         server.getProbe(CalendarDataProbe.class).addUserToRepository(organizer.username(), password);
 
@@ -706,7 +707,7 @@ public class EventParticipationRouteTest {
     }
 
     private String getCalendarEventReportResponse(String eventUid) throws Exception {
-        CalDavClient calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration());
+        CalDavClient calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         CalendarEventReportResponse response = calDavClient.calendarReportByUid(
             attendee.username(),
             attendee.id(), eventUid).block();

@@ -31,8 +31,8 @@ import org.slf4j.LoggerFactory;
 
 import com.linagora.calendar.dav.DavClient;
 import com.linagora.calendar.dav.DavConfiguration;
+import com.linagora.calendar.storage.TechnicalTokenService;
 
-import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaders;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.server.HttpServerRequest;
@@ -44,8 +44,9 @@ public class DavProxy extends DavClient {
     private final MetricFactory metricFactory;
 
     @Inject
-    public DavProxy(Authenticator authenticator, DavConfiguration davConfiguration, MetricFactory metricFactory) throws SSLException {
-        super(davConfiguration);
+    public DavProxy(Authenticator authenticator, DavConfiguration davConfiguration,
+                    MetricFactory metricFactory, TechnicalTokenService technicalTokenService) throws SSLException {
+        super(davConfiguration, technicalTokenService);
 
         this.authenticator = authenticator;
         this.metricFactory = metricFactory;
@@ -58,13 +59,12 @@ public class DavProxy extends DavClient {
             .flatMap(payload -> authenticator.authenticate(request)
                 .flatMap(session ->
                     Mono.from(metricFactory.decoratePublisherWithTimerMetric("davProxy",
-                            client.headers(proxiedHeader -> {
+                            httpClientWithImpersonation(session.getUser()).headers(proxiedHeader -> {
                                     HttpHeaders entries = request.requestHeaders();
                                     Optional.ofNullable(entries.get("Accept", null)).ifPresent(value -> proxiedHeader.add("Accept", value));
                                     Optional.ofNullable(entries.get("Destination", null)).ifPresent(value -> proxiedHeader.add("Destination", value));
                                     Optional.ofNullable(entries.get("Depth", null)).ifPresent(value -> proxiedHeader.add("Depth", value));
                                     Optional.ofNullable(entries.get("Content-Type", null)).ifPresent(value -> proxiedHeader.add("Content-Type", value));
-                                    proxiedHeader.add(HttpHeaderNames.AUTHORIZATION, authenticationToken(session.getUser().asString()));
                                 })
                                 .request(request.method())
                                 .uri(request.uri().substring(4)) // remove /dav

@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.dav;
 
+import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.charset.StandardCharsets;
@@ -30,7 +31,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.linagora.calendar.storage.OpenPaaSUser;
-import com.linagora.calendar.storage.TechnicalTokenService;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
 import com.mongodb.reactivestreams.client.MongoDatabase;
@@ -47,8 +47,7 @@ public class DavContactDeletionTaskStepTest {
 
     @BeforeEach
     void setUp() throws SSLException {
-        cardDavClient = new CardDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(),
-            new TechnicalTokenService.Impl("technicalTokenSecret", java.time.Duration.ofSeconds(120)));
+        cardDavClient = new CardDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(),TECHNICAL_TOKEN_SERVICE_TESTING);
         MongoDatabase mongoDB = sabreDavExtension.dockerSabreDavSetup().getMongoDB();
         MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
         testee = new DavContactDeletionTaskStep(cardDavClient, new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO));

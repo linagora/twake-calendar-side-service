@@ -76,7 +76,7 @@ public class CardDavClient extends DavClient {
     private static final String CONTENT_TYPE_VCARD = "application/vcard";
     private static final String ACCEPT_VCARD_JSON = "text/plain";
     private static final String ADDRESS_BOOK_PATH = "/addressbooks/%s/%s/%s.vcf";
-    private static final String TWAKE_CALENDAR_TOKEN_HEADER_NAME = "TwakeCalendarToken";
+
     private static final String DOMAIN_MEMBERS_ADDRESS_BOOK_ID = "domain-members";
     private static final byte[] CREATE_DOMAIN_MEMBERS_ADDRESS_BOOK_PAYLOAD = """
         {
@@ -88,17 +88,13 @@ public class CardDavClient extends DavClient {
         }
         """.formatted(DOMAIN_MEMBERS_ADDRESS_BOOK_ID).getBytes(StandardCharsets.UTF_8);
 
-    private final TechnicalTokenService technicalTokenService;
-
     public CardDavClient(DavConfiguration config,
                          TechnicalTokenService technicalTokenService) throws SSLException {
-        super(config);
-        this.technicalTokenService = technicalTokenService;
+        super(config, technicalTokenService);
     }
 
     public Mono<Void> createContact(Username username, OpenPaaSId userId, String addressBook, String vcardUid, byte[] vcardPayload) {
-        HttpClient authenticatedClient = client.headers(headers -> headers
-            . add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username.asString())));
+        HttpClient authenticatedClient = httpClientWithImpersonation(username);
         return upsertContact(authenticatedClient, userId, addressBook, vcardUid, vcardPayload);
     }
 
@@ -113,9 +109,7 @@ public class CardDavClient extends DavClient {
     }
 
     public Mono<byte[]> exportContact(Username username, OpenPaaSId userId, String addressBook) {
-        HttpClient authenticatedClient = client.headers(headers -> headers
-            . add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username.asString())));
-
+        HttpClient authenticatedClient = httpClientWithImpersonation(username);
         return exportContactAsVcard(authenticatedClient, userId, addressBook);
     }
 
@@ -134,12 +128,6 @@ public class CardDavClient extends DavClient {
                                 %s
                                 """.formatted(response.status().code(), homeBaseId.value(), addressBook, responseBody))));
             });
-    }
-
-    private Mono<HttpClient> authenticatedClientByToken(OpenPaaSId domainId) {
-        return technicalTokenService.generate(domainId)
-            .map(token -> client.headers(headers -> headers
-                .add(TWAKE_CALENDAR_TOKEN_HEADER_NAME, token.value())));
     }
 
     private Mono<Void> handleContactUpsertResponse(HttpClientResponse response, ByteBufMono responseContent, OpenPaaSId homeBaseId, String addressBook, String vcardUid) {
@@ -162,7 +150,7 @@ public class CardDavClient extends DavClient {
     }
 
     public Mono<Void> createDomainMembersAddressBook(OpenPaaSId domainId) {
-        return authenticatedClientByToken(domainId)
+        return httpClientWithTechnicalToken(domainId)
             .flatMap(httpClient -> createDomainMembersAddressBook(httpClient, domainId));
     }
 
@@ -198,7 +186,7 @@ public class CardDavClient extends DavClient {
         Preconditions.checkArgument(StringUtils.isNotEmpty(vcardUid), "vcardUid must not be empty");
         Preconditions.checkArgument(vcardPayload != null && vcardPayload.length > 0, "vcardPayload must not be empty");
 
-        return authenticatedClientByToken(domainId)
+        return httpClientWithTechnicalToken(domainId)
             .flatMap(client
                 -> upsertContact(client, domainId, DOMAIN_MEMBERS_ADDRESS_BOOK_ID, vcardUid, vcardPayload));
     }
@@ -206,7 +194,7 @@ public class CardDavClient extends DavClient {
     public Mono<Void> deleteContactDomainMembers(OpenPaaSId domainId, String vcardUid) {
         Preconditions.checkArgument(StringUtils.isNotEmpty(vcardUid), "vcardUid must not be empty");
 
-        return authenticatedClientByToken(domainId)
+        return httpClientWithTechnicalToken(domainId)
             .flatMap(client -> client.headers(headers
                     -> headers.add(HttpHeaderNames.ACCEPT, ACCEPT_VCARD_JSON))
                 .delete()
@@ -247,16 +235,15 @@ public class CardDavClient extends DavClient {
     }
 
     private Mono<byte[]> tryListContactDomainMembers(OpenPaaSId domainId) {
-        return authenticatedClientByToken(domainId)
+        return httpClientWithTechnicalToken(domainId)
             .flatMap(authenticatedClient -> exportContactAsVcard(authenticatedClient, domainId, DOMAIN_MEMBERS_ADDRESS_BOOK_ID));
     }
 
     public Flux<AddressBook> listUserAddressBookIds(Username username, OpenPaaSId userId) {
         String uri = String.format("/addressbooks/%s.json?contactsCount=true&inviteStatus=2&personal=true&shared=true&subscribed=true",
             userId.value());
-        return client.headers(headers -> headers
-                .add(HttpHeaderNames.ACCEPT, "application/json")
-                .add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username.asString())))
+        return httpClientWithImpersonation(username).headers(headers -> headers
+                .add(HttpHeaderNames.ACCEPT, "application/json"))
             .get()
             .uri(uri)
             .responseSingle((response, buf) -> {
@@ -300,9 +287,8 @@ public class CardDavClient extends DavClient {
 
     public Mono<Void> deleteUserAddressBook(Username username, OpenPaaSId userId, String addressBookId) {
         String uri = String.format("/addressbooks/%s/%s.json", userId.value(), addressBookId);
-        return client.headers(headers -> headers
-                .add(HttpHeaderNames.ACCEPT, "application/vcard+json")
-                .add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username.asString())))
+        return httpClientWithImpersonation(username).headers(headers -> headers
+                .add(HttpHeaderNames.ACCEPT, "application/vcard+json"))
             .delete()
             .uri(uri)
             .responseSingle((response, buf) -> {
@@ -323,9 +309,8 @@ public class CardDavClient extends DavClient {
 
     public Mono<Void> deleteContact(Username username, OpenPaaSId userId, String addressBookId, String vcardUid) {
         String uri = String.format("/addressbooks/%s/%s/%s.vcf", userId.value(), addressBookId, vcardUid);
-        return client.headers(headers -> headers
-                .add(HttpHeaderNames.ACCEPT, "application/vcard+json")
-                .add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username.asString())))
+        return httpClientWithImpersonation(username).headers(headers -> headers
+                .add(HttpHeaderNames.ACCEPT, "application/vcard+json"))
             .delete()
             .uri(uri)
             .responseSingle((response, buf) -> {
@@ -351,10 +336,9 @@ public class CardDavClient extends DavClient {
         }
         """.formatted(addressBookId, name)).getBytes(StandardCharsets.UTF_8);
 
-        return client.headers(headers -> headers
+        return httpClientWithImpersonation(username).headers(headers -> headers
                 .add(HttpHeaderNames.CONTENT_TYPE, "application/json")
-                .add(HttpHeaderNames.ACCEPT, "application/json")
-                .add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username.asString())))
+                .add(HttpHeaderNames.ACCEPT, "application/json"))
             .post()
             .uri("/addressbooks/%s.json".formatted(userId.value()))
             .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(payload)))

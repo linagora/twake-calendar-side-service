@@ -23,21 +23,30 @@ import java.time.Duration;
 import javax.net.ssl.SSLException;
 
 import org.apache.http.auth.UsernamePasswordCredentials;
+import org.apache.james.core.Username;
 
+import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.TechnicalTokenService;
+
+import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
+import reactor.core.publisher.Mono;
 import reactor.netty.http.client.HttpClient;
 
 public abstract class DavClient {
     protected static final Duration DEFAULT_RESPONSE_TIMEOUT = Duration.ofSeconds(10);
+    protected static final String TWAKE_CALENDAR_TOKEN_HEADER_NAME = "TwakeCalendarToken";
 
     protected final HttpClient client;
     protected final DavConfiguration config;
+    protected final TechnicalTokenService technicalTokenService;
 
-    protected DavClient(DavConfiguration config) throws SSLException {
+    protected DavClient(DavConfiguration config, TechnicalTokenService technicalTokenService) throws SSLException {
         this.config = config;
         this.client = createHttpClient(config.trustAllSslCerts().orElse(false));
+        this.technicalTokenService = technicalTokenService;
     }
 
     protected HttpClient createHttpClient(boolean trustAllSslCerts) throws SSLException {
@@ -51,9 +60,20 @@ public abstract class DavClient {
         return client;
     }
 
-    protected String authenticationToken(String username) {
+    private String authenticationToken(String username) {
         return HttpUtils.createBasicAuthenticationToken(new UsernamePasswordCredentials(
             config.adminCredential().getUserName() + "&" + username,
             config.adminCredential().getPassword()));
+    }
+
+    protected HttpClient httpClientWithImpersonation(Username username) {
+        return client.headers(headers ->
+            headers.add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username.asString())));
+    }
+
+    protected Mono<HttpClient> httpClientWithTechnicalToken(OpenPaaSId domainId) {
+        return technicalTokenService.generate(domainId)
+            .map(token -> client.headers(headers -> headers
+                .add(TWAKE_CALENDAR_TOKEN_HEADER_NAME, token.value())));
     }
 }

@@ -20,6 +20,7 @@ package com.linagora.calendar.dav;
 
 import static com.linagora.calendar.dav.SabreDavProvisioningService.DATABASE;
 import static com.linagora.calendar.dav.SabreDavProvisioningService.DOMAIN;
+import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.json;
 import static net.javacrumbs.jsonunit.core.Option.IGNORING_ARRAY_ORDER;
@@ -28,7 +29,6 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThatCode;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -42,7 +42,6 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSUser;
-import com.linagora.calendar.storage.TechnicalTokenService;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.mongodb.reactivestreams.client.MongoClient;
 import com.mongodb.reactivestreams.client.MongoClients;
@@ -61,14 +60,13 @@ public class CardDavClientTest {
 
     @BeforeAll
     static void setUp() throws SSLException {
-        davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration());
+        davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
     }
 
     @BeforeEach
     void setupEach() throws Exception {
-        TechnicalTokenService technicalTokenService = new TechnicalTokenService.Impl("technicalTokenSecret", Duration.ofSeconds(120));
         mongoDBOpenPaaSDomainDAO = mongoDBOpenPaaSDomainDAO();
-        testee = new CardDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), technicalTokenService);
+        testee = new CardDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         user = sabreDavExtension.newTestUser();
     }
 

@@ -19,6 +19,7 @@
 package com.linagora.calendar.amqp;
 
 import static com.linagora.calendar.amqp.TestFixture.awaitAtMost;
+import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader.ALARM_SETTING_IDENTIFIER;
 import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader.ENABLE_ALARM;
 import static java.time.temporal.ChronoUnit.MINUTES;
@@ -117,7 +118,7 @@ public class AlarmEventCreateTest {
             new NoopGaugeRegistry());
         channelPool.start();
 
-        davTestHelper = new DavTestHelper(dockerSabreDavSetup.davConfiguration());
+        davTestHelper = new DavTestHelper(dockerSabreDavSetup.davConfiguration(),TECHNICAL_TOKEN_SERVICE_TESTING);
         MongoDatabase mongoDB = dockerSabreDavSetup.getMongoDB();
         MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
         openPaaSUserDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
@@ -146,7 +147,7 @@ public class AlarmEventCreateTest {
         attendee2 = sabreDavExtension.newTestUser();
 
         alarmEventDAO = new MemoryAlarmEventDAO();
-        calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration());
+        calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         calDavEventRepository = new CalDavEventRepository(calDavClient);
         clock = new UpdatableTickingClock(Instant.now().minus(60, MINUTES));
 
