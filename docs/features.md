@@ -1,11 +1,11 @@
 # Features
 
-Exposes a subset of the OpenPaaS API, allowing OpenPaaS SPA to run smoothly atop this side service.
+Exposes [a subset of the OpenPaaS API](apis/openpaasApi.md), allowing OpenPaaS SPA to run smoothly atop this side service.
 
 Proxies dav calls in order to enable direct OIDC authentication for the SPA in order not to rely on secondary authentication
 mechanisms.
 
-Exposes a webadmin interface for management.
+Exposes a [webadmin interface](apis/webadmin.md) for management.
 
 Additionally, the side service handles sending emails for the calendar stack. Mails are internationalized based on user
 settings. This includes:
