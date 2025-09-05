@@ -47,6 +47,23 @@ Please refer to the [sample configuration](app/src/main/conf).
 
 Please refer to [this page](docs/configuration/index.md) for a documentation of the configuration.
 
+## Migrating from OpenPaaS
+
+Simply replace your OpenPaaS server by the side service. Especially:
+
+ - Turn OpenPaaS off.
+ - Use the OpenPaaS mongoDB database for the side service
+ - Connect your side service to the RabbitMQ server your sabre server uses
+ - Connect your side service to the OpenSearch server your Twake Mail server uses
+ - Connect it to your LDAP server
+ - Point your existing OpenPaaaS SPA (calendar, cotact, account, excal) and other services (esn-sabre dav server, twake mail)
+to the side service instead of OpenPaaS.
+
+Once this is done, extra steps are needed in order to:
+ - [Reindex events]() as the side service re-implemented event indexing from scratch
+ - [Re-chedule alarms]() as the side service do not reuse legacy OpenPaaS data structure and re-implement
+scheduling using a polling approach atop a new dedicated collection.
+
 ## Contributing
 
 At LINAGORA we warmly welcome feedbacks and contributions.
