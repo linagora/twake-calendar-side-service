@@ -18,19 +18,14 @@
 
 package com.linagora.calendar.storage;
 
-import java.time.Instant;
 import java.util.List;
 
 import com.linagora.calendar.storage.model.ResourceAdministrator;
 
 public record ResourceInsertRequest(List<ResourceAdministrator> administrators,
                                     OpenPaaSId creator,
-                                    boolean deleted,
                                     String description,
                                     OpenPaaSId domain,
                                     String icon,
-                                    String name,
-                                    Instant creation,
-                                    Instant updated,
-                                    String type) {
+                                    String name) {
 }

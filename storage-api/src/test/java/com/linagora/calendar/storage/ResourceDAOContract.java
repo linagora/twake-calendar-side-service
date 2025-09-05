@@ -18,19 +18,19 @@
 
 package com.linagora.calendar.storage;
 
-import com.linagora.calendar.storage.model.Resource;
-import com.linagora.calendar.storage.model.ResourceAdministrator;
-import com.linagora.calendar.storage.model.ResourceId;
-import org.junit.jupiter.api.Test;
-
 import static com.linagora.calendar.storage.model.Resource.DELETED;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
+import java.time.Clock;
 import java.util.List;
 import java.util.Optional;
+
+import org.junit.jupiter.api.Test;
+
+import com.linagora.calendar.storage.model.Resource;
+import com.linagora.calendar.storage.model.ResourceAdministrator;
+import com.linagora.calendar.storage.model.ResourceId;
 
 public interface ResourceDAOContract {
     OpenPaaSId CREATOR1 = new OpenPaaSId("659387b9d486dc0046aeff21");
@@ -40,26 +40,26 @@ public interface ResourceDAOContract {
 
     ResourceDAO dao();
 
+    Clock clock();
+
     @Test
     default void insertShouldAddNewResource() {
         ResourceInsertRequest request = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
             CREATOR1,
-            !DELETED,
             "Test resource description",
             DOMAIN1,
             "icon.png",
-            "Test Resource",
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            "resource"
-        );
+            "Test Resource");
 
         ResourceId resourceId = dao().insert(request).block();
-        Resource expected = Resource.from(resourceId, request);
+        Resource expected = Resource.from(resourceId, request, clock());
         Resource actual = dao().findById(resourceId).block();
 
-        assertThat(actual).isEqualTo(expected);
+        assertThat(actual)
+            .usingRecursiveComparison()
+            .ignoringFields("creation", "updated")
+            .isEqualTo(expected);
     }
 
     @Test
@@ -67,19 +67,21 @@ public interface ResourceDAOContract {
         ResourceInsertRequest request = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
             CREATOR1,
-            DELETED,
             "Test resource description",
             DOMAIN1,
             "icon.png",
-            "Test Resource",
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            "resource"
-        );
+            "Test Resource");
 
         ResourceId resourceId = dao().insert(request).block();
+        dao().softDelete(resourceId).block();
 
-        assertThat(dao().findById(resourceId).block()).isEqualTo(Resource.from(resourceId, request));
+        Resource resource = dao().findById(resourceId).block();
+        assertThat(resource)
+            .usingRecursiveComparison()
+            .ignoringFields("creation", "updated", "deleted")
+            .isEqualTo(Resource.from(resourceId, request, clock()));
+
+        assertThat(resource.deleted()).isTrue();
     }
 
     @Test
@@ -87,32 +89,24 @@ public interface ResourceDAOContract {
         ResourceInsertRequest req1 = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
             CREATOR1,
-            !DELETED,
             "desc1",
             DOMAIN1,
             "icon1.png",
-            "Resource1",
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            "resource"
-        );
+            "Resource1");
         ResourceInsertRequest req2 = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin2"), "user")),
             CREATOR2,
-            !DELETED,
             "desc2",
             DOMAIN2,
             "icon2.png",
-            "Resource2",
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            "resource"
-        );
+            "Resource2");
         ResourceId id1 = dao().insert(req1).block();
         ResourceId id2 = dao().insert(req2).block();
         List<Resource> actual = dao().findAll().collectList().block();
 
-        assertThat(actual).containsExactlyInAnyOrder(Resource.from(id1, req1), Resource.from(id2, req2));
+        assertThat(actual)
+            .usingRecursiveFieldByFieldElementComparatorIgnoringFields("creation", "updated")
+            .containsExactlyInAnyOrder(Resource.from(id1, req1, clock()), Resource.from(id2, req2, clock()));
     }
 
     @Test
@@ -120,30 +114,23 @@ public interface ResourceDAOContract {
         ResourceInsertRequest req1 = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
             CREATOR1,
-            DELETED,
             "desc1",
             DOMAIN1,
             "icon1.png",
-            "Resource1",
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            "resource");
+            "Resource1");
         ResourceInsertRequest req2 = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin2"), "user")),
             CREATOR2,
-            !DELETED,
             "desc2",
             DOMAIN2,
             "icon2.png",
-            "Resource2",
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            "resource");
+            "Resource2");
         ResourceId id1 = dao().insert(req1).block();
+        dao().softDelete(id1).block();
         ResourceId id2 = dao().insert(req2).block();
         List<Resource> actual = dao().findAll().collectList().block();
 
-        assertThat(actual).contains(Resource.from(id1, req1));
+        assertThat(actual.stream().map(Resource::id).toList()).contains(id1);
     }
 
     @Test
@@ -151,30 +138,24 @@ public interface ResourceDAOContract {
         ResourceInsertRequest req1 = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
             CREATOR1,
-            !DELETED,
             "desc1",
             DOMAIN1,
             "icon1.png",
-            "Resource1",
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            "resource");
+            "Resource1");
         ResourceInsertRequest req2 = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin2"), "user")),
             CREATOR2,
-            !DELETED,
             "desc2",
             DOMAIN2,
             "icon2.png",
-            "Resource2",
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            "resource");
+            "Resource2");
         ResourceId id1 = dao().insert(req1).block();
         ResourceId id2 = dao().insert(req2).block();
         List<Resource> actual = dao().findByDomain(DOMAIN2).collectList().block();
 
-        assertThat(actual).containsOnly(Resource.from(id2, req2));
+        assertThat(actual)
+            .usingRecursiveFieldByFieldElementComparatorIgnoringFields("creation", "updated")
+            .containsOnly(Resource.from(id2, req2, clock()));
     }
 
     @Test
@@ -182,30 +163,23 @@ public interface ResourceDAOContract {
         ResourceInsertRequest req1 = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
             CREATOR1,
-            DELETED,
             "desc1",
             DOMAIN1,
             "icon1.png",
-            "Resource1",
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            "resource");
+            "Resource1");
         ResourceInsertRequest req2 = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin2"), "user")),
             CREATOR2,
-            !DELETED,
             "desc2",
             DOMAIN1,
             "icon2.png",
-            "Resource2",
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            "resource");
+            "Resource2");
         ResourceId id1 = dao().insert(req1).block();
+        dao().softDelete(id1).block();
         ResourceId id2 = dao().insert(req2).block();
         List<Resource> actual = dao().findByDomain(DOMAIN1).collectList().block();
 
-        assertThat(actual).contains(Resource.from(id1, req1));
+        assertThat(actual.stream().map(Resource::id).toList()).contains(id1);
     }
 
     @Test
@@ -213,14 +187,10 @@ public interface ResourceDAOContract {
         ResourceInsertRequest request = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
             CREATOR1,
-            !DELETED,
             "desc",
             DOMAIN1,
             "icon.png",
-            "ResourceName",
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            "resource");
+            "ResourceName");
         ResourceId resourceId = dao().insert(request).block();
         ResourceUpdateRequest updateRequest = new ResourceUpdateRequest(
             Optional.of("UpdatedName"),
@@ -251,14 +221,10 @@ public interface ResourceDAOContract {
         ResourceInsertRequest request = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
             CREATOR1,
-            !DELETED,
             "desc",
             DOMAIN1,
             "icon.png",
-            "ResourceName",
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            "resource");
+            "ResourceName");
         ResourceId resourceId = dao().insert(request).block();
         dao().softDelete(resourceId).block();
 
@@ -270,30 +236,24 @@ public interface ResourceDAOContract {
         ResourceInsertRequest req1 = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
             CREATOR1,
-            !DELETED,
             "desc1",
             DOMAIN1,
             "icon1.png",
-            "AlphaResource",
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            "resource");
+            "AlphaResource");
         ResourceInsertRequest req2 = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin2"), "user")),
             CREATOR2,
-            !DELETED,
             "desc2",
             DOMAIN1,
             "icon2.png",
-            "BetaResource",
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            "resource");
+            "BetaResource");
         ResourceId id1 = dao().insert(req1).block();
         ResourceId id2 = dao().insert(req2).block();
         List<Resource> actual = dao().search(DOMAIN1, "Alpha", 10).collectList().block();
 
-        assertThat(actual).containsOnly(Resource.from(id1, req1));
+        assertThat(actual)
+            .usingRecursiveFieldByFieldElementComparatorIgnoringFields("creation", "updated")
+            .containsOnly(Resource.from(id1, req1, clock()));
     }
 
     @Test
@@ -301,18 +261,16 @@ public interface ResourceDAOContract {
         ResourceInsertRequest req1 = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
             CREATOR1,
-            !DELETED,
             "desc1",
             DOMAIN1,
             "icon1.png",
-            "AlphaResource",
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            "resource");
+            "AlphaResource");
         ResourceId id1 = dao().insert(req1).block();
         List<Resource> actual = dao().search(DOMAIN1, "alphA", 10).collectList().block();
 
-        assertThat(actual).containsOnly(Resource.from(id1, req1));
+        assertThat(actual)
+            .usingRecursiveFieldByFieldElementComparatorIgnoringFields("creation", "updated")
+            .containsOnly(Resource.from(id1, req1, clock()));
     }
 
     @Test
@@ -320,30 +278,24 @@ public interface ResourceDAOContract {
         ResourceInsertRequest req1 = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
             CREATOR1,
-            !DELETED,
             "desc1",
             DOMAIN1,
             "icon1.png",
-            "AlphaResource",
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            "resource");
+            "AlphaResource");
         ResourceInsertRequest req2 = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin2"), "user")),
             CREATOR2,
-            !DELETED,
             "desc2",
             new OpenPaaSId("659387b9d486dc0046aeff99"),
             "icon2.png",
-            "AlphaResource",
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            "resource");
+            "AlphaResource");
         ResourceId id1 = dao().insert(req1).block();
         ResourceId id2 = dao().insert(req2).block();
         List<Resource> actual = dao().search(DOMAIN1, "Alpha", 10).collectList().block();
 
-        assertThat(actual).containsOnly(Resource.from(id1, req1));
+        assertThat(actual)
+            .usingRecursiveFieldByFieldElementComparatorIgnoringFields("creation", "updated")
+            .containsOnly(Resource.from(id1, req1, clock()));
     }
 
     @Test
@@ -351,25 +303,17 @@ public interface ResourceDAOContract {
         ResourceInsertRequest req1 = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
             CREATOR1,
-            !DELETED,
             "desc1",
             DOMAIN1,
             "icon1.png",
-            "AlphaResource",
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            "resource");
+            "AlphaResource");
         ResourceInsertRequest req2 = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin2"), "user")),
             CREATOR2,
-            !DELETED,
             "desc2",
             DOMAIN1,
             "icon2.png",
-            "AlphaResource",
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            "resource");
+            "AlphaResource");
         ResourceId id1 = dao().insert(req1).block();
         ResourceId id2 = dao().insert(req2).block();
         List<Resource> actual = dao().search(DOMAIN1, "Alpha", 1).collectList().block();
@@ -382,30 +326,23 @@ public interface ResourceDAOContract {
         ResourceInsertRequest req1 = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
             CREATOR1,
-            DELETED,
             "desc1",
             DOMAIN1,
             "icon1.png",
-            "AlphaResource",
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            "resource");
+            "AlphaResource");
         ResourceInsertRequest req2 = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin2"), "user")),
             CREATOR2,
-            !DELETED,
             "desc2",
             DOMAIN1,
             "icon2.png",
-            "AlphaResource",
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            "resource");
+            "AlphaResource");
         ResourceId id1 = dao().insert(req1).block();
+        dao().softDelete(id1).block();
         ResourceId id2 = dao().insert(req2).block();
         List<Resource> actual = dao().search(DOMAIN1, "Alpha", 10).collectList().block();
 
-        assertThat(actual).containsOnly(Resource.from(id2, req2));
+        assertThat(actual.stream().map(Resource::id).toList()).containsOnly(id2);
     }
 
     @Test
@@ -413,14 +350,10 @@ public interface ResourceDAOContract {
         ResourceInsertRequest request = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
             CREATOR1,
-            !DELETED,
             "desc",
             DOMAIN1,
             "icon.png",
-            "ResourceName",
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            "resource");
+            "ResourceName");
         ResourceId resourceId = dao().insert(request).block();
         boolean exists = dao().exist(resourceId, DOMAIN1).block();
 
@@ -432,14 +365,10 @@ public interface ResourceDAOContract {
         ResourceInsertRequest request = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
             CREATOR1,
-            !DELETED,
             "desc",
             DOMAIN1,
             "icon.png",
-            "ResourceName",
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            "resource");
+            "ResourceName");
         ResourceId resourceId = dao().insert(request).block();
         boolean notExistsDomain = dao().exist(resourceId, new OpenPaaSId("659387b9d486dc0046aeff99")).block();
 
@@ -451,15 +380,11 @@ public interface ResourceDAOContract {
         ResourceInsertRequest request = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
             CREATOR1,
-            !DELETED,
             "desc",
             DOMAIN1,
             "icon.png",
-            "ResourceName",
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            "resource");
-        dao().insert(request).block();
+            "ResourceName");
+        ResourceId resourceId = dao().insert(request).block();
         boolean notExistsId = dao().exist(new ResourceId("659387b9d486dc0046aeff29"), DOMAIN1).block();
 
         assertThat(notExistsId).isFalse();
@@ -470,15 +395,12 @@ public interface ResourceDAOContract {
         ResourceInsertRequest request = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
             CREATOR1,
-            DELETED,
             "desc",
             DOMAIN1,
             "icon.png",
-            "ResourceName",
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            "resource");
+            "ResourceName");
         ResourceId resourceId = dao().insert(request).block();
+        dao().softDelete(resourceId).block();
         boolean exists = dao().exist(resourceId, DOMAIN1).block();
 
         assertThat(exists).isFalse();
@@ -501,15 +423,12 @@ public interface ResourceDAOContract {
         ResourceInsertRequest request = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
             CREATOR1,
-            DELETED,
             "desc",
             DOMAIN1,
             "icon.png",
-            "ResourceName",
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            "resource");
+            "ResourceName");
         ResourceId resourceId = dao().insert(request).block();
+        dao().softDelete(resourceId).block();
         ResourceUpdateRequest updateRequest = new ResourceUpdateRequest(
             Optional.of("UpdatedName"),
             Optional.of("UpdatedDesc"),
@@ -533,15 +452,12 @@ public interface ResourceDAOContract {
         ResourceInsertRequest request = new ResourceInsertRequest(
             List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
             CREATOR1,
-            DELETED,
             "desc",
             DOMAIN1,
             "icon.png",
-            "ResourceName",
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            Instant.now().truncatedTo(ChronoUnit.MILLIS),
-            "resource");
+            "ResourceName");
         ResourceId resourceId = dao().insert(request).block();
+        dao().softDelete(resourceId).block();
 
         assertThatThrownBy(() -> dao().softDelete(resourceId).block())
             .isInstanceOf(ResourceNotFoundException.class);

@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.storage.model;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 
@@ -38,21 +39,22 @@ public record Resource(ResourceId id,
                        String type) {
 
     public static final boolean DELETED = true;
+    public static final String RESOURCE_TYPE = "resource";
 
-    public static Resource from(ResourceId id, ResourceInsertRequest req) {
+    public static Resource from(ResourceId id, ResourceInsertRequest req, Clock clock) {
+        Instant now = clock.instant();
         return new Resource(
             id,
             req.administrators(),
             req.creator(),
-            req.deleted(),
+            !DELETED,
             req.description(),
             req.domain(),
             req.icon(),
             req.name(),
-            req.creation(),
-            req.updated(),
-            req.type()
-        );
+            now,
+            now,
+            RESOURCE_TYPE);
     }
 
     public Resource update(ResourceUpdateRequest req, Instant updated) {

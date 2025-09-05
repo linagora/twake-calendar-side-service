@@ -45,7 +45,7 @@ public class MemoryResourceDAO implements ResourceDAO {
     public Mono<ResourceId> insert(ResourceInsertRequest request) {
         return Mono.fromCallable(() -> {
             ResourceId newId = new ResourceId(UUID.randomUUID().toString());
-            Resource resource = Resource.from(newId, request);
+            Resource resource = Resource.from(newId, request, clock);
             store.put(newId, resource);
             return newId;
         });
