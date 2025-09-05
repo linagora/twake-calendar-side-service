@@ -87,6 +87,7 @@ settings. This includes:
 - Event alarms: send email reminder to the user as set up in the event on fix date, which involves scheduling.
 - Resource moderation request, allowing resource administrator to accept/deny events in the name of resources
 - Resource moderation notifications, letting event organizer know about resource moderation decisions
+- Calendar / address book import notifications
 
 The side service also enables synchronizing domain members into ESN-Sabre DAV server.
 
@@ -111,6 +112,25 @@ Invalidation of this cache is possible by relying on back-channel logout.
 **LDAP** data storage is possible and allows for:
  - Synchronizing domain members into ESN-Sabre DAV server
  - Back basic authentication if exposed
+
+### Flux matrix
+
+The side service relies on the following other services:
+
+**esn-sabre DAV server** holds the calendar / contacts data and is in charge of manipulating them. The side-service calls the
+DAV server in order to:
+ - Manage the secret link access: it validates the secret link then proxy theDAV calendar export
+ - Support excal: where a non authenticated third party user receives an invite from one of our users excal SPA offers 
+a link for this user to update his participation. The token enbedded in the SPA is validated by the side service which 
+acts accordingly on the DAV server.
+ - Synchronizing domain members: the side service ingest data from a LDAP and use it to poputate the domain member address book
+in sabre through the use of a "Technical Token". 
+ - Calendar and address book import: after uploading data to the side service the side service pushes each relevant items
+into the corresponding DAV collection.
+ - DAV Proxy: the side service expose an endpoint authenticated with OIDC that wraps the DAV api. 
+ - Alarm service and event indexing service might read DAV data in order to maintain their own projections.
+
+**Twake Mail** (or any SMTP submission service) is used to send calendar related emails.
 
 ## Credits
 
