@@ -2,7 +2,7 @@
 
 Exposes [a subset of the OpenPaaS API](apis/openpaasApi.md), allowing OpenPaaS SPA to run smoothly atop this side service.
 
-Proxies dav calls in order to enable direct OIDC authentication for the SPA in order not to rely on secondary authentication
+[Proxies dav calls](apis/davProxy.md) in order to enable direct OIDC authentication for the SPA in order not to rely on secondary authentication
 mechanisms.
 
 Exposes a [webadmin interface](apis/webadmin.md) for management.
