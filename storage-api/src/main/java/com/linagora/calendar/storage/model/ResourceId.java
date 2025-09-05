@@ -18,5 +18,11 @@
 
 package com.linagora.calendar.storage.model;
 
+import com.linagora.calendar.storage.OpenPaaSId;
+
 public record ResourceId(String value) {
+
+    public OpenPaaSId asOpenPaaSId() {
+        return new OpenPaaSId(value);
+    }
 }

@@ -23,13 +23,17 @@ import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
+import java.net.URI;
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.UUID;
 import java.util.function.Supplier;
 
 import javax.net.ssl.SSLException;
 
+import org.apache.james.core.Username;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,10 +42,20 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linagora.calendar.dav.dto.CalendarEventReportResponse;
 import com.linagora.calendar.dav.dto.VCalendarDto;
+import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
+import com.linagora.calendar.storage.ResourceInsertRequest;
+import com.linagora.calendar.storage.event.EventFields;
+import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.eventsearch.EventUid;
+import com.linagora.calendar.storage.model.ResourceAdministrator;
+import com.linagora.calendar.storage.model.ResourceId;
+import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
+import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
 
+import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
 import net.javacrumbs.jsonunit.core.Option;
 
@@ -56,6 +70,8 @@ public class CalDavEventRepositoryTest {
 
     private CalDavEventRepository testee;
     private CalDavClient calDavClient;
+    private MongoDBResourceDAO mongoDBResourceDAO;
+    private MongoDBOpenPaaSDomainDAO domainDAO;
 
     private OpenPaaSUser organizer;
     private OpenPaaSUser attendee;
@@ -72,6 +88,8 @@ public class CalDavEventRepositoryTest {
 
         organizer = sabreDavExtension.newTestUser();
         attendee = sabreDavExtension.newTestUser();
+        mongoDBResourceDAO = new MongoDBResourceDAO(sabreDavExtension.dockerSabreDavSetup().getMongoDB(), Clock.systemUTC());
+        domainDAO = new MongoDBOpenPaaSDomainDAO(sabreDavExtension.dockerSabreDavSetup().getMongoDB());
     }
 
     @Test
@@ -316,6 +334,97 @@ public class CalDavEventRepositoryTest {
                 attendee.username().asString()
             ));
 
+    }
+
+    @Test
+    void updatePartStatShouldUpdateResourcePartStatSuccessfully() {
+        // Given
+        ResourceAdministrator administrator = new ResourceAdministrator(organizer.id(), "user");
+        OpenPaaSDomain domain = domainDAO.retrieve(organizer.username().getDomainPart().get()).block();
+
+        ResourceInsertRequest insertRequest = new ResourceInsertRequest(
+            List.of(administrator),
+            administrator.refId(),
+            "This is a projector made in China",
+            domain.id(),
+            "projector",
+            "Projector 1");
+
+        ResourceId resourceId = mongoDBResourceDAO.insert(insertRequest).block();
+        String resourceEmail = Username.fromLocalPartWithDomain(resourceId.value(), domain.domain()).asString();
+
+        String eventUid = UUID.randomUUID().toString();
+        DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss");
+        String startDateTime = LocalDateTime.now().plusDays(3).format(dateTimeFormatter);
+        String endDateTime = LocalDateTime.now().plusDays(3).plusHours(1).format(dateTimeFormatter);
+
+        String icalData = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
+            CALSCALE:GREGORIAN
+            BEGIN:VTIMEZONE
+            TZID:Asia/Ho_Chi_Minh
+            BEGIN:STANDARD
+            TZOFFSETFROM:+0700
+            TZOFFSETTO:+0700
+            TZNAME:ICT
+            DTSTART:19700101T000000
+            END:STANDARD
+            END:VTIMEZONE
+            BEGIN:VEVENT
+            UID:{eventUid}
+            DTSTAMP:{dtStamp}Z
+            SEQUENCE:1
+            DTSTART;TZID=Asia/Ho_Chi_Minh:{startDateTime}
+            DTEND;TZID=Asia/Ho_Chi_Minh:{endDateTime}
+            SUMMARY:Twake Calendar - Sprint planning #04
+            ORGANIZER;CN=Van Tung TRAN:mailto:{organizerEmail}
+            ATTENDEE;PARTSTAT={partStat};CN=Benoît TELLIER:mailto:{attendeeEmail}
+            ATTENDEE;PARTSTAT=TENTATIVE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=RESOURCE;
+             CN=Resource;SCHEDULE-STATUS=5.1:mailto:{resourceEmail}
+            END:VEVENT
+            END:VCALENDAR
+            """.replace("{eventUid}", eventUid)
+            .replace("{organizerEmail}", organizer.username().asString())
+            .replace("{attendeeEmail}", attendee.username().asString())
+            .replace("{resourceEmail}", resourceEmail)
+            .replace("{startDateTime}", startDateTime)
+            .replace("{endDateTime}", endDateTime)
+            .replace("{dtStamp}", LocalDateTime.now().format(dateTimeFormatter))
+            .replace("{partStat}", PartStat.NEEDS_ACTION.getValue());
+
+
+        davTestHelper.upsertCalendar(organizer, icalData, eventUid);
+
+        // Wait until resource calendar sees the event
+        Fixture.awaitAtMost.untilAsserted(() ->
+            assertThat(davTestHelper.findFirstEventId(resourceId, domain.id()))
+                .withFailMessage("Event not created for resource: " + resourceId.value())
+                .isPresent());
+
+        String eventPathId = davTestHelper.findFirstEventId(resourceId, domain.id()).get();
+
+        // When: update participation status of the resource to ACCEPTED
+        testee.updatePartStat(domain, resourceId, eventPathId, PartStat.ACCEPTED).block();
+
+        // Then: verify that resource attendee in organizer’s calendar has been updated
+
+        URI organizerEventHref = URI.create("/calendars/")
+            .resolve(organizer.id().value() + "/")
+            .resolve(organizer.id().value() + "/")
+            .resolve(eventUid + ".ics");
+
+        Fixture.awaitAtMost.untilAsserted(() -> {
+            DavCalendarObject calendarObject = calDavClient.fetchCalendarEvent(organizer.username(), organizerEventHref).block();
+            EventFields.Person resourceAttendee = getFirstResource(calendarObject);
+            assertThat(resourceAttendee.partStat()).contains(PartStat.ACCEPTED);
+        });
+    }
+
+    private EventFields.Person getFirstResource(DavCalendarObject calendarObject) {
+        VEvent vEvent = (VEvent) calendarObject.calendarData().getComponent(Component.VEVENT).get();
+        return EventParseUtils.getResources(vEvent).getFirst();
     }
 
     private void waitForEventCreation(OpenPaaSUser user) {
