@@ -30,7 +30,7 @@ Below sections refers how to run specifically the side service:
 
 Please refer to the [sample configuration](app/src/main/conf).
 
-We will soon provide more details here.
+Please refer to [this page](docs/configuration/index.md) for a documentation of the configuration.
 
 ## Contributing
 
