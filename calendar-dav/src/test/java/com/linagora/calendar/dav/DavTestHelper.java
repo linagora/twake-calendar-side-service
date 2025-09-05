@@ -20,6 +20,7 @@ package com.linagora.calendar.dav;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Optional;
 
 import javax.net.ssl.SSLException;
@@ -30,15 +31,18 @@ import org.apache.james.core.Username;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.fge.lambdas.Throwing;
+import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.TechnicalTokenService;
 import com.linagora.calendar.storage.eventsearch.EventUid;
+import com.linagora.calendar.storage.model.ResourceId;
 
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 
 public class DavTestHelper extends DavClient {
 
@@ -174,5 +178,15 @@ public class DavTestHelper extends DavClient {
             .collectList()
             .blockOptional()
             .flatMap(e -> e.stream().findFirst());
+    }
+
+    public Optional<String> findFirstEventId(ResourceId resourceId, OpenPaaSId domainId) {
+        CalendarURL calendarURL = CalendarURL.from(resourceId.asOpenPaaSId());
+
+        return calDavClient.findUserCalendarEventIds(httpClientWithTechnicalToken(domainId), calendarURL)
+            .retryWhen(Retry.fixedDelay(2, Duration.ofMillis(500))
+                .filter(throwable -> throwable instanceof DavClientException))
+            .next()
+            .blockOptional();
     }
 }

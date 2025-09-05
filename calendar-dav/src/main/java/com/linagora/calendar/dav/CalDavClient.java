@@ -153,28 +153,34 @@ public class CalDavClient extends DavClient {
     }
 
     public Flux<String> findUserCalendarEventIds(Username username, CalendarURL calendarURL) {
-        return httpClientWithImpersonation(username)
-            .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, "application/xml"))
-            .request(HttpMethod.valueOf("PROPFIND"))
-            .uri(calendarURL.asUri().toString())
-            .responseSingle((response, responseContent) -> {
-                if (response.status().code() == 207) {
-                    return responseContent.asByteArray();
-                } else {
-                    return responseContent.asString(StandardCharsets.UTF_8)
-                        .switchIfEmpty(Mono.just(StringUtils.EMPTY))
-                        .flatMap(errorBody -> Mono.error(new DavClientException("""
-                            Unexpected status code: %d when finding user calendar event ids in calendar '%s'
-                            %s
-                            """.formatted(response.status().code(), calendarURL.asUri(), errorBody))));
-                }
-            }).flatMapIterable(bytes -> {
-                try {
-                    return XMLUtil.extractEventIdsFromXml(bytes);
-                } catch (Exception e) {
-                    throw new DavClientException("Failed to parse XML response of finding user calendar event ids in calendar " + calendarURL.asUri(), e);
-                }
-            });
+        return findUserCalendarEventIds(Mono.just(httpClientWithImpersonation(username)), calendarURL);
+    }
+
+    public Flux<String> findUserCalendarEventIds(Mono<HttpClient> httpClientPublisher, CalendarURL calendarURL) {
+        return httpClientPublisher.flatMapMany(client ->
+            client.headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, "application/xml"))
+                .request(HttpMethod.valueOf("PROPFIND"))
+                .uri(calendarURL.asUri().toString())
+                .responseSingle((response, responseContent) -> {
+                    if (response.status().code() == 207) {
+                        return responseContent.asByteArray();
+                    } else {
+                        return responseContent.asString(StandardCharsets.UTF_8)
+                            .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                            .flatMap(errorBody -> Mono.error(new DavClientException("""
+                                Unexpected status code: %d when finding user calendar event ids in calendar '%s'
+                                %s
+                                """.formatted(response.status().code(), calendarURL.asUri(), errorBody))));
+                    }
+                })
+                .flatMapIterable(bytes -> {
+                    try {
+                        return XMLUtil.extractEventIdsFromXml(bytes);
+                    } catch (Exception e) {
+                        throw new DavClientException("Failed to parse XML response of finding user calendar event ids in calendar " + calendarURL.asUri(), e);
+                    }
+                })
+        );
     }
 
     public Mono<Void> deleteCalendarEvent(Username username, CalendarURL calendarURL, String eventId) {
