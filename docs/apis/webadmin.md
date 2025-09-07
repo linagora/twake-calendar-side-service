@@ -10,8 +10,10 @@ This includes:
    (Without domain alias support)
  - [User routes](https://james.staged.apache.org/james-project/3.9.0/servers/distributed/operate/webadmin.html#_administrating_users)
    (only user crud, no support for delegation, from header, and JMAP identites). 
- - [Webamin tasks route](https://james.staged.apache.org/james-project/3.9.0/servers/distributed/operate/webadmin.html#_task_management) 
+ - [Webamin tasks routes](https://james.staged.apache.org/james-project/3.9.0/servers/distributed/operate/webadmin.html#_task_management) 
     backed by an InMemory, node local, task manager.
+ - [Healthchecks routes](https://james.staged.apache.org/james-project/3.9.0/servers/distributed/operate/webadmin.html#_healthcheck) 
+    The following healthchecks are implemented: `Guice application lifecycle`, `LDAP User Server`, `RabbitMQ backend`, `OpenSearch Backend`, `Redis backend`
 
 It embeds a [Prometheus compatible](https://prometheus.io/) metric endpoint available via `GET /metrics`.
 
