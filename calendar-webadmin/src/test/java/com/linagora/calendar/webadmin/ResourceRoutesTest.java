@@ -155,6 +155,7 @@ class ResourceRoutesTest {
                                "id": "RESOURCE_ID_1",
                                "icon": "laptop",
                                "domain": "linagora.com",
+                               "creator":"user1@linagora.com",
                                "administrators": [
                                    {
                                        "email": "user1@linagora.com"
@@ -169,6 +170,7 @@ class ResourceRoutesTest {
                                "deleted": false,
                                "description": "Descripting",
                                "id": "RESOURCE_ID_2",
+                               "creator":"user3@twake.app",
                                "icon": "laptop",
                                "domain": "twake.app",
                                "administrators": [
@@ -222,6 +224,7 @@ class ResourceRoutesTest {
                                "name": "Resource name",
                                "deleted": false,
                                "description": "Descripting",
+                               "creator":"user1@linagora.com",
                                "id": "RESOURCE_ID_1",
                                "icon": "laptop",
                                "domain": "linagora.com",

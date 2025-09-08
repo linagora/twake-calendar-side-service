@@ -48,10 +48,11 @@ public class ResourceRoutes implements Routes {
 
     }
 
-    public record ResourceDTO(String name, boolean deleted, String description, String id, String icon, String domain, List<AdministratorDTO> administrators) {
-        public static ResourceDTO fromDomainObject(Resource domainObject, Domain domain, List<AdministratorDTO> administrators) {
+    public record ResourceDTO(String name, boolean deleted, String description, String id, String icon, String domain, List<AdministratorDTO> administrators,
+                              String creator) {
+        public static ResourceDTO fromDomainObject(Resource domainObject, Domain domain, List<AdministratorDTO> administrators, String creator) {
             return new ResourceDTO(domainObject.name(), domainObject.deleted(), domainObject.description(), domainObject.id().value(),
-                domainObject.icon(), domain.asString(), administrators);
+                domainObject.icon(), domain.asString(), administrators, creator);
         }
     }
 
@@ -96,12 +97,13 @@ public class ResourceRoutes implements Routes {
     private Mono<ResourceDTO> toDto(Resource resource) {
         return Mono.zip(
                 domainDAO.retrieve(resource.domain()),
+                userDAO.retrieve(resource.creator()),
                 Flux.fromIterable(resource.administrators())
                     .map(ResourceAdministrator::refId)
                     .flatMap(userDAO::retrieve, ReactorUtils.LOW_CONCURRENCY)
                     .map(u -> new AdministratorDTO(u.username().asString()))
                     .collectList())
-            .map(tuple -> ResourceDTO.fromDomainObject(resource, tuple.getT1().domain(), tuple.getT2()));
+            .map(tuple -> ResourceDTO.fromDomainObject(resource, tuple.getT1().domain(), tuple.getT3(), tuple.getT2().username().asString()));
     }
 
     private Optional<Domain> retrieveDomain(Request request) {
