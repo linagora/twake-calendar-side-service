@@ -217,7 +217,7 @@ public class RestApiConfiguration {
                     calendarSpaUrl.orElse(URI.create("https://e-calendrier.avocat.fr").toURL()),
                     contactSpaUrl.orElse(URI.create("https://e-contacts.avocat.fr").toURL()),
                     selfURL.orElse(URI.create("https://twcalendar.linagora.com").toURL()),
-                    openpaasBackendURL.orElse(URI.create("https://openpaas.linagora.com").toURL()),
+                    openpaasBackendURL,
                     davdURL.orElse(URI.create("https://dav.linagora.com").toURL()),
                     visioURL.orElse(URI.create("https://jitsi.linagora.com").toURL()),
                     openpaasBackendTrustAllCerts.orElse(false),
@@ -352,7 +352,7 @@ public class RestApiConfiguration {
     private final URL calendarSpaUrl;
     private final URL contactSpaUrl;
     private final URL selfUrl;
-    private final URL openpaasBackendURL;
+    private final Optional<URL> openpaasBackendURL;
     private final URL davURL;
     private final URL visioURL;
     private final boolean openpaasBackendTrustAllCerts;
@@ -375,7 +375,7 @@ public class RestApiConfiguration {
 
     @VisibleForTesting
     RestApiConfiguration(Optional<Port> port, URL calendarSpaUrl,
-                         URL contactSpaUrl, URL selfUrl, URL openpaasBackendURL, URL davURL, URL visioURL, boolean openpaasBackendTrustAllCerts,
+                         URL contactSpaUrl, URL selfUrl, Optional<URL> openpaasBackendURL, URL davURL, URL visioURL, boolean openpaasBackendTrustAllCerts,
                          String jwtPrivatePath, List<String> jwtPublicPath, Duration jwtValidity, URL oidcUserInfoUrl, IntrospectionEndpoint introspectionEndpoint,
                          String oidcIntrospectionClaim, Aud aud, boolean calendarSharingENabled, boolean sharingCalendarEnabled, boolean domainMembersAddressbookEnabled,
                          String defaultLanguage, String defaultTimezone, boolean defaultUse24hFormat, JsonNode defaultBusinessHours, String adminUsername, String adminPassword) {
@@ -417,7 +417,7 @@ public class RestApiConfiguration {
         return contactSpaUrl;
     }
 
-    public URL getOpenpaasBackendURL() {
+    public Optional<URL> getOpenpaasBackendURL() {
         return openpaasBackendURL;
     }
 
