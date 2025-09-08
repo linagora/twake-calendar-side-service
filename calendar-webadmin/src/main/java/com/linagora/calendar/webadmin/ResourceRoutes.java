@@ -45,6 +45,7 @@ import com.linagora.calendar.storage.ResourceNotFoundException;
 import com.linagora.calendar.storage.model.Resource;
 import com.linagora.calendar.storage.model.ResourceAdministrator;
 import com.linagora.calendar.storage.model.ResourceId;
+import com.linagora.calendar.storage.ResourceUpdateRequest;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -88,6 +89,26 @@ public class ResourceRoutes implements Routes {
         }
     }
 
+    public record ResourceUpdateDTO(String id, Optional<String> name, Optional<String> description, Optional<String> icon,
+                                    Optional<String> domain, Optional<List<AdministratorDTO>> administrators, Optional<String> creator) {
+        @JsonCreator
+        public ResourceUpdateDTO(@JsonProperty("id") String id,
+                                 @JsonProperty("name") Optional<String> name,
+                                 @JsonProperty("description") Optional<String> description,
+                                 @JsonProperty("icon") Optional<String> icon,
+                                 @JsonProperty("domain") Optional<String> domain,
+                                 @JsonProperty("administrators") Optional<List<AdministratorDTO>> administrators,
+                                 @JsonProperty("creator") Optional<String> creator) {
+            this.id = id;
+            this.name = name;
+            this.description = description;
+            this.icon = icon;
+            this.domain = domain;
+            this.administrators = administrators;
+            this.creator = creator;
+        }
+    }
+
     @Override
     public String getBasePath() {
         return BASE_PATH;
@@ -98,6 +119,7 @@ public class ResourceRoutes implements Routes {
     private final OpenPaaSUserDAO userDAO;
     private final JsonTransformer jsonTransformer;
     private final JsonExtractor<ResourceCreationDTO> creationDTOJsonExtractor;
+    private final JsonExtractor<ResourceUpdateDTO> updateDTOJsonExtractor;
 
     @Inject
     public ResourceRoutes(ResourceDAO resourceDAO, OpenPaaSDomainDAO domainDAO, OpenPaaSUserDAO userDAO, JsonTransformer jsonTransformer) {
@@ -106,6 +128,7 @@ public class ResourceRoutes implements Routes {
         this.userDAO = userDAO;
         this.jsonTransformer = jsonTransformer;
         creationDTOJsonExtractor = new JsonExtractor<>(ResourceCreationDTO.class);
+        updateDTOJsonExtractor = new JsonExtractor<>(ResourceUpdateDTO.class);
     }
 
     @Override
@@ -114,6 +137,7 @@ public class ResourceRoutes implements Routes {
         service.get(getBasePath() + "/:id", (req, res) -> getResource(req), jsonTransformer);
         service.delete(getBasePath() + "/:id", this::deleteResource);
         service.post(getBasePath(), this::createResource);
+        service.patch(getBasePath() + "/:id", this::updateResource);
     }
 
     private List<ResourceDTO> listResources(Request req) {
@@ -168,7 +192,7 @@ public class ResourceRoutes implements Routes {
         OpenPaaSId domainId = domainDAO.retrieve(Domain.of(dto.domain))
             .switchIfEmpty(Mono.error(() -> new IllegalArgumentException("domain '" + dto.domain + "' must exist")))
             .block().id();
-        List<ResourceAdministrator> administrators = retrieveResourceAdministrators(dto);
+        List<ResourceAdministrator> administrators = retrieveResourceAdministrators(dto.administrators);
 
         ResourceId resourceId = resourceDAO.insert(new ResourceInsertRequest(administrators,
             creatorId, dto.description, domainId, dto.icon, dto.name))
@@ -179,8 +203,30 @@ public class ResourceRoutes implements Routes {
         return "";
     }
 
-    private List<ResourceAdministrator> retrieveResourceAdministrators(ResourceCreationDTO dto) {
-        return Flux.fromIterable(dto.administrators)
+    private String updateResource(Request req, Response res) throws JsonExtractException {
+        ResourceUpdateDTO dto = updateDTOJsonExtractor.parse(req.body());
+
+        ResourceId id = new ResourceId(req.params("id"));
+        Optional<List<ResourceAdministrator>> administrators = dto.administrators.map(this::retrieveResourceAdministrators);
+
+        try {
+            resourceDAO.update(id, new ResourceUpdateRequest(dto.name, dto.description, dto.icon, administrators))
+                .block();
+
+            res.status(204);
+            return "";
+        } catch (ResourceNotFoundException e) {
+            throw ErrorResponder.builder()
+                .statusCode(HttpStatus.NOT_FOUND_404)
+                .type(ErrorResponder.ErrorType.NOT_FOUND)
+                .message("Resource do not exist")
+                .cause(new RuntimeException())
+                .haltError();
+        }
+    }
+
+    private List<ResourceAdministrator> retrieveResourceAdministrators(List<AdministratorDTO> dtos) {
+        return Flux.fromIterable(dtos)
             .map(AdministratorDTO::email)
             .map(Username::of)
             .flatMap(user -> userDAO.retrieve(user)
