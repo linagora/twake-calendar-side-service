@@ -46,7 +46,7 @@ import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.http.ContentType;
 import io.restassured.response.Response;
 
-public class ResourceIconRouteTest {
+class ResourceIconRouteTest {
 
     @RegisterExtension
     @Order(1)

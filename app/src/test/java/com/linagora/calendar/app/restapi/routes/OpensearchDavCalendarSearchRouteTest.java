@@ -55,7 +55,7 @@ import io.restassured.http.ContentType;
 import io.restassured.specification.RequestSpecification;
 import net.javacrumbs.jsonunit.core.Option;
 
-public class OpensearchDavCalendarSearchRouteTest implements CalendarSearchRouteContract{
+class OpensearchDavCalendarSearchRouteTest implements CalendarSearchRouteContract{
 
     @RegisterExtension
     @Order(1)

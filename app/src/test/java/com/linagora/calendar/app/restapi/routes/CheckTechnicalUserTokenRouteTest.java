@@ -54,7 +54,7 @@ import io.restassured.RestAssured;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.http.ContentType;
 
-public class CheckTechnicalUserTokenRouteTest {
+class CheckTechnicalUserTokenRouteTest {
 
     static class TechnicalTokenProbe implements GuiceProbe {
         private final TechnicalTokenService technicalTokenService;
@@ -91,10 +91,8 @@ public class CheckTechnicalUserTokenRouteTest {
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY),
         BY_PASS_MODULE.apply(rabbitMQExtension),
         DavModuleTestHelper.BY_PASS_MODULE,
-        binder -> {
-            Multibinder.newSetBinder(binder, GuiceProbe.class)
-                .addBinding().to(TechnicalTokenProbe.class);
-        });
+        binder -> Multibinder.newSetBinder(binder, GuiceProbe.class)
+            .addBinding().to(TechnicalTokenProbe.class));
 
     @AfterAll
     static void afterAll() {

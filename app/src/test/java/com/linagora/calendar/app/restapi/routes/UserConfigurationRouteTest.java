@@ -59,7 +59,7 @@ import io.restassured.RestAssured;
 import io.restassured.authentication.PreemptiveBasicAuthScheme;
 import io.restassured.builder.RequestSpecBuilder;
 
-public class UserConfigurationRouteTest {
+class UserConfigurationRouteTest {
 
     private static final String DOMAIN = "open-paas.ltd";
     private static final String PASSWORD = "secret";

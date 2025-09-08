@@ -59,14 +59,17 @@ import io.restassured.authentication.PreemptiveBasicAuthScheme;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.http.ContentType;
 
-public class SecretLinkRouteTest {
+class SecretLinkRouteTest {
 
     private static final String DOMAIN = "open-paas.ltd";
     private static final String PASSWORD = "secret";
     private static final String SECRET_LINK_BASE_URL = "https://mocked.url/xyz";
     private static final Username USERNAME = Username.fromLocalPartWithDomain("bob", DOMAIN);
 
-    private static final RestApiConfiguration initialRestApiConfiguration = RestApiConfiguration.builder().adminPassword(Optional.of("secret")).build();
+    private static final RestApiConfiguration initialRestApiConfiguration = RestApiConfiguration.builder()
+        .enableBasicAuth(Optional.of(true))
+        .adminPassword(Optional.of("secret"))
+        .build();
     private static final RestApiConfiguration spyRestApiConfiguration = Mockito.spy(initialRestApiConfiguration);
 
     @RegisterExtension
