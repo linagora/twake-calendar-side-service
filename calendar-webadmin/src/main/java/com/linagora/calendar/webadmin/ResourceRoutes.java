@@ -26,7 +26,9 @@ import jakarta.inject.Inject;
 import org.apache.james.core.Domain;
 import org.apache.james.util.ReactorUtils;
 import org.apache.james.webadmin.Routes;
+import org.apache.james.webadmin.utils.ErrorResponder;
 import org.apache.james.webadmin.utils.JsonTransformer;
+import org.eclipse.jetty.http.HttpStatus;
 
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
@@ -34,6 +36,7 @@ import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.ResourceDAO;
 import com.linagora.calendar.storage.model.Resource;
 import com.linagora.calendar.storage.model.ResourceAdministrator;
+import com.linagora.calendar.storage.model.ResourceId;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -76,15 +79,34 @@ public class ResourceRoutes implements Routes {
 
     @Override
     public void define(Service service) {
-        service.get(getBasePath(), (req, res) -> {
-            Optional<Domain> maybeDomain = retrieveDomain(req);
+        service.get(getBasePath(), (req, res) -> listResources(req), jsonTransformer);
+        service.get(getBasePath() + "/:id", (req, res) -> getResource(req), jsonTransformer);
+    }
 
-            return maybeDomain.map(this::findResourceByDomain)
-                .orElseGet(resourceDAO::findAll)
-                .flatMap(this::toDto, ReactorUtils.LOW_CONCURRENCY)
-                .collectList()
-                .block();
-        }, jsonTransformer);
+    private List<ResourceDTO> listResources(Request req) {
+        Optional<Domain> maybeDomain = retrieveDomain(req);
+
+        return maybeDomain.map(this::findResourceByDomain)
+            .orElseGet(resourceDAO::findAll)
+            .flatMap(this::toDto, ReactorUtils.LOW_CONCURRENCY)
+            .collectList()
+            .block();
+    }
+
+    private ResourceDTO getResource(Request req) {
+        ResourceId id = new ResourceId(req.params("id"));
+
+        return resourceDAO.findById(id)
+            .flatMap(this::toDto)
+            .blockOptional()
+            .orElseGet(() -> {
+                throw ErrorResponder.builder()
+                    .statusCode(HttpStatus.NOT_FOUND_404)
+                    .type(ErrorResponder.ErrorType.NOT_FOUND)
+                    .message("Resource do not exist")
+                    .cause(new RuntimeException())
+                    .haltError();
+            });
     }
 
     private Flux<Resource> findResourceByDomain(Domain domain) {
