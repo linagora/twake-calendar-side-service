@@ -67,6 +67,10 @@ public class FallbackProxy {
     }
 
     public Mono<Void> forwardRequest(HttpServerRequest request, HttpServerResponse response) {
+        if (configuration.getOpenpaasBackendURL().isEmpty()) {
+            LOGGER.warn("Not found {} {}", request.method(), request.uri());
+            return response.status(404).send();
+        }
         LOGGER.warn("Proxying {} {}", request.method(), request.uri());
         return request.receive().aggregate().asByteArray()
             .switchIfEmpty(Mono.just("".getBytes()))
@@ -78,7 +82,7 @@ public class FallbackProxy {
                                     headers.add(HttpHeaderNames.CONTENT_TYPE, "application/json");
                                 })
                                 .request(request.method())
-                                .uri(configuration.getOpenpaasBackendURL().toString() + request.uri())
+                                .uri(configuration.getOpenpaasBackendURL().get().toString() + request.uri())
                                 .send((req, out) -> out.sendByteArray(Mono.just(payload)))
                                 .response((res, in) -> {
                                     response.status(res.status());
