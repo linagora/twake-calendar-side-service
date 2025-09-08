@@ -16,26 +16,10 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.dav;
+package com.linagora.calendar.restapi;
 
-import java.net.URI;
-
-import org.apache.james.core.Username;
-
-import com.linagora.calendar.storage.OpenPaaSId;
-import com.linagora.calendar.storage.eventsearch.EventUid;
-
-public class CalendarEventNotFoundException extends RuntimeException {
-
-    public CalendarEventNotFoundException(String username, String eventUid) {
-        super("Calendar event not found for user " + username + " and eventUid " + eventUid);
-    }
-
-    public CalendarEventNotFoundException(Username username, OpenPaaSId calendarId,  EventUid eventUid) {
-       super("Calendar event not found for user " + username.asString() + ", calendarId " + calendarId.value() + " and eventUid " + eventUid.value());
-    }
-
-    public CalendarEventNotFoundException(URI calendarEventHref) {
-        super("Calendar event not found for URI " + calendarEventHref.toASCIIString());
+public class ForbiddenException extends RuntimeException {
+    public ForbiddenException(String message) {
+        super(message);
     }
 }

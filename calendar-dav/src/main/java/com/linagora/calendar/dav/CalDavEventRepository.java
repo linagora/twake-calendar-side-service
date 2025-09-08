@@ -91,6 +91,7 @@ public class CalDavEventRepository {
 
     private Mono<Void> applyModifierToEvent(Mono<HttpClient> httpClientPublisher, URI calendarEventHref, CalendarEventModifier modifier) {
         return client.fetchCalendarEvent(httpClientPublisher, calendarEventHref)
+            .switchIfEmpty(Mono.error(new CalendarEventNotFoundException(calendarEventHref)))
             .map(calendarObject -> calendarObject.withUpdatePatches(modifier))
             .flatMap(updated -> client.updateCalendarEvent(httpClientPublisher, updated))
             .retryWhen(Retry.backoff(MAX_CALENDAR_OBJECT_UPDATE_RETRIES, CALENDAR_OBJECT_UPDATE_RETRY_BACKOFF)

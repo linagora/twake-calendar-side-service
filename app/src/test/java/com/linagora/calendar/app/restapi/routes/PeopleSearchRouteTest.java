@@ -76,7 +76,7 @@ class PeopleSearchRouteTest {
             this.domainDAO = domainDAO;
         }
 
-        public ResourceId save(OpenPaaSUser requestUser, String name, String icon) {
+        public Resource save(OpenPaaSUser requestUser, String name, String icon) {
             ResourceAdministrator administrator = new ResourceAdministrator(requestUser.id(), "user");
 
             OpenPaaSDomain openPaaSDomain = domainDAO.retrieve(requestUser.username().getDomainPart().get()).block();
@@ -87,7 +87,9 @@ class PeopleSearchRouteTest {
                 openPaaSDomain.id(),
                 icon,
                 name);
-            return resourceDAO.insert(insertRequest).block();
+             return resourceDAO.insert(insertRequest)
+                 .flatMap(resourceDAO::findById)
+                 .block();
         }
 
         public ResourceId saveAndRemove(OpenPaaSUser requestUser, String name, String icon) {
