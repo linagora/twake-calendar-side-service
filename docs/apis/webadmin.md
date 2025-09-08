@@ -255,3 +255,21 @@ Will create the following resource.
 Status codes:
  - 201 if created. Location includes the URL allowing to read resource details
  - 400 if invalid: the creator/domain/administrator do not exceed or extra fields / invalid JSON
+
+### Updating a resource
+
+```
+PATCH resources/RESOURCE_ID
+{
+  "name": "Resource name 2",
+  "description": "Descripting 2",
+  "icon": "battery",
+  "administrators": [
+    {"email": "user2@linagora.com"}
+  ]
+}
+```
+
+Would update the resource accordingly. Each field is nullable and if unspecified the field is not updated.
+
+Status code: 204 if updated, 400 if invalid eg administrator not found, 404 if the resource is not found.
