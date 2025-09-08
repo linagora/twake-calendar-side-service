@@ -101,7 +101,7 @@ import io.restassured.specification.RequestSpecification;
 import net.fortuna.ical4j.model.parameter.PartStat;
 import net.javacrumbs.jsonunit.core.Option;
 
-public class EventParticipationRouteTest {
+class EventParticipationRouteTest {
 
     static class ParticipationTokenProbe implements GuiceProbe {
         private final ParticipationTokenSigner participationTokenSigner;
