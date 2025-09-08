@@ -21,20 +21,27 @@ package com.linagora.calendar.webadmin;
 import java.util.List;
 import java.util.Optional;
 
-import com.linagora.calendar.storage.ResourceNotFoundException;
 import jakarta.inject.Inject;
 
 import org.apache.james.core.Domain;
+import org.apache.james.core.Username;
 import org.apache.james.util.ReactorUtils;
 import org.apache.james.webadmin.Routes;
 import org.apache.james.webadmin.utils.ErrorResponder;
+import org.apache.james.webadmin.utils.JsonExtractException;
+import org.apache.james.webadmin.utils.JsonExtractor;
 import org.apache.james.webadmin.utils.JsonTransformer;
 import org.eclipse.jetty.http.HttpStatus;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
+import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.ResourceDAO;
+import com.linagora.calendar.storage.ResourceInsertRequest;
+import com.linagora.calendar.storage.ResourceNotFoundException;
 import com.linagora.calendar.storage.model.Resource;
 import com.linagora.calendar.storage.model.ResourceAdministrator;
 import com.linagora.calendar.storage.model.ResourceId;
@@ -50,7 +57,10 @@ public class ResourceRoutes implements Routes {
     public static final String BASE_PATH = "resources";
 
     public record AdministratorDTO(String email) {
-
+        @JsonCreator
+        public AdministratorDTO(@JsonProperty("email") String email) {
+            this.email = email;
+        }
     }
 
     public record ResourceDTO(String name, boolean deleted, String description, String id, String icon, String domain, List<AdministratorDTO> administrators,
@@ -58,6 +68,23 @@ public class ResourceRoutes implements Routes {
         public static ResourceDTO fromDomainObject(Resource domainObject, Domain domain, List<AdministratorDTO> administrators, String creator) {
             return new ResourceDTO(domainObject.name(), domainObject.deleted(), domainObject.description(), domainObject.id().value(),
                 domainObject.icon(), domain.asString(), administrators, creator);
+        }
+    }
+
+    public record ResourceCreationDTO(String name, String description, String icon, String domain, List<AdministratorDTO> administrators, String creator) {
+        @JsonCreator
+        public ResourceCreationDTO(@JsonProperty("name") String name,
+                                   @JsonProperty("description") String description,
+                                   @JsonProperty("icon") String icon,
+                                   @JsonProperty("domain") String domain,
+                                   @JsonProperty("administrators") List<AdministratorDTO> administrators,
+                                   @JsonProperty("creator") String creator) {
+            this.name = name;
+            this.description = description;
+            this.icon = icon;
+            this.domain = domain;
+            this.administrators = administrators;
+            this.creator = creator;
         }
     }
 
@@ -70,6 +97,7 @@ public class ResourceRoutes implements Routes {
     private final OpenPaaSDomainDAO domainDAO;
     private final OpenPaaSUserDAO userDAO;
     private final JsonTransformer jsonTransformer;
+    private final JsonExtractor<ResourceCreationDTO> creationDTOJsonExtractor;
 
     @Inject
     public ResourceRoutes(ResourceDAO resourceDAO, OpenPaaSDomainDAO domainDAO, OpenPaaSUserDAO userDAO, JsonTransformer jsonTransformer) {
@@ -77,6 +105,7 @@ public class ResourceRoutes implements Routes {
         this.domainDAO = domainDAO;
         this.userDAO = userDAO;
         this.jsonTransformer = jsonTransformer;
+        creationDTOJsonExtractor = new JsonExtractor<>(ResourceCreationDTO.class);
     }
 
     @Override
@@ -84,6 +113,7 @@ public class ResourceRoutes implements Routes {
         service.get(getBasePath(), (req, res) -> listResources(req), jsonTransformer);
         service.get(getBasePath() + "/:id", (req, res) -> getResource(req), jsonTransformer);
         service.delete(getBasePath() + "/:id", this::deleteResource);
+        service.post(getBasePath(), this::createResource);
     }
 
     private List<ResourceDTO> listResources(Request req) {
@@ -127,6 +157,37 @@ public class ResourceRoutes implements Routes {
                 .cause(new RuntimeException())
                 .haltError();
         }
+    }
+
+    private String createResource(Request req, Response res) throws JsonExtractException {
+        ResourceCreationDTO dto = creationDTOJsonExtractor.parse(req.body());
+
+        OpenPaaSId creatorId = userDAO.retrieve(Username.of(dto.creator))
+            .switchIfEmpty(Mono.error(() -> new IllegalArgumentException("creator '" + dto.creator + "' must exist")))
+            .block().id();
+        OpenPaaSId domainId = domainDAO.retrieve(Domain.of(dto.domain))
+            .switchIfEmpty(Mono.error(() -> new IllegalArgumentException("domain '" + dto.domain + "' must exist")))
+            .block().id();
+        List<ResourceAdministrator> administrators = retrieveResourceAdministrators(dto);
+
+        ResourceId resourceId = resourceDAO.insert(new ResourceInsertRequest(administrators,
+            creatorId, dto.description, domainId, dto.icon, dto.name))
+            .block();
+
+        res.header("Location", getBasePath() + "/" + resourceId.value());
+        res.status(201);
+        return "";
+    }
+
+    private List<ResourceAdministrator> retrieveResourceAdministrators(ResourceCreationDTO dto) {
+        return Flux.fromIterable(dto.administrators)
+            .map(AdministratorDTO::email)
+            .map(Username::of)
+            .flatMap(user -> userDAO.retrieve(user)
+                .switchIfEmpty(Mono.error(() -> new IllegalArgumentException("administrator '" + user.asString() + "' must exist"))))
+            .map(user -> new ResourceAdministrator(user.id(), "user"))
+            .collectList()
+            .block();
     }
 
     private Flux<Resource> findResourceByDomain(Domain domain) {
