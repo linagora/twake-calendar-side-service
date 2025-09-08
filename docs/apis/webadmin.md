@@ -196,3 +196,39 @@ GET /resources?domain=linagora.com
 Status codes:
  - 200 when returning results
  - 400 when domain is either invalid or do not exist
+
+### Getting a specific resource
+
+```
+GET /resources/RESOURCE_ID_2
+```
+
+Will return the corresponding resource:
+
+```
+  {
+    "name": "Resource name",
+    "deleted": false,
+    "description": "Descripting",
+    "id": "RESOURCE_ID_2",
+    "creator":"user3@twake.app",
+    "icon": "laptop",
+    "domain": "twake.app",
+    "administrators": [
+      {"email": "user3@twake.app"},
+      {"email": "user4@twake.app"}
+    ]
+  }
+```
+
+Status code: 404 if not found, 200 otherwise.
+
+### Marking a resource as deleted
+
+```
+DELETE /resources/RESOURCE_ID_2
+```
+
+Will mark the resource as deleted.
+
+Status code: 404 if not found, 204 otherwise.
