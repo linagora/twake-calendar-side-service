@@ -21,6 +21,7 @@ package com.linagora.calendar.webadmin;
 import java.util.List;
 import java.util.Optional;
 
+import com.linagora.calendar.storage.ResourceNotFoundException;
 import jakarta.inject.Inject;
 
 import org.apache.james.core.Domain;
@@ -41,6 +42,7 @@ import com.linagora.calendar.storage.model.ResourceId;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import spark.Request;
+import spark.Response;
 import spark.Service;
 
 public class ResourceRoutes implements Routes {
@@ -81,6 +83,7 @@ public class ResourceRoutes implements Routes {
     public void define(Service service) {
         service.get(getBasePath(), (req, res) -> listResources(req), jsonTransformer);
         service.get(getBasePath() + "/:id", (req, res) -> getResource(req), jsonTransformer);
+        service.delete(getBasePath() + "/:id", this::deleteResource);
     }
 
     private List<ResourceDTO> listResources(Request req) {
@@ -107,6 +110,23 @@ public class ResourceRoutes implements Routes {
                     .cause(new RuntimeException())
                     .haltError();
             });
+    }
+
+    private String deleteResource(Request req, Response res) {
+        ResourceId id = new ResourceId(req.params("id"));
+
+        try {
+            resourceDAO.softDelete(id).block();
+            res.status(204);
+            return "";
+        } catch (ResourceNotFoundException e) {
+            throw ErrorResponder.builder()
+                .statusCode(HttpStatus.NOT_FOUND_404)
+                .type(ErrorResponder.ErrorType.NOT_FOUND)
+                .message("Resource do not exist")
+                .cause(new RuntimeException())
+                .haltError();
+        }
     }
 
     private Flux<Resource> findResourceByDomain(Domain domain) {

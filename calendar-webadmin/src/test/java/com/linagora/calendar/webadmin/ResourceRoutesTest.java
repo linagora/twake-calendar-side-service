@@ -309,11 +309,71 @@ class ResourceRoutesTest {
     }
 
     @Test
-    void getResourceShouldReturnNotFoundWHenNotExist() {
+    void deleteResourceShouldUpdateDeletedField() {
+        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
+        OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
+        OpenPaaSUser user2 = userDAO.add(Username.of("user2@linagora.com")).block();
+        ResourceAdministrator admin1 = new ResourceAdministrator(user1.id(), "user");
+        ResourceAdministrator admin2 = new ResourceAdministrator(user2.id(), "user");
+        ResourceId resourceId = resourceDAO.insert(new ResourceInsertRequest(ImmutableList.of(admin1, admin2),
+            user1.id(), "Descripting", domain.id(), "laptop", "Resource name")).block();
+
+        when()
+            .delete(resourceId.value())
+         .then()
+            .contentType(ContentType.JSON)
+            .statusCode(204);
+
+        String string = when()
+            .get(resourceId.value())
+         .then()
+            .contentType(ContentType.JSON)
+            .statusCode(200)
+            .extract()
+            .body()
+            .asString();
+
+
+        assertThatJson(string)
+            .isEqualTo("""
+                           {
+                               "name": "Resource name",
+                               "deleted": true,
+                               "description": "Descripting",
+                               "creator":"user1@linagora.com",
+                               "id": "RESOURCE_ID_1",
+                               "icon": "laptop",
+                               "domain": "linagora.com",
+                               "administrators": [
+                                   {
+                                       "email": "user1@linagora.com"
+                                   },
+                                   {
+                                       "email": "user2@linagora.com"
+                                   }
+                               ]
+                           }
+                           """
+            .replace("RESOURCE_ID_1", resourceId.value()));
+    }
+
+    @Test
+    void getResourceShouldReturnNotFoundWhenNotExist() {
         given()
             .queryParam("domain", "linagora.com")
         .when()
             .get("notfound")
+         .then()
+            .contentType(ContentType.JSON)
+            .statusCode(404);
+    }
+
+    @Test
+    void deleteResourceShouldReturnNotFoundWhenNotExist() {
+        given()
+            .queryParam("domain", "linagora.com")
+        .when()
+            .delete("notfound")
          .then()
             .contentType(ContentType.JSON)
             .statusCode(404);
