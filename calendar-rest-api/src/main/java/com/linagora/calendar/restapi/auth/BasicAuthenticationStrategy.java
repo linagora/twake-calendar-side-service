@@ -99,10 +99,13 @@ public class BasicAuthenticationStrategy implements AuthenticationStrategy {
             && creds.password.equals(restApiConfiguration.getAdminPassword())) {
             return Mono.just(Username.of(restApiConfiguration.getAdminUsername()));
         }
-        return Mono.from(metricFactory.decoratePublisherWithTimerMetric("basic-auth",
-            Mono.fromCallable(() -> usersRepository.test(creds.username(), creds.password())
-                .orElseThrow(() -> new UnauthorizedException("Wrong credentials provided")))
-                .subscribeOn(Schedulers.boundedElastic())));
+        if (restApiConfiguration.basicAuthEnabled()) {
+            return Mono.from(metricFactory.decoratePublisherWithTimerMetric("basic-auth",
+                Mono.fromCallable(() -> usersRepository.test(creds.username(), creds.password())
+                        .orElseThrow(() -> new UnauthorizedException("Wrong credentials provided")))
+                    .subscribeOn(Schedulers.boundedElastic())));
+        }
+        return Mono.empty();
     }
 
     @Override
