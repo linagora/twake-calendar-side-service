@@ -58,6 +58,7 @@ import com.google.inject.Inject;
 import com.linagora.calendar.amqp.EventAlarmConsumer;
 import com.linagora.calendar.amqp.EventEmailConsumer;
 import com.linagora.calendar.amqp.EventIndexerConsumer;
+import com.linagora.calendar.amqp.EventResourceConsumer;
 
 import feign.Client;
 import feign.Feign;
@@ -233,6 +234,9 @@ public class ScheduledReconnectionHandler implements Startable {
                 .collect(ImmutableList.toImmutableList()))
             .addAll(Arrays.stream(EventAlarmConsumer.Queue.values())
                 .map(EventAlarmConsumer.Queue::queueName)
+                .collect(ImmutableList.toImmutableList()))
+            .addAll(Arrays.stream(EventResourceConsumer.Queue.values())
+                .map(EventResourceConsumer.Queue::queueName)
                 .collect(ImmutableList.toImmutableList()))
             .add(EventEmailConsumer.QUEUE_NAME)
             .build();

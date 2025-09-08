@@ -48,6 +48,7 @@ public class CalendarAmqpModule extends AbstractModule {
         bind(EventIndexerConsumer.class).in(Scopes.SINGLETON);
         bind(EventEmailConsumer.class).in(Scopes.SINGLETON);
         bind(EventAlarmConsumer.class).in(Scopes.SINGLETON);
+        bind(EventResourceConsumer.class).in(Scopes.SINGLETON);
     }
 
     @Provides
@@ -108,6 +109,18 @@ public class CalendarAmqpModule extends AbstractModule {
     public InitializationOperation initializeEventAlarmConsumer(EventAlarmConsumer instance) {
         return InitilizationOperationBuilder
             .forClass(EventAlarmConsumer.class)
+            .init(instance::init);
+    }
+
+    @ProvidesIntoSet
+    SimpleConnectionPool.ReconnectionHandler provideEventResourceReconnectionHandler(EventResourceReconnectionHandler reconnectionHandler) {
+        return reconnectionHandler;
+    }
+
+    @ProvidesIntoSet
+    public InitializationOperation initializeEventResourceConsumer(EventResourceConsumer instance) {
+        return InitilizationOperationBuilder
+            .forClass(EventResourceConsumer.class)
             .init(instance::init);
     }
 
