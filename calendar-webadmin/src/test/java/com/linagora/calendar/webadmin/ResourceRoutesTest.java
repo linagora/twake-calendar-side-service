@@ -114,7 +114,28 @@ class ResourceRoutesTest {
         .then()
             .contentType(ContentType.JSON)
             .statusCode(400);
+    }
 
+    @Test
+    void getResourcesFilteredByDomainShouldReturnInvalidRequestWhenBadDomain() {
+        given()
+            .queryParam("domain", "linagor@.com")
+        .when()
+            .get()
+        .then()
+            .contentType(ContentType.JSON)
+            .statusCode(400);
+    }
+
+    @Test
+    void getResourcesFilteredByDomainShouldReturnInvalidRequestWhenEmptyDomain() {
+        given()
+            .queryParam("domain", "")
+        .when()
+            .get()
+        .then()
+            .contentType(ContentType.JSON)
+            .statusCode(400);
     }
 
     @Test

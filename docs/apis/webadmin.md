@@ -143,3 +143,56 @@ This endpoint returns a webdmin task with the following additional information:
 
 - processedEventCount: integer
 - failedEventCount: integer
+
+## Resource routes
+
+### Listing resources
+
+```
+GET /resources
+```
+
+Will list exising resources:
+
+```
+[
+  {
+    "name": "Resource name",
+    "deleted": false,
+    "description": "Descripting",
+    "id": "RESOURCE_ID_1",
+    "icon": "laptop",
+    "domain": "linagora.com",
+    "creator":"user1@linagora.com",
+    "administrators": [
+      {"email": "user1@linagora.com"},
+      {"email": "user2@linagora.com"}
+    ]
+  },
+  {
+    "name": "Resource name",
+    "deleted": false,
+    "description": "Descripting",
+    "id": "RESOURCE_ID_2",
+    "creator":"user3@twake.app",
+    "icon": "laptop",
+    "domain": "twake.app",
+    "administrators": [
+      {"email": "user3@twake.app"},
+      {"email": "user4@twake.app"}
+    ]
+  }
+]
+```
+
+The `domain` query parameter allow filtering resources by domain.
+
+Eg:
+
+```
+GET /resources?domain=linagora.com
+```
+
+Status codes:
+ - 200 when returning results
+ - 400 when domain is either invalid or do not exist
