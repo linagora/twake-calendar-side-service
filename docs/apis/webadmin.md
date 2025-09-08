@@ -232,3 +232,26 @@ DELETE /resources/RESOURCE_ID_2
 Will mark the resource as deleted.
 
 Status code: 404 if not found, 204 otherwise.
+
+### reating a resource
+
+```
+POST /resources
+{
+  "name": "Resource name",
+  "description": "Descripting",
+  "creator":"user1@linagora.com",
+  "icon": "laptop",
+  "domain": "linagora.com",
+  "administrators": [
+    {"email": "user1@linagora.com"},
+    {"email": "user2@linagora.com"}
+  ]
+}
+```
+
+Will create the following resource.
+
+Status codes:
+ - 201 if created. Location includes the URL allowing to read resource details
+ - 400 if invalid: the creator/domain/administrator do not exceed or extra fields / invalid JSON

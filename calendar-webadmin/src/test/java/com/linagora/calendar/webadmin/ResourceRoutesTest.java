@@ -309,6 +309,242 @@ class ResourceRoutesTest {
     }
 
     @Test
+    void postShouldCreateTheResource() {
+        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
+        OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
+        OpenPaaSUser user2 = userDAO.add(Username.of("user2@linagora.com")).block();
+
+        given()
+            .body("""
+                {
+                               "name": "Resource name",
+                               "description": "Descripting",
+                               "creator":"user1@linagora.com",
+                               "icon": "laptop",
+                               "domain": "linagora.com",
+                               "administrators": [
+                                   {
+                                       "email": "user1@linagora.com"
+                                   },
+                                   {
+                                       "email": "user2@linagora.com"
+                                   }
+                               ]
+                           }
+                """)
+            .post()
+        .then()
+            .statusCode(201);
+
+        String string = given()
+            .queryParam("domain", "linagora.com")
+        .when()
+            .get()
+         .then()
+            .contentType(ContentType.JSON)
+            .statusCode(200)
+            .extract()
+            .body()
+            .asString();
+
+
+        assertThatJson(string)
+            .whenIgnoringPaths("[0].id")
+            .isEqualTo("""
+                           [{
+                               "name": "Resource name",
+                               "deleted": false,
+                               "description": "Descripting",
+                               "creator":"user1@linagora.com",
+                               "id": "RESOURCE_ID_1",
+                               "icon": "laptop",
+                               "domain": "linagora.com",
+                               "administrators": [
+                                   {
+                                       "email": "user1@linagora.com"
+                                   },
+                                   {
+                                       "email": "user2@linagora.com"
+                                   }
+                               ]
+                           }]
+                           """);
+    }
+
+    @Test
+    void postShouldRejectDeletedField() {
+        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
+        OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
+        OpenPaaSUser user2 = userDAO.add(Username.of("user2@linagora.com")).block();
+
+        given()
+            .body("""
+                {
+                               "name": "Resource name",
+                               "description": "Descripting",
+                               "deleted": false,
+                               "creator":"user1@linagora.com",
+                               "icon": "laptop",
+                               "domain": "linagora.com",
+                               "administrators": [
+                                   {
+                                       "email": "user1@linagora.com"
+                                   },
+                                   {
+                                       "email": "user2@linagora.com"
+                                   }
+                               ]
+                           }
+                """)
+            .post()
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
+    void postShouldRejectIdField() {
+        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
+        OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
+        OpenPaaSUser user2 = userDAO.add(Username.of("user2@linagora.com")).block();
+
+        given()
+            .body("""
+                {
+                               "name": "Resource name",
+                               "description": "Descripting",
+                               "id": "abc",
+                               "creator":"user1@linagora.com",
+                               "icon": "laptop",
+                               "domain": "linagora.com",
+                               "administrators": [
+                                   {
+                                       "email": "user1@linagora.com"
+                                   },
+                                   {
+                                       "email": "user2@linagora.com"
+                                   }
+                               ]
+                           }
+                """)
+            .post()
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
+    void postShouldRejectUnknownDomain() {
+        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
+        OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
+        OpenPaaSUser user2 = userDAO.add(Username.of("user2@linagora.com")).block();
+
+        given()
+            .body("""
+                {
+                               "name": "Resource name",
+                               "description": "Descripting",
+                               "id": "abc",
+                               "creator":"user1@linagora.com",
+                               "icon": "laptop",
+                               "domain": "notfound.com",
+                               "administrators": [
+                                   {
+                                       "email": "user1@linagora.com"
+                                   },
+                                   {
+                                       "email": "user2@linagora.com"
+                                   }
+                               ]
+                           }
+                """)
+            .post()
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
+    void postShouldRejectUnknownCreator() {
+        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
+        OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
+        OpenPaaSUser user2 = userDAO.add(Username.of("user2@linagora.com")).block();
+
+        given()
+            .body("""
+                {
+                               "name": "Resource name",
+                               "description": "Descripting",
+                               "id": "abc",
+                               "creator":"notfound@linagora.com",
+                               "icon": "laptop",
+                               "domain": "notfound.com",
+                               "administrators": [
+                                   {
+                                       "email": "user1@linagora.com"
+                                   },
+                                   {
+                                       "email": "user2@linagora.com"
+                                   }
+                               ]
+                           }
+                """)
+            .post()
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
+    void postShouldRejectUnknownAdmin() {
+        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
+        OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
+        OpenPaaSUser user2 = userDAO.add(Username.of("user2@linagora.com")).block();
+
+        given()
+            .body("""
+                {
+                               "name": "Resource name",
+                               "description": "Descripting",
+                               "id": "abc",
+                               "creator":"notfound@linagora.com",
+                               "icon": "laptop",
+                               "domain": "notfound.com",
+                               "administrators": [
+                                   {
+                                       "email": "notfound@linagora.com"
+                                   },
+                                   {
+                                       "email": "user2@linagora.com"
+                                   }
+                               ]
+                           }
+                """)
+            .post()
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
+    void postShouldAcceptNoAdmins() {
+        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
+        OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
+        OpenPaaSUser user2 = userDAO.add(Username.of("user2@linagora.com")).block();
+
+        given()
+            .body("""
+                {
+                               "name": "Resource name",
+                               "description": "Descripting",
+                               "id": "abc",
+                               "creator":"notfound@linagora.com",
+                               "icon": "laptop",
+                               "domain": "notfound.com",
+                               "administrators": []
+                           }
+                """)
+            .post()
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
     void deleteResourceShouldUpdateDeletedField() {
         OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
         OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
