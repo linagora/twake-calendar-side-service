@@ -18,19 +18,23 @@
 
 package com.linagora.calendar.amqp;
 
+import java.net.URL;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 
+import jakarta.inject.Inject;
 import jakarta.inject.Named;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
+import org.apache.james.util.ReactorUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,7 +52,10 @@ import com.linagora.calendar.smtp.template.content.model.PersonModel;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.ResourceDAO;
 import com.linagora.calendar.storage.SimpleSessionProvider;
+import com.linagora.calendar.storage.configuration.resolver.ConfigurationResolver;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
+import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.LanguageSettingReader;
+import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.TimeZoneSettingReader;
 import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.exception.DomainNotFoundException;
@@ -88,14 +95,30 @@ public class EventResourceHandler {
     private final MailAddress senderAddress;
     private final String resourceReplyURL;
 
+    @Inject
+    public EventResourceHandler(ResourceDAO resourceDAO,
+                                MailSender.Factory mailSenderFactory,
+                                SimpleSessionProvider sessionProvider,
+                                ConfigurationResolver configurationResolver,
+                                MessageGenerator.Factory messageGeneratorFactory,
+                                OpenPaaSUserDAO userDAO,
+                                EventEmailFilter eventEmailFilter,
+                                MailTemplateConfiguration mailTemplateConfiguration,
+                                @Named("spaCalendarUrl") URL calendarBaseUrl) {
+        this(resourceDAO, mailSenderFactory, sessionProvider, messageGeneratorFactory, userDAO,
+            SettingsBasedResolver.of(configurationResolver, Set.of(LanguageSettingReader.INSTANCE, TimeZoneSettingReader.INSTANCE)),
+            eventEmailFilter, mailTemplateConfiguration, calendarBaseUrl);
+    }
+
     public EventResourceHandler(ResourceDAO resourceDAO,
                                 MailSender.Factory mailSenderFactory,
                                 SimpleSessionProvider sessionProvider,
                                 MessageGenerator.Factory messageGeneratorFactory,
                                 OpenPaaSUserDAO userDAO,
-                                SettingsBasedResolver settingsBasedResolver, EventEmailFilter eventEmailFilter,
+                                SettingsBasedResolver settingsBasedResolver,
+                                EventEmailFilter eventEmailFilter,
                                 MailTemplateConfiguration mailTemplateConfiguration,
-                                @Named("spaCalendarUrl") String spaCalendarUrl) {
+                                URL calendarBaseUrl) {
         this.resourceDAO = resourceDAO;
         this.mailSenderFactory = mailSenderFactory;
         this.sessionProvider = sessionProvider;
@@ -106,15 +129,16 @@ public class EventResourceHandler {
         this.maybeSender = mailTemplateConfiguration.sender();
         this.senderAddress = maybeSender.asOptional()
             .orElseThrow(() -> new IllegalArgumentException("Sender address must not be empty"));
-        this.resourceReplyURL = spaCalendarUrl + RESOURCE_REPLY_URI;
+        this.resourceReplyURL = calendarBaseUrl.toString() + RESOURCE_REPLY_URI;
     }
 
     public Mono<Void> handleCreateEvent(CalendarResourceMessageDTO message) {
         LOGGER.debug("Handle create event with resource message containing resourceId {} and resourceEventId {} and eventPath {}",
             message.resourceId(), message.eventId(), message.eventPath());
         return resourceDAO.findById(new ResourceId(message.resourceId()))
+            .filter(resource -> !resource.deleted())
             .flatMap(resource -> Flux.fromIterable(resource.administrators())
-                .flatMap(resourceAdministrator -> userDAO.retrieve(resourceAdministrator.refId()))
+                .flatMap(resourceAdministrator -> userDAO.retrieve(resourceAdministrator.refId()), ReactorUtils.DEFAULT_CONCURRENCY)
                 .filter(Throwing.predicate(openPaaSUser -> eventEmailFilter.shouldProcess(openPaaSUser.username().asMailAddress())))
                 .flatMap(openPaaSUser -> sendMail(message, resource.name(), openPaaSUser.username()))
                 .then());

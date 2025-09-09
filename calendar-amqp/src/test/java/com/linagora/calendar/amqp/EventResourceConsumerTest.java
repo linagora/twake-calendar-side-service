@@ -29,6 +29,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
+import java.net.MalformedURLException;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -184,7 +186,7 @@ public class EventResourceConsumerTest {
         Mockito.reset(eventEmailFilter);
     }
 
-    private void setupEventResourceConsumer() {
+    private void setupEventResourceConsumer() throws MalformedURLException {
         MailSenderConfiguration mailSenderConfiguration = new MailSenderConfiguration(
             "localhost",
             Port.of(mockSmtpExtension.getMockSmtp().getSmtpPort()),
@@ -220,7 +222,7 @@ public class EventResourceConsumerTest {
             settingsResolver,
             eventEmailFilter,
             mailTemplateConfig,
-            "https://calendar.linagora.local");
+            URI.create("https://calendar.linagora.local").toURL());
 
         EventResourceConsumer consumer = new EventResourceConsumer(channelPool, QueueArguments.Builder::new, eventResourceHandler);
         consumer.init();
@@ -310,6 +312,37 @@ public class EventResourceConsumerTest {
             "icon.png",
             "Projector");
         ResourceId resourceId = resourceDAO.insert(request).block();
+
+        String eventUid = UUID.randomUUID().toString();
+        String calendarData = generateCalendarData(
+            eventUid,
+            organizer.username().asString(),
+            attendee.username().asString(),
+            "Sprint planning #01",
+            "Twake Meeting Room",
+            "This is a meeting to discuss the sprint planning for the next week.",
+            "30250411T100000",
+            "30250411T110000",
+            resourceId.value());
+        davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
+
+        Thread.sleep(10000); // Wait a bit to ensure no email is sent
+
+        awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(0));
+    }
+
+    @Test
+    void shouldNotSendResourceRequestEmailWhenResourceHasBeenDeleted(DockerSabreDavSetup dockerSabreDavSetup) throws InterruptedException {
+        OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
+        ResourceInsertRequest request = new ResourceInsertRequest(
+            List.of(new ResourceAdministrator(resourceAdmin.id(), "user")),
+            resourceAdmin.id(),
+            "Test resource description",
+            domain.id(),
+            "icon.png",
+            "Projector");
+        ResourceId resourceId = resourceDAO.insert(request).block();
+        resourceDAO.softDelete(resourceId).block();
 
         String eventUid = UUID.randomUUID().toString();
         String calendarData = generateCalendarData(
