@@ -27,6 +27,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 import java.util.regex.Pattern;
 
 import jakarta.inject.Inject;
@@ -223,7 +224,8 @@ public class MongoDBResourceDAO implements ResourceDAO {
     private Timestamps fromTimestampDocument(Document doc) {
         return new Timestamps(
             doc.getDate(CREATION_FIELD).toInstant(),
-            doc.getDate(UPDATED_FIELD).toInstant()
+            Optional.ofNullable(doc.getDate(UPDATED_FIELD)).map(Date::toInstant)
+                .orElse(doc.getDate(CREATION_FIELD).toInstant())
         );
     }
 }
