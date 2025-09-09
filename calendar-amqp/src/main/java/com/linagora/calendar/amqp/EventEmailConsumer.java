@@ -167,7 +167,7 @@ public class EventEmailConsumer implements Closeable, Startable {
             }
             case Method.VALUE_REPLY -> {
                 LOGGER.info("Received calendar event message with method REPLY and eventPath {}", calendarEventMessage.eventPath());
-                yield eventMailHandler.handReplyEvent(CalendarEventReplyNotificationEmail.from(calendarEventMessage));
+                yield eventMailHandler.handleReplyEvent(CalendarEventReplyNotificationEmail.from(calendarEventMessage));
             }
             case Method.VALUE_CANCEL -> {
                 LOGGER.info("Received calendar event message with method CANCEL and eventPath {}", calendarEventMessage.eventPath());
@@ -176,7 +176,7 @@ public class EventEmailConsumer implements Closeable, Startable {
             }
             case Method.VALUE_COUNTER -> {
                 LOGGER.info("Received calendar event message with method COUNTER and eventPath {}", calendarEventMessage.eventPath());
-                yield eventMailHandler.handCounterEvent(CalendarEventCounterNotificationEmail.from(calendarEventMessage));
+                yield eventMailHandler.handleCounterEvent(CalendarEventCounterNotificationEmail.from(calendarEventMessage));
             }
             default -> throw new IllegalArgumentException("Unknown method: " + calendarEventMessage.method());
         };

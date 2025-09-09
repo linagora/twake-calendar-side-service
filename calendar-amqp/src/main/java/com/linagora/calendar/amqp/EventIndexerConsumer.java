@@ -46,9 +46,11 @@ import org.slf4j.LoggerFactory;
 import com.google.inject.name.Named;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.ResourceDAO;
 import com.linagora.calendar.storage.eventsearch.CalendarEvents;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
 import com.linagora.calendar.storage.exception.CalendarSearchIndexingException;
+import com.linagora.calendar.storage.model.ResourceId;
 import com.rabbitmq.client.BuiltinExchangeType;
 
 import reactor.core.Disposable;
@@ -96,6 +98,7 @@ public class EventIndexerConsumer implements Closeable, Startable {
     private final Consumer<Queue> declareExchangeAndQueue;
     private final CalendarSearchService calendarSearchService;
     private final OpenPaaSUserDAO openPaaSUserDAO;
+    private final ResourceDAO resourceDAO;
     private final Map<Queue, Disposable> consumeDisposableMap;
 
     @Inject
@@ -103,10 +106,11 @@ public class EventIndexerConsumer implements Closeable, Startable {
     public EventIndexerConsumer(ReactorRabbitMQChannelPool channelPool,
                                 CalendarSearchService calendarSearchService,
                                 OpenPaaSUserDAO openPaaSUserDAO,
-                                @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier) {
+                                @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier, ResourceDAO resourceDAO) {
         this.receiverProvider = channelPool::createReceiver;
         this.calendarSearchService = calendarSearchService;
         this.openPaaSUserDAO = openPaaSUserDAO;
+        this.resourceDAO = resourceDAO;
 
         Sender sender = channelPool.getSender();
         this.declareExchangeAndQueue = eventQueue -> Flux.concat(
@@ -264,16 +268,24 @@ public class EventIndexerConsumer implements Closeable, Startable {
             });
     }
 
-    private Mono<AccountId> getAccountId(OpenPaaSId openpaasUserId) {
-        return openPaaSUserDAO.retrieve(openpaasUserId)
-            .map(openPaaSUser -> AccountId.fromUsername(openPaaSUser.username()))
+    private Mono<AccountId> getAccountId(OpenPaaSId openPaaSId) {
+        return openPaaSUserDAO.retrieve(openPaaSId)
+            .map(user -> AccountId.fromUsername(user.username()))
+            .switchIfEmpty(Mono.defer(() -> handleMissingUser(openPaaSId)));
+    }
+
+    private Mono<AccountId> handleMissingUser(OpenPaaSId openPaaSId) {
+        if (IGNORE_EVENT_IF_USER_NOT_FOUND) {
+            LOGGER.warn("Ignoring calendar event for calendar id '{}', as the user was not found", openPaaSId.value());
+            return Mono.empty();
+        }
+
+        return Mono.defer(() -> resourceDAO.findById(ResourceId.from(openPaaSId)))
             .switchIfEmpty(Mono.defer(() -> {
-                if (IGNORE_EVENT_IF_USER_NOT_FOUND) {
-                    LOGGER.warn("Ignoring calendar event for user with id '{}', as the user was not found", openpaasUserId.value());
-                    return Mono.empty();
-                } else {
-                    return Mono.error(new CalendarEventConsumerException("Unable to find user with id '%s'".formatted(openpaasUserId.value())));
-                }
-            }));
+                String msg = "Unable to find account with calendar id '%s'".formatted(openPaaSId.value());
+                LOGGER.error(msg);
+                return Mono.error(new CalendarEventConsumerException(msg));
+            }))
+            .then(Mono.empty());
     }
 }

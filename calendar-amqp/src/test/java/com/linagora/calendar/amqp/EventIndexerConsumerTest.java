@@ -24,6 +24,7 @@ import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
@@ -69,6 +70,7 @@ import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.ResourceDAO;
 import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
 import com.linagora.calendar.storage.eventsearch.EventSearchQuery;
@@ -76,6 +78,7 @@ import com.linagora.calendar.storage.eventsearch.EventUid;
 import com.linagora.calendar.storage.eventsearch.MemoryCalendarSearchService;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
+import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
 import reactor.core.publisher.Flux;
@@ -143,9 +146,10 @@ public class EventIndexerConsumerTest {
         MongoDatabase mongoDB = dockerSabreDavSetup.getMongoDB();
         MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
         OpenPaaSUserDAO openPaaSUserDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
+        ResourceDAO resourceDAO = new MongoDBResourceDAO(mongoDB, Clock.systemUTC());
 
         EventIndexerConsumer calendarEventConsumer = new EventIndexerConsumer(channelPool, calendarSearchService, openPaaSUserDAO,
-            QueueArguments.Builder::new);
+            QueueArguments.Builder::new, resourceDAO);
         calendarEventConsumer.init();
 
         sender = channelPool.getSender();

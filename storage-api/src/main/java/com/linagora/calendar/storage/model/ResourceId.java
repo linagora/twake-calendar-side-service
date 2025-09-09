@@ -22,6 +22,10 @@ import com.linagora.calendar.storage.OpenPaaSId;
 
 public record ResourceId(String value) {
 
+    public static ResourceId from(OpenPaaSId openPaaSId) {
+        return new ResourceId(openPaaSId.value());
+    }
+
     public OpenPaaSId asOpenPaaSId() {
         return new OpenPaaSId(value);
     }
