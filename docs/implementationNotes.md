@@ -2,7 +2,13 @@
 
 ## Alarm scheduling
 
-Alarms are being schedules when receiving corresponding RabbitMQ events sent by esn-sabre on the `` exchange.
+Alarms are being schedules when receiving corresponding RabbitMQ events sent by **esn-sabre** on the following exchanges:
+
+- `calendar:event:alarm:created`
+- `calendar:event:alarm:updated`
+- `calendar:event:alarm:deleted`
+- `calendar:event:alarm:cancel`
+- `calendar:event:alarm:request`
 
 Upcoming alarms are stored in the `calendar:event:alarm:created` collection.
 
