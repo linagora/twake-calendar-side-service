@@ -35,11 +35,13 @@ import static org.mockito.Mockito.when;
 import java.net.URI;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -48,6 +50,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+import javax.net.ssl.SSLException;
+
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
 import org.apache.james.backends.rabbitmq.RabbitMQConnectionFactory;
@@ -55,6 +59,7 @@ import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.MaybeSender;
+import org.apache.james.core.Username;
 import org.apache.james.mailbox.store.RandomMailboxSessionIdGenerator;
 import org.apache.james.metrics.api.NoopGaugeRegistry;
 import org.apache.james.metrics.tests.RecordingMetricFactory;
@@ -78,8 +83,11 @@ import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.api.EventParticipationActionLinkFactory;
 import com.linagora.calendar.api.Participation;
 import com.linagora.calendar.api.ParticipationTokenSigner;
+import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.CalDavEventRepository;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
+import com.linagora.calendar.dav.Fixture;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.smtp.MailSender;
 import com.linagora.calendar.smtp.MailSenderConfiguration;
@@ -87,12 +95,17 @@ import com.linagora.calendar.smtp.MockSmtpServerExtension;
 import com.linagora.calendar.smtp.template.MailTemplateConfiguration;
 import com.linagora.calendar.smtp.template.MessageGenerator;
 import com.linagora.calendar.smtp.template.content.model.EventInCalendarLinkFactory;
+import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.ResourceInsertRequest;
 import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
+import com.linagora.calendar.storage.model.ResourceAdministrator;
+import com.linagora.calendar.storage.model.ResourceId;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
+import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
 import io.restassured.builder.RequestSpecBuilder;
@@ -154,6 +167,8 @@ public class EventReplyEmailConsumerTest {
         connectionPool.close();
     }
 
+    private MongoDBOpenPaaSDomainDAO domainDAO;
+    private MongoDBResourceDAO resourceDAO;
     private OpenPaaSUser organizer;
     private OpenPaaSUser attendee;
     private Sender sender;
@@ -202,8 +217,9 @@ public class EventReplyEmailConsumerTest {
             MaybeSender.getMailSender("no-reply@openpaas.org"));
 
         MongoDatabase mongoDB = sabreDavExtension.dockerSabreDavSetup().getMongoDB();
-        MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
+        domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
         OpenPaaSUserDAO openPaaSUserDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
+        resourceDAO = new MongoDBResourceDAO(mongoDB, Clock.systemUTC());
 
         MessageGenerator.Factory messageFactory = MessageGenerator.factory(mailTemplateConfig, fileSystem, openPaaSUserDAO);
         EventInCalendarLinkFactory linkFactory = new EventInCalendarLinkFactory(URI.create("http://localhost:3000/").toURL());
@@ -221,7 +237,7 @@ public class EventReplyEmailConsumerTest {
             messageFactory,
             linkFactory,
             new SimpleSessionProvider(new RandomMailboxSessionIdGenerator()),
-            usersRepository, openPaaSUserDAO,
+            usersRepository, resourceDAO, domainDAO,
             settingsResolver,
             actionLinkFactory);
 
@@ -468,6 +484,78 @@ public class EventReplyEmailConsumerTest {
 
         Thread.sleep(1000); // Wait for the message to be processed
         assertThat(smtpMailsResponseSupplier.get().getList("")).isEmpty();
+    }
+
+    @Test
+    void shouldNotSendReplyWhenUpdatePartStatOfResource() throws Exception {
+        ResourceAdministrator administrator = new ResourceAdministrator(organizer.id(), "user");
+        OpenPaaSDomain openPaaSDomain = domainDAO.retrieve(organizer.username().getDomainPart().get()).block();
+        ResourceInsertRequest insertRequest = new ResourceInsertRequest(
+            List.of(administrator),
+            administrator.refId(),
+            "This is a projector made in China",
+            openPaaSDomain.id(),
+            "projector",
+            "Projector 1");
+
+        ResourceId resourceId = resourceDAO.insert(insertRequest).block();
+        String resourceEmail = Username.fromLocalPartWithDomain(resourceId.value(), openPaaSDomain.domain()).asString();
+        String eventUid = UUID.randomUUID().toString();
+        DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss");
+        String startDateTime = LocalDateTime.now().plusDays(3).format(dateTimeFormatter);
+        String endDateTime = LocalDateTime.now().plusDays(3).plusHours(1).format(dateTimeFormatter);
+
+        String icalData = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
+            CALSCALE:GREGORIAN
+            BEGIN:VTIMEZONE
+            TZID:Asia/Ho_Chi_Minh
+            BEGIN:STANDARD
+            TZOFFSETFROM:+0700
+            TZOFFSETTO:+0700
+            TZNAME:ICT
+            DTSTART:19700101T000000
+            END:STANDARD
+            END:VTIMEZONE
+            BEGIN:VEVENT
+            UID:{eventUid}
+            DTSTAMP:{dtStamp}Z
+            SEQUENCE:1
+            DTSTART;TZID=Asia/Ho_Chi_Minh:{startDateTime}
+            DTEND;TZID=Asia/Ho_Chi_Minh:{endDateTime}
+            SUMMARY:Twake Calendar - Sprint planning #04
+            ORGANIZER;CN=Van Tung TRAN:mailto:{organizerEmail}
+            ATTENDEE;PARTSTAT=TENTATIVE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=RESOURCE;
+             CN=Resource;SCHEDULE-STATUS=5.1:mailto:{resourceEmail}
+            END:VEVENT
+            END:VCALENDAR
+            """.replace("{eventUid}", eventUid)
+            .replace("{organizerEmail}", organizer.username().asString())
+            .replace("{resourceEmail}", resourceEmail)
+            .replace("{startDateTime}", startDateTime)
+            .replace("{endDateTime}", endDateTime)
+            .replace("{dtStamp}", LocalDateTime.now().format(dateTimeFormatter))
+            .replace("{partStat}", PartStat.NEEDS_ACTION.getValue());
+
+        davTestHelper.upsertCalendar(organizer, icalData, eventUid);
+        Fixture.awaitAtMost.untilAsserted(() ->
+            assertThat(davTestHelper.findFirstEventId(resourceId, openPaaSDomain.id()))
+                .withFailMessage("Event not created for resource: " + resourceId.value())
+                .isPresent());
+
+        String eventPathId = davTestHelper.findFirstEventId(resourceId, openPaaSDomain.id()).get();
+        calDavEventRepository().updatePartStat(openPaaSDomain, resourceId, eventPathId, PartStat.ACCEPTED).block();
+
+
+        Thread.sleep(2000); // Wait for the message to be processed
+        assertThat(smtpMailsResponseSupplier.get().getList("")).isEmpty();
+    }
+
+    private CalDavEventRepository calDavEventRepository() throws SSLException {
+        CalDavClient calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
+        return new CalDavEventRepository(calDavClient);
     }
 
     private JsonPath simulateAcceptedReplyAndWaitForEmail() {

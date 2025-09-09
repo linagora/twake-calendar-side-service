@@ -29,6 +29,7 @@ import java.util.Set;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
+import org.apache.james.core.Domain;
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
@@ -56,8 +57,9 @@ import com.linagora.calendar.smtp.template.MimeAttachment;
 import com.linagora.calendar.smtp.template.TemplateType;
 import com.linagora.calendar.smtp.template.content.model.EventInCalendarLinkFactory;
 import com.linagora.calendar.smtp.template.content.model.ReplyContentModelBuilder;
+import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
-import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.ResourceDAO;
 import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.resolver.ConfigurationResolver;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
@@ -66,6 +68,7 @@ import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolve
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.TimeZoneSettingReader;
 import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.exception.DomainNotFoundException;
+import com.linagora.calendar.storage.model.ResourceId;
 
 import net.fortuna.ical4j.model.property.Method;
 import net.fortuna.ical4j.model.property.Uid;
@@ -92,7 +95,8 @@ public class EventMailHandler {
     private final MessageGenerator.Factory messageGeneratorFactory;
     private final EventInCalendarLinkFactory eventInCalendarLinkFactory;
     private final UsersRepository usersRepository;
-    private final OpenPaaSUserDAO userDAO;
+    private final ResourceDAO resourceDAO;
+    private final OpenPaaSDomainDAO openPaaSDomainDAO;
     private final SettingsBasedResolver settingsBasedResolver;
     private final EventParticipationActionLinkFactory participationActionLinkFactory;
 
@@ -103,9 +107,11 @@ public class EventMailHandler {
                             MessageGenerator.Factory messageGeneratorFactory,
                             EventInCalendarLinkFactory eventInCalendarLinkFactory,
                             SimpleSessionProvider sessionProvider,
-                            UsersRepository usersRepository, OpenPaaSUserDAO userDAO,
+                            UsersRepository usersRepository, ResourceDAO resourceDAO,
+                            OpenPaaSDomainDAO openPaaSDomainDAO,
                             EventParticipationActionLinkFactory participationActionLinkFactory) {
-        this(mailSenderFactory, messageGeneratorFactory, eventInCalendarLinkFactory, sessionProvider, usersRepository, userDAO,
+        this(mailSenderFactory, messageGeneratorFactory, eventInCalendarLinkFactory, sessionProvider, usersRepository, resourceDAO,
+            openPaaSDomainDAO,
             SettingsBasedResolver.of(configurationResolver,
                 Set.of(LanguageSettingReader.INSTANCE, TimeZoneSettingReader.INSTANCE)), participationActionLinkFactory);
     }
@@ -114,7 +120,8 @@ public class EventMailHandler {
                             MessageGenerator.Factory messageGeneratorFactory,
                             EventInCalendarLinkFactory eventInCalendarLinkFactory,
                             SimpleSessionProvider sessionProvider,
-                            UsersRepository usersRepository, OpenPaaSUserDAO userDAO,
+                            UsersRepository usersRepository, ResourceDAO resourceDAO,
+                            OpenPaaSDomainDAO openPaaSDomainDAO,
                             SettingsBasedResolver settingsBasedResolver,
                             EventParticipationActionLinkFactory participationActionLinkFactory) {
         this.mailSenderFactory = mailSenderFactory;
@@ -122,7 +129,8 @@ public class EventMailHandler {
         this.messageGeneratorFactory = messageGeneratorFactory;
         this.eventInCalendarLinkFactory = eventInCalendarLinkFactory;
         this.usersRepository = usersRepository;
-        this.userDAO = userDAO;
+        this.resourceDAO = resourceDAO;
+        this.openPaaSDomainDAO = openPaaSDomainDAO;
         this.settingsBasedResolver = settingsBasedResolver;
         this.participationActionLinkFactory = participationActionLinkFactory;
     }
@@ -335,13 +343,30 @@ public class EventMailHandler {
             .flatMap(isInternalUser -> handleEvent(new CancelEventMessageGenerator(event, recipientUser, isInternalUser), recipientUser, event.base().senderEmail()));
     }
 
-    public Mono<Void> handReplyEvent(CalendarEventReplyNotificationEmail event) {
-        MailAddress recipientEmail = event.base().recipientEmail();
-        Username recipientUser = Username.fromMailAddress(recipientEmail);
-        return handleEvent(new ReplyEventMessageGenerator(event, recipientUser), recipientUser, event.base().senderEmail());
+    public Mono<Void> handleReplyEvent(CalendarEventReplyNotificationEmail event) {
+        MailAddress senderEmail = event.base().senderEmail();
+        return isResourceEmail(senderEmail)
+            .flatMap(isResource -> {
+                if (isResource) {
+                    LOGGER.debug("Ignoring reply event from resource email: {}", senderEmail.asString());
+                    return Mono.empty();
+                }
+                MailAddress recipientEmail = event.base().recipientEmail();
+                Username recipientUser = Username.fromMailAddress(recipientEmail);
+                return handleEvent(new ReplyEventMessageGenerator(event, recipientUser), recipientUser, senderEmail);
+            });
     }
 
-    public Mono<Void> handCounterEvent(CalendarEventCounterNotificationEmail event) {
+    private Mono<Boolean> isResourceEmail(MailAddress senderEmail) {
+        Domain domain = senderEmail.getDomain();
+        String localPart = senderEmail.getLocalPart();
+
+        return openPaaSDomainDAO.retrieve(domain)
+            .flatMap(openPaaSDomain -> Mono.defer(() -> resourceDAO.exist(new ResourceId(localPart), openPaaSDomain.id())))
+            .defaultIfEmpty(false);
+    }
+
+    public Mono<Void> handleCounterEvent(CalendarEventCounterNotificationEmail event) {
         MailAddress recipientEmail = event.base().recipientEmail();
         Username recipientUser = Username.fromMailAddress(recipientEmail);
         return handleEvent(new CounterEventMessageGenerator(event, recipientUser), recipientUser, event.base().senderEmail());

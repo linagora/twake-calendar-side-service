@@ -27,6 +27,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 import java.util.regex.Pattern;
 
 import jakarta.inject.Inject;
@@ -98,7 +99,8 @@ public class MongoDBResourceDAO implements ResourceDAO {
 
     @Override
     public Mono<Resource> findById(ResourceId id) {
-        return Mono.from(collection.find(eq(ID_FIELD, new ObjectId(id.value()))).first())
+        return Mono.justOrEmpty(asObjectId(id))
+            .flatMap(ressourceObjectId -> Mono.from(collection.find(eq(ID_FIELD, ressourceObjectId)).first()))
             .map(this::fromDocument);
     }
 
@@ -148,13 +150,22 @@ public class MongoDBResourceDAO implements ResourceDAO {
 
     @Override
     public Mono<Boolean> exist(ResourceId resourceId, OpenPaaSId domainId) {
-        return Mono.from(collection.find(and(
-                eq(ID_FIELD, new ObjectId(resourceId.value())),
+        return Mono.justOrEmpty(asObjectId(resourceId))
+            .flatMap(resourceObjectId -> Mono.from(collection.find(and(
+                eq(ID_FIELD, resourceObjectId),
                 eq(DOMAIN_FIELD, new ObjectId(domainId.value()))
-            )).first())
+            )).first()))
             .filter(doc -> !doc.getBoolean(DELETED_FIELD, !DELETED))
             .map(doc -> true)
             .defaultIfEmpty(false);
+    }
+
+    private Optional<ObjectId> asObjectId(ResourceId resourceId) {
+        try {
+            return Optional.of(new ObjectId(resourceId.value()));
+        } catch (IllegalArgumentException e) {
+            return Optional.empty();
+        }
     }
 
     private Document toDocument(ResourceInsertRequest request) {
