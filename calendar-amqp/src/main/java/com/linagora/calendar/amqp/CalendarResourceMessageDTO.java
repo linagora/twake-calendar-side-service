@@ -32,8 +32,18 @@ import net.fortuna.ical4j.model.Calendar;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record CalendarResourceMessageDTO(@JsonProperty("resourceId") String resourceId,
+                                         @JsonProperty("eventId") @JsonDeserialize(using = EventIdDeserializer.class) String eventId,
                                          @JsonProperty("eventPath") String eventPath,
                                          @JsonProperty("ics") @JsonDeserialize(using = IcsDeserializer.class) Calendar ics) {
+
+    public static class EventIdDeserializer extends JsonDeserializer<String> {
+        @Override
+        public String deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+            String eventId = p.getValueAsString();
+            return eventId.replaceAll("\\.ics$", "");
+        }
+    }
+
 
     public static class IcsDeserializer extends JsonDeserializer<Calendar> {
         @Override
