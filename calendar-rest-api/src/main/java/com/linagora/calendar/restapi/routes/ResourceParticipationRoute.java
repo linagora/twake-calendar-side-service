@@ -20,12 +20,16 @@ package com.linagora.calendar.restapi.routes;
 
 import static com.linagora.calendar.restapi.RestApiConstants.JSON_HEADER;
 
+import java.net.URI;
+import java.net.URL;
 import java.util.List;
 import java.util.Optional;
 
 import jakarta.inject.Inject;
+import jakarta.inject.Named;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.http.Authenticator;
 import org.apache.james.mailbox.MailboxSession;
@@ -45,6 +49,7 @@ import com.linagora.calendar.storage.model.Resource;
 import com.linagora.calendar.storage.model.ResourceAdministrator;
 import com.linagora.calendar.storage.model.ResourceId;
 
+import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.QueryStringDecoder;
@@ -67,16 +72,19 @@ public class ResourceParticipationRoute extends CalendarRoute {
     private final ResourceDAO resourceDAO;
     private final OpenPaaSUserDAO openPaaSUserDAO;
     private final OpenPaaSDomainDAO openPaaSDomainDAO;
+    private final URI locationRedirectUri;
 
     @Inject
     public ResourceParticipationRoute(Authenticator authenticator, MetricFactory metricFactory,
                                       CalDavEventRepository calDavEventRepository, ResourceDAO resourceDAO,
-                                      OpenPaaSUserDAO openPaaSUserDAO, OpenPaaSDomainDAO openPaaSDomainDAO) {
+                                      OpenPaaSUserDAO openPaaSUserDAO, OpenPaaSDomainDAO openPaaSDomainDAO,
+                                      @Named("spaCalendarUrl") URL calendarBaseUrl) {
         super(authenticator, metricFactory);
         this.calDavEventRepository = calDavEventRepository;
         this.resourceDAO = resourceDAO;
         this.openPaaSUserDAO = openPaaSUserDAO;
         this.openPaaSDomainDAO = openPaaSDomainDAO;
+        this.locationRedirectUri = URI.create(Strings.CS.removeEnd(calendarBaseUrl.toString(), "/") + "/#/calendar");
     }
 
     @Override
@@ -161,7 +169,8 @@ public class ResourceParticipationRoute extends CalendarRoute {
     }
 
     private Mono<Void> sendRedirectResponse(HttpServerResponse response) {
-        return response.status(204)
+        return response.status(302)
+            .header(HttpHeaderNames.LOCATION, locationRedirectUri.toASCIIString())
             .send()
             .then();
     }

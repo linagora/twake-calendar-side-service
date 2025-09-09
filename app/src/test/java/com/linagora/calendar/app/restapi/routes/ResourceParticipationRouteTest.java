@@ -22,6 +22,7 @@ import static com.linagora.calendar.app.restapi.routes.ImportRouteTest.mailSende
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static io.restassured.RestAssured.given;
 import static io.restassured.config.EncoderConfig.encoderConfig;
+import static io.restassured.config.RedirectConfig.redirectConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
 import static io.restassured.http.ContentType.JSON;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -146,7 +147,7 @@ public class ResourceParticipationRouteTest {
 
     @ParameterizedTest
     @MethodSource("validPartStats")
-    void shouldReturn204WhenAdminUpdatesParticipationWithValidStatus(PartStat partStat) {
+    void shouldReturn302WhenAdminUpdatesParticipationWithValidStatus(PartStat partStat) {
         // Given
         ResourceId resourceId = resource.id();
         String eventUid = UUID.randomUUID().toString();
@@ -158,7 +159,8 @@ public class ResourceParticipationRouteTest {
             .when()
             .get(endpoint)
         .then()
-            .statusCode(204);
+            .statusCode(302)
+            .header("Location", equalTo("https://e-calendrier.avocat.fr/#/calendar"));
     }
 
     @Test
@@ -174,7 +176,7 @@ public class ResourceParticipationRouteTest {
             .when()
             .get(endpoint)
         .then()
-            .statusCode(204);
+            .statusCode(302);
 
         Fixture.awaitAtMost.untilAsserted(() -> {
             VEvent vEvent = getCalendarEvent(organizer, eventUid);
@@ -306,7 +308,7 @@ public class ResourceParticipationRouteTest {
     }
 
     @Test
-    void shouldReturn204WhenUpdatingSameParticipationMultipleTimes() {
+    void shouldReturn302WhenUpdatingSameParticipationMultipleTimes() {
         // Given: create a real calendar event for the real resource
         ResourceId resourceId = resource.id();
         String resourceEmail = Username.fromLocalPartWithDomain(resourceId.value(), TEST_DOMAIN).asString();
@@ -319,7 +321,7 @@ public class ResourceParticipationRouteTest {
             .when()
             .get(endpoint)
         .then()
-            .statusCode(204);
+            .statusCode(302);
 
         Fixture.awaitAtMost.untilAsserted(() -> {
             VEvent vEvent = getCalendarEvent(organizer, eventUid);
@@ -335,7 +337,7 @@ public class ResourceParticipationRouteTest {
                 .when()
                 .get(endpoint)
             .then()
-                .statusCode(204);
+                .statusCode(302);
         }
     }
 
@@ -354,7 +356,7 @@ public class ResourceParticipationRouteTest {
             .when()
             .get(acceptEndpoint)
         .then()
-            .statusCode(204);
+            .statusCode(302);
 
         Fixture.awaitAtMost.untilAsserted(() -> {
             VEvent vEvent = getCalendarEvent(organizer, eventUid);
@@ -370,7 +372,7 @@ public class ResourceParticipationRouteTest {
             .when()
             .get(declineEndpoint)
         .then()
-            .statusCode(204);
+            .statusCode(302);
 
         Fixture.awaitAtMost.untilAsserted(() -> {
             VEvent vEvent = getCalendarEvent(organizer, eventUid);
@@ -480,7 +482,8 @@ public class ResourceParticipationRouteTest {
             .setAuth(auth)
             .setAccept(JSON)
             .setContentType(JSON)
-            .setConfig(newConfig().encoderConfig(encoderConfig().defaultContentCharset(StandardCharsets.UTF_8)))
+            .setConfig(newConfig().encoderConfig(encoderConfig().defaultContentCharset(StandardCharsets.UTF_8))
+                .redirect(redirectConfig().followRedirects(false)))
             .build();
     }
 
