@@ -273,9 +273,7 @@ class ResourceRoutesTest {
         ResourceId resourceId = resourceDAO.insert(new ResourceInsertRequest(ImmutableList.of(admin1, admin2),
             user1.id(), "Descripting", domain.id(), "laptop", "Resource name")).block();
 
-        String string = given()
-            .queryParam("domain", "linagora.com")
-        .when()
+        String string = when()
             .get(resourceId.value())
          .then()
             .contentType(ContentType.JSON)
@@ -738,20 +736,16 @@ class ResourceRoutesTest {
 
     @Test
     void getResourceShouldReturnNotFoundWhenNotExist() {
-        given()
-            .queryParam("domain", "linagora.com")
-        .when()
+        when()
             .get("notfound")
-         .then()
+        .then()
             .contentType(ContentType.JSON)
             .statusCode(404);
     }
 
     @Test
     void deleteResourceShouldReturnNotFoundWhenNotExist() {
-        given()
-            .queryParam("domain", "linagora.com")
-        .when()
+        when()
             .delete("notfound")
          .then()
             .contentType(ContentType.JSON)

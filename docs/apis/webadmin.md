@@ -233,7 +233,7 @@ Will mark the resource as deleted.
 
 Status code: 404 if not found, 204 otherwise.
 
-### reating a resource
+### Creating a resource
 
 ```
 POST /resources
