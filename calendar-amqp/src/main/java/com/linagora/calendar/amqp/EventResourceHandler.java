@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 
 import jakarta.inject.Inject;
@@ -42,6 +43,7 @@ import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.smtp.Mail;
 import com.linagora.calendar.smtp.MailSender;
+import com.linagora.calendar.smtp.i18n.I18NTranslator;
 import com.linagora.calendar.smtp.template.Language;
 import com.linagora.calendar.smtp.template.MailTemplateConfiguration;
 import com.linagora.calendar.smtp.template.MessageGenerator;
@@ -80,7 +82,9 @@ public class EventResourceHandler {
             .map(VEvent.class::cast)
             .orElseThrow(() -> new IllegalStateException("No VEvent found in the calendar event"));
 
-    public static final TemplateType TEMPLATE_TYPE = new TemplateType("resource-request");
+    public static final TemplateType RESOURCE_REQUEST_TEMPLATE_TYPE = new TemplateType("resource-request");
+    public static final TemplateType RESOURCE_REPLY_TEMPLATE_TYPE = new TemplateType("resource-reply");
+    public static final boolean APPROVED = true;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(EventResourceHandler.class);
 
@@ -140,30 +144,60 @@ public class EventResourceHandler {
             .flatMap(resource -> Flux.fromIterable(resource.administrators())
                 .flatMap(resourceAdministrator -> userDAO.retrieve(resourceAdministrator.refId()), ReactorUtils.DEFAULT_CONCURRENCY)
                 .filter(Throwing.predicate(openPaaSUser -> eventEmailFilter.shouldProcess(openPaaSUser.username().asMailAddress())))
-                .flatMap(openPaaSUser -> sendMail(message, resource.name(), openPaaSUser.username()))
+                .flatMap(Throwing.function(openPaaSUser -> sendRequestMail(message, resource.name(), openPaaSUser.username().asMailAddress())))
                 .then());
     }
 
     public Mono<Void> handleAcceptEvent(CalendarResourceMessageDTO message) {
         LOGGER.debug("Handle accept event with resource message containing resourceId {} and eventPath {}", message.resourceId(), message.eventPath());
-        return Mono.empty();
+        return handleReplyEvent(message, APPROVED);
     }
 
     public Mono<Void> handleDeclineEvent(CalendarResourceMessageDTO message) {
         LOGGER.debug("Handle decline event with resource message containing resourceId {} and eventPath {}", message.resourceId(), message.eventPath());
-        return Mono.empty();
+        return handleReplyEvent(message, !APPROVED);
     }
 
-    private Mono<Void> sendMail(CalendarResourceMessageDTO calendarResourceMessageDTO, String resourceName, Username recipientUser) {
+    private Mono<Void> handleReplyEvent(CalendarResourceMessageDTO message, boolean approved) {
+        return resourceDAO.findById(new ResourceId(message.resourceId()))
+            .filter(resource -> !resource.deleted())
+            .flatMap(resource -> Mono.just(getOrganizerEmail(message))
+                .filter(eventEmailFilter::shouldProcess)
+                .flatMap(organizerEmail -> sendReplyMail(message, resource.name(), organizerEmail, approved)));
+    }
+
+    private MailAddress getOrganizerEmail(CalendarResourceMessageDTO calendarResourceMessageDTO) {
+        VEvent vEvent = GET_FIRST_VEVENT_FUNCTION.apply(calendarResourceMessageDTO.ics());
+        return EventParseUtils.getOrganizer(vEvent).email();
+    }
+
+    private Mono<Void> sendRequestMail(CalendarResourceMessageDTO calendarResourceMessageDTO, String resourceName, MailAddress recipient) {
+        return sendMail((SettingsBasedResolver.ResolvedSettings settings, I18NTranslator translator) ->
+                toPugModel(calendarResourceMessageDTO, resourceName, settings.locale(), settings.zoneId()),
+            recipient,
+            RESOURCE_REQUEST_TEMPLATE_TYPE);
+    }
+
+    private Mono<Void> sendReplyMail(CalendarResourceMessageDTO calendarResourceMessageDTO, String resourceName, MailAddress recipient, boolean approved) {
+        return sendMail((SettingsBasedResolver.ResolvedSettings settings, I18NTranslator translator) ->
+                toPugModel(calendarResourceMessageDTO, resourceName, settings.locale(), settings.zoneId(), approved, translator),
+            recipient,
+            RESOURCE_REPLY_TEMPLATE_TYPE);
+    }
+
+    private Mono<Void> sendMail(BiFunction<SettingsBasedResolver.ResolvedSettings, I18NTranslator ,Map<String, Object>> modelGenerator,
+                                MailAddress recipient,
+                                TemplateType templateType) {
+        Username recipientUser = Username.fromMailAddress(recipient);
         return getUserSettings(recipientUser)
-            .flatMap(resolvedSettings -> {
-                Locale locale = resolvedSettings.locale();
-                Map<String, Object> model = toPugModel(calendarResourceMessageDTO, resourceName, locale, resolvedSettings.zoneId());
-                return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(locale), TEMPLATE_TYPE))
-                    .flatMap(messageGenerator -> messageGenerator.generate(recipientUser, senderAddress, model, List.of()))
+            .flatMap(resolvedSettings ->
+                Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(resolvedSettings.locale()), templateType))
+                    .flatMap(messageGenerator -> messageGenerator.generate(recipientUser,
+                        senderAddress,
+                        modelGenerator.apply(resolvedSettings, messageGenerator.getI18nTranslator()),
+                        List.of()))
                     .flatMap(message -> mailSenderFactory.create()
-                        .flatMap(Throwing.function(mailSender -> mailSender.send(new Mail(maybeSender, List.of(recipientUser.asMailAddress()), message)))));
-            });
+                        .flatMap(Throwing.function(mailSender -> mailSender.send(new Mail(maybeSender, List.of(recipient), message))))));
     }
 
     private Mono<SettingsBasedResolver.ResolvedSettings> getUserSettings(Username user) {
@@ -196,6 +230,32 @@ public class EventResourceHandler {
 
         return ImmutableMap.of("content", contentBuilder.build(),
             "subject.resourceName", resourceName);
+    }
+
+    private Map<String, Object> toPugModel(CalendarResourceMessageDTO calendarResourceMessageDTO,
+                                           String resourceName,
+                                           Locale locale,
+                                           ZoneId zoneToDisplay,
+                                           boolean approved,
+                                           I18NTranslator translator) {
+        VEvent vEvent = GET_FIRST_VEVENT_FUNCTION.apply(calendarResourceMessageDTO.ics());
+
+        ImmutableMap.Builder<String, Object> contentBuilder = ImmutableMap.builder();
+        contentBuilder.put("event", toPugModel(vEvent, locale, zoneToDisplay))
+            .put("resourceName", resourceName);
+
+        ImmutableMap.Builder<String, Object> builder = ImmutableMap.builder();
+        if (approved) {
+            contentBuilder.put("approved", true);
+            builder.put("subject.resourceStatus", translator.get(PartStat.ACCEPTED.getValue().toLowerCase()));
+        } else {
+            contentBuilder.put("approved", false);
+            builder.put("subject.resourceStatus", translator.get(PartStat.DECLINED.getValue().toLowerCase()));
+        }
+
+        return builder.put("content", contentBuilder.build())
+            .put("subject.resourceName", resourceName)
+            .build();
     }
 
     private Map<String, Object> toPugModel(VEvent vEvent, Locale locale, ZoneId zoneToDisplay) {
