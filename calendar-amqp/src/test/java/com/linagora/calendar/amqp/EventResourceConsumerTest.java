@@ -72,6 +72,8 @@ import org.testcontainers.shaded.org.awaitility.Awaitility;
 import org.testcontainers.shaded.org.awaitility.core.ConditionFactory;
 
 import com.github.fge.lambdas.Throwing;
+import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.CalDavEventRepository;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
@@ -97,6 +99,7 @@ import com.mongodb.reactivestreams.client.MongoDatabase;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.path.json.JsonPath;
 import io.restassured.specification.RequestSpecification;
+import net.fortuna.ical4j.model.parameter.PartStat;
 import reactor.core.publisher.Mono;
 import reactor.rabbitmq.QueueSpecification;
 import reactor.rabbitmq.Sender;
@@ -126,6 +129,7 @@ public class EventResourceConsumerTest {
     private static DavTestHelper davTestHelper;
 
     private ResourceDAO resourceDAO;
+    private CalDavEventRepository calDavEventRepository;
 
     @BeforeAll
     static void beforeAll(DockerSabreDavSetup dockerSabreDavSetup) throws Exception {
@@ -172,6 +176,9 @@ public class EventResourceConsumerTest {
                     TIMEZONE_IDENTIFIER, ZoneId.of("Asia/Ho_Chi_Minh")))));
         setupEventResourceConsumer();
         clearSmtpMock();
+
+        CalDavClient calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
+        calDavEventRepository = new CalDavEventRepository(calDavClient);
     }
 
     @AfterEach
@@ -285,9 +292,10 @@ public class EventResourceConsumerTest {
                     Content-Type: text/html; charset=UTF-8
                     """);
 
-            String html = getHtml(smtpMailsResponse);
+            String html = getHtml(smtpMailsResponse.getString("[0].message"));
 
             assertThat(html).contains("Van Tung TRAN")
+                .contains("has requested to book the resource")
                 .contains("Projector")
                 .contains("Monday, 11 April 3025 10:00 - 11:00")
                 .contains("Asia/Ho_Chi_Minh")
@@ -357,13 +365,132 @@ public class EventResourceConsumerTest {
             resourceId.value());
         davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
 
-        Thread.sleep(10000); // Wait a bit to ensure no email is sent
+        Thread.sleep(5000); // Wait a bit to ensure no email is sent
 
         awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(0));
     }
 
-    private String getHtml(JsonPath smtpMailsResponse) {
-        String rawMessage = smtpMailsResponse.getString("[0].message");
+    @Test
+    void shouldSendResourceReplyEmailWhenResourceRequestIsAccepted(DockerSabreDavSetup dockerSabreDavSetup) {
+        OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
+        ResourceInsertRequest request = new ResourceInsertRequest(
+            List.of(new ResourceAdministrator(resourceAdmin.id(), "user")),
+            resourceAdmin.id(),
+            "Test resource description",
+            domain.id(),
+            "icon.png",
+            "Projector");
+        ResourceId resourceId = resourceDAO.insert(request).block();
+
+        String eventUid = UUID.randomUUID().toString();
+        String calendarData = generateCalendarData(
+            eventUid,
+            organizer.username().asString(),
+            attendee.username().asString(),
+            "Sprint planning #01",
+            "Twake Meeting Room",
+            "This is a meeting to discuss the sprint planning for the next week.",
+            "30250411T100000",
+            "30250411T110000",
+            resourceId.value());
+        davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
+
+        String resourceEventId = awaitAtMost.until(() -> davTestHelper.findFirstEventId(resourceId, domain.id()), Optional::isPresent).get();
+
+        awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        calDavEventRepository.updatePartStat(domain, resourceId, resourceEventId, PartStat.ACCEPTED).block();
+
+        awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(2));
+
+        JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
+
+        assertSoftly(Throwing.consumer(softly -> {
+            softly.assertThat(smtpMailsResponse.getString("[1].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[1].recipients[0].address")).isEqualTo(organizer.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[1].message"))
+                .contains("Subject: The reservation of resource Projector has been accepted")
+                .contains("Content-Type: multipart/mixed;")
+                .containsIgnoringNewLines("""
+                    Content-Transfer-Encoding: base64
+                    Content-Type: text/html; charset=UTF-8
+                    """);
+
+            String html = getHtml(smtpMailsResponse.getString("[1].message"));
+
+            assertThat(html).contains("The booking request has been accepted for the resource")
+                .contains("Projector")
+                .contains("Monday, 11 April 3025 10:00 - 11:00")
+                .contains("Asia/Ho_Chi_Minh")
+                .contains("Twake Meeting Room")
+                .contains(organizer.username().asString())
+                .contains(attendee.username().asString())
+                .contains("Projector")
+                .contains("This is a meeting to discuss the sprint planning for the next week.");
+        }));
+    }
+
+    @Test
+    void shouldSendResourceReplyEmailWhenResourceRequestIsDeclined(DockerSabreDavSetup dockerSabreDavSetup) {
+        OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
+        ResourceInsertRequest request = new ResourceInsertRequest(
+            List.of(new ResourceAdministrator(resourceAdmin.id(), "user")),
+            resourceAdmin.id(),
+            "Test resource description",
+            domain.id(),
+            "icon.png",
+            "Projector");
+        ResourceId resourceId = resourceDAO.insert(request).block();
+
+        String eventUid = UUID.randomUUID().toString();
+        String calendarData = generateCalendarData(
+            eventUid,
+            organizer.username().asString(),
+            attendee.username().asString(),
+            "Sprint planning #01",
+            "Twake Meeting Room",
+            "This is a meeting to discuss the sprint planning for the next week.",
+            "30250411T100000",
+            "30250411T110000",
+            resourceId.value());
+        davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
+
+        String resourceEventId = awaitAtMost.until(() -> davTestHelper.findFirstEventId(resourceId, domain.id()), Optional::isPresent).get();
+
+        awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        calDavEventRepository.updatePartStat(domain, resourceId, resourceEventId, PartStat.DECLINED).block();
+
+        awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(2));
+
+        JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
+
+        assertSoftly(Throwing.consumer(softly -> {
+            softly.assertThat(smtpMailsResponse.getString("[1].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[1].recipients[0].address")).isEqualTo(organizer.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[1].message"))
+                .contains("Subject: The reservation of resource Projector has been declined")
+                .contains("Content-Type: multipart/mixed;")
+                .containsIgnoringNewLines("""
+                    Content-Transfer-Encoding: base64
+                    Content-Type: text/html; charset=UTF-8
+                    """);
+
+            String html = getHtml(smtpMailsResponse.getString("[1].message"));
+
+            assertThat(html).contains("The booking request has been declined for the resource")
+                .contains("Projector")
+                .contains("Monday, 11 April 3025 10:00 - 11:00")
+                .contains("Asia/Ho_Chi_Minh")
+                .contains("Twake Meeting Room")
+                .contains(organizer.username().asString())
+                .contains(attendee.username().asString())
+                .contains("Projector")
+                .contains("This is a meeting to discuss the sprint planning for the next week.");
+        }));
+    }
+
+    private String getHtml(String rawMessage) {
         Pattern htmlPattern = Pattern.compile(
             "Content-Transfer-Encoding: base64\r?\nContent-Type: text/html; charset=UTF-8\r?\nContent-Language: [^\r\n]+\r?\n\r?\n([A-Za-z0-9+/=\r\n]+)\r?\n---=Part",
             Pattern.DOTALL);
