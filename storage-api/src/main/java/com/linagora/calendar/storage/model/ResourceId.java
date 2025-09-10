@@ -18,9 +18,16 @@
 
 package com.linagora.calendar.storage.model;
 
+import org.apache.commons.lang3.StringUtils;
+
+import com.google.common.base.Preconditions;
 import com.linagora.calendar.storage.OpenPaaSId;
 
 public record ResourceId(String value) {
+
+    public ResourceId {
+        Preconditions.checkArgument(!StringUtils.isBlank(value), "resource id must not be empty");
+    }
 
     public static ResourceId from(OpenPaaSId openPaaSId) {
         return new ResourceId(openPaaSId.value());
