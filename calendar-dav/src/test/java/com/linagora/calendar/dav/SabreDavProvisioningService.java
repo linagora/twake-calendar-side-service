@@ -72,4 +72,8 @@ public class SabreDavProvisioningService {
         return domainDAO.retrieve(domain)
             .switchIfEmpty(Mono.defer(() -> domainDAO.add(domain)));
     }
+
+    public Mono<OpenPaaSDomain> getDomain() {
+        return domainDAO.retrieve(Domain.of(DOMAIN));
+    }
 }
