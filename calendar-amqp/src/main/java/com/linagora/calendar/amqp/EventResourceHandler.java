@@ -185,7 +185,7 @@ public class EventResourceHandler {
             RESOURCE_REPLY_TEMPLATE_TYPE);
     }
 
-    private Mono<Void> sendMail(BiFunction<SettingsBasedResolver.ResolvedSettings, I18NTranslator ,Map<String, Object>> modelGenerator,
+    private Mono<Void> sendMail(BiFunction<SettingsBasedResolver.ResolvedSettings, I18NTranslator, Map<String, Object>> modelGenerator,
                                 MailAddress recipient,
                                 TemplateType templateType) {
         Username recipientUser = Username.fromMailAddress(recipient);
