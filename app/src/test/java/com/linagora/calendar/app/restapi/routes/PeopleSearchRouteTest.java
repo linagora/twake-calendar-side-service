@@ -429,7 +429,7 @@ class PeopleSearchRouteTest {
                     "names": [ { "displayName": "meeting-room", "type": "default" } ],
                     "emailAddresses": [ { "value": "%s", "type": "default" } ],
                     "phoneNumbers": [],
-                    "photos": [ { "url": "https://e-calendrier.avocat.fr/linagora.esn.resource/images/icon/laptop.svg", "type": "default" } ]
+                    "photos": [ { "url": "https://twcalendar.linagora.com/linagora.esn.resource/images/icon/laptop.svg", "type": "default" } ]
                   }
                 ]""".formatted(firstResource.id().value(), firstResource.id().value() + "@" + DOMAIN));
     }
