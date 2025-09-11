@@ -23,7 +23,6 @@ import java.net.URL;
 import java.util.function.Function;
 
 import jakarta.inject.Inject;
-import jakarta.inject.Named;
 import jakarta.inject.Singleton;
 
 import org.apache.commons.lang3.StringUtils;
@@ -31,6 +30,7 @@ import org.apache.commons.lang3.Strings;
 
 import com.google.common.base.CharMatcher;
 import com.google.common.base.Preconditions;
+import com.linagora.calendar.restapi.RestApiConfiguration;
 
 public class ResourcePhotoUrlFactory {
     private final Function<String, URI> buildURLFunction;
@@ -42,7 +42,11 @@ public class ResourcePhotoUrlFactory {
 
     @Singleton
     @Inject
-    public ResourcePhotoUrlFactory(@Named("spaCalendarUrl") URL baseUrl) {
+    public ResourcePhotoUrlFactory(RestApiConfiguration restApiConfiguration) {
+        this(restApiConfiguration.getSelfUrl());
+    }
+
+    public ResourcePhotoUrlFactory(URL baseUrl) {
         this.buildURLFunction = resourceIconName
             -> URI.create(Strings.CI.removeEnd(baseUrl.toString(), "/") + "/linagora.esn.resource/images/icon/" + resourceIconName + ".svg");
     }
