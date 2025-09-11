@@ -38,6 +38,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.dto.CalendarEventReportResponse;
 import com.linagora.calendar.dav.dto.VCalendarDto;
 import com.linagora.calendar.storage.CalendarURL;

@@ -20,7 +20,7 @@ package com.linagora.calendar.amqp;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
-import com.linagora.calendar.dav.CalendarUtil;
+import com.linagora.calendar.api.CalendarUtil;
 
 import org.junit.jupiter.api.Test;
 import org.assertj.core.api.SoftAssertions;
