@@ -60,7 +60,6 @@ import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
-import org.apache.james.mailbox.store.RandomMailboxSessionIdGenerator;
 import org.apache.james.metrics.api.NoopGaugeRegistry;
 import org.apache.james.metrics.tests.RecordingMetricFactory;
 import org.apache.james.server.core.filesystem.FileSystemImpl;
@@ -99,7 +98,6 @@ import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.ResourceInsertRequest;
-import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.model.ResourceAdministrator;
 import com.linagora.calendar.storage.model.ResourceId;
@@ -178,7 +176,8 @@ public class EventReplyEmailConsumerTest {
         organizer = sabreDavExtension.newTestUser();
         attendee = sabreDavExtension.newTestUser();
 
-        when(settingsResolver.readSavedSettings(any())).thenReturn(Mono.just(SettingsBasedResolver.ResolvedSettings.DEFAULT));
+        when(settingsResolver.resolveOrDefault(any(Username.class), any(Username.class)))
+            .thenReturn(Mono.just(SettingsBasedResolver.ResolvedSettings.DEFAULT));
         setupEventEmailConsumer();
         clearSmtpMock();
     }
@@ -236,7 +235,6 @@ public class EventReplyEmailConsumerTest {
         EventMailHandler mailHandler = new EventMailHandler(mailSenderFactory,
             messageFactory,
             linkFactory,
-            new SimpleSessionProvider(new RandomMailboxSessionIdGenerator()),
             usersRepository, resourceDAO, domainDAO,
             settingsResolver,
             actionLinkFactory);
@@ -263,7 +261,8 @@ public class EventReplyEmailConsumerTest {
     @ParameterizedTest
     @ValueSource(strings = {"ACCEPTED", "DECLINED", "TENTATIVE"})
     void shouldSendEmailWhenAttendeeRepliesToEvent(String partStatValue) {
-        when(settingsResolver.readSavedSettings(any())).thenReturn(Mono.just(SettingsBasedResolver.ResolvedSettings.DEFAULT));
+        when(settingsResolver.resolveOrDefault(any(Username.class), any(Username.class)))
+            .thenReturn(Mono.just(SettingsBasedResolver.ResolvedSettings.DEFAULT));
         // Ensure no event exists initially for attendee
         assertThat(davTestHelper.findFirstEventId(attendee)).isEmpty();
 
@@ -382,7 +381,7 @@ public class EventReplyEmailConsumerTest {
 
     @Test
     void shouldSendLocalizedEmailAccordingToUserLanguageSetting() {
-        when(settingsResolver.readSavedSettings(any()))
+        when(settingsResolver.resolveOrDefault(any(Username.class), any(Username.class)))
             .thenReturn(Mono.just( new SettingsBasedResolver.ResolvedSettings(Map.of(
                 LANGUAGE_IDENTIFIER, Locale.FRENCH,
                 SettingsBasedResolver.TimeZoneSettingReader.TIMEZONE_IDENTIFIER, ZoneId.of("UTC")

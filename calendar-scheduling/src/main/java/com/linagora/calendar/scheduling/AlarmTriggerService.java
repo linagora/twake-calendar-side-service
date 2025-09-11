@@ -29,10 +29,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.function.Function;
 
 import jakarta.inject.Inject;
+import jakarta.inject.Named;
 import jakarta.inject.Singleton;
 
 import org.apache.commons.lang3.StringUtils;
@@ -53,15 +53,10 @@ import com.linagora.calendar.smtp.template.content.model.AlarmContentModelBuilde
 import com.linagora.calendar.smtp.template.content.model.PersonModel;
 import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.AlarmEventDAO;
-import com.linagora.calendar.storage.SimpleSessionProvider;
-import com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader;
-import com.linagora.calendar.storage.configuration.resolver.ConfigurationResolver;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
-import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.ResolvedSettings;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
 import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.event.EventParseUtils;
-import com.linagora.calendar.storage.exception.DomainNotFoundException;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
@@ -89,8 +84,7 @@ public class AlarmTriggerService {
     private final AlarmEventDAO alarmEventDAO;
     private final Clock clock;
     private final MailSender.Factory mailSenderFactory;
-    private final SimpleSessionProvider sessionProvider;
-    private final SettingsBasedResolver settingsBasedResolver;
+    private final SettingsBasedResolver settingsResolver;
     private final MessageGenerator.Factory messageGeneratorFactory;
     private final AlarmInstantFactory alarmInstantFactory;
     private final MaybeSender maybeSender;
@@ -101,31 +95,14 @@ public class AlarmTriggerService {
     public AlarmTriggerService(AlarmEventDAO alarmEventDAO,
                                Clock clock,
                                MailSender.Factory mailSenderFactory,
-                               SimpleSessionProvider sessionProvider,
-                               ConfigurationResolver configurationResolver,
-                               MessageGenerator.Factory messageGeneratorFactory,
-                               AlarmInstantFactory alarmInstantFactory,
-                               MailTemplateConfiguration mailTemplateConfiguration) {
-        this(alarmEventDAO, clock, mailSenderFactory, sessionProvider,
-            SettingsBasedResolver.of(configurationResolver,
-                Set.of(SettingsBasedResolver.LanguageSettingReader.INSTANCE, new AlarmSettingReader())),
-            messageGeneratorFactory, alarmInstantFactory,
-            mailTemplateConfiguration);
-    }
-
-    public AlarmTriggerService(AlarmEventDAO alarmEventDAO,
-                               Clock clock,
-                               MailSender.Factory mailSenderFactory,
-                               SimpleSessionProvider sessionProvider,
-                               SettingsBasedResolver settingsBasedResolver,
+                               @Named("alarm") SettingsBasedResolver settingsResolver,
                                MessageGenerator.Factory messageGeneratorFactory,
                                AlarmInstantFactory alarmInstantFactory,
                                MailTemplateConfiguration mailTemplateConfiguration) {
         this.alarmEventDAO = alarmEventDAO;
         this.clock = clock;
         this.mailSenderFactory = mailSenderFactory;
-        this.sessionProvider = sessionProvider;
-        this.settingsBasedResolver = settingsBasedResolver;
+        this.settingsResolver = settingsResolver;
         this.messageGeneratorFactory = messageGeneratorFactory;
         this.alarmInstantFactory = alarmInstantFactory;
         this.maybeSender = mailTemplateConfiguration.sender();
@@ -161,7 +138,7 @@ public class AlarmTriggerService {
             // If the event start time is before now, we do not send the alarm
             return Mono.empty();
         }
-        return getUserSettings(recipientUser)
+        return settingsResolver.resolveOrDefault(recipientUser)
             .filter(resolvedSettings -> resolvedSettings.get(ALARM_SETTING_IDENTIFIER, Boolean.class).orElse(ENABLE_ALARM))
             .flatMap(resolvedSettings -> {
                 Locale locale = resolvedSettings.locale();
@@ -174,17 +151,6 @@ public class AlarmTriggerService {
                     .flatMap(message -> mailSenderFactory.create()
                         .flatMap(mailSender -> mailSender.send(new Mail(maybeSender, List.of(alarmEvent.recipient()), message))));
             });
-    }
-
-    private Mono<ResolvedSettings> getUserSettings(Username user) {
-        return settingsBasedResolver.readSavedSettings(sessionProvider.createSession(user))
-            .defaultIfEmpty(ResolvedSettings.DEFAULT)
-            .doOnError(error -> {
-                if (!(error instanceof DomainNotFoundException)) {
-                    LOGGER.error("Error resolving user settings for {}, will use default settings: {}",
-                        user.asString(), ResolvedSettings.DEFAULT, error);
-                }
-            }).onErrorResume(error -> Mono.just(ResolvedSettings.DEFAULT));
     }
 
     private Map<String, Object> toPugModel(Calendar calendar,

@@ -28,6 +28,7 @@ import java.util.Optional;
 import java.util.Set;
 
 import org.apache.james.mailbox.MailboxSession;
+import org.apache.james.mailbox.store.RandomMailboxSessionIdGenerator;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
@@ -36,6 +37,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.HashBasedTable;
 import com.google.common.collect.Table;
+import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.ConfigurationKey;
 import com.linagora.calendar.storage.configuration.ModuleName;
 
@@ -58,14 +60,14 @@ public class SettingsBasedResolverTest {
             .thenReturn(Mono.just(new ConfigurationDocument(table)));
 
         SettingsBasedResolver settingsBasedResolver = getSettingsBasedResolver(configurationResolver);
-        SettingsBasedResolver.ResolvedSettings resolved = settingsBasedResolver.readSavedSettings(session)
+        SettingsBasedResolver.ResolvedSettings resolved = settingsBasedResolver.resolveOrDefault(session)
             .block();
         assertThat(resolved.locale()).isEqualTo(Locale.of("fr"));
         assertThat(resolved.zoneId()).isEqualTo(ZoneId.of("Asia/Ho_Chi_Minh"));
     }
 
     @Test
-    void shouldReturnEmptyWhenNoConfigFound() {
+    void shouldReturnDefaultWhenNoConfigFound() {
         Table<ModuleName, ConfigurationKey, JsonNode> table = HashBasedTable.create(); // empty table
         ConfigurationResolver configurationResolver = Mockito.mock(ConfigurationResolver.class);
 
@@ -74,11 +76,11 @@ public class SettingsBasedResolverTest {
 
         SettingsBasedResolver settingsBasedResolver = getSettingsBasedResolver(configurationResolver);
 
-        assertThat(settingsBasedResolver.readSavedSettings(session).blockOptional()).isEmpty();
+        assertThat(settingsBasedResolver.resolveOrDefault(session).block()).isEqualTo(SettingsBasedResolver.ResolvedSettings.DEFAULT);
     }
 
     @Test
-    void shouldReturnEmptyWhenOnlyLocalePresent() {
+    void shouldReturnDefaultWhenOnlyLocalePresent() {
         Table<ModuleName, ConfigurationKey, JsonNode> table = HashBasedTable.create();
         table.put(LANGUAGE_IDENTIFIER.moduleName(), LANGUAGE_IDENTIFIER.configurationKey(),
             JsonNodeFactory.instance.textNode("fr"));
@@ -89,12 +91,12 @@ public class SettingsBasedResolverTest {
 
         SettingsBasedResolver resolver = getSettingsBasedResolver(configurationResolver);
 
-        SettingsBasedResolver.ResolvedSettings result = resolver.readSavedSettings(session).block();
-        assertThat(result).isNull(); // Because zoneId is missing
+        SettingsBasedResolver.ResolvedSettings result = resolver.resolveOrDefault(session).block();
+        assertThat(result).isEqualTo(SettingsBasedResolver.ResolvedSettings.DEFAULT);
     }
 
     @Test
-    void shouldReturnEmptyWhenOnlyZoneIdPresent() {
+    void shouldReturnDefaultWhenOnlyZoneIdPresent() {
         Table<ModuleName, ConfigurationKey, JsonNode> table = HashBasedTable.create();
 
         ObjectNode timezoneNode = JsonNodeFactory.instance.objectNode();
@@ -107,11 +109,9 @@ public class SettingsBasedResolverTest {
 
         SettingsBasedResolver resolver = getSettingsBasedResolver(configurationResolver);
 
-        SettingsBasedResolver.ResolvedSettings result = resolver.readSavedSettings(session).block();
-        assertThat(result).isNull(); // Because locale is missing
+        SettingsBasedResolver.ResolvedSettings result = resolver.resolveOrDefault(session).block();
+        assertThat(result).isEqualTo(SettingsBasedResolver.ResolvedSettings.DEFAULT);
     }
-
-
 
     @Test
     void timezoneReaderShouldReturnEmptyWhenInvalidZoneId() {
@@ -122,7 +122,7 @@ public class SettingsBasedResolverTest {
     }
 
     private SettingsBasedResolver getSettingsBasedResolver(ConfigurationResolver configurationResolver) {
-        return SettingsBasedResolver.of(configurationResolver,
+        return SettingsBasedResolver.of(configurationResolver, new SimpleSessionProvider(new RandomMailboxSessionIdGenerator()),
             Set.of(SettingsBasedResolver.LanguageSettingReader.INSTANCE, SettingsBasedResolver.TimeZoneSettingReader.INSTANCE));
     }
 }

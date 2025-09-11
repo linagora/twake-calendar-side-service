@@ -24,7 +24,6 @@ import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
@@ -53,11 +52,7 @@ import com.linagora.calendar.smtp.template.content.model.LocationModel;
 import com.linagora.calendar.smtp.template.content.model.PersonModel;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.ResourceDAO;
-import com.linagora.calendar.storage.SimpleSessionProvider;
-import com.linagora.calendar.storage.configuration.resolver.ConfigurationResolver;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
-import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.LanguageSettingReader;
-import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.TimeZoneSettingReader;
 import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.exception.DomainNotFoundException;
@@ -90,10 +85,9 @@ public class EventResourceHandler {
 
     private final ResourceDAO resourceDAO;
     private final MailSender.Factory mailSenderFactory;
-    private final SimpleSessionProvider sessionProvider;
     private final MessageGenerator.Factory messageGeneratorFactory;
     private final OpenPaaSUserDAO userDAO;
-    private final SettingsBasedResolver settingsBasedResolver;
+    private final SettingsBasedResolver settingsResolver;
     private final EventEmailFilter eventEmailFilter;
     private final MaybeSender maybeSender;
     private final MailAddress senderAddress;
@@ -102,33 +96,17 @@ public class EventResourceHandler {
     @Inject
     public EventResourceHandler(ResourceDAO resourceDAO,
                                 MailSender.Factory mailSenderFactory,
-                                SimpleSessionProvider sessionProvider,
-                                ConfigurationResolver configurationResolver,
                                 MessageGenerator.Factory messageGeneratorFactory,
                                 OpenPaaSUserDAO userDAO,
+                                @Named("language_timezone") SettingsBasedResolver settingsResolver,
                                 EventEmailFilter eventEmailFilter,
                                 MailTemplateConfiguration mailTemplateConfiguration,
                                 @Named("spaCalendarUrl") URL calendarBaseUrl) {
-        this(resourceDAO, mailSenderFactory, sessionProvider, messageGeneratorFactory, userDAO,
-            SettingsBasedResolver.of(configurationResolver, Set.of(LanguageSettingReader.INSTANCE, TimeZoneSettingReader.INSTANCE)),
-            eventEmailFilter, mailTemplateConfiguration, calendarBaseUrl);
-    }
-
-    public EventResourceHandler(ResourceDAO resourceDAO,
-                                MailSender.Factory mailSenderFactory,
-                                SimpleSessionProvider sessionProvider,
-                                MessageGenerator.Factory messageGeneratorFactory,
-                                OpenPaaSUserDAO userDAO,
-                                SettingsBasedResolver settingsBasedResolver,
-                                EventEmailFilter eventEmailFilter,
-                                MailTemplateConfiguration mailTemplateConfiguration,
-                                URL calendarBaseUrl) {
         this.resourceDAO = resourceDAO;
         this.mailSenderFactory = mailSenderFactory;
-        this.sessionProvider = sessionProvider;
         this.messageGeneratorFactory = messageGeneratorFactory;
         this.userDAO = userDAO;
-        this.settingsBasedResolver = settingsBasedResolver;
+        this.settingsResolver = settingsResolver;
         this.eventEmailFilter = eventEmailFilter;
         this.maybeSender = mailTemplateConfiguration.sender();
         this.senderAddress = maybeSender.asOptional()
@@ -201,7 +179,7 @@ public class EventResourceHandler {
     }
 
     private Mono<SettingsBasedResolver.ResolvedSettings> getUserSettings(Username user) {
-        return settingsBasedResolver.readSavedSettings(sessionProvider.createSession(user))
+        return settingsResolver.resolveOrDefault(user)
             .defaultIfEmpty(SettingsBasedResolver.ResolvedSettings.DEFAULT)
             .doOnError(error -> {
                 if (!(error instanceof DomainNotFoundException)) {

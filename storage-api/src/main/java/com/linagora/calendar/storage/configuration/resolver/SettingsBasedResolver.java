@@ -19,6 +19,8 @@
 package com.linagora.calendar.storage.configuration.resolver;
 
 import static com.linagora.calendar.storage.configuration.EntryIdentifier.LANGUAGE_IDENTIFIER;
+import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader.ALARM_SETTING_IDENTIFIER;
+import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader.ENABLE_ALARM;
 import static com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.TimeZoneSettingReader.TIMEZONE_IDENTIFIER;
 
 import java.time.ZoneId;
@@ -28,14 +30,17 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.apache.james.core.Username;
 import org.apache.james.mailbox.MailboxSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.ConfigurationKey;
 import com.linagora.calendar.storage.configuration.EntryIdentifier;
 import com.linagora.calendar.storage.configuration.ModuleName;
+import com.linagora.calendar.storage.exception.DomainNotFoundException;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -97,7 +102,8 @@ public interface SettingsBasedResolver {
         public static final ResolvedSettings DEFAULT = new ResolvedSettings(
             Map.of(
                 LANGUAGE_IDENTIFIER, Locale.ENGLISH,
-                TIMEZONE_IDENTIFIER, ZoneId.of("UTC")));
+                TIMEZONE_IDENTIFIER, ZoneId.of("UTC"),
+                ALARM_SETTING_IDENTIFIER, ENABLE_ALARM));
 
         public Locale locale() {
             return get(LANGUAGE_IDENTIFIER, Locale.class)
@@ -116,19 +122,30 @@ public interface SettingsBasedResolver {
         }
     }
 
-    Mono<ResolvedSettings> readSavedSettings(MailboxSession session);
+    Mono<ResolvedSettings> resolveOrDefault(MailboxSession session);
 
-    static SettingsBasedResolver of(ConfigurationResolver configurationResolver, Set<SettingReader<?>> readers) {
-        return new Default(configurationResolver, readers);
+    Mono<ResolvedSettings> resolveOrDefault(Username user);
+
+    Mono<ResolvedSettings> resolveOrDefault(Username user, Username secondUser);
+
+    static SettingsBasedResolver of(ConfigurationResolver configurationResolver, SimpleSessionProvider sessionProvider, Set<SettingReader<?>> readers) {
+        return new Default(configurationResolver, sessionProvider,  readers);
     }
 
     class Default implements SettingsBasedResolver {
+
+        private static final Logger LOGGER = LoggerFactory.getLogger(Default.class);
+
         private final ConfigurationResolver configurationResolver;
+        private final SimpleSessionProvider sessionProvider;
         private final Set<SettingReader<?>> readers;
         private final Set<EntryIdentifier> identifiers;
 
-        public Default(ConfigurationResolver configurationResolver, Set<SettingReader<?>> readers) {
+        public Default(ConfigurationResolver configurationResolver,
+                       SimpleSessionProvider sessionProvider,
+                       Set<SettingReader<?>> readers) {
             this.configurationResolver = configurationResolver;
+            this.sessionProvider = sessionProvider;
             this.readers = readers;
             this.identifiers = this.readers.stream()
                 .map(SettingReader::identifier)
@@ -136,7 +153,32 @@ public interface SettingsBasedResolver {
         }
 
         @Override
-        public Mono<ResolvedSettings> readSavedSettings(MailboxSession session) {
+        public Mono<ResolvedSettings> resolveOrDefault(MailboxSession session) {
+            return readSavedSettings(session)
+                .onErrorResume(error -> {
+                    logError(session.getUser(), error);
+                    return Mono.just(ResolvedSettings.DEFAULT);
+                })
+                .switchIfEmpty(Mono.just(ResolvedSettings.DEFAULT));
+        }
+
+        @Override
+        public Mono<ResolvedSettings> resolveOrDefault(Username user) {
+            return resolveOrDefault(sessionProvider.createSession(user));
+        }
+
+        @Override
+        public Mono<ResolvedSettings> resolveOrDefault(Username user, Username secondUser) {
+            return readSavedSettings(sessionProvider.createSession(user))
+                .switchIfEmpty(readSavedSettings(sessionProvider.createSession(secondUser)))
+                .onErrorResume(error -> {
+                    logError(user, error);
+                    return Mono.just(ResolvedSettings.DEFAULT);
+                })
+                .switchIfEmpty(Mono.just(ResolvedSettings.DEFAULT));
+        }
+
+        private Mono<ResolvedSettings> readSavedSettings(MailboxSession session) {
             return configurationResolver.resolve(identifiers, session)
                 .flatMap(this::resolveSettingsFromDocument)
                 .filter(this::containsAllRequiredIdentifiers)
@@ -155,6 +197,12 @@ public interface SettingsBasedResolver {
         private boolean containsAllRequiredIdentifiers(Map<EntryIdentifier, Object> map) {
             return identifiers.stream().allMatch(map::containsKey);
         }
-    }
 
+        private void logError(Username user, Throwable error) {
+            if (!(error instanceof DomainNotFoundException)) {
+                LOGGER.error("Error resolving user settings for {}, will use default settings: {}",
+                    user.asString(), ResolvedSettings.DEFAULT, error);
+            }
+        }
+    }
 }

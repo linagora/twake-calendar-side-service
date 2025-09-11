@@ -19,6 +19,7 @@
 package com.linagora.calendar.scheduling;
 
 import java.io.FileNotFoundException;
+import java.util.Set;
 
 import jakarta.inject.Named;
 
@@ -32,6 +33,11 @@ import com.google.inject.Provides;
 import com.google.inject.Singleton;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.linagora.calendar.storage.AlarmEventLeaseProvider;
+import com.linagora.calendar.storage.SimpleSessionProvider;
+import com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader;
+import com.linagora.calendar.storage.configuration.resolver.ConfigurationResolver;
+import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
+import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.LanguageSettingReader;
 
 public class AlarmEventSchedulerModule extends AbstractModule {
 
@@ -57,5 +63,13 @@ public class AlarmEventSchedulerModule extends AbstractModule {
         } else {
             return candidate;
         }
+    }
+
+    @Provides
+    @Named("alarm")
+    @Singleton
+    SettingsBasedResolver provideSettingResolver(SimpleSessionProvider sessionProvider,
+                                                 ConfigurationResolver configurationResolver) {
+        return SettingsBasedResolver.of(configurationResolver, sessionProvider, Set.of(LanguageSettingReader.INSTANCE, new AlarmSettingReader()));
     }
 }

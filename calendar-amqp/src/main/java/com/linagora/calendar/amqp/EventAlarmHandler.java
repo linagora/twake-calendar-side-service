@@ -19,14 +19,13 @@
 package com.linagora.calendar.amqp;
 
 import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader.ALARM_SETTING_IDENTIFIER;
-import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader.ENABLE_ALARM;
 
 import java.net.URI;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 
 import jakarta.inject.Inject;
+import jakarta.inject.Named;
 import jakarta.inject.Singleton;
 
 import org.apache.james.core.Username;
@@ -38,9 +37,6 @@ import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.AlarmEventDAO;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
-import com.linagora.calendar.storage.SimpleSessionProvider;
-import com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader;
-import com.linagora.calendar.storage.configuration.resolver.ConfigurationResolver;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
 import com.linagora.calendar.storage.event.AlarmInstantFactory.AlarmInstant;
@@ -59,8 +55,7 @@ public class EventAlarmHandler {
     private final AlarmEventDAO alarmEventDAO;
     private final CalDavClient calDavClient;
     private final OpenPaaSUserDAO openPaaSUserDAO;
-    private final SettingsBasedResolver settingsBasedResolver;
-    private final SimpleSessionProvider sessionProvider;
+    private final SettingsBasedResolver settingsResolver;
     private final EventEmailFilter eventEmailFilter;
 
     @Inject
@@ -69,27 +64,13 @@ public class EventAlarmHandler {
                              AlarmEventDAO alarmEventDAO,
                              CalDavClient calDavClient,
                              OpenPaaSUserDAO openPaaSUserDAO,
-                             ConfigurationResolver configurationResolver,
-                             SimpleSessionProvider sessionProvider,
-                             EventEmailFilter eventEmailFilter) {
-        this(alarmInstantFactory, alarmEventDAO, calDavClient, openPaaSUserDAO,
-            SettingsBasedResolver.of(configurationResolver, Set.of(new AlarmSettingReader())),
-            sessionProvider, eventEmailFilter);
-    }
-
-    public EventAlarmHandler(AlarmInstantFactory alarmInstantFactory,
-                             AlarmEventDAO alarmEventDAO,
-                             CalDavClient calDavClient,
-                             OpenPaaSUserDAO openPaaSUserDAO,
-                             SettingsBasedResolver settingsBasedResolver,
-                             SimpleSessionProvider sessionProvider,
+                             @Named("alarm") SettingsBasedResolver settingsResolver,
                              EventEmailFilter eventEmailFilter) {
         this.alarmInstantFactory = alarmInstantFactory;
         this.alarmEventDAO = alarmEventDAO;
         this.calDavClient = calDavClient;
         this.openPaaSUserDAO = openPaaSUserDAO;
-        this.settingsBasedResolver = settingsBasedResolver;
-        this.sessionProvider = sessionProvider;
+        this.settingsResolver = settingsResolver;
         this.eventEmailFilter = eventEmailFilter;
     }
 
@@ -156,11 +137,6 @@ public class EventAlarmHandler {
                 recipient, eventCalendarString));
     }
 
-    private boolean hasDifferentAlarmTimes(AlarmEvent existing, AlarmEvent newEvent) {
-        return !existing.alarmTime().equals(newEvent.alarmTime())
-            || !existing.eventStartTime().equals(newEvent.eventStartTime());
-    }
-
     public Mono<Void> handleDelete(CalendarAlarmMessageDTO alarmMessageDTO) {
         return openPaaSUserDAO.retrieve(alarmMessageDTO.extractCalendarURL().base())
             .flatMap(openPaaSUser -> handleDelete(openPaaSUser.username(), alarmMessageDTO));
@@ -189,11 +165,7 @@ public class EventAlarmHandler {
     }
 
     private Mono<Boolean> isUserAlarmEnabled(Username user) {
-        return settingsBasedResolver.readSavedSettings(sessionProvider.createSession(user))
-            .flatMap(settings -> Mono.justOrEmpty(settings.get(ALARM_SETTING_IDENTIFIER, Boolean.class)))
-            .onErrorResume(throwable -> {
-                LOGGER.error("Failed to read alarm settings for {} ", user.asString(), throwable);
-                return Mono.just(ENABLE_ALARM);
-            }).defaultIfEmpty(ENABLE_ALARM);
+        return settingsResolver.resolveOrDefault(user)
+            .flatMap(settings -> Mono.justOrEmpty(settings.get(ALARM_SETTING_IDENTIFIER, Boolean.class)));
     }
 }
