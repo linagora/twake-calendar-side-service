@@ -209,7 +209,9 @@ public class EventParseUtils {
 
     public static Optional<ZonedDateTime> getEndTime(VEvent vEvent) {
         return vEvent.getProperty(Property.DTEND)
-            .flatMap(EventParseUtils::parseTime);
+            .flatMap(EventParseUtils::parseTime)
+            .or(() -> Optional.ofNullable(vEvent.getDuration())
+                .map(icsDuration -> getStartTime(vEvent).plus(icsDuration.getDuration())));
     }
 
     public static boolean isAllDay(VEvent vEvent) {
