@@ -19,6 +19,7 @@
 package com.linagora.calendar.amqp;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -111,6 +112,8 @@ public class EventFieldConverter {
                 }
             }
         }
+        calculateEndTimeFromDuration(eventProperties).map(builder::end);
+
         return builder;
     }
 
@@ -149,7 +152,8 @@ public class EventFieldConverter {
             EventProperty.ORGANIZER_PROPERTY, OrganizerProperty::new,
             EventProperty.DTSTART_PROPERTY, DateProperty::new,
             EventProperty.DTEND_PROPERTY, DateProperty::new,
-            EventProperty.DTSTAMP_PROPERTY, DtStampProperty::new);
+            EventProperty.DTSTAMP_PROPERTY, DtStampProperty::new,
+            EventProperty.DURATION_PROPERTY, EventProperty.DurationProperty::new);
 
         private void validateNode(JsonNode node) throws JsonMappingException {
             if (!node.isArray()) {
@@ -172,5 +176,18 @@ public class EventFieldConverter {
 
             return PROPERTY_HANDLERS.getOrDefault(name, (ep) -> ep).apply(eventProperty);
         }
+    }
+
+    private static Optional<Instant> calculateEndTimeFromDuration(List<EventProperty> eventProperties) {
+        return findPropertyByName(eventProperties, EventProperty.DTSTART_PROPERTY)
+            .flatMap(dtStartProperty -> findPropertyByName(eventProperties, EventProperty.DURATION_PROPERTY)
+                .map(durationProperty ->
+                    ((DateProperty) dtStartProperty).getDate().plus(((EventProperty.DurationProperty) durationProperty).getDuration())));
+    }
+
+    private static Optional<EventProperty> findPropertyByName(List<EventProperty> properties, String name) {
+        return properties.stream()
+            .filter(prop -> name.equals(prop.name))
+            .findFirst();
     }
 }
