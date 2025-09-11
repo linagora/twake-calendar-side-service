@@ -19,10 +19,6 @@
 package com.linagora.calendar.scheduling;
 
 import static com.linagora.calendar.scheduling.AlarmEventSchedulerConfiguration.BATCH_SIZE_DEFAULT;
-import static com.linagora.calendar.storage.configuration.EntryIdentifier.LANGUAGE_IDENTIFIER;
-import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader.ALARM_SETTING_IDENTIFIER;
-import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader.ENABLE_ALARM;
-import static com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.TimeZoneSettingReader.TIMEZONE_IDENTIFIER;
 import static io.restassured.RestAssured.given;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
@@ -31,13 +27,10 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.ZoneId;
-import java.util.Locale;
-import java.util.Map;
 import java.util.Optional;
 
 import org.apache.james.core.MaybeSender;
-import org.apache.james.mailbox.store.RandomMailboxSessionIdGenerator;
+import org.apache.james.core.Username;
 import org.apache.james.server.core.filesystem.FileSystemImpl;
 import org.apache.james.util.Port;
 import org.apache.james.utils.UpdatableTickingClock;
@@ -54,7 +47,6 @@ import com.linagora.calendar.smtp.template.MessageGenerator;
 import com.linagora.calendar.storage.AlarmEventDAO;
 import com.linagora.calendar.storage.AlarmEventLeaseProvider;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
-import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
 import com.linagora.calendar.storage.mongodb.DockerMongoDBExtension;
@@ -96,15 +88,9 @@ public class MongoDBAlarmEventSchedulerTest implements AlarmEventSchedulerContra
             false,
             false);
         MailSender.Factory mailSenderFactory = new MailSender.Factory.Default(mailSenderConfiguration);
-        SettingsBasedResolver settingsBasedResolver = Mockito.mock(SettingsBasedResolver.class);
-
-        when(settingsBasedResolver.readSavedSettings(any()))
-            .thenReturn(Mono.just(new SettingsBasedResolver.ResolvedSettings(
-                Map.of(
-                    LANGUAGE_IDENTIFIER, Locale.ENGLISH,
-                    TIMEZONE_IDENTIFIER, ZoneId.of("UTC"),
-                    ALARM_SETTING_IDENTIFIER, ENABLE_ALARM
-                ))));
+        SettingsBasedResolver settingsResolver = Mockito.mock(SettingsBasedResolver.class);
+        when(settingsResolver.resolveOrDefault(any(Username.class)))
+            .thenReturn(Mono.just(SettingsBasedResolver.ResolvedSettings.DEFAULT));
         FileSystemImpl fileSystem = FileSystemImpl.forTesting();
         Path templateDirectory = Paths.get(Paths.get("").toAbsolutePath().getParent().toString(),
             "app", "src", "main", "resources", "templates");
@@ -119,8 +105,7 @@ public class MongoDBAlarmEventSchedulerTest implements AlarmEventSchedulerContra
 
         AlarmTriggerService alarmTriggerService = new AlarmTriggerService(alarmEventDAO, clock,
             mailSenderFactory,
-            new SimpleSessionProvider(new RandomMailboxSessionIdGenerator()),
-            settingsBasedResolver,
+            settingsResolver,
             messageGeneratorFactory,
             new AlarmInstantFactory.Default(clock),
             mailTemplateConfig);

@@ -26,6 +26,7 @@ import java.util.Optional;
 import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
+import jakarta.inject.Named;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
@@ -48,9 +49,9 @@ import com.linagora.calendar.dav.CalendarEventUpdatePatch.AttendeePartStatusUpda
 import com.linagora.calendar.dav.dto.VCalendarDto;
 import com.linagora.calendar.restapi.ErrorResponse;
 import com.linagora.calendar.restapi.routes.response.EventParticipationResponse;
-import com.linagora.calendar.smtp.template.Language;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.eventsearch.EventUid;
 
 import io.netty.handler.codec.http.HttpMethod;
@@ -68,7 +69,7 @@ public class EventParticipationRoute implements JMAPRoutes {
     private final MetricFactory metricFactory;
     private final ParticipationTokenSigner participationTokenSigner;
     private final CalDavEventRepository calDavEventRepository;
-    private final UserSettingBasedLocator userSettingBasedLocator;
+    private final SettingsBasedResolver settingsResolver;
     private final EventParticipationActionLinkFactory actionLinkFactory;
     private final OpenPaaSUserDAO openPaaSUserDAO;
 
@@ -76,13 +77,13 @@ public class EventParticipationRoute implements JMAPRoutes {
     public EventParticipationRoute(MetricFactory metricFactory,
                                    ParticipationTokenSigner participationTokenSigner,
                                    CalDavEventRepository calDavEventRepository,
+                                   @Named("language") SettingsBasedResolver settingsResolver,
                                    EventParticipationActionLinkFactory actionLinkFactory,
-                                   UserSettingBasedLocator userSettingBasedLocator,
                                    OpenPaaSUserDAO openPaaSUserDAO) {
         this.metricFactory = metricFactory;
         this.participationTokenSigner = participationTokenSigner;
         this.calDavEventRepository = calDavEventRepository;
-        this.userSettingBasedLocator = userSettingBasedLocator;
+        this.settingsResolver = settingsResolver;
 
         this.actionLinkFactory = actionLinkFactory;
         this.openPaaSUserDAO = openPaaSUserDAO;
@@ -173,12 +174,12 @@ public class EventParticipationRoute implements JMAPRoutes {
 
     private Mono<Locale> getLocale(Participation participationRequest, boolean isInternalAttendeeRequest) {
         if (isInternalAttendeeRequest) {
-            return userSettingBasedLocator.getLanguage(Username.fromMailAddress(participationRequest.attendee()),
+            return settingsResolver.resolveOrDefault(Username.fromMailAddress(participationRequest.attendee()),
                     Username.fromMailAddress(participationRequest.organizer()))
-                .map(Language::locale);
+                .map(SettingsBasedResolver.ResolvedSettings::locale);
         }
-        return userSettingBasedLocator.getLanguage(Username.fromMailAddress(participationRequest.organizer()))
-            .map(Language::locale);
+        return settingsResolver.resolveOrDefault(Username.fromMailAddress(participationRequest.organizer()))
+            .map(SettingsBasedResolver.ResolvedSettings::locale);
     }
 
     private PartStat participantActionToPartStat(Participation.ParticipantAction action) {

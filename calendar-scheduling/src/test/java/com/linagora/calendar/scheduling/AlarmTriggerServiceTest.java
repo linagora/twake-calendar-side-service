@@ -50,7 +50,7 @@ import jakarta.mail.internet.AddressException;
 
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.MaybeSender;
-import org.apache.james.mailbox.store.RandomMailboxSessionIdGenerator;
+import org.apache.james.core.Username;
 import org.apache.james.server.core.filesystem.FileSystemImpl;
 import org.apache.james.util.Port;
 import org.apache.james.utils.UpdatableTickingClock;
@@ -70,7 +70,6 @@ import com.linagora.calendar.smtp.template.MessageGenerator;
 import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.MemoryAlarmEventDAO;
 import com.linagora.calendar.storage.MemoryOpenPaaSUserDAO;
-import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
 import com.linagora.calendar.storage.eventsearch.EventUid;
@@ -97,7 +96,7 @@ public class AlarmTriggerServiceTest {
     private RequestSpecification requestSpecification;
     private MemoryAlarmEventDAO alarmEventDAO;
     private UpdatableTickingClock clock;
-    private SettingsBasedResolver settingsBasedResolver;
+    private SettingsBasedResolver settingsResolver;
     private AlarmTriggerService testee;
 
     @BeforeEach
@@ -122,15 +121,9 @@ public class AlarmTriggerServiceTest {
             MaybeSender.getMailSender("no-reply@openpaas.org"));
         MessageGenerator.Factory messageGeneratorFactory = MessageGenerator.factory(mailTemplateConfig, fileSystem, new MemoryOpenPaaSUserDAO());
 
-        settingsBasedResolver = Mockito.mock(SettingsBasedResolver.class);
-
-        when(settingsBasedResolver.readSavedSettings(any()))
-            .thenReturn(Mono.just(new SettingsBasedResolver.ResolvedSettings(
-                Map.of(
-                    LANGUAGE_IDENTIFIER, Locale.ENGLISH,
-                    TIMEZONE_IDENTIFIER, ZoneId.of("UTC"),
-                    ALARM_SETTING_IDENTIFIER, ENABLE_ALARM
-                ))));
+        settingsResolver = Mockito.mock(SettingsBasedResolver.class);
+        when(settingsResolver.resolveOrDefault(any(Username.class)))
+            .thenReturn(Mono.just(SettingsBasedResolver.ResolvedSettings.DEFAULT));
 
         clock = new UpdatableTickingClock(Instant.now());
 
@@ -138,8 +131,7 @@ public class AlarmTriggerServiceTest {
             alarmEventDAO,
             clock,
             mailSenderFactory,
-            new SimpleSessionProvider(new RandomMailboxSessionIdGenerator()),
-            settingsBasedResolver,
+            settingsResolver,
             messageGeneratorFactory,
             new AlarmInstantFactory.Default(clock),
             mailTemplateConfig
@@ -295,8 +287,8 @@ public class AlarmTriggerServiceTest {
 
     @Test
     void shouldNotSendAlarmEmailWhenAlarmIsDisabled() throws AddressException {
-        reset(settingsBasedResolver);
-        when(settingsBasedResolver.readSavedSettings(any()))
+        reset(settingsResolver);
+        when(settingsResolver.resolveOrDefault(any(Username.class)))
             .thenReturn(Mono.just(new SettingsBasedResolver.ResolvedSettings(
                 Map.of(
                     LANGUAGE_IDENTIFIER, Locale.ENGLISH,

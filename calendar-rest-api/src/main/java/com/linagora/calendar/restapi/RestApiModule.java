@@ -95,8 +95,10 @@ import com.linagora.calendar.restapi.routes.people.search.ResourceSearchProvider
 import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.TokenInfoResolver;
 import com.linagora.calendar.storage.configuration.resolver.ConfigurationEntryResolver;
+import com.linagora.calendar.storage.configuration.resolver.ConfigurationResolver;
 import com.linagora.calendar.storage.configuration.resolver.ConstantConfigurationEntryResolver;
 import com.linagora.calendar.storage.configuration.resolver.FallbackConfigurationEntryResolver;
+import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.model.Aud;
 import com.linagora.calendar.storage.secretlink.SecretLinkPermissionChecker;
 import com.linagora.calendar.storage.secretlink.SecretLinkPermissionChecker.NoopPermissionChecker;
@@ -272,5 +274,12 @@ public class RestApiModule extends AbstractModule {
             .map(Throwing.function(url -> URI.create(url).toURL()))
             .orElseThrow(() -> new FileNotFoundException(
                 "Missing configuration for '" + propertyName + "'"));
+    }
+
+    @Provides
+    @Singleton
+    @Named("language")
+    SettingsBasedResolver provideLocaleResolver(ConfigurationResolver configurationResolver, SimpleSessionProvider sessionProvider) {
+        return SettingsBasedResolver.of(configurationResolver, sessionProvider, Set.of(SettingsBasedResolver.LanguageSettingReader.INSTANCE));
     }
 }

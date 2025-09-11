@@ -54,7 +54,7 @@ import org.apache.james.backends.rabbitmq.RabbitMQConnectionFactory;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
 import org.apache.james.core.MaybeSender;
-import org.apache.james.mailbox.store.RandomMailboxSessionIdGenerator;
+import org.apache.james.core.Username;
 import org.apache.james.metrics.api.NoopGaugeRegistry;
 import org.apache.james.metrics.tests.RecordingMetricFactory;
 import org.apache.james.server.core.filesystem.FileSystemImpl;
@@ -87,7 +87,6 @@ import com.linagora.calendar.smtp.template.content.model.EventInCalendarLinkFact
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.ResourceDAO;
-import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
@@ -160,7 +159,7 @@ public class EventUpdateEmailConsumerTest {
         organizer = sabreDavExtension.newTestUser();
         attendee = sabreDavExtension.newTestUser();
 
-        when(settingsResolver.readSavedSettings(any()))
+        when(settingsResolver.resolveOrDefault(any(Username.class), any(Username.class)))
             .thenReturn(Mono.just(new SettingsBasedResolver.ResolvedSettings(
                 Map.of(
                     LANGUAGE_IDENTIFIER, Locale.ENGLISH,
@@ -226,7 +225,6 @@ public class EventUpdateEmailConsumerTest {
         EventMailHandler mailHandler = new EventMailHandler(mailSenderFactory,
             messageFactory,
             linkFactory,
-            new SimpleSessionProvider(new RandomMailboxSessionIdGenerator()),
             usersRepository, resourceDAO, domainDAO,
             settingsResolver,
             actionLinkFactory);

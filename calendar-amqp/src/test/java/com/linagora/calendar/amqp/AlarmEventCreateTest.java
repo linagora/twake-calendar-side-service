@@ -50,7 +50,6 @@ import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;
-import org.apache.james.mailbox.store.RandomMailboxSessionIdGenerator;
 import org.apache.james.metrics.api.NoopGaugeRegistry;
 import org.apache.james.metrics.tests.RecordingMetricFactory;
 import org.apache.james.utils.UpdatableTickingClock;
@@ -73,7 +72,6 @@ import com.linagora.calendar.storage.AlarmEventDAO;
 import com.linagora.calendar.storage.MemoryAlarmEventDAO;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
-import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
 import com.linagora.calendar.storage.event.EventParseUtils;
@@ -151,7 +149,7 @@ public class AlarmEventCreateTest {
         calDavEventRepository = new CalDavEventRepository(calDavClient);
         clock = new UpdatableTickingClock(Instant.now().minus(60, MINUTES));
 
-        when(settingsResolver.readSavedSettings(any()))
+        when(settingsResolver.resolveOrDefault(any(Username.class)))
             .thenReturn(Mono.just(new SettingsBasedResolver.ResolvedSettings(
                 Map.of(ALARM_SETTING_IDENTIFIER, ENABLE_ALARM))));
 
@@ -177,7 +175,6 @@ public class AlarmEventCreateTest {
             calDavClient,
             openPaaSUserDAO,
             settingsResolver,
-            new SimpleSessionProvider(new RandomMailboxSessionIdGenerator()),
             eventEmailFilter);
 
         EventAlarmConsumer consumer = new EventAlarmConsumer(channelPool,
@@ -459,7 +456,7 @@ public class AlarmEventCreateTest {
         // Given
         Mockito.reset(settingsResolver);
 
-        when(settingsResolver.readSavedSettings(any()))
+        when(settingsResolver.resolveOrDefault(any(Username.class)))
             .thenReturn(Mono.just(new SettingsBasedResolver.ResolvedSettings(
                 Map.of(ALARM_SETTING_IDENTIFIER, !ENABLE_ALARM))));
 

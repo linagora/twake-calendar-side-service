@@ -51,7 +51,7 @@ import org.apache.james.backends.rabbitmq.RabbitMQConnectionFactory;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
 import org.apache.james.core.MaybeSender;
-import org.apache.james.mailbox.store.RandomMailboxSessionIdGenerator;
+import org.apache.james.core.Username;
 import org.apache.james.metrics.api.NoopGaugeRegistry;
 import org.apache.james.metrics.tests.RecordingMetricFactory;
 import org.apache.james.server.core.filesystem.FileSystemImpl;
@@ -85,7 +85,6 @@ import com.linagora.calendar.smtp.template.content.model.EventInCalendarLinkFact
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.ResourceDAO;
-import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
@@ -216,7 +215,6 @@ public class EventCounterEmailConsumerTest {
         EventMailHandler mailHandler = new EventMailHandler(mailSenderFactory,
             messageFactory,
             linkFactory,
-            new SimpleSessionProvider(new RandomMailboxSessionIdGenerator()),
             usersRepository, resourceDAO, domainDAO,
             settingsResolver,
             actionLinkFactory);
@@ -242,7 +240,7 @@ public class EventCounterEmailConsumerTest {
 
     @Test
     void shouldSendEmailWhenProposeCounterEvent() {
-        when(settingsResolver.readSavedSettings(any()))
+        when(settingsResolver.resolveOrDefault(any(Username.class), any(Username.class)))
             .thenReturn(Mono.just(SettingsBasedResolver.ResolvedSettings.DEFAULT));
         // Ensure no event exists initially for attendee
         assertThat(davTestHelper.findFirstEventId(attendee)).isEmpty();
@@ -268,7 +266,7 @@ public class EventCounterEmailConsumerTest {
 
     @Test
     void shouldSendLocalizedEmailAccordingToUserLanguageSetting() {
-        when(settingsResolver.readSavedSettings(any()))
+        when(settingsResolver.resolveOrDefault(any(Username.class), any(Username.class)))
             .thenReturn(Mono.just(new SettingsBasedResolver.ResolvedSettings(Map.of(
                 LANGUAGE_IDENTIFIER, Locale.FRANCE,
                 SettingsBasedResolver.TimeZoneSettingReader.TIMEZONE_IDENTIFIER, ZoneId.of("UTC")

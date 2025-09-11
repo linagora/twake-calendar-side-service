@@ -28,6 +28,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import jakarta.inject.Inject;
+import jakarta.inject.Named;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.Username;
@@ -46,6 +47,8 @@ import com.linagora.calendar.smtp.template.Language;
 import com.linagora.calendar.smtp.template.TemplateType;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
+import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.ResolvedSettings;
 import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.model.UploadedFile;
 
@@ -178,21 +181,21 @@ public class ImportProcessor {
     private final Scheduler mailScheduler;
     private final MailSender.Factory mailSenderFactory;
     private final ImportMailReportRender mailReportRender;
-    private final UserSettingBasedLocator userSettingBasedLocator;
+    private final SettingsBasedResolver settingsResolver;
 
     @Inject
     public ImportProcessor(CardDavClient cardDavClient,
                            CalDavClient calDavClient,
                            MailSender.Factory mailSenderFactory,
                            ImportMailReportRender mailReportRender,
-                           UserSettingBasedLocator userSettingBasedLocator) {
+                           @Named("language") SettingsBasedResolver settingsResolver) {
         this.importICSHandler = new ImportICSToDavHandler(calDavClient);
         this.importVCardHandler = new ImportVCardToDavHandler(cardDavClient);
         this.mailScheduler = Schedulers.newBoundedElastic(1, DEFAULT_BOUNDED_ELASTIC_QUEUESIZE,
             "sendMailScheduler");
         this.mailSenderFactory = mailSenderFactory;
         this.mailReportRender = mailReportRender;
-        this.userSettingBasedLocator = userSettingBasedLocator;
+        this.settingsResolver = settingsResolver;
     }
 
     public Mono<Void> process(ImportType importType, UploadedFile uploadedFile,
@@ -205,8 +208,9 @@ public class ImportProcessor {
         };
 
         return importToDavHandler.handle(uploadedFile, username, baseId, resourceId)
-            .flatMap(importResult -> userSettingBasedLocator.getLanguage(mailboxSession)
-                .doOnSuccess(language -> sendReportMail(importType, language, importResult, username)))
+            .flatMap(importResult -> settingsResolver.resolveOrDefault(mailboxSession)
+                .map(ResolvedSettings::locale)
+                .doOnSuccess(locale -> sendReportMail(importType, new Language(locale), importResult, username)))
             .then();
     }
 

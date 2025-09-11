@@ -24,10 +24,9 @@ import static com.linagora.calendar.smtp.template.MimeAttachment.ATTACHMENT_DISP
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 
 import jakarta.inject.Inject;
-import jakarta.inject.Singleton;
+import jakarta.inject.Named;
 
 import org.apache.james.core.Domain;
 import org.apache.james.core.MailAddress;
@@ -60,14 +59,9 @@ import com.linagora.calendar.smtp.template.content.model.ReplyContentModelBuilde
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.ResourceDAO;
-import com.linagora.calendar.storage.SimpleSessionProvider;
-import com.linagora.calendar.storage.configuration.resolver.ConfigurationResolver;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
-import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.LanguageSettingReader;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.ResolvedSettings;
-import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.TimeZoneSettingReader;
 import com.linagora.calendar.storage.event.EventParseUtils;
-import com.linagora.calendar.storage.exception.DomainNotFoundException;
 import com.linagora.calendar.storage.model.ResourceId;
 
 import net.fortuna.ical4j.model.property.Method;
@@ -91,47 +85,29 @@ public class EventMailHandler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(EventMailHandler.class);
     private final MailSender.Factory mailSenderFactory;
-    private final SimpleSessionProvider sessionProvider;
     private final MessageGenerator.Factory messageGeneratorFactory;
     private final EventInCalendarLinkFactory eventInCalendarLinkFactory;
     private final UsersRepository usersRepository;
     private final ResourceDAO resourceDAO;
     private final OpenPaaSDomainDAO openPaaSDomainDAO;
-    private final SettingsBasedResolver settingsBasedResolver;
+    private final SettingsBasedResolver settingsResolver;
     private final EventParticipationActionLinkFactory participationActionLinkFactory;
 
     @Inject
-    @Singleton
-    public EventMailHandler(MailSender.Factory mailSenderFactory,
-                            ConfigurationResolver configurationResolver,
-                            MessageGenerator.Factory messageGeneratorFactory,
-                            EventInCalendarLinkFactory eventInCalendarLinkFactory,
-                            SimpleSessionProvider sessionProvider,
-                            UsersRepository usersRepository, ResourceDAO resourceDAO,
-                            OpenPaaSDomainDAO openPaaSDomainDAO,
-                            EventParticipationActionLinkFactory participationActionLinkFactory) {
-        this(mailSenderFactory, messageGeneratorFactory, eventInCalendarLinkFactory, sessionProvider, usersRepository, resourceDAO,
-            openPaaSDomainDAO,
-            SettingsBasedResolver.of(configurationResolver,
-                Set.of(LanguageSettingReader.INSTANCE, TimeZoneSettingReader.INSTANCE)), participationActionLinkFactory);
-    }
-
     public EventMailHandler(MailSender.Factory mailSenderFactory,
                             MessageGenerator.Factory messageGeneratorFactory,
                             EventInCalendarLinkFactory eventInCalendarLinkFactory,
-                            SimpleSessionProvider sessionProvider,
                             UsersRepository usersRepository, ResourceDAO resourceDAO,
                             OpenPaaSDomainDAO openPaaSDomainDAO,
-                            SettingsBasedResolver settingsBasedResolver,
+                            @Named("language_timezone") SettingsBasedResolver settingsResolver,
                             EventParticipationActionLinkFactory participationActionLinkFactory) {
         this.mailSenderFactory = mailSenderFactory;
-        this.sessionProvider = sessionProvider;
         this.messageGeneratorFactory = messageGeneratorFactory;
         this.eventInCalendarLinkFactory = eventInCalendarLinkFactory;
         this.usersRepository = usersRepository;
         this.resourceDAO = resourceDAO;
         this.openPaaSDomainDAO = openPaaSDomainDAO;
-        this.settingsBasedResolver = settingsBasedResolver;
+        this.settingsResolver = settingsResolver;
         this.participationActionLinkFactory = participationActionLinkFactory;
     }
 
@@ -373,26 +349,10 @@ public class EventMailHandler {
     }
 
     private Mono<Void> handleEvent(EventMessageGenerator eventMessageGenerator, Username recipientUser, MailAddress senderEmail) {
-        Mono<ResolvedSettings> resolvedSettingsPublisher = getUserSettings(recipientUser)
-            .switchIfEmpty(getUserSettings(Username.fromMailAddress(senderEmail)))
-            .defaultIfEmpty(ResolvedSettings.DEFAULT)
-            .onErrorResume(error -> Mono.just(ResolvedSettings.DEFAULT));
-
-        return resolvedSettingsPublisher
+        return settingsResolver.resolveOrDefault(recipientUser, Username.fromMailAddress(senderEmail))
             .flatMap(eventMessageGenerator::generate)
             .flatMap(mailMessage -> mailSenderFactory.create()
                 .flatMap(mailSender -> mailSender.send(new Mail(MaybeSender.of(senderEmail),
                     ImmutableList.of(Throwing.supplier(recipientUser::asMailAddress).get()), mailMessage))));
     }
-
-    private Mono<ResolvedSettings> getUserSettings(Username user) {
-        return settingsBasedResolver.readSavedSettings(sessionProvider.createSession(user))
-            .doOnError(error -> {
-                if (!(error instanceof DomainNotFoundException)) {
-                    LOGGER.error("Error resolving user settings for {}, will use default settings: {}",
-                        user.asString(), ResolvedSettings.DEFAULT, error);
-                }
-            });
-    }
-
 }
