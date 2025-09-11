@@ -16,18 +16,9 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage.exception;
+package com.linagora.calendar.storage;
 
-import org.apache.james.core.Domain;
+import java.time.Instant;
 
-import com.linagora.calendar.storage.OpenPaaSId;
-
-public class DomainNotFoundException extends RuntimeException {
-    public DomainNotFoundException(Domain domain) {
-        super(domain.asString() + " does not exist");
-    }
-
-    public DomainNotFoundException(OpenPaaSId domainId) {
-        super("Domain " + domainId + " does not exist");
-    }
+public record DomainAdministrator(OpenPaaSId userId, Instant creation) {
 }

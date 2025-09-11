@@ -36,6 +36,7 @@ import com.google.inject.multibindings.ProvidesIntoSet;
 import com.linagora.calendar.storage.AlarmEventDAO;
 import com.linagora.calendar.storage.AlarmEventLeaseProvider;
 import com.linagora.calendar.storage.DomainConfiguration;
+import com.linagora.calendar.storage.OpenPaaSDomainAdminDAO;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSDomainList;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
@@ -52,6 +53,7 @@ public class MongoDBStorageModule extends AbstractModule {
         bind(MongoDBOpenPaaSDomainDAO.class).in(Scopes.SINGLETON);
 
         bind(OpenPaaSDomainDAO.class).to(MongoDBOpenPaaSDomainDAO.class);
+        bind(OpenPaaSDomainAdminDAO.class).to(MongoDBOpenPaaSDomainDAO.class);
         bind(OpenPaaSUserDAO.class).to(MongoDBOpenPaaSUserDAO.class);
 
         bind(OpenPaaSDomainList.class).in(Scopes.SINGLETON);

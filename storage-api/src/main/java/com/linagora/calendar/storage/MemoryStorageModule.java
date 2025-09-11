@@ -44,9 +44,11 @@ public class MemoryStorageModule extends AbstractModule {
         bind(MemoryOpenPaaSUserDAO.class).in(Scopes.SINGLETON);
         bind(MemoryOpenPaaSDomainDAO.class).in(Scopes.SINGLETON);
         bind(MemoryUserConfigurationDAO.class).in(Scopes.SINGLETON);
+        bind(MemoryOpenPaaSDomainAdminDAO.class).in(Scopes.SINGLETON);
 
         bind(OpenPaaSDomainDAO.class).to(MemoryOpenPaaSDomainDAO.class);
         bind(OpenPaaSUserDAO.class).to(MemoryOpenPaaSUserDAO.class);
+        bind(OpenPaaSDomainAdminDAO.class).to(MemoryOpenPaaSDomainAdminDAO.class);
 
         bind(OpenPaaSDomainList.class).in(Scopes.SINGLETON);
         bind(DomainList.class).to(OpenPaaSDomainList.class);
