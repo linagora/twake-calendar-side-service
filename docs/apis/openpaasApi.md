@@ -445,7 +445,7 @@ Used by SPAs for auto-complete.
 
 ### /api/themes/{domainId}/logo
 
-Redirect to the SPA `/assets/images/white-logo.svg` own image.
+Redirect to the SPA `/calendar/assets/images/white-logo.svg` own image.
 
 Here to satisfy OpenPaaS SPAs.
 

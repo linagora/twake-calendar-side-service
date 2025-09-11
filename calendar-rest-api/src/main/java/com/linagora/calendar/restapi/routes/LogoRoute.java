@@ -51,7 +51,7 @@ public class LogoRoute extends CalendarRoute {
     @Override
     Mono<Void> handleRequest(HttpServerRequest req, HttpServerResponse res, MailboxSession session) {
         return res.status(HttpResponseStatus.MOVED_PERMANENTLY)
-            .header(HttpHeaderNames.LOCATION, configuration.getCalendarSpaUrl().toString() + "/assets/images/white-logo.svg")
+            .header(HttpHeaderNames.LOCATION, configuration.getCalendarSpaUrl().toString() + "/calendar/assets/images/white-logo.svg")
             .header("Cache-Control", "public, max-age=86400")
             .send();
     }
