@@ -112,7 +112,7 @@ public class EventFieldConverter {
                 }
             }
         }
-        calculateEndTimeFromDuration(eventProperties).map(builder::end);
+        calculateEndTimeFromDuration(eventProperties).ifPresent(builder::end);
 
         return builder;
     }
