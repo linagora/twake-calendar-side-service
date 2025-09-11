@@ -34,8 +34,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.MoreObjects;
+import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.CalDavClient;
-import com.linagora.calendar.dav.CalendarUtil;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;

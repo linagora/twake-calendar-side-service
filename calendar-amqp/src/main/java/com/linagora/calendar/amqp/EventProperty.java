@@ -29,6 +29,7 @@ import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.time.temporal.TemporalAmount;
 import java.util.Optional;
 import java.util.function.Function;
 
@@ -44,6 +45,7 @@ import com.google.common.base.Preconditions;
 import com.linagora.calendar.storage.eventsearch.EventUid;
 
 import net.fortuna.ical4j.model.TimeZone;
+import net.fortuna.ical4j.model.property.Duration;
 
 public class EventProperty {
 
@@ -59,6 +61,7 @@ public class EventProperty {
     public static final String ATTENDEE_PROPERTY = "attendee";
     public static final String RECURRENCE_ID_PROPERTY = "recurrence-id";
     public static final String RRULE_PROPERTY = "rrule";
+    public static final String DURATION_PROPERTY = "duration";
 
     protected final String name;
     protected final JsonNode attributes;
@@ -168,6 +171,23 @@ public class EventProperty {
 
         public Instant getDate() {
             return date;
+        }
+    }
+
+    public static class DurationProperty extends EventProperty {
+        private final TemporalAmount duration;
+
+        public DurationProperty(EventProperty base) {
+            super(base.name, base.attributes, base.valueType, base.value);
+            duration = parseDuration();
+        }
+
+        private TemporalAmount parseDuration() {
+            return new Duration(value).getDuration();
+        }
+
+        public TemporalAmount getDuration() {
+            return duration;
         }
     }
 

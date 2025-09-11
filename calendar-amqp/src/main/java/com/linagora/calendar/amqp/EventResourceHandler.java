@@ -250,12 +250,12 @@ public class EventResourceHandler {
             .put("summary", summary)
             .put("allDay", EventParseUtils.isAllDay(vEvent))
             .put("start", new EventTimeModel(startDate).toPugModel(locale, zoneToDisplay))
-            .put("end", EventParseUtils.getEndTime(vEvent).map(endDate -> new EventTimeModel(endDate).toPugModel(locale, zoneToDisplay))
-                .orElseThrow(() -> new IllegalArgumentException("Missing endDate")))
             .put("hasResources", !resourceList.isEmpty())
             .put("resources", resourceList.stream()
                 .collect(ImmutableMap.toImmutableMap(resource -> resource.email().asString(),
                     resource -> PERSON_TO_MODEL.apply(resource).toPugModel())));
+        EventParseUtils.getEndTime(vEvent).map(endDate -> new EventTimeModel(endDate).toPugModel(locale, zoneToDisplay))
+            .ifPresent(model -> eventBuilder.put("end", model));
         EventParseUtils.getLocation(vEvent).ifPresent(location -> eventBuilder.put("location", new LocationModel(location).toPugModel()));
         EventParseUtils.getDescription(vEvent).ifPresent(description -> eventBuilder.put("description", description));
         EventParseUtils.getPropertyValueIgnoreCase(vEvent, "X-OPENPAAS-VIDEOCONFERENCE")

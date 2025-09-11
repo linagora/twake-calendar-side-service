@@ -38,6 +38,7 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import com.github.fge.lambdas.Throwing;
+import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
 import com.linagora.calendar.storage.event.AlarmInstantFactory.AlarmInstant;
 

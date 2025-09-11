@@ -1388,4 +1388,198 @@ public class EventFieldConverterTest {
         assertThat(calendarEvents)
             .isEqualTo(CalendarEvents.of(masterEvents, recurrenceEvent));
     }
+
+    @Test
+    void fromCreatedMessageShouldSucceedWhenDtEndFieldIsReplacedByDuration() throws AddressException {
+        String json = """
+            {
+                 "eventPath": "\\/calendars\\/6801fcef72cc50005a04e5fb\\/6801fcef72cc50005a04e5fb\\/a0b5a363-e56f-490b-bfa7-89111b0fdd9b.ics",
+                 "event": [
+                     "vcalendar",
+                     [
+                         [
+                             "version",
+                             {},
+                             "text",
+                             "2.0"
+                         ],
+                         [
+                             "prodid",
+                             {},
+                             "text",
+                             "-\\/\\/Sabre\\/\\/Sabre VObject 4.2.2\\/\\/EN"
+                         ]
+                     ],
+                     [
+                         [
+                             "vtimezone",
+                             [
+                                 [
+                                     "tzid",
+                                     {},
+                                     "text",
+                                     "Asia\\/Jakarta"
+                                 ]
+                             ],
+                             [
+                                 [
+                                     "standard",
+                                     [
+                                         [
+                                             "tzoffsetfrom",
+                                             {},
+                                             "utc-offset",
+                                             "+07:00"
+                                         ],
+                                         [
+                                             "tzoffsetto",
+                                             {},
+                                             "utc-offset",
+                                             "+07:00"
+                                         ],
+                                         [
+                                             "tzname",
+                                             {},
+                                             "text",
+                                             "WIB"
+                                         ],
+                                         [
+                                             "dtstart",
+                                             {},
+                                             "date-time",
+                                             "1970-01-01T00:00:00"
+                                         ]
+                                     ],
+                                     []
+                                 ]
+                             ]
+                         ],
+                         [
+                             "vevent",
+                             [
+                                 [
+                                     "uid",
+                                     {},
+                                     "text",
+                                     "a0b5a363-e56f-490b-bfa7-89111b0fdd9b"
+                                 ],
+                                 [
+                                     "transp",
+                                     {},
+                                     "text",
+                                     "OPAQUE"
+                                 ],
+                                 [
+                                     "dtstart",
+                                     {
+                                         "tzid": "Asia\\/Saigon"
+                                     },
+                                     "date-time",
+                                     "2025-04-19T11:00:00"
+                                 ],
+                                 [
+                                     "duration",
+                                     {},
+                                     "duration",
+                                     "PT30M"
+                                 ],
+                                 [
+                                     "class",
+                                     {},
+                                     "text",
+                                     "PUBLIC"
+                                 ],
+                                 [
+                                     "summary",
+                                     {},
+                                     "text",
+                                     "Title 1"
+                                 ],
+                                 [
+                                     "description",
+                                     {},
+                                     "text",
+                                     "note tung"
+                                 ],
+                                 [
+                                     "organizer",
+                                     {
+                                         "cn": "John1 Doe1"
+                                     },
+                                     "cal-address",
+                                     "mailto:user1@open-paas.org"
+                                 ],
+                                 [
+                                     "attendee",
+                                     {
+                                         "partstat": "NEEDS-ACTION",
+                                         "rsvp": "TRUE",
+                                         "role": "REQ-PARTICIPANT",
+                                         "cutype": "INDIVIDUAL",
+                                         "cn": "John2 Doe2",
+                                         "schedule-status": "1.1"
+                                     },
+                                     "cal-address",
+                                     "mailto:user2@open-paas.org"
+                                 ],
+                                 [
+                                     "attendee",
+                                     {
+                                         "partstat": "ACCEPTED",
+                                         "rsvp": "FALSE",
+                                         "role": "CHAIR",
+                                         "cutype": "INDIVIDUAL"
+                                     },
+                                     "cal-address",
+                                     "mailto:user1@open-paas.org"
+                                 ],
+                                 [
+                                     "dtstamp",
+                                     {},
+                                     "date-time",
+                                     "2025-04-18T07:47:48Z"
+                                 ],
+                                 [
+                                     "location",
+                                     {},
+                                     "text",
+                                     "Room 42, Main Office"
+                                 ]
+                             ],
+                             []
+                         ]
+                     ]
+                 ],
+                 "import": true,
+                 "etag": "\\"f066260d3a4fca51ae0de0618e9555cc\\""
+             }""";
+
+        CalendarEventMessage createdMessage = CalendarEventMessage.CreatedOrUpdated.deserialize(json.getBytes(StandardCharsets.UTF_8));
+
+        assertThat(createdMessage.eventPath)
+            .isEqualTo("/calendars/6801fcef72cc50005a04e5fb/6801fcef72cc50005a04e5fb/a0b5a363-e56f-490b-bfa7-89111b0fdd9b.ics");
+        assertThat(createdMessage.isImport).isTrue();
+
+        Set<EventFields> eventProperties = EventFieldConverter.from(createdMessage).events();
+
+        assertThat(eventProperties).hasSize(1);
+        EventFields eventFieldsActual = eventProperties.iterator().next();
+
+        EventFields eventFieldsExpected = EventFields.builder()
+            .calendarURL(new CalendarURL(new OpenPaaSId("6801fcef72cc50005a04e5fb"), new OpenPaaSId("6801fcef72cc50005a04e5fb")))
+            .uid(new EventUid("a0b5a363-e56f-490b-bfa7-89111b0fdd9b"))
+            .summary("Title 1")
+            .location("Room 42, Main Office")
+            .description("note tung")
+            .clazz("PUBLIC")
+            .start(Instant.parse("2025-04-19T04:00:00Z"))
+            .end(Instant.parse("2025-04-19T04:30:00Z"))
+            .dtStamp(Instant.parse("2025-04-18T07:47:48Z"))
+            .organizer(EventFields.Person.of("John1 Doe1", "user1@open-paas.org"))
+            .addAttendee(EventFields.Person.of("John2 Doe2", "user2@open-paas.org"))
+            .addAttendee(EventFields.Person.of(null, "user1@open-paas.org"))
+            .build();
+
+        assertThat(eventFieldsActual).isEqualTo(eventFieldsExpected);
+    }
 }

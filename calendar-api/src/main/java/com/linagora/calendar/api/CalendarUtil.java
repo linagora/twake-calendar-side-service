@@ -24,7 +24,7 @@
  *  http://www.apache.org/licenses/LICENSE-2.0                      *
  ********************************************************************/
 
-package com.linagora.calendar.dav;
+package com.linagora.calendar.api;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;

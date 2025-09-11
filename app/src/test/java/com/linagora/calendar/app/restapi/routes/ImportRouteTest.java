@@ -48,12 +48,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.github.fge.lambdas.Throwing;
+import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.app.AppTestHelper;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
-import com.linagora.calendar.dav.CalendarUtil;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;

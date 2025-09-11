@@ -39,6 +39,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Streams;
+import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.dto.CalendarEventReportResponse;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;

@@ -35,6 +35,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.CalendarEventUpdatePatch.AttendeePartStatusUpdatePatch;
 
 import net.fortuna.ical4j.model.Calendar;

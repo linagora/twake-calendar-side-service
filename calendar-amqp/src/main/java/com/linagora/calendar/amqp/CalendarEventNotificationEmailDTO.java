@@ -28,7 +28,7 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.linagora.calendar.dav.CalendarUtil;
+import com.linagora.calendar.api.CalendarUtil;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.property.Method;

@@ -42,7 +42,7 @@ import org.apache.james.core.Username;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.linagora.calendar.dav.CalendarUtil;
+import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.smtp.Mail;
 import com.linagora.calendar.smtp.MailSender;
 import com.linagora.calendar.smtp.template.Language;

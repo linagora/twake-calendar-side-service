@@ -71,6 +71,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.inject.multibindings.Multibinder;
+import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.api.Participation;
 import com.linagora.calendar.api.Participation.ParticipantAction;
 import com.linagora.calendar.api.ParticipationTokenSigner;
@@ -80,7 +81,6 @@ import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.CalDavClient;
-import com.linagora.calendar.dav.CalendarUtil;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
