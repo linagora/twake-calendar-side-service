@@ -18,9 +18,10 @@
 
 package com.linagora.calendar.storage.ldap;
 
+import java.util.List;
+
 import jakarta.inject.Inject;
 
-import org.apache.james.core.Domain;
 import org.apache.james.user.ldap.LdapRepositoryConfiguration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,41 +32,26 @@ import com.unboundid.ldap.sdk.LDAPSearchException;
 import com.unboundid.ldap.sdk.SearchResult;
 import com.unboundid.ldap.sdk.SearchScope;
 
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
+public class LdapUserDAO {
 
-public class DefaultLdapDomainMemberProvider implements LdapDomainMemberProvider {
-
-    public static final String EMPTY_SUB_INITIAL = null;
-    public static final String[] EMPTY_SUB_ANY = new String[0];
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(DefaultLdapDomainMemberProvider.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(LdapUserDAO.class);
 
     private final LdapRepositoryConfiguration ldapRepositoryConfiguration;
     private final LDAPConnectionPool ldapConnectionPool;
 
     @Inject
-    public DefaultLdapDomainMemberProvider(LdapRepositoryConfiguration ldapRepositoryConfiguration,
-                                           LDAPConnectionPool ldapConnectionPool) {
+    public LdapUserDAO(LdapRepositoryConfiguration ldapRepositoryConfiguration,
+                       LDAPConnectionPool ldapConnectionPool) {
         this.ldapRepositoryConfiguration = ldapRepositoryConfiguration;
         this.ldapConnectionPool = ldapConnectionPool;
     }
 
-    @Override
-    public Flux<LdapUser> domainMembers(Domain domain) {
-        return Flux.defer(() -> {
-            String baseDn = ldapRepositoryConfiguration.getUserBase();
-            try {
-                Filter filter = Filter.createANDFilter(
-                    Filter.createEqualityFilter("objectClass", ldapRepositoryConfiguration.getUserObjectClass()),
-                    Filter.createSubstringFilter("mail", EMPTY_SUB_INITIAL, EMPTY_SUB_ANY, "@" + domain.name())
-                );
-                SearchResult searchResult = ldapConnectionPool.search(baseDn, SearchScope.SUB, filter);
-                return Flux.fromIterable(searchResult.getSearchEntries())
-                    .flatMap(entry -> Mono.fromCallable(() -> LdapUser.fromLdapEntry(entry)));
-            } catch (LDAPSearchException e) {
-                return Flux.error(e);
-            }
-        });
+    public List<LdapUser> getAllUsers() throws LDAPSearchException {
+        String baseDn = ldapRepositoryConfiguration.getUserBase();
+        Filter filter = Filter.createEqualityFilter("objectClass", ldapRepositoryConfiguration.getUserObjectClass());
+        SearchResult searchResult = ldapConnectionPool.search(baseDn, SearchScope.SUB, filter);
+        return searchResult.getSearchEntries().stream()
+            .map(LdapUser::fromLdapEntry)
+            .toList();
     }
 }
