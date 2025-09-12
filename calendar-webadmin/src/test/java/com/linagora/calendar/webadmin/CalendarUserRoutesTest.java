@@ -26,6 +26,8 @@ import static org.hamcrest.CoreMatchers.is;
 import java.util.UUID;
 
 import org.apache.james.core.Username;
+import org.apache.james.task.Hostname;
+import org.apache.james.task.MemoryTaskManager;
 import org.apache.james.webadmin.WebAdminServer;
 import org.apache.james.webadmin.WebAdminUtils;
 import org.apache.james.webadmin.utils.JsonTransformer;
@@ -34,6 +36,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.storage.MemoryOpenPaaSUserDAO;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
@@ -49,7 +52,9 @@ class CalendarUserRoutesTest {
     @BeforeEach
     void setUp() {
         userDAO = new MemoryOpenPaaSUserDAO();
-        webAdminServer = WebAdminUtils.createWebAdminServer(new CalendarUserRoutes(userDAO, new JsonTransformer())).start();
+        webAdminServer = WebAdminUtils.createWebAdminServer(new CalendarUserRoutes(userDAO, new JsonTransformer(),
+            new MemoryTaskManager(new Hostname("foo")),
+            ImmutableSet.of())).start();
 
         RestAssured.requestSpecification = WebAdminUtils.buildRequestSpecification(webAdminServer)
             .setBasePath(CalendarUserRoutes.BASE_PATH)
