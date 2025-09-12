@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.webadmin;
 
+import static com.linagora.calendar.webadmin.CalendarUserTaskRoutes.USER_TASKS;
+
 import org.apache.james.server.task.json.dto.AdditionalInformationDTO;
 import org.apache.james.server.task.json.dto.AdditionalInformationDTOModule;
 import org.apache.james.task.MemoryTaskManager;
@@ -32,6 +34,7 @@ import com.google.inject.Scopes;
 import com.google.inject.multibindings.Multibinder;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.google.inject.name.Named;
+import com.google.inject.name.Names;
 import com.linagora.calendar.webadmin.task.AlarmScheduleTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.CalendarEventsReindexTaskAdditionalInformationDTO;
 
@@ -40,6 +43,7 @@ public class CalendarRoutesModule extends AbstractModule {
     protected void configure() {
         Multibinder<Routes> routesMultibinder = Multibinder.newSetBinder(binder(), Routes.class);
         routesMultibinder.addBinding().to(CalendarUserRoutes.class);
+        routesMultibinder.addBinding().to(CalendarUserTaskRoutes.class);
         routesMultibinder.addBinding().to(CalendarChannelLogoutRoutes.class);
         routesMultibinder.addBinding().to(CalendarRoutes.class);
         routesMultibinder.addBinding().to(ResourceRoutes.class);
@@ -50,6 +54,8 @@ public class CalendarRoutesModule extends AbstractModule {
         Multibinder<TaskFromRequestRegistry.TaskRegistration> taskRegistrationMultibinder = Multibinder.newSetBinder(binder(), TaskFromRequestRegistry.TaskRegistration.class);
         taskRegistrationMultibinder.addBinding().to(CalendarRoutes.CalendarEventsReindexRequestToTask.class);
         taskRegistrationMultibinder.addBinding().to(CalendarRoutes.AlarmScheduleRequestToTask.class);
+
+        Multibinder.newSetBinder(binder(), TaskFromRequestRegistry.TaskRegistration.class, Names.named(USER_TASKS));
     }
 
     @Named(DTOModuleInjections.WEBADMIN_DTO)
