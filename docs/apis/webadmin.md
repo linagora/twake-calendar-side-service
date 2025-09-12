@@ -88,6 +88,21 @@ Will set the fields of the user to the following value.
 
 Status code: 204
 
+### Import LDAP users
+
+```
+POST /registeredUsers/tasks?task=importFromLDAP&usersPerSecond=100
+```
+
+Will collect all users from LDAP and add them to twake calendar if not exist.
+
+The query parameter `usersPerSecond` controls the concurrency. Defaults to 100.
+
+This endpoint returns a webdmin task with the following additional information:
+
+- processedUserCount: integer
+- failedUserCount: integer
+
 ## Domain member synchronisation
 
 Only enabled if LDAP is configured.

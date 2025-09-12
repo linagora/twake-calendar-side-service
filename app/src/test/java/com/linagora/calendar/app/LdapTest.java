@@ -208,4 +208,28 @@ class LdapTest {
             .body("additionalInformation.updatedCount", is(notNullValue()))
             .body("additionalInformation.deletedCount", is(notNullValue()));
     }
+
+    @Test
+    void shouldExposeWebAdminLdapUsersImportTask() {
+        String taskId = given()
+            .when()
+            .post("/registeredUsers/tasks?task=importFromLDAP")
+            .jsonPath()
+            .get("taskId");;
+
+        given()
+            .basePath(TasksRoutes.BASE)
+        .when()
+            .get(taskId + "/await")
+        .then()
+            .body("status", is("completed"))
+            .body("taskId", is(taskId))
+            .body("type", is("import-ldap-users"))
+            .body("additionalInformation.processedUserCount", is(1))
+            .body("additionalInformation.failedUserCount", is(0))
+            .body("additionalInformation.timestamp", is(notNullValue()))
+            .body("additionalInformation.type", is("import-ldap-users"))
+            .body("startedDate", is(notNullValue()))
+            .body("submitDate", is(notNullValue()));
+    }
 }
