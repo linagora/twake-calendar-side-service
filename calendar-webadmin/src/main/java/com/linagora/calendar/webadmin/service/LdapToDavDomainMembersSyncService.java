@@ -30,8 +30,8 @@ import com.linagora.calendar.dav.AddressBookContact;
 import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSId;
-import com.linagora.calendar.storage.ldap.LdapDomainMember;
 import com.linagora.calendar.storage.ldap.LdapDomainMemberProvider;
+import com.linagora.calendar.storage.ldap.LdapUser;
 import com.linagora.calendar.webadmin.service.DavDomainMemberUpdateApplier.ContactUpdateContext;
 import com.linagora.calendar.webadmin.service.DavDomainMemberUpdateApplier.UpdateResult;
 
@@ -56,7 +56,7 @@ public class LdapToDavDomainMembersSyncService {
     public Mono<UpdateResult> syncDomainMembers(OpenPaaSDomain openPaaSDomain, ContactUpdateContext contexts) {
         return Mono.zip(fetchLdapDomainMembers(openPaaSDomain), fetchDavDomainMembers(openPaaSDomain))
             .flatMap(tuple -> {
-                List<LdapDomainMember> ldapMembers = tuple.getT1();
+                List<LdapUser> ldapMembers = tuple.getT1();
                 List<AddressBookContact> davContacts = tuple.getT2();
                 DomainMemberUpdate domainMemberUpdate = DomainMemberUpdate.compute(ldapMembers, davContacts);
                 return davDomainMemberUpdateApplierFactory.apply(openPaaSDomain.id()).apply(domainMemberUpdate, contexts);
@@ -71,7 +71,7 @@ public class LdapToDavDomainMembersSyncService {
             .doOnError(throwable -> LOGGER.error("Error fetching DAV domain members for domain: {}", openPaaSDomain.domain(), throwable));
     }
 
-    private Mono<List<LdapDomainMember>> fetchLdapDomainMembers(OpenPaaSDomain openPaaSDomain) {
+    private Mono<List<LdapUser>> fetchLdapDomainMembers(OpenPaaSDomain openPaaSDomain) {
         return ldapDomainMemberProvider.domainMembers(openPaaSDomain.domain())
             .collectList()
             .defaultIfEmpty(List.of())

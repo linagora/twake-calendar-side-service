@@ -57,7 +57,7 @@ public class DefaultLdapDomainMemberProvider implements LdapDomainMemberProvider
     }
 
     @Override
-    public Flux<LdapDomainMember> domainMembers(Domain domain) {
+    public Flux<LdapUser> domainMembers(Domain domain) {
         return Flux.defer(() -> {
             String baseDn = ldapRepositoryConfiguration.getUserBase();
             try {
@@ -74,9 +74,9 @@ public class DefaultLdapDomainMemberProvider implements LdapDomainMemberProvider
         });
     }
 
-    private static Mono<LdapDomainMember> ldapDomainMember(SearchResultEntry entry) {
+    private static Mono<LdapUser> ldapDomainMember(SearchResultEntry entry) {
         try {
-            LdapDomainMember.Builder builder = LdapDomainMember.builder();
+            LdapUser.Builder builder = LdapUser.builder();
             Optional.ofNullable(entry.getAttributeValue("uid")).ifPresent(builder::uid);
             Optional.ofNullable(entry.getAttributeValue("cn")).ifPresent(builder::cn);
             Optional.ofNullable(entry.getAttributeValue("sn")).ifPresent(builder::sn);

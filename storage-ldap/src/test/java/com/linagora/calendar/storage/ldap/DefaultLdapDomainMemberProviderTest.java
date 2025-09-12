@@ -60,7 +60,7 @@ public class DefaultLdapDomainMemberProviderTest {
 
     @Test
     void getDomainMembersShouldReturnMembers() throws AddressException {
-        LdapDomainMember expected1 = LdapDomainMember.builder()
+        LdapUser expected1 = LdapUser.builder()
             .uid("james-user")
             .cn("James User")
             .sn("User")
@@ -70,7 +70,7 @@ public class DefaultLdapDomainMemberProviderTest {
             .displayName("James User")
             .build();
 
-        LdapDomainMember expected2 = LdapDomainMember.builder()
+        LdapUser expected2 = LdapUser.builder()
             .uid("james-user2")
             .cn("James User2")
             .sn("User2")

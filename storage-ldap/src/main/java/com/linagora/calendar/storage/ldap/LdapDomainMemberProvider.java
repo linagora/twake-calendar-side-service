@@ -25,6 +25,6 @@ import reactor.core.publisher.Flux;
 
 public interface LdapDomainMemberProvider {
 
-    Flux<LdapDomainMember> domainMembers(Domain domain);
+    Flux<LdapUser> domainMembers(Domain domain);
 
 }
