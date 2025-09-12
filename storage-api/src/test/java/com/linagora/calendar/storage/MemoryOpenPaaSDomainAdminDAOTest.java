@@ -16,18 +16,28 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage.exception;
+package com.linagora.calendar.storage;
 
-import org.apache.james.core.Domain;
+import org.junit.jupiter.api.BeforeEach;
 
-import com.linagora.calendar.storage.OpenPaaSId;
+public class MemoryOpenPaaSDomainAdminDAOTest implements OpenPaaSDomainAdminDAOContract {
 
-public class DomainNotFoundException extends RuntimeException {
-    public DomainNotFoundException(Domain domain) {
-        super(domain.asString() + " does not exist");
+    private MemoryOpenPaaSDomainDAO domainDAO;
+    private MemoryOpenPaaSDomainAdminDAO domainAdminDAO;
+
+    @BeforeEach
+    void setUp() {
+        domainDAO = new MemoryOpenPaaSDomainDAO();
+        domainAdminDAO = new MemoryOpenPaaSDomainAdminDAO();
     }
 
-    public DomainNotFoundException(OpenPaaSId domainId) {
-        super("Domain " + domainId + " does not exist");
+    @Override
+    public OpenPaaSDomainDAO domainDAO() {
+        return domainDAO;
+    }
+
+    @Override
+    public OpenPaaSDomainAdminDAO testee() {
+        return domainAdminDAO;
     }
 }

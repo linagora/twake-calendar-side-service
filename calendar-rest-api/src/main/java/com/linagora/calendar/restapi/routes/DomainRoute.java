@@ -21,6 +21,7 @@ package com.linagora.calendar.restapi.routes;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
+import java.util.List;
 
 import jakarta.inject.Inject;
 
@@ -36,7 +37,9 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.restapi.NotFoundException;
+import com.linagora.calendar.storage.DomainAdministrator;
 import com.linagora.calendar.storage.OpenPaaSDomain;
+import com.linagora.calendar.storage.OpenPaaSDomainAdminDAO;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
 
@@ -50,10 +53,26 @@ public class DomainRoute extends CalendarRoute {
         .registerModule(new JavaTimeModule());
 
     public static class ResponseDTO {
-        private final OpenPaaSDomain domain;
 
-        public ResponseDTO(OpenPaaSDomain domain) {
+        public record AdministratorDTO(@JsonProperty("user_id") String userId) {
+
+            static AdministratorDTO from(DomainAdministrator admin) {
+                return new AdministratorDTO(admin.userId().value());
+            }
+
+            @JsonProperty("timestamps")
+            public Timestamp getTimestamps() {
+                return new Timestamp();
+            }
+        }
+
+        private final OpenPaaSDomain domain;
+        private final ImmutableList<AdministratorDTO> admins;
+
+        public ResponseDTO(OpenPaaSDomain domain, List<DomainAdministrator> adminList) {
             this.domain = domain;
+            this.admins = adminList.stream().map(AdministratorDTO::from)
+                .collect(ImmutableList.toImmutableList());
         }
 
         @JsonProperty("timestamps")
@@ -92,8 +111,8 @@ public class DomainRoute extends CalendarRoute {
         }
 
         @JsonProperty("administrators")
-        public ImmutableList<String> getAdministrators() {
-            return ImmutableList.of();
+        public ImmutableList<AdministratorDTO> getAdministrators() {
+            return admins;
         }
 
         @JsonProperty("injections")
@@ -111,11 +130,14 @@ public class DomainRoute extends CalendarRoute {
     }
 
     private final OpenPaaSDomainDAO domainDAO;
+    private final OpenPaaSDomainAdminDAO domainAdminDAO;
 
     @Inject
-    public DomainRoute(Authenticator authenticator, MetricFactory metricFactory, OpenPaaSDomainDAO domainDAO) {
+    public DomainRoute(Authenticator authenticator, MetricFactory metricFactory,
+                       OpenPaaSDomainDAO domainDAO, OpenPaaSDomainAdminDAO domainAdminDAO) {
         super(authenticator, metricFactory);
         this.domainDAO = domainDAO;
+        this.domainAdminDAO = domainAdminDAO;
     }
 
     @Override
@@ -128,7 +150,9 @@ public class DomainRoute extends CalendarRoute {
         OpenPaaSId domainId = new OpenPaaSId(request.param("domainId"));
         return domainDAO.retrieve(domainId)
             .switchIfEmpty(Mono.error(NotFoundException::new))
-            .map(ResponseDTO::new)
+            .flatMap(openPaaSDomain -> domainAdminDAO.listAdmins(openPaaSDomain.id())
+                .collectList()
+                .map(adminList -> new ResponseDTO(openPaaSDomain, adminList)))
             .map(Throwing.function(OBJECT_MAPPER::writeValueAsBytes))
             .flatMap(bytes -> response.status(200)
                 .header("Content-Type", "application/json;charset=utf-8")

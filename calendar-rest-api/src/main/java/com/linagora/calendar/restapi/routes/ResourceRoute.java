@@ -37,8 +37,9 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.restapi.NotFoundException;
-import com.linagora.calendar.storage.OpenPaaSDomain;
+import com.linagora.calendar.storage.OpenPaaSDomainAdminDAO;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
+import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.ResourceDAO;
 import com.linagora.calendar.storage.model.Resource;
 import com.linagora.calendar.storage.model.ResourceAdministrator;
@@ -97,13 +98,17 @@ public class ResourceRoute extends CalendarRoute {
 
     private final ResourceDAO resourceDAO;
     private final OpenPaaSDomainDAO openPaaSDomainDAO;
+    private final OpenPaaSDomainAdminDAO domainAdminDAO;
 
     @Inject
     public ResourceRoute(Authenticator authenticator,
-                         MetricFactory metricFactory, ResourceDAO resourceDAO, OpenPaaSDomainDAO openPaaSDomainDAO) {
+                         MetricFactory metricFactory, ResourceDAO resourceDAO,
+                         OpenPaaSDomainDAO openPaaSDomainDAO,
+                         OpenPaaSDomainAdminDAO domainAdminDAO) {
         super(authenticator, metricFactory);
         this.resourceDAO = resourceDAO;
         this.openPaaSDomainDAO = openPaaSDomainDAO;
+        this.domainAdminDAO = domainAdminDAO;
     }
 
     @Override
@@ -116,8 +121,8 @@ public class ResourceRoute extends CalendarRoute {
         ResourceId resourceId = new ResourceId(req.param(RESOURCE_ID_PATH_PARAM));
         return resourceDAO.findById(resourceId)
             .switchIfEmpty(Mono.error(NotFoundException::new))
-            .flatMap(resource -> openPaaSDomainDAO.retrieve(resource.domain())
-                .map(openPaaSDomain -> buildResponseDTO(resource, openPaaSDomain)))
+            .flatMap(resource -> retrieveDomainResponse(resource.domain())
+                .map(domainResponse -> buildResponseDTO(resource, domainResponse)))
             .map(Throwing.function(OBJECT_MAPPER::writeValueAsBytes))
             .flatMap(bytes -> res.status(200)
                 .header("Content-Type", "application/json;charset=utf-8")
@@ -125,7 +130,14 @@ public class ResourceRoute extends CalendarRoute {
                 .then());
     }
 
-    private ResourceResponseDTO buildResponseDTO(Resource resource, OpenPaaSDomain openPaaSDomain) {
+    private Mono<DomainRoute.ResponseDTO> retrieveDomainResponse(OpenPaaSId domainId) {
+        return openPaaSDomainDAO.retrieve(domainId)
+            .flatMap(openPaaSDomain -> domainAdminDAO.listAdmins(domainId)
+                .collectList()
+                .map(adminList -> new DomainRoute.ResponseDTO(openPaaSDomain, adminList)));
+    }
+
+    private ResourceResponseDTO buildResponseDTO(Resource resource,  DomainRoute.ResponseDTO domainResponseDTO) {
         List<ResourceResponseDTO.AdministratorDTO> administrators = CollectionUtils.emptyIfNull(resource.administrators())
             .stream()
             .map(ResourceResponseDTO.AdministratorDTO::from)
@@ -136,6 +148,6 @@ public class ResourceRoute extends CalendarRoute {
         return new ResourceResponseDTO(timestampsDTO, resource.deleted(), resource.id().value(),
             resource.name(), resource.description(), resource.type(), resource.icon(),
             administrators, resource.creator().value(),
-            new DomainRoute.ResponseDTO(openPaaSDomain));
+            domainResponseDTO);
     }
 }

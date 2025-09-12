@@ -43,6 +43,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.google.inject.multibindings.Multibinder;
 import com.linagora.calendar.app.AppTestHelper;
+import com.linagora.calendar.app.DomainAdminProbe;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
@@ -87,6 +88,8 @@ public class ResourceRouteTest {
         binder -> {
             Multibinder.newSetBinder(binder, GuiceProbe.class)
                 .addBinding().to(ResourceProbe.class);
+            Multibinder.newSetBinder(binder, GuiceProbe.class)
+                .addBinding().to(DomainAdminProbe.class);
             binder.bind(MailSenderConfiguration.class)
                 .toInstance(mailSenderConfigurationFunction.apply(SMTP_EXTENSION));
         });
@@ -120,6 +123,11 @@ public class ResourceRouteTest {
         restApiPort = server.getProbe(RestApiServerProbe.class).getPort().getValue();
 
         RestAssured.requestSpecification = buildRequestSpec(openPaaSUser.username().asString(), DEFAULT_USER_PASSWORD, restApiPort);
+
+        server.getProbe(DomainAdminProbe.class)
+            .addAdmin(resource.domain(), openPaaSUser2.id());
+        server.getProbe(DomainAdminProbe.class)
+            .addAdmin(resource.domain(), openPaaSUser.id());
     }
 
     @Test
@@ -167,7 +175,18 @@ public class ResourceRouteTest {
                         "_id": "{domainId}",
                         "schemaVersion": 1,
                         "administrators": [
-                
+                            {
+                                "user_id": "{domainAdminId1}",
+                                "timestamps": {
+                                    "creation": "1970-01-01T00:00:00.000Z"
+                                }
+                            },
+                            {
+                                "user_id": "{domainAdminId2}",
+                                "timestamps": {
+                                    "creation": "1970-01-01T00:00:00.000Z"
+                                }
+                            }
                         ],
                         "timestamps": {
                             "creation": "${json-unit.ignore}"
@@ -184,6 +203,8 @@ public class ResourceRouteTest {
                 """.replace("{resourceId}", resourceId.value())
                 .replace("{adminId1}", openPaaSUser.id().value())
                 .replace("{adminId2}", openPaaSUser2.id().value())
+                .replace("{domainAdminId1}", openPaaSUser.id().value())
+                .replace("{domainAdminId2}", openPaaSUser2.id().value())
                 .replace("{creatorId}", openPaaSUser.id().value())
                 .replace("{domainId}", resource.domain().value()));
     }

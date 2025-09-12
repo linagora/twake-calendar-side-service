@@ -16,18 +16,19 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage.exception;
+package com.linagora.calendar.storage;
 
-import org.apache.james.core.Domain;
+import java.util.List;
 
-import com.linagora.calendar.storage.OpenPaaSId;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
-public class DomainNotFoundException extends RuntimeException {
-    public DomainNotFoundException(Domain domain) {
-        super(domain.asString() + " does not exist");
-    }
+public interface OpenPaaSDomainAdminDAO {
 
-    public DomainNotFoundException(OpenPaaSId domainId) {
-        super("Domain " + domainId + " does not exist");
-    }
+    Flux<DomainAdministrator> listAdmins(OpenPaaSId domainId);
+
+    Mono<Void> revokeAdmin(OpenPaaSId domainId, OpenPaaSId userId);
+
+    Mono<Void> addAdmins(OpenPaaSId domainId, List<OpenPaaSId> userIdList);
+
 }

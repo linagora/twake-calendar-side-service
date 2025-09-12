@@ -16,18 +16,28 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage.exception;
+package com.linagora.calendar.app;
 
-import org.apache.james.core.Domain;
+import java.util.List;
 
+import jakarta.inject.Inject;
+
+import org.apache.james.utils.GuiceProbe;
+
+import com.linagora.calendar.storage.OpenPaaSDomainAdminDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
 
-public class DomainNotFoundException extends RuntimeException {
-    public DomainNotFoundException(Domain domain) {
-        super(domain.asString() + " does not exist");
+public class DomainAdminProbe implements GuiceProbe {
+
+    private final OpenPaaSDomainAdminDAO domainAdminDAO;
+
+    @Inject
+    public DomainAdminProbe(OpenPaaSDomainAdminDAO domainAdminDAO) {
+        this.domainAdminDAO = domainAdminDAO;
     }
 
-    public DomainNotFoundException(OpenPaaSId domainId) {
-        super("Domain " + domainId + " does not exist");
+    public void addAdmin(OpenPaaSId domainId, OpenPaaSId userId) {
+        domainAdminDAO.addAdmins(domainId, List.of(userId))
+            .block();
     }
 }
