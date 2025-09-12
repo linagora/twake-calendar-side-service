@@ -273,3 +273,76 @@ PATCH resources/RESOURCE_ID
 Would update the resource accordingly. Each field is nullable and if unspecified the field is not updated.
 
 Status code: 204 if updated, 400 if invalid eg administrator not found, 404 if the resource is not found.
+
+
+## Domain admins routes
+
+Manage the list of administrators (admins) for each domain.
+
+### Listing domain administrators
+
+```
+GET /domains/{domainName}/admins
+```
+
+Example:
+
+```
+GET /domains/linagora.com/admins
+```
+
+Returns the list of admins of the domain:
+
+```json
+[
+  "user1@linagora.com",
+  "user2@linagora.com"
+]
+```
+
+**Status codes**:
+- `200` when returning the list (can be empty if the domain exists but has no admins).
+- `404` when the domain does not exist.
+- `400` when `domainName` has an invalid format.
+
+---
+
+### Adding a domain administrator
+
+```
+PUT /domains/{domainName}/admins/{username}
+```
+
+Example:
+
+```
+PUT /domains/linagora.com/admins/user1@linagora.com
+```
+
+Adds the user `user1@linagora.com` as an admin of domain `linagora.com`.
+
+**Status codes**:
+- `204` if successfully added (idempotent: calling multiple times with the same user still returns `204`).
+- `404` if the domain or user does not exist.
+- `400` if `domainName` or `username` has an invalid format.
+
+---
+
+### Revoking domain administrator rights
+
+```
+DELETE /domains/{domainName}/admins/{username}
+```
+
+Example:
+
+```
+DELETE /domains/linagora.com/admins/user1@linagora.com
+```
+
+Revokes administrator rights of user `user1@linagora.com` for domain `linagora.com`.
+
+**Status codes**:
+- `204` if successful, even if the user exists but was not an admin (idempotent).
+- `404` if the domain or user does not exist.
+- `400` if `domainName` or `username` has an invalid format.  
