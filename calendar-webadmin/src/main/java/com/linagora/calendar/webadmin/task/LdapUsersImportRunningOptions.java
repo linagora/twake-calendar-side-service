@@ -16,15 +16,13 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage.ldap;
+package com.linagora.calendar.webadmin.task;
 
+public record LdapUsersImportRunningOptions(int usersPerSecond) {
+    public static final int DEFAULT_USERS_PER_SECOND = 100;
+    public static final LdapUsersImportRunningOptions DEFAULT = of(DEFAULT_USERS_PER_SECOND);
 
-import org.apache.james.core.Domain;
-
-import reactor.core.publisher.Flux;
-
-public interface LdapDomainMemberProvider {
-
-    Flux<LdapUser> domainMembers(Domain domain);
-
+    public static LdapUsersImportRunningOptions of(int usersPerSecond) {
+        return new LdapUsersImportRunningOptions(usersPerSecond);
+    }
 }

@@ -32,16 +32,16 @@ import org.apache.james.core.MailAddress;
 
 import com.google.common.collect.Sets;
 import com.linagora.calendar.dav.AddressBookContact;
-import com.linagora.calendar.storage.ldap.LdapDomainMember;
+import com.linagora.calendar.storage.ldap.LdapUser;
 
 public record DomainMemberUpdate(Set<AddressBookContact> added,
                                  Set<AddressBookContact> deleted,
                                  Set<AddressBookContact> updated) {
 
-    public static DomainMemberUpdate compute(Collection<LdapDomainMember> sourceOfTruth,
+    public static DomainMemberUpdate compute(Collection<LdapUser> sourceOfTruth,
                                              Collection<AddressBookContact> projectionContent) {
 
-        Map<MailAddress, LdapDomainMember> sourceByMail = sourceOfTruth.stream()
+        Map<MailAddress, LdapUser> sourceByMail = sourceOfTruth.stream()
             .filter(m -> m.mail().isPresent())
             .collect(Collectors.toMap(member -> member.mail().get(), Function.identity()));
 
@@ -72,8 +72,8 @@ public record DomainMemberUpdate(Set<AddressBookContact> added,
         return new DomainMemberUpdate(added, deleted, updated);
     }
 
-    private static boolean isChanged(LdapDomainMember ldapDomainMember, AddressBookContact davContact) {
-        AddressBookContact ldapAsContact = toAddressBookContact(ldapDomainMember, davContact);
+    private static boolean isChanged(LdapUser ldapUser, AddressBookContact davContact) {
+        AddressBookContact ldapAsContact = toAddressBookContact(ldapUser, davContact);
 
         return !Objects.equals(ldapAsContact.givenName(), davContact.givenName())
             || !Objects.equals(ldapAsContact.familyName(), davContact.familyName())
@@ -82,15 +82,15 @@ public record DomainMemberUpdate(Set<AddressBookContact> added,
             || (ldapAsContact.displayName().isPresent() && !Objects.equals(ldapAsContact.displayName(), davContact.displayName()));
     }
 
-    private static AddressBookContact toAddressBookContact(LdapDomainMember ldap) {
+    private static AddressBookContact toAddressBookContact(LdapUser ldap) {
         return toAddressBookContact(ldap, computeUid(ldap.uid(), ldap.mail()));
     }
 
-    private static AddressBookContact toAddressBookContact(LdapDomainMember ldap, AddressBookContact existing) {
+    private static AddressBookContact toAddressBookContact(LdapUser ldap, AddressBookContact existing) {
         return toAddressBookContact(ldap, computeUid(existing.uid(), existing.mail()));
     }
 
-    public static AddressBookContact toAddressBookContact(LdapDomainMember ldap,
+    public static AddressBookContact toAddressBookContact(LdapUser ldap,
                                                           Optional<String> uid) {
         return AddressBookContact.builder()
             .uid(uid)

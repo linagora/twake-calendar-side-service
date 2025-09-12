@@ -55,8 +55,8 @@ import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.OpenPaaSDomain;
-import com.linagora.calendar.storage.ldap.LdapDomainMember;
 import com.linagora.calendar.storage.ldap.LdapDomainMemberProvider;
+import com.linagora.calendar.storage.ldap.LdapUser;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.webadmin.service.DavDomainMemberUpdateApplier.ContactUpdateContext;
 import com.linagora.calendar.webadmin.service.DavDomainMemberUpdateApplier.UpdateResult;
@@ -102,7 +102,7 @@ public class LdapToDavDomainMembersSyncServiceTest {
 
     @Test
     void shouldCreateDavContactWhenItDoesNotExist() {
-        LdapDomainMember ldap = ldapMember("uid123", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "123");
+        LdapUser ldap = ldapMember("uid123", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "123");
         when(ldapDomainMemberProvider.domainMembers(openPaaSDomain.domain()))
             .thenReturn(Flux.just(ldap));
 
@@ -119,7 +119,7 @@ public class LdapToDavDomainMembersSyncServiceTest {
     }
 
     static Stream<Arguments> ldapSample() {
-        LdapDomainMember fullFields = LdapDomainMember.builder()
+        LdapUser fullFields = LdapUser.builder()
             .uid(UUID.randomUUID().toString())
             .cn("cn1")
             .sn("sn1")
@@ -129,7 +129,7 @@ public class LdapToDavDomainMembersSyncServiceTest {
             .displayName("full name")
             .build();
 
-        LdapDomainMember absentDisplayName = LdapDomainMember.builder()
+        LdapUser absentDisplayName = LdapUser.builder()
             .uid(UUID.randomUUID().toString())
             .cn("cn1")
             .sn("sn1")
@@ -138,7 +138,7 @@ public class LdapToDavDomainMembersSyncServiceTest {
             .telephoneNumber("123")
             .build();
 
-        LdapDomainMember absentGivenName = LdapDomainMember.builder()
+        LdapUser absentGivenName = LdapUser.builder()
             .uid(UUID.randomUUID().toString())
             .cn("cn1")
             .sn("sn1")
@@ -147,7 +147,7 @@ public class LdapToDavDomainMembersSyncServiceTest {
             .displayName("full name")
             .build();
 
-        LdapDomainMember absentGivenNameAndDisplayName = LdapDomainMember.builder()
+        LdapUser absentGivenNameAndDisplayName = LdapUser.builder()
             .uid(UUID.randomUUID().toString())
             .cn("cn1")
             .sn("sn1")
@@ -155,7 +155,7 @@ public class LdapToDavDomainMembersSyncServiceTest {
             .telephoneNumber("123")
             .build();
 
-        LdapDomainMember absentTelephone = LdapDomainMember.builder()
+        LdapUser absentTelephone = LdapUser.builder()
             .uid(UUID.randomUUID().toString())
             .cn("cn1")
             .sn("sn1")
@@ -174,7 +174,7 @@ public class LdapToDavDomainMembersSyncServiceTest {
 
     @ParameterizedTest(name = "{index} => {1}")
     @MethodSource("ldapSample")
-    void shouldNotUpdateDavWhenLdapDataIsUnchanged(LdapDomainMember ldap, String ignored) {
+    void shouldNotUpdateDavWhenLdapDataIsUnchanged(LdapUser ldap, String ignored) {
         preloadDavData(ldap);
 
         UpdateResult updateResult = testee.syncDomainMembers(openPaaSDomain, new ContactUpdateContext()).block();
@@ -192,11 +192,11 @@ public class LdapToDavDomainMembersSyncServiceTest {
 
     @Test
     void shouldUpdateDavWhenLdapDataIsChanged() {
-        LdapDomainMember initial = ldapMember("uid123", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "123");
+        LdapUser initial = ldapMember("uid123", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "123");
         preloadDavData(initial);
 
         // Change the telephone number
-        LdapDomainMember updated = ldapMember("uid123", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "456");
+        LdapUser updated = ldapMember("uid123", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "456");
         when(ldapDomainMemberProvider.domainMembers(openPaaSDomain.domain()))
             .thenReturn(Flux.just(updated));
         UpdateResult result = testee.syncDomainMembers(openPaaSDomain, new ContactUpdateContext()).block();
@@ -212,7 +212,7 @@ public class LdapToDavDomainMembersSyncServiceTest {
 
     @Test
     void shouldDeleteDavContactWhenLdapNoLongerContainsIt() {
-        LdapDomainMember member = ldapMember("uid123", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "123");
+        LdapUser member = ldapMember("uid123", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "123");
         preloadDavData(member);
 
         when(ldapDomainMemberProvider.domainMembers(openPaaSDomain.domain()))
@@ -229,16 +229,16 @@ public class LdapToDavDomainMembersSyncServiceTest {
     @Test
     void shouldHandleAddUpdateDeleteAndNoOpOnSecondSync() {
         // Step 1: Preload existing DAV contacts
-        LdapDomainMember existing1 = ldapMember("uid1", "a@example.com", "Nguyen", "Van A", "Nguyen Van A", "111");
-        LdapDomainMember existing2 = ldapMember("uid2", "b@example.com", "Le", "Thi B", "Le Thi B", "222");
-        LdapDomainMember existing3 = ldapMember("uid99", "toremove@example.com", "Le", "Thi B", "Le Thi B", "999");
+        LdapUser existing1 = ldapMember("uid1", "a@example.com", "Nguyen", "Van A", "Nguyen Van A", "111");
+        LdapUser existing2 = ldapMember("uid2", "b@example.com", "Le", "Thi B", "Le Thi B", "222");
+        LdapUser existing3 = ldapMember("uid99", "toremove@example.com", "Le", "Thi B", "Le Thi B", "999");
         preloadDavData(existing1, existing2, existing3);
 
         // Step 2: Prepare LDAP state with 2 new, 2 updated, and 1 retained (existing1, existing2 modified)
-        LdapDomainMember updated1 = ldapMember("uid1", "a@example.com", "Nguyen", "Van A", "Nguyen Van A", "999");
-        LdapDomainMember updated2 = ldapMember("uid2", "b@example.com", "Le", "Thi B", "Le Thi B", "888");
-        LdapDomainMember added1 = ldapMember("uid3", "c@example.com", "Tran", "C", "Tran C", "333");
-        LdapDomainMember added2 = ldapMember("uid4", "d@example.com", "Pham", "D", "Pham D", "444");
+        LdapUser updated1 = ldapMember("uid1", "a@example.com", "Nguyen", "Van A", "Nguyen Van A", "999");
+        LdapUser updated2 = ldapMember("uid2", "b@example.com", "Le", "Thi B", "Le Thi B", "888");
+        LdapUser added1 = ldapMember("uid3", "c@example.com", "Tran", "C", "Tran C", "333");
+        LdapUser added2 = ldapMember("uid4", "d@example.com", "Pham", "D", "Pham D", "444");
 
         when(ldapDomainMemberProvider.domainMembers(openPaaSDomain.domain()))
             .thenReturn(Flux.just(updated1, updated2, added1, added2));
@@ -306,8 +306,8 @@ public class LdapToDavDomainMembersSyncServiceTest {
                     .build());
     }
 
-    private LdapDomainMember ldapMember(String uid, String mail, String sn, String givenName, String displayName, String tel) {
-        return LdapDomainMember.builder()
+    private LdapUser ldapMember(String uid, String mail, String sn, String givenName, String displayName, String tel) {
+        return LdapUser.builder()
             .uid(uid)
             .cn(displayName)
             .sn(sn)
@@ -325,7 +325,7 @@ public class LdapToDavDomainMembersSyncServiceTest {
             .orElse("");
     }
 
-    private void preloadDavData(LdapDomainMember... members) {
+    private void preloadDavData(LdapUser... members) {
         when(ldapDomainMemberProvider.domainMembers(openPaaSDomain.domain()))
             .thenReturn(Flux.fromArray(members));
         testee.syncDomainMembers(openPaaSDomain, new ContactUpdateContext()).block();

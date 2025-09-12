@@ -21,16 +21,19 @@ package com.linagora.calendar.storage.ldap;
 import java.util.Optional;
 
 import org.apache.james.core.MailAddress;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
+import com.unboundid.ldap.sdk.SearchResultEntry;
 
-public record LdapDomainMember(Optional<String> uid,
-                               String cn,
-                               String sn,
-                               Optional<String> givenName,
-                               Optional<MailAddress> mail,
-                               Optional<String> telephoneNumber,
-                               Optional<String> displayName) {
+public record LdapUser(Optional<String> uid,
+                       String cn,
+                       String sn,
+                       Optional<String> givenName,
+                       Optional<MailAddress> mail,
+                       Optional<String> telephoneNumber,
+                       Optional<String> displayName) {
     public static class Builder {
         private Optional<String> uid = Optional.empty();
         private String cn;
@@ -75,17 +78,39 @@ public record LdapDomainMember(Optional<String> uid,
             return this;
         }
 
-        public LdapDomainMember build() {
-            return new LdapDomainMember(uid, cn, sn, givenName, mail, telephoneNumber, displayName);
+        public LdapUser build() {
+            return new LdapUser(uid, cn, sn, givenName, mail, telephoneNumber, displayName);
         }
     }
+
+    public static final Logger LOGGER = LoggerFactory.getLogger(LdapUser.class);
 
     public static Builder builder() {
         return new Builder();
     }
 
-    public LdapDomainMember {
+    public LdapUser {
         Preconditions.checkArgument(cn != null, "cn must not be null");
         Preconditions.checkArgument(sn != null, "sn must not be null");
+    }
+
+    public static LdapUser fromLdapEntry(SearchResultEntry entry) {
+        LdapUser.Builder builder = LdapUser.builder();
+        Optional.ofNullable(entry.getAttributeValue("uid")).ifPresent(builder::uid);
+        Optional.ofNullable(entry.getAttributeValue("cn")).ifPresent(builder::cn);
+        Optional.ofNullable(entry.getAttributeValue("sn")).ifPresent(builder::sn);
+        Optional.ofNullable(entry.getAttributeValue("givenName")).ifPresent(builder::givenName);
+        Optional.ofNullable(entry.getAttributeValue("mail"))
+            .flatMap(mail -> {
+                try {
+                    return Optional.of(new MailAddress(mail));
+                } catch (Exception e) {
+                    LOGGER.error("Error while processing LDAP entry: {}", entry.getDN(), e);
+                    return Optional.empty();
+                }
+            }).ifPresent(builder::mail);
+        Optional.ofNullable(entry.getAttributeValue("telephoneNumber")).ifPresent(builder::telephoneNumber);
+        Optional.ofNullable(entry.getAttributeValue("displayName")).ifPresent(builder::displayName);
+        return builder.build();
     }
 }

@@ -75,6 +75,7 @@ import com.linagora.calendar.storage.opensearch.OpensearchCalendarSearchModule;
 import com.linagora.calendar.storage.redis.RedisStorageModule;
 import com.linagora.calendar.webadmin.CalendarRoutesModule;
 import com.linagora.calendar.webadmin.DomainMembersSyncRouteModule;
+import com.linagora.calendar.webadmin.LdapUsersImportRouteModule;
 import com.linagora.tmail.james.jmap.module.OSContactAutoCompleteModule;
 
 public class TwakeCalendarMain {
@@ -185,7 +186,7 @@ public class TwakeCalendarMain {
             case MEMORY -> new MemoryUserModule();
             case LDAP -> Modules.combine(Modules.override(new MemoryUserModule())
                     .with(new LdapUsersRepositoryModule()),
-                new LdapStorageModule(), new DomainMembersSyncRouteModule());
+                new LdapStorageModule(), new DomainMembersSyncRouteModule(), new LdapUsersImportRouteModule());
         };
     }
 
