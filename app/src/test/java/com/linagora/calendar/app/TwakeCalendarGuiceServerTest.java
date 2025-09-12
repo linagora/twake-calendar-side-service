@@ -44,6 +44,7 @@ import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;
 import org.apache.james.jwt.introspection.IntrospectionEndpoint;
 import org.apache.james.util.Port;
+import org.apache.james.utils.GuiceProbe;
 import org.apache.james.utils.WebAdminGuiceProbe;
 import org.apache.james.webadmin.routes.TasksRoutes;
 import org.junit.jupiter.api.BeforeEach;
@@ -55,6 +56,7 @@ import org.mockserver.model.HttpRequest;
 import org.mockserver.model.HttpResponse;
 
 import com.github.fge.lambdas.Throwing;
+import com.google.inject.multibindings.Multibinder;
 import com.google.inject.name.Names;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.app.modules.MemoryAutoCompleteModule;
@@ -107,7 +109,9 @@ class TwakeCalendarGuiceServerTest  {
         DavModuleTestHelper.RABBITMQ_MODULE.apply(rabbitMQExtension),
         DavModuleTestHelper.BY_PASS_MODULE,
         binder -> binder.bind(URL.class).annotatedWith(Names.named("userInfo")).toProvider(TwakeCalendarGuiceServerTest::getUserInfoTokenEndpoint),
-        binder -> binder.bind(IntrospectionEndpoint.class).toProvider(() -> new IntrospectionEndpoint(getInrospectTokenEndpoint(), Optional.empty())));
+        binder -> binder.bind(IntrospectionEndpoint.class).toProvider(() -> new IntrospectionEndpoint(getInrospectTokenEndpoint(), Optional.empty())),
+        binder -> Multibinder.newSetBinder(binder, GuiceProbe.class)
+            .addBinding().to(DomainAdminProbe.class));
 
     @BeforeEach
     void setUp(TwakeCalendarGuiceServer server) {
@@ -713,6 +717,9 @@ class TwakeCalendarGuiceServerTest  {
         targetRestAPI(server);
 
         String domainId = server.getProbe(CalendarDataProbe.class).domainId(DOMAIN).value();
+        server.getProbe(DomainAdminProbe.class)
+            .addAdmin(new OpenPaaSId(domainId), userId);
+
         String body = given()
             .redirects().follow(false)
             .auth().preemptive().basic(USERNAME.asString(), PASSWORD)
@@ -735,11 +742,18 @@ class TwakeCalendarGuiceServerTest  {
                      "_id": "%s",
                      "name": "linagora.com",
                      "company_name": "linagora.com",
-                     "administrators": [ ],
+                     "administrators": [
+                          {
+                              "user_id": "%s",
+                              "timestamps": {
+                                  "creation": "1970-01-01T00:00:00.000Z"
+                              }
+                          }
+                     ],
                      "injections": [],
                      "__v": 0
                  }
-                """, domainId));
+                """, domainId, userId.value()));
     }
 
     @Test

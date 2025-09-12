@@ -54,11 +54,15 @@ public class DomainRoute extends CalendarRoute {
 
     public static class ResponseDTO {
 
-        public record AdministratorDTO(@JsonProperty("user_id") String userId,
-                                       @JsonProperty("timestamps") Timestamp timestamp) {
+        public record AdministratorDTO(@JsonProperty("user_id") String userId) {
 
             static AdministratorDTO from(DomainAdministrator admin) {
-                return new AdministratorDTO(admin.userId().value(), new Timestamp(admin.creation()));
+                return new AdministratorDTO(admin.userId().value());
+            }
+
+            @JsonProperty("timestamps")
+            public Timestamp getTimestamps() {
+                return new Timestamp();
             }
         }
 
@@ -118,21 +122,10 @@ public class DomainRoute extends CalendarRoute {
     }
 
     public static class Timestamp {
-
-        private final Instant creation;
-
-        public Timestamp() {
-            this(Instant.EPOCH);
-        }
-
-        public Timestamp(Instant creation) {
-            this.creation = creation;
-        }
-
         @JsonProperty("creation")
         @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSSX")
         public ZonedDateTime getCreation() {
-            return ZonedDateTime.ofInstant(creation, ZoneOffset.UTC);
+            return ZonedDateTime.ofInstant(Instant.EPOCH, ZoneOffset.UTC);
         }
     }
 
