@@ -24,13 +24,13 @@ import org.apache.james.core.MailAddress;
 
 import com.google.common.base.Preconditions;
 
-public record LdapDomainMember(Optional<String> uid,
-                               String cn,
-                               String sn,
-                               Optional<String> givenName,
-                               Optional<MailAddress> mail,
-                               Optional<String> telephoneNumber,
-                               Optional<String> displayName) {
+public record LdapUser(Optional<String> uid,
+                       String cn,
+                       String sn,
+                       Optional<String> givenName,
+                       Optional<MailAddress> mail,
+                       Optional<String> telephoneNumber,
+                       Optional<String> displayName) {
     public static class Builder {
         private Optional<String> uid = Optional.empty();
         private String cn;
@@ -75,8 +75,8 @@ public record LdapDomainMember(Optional<String> uid,
             return this;
         }
 
-        public LdapDomainMember build() {
-            return new LdapDomainMember(uid, cn, sn, givenName, mail, telephoneNumber, displayName);
+        public LdapUser build() {
+            return new LdapUser(uid, cn, sn, givenName, mail, telephoneNumber, displayName);
         }
     }
 
@@ -84,7 +84,7 @@ public record LdapDomainMember(Optional<String> uid,
         return new Builder();
     }
 
-    public LdapDomainMember {
+    public LdapUser {
         Preconditions.checkArgument(cn != null, "cn must not be null");
         Preconditions.checkArgument(sn != null, "sn must not be null");
     }

@@ -58,8 +58,8 @@ import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSId;
-import com.linagora.calendar.storage.ldap.LdapDomainMember;
 import com.linagora.calendar.storage.ldap.LdapDomainMemberProvider;
+import com.linagora.calendar.storage.ldap.LdapUser;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.webadmin.DomainMembersAddressBookRoutes.LdapToDavDomainMembersSyncTaskRegistration;
 import com.linagora.calendar.webadmin.service.LdapToDavDomainMembersSyncService;
@@ -117,7 +117,7 @@ public class DomainMembersAddressBookRoutesTest {
 
     @Test
     void allDomainsSyncTaskShouldBeRegistered() {
-        LdapDomainMember ldap = ldapMember("uid123", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "123");
+        LdapUser ldap = ldapMember("uid123", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "123");
         mockLdapDomainMembersForDomain(openPaaSDomain.domain(), ldap);
 
         String taskId = given()
@@ -161,7 +161,7 @@ public class DomainMembersAddressBookRoutesTest {
 
     @Test
     void singleDomainSyncTaskShouldBeRegistered() {
-        LdapDomainMember ldap = ldapMember("uid123", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "123");
+        LdapUser ldap = ldapMember("uid123", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "123");
         mockLdapDomainMembersForDomain(openPaaSDomain.domain(), ldap);
 
         String taskId = given()
@@ -229,8 +229,8 @@ public class DomainMembersAddressBookRoutesTest {
     @Test
     void shouldSyncAllDomainMembersToDavServerAfterTaskCompletion() {
         // Given
-        LdapDomainMember ldap1 = ldapMember("uid001", "alice@example.com", "Alice", "Nguyen", "Alice Nguyen", "111");
-        LdapDomainMember ldap2 = ldapMember("uid002", "bob@example.org", "Bob", "Tran", "Bob Tran", "222");
+        LdapUser ldap1 = ldapMember("uid001", "alice@example.com", "Alice", "Nguyen", "Alice Nguyen", "111");
+        LdapUser ldap2 = ldapMember("uid002", "bob@example.org", "Bob", "Tran", "Bob Tran", "222");
 
         Domain domain1 = Domain.of("domain1" + UUID.randomUUID() + ".tld");
         Domain domain2 = Domain.of("domain2" + UUID.randomUUID() + ".tld");
@@ -278,7 +278,7 @@ public class DomainMembersAddressBookRoutesTest {
 
     @Test
     void shouldSyncSingleDomainMembersToDavServerAfterTaskCompletion() {
-        LdapDomainMember ldap = ldapMember("uid123", "charlie@example.net", "Charlie", "Pham", "Charlie Pham", "333");
+        LdapUser ldap = ldapMember("uid123", "charlie@example.net", "Charlie", "Pham", "Charlie Pham", "333");
         Domain domain = Domain.of("domain1" + UUID.randomUUID() + ".tld");
         OpenPaaSDomain openPaaSDomain1 = domainDAO.add(domain).block();
         mockLdapDomainMembersForDomain(domain, ldap);
@@ -313,8 +313,8 @@ public class DomainMembersAddressBookRoutesTest {
         OpenPaaSDomain openPaaSDomain = domainDAO.add(domain).block();
 
         // Initial LDAP contact -> to be added
-        LdapDomainMember ldapInitial1 = ldapMember("uid001-1", "first11@example.com", "Nguyen", "First", "First Nguyen", "111");
-        LdapDomainMember ldapInitial2 = ldapMember("uid001-2", "first12@example.com", "Nguyen", "First", "First Nguyen", "111");
+        LdapUser ldapInitial1 = ldapMember("uid001-1", "first11@example.com", "Nguyen", "First", "First Nguyen", "111");
+        LdapUser ldapInitial2 = ldapMember("uid001-2", "first12@example.com", "Nguyen", "First", "First Nguyen", "111");
 
         // Add initial contact
         mockLdapDomainMembersForDomain(domain, ldapInitial1, ldapInitial2);
@@ -341,8 +341,8 @@ public class DomainMembersAddressBookRoutesTest {
             .body("additionalInformation.addedCount", is(2));
 
         // Modify the contact for update + add one new + remove one -> simulate updated + added + deleted
-        LdapDomainMember ldapUpdated = ldapMember("uid001-1", "first11@example.com", "Nguyen", "First", "First Updated", "999"); // Updated
-        LdapDomainMember ldapAdded = ldapMember("uid002", "second@example.org", "Le", "Second", "Second Le", "222"); // New
+        LdapUser ldapUpdated = ldapMember("uid001-1", "first11@example.com", "Nguyen", "First", "First Updated", "999"); // Updated
+        LdapUser ldapAdded = ldapMember("uid002", "second@example.org", "Le", "Second", "Second Le", "222"); // New
 
         mockLdapDomainMembersForDomain(domain, ldapUpdated, ldapAdded);
 
@@ -361,7 +361,7 @@ public class DomainMembersAddressBookRoutesTest {
             .body("additionalInformation.deletedCount", is(1));
     }
 
-    private void mockLdapDomainMembersForDomain(Domain domain, LdapDomainMember... members) {
+    private void mockLdapDomainMembersForDomain(Domain domain, LdapUser... members) {
         when(ldapDomainMemberProvider.domainMembers(any()))
             .thenAnswer(inv -> {
                 Domain input = inv.getArgument(0);
@@ -369,8 +369,8 @@ public class DomainMembersAddressBookRoutesTest {
             });
     }
 
-    private LdapDomainMember ldapMember(String uid, String mail, String sn, String givenName, String displayName, String tel) {
-        return LdapDomainMember.builder()
+    private LdapUser ldapMember(String uid, String mail, String sn, String givenName, String displayName, String tel) {
+        return LdapUser.builder()
             .uid(uid)
             .cn(displayName)
             .sn(sn)
