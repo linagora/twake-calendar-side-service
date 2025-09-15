@@ -25,6 +25,7 @@ import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
@@ -72,6 +73,7 @@ import org.testcontainers.shaded.org.awaitility.Awaitility;
 import org.testcontainers.shaded.org.awaitility.core.ConditionFactory;
 
 import com.github.fge.lambdas.Throwing;
+import com.linagora.calendar.api.JwtSigner;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalDavEventRepository;
 import com.linagora.calendar.dav.DavTestHelper;
@@ -220,6 +222,10 @@ public class EventResourceConsumerTest {
 
         MessageGenerator.Factory messageFactory = MessageGenerator.factory(mailTemplateConfig, fileSystem, openPaaSUserDAO);
 
+        JwtSigner jwtSigner = mock(JwtSigner.class);
+        when(jwtSigner.generate(anyMap()))
+            .thenReturn(Mono.just("jwtSecret"));
+
         EventResourceHandler eventResourceHandler = new EventResourceHandler(resourceDAO,
             mailSenderFactory,
             messageFactory,
@@ -227,7 +233,8 @@ public class EventResourceConsumerTest {
             settingsResolver,
             eventEmailFilter,
             mailTemplateConfig,
-            URI.create("https://calendar.linagora.local").toURL());
+            URI.create("https://calendar.linagora.local").toURL(),
+            jwtSigner);
 
         EventResourceConsumer consumer = new EventResourceConsumer(channelPool, QueueArguments.Builder::new, eventResourceHandler);
         consumer.init();
@@ -302,8 +309,8 @@ public class EventResourceConsumerTest {
                 .contains(attendee.username().asString())
                 .contains("Projector")
                 .contains("This is a meeting to discuss the sprint planning for the next week.")
-                .contains("https://calendar.linagora.local/calendar/api/resources/" + resourceId.value() + "/" + resourceEventId + "/participation?status=ACCEPTED&amp;referrer=email")
-                .contains("https://calendar.linagora.local/calendar/api/resources/" + resourceId.value() + "/" + resourceEventId + "/participation?status=DECLINED&amp;referrer=email");
+                .contains("https://calendar.linagora.local/calendar/api/resources/" + resourceId.value() + "/" + resourceEventId + "/participation?status=ACCEPTED&amp;referrer=email&amp;jwt=jwtSecret")
+                .contains("https://calendar.linagora.local/calendar/api/resources/" + resourceId.value() + "/" + resourceEventId + "/participation?status=DECLINED&amp;referrer=email&amp;jwt=jwtSecret");
         }));
     }
 

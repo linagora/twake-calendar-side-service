@@ -40,6 +40,7 @@ import org.slf4j.LoggerFactory;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableMap;
+import com.linagora.calendar.api.JwtSigner;
 import com.linagora.calendar.smtp.Mail;
 import com.linagora.calendar.smtp.MailSender;
 import com.linagora.calendar.smtp.i18n.I18NTranslator;
@@ -67,7 +68,15 @@ import reactor.core.publisher.Mono;
 
 public class EventResourceHandler {
 
-    public static final String RESOURCE_REPLY_URI = "/calendar/api/resources/{resourceId}/{eventId}/participation?status={partStat}&referrer=email";
+    private static final String PLACEHOLDER_RESOURCE_ID = "{resourceId}";
+    private static final String PLACEHOLDER_EVENT_ID = "{eventId}";
+    private static final String PLACEHOLDER_PART_STAT = "{partStat}";
+    private static final String PLACEHOLDER_JWT = "{jwt}";
+
+    public static final String RESOURCE_REPLY_URI = "/calendar/api/resources/" + PLACEHOLDER_RESOURCE_ID +
+        "/" + PLACEHOLDER_EVENT_ID +
+        "/participation?status=" + PLACEHOLDER_PART_STAT +
+        "&referrer=email&jwt=" + PLACEHOLDER_JWT;
 
     public static final Function<EventFields.Person, PersonModel> PERSON_TO_MODEL =
         person -> new PersonModel(person.cn(), person.email().asString());
@@ -92,6 +101,7 @@ public class EventResourceHandler {
     private final MaybeSender maybeSender;
     private final MailAddress senderAddress;
     private final String resourceReplyURL;
+    private final JwtSigner jwtSigner;
 
     @Inject
     public EventResourceHandler(ResourceDAO resourceDAO,
@@ -101,7 +111,8 @@ public class EventResourceHandler {
                                 @Named("language_timezone") SettingsBasedResolver settingsResolver,
                                 EventEmailFilter eventEmailFilter,
                                 MailTemplateConfiguration mailTemplateConfiguration,
-                                @Named("spaCalendarUrl") URL calendarBaseUrl) {
+                                @Named("spaCalendarUrl") URL calendarBaseUrl,
+                                JwtSigner jwtSigner) {
         this.resourceDAO = resourceDAO;
         this.mailSenderFactory = mailSenderFactory;
         this.messageGeneratorFactory = messageGeneratorFactory;
@@ -112,6 +123,7 @@ public class EventResourceHandler {
         this.senderAddress = maybeSender.asOptional()
             .orElseThrow(() -> new IllegalArgumentException("Sender address must not be empty"));
         this.resourceReplyURL = calendarBaseUrl.toString() + RESOURCE_REPLY_URI;
+        this.jwtSigner = jwtSigner;
     }
 
     public Mono<Void> handleCreateEvent(CalendarResourceMessageDTO message) {
@@ -158,24 +170,31 @@ public class EventResourceHandler {
 
     private Mono<Void> sendReplyMail(CalendarResourceMessageDTO calendarResourceMessageDTO, String resourceName, MailAddress recipient, boolean approved) {
         return sendMail((SettingsBasedResolver.ResolvedSettings settings, I18NTranslator translator) ->
-                toPugModel(calendarResourceMessageDTO, resourceName, settings.locale(), settings.zoneId(), approved, translator),
+                Mono.just(toPugModel(calendarResourceMessageDTO, resourceName, settings.locale(), settings.zoneId(), approved, translator)),
             recipient,
             RESOURCE_REPLY_TEMPLATE_TYPE);
     }
 
-    private Mono<Void> sendMail(BiFunction<SettingsBasedResolver.ResolvedSettings, I18NTranslator, Map<String, Object>> modelGenerator,
+    private Mono<Void> sendMail(BiFunction<SettingsBasedResolver.ResolvedSettings, I18NTranslator, Mono<Map<String, Object>>> modelGenerator,
                                 MailAddress recipient,
                                 TemplateType templateType) {
         Username recipientUser = Username.fromMailAddress(recipient);
         return getUserSettings(recipientUser)
             .flatMap(resolvedSettings ->
                 Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(resolvedSettings.locale()), templateType))
-                    .flatMap(messageGenerator -> messageGenerator.generate(recipientUser,
-                        senderAddress,
-                        modelGenerator.apply(resolvedSettings, messageGenerator.getI18nTranslator()),
-                        List.of()))
-                    .flatMap(message -> mailSenderFactory.create()
-                        .flatMap(Throwing.function(mailSender -> mailSender.send(new Mail(maybeSender, List.of(recipient), message))))));
+                    .flatMap(messageGenerator ->
+                        modelGenerator.apply(resolvedSettings, messageGenerator.getI18nTranslator())
+                            .flatMap(model -> sendMessage(recipientUser, recipient, messageGenerator, model))));
+    }
+
+    private Mono<Void> sendMessage(Username recipientUser,
+                                   MailAddress recipient,
+                                   MessageGenerator messageGenerator,
+                                   Map<String, Object> model) {
+        return messageGenerator.generate(recipientUser, senderAddress, model, List.of())
+            .flatMap(message -> mailSenderFactory.create()
+                .flatMap(Throwing.function(mailSender ->
+                    mailSender.send(new Mail(maybeSender, List.of(recipient), message)))));
     }
 
     private Mono<SettingsBasedResolver.ResolvedSettings> getUserSettings(Username user) {
@@ -189,25 +208,42 @@ public class EventResourceHandler {
             }).onErrorResume(error -> Mono.just(SettingsBasedResolver.ResolvedSettings.DEFAULT));
     }
 
-    private Map<String, Object> toPugModel(CalendarResourceMessageDTO calendarResourceMessageDTO,
-                                           String resourceName,
-                                           Locale locale,
-                                           ZoneId zoneToDisplay) {
-        VEvent vEvent = GET_FIRST_VEVENT_FUNCTION.apply(calendarResourceMessageDTO.ics());
+    private Mono<Map<String, Object>> toPugModel(CalendarResourceMessageDTO calendarResourceMessageDTO,
+                                                        String resourceName,
+                                                        Locale locale,
+                                                        ZoneId zoneToDisplay) {
+        String resourceId = calendarResourceMessageDTO.resourceId();
+        String eventId = calendarResourceMessageDTO.eventId();
 
-        String basicLink = resourceReplyURL.replace("{resourceId}", calendarResourceMessageDTO.resourceId())
-            .replace("{eventId}", calendarResourceMessageDTO.eventId());
-        String acceptLink = basicLink.replace("{partStat}", PartStat.ACCEPTED.getValue());
-        String declineLink = basicLink.replace("{partStat}", PartStat.DECLINED.getValue());
+        return signAsJwt(resourceId, eventId)
+            .map(jwt -> {
+                String baseLink = resourceReplyURL
+                    .replace(PLACEHOLDER_RESOURCE_ID, resourceId)
+                    .replace(PLACEHOLDER_EVENT_ID, eventId)
+                    .replace(PLACEHOLDER_JWT, jwt);
 
-        ImmutableMap.Builder<String, Object> contentBuilder = ImmutableMap.builder();
-        contentBuilder.put("event", toPugModel(vEvent, locale, zoneToDisplay))
-            .put("resourceName", resourceName)
-            .put("acceptLink", acceptLink)
-            .put("declineLink", declineLink);
+                String acceptLink = baseLink.replace("{partStat}", PartStat.ACCEPTED.getValue());
+                String declineLink = baseLink.replace("{partStat}", PartStat.DECLINED.getValue());
 
-        return ImmutableMap.of("content", contentBuilder.build(),
-            "subject.resourceName", resourceName);
+                VEvent vEvent = GET_FIRST_VEVENT_FUNCTION.apply(calendarResourceMessageDTO.ics());
+
+                ImmutableMap.Builder<String, Object> contentBuilder = ImmutableMap.builder();
+                contentBuilder.put("event", toPugModel(vEvent, locale, zoneToDisplay))
+                    .put("resourceName", resourceName)
+                    .put("acceptLink", acceptLink)
+                    .put("declineLink", declineLink);
+
+                return ImmutableMap.of(
+                    "content", contentBuilder.build(),
+                    "subject.resourceName", resourceName
+                );
+            });
+    }
+
+    private Mono<String> signAsJwt(String resourceId, String eventId) {
+        return jwtSigner.generate(ImmutableMap.of(
+            "resourceId", resourceId,
+            "eventId", eventId));
     }
 
     private Map<String, Object> toPugModel(CalendarResourceMessageDTO calendarResourceMessageDTO,
