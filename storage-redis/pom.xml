@@ -89,6 +89,12 @@
             <artifactId>mockito-core</artifactId>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>eu.timepit</groupId>
+            <artifactId>refined_${scala.base}</artifactId>
+            <scope>test</scope>
+            <version>0.11.3</version>
+        </dependency>
     </dependencies>
 
 </project>
