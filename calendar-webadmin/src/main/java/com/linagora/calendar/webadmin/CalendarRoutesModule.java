@@ -43,6 +43,7 @@ public class CalendarRoutesModule extends AbstractModule {
         routesMultibinder.addBinding().to(CalendarChannelLogoutRoutes.class);
         routesMultibinder.addBinding().to(CalendarRoutes.class);
         routesMultibinder.addBinding().to(ResourceRoutes.class);
+        routesMultibinder.addBinding().to(DomainAdminRoutes.class);
 
         bind(MemoryTaskManager.class).in(Scopes.SINGLETON);
         bind(TaskManager.class).to(MemoryTaskManager.class);
