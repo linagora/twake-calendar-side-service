@@ -48,6 +48,18 @@ public class CalDavEventRepository {
         .map(Duration::ofMillis)
         .orElse(Duration.ofMillis(100));
 
+    private static final Retry RETRY_NOT_FOUND =
+        Retry.backoff(1, Duration.ofSeconds(1))
+            .filter(CalendarEventNotFoundException.class::isInstance)
+            .onRetryExhaustedThrow((retrySpec, retrySignal) -> retrySignal.failure());
+
+    private static final Retry RETRY_UPDATE =
+        Retry.backoff(MAX_CALENDAR_OBJECT_UPDATE_RETRIES, CALENDAR_OBJECT_UPDATE_RETRY_BACKOFF)
+            .filter(CalDavClient.RetriableDavClientException.class::isInstance)
+            .onRetryExhaustedThrow((spec, signal) ->
+                new DavClientException("Max retries exceeded for calendar update", signal.failure()));
+
+
     private final CalDavClient client;
 
     @Singleton
@@ -89,15 +101,15 @@ public class CalDavEventRepository {
             .flatMap(href -> applyModifierToEvent(Mono.just(client.httpClientWithImpersonation(username)), href, modifier));
     }
 
-    private Mono<Void> applyModifierToEvent(Mono<HttpClient> httpClientPublisher, URI calendarEventHref, CalendarEventModifier modifier) {
+    private Mono<Void> applyModifierToEvent(Mono<HttpClient> httpClientPublisher,
+                                            URI calendarEventHref,
+                                            CalendarEventModifier modifier) {
         return client.fetchCalendarEvent(httpClientPublisher, calendarEventHref)
             .switchIfEmpty(Mono.error(new CalendarEventNotFoundException(calendarEventHref)))
+            .retryWhen(RETRY_NOT_FOUND)
             .map(calendarObject -> calendarObject.withUpdatePatches(modifier))
             .flatMap(updated -> client.updateCalendarEvent(httpClientPublisher, updated))
-            .retryWhen(Retry.backoff(MAX_CALENDAR_OBJECT_UPDATE_RETRIES, CALENDAR_OBJECT_UPDATE_RETRY_BACKOFF)
-                .filter(CalDavClient.RetriableDavClientException.class::isInstance)
-                .onRetryExhaustedThrow((spec, signal) ->
-                    new DavClientException("Max retries exceeded for calendar update", signal.failure())))
+            .retryWhen(RETRY_UPDATE)
             .onErrorResume(CalendarEventModifier.NoUpdateRequiredException.class, e -> Mono.empty());
     }
 
