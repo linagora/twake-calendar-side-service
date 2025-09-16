@@ -21,6 +21,7 @@ package com.linagora.calendar.storage.mongodb;
 import java.io.FileNotFoundException;
 
 import org.apache.james.core.Domain;
+import org.apache.james.core.healthcheck.HealthCheck;
 import org.apache.james.domainlist.api.DomainList;
 import org.apache.james.metrics.api.MetricFactory;
 import org.apache.james.utils.InitializationOperation;
@@ -32,6 +33,7 @@ import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.Scopes;
 import com.google.inject.Singleton;
+import com.google.inject.multibindings.Multibinder;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.linagora.calendar.storage.AlarmEventDAO;
 import com.linagora.calendar.storage.AlarmEventLeaseProvider;
@@ -74,6 +76,10 @@ public class MongoDBStorageModule extends AbstractModule {
         bind(AlarmEventLeaseProvider.class).to(MongoAlarmEventLeaseProvider.class);
 
         bind(ResourceDAO.class).to(MongoDBResourceDAO.class);
+
+        Multibinder.newSetBinder(binder(), HealthCheck.class)
+            .addBinding()
+            .to(MongoDBHealthCheck.class);
     }
 
     @Provides

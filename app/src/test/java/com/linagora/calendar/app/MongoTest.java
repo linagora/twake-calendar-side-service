@@ -21,6 +21,7 @@ package com.linagora.calendar.app;
 import static io.restassured.RestAssured.given;
 import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
+import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.net.URI;
@@ -122,6 +123,39 @@ class MongoTest {
             .body().asString();
 
         assertThat(response).contains("mongodb_command_");
+    }
+
+    @Test
+    void shouldExposeWebAdminHealthcheck() {
+        String body = given()
+            .when()
+            .get("/healthcheck")
+            .then()
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(body).isEqualTo("""
+            {
+               "status" : "healthy",
+               "checks" : [ {
+                 "componentName" : "Guice application lifecycle",
+                 "escapedComponentName" : "Guice%20application%20lifecycle",
+                 "status" : "healthy",
+                 "cause" : null
+               }, {
+                 "componentName" : "MongoDB",
+                 "escapedComponentName" : "MongoDB",
+                 "status" : "healthy",
+                 "cause" : null
+               }, {
+                 "componentName" : "RabbitMQ backend",
+                 "escapedComponentName" : "RabbitMQ%20backend",
+                 "status" : "healthy",
+                 "cause" : null
+               } ]
+            }
+            """);
     }
 
     private static void targetRestAPI(TwakeCalendarGuiceServer server) {
