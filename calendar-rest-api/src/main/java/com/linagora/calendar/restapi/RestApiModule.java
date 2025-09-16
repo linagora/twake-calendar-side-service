@@ -268,6 +268,13 @@ public class RestApiModule extends AbstractModule {
         return getURLFromConfiguration(propertiesProvider, "spa.excal.url");
     }
 
+    @Provides
+    @Singleton
+    @Named("selfUrl")
+    URL provideSelfUrl(RestApiConfiguration restApiConfiguration) {
+        return restApiConfiguration.getSelfUrl();
+    }
+
     private URL getURLFromConfiguration(PropertiesProvider propertiesProvider, String propertyName) throws ConfigurationException, FileNotFoundException {
         Configuration config = propertiesProvider.getConfiguration("configuration");
         return Optional.ofNullable(config.getString(propertyName))

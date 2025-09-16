@@ -111,7 +111,7 @@ public class EventResourceHandler {
                                 @Named("language_timezone") SettingsBasedResolver settingsResolver,
                                 EventEmailFilter eventEmailFilter,
                                 MailTemplateConfiguration mailTemplateConfiguration,
-                                @Named("spaCalendarUrl") URL calendarBaseUrl,
+                                @Named("selfUrl") URL calendarBaseUrl,
                                 JwtSigner jwtSigner) {
         this.resourceDAO = resourceDAO;
         this.mailSenderFactory = mailSenderFactory;
