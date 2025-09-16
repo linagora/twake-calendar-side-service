@@ -50,7 +50,8 @@ public class CalDavEventRepository {
 
     private static final Retry RETRY_NOT_FOUND =
         Retry.backoff(1, Duration.ofSeconds(1))
-            .filter(CalendarEventNotFoundException.class::isInstance);
+            .filter(CalendarEventNotFoundException.class::isInstance)
+            .onRetryExhaustedThrow((retrySpec, retrySignal) -> retrySignal.failure());
 
     private static final Retry RETRY_UPDATE =
         Retry.backoff(MAX_CALENDAR_OBJECT_UPDATE_RETRIES, CALENDAR_OBJECT_UPDATE_RETRY_BACKOFF)
