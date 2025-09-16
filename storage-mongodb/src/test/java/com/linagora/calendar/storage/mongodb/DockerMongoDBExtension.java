@@ -73,10 +73,20 @@ public class DockerMongoDBExtension implements BeforeAllCallback, AfterAllCallba
         }
     }
 
+    public void pause() {
+        mongoDBContainer.getDockerClient().pauseContainerCmd(mongoDBContainer.getContainerId())
+            .exec();
+    }
+
+    public void unpause() {
+        mongoDBContainer.getDockerClient().unpauseContainerCmd(mongoDBContainer.getContainerId())
+            .exec();
+    }
+
     private static MongoDatabase db;
 
     static void init() {
-        mongoDBConfiguration = new MongoDBConfiguration(mongoDBContainer.getConnectionString(), "esn_docker");
+        mongoDBConfiguration = new MongoDBConfiguration(mongoDBContainer.getConnectionString() + "/?socketTimeoutMS=3000", "esn_docker");
         db = MongoDBConnectionFactory.instantiateDB(mongoDBConfiguration, new RecordingMetricFactory());
         MongoDBCollectionFactory.initialize(db);
     }
