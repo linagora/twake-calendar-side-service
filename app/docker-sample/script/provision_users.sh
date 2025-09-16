@@ -4,10 +4,9 @@
 SERVER_URL="http://tcalendar-side-service.local:8000"
 
 # Define a list of users (email,firstname,lastname)
-USERS="bob@linagora.local,Bob,Smith
+USERS="bob@linagora.local,Bob,Smith,
 alice@linagora.local,Alice,Johnson
-cedric@linagora.local,Cedric,Nguyen,
-admin@linagora.local,Admin,Admin"
+cedric@linagora.local,Cedric,Nguyen"
 
 printf "%s\n" "$USERS" | while IFS=',' read email firstname lastname; do
   echo "Registering user: $email"
