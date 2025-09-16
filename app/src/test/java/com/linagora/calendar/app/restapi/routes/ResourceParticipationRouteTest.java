@@ -21,7 +21,6 @@ package com.linagora.calendar.app.restapi.routes;
 import static com.linagora.calendar.app.restapi.routes.ImportRouteTest.mailSenderConfigurationFunction;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static io.restassured.RestAssured.given;
-import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RedirectConfig.redirectConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
 import static io.restassured.http.ContentType.JSON;
@@ -30,6 +29,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 
 import java.net.URI;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -37,6 +37,9 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
 
+import jakarta.inject.Inject;
+
+import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
 import org.apache.james.utils.GuiceProbe;
@@ -49,8 +52,10 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
+import com.google.common.collect.ImmutableMap;
 import com.google.inject.multibindings.Multibinder;
 import com.linagora.calendar.api.CalendarUtil;
+import com.linagora.calendar.api.JwtSigner;
 import com.linagora.calendar.app.AppTestHelper;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
@@ -75,9 +80,6 @@ import com.linagora.calendar.storage.model.Resource;
 import com.linagora.calendar.storage.model.ResourceId;
 
 import io.restassured.RestAssured;
-import io.restassured.authentication.PreemptiveBasicAuthScheme;
-import io.restassured.builder.RequestSpecBuilder;
-import io.restassured.specification.RequestSpecification;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
@@ -85,6 +87,18 @@ import net.fortuna.ical4j.model.parameter.PartStat;
 public class ResourceParticipationRouteTest {
     private static final Domain TEST_DOMAIN = Domain.of(SabreDavProvisioningService.DOMAIN);
     private static final String DEFAULT_USER_PASSWORD = "secret";
+
+    record JwtSignerProbe(JwtSigner jwtSigner) implements GuiceProbe {
+        @Inject
+        public JwtSignerProbe {
+        }
+
+        public String signAsJwt(String resourceId, String eventId) {
+                return jwtSigner.generate(ImmutableMap.of(
+                    "resourceId", resourceId,
+                    "eventId", eventId)).block();
+            }
+        }
 
     @RegisterExtension
     @Order(1)
@@ -106,6 +120,8 @@ public class ResourceParticipationRouteTest {
         binder -> {
             Multibinder.newSetBinder(binder, GuiceProbe.class)
                 .addBinding().to(ResourceProbe.class);
+            Multibinder.newSetBinder(binder, GuiceProbe.class)
+                .addBinding().to(JwtSignerProbe.class);
             binder.bind(MailSenderConfiguration.class)
                 .toInstance(mailSenderConfigurationFunction.apply(SMTP_EXTENSION));
         });
@@ -120,12 +136,12 @@ public class ResourceParticipationRouteTest {
     private OpenPaaSUser admin;
     private Resource resource;
 
-    private int restApiPort;
     private DavTestHelper davTestHelper;
-    private RequestSpecification adminRequestSpec;
+    private TwakeCalendarGuiceServer guiceServer;
 
     @BeforeEach
     void setUp(TwakeCalendarGuiceServer server) throws Exception {
+        this.guiceServer = server;
         attendee = SABRE_DAV_EXTENSION.newTestUser(Optional.of("attendee"));
         organizer = SABRE_DAV_EXTENSION.newTestUser(Optional.of("organizer"));
         admin = SABRE_DAV_EXTENSION.newTestUser(Optional.of("admin"));
@@ -136,9 +152,10 @@ public class ResourceParticipationRouteTest {
         server.getProbe(CalendarDataProbe.class).addUserToRepository(organizer.username(), DEFAULT_USER_PASSWORD);
         server.getProbe(CalendarDataProbe.class).addUserToRepository(admin.username(), DEFAULT_USER_PASSWORD);
 
-        restApiPort = server.getProbe(RestApiServerProbe.class).getPort().getValue();
-
-        adminRequestSpec = buildAdminRequestSpec(admin.username().asString(), DEFAULT_USER_PASSWORD, restApiPort);
+        RestAssured.port = server.getProbe(RestApiServerProbe.class).getPort().getValue();
+        RestAssured.baseURI = "http://localhost";
+        RestAssured.config = newConfig()
+            .redirect(redirectConfig().followRedirects(false));
     }
 
     static Stream<PartStat> validPartStats() {
@@ -155,7 +172,7 @@ public class ResourceParticipationRouteTest {
         String endpoint = buildParticipationEndpoint(resourceId, eventPathId, partStat);
 
         // When / Then
-        given(adminRequestSpec)
+        given()
             .when()
             .get(endpoint)
         .then()
@@ -172,8 +189,7 @@ public class ResourceParticipationRouteTest {
         String eventPathId = createEventAndGetEventPathId(resource.id(), eventUid);
         String endpoint = buildParticipationEndpoint(resourceId, eventPathId, PartStat.ACCEPTED);
 
-        given(adminRequestSpec)
-            .when()
+        given()
             .get(endpoint)
         .then()
             .statusCode(302);
@@ -197,7 +213,7 @@ public class ResourceParticipationRouteTest {
         ResourceId fakeResourceId = new ResourceId(new ObjectId().toHexString());
         String endpoint = buildParticipationEndpoint(fakeResourceId, eventPathId, PartStat.ACCEPTED);
 
-        given(adminRequestSpec)
+        given()
             .when()
             .get(endpoint)
         .then()
@@ -206,32 +222,6 @@ public class ResourceParticipationRouteTest {
             .body("error.code", equalTo(404))
             .body("error.message", equalTo("Not Found"))
             .body("error.details", containsString(fakeResourceId.value()));
-    }
-
-    @Test
-    void shouldReturn403WhenUserIsNotAdmin() {
-        // create a real calendar event for the real resource
-        ResourceId realResourceId = resource.id();
-        String eventUid = UUID.randomUUID().toString();
-        String eventPathId = createEventAndGetEventPathId(resource.id(), eventUid);
-        String endpoint = buildParticipationEndpoint(realResourceId, eventPathId, PartStat.ACCEPTED);
-
-        // Build request spec with organizer (not an admin of this resource)
-        RequestSpecification organizerRequestSpec = buildAdminRequestSpec(
-            organizer.username().asString(),
-            DEFAULT_USER_PASSWORD,
-            restApiPort);
-
-        // When / Then
-        given(organizerRequestSpec)
-            .when()
-            .get(endpoint)
-        .then()
-            .statusCode(403)
-            .contentType(JSON)
-            .body("error.code", equalTo(403))
-            .body("error.message", equalTo("Forbidden"))
-            .body("error.details", containsString("does not have admin permission"));
     }
 
     @ParameterizedTest
@@ -250,29 +240,30 @@ public class ResourceParticipationRouteTest {
             invalidStatus);
 
         // When / Then
-        given(adminRequestSpec)
+        given()
             .when()
             .get(endpoint)
         .then()
             .statusCode(400)
             .contentType(JSON)
             .body("error.code", equalTo(400))
-            .body("error.message", equalTo("Bad request"))
+            .body("error.message", equalTo("Bad Request"))
             .body("error.details", containsString("Missing or invalid partStat parameter"));
     }
 
     @ParameterizedTest
     @MethodSource("missingParamsEndpoints")
     void shouldReturn400WhenMissingRequiredParams(String endpoint) {
-        given(adminRequestSpec)
+        given()
             .when()
             .get(endpoint)
         .then()
             .statusCode(400)
             .contentType(JSON)
             .body("error.code", equalTo(400))
-            .body("error.message", equalTo("Bad request"));
+            .body("error.message", equalTo("Bad Request"));
     }
+
 
     @Test
     void shouldReturn404WhenEventPathIdDoesNotBelongToResource(TwakeCalendarGuiceServer server) {
@@ -296,7 +287,7 @@ public class ResourceParticipationRouteTest {
         String endpoint = buildParticipationEndpoint(resourceIdB, eventPathIdA, PartStat.ACCEPTED);
 
         // When / Then: server should fail with 500 (internal error)
-        given(adminRequestSpec)
+        given()
             .when()
             .get(endpoint)
         .then()
@@ -317,7 +308,7 @@ public class ResourceParticipationRouteTest {
         String eventPathId = createEventAndGetEventPathId(resource.id(), eventUid);
         String endpoint = buildParticipationEndpoint(resourceId, eventPathId, PartStat.ACCEPTED);
 
-        given(adminRequestSpec)
+        given()
             .when()
             .get(endpoint)
         .then()
@@ -333,7 +324,7 @@ public class ResourceParticipationRouteTest {
 
         // When / Then: call the same request multiple times
         for (int i = 0; i < 2; i++) {
-            given(adminRequestSpec)
+            given()
                 .when()
                 .get(endpoint)
             .then()
@@ -352,7 +343,7 @@ public class ResourceParticipationRouteTest {
 
         // Step 1: update to ACCEPTED
         String acceptEndpoint = buildParticipationEndpoint(resourceId, eventPathId, PartStat.ACCEPTED);
-        given(adminRequestSpec)
+        given()
             .when()
             .get(acceptEndpoint)
         .then()
@@ -368,7 +359,7 @@ public class ResourceParticipationRouteTest {
 
         // Step 2: update to DECLINED
         String declineEndpoint = buildParticipationEndpoint(resourceId, eventPathId, PartStat.DECLINED);
-        given(adminRequestSpec)
+        given()
             .when()
             .get(declineEndpoint)
         .then()
@@ -391,16 +382,64 @@ public class ResourceParticipationRouteTest {
 
         String eventPathId = createEventAndGetEventPathId(resource.id(), eventUid);
         String endpoint = buildParticipationEndpoint(resourceId, eventPathId, PartStat.ACCEPTED);
+        String endpointWithoutJwt = StringUtils.substringBeforeLast(endpoint, "&jwt=");
 
         // When / Then: call API without authentication
         given()
-            .port(restApiPort)
-            .accept(JSON)
-            .contentType(JSON)
-        .when()
-            .get(endpoint)
+            .get(endpointWithoutJwt)
         .then()
-            .statusCode(401);
+            .statusCode(401)
+            .body("error.code", equalTo(401))
+            .body("error.message", equalTo("Unauthorized"))
+            .body("error.details", containsString("Missing jwt in request"));
+    }
+
+    @Test
+    void shouldReturn401WhenJwtIsInvalid() {
+        ResourceId resourceId = resource.id();
+        String eventUid = UUID.randomUUID().toString();
+        String eventPathId = createEventAndGetEventPathId(resource.id(), eventUid);
+
+        String invalidJwt = "not-a-valid-jwt-token";
+
+        String endpoint = buildParticipationEndpoint(resourceId, eventPathId, PartStat.ACCEPTED);
+        String endpointWithInvalidJwt = StringUtils.substringBeforeLast(endpoint, "&jwt=")
+            +"&jwt="+invalidJwt;
+
+        given()
+            .get(endpointWithInvalidJwt)
+        .then()
+            .statusCode(401)
+            .contentType(JSON)
+            .body("error.code", equalTo(401))
+            .body("error.message", equalTo("Unauthorized"))
+            .body("error.details", containsString("JWT verification failed"));
+    }
+
+    @Test
+    void shouldReturn403WhenJwtDoesNotMatchPathParam() {
+        ResourceId realResourceId = resource.id();
+        String eventUid = UUID.randomUUID().toString();
+        String eventPathId = createEventAndGetEventPathId(realResourceId, eventUid);
+
+        String mismatchedJwt = guiceServer.getProbe(JwtSignerProbe.class)
+            .signAsJwt("bbbbbbbbbbbbbbbbbbbbbbbb", "another-event-id");
+
+        String endpoint = String.format(
+            "/calendar/api/resources/%s/%s/participation?referrer=email&status=ACCEPTED&jwt=%s",
+            realResourceId.value(),
+            eventPathId,
+            URLEncoder.encode(mismatchedJwt, StandardCharsets.UTF_8));
+
+        // When / Then
+        given()
+            .get(endpoint)
+            .then()
+            .statusCode(403)
+            .contentType(JSON)
+            .body("error.code", equalTo(403))
+            .body("error.message", equalTo("Forbidden"))
+            .body("error.details", containsString("JWT does not match path parameter"));
     }
 
     static Stream<String> missingParamsEndpoints() {
@@ -468,23 +507,15 @@ public class ResourceParticipationRouteTest {
     }
 
     private String buildParticipationEndpoint(ResourceId resourceId, String eventPathId, PartStat partStat) {
-        return String.format("/calendar/api/resources/%s/%s/participation?referrer=email&status=%s",
-            resourceId.value(), eventPathId, partStat.getValue());
-    }
+        String jwt = guiceServer.getProbe(JwtSignerProbe.class)
+            .signAsJwt(resourceId.value(), eventPathId);
 
-    private RequestSpecification buildAdminRequestSpec(String username, String password, int port) {
-        PreemptiveBasicAuthScheme auth = new PreemptiveBasicAuthScheme();
-        auth.setUserName(username);
-        auth.setPassword(password);
-
-        return new RequestSpecBuilder()
-            .setPort(port)
-            .setAuth(auth)
-            .setAccept(JSON)
-            .setContentType(JSON)
-            .setConfig(newConfig().encoderConfig(encoderConfig().defaultContentCharset(StandardCharsets.UTF_8))
-                .redirect(redirectConfig().followRedirects(false)))
-            .build();
+        return String.format(
+            "/calendar/api/resources/%s/%s/participation?referrer=email&status=%s&jwt=%s",
+            resourceId.value(),
+            eventPathId,
+            partStat.getValue(),
+            URLEncoder.encode(jwt, StandardCharsets.UTF_8));
     }
 
     private VEvent getCalendarEvent(OpenPaaSUser openPaaSUser, String eventUid) throws Exception {

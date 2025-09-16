@@ -18,8 +18,6 @@
 
 package com.linagora.calendar.restapi.routes;
 
-import static com.linagora.calendar.restapi.RestApiConstants.JSON_HEADER;
-
 import java.net.URI;
 import java.net.URL;
 import java.util.List;
@@ -35,6 +33,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.JMAPRoute;
 import org.apache.james.jmap.JMAPRoutes;
+import org.apache.james.jmap.exceptions.UnauthorizedException;
 import org.apache.james.metrics.api.MetricFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,7 +42,6 @@ import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.api.JwtVerifier;
 import com.linagora.calendar.dav.CalDavEventRepository;
 import com.linagora.calendar.dav.CalendarEventNotFoundException;
-import com.linagora.calendar.restapi.ErrorResponse;
 import com.linagora.calendar.restapi.ForbiddenException;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.ResourceDAO;
@@ -123,14 +121,25 @@ public class ResourceParticipationRoute implements JMAPRoutes {
                 .flatMap(resource -> updateResourceParticipation(resource, updateReq.eventId(), updateReq.partStat())))
             .then(sendRedirectResponse(response))
             .onErrorResume(Exception.class, exception -> {
-                if (exception instanceof ForbiddenException forbiddenException) {
-                    return handleForbidden(response, forbiddenException);
+                if (exception instanceof UnauthorizedException unauthorized) {
+                    LOGGER.warn("Unauthorized access for [{}]: {}", request.uri(), unauthorized.getMessage());
+                    return ErrorResponseHandler.handle(response, HttpResponseStatus.UNAUTHORIZED, unauthorized);
                 }
-                if (exception instanceof ResourceNotFoundException
-                    || exception instanceof CalendarEventNotFoundException) {
-                    return handleNotFound(response, exception);
+                if (exception instanceof ForbiddenException forbidden) {
+                    LOGGER.warn("Forbidden for [{}]: {}", request.uri(), forbidden.getMessage());
+                    return ErrorResponseHandler.handle(response, HttpResponseStatus.FORBIDDEN, forbidden);
                 }
-                return handleServerError(response, exception);
+                if (exception instanceof ResourceNotFoundException || exception instanceof CalendarEventNotFoundException) {
+                    LOGGER.warn("Not found for [{}]: {}", request.uri(), exception.getMessage());
+                    return ErrorResponseHandler.handle(response, HttpResponseStatus.NOT_FOUND, exception);
+                }
+                if (exception instanceof IllegalArgumentException illegalArg) {
+                    LOGGER.warn("Bad request for [{}]: {}", request.uri(), illegalArg.getMessage());
+                    return ErrorResponseHandler.handle(response, HttpResponseStatus.BAD_REQUEST, illegalArg);
+                }
+
+                LOGGER.error("Unexpected error for [{}]", request.uri(), exception);
+                return ErrorResponseHandler.handle(response, HttpResponseStatus.INTERNAL_SERVER_ERROR, exception);
             });
     }
 
@@ -142,22 +151,28 @@ public class ResourceParticipationRoute implements JMAPRoutes {
     }
 
     private Mono<UpdatePartStatRequest> validateAndExtractUpdateRequest(HttpServerRequest request) {
+        return Mono.fromCallable(() -> parseRequestParams(request))
+            .flatMap(updateReq ->
+                Mono.justOrEmpty(getJwtParameter(request))
+                    .switchIfEmpty(Mono.error(new UnauthorizedException("Missing " + JWT_QUERY_PARAM + " in request")))
+                    .map(jwtVerifier::verify)
+                    .map(this::extractJwtClaims)
+                    .onErrorMap(io.jsonwebtoken.JwtException.class, e -> new UnauthorizedException("JWT verification failed: " + e.getMessage()))
+                    .map(pair -> {
+                        if (!updateReq.resourceId().equals(pair.getLeft()) || !updateReq.eventId().equals(pair.getRight())) {
+                            throw new ForbiddenException("JWT does not match path parameter");
+                        }
+                        return updateReq;
+                    }))
+            .subscribeOn(Schedulers.parallel());
+    }
+
+    private UpdatePartStatRequest parseRequestParams(HttpServerRequest request) {
         ResourceId pathResourceId = extractResourceId(request);
         String pathEventId = extractEventPathId(request);
         PartStat partStat = validateAndExtractPartStatParam(request);
         validateReferrer(request);
-
-        return Mono.justOrEmpty(getJwtParameter(request))
-            .switchIfEmpty(Mono.error(new ForbiddenException("Missing " + JWT_QUERY_PARAM + " in request")))
-            .map(jwtVerifier::verify)
-            .map(this::claimJwtToken)
-            .map(pair -> {
-                if (!pathResourceId.equals(pair.getLeft()) || !pathEventId.equals(pair.getRight())) {
-                    throw new ForbiddenException("JWT does not match path parameter");
-                }
-                return new UpdatePartStatRequest(pathResourceId, pathEventId, partStat);
-            })
-            .subscribeOn(Schedulers.parallel());
+        return new UpdatePartStatRequest(pathResourceId, pathEventId, partStat);
     }
 
     private Optional<String> getJwtParameter(HttpServerRequest request) {
@@ -167,7 +182,7 @@ public class ResourceParticipationRoute implements JMAPRoutes {
             .findAny();
     }
 
-    private Pair<ResourceId, String> claimJwtToken(Claims map) {
+    private Pair<ResourceId, String> extractJwtClaims(Claims map) {
         List<String> requiredKeys = ImmutableList.of(JWT_CLAIM_RESOURCE_ID, JWT_CLAIM_EVENT_ID);
         List<String> missingKeys = requiredKeys.stream()
             .filter(key -> !map.containsKey(key))
@@ -211,36 +226,9 @@ public class ResourceParticipationRoute implements JMAPRoutes {
     }
 
     private Mono<Void> sendRedirectResponse(HttpServerResponse response) {
-        return response.status(302)
+        return response.status(HttpResponseStatus.FOUND.code())
             .header(HttpHeaderNames.LOCATION, locationRedirectUri.toASCIIString())
             .send()
-            .then();
-    }
-
-    private Mono<Void> handleNotFound(HttpServerResponse response, Exception exception) {
-        LOGGER.warn("Resource not found: {}", exception.getMessage());
-        return response.status(HttpResponseStatus.NOT_FOUND)
-            .headers(JSON_HEADER)
-            .sendByteArray(Mono.fromCallable(() ->
-                ErrorResponse.of(404, "Not Found", exception.getMessage()).serializeAsBytes()))
-            .then();
-    }
-
-    private Mono<Void> handleForbidden(HttpServerResponse response, ForbiddenException exception) {
-        LOGGER.warn("Access denied: {}", exception.getMessage());
-        return response.status(HttpResponseStatus.FORBIDDEN)
-            .headers(JSON_HEADER)
-            .sendByteArray(Mono.fromCallable(() ->
-                ErrorResponse.of(403, "Forbidden", exception.getMessage()).serializeAsBytes()))
-            .then();
-    }
-
-    private Mono<Void> handleServerError(HttpServerResponse response, Throwable exception) {
-        LOGGER.error("Unexpected error while updating resource participation", exception);
-        return response.status(HttpResponseStatus.INTERNAL_SERVER_ERROR)
-            .headers(JSON_HEADER)
-            .sendByteArray(Mono.fromCallable(() ->
-                ErrorResponse.of(500, "Internal Server Error", "Unexpected server error").serializeAsBytes()))
             .then();
     }
 
