@@ -22,6 +22,7 @@ import static io.restassured.RestAssured.given;
 import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
+import static net.javacrumbs.jsonunit.core.Option.IGNORING_ARRAY_ORDER;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.net.URI;
@@ -135,25 +136,35 @@ class MongoTest {
             .body()
             .asString();
 
-        assertThatJson(body).isEqualTo("""
+        assertThatJson(body).withOptions(IGNORING_ARRAY_ORDER).isEqualTo("""
             {
-               "status" : "healthy",
-               "checks" : [ {
-                 "componentName" : "Guice application lifecycle",
-                 "escapedComponentName" : "Guice%20application%20lifecycle",
-                 "status" : "healthy",
-                 "cause" : null
-               }, {
-                 "componentName" : "MongoDB",
-                 "escapedComponentName" : "MongoDB",
-                 "status" : "healthy",
-                 "cause" : null
-               }, {
-                 "componentName" : "RabbitMQ backend",
-                 "escapedComponentName" : "RabbitMQ%20backend",
-                 "status" : "healthy",
-                 "cause" : null
-               } ]
+              "status" : "healthy",
+              "checks" : [ {
+                "componentName" : "Guice application lifecycle",
+                "escapedComponentName" : "Guice%20application%20lifecycle",
+                "status" : "healthy",
+                "cause" : null
+              }, {
+                "componentName" : "MongoDB",
+                "escapedComponentName" : "MongoDB",
+                "status" : "healthy",
+                "cause" : null
+              }, {
+                "componentName" : "RabbitMQ backend",
+                "escapedComponentName" : "RabbitMQ%20backend",
+                "status" : "healthy",
+                "cause" : null
+              }, {
+                "componentName" : "RabbitMQDeadLetterQueueEmptiness",
+                "escapedComponentName" : "RabbitMQDeadLetterQueueEmptiness",
+                "status" : "healthy",
+                "cause" : null
+              }, {
+                "componentName" : "CalendarQueueConsumers",
+                "escapedComponentName" : "CalendarQueueConsumers",
+                "status" : "healthy",
+                "cause" : null
+              } ]
             }
             """);
     }

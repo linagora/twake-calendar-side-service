@@ -26,6 +26,7 @@ import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
 import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
+import org.apache.james.core.healthcheck.HealthCheck;
 import org.apache.james.utils.InitializationOperation;
 import org.apache.james.utils.InitilizationOperationBuilder;
 import org.apache.james.utils.PropertiesProvider;
@@ -34,6 +35,7 @@ import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.Scopes;
 import com.google.inject.Singleton;
+import com.google.inject.multibindings.Multibinder;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.google.inject.name.Named;
 import com.linagora.calendar.storage.SimpleSessionProvider;
@@ -55,6 +57,10 @@ public class CalendarAmqpModule extends AbstractModule {
         bind(EventEmailConsumer.class).in(Scopes.SINGLETON);
         bind(EventAlarmConsumer.class).in(Scopes.SINGLETON);
         bind(EventResourceConsumer.class).in(Scopes.SINGLETON);
+
+        Multibinder<HealthCheck> healthCheckMultibinder = Multibinder.newSetBinder(binder(), HealthCheck.class);
+        healthCheckMultibinder.addBinding().to(RabbitMQCalendarQueueConsumerHealthCheck.class);
+        healthCheckMultibinder.addBinding().to(RabbitMQDeadLetterQueueEmptinessHealthCheck.class);
     }
 
     @Provides
