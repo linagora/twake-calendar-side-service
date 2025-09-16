@@ -92,6 +92,10 @@ public class EventIndexerConsumer implements Closeable, Startable {
         public String queueName() {
             return queueName;
         }
+
+        public String deadLetter() {
+            return deadLetter;
+        }
     }
 
     private final ReceiverProvider receiverProvider;
