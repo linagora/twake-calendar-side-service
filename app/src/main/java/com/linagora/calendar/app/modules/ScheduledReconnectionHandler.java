@@ -25,7 +25,6 @@ import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
-import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
@@ -56,10 +55,6 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.linagora.calendar.amqp.CalendarQueueUtil;
-import com.linagora.calendar.amqp.EventAlarmConsumer;
-import com.linagora.calendar.amqp.EventEmailConsumer;
-import com.linagora.calendar.amqp.EventIndexerConsumer;
-import com.linagora.calendar.amqp.EventResourceConsumer;
 
 import feign.Client;
 import feign.Feign;
