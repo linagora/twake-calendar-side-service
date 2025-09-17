@@ -146,6 +146,16 @@ class LdapTest {
                  "escapedComponentName" : "RabbitMQ%20backend",
                  "status" : "healthy",
                  "cause" : null
+               }, {
+                 "componentName" : "CalendarQueueConsumers",
+                 "escapedComponentName" : "CalendarQueueConsumers",
+                 "status" : "healthy",
+                 "cause" : null
+               }, {
+                 "componentName" : "RabbitMQDeadLetterQueueEmptiness",
+                 "escapedComponentName" : "RabbitMQDeadLetterQueueEmptiness",
+                 "status" : "healthy",
+                 "cause" : null
                } ]
             }
             """);

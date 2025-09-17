@@ -270,28 +270,38 @@ class OpensearchDavCalendarSearchRouteTest implements CalendarSearchRouteContrac
             .withOptions(Option.IGNORING_ARRAY_ORDER)
             .isEqualTo("""
                 {
-                  "status" : "healthy",
-                  "checks" : [ {
-                    "componentName" : "Guice application lifecycle",
-                    "escapedComponentName" : "Guice%20application%20lifecycle",
-                    "status" : "healthy",
-                    "cause" : null
-                  }, {
-                    "componentName" : "MongoDB",
-                    "escapedComponentName" : "MongoDB",
-                    "status" : "healthy",
-                    "cause" : null
-                  }, {
-                    "componentName" : "OpenSearch Backend",
-                    "escapedComponentName" : "OpenSearch%20Backend",
-                    "status" : "healthy",
-                    "cause" : null
-                  }, {
-                    "componentName" : "RabbitMQ backend",
-                    "escapedComponentName" : "RabbitMQ%20backend",
-                    "status" : "healthy",
-                    "cause" : null
-                  } ]
+                   "status" : "healthy",
+                   "checks" : [ {
+                     "componentName" : "Guice application lifecycle",
+                     "escapedComponentName" : "Guice%20application%20lifecycle",
+                     "status" : "healthy",
+                     "cause" : null
+                   }, {
+                     "componentName" : "MongoDB",
+                     "escapedComponentName" : "MongoDB",
+                     "status" : "healthy",
+                     "cause" : null
+                   }, {
+                     "componentName" : "OpenSearch Backend",
+                     "escapedComponentName" : "OpenSearch%20Backend",
+                     "status" : "healthy",
+                     "cause" : null
+                   }, {
+                     "componentName" : "RabbitMQ backend",
+                     "escapedComponentName" : "RabbitMQ%20backend",
+                     "status" : "healthy",
+                     "cause" : null
+                   }, {
+                     "componentName" : "CalendarQueueConsumers",
+                     "escapedComponentName" : "CalendarQueueConsumers",
+                     "status" : "healthy",
+                     "cause" : null
+                   }, {
+                     "componentName" : "RabbitMQDeadLetterQueueEmptiness",
+                     "escapedComponentName" : "RabbitMQDeadLetterQueueEmptiness",
+                     "status" : "healthy",
+                     "cause" : null
+                   } ]
                 }
                 """);
     }

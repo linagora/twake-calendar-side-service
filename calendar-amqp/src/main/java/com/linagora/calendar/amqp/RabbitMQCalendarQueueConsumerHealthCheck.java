@@ -57,21 +57,19 @@ public class RabbitMQCalendarQueueConsumerHealthCheck implements HealthCheck {
             .flatMap(connection -> Mono.using(connection::createChannel,
                 channel -> check(connection, channel),
                 Throwing.consumer(Channel::close)))
+            .onErrorResume(e -> Mono.just(Result.unhealthy(COMPONENT_NAME, "Error checking RabbitMQCalendarQueueConsumerHealthCheck", e)))
             .subscribeOn(Schedulers.boundedElastic());
     }
 
     private Mono<Result> check(Connection connection, Channel channel) {
-        try {
-            boolean queueWithoutConsumers = CalendarQueueUtil.getAllQueueNames().stream()
-                .anyMatch(Throwing.predicate(queue -> channel.consumerCount(queue) == 0));
-            if (queueWithoutConsumers) {
-                return Mono.fromRunnable(() -> reconnectionHandlers.forEach(r -> r.handleReconnection(connection)))
-                    .thenReturn(Result.degraded(COMPONENT_NAME, "No consumers"));
-            } else {
-                return Mono.just(Result.healthy(COMPONENT_NAME));
-            }
-        } catch (Exception e) {
-            return Mono.just(Result.unhealthy(COMPONENT_NAME, "Error checking RabbitMQCalendarQueueConsumerHealthCheck", e));
+        boolean queueWithoutConsumers = CalendarQueueUtil.getAllQueueNames().stream()
+            .anyMatch(Throwing.predicate(queue -> channel.consumerCount(queue) == 0));
+        if (queueWithoutConsumers) {
+            return Mono.fromRunnable(() -> reconnectionHandlers.forEach(r ->
+                    Mono.from(r.handleReconnection(connection)).subscribe()))
+                .thenReturn(Result.degraded(COMPONENT_NAME, "No consumers"));
+        } else {
+            return Mono.just(Result.healthy(COMPONENT_NAME));
         }
     }
 }
