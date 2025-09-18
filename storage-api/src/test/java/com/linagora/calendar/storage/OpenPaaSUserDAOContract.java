@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 
+import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
 import org.junit.jupiter.api.Test;
 
@@ -33,7 +34,6 @@ public interface OpenPaaSUserDAOContract {
 
     Username USERNAME = Username.of("user@domain.tld");
     Username USERNAME_2 = Username.of("username@domain.other.tld");
-
 
     OpenPaaSUserDAO testee();
 
@@ -142,4 +142,54 @@ public interface OpenPaaSUserDAOContract {
 
         assertThat(testee().list().map(OpenPaaSUser::username).collectList().block()).containsOnly(USERNAME, USERNAME_2);
     }
+
+    @Test
+    default void searchShouldReturnEmptyWhenNoUserMatches() {
+        Domain domain = Domain.of("domain.tld");
+        testee().add(USERNAME, "James", "Bond").block();
+
+        List<OpenPaaSUser> result = testee().search(domain, "nonexistent", 10).collectList().block();
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    default void searchShouldReturnUserWhenMatchingEmail() {
+        Domain domain = Domain.of("domain.tld");
+        OpenPaaSUser user = testee().add(USERNAME, "James", "Bond").block();
+
+        List<OpenPaaSUser> result = testee().search(domain, "user@", 10).collectList().block();
+        assertThat(result).contains(user);
+    }
+
+    @Test
+    default void searchShouldReturnUserWhenMatchingFirstnameOrLastnameCaseInsensitive() {
+        Domain domain = Domain.of("domain.tld");
+        OpenPaaSUser user = testee().add(USERNAME, "Naruto", "Uzumaki").block();
+
+        assertThat(testee().search(domain, "naru", 10).collectList().block()).contains(user);
+        assertThat(testee().search(domain, "UZU", 10).collectList().block()).contains(user);
+    }
+
+    @Test
+    default void searchShouldRespectLimit() {
+        Domain domain = Domain.of("domain.tld");
+        testee().add(USERNAME, "User", "One").block();
+        testee().add(Username.of("other@domain.tld"), "User", "Two").block();
+
+        List<OpenPaaSUser> result = testee().search(domain, "user", 1).collectList().block();
+        assertThat(result).hasSize(1);
+    }
+
+    @Test
+    default void searchShouldNotReturnUsersFromOtherDomains() {
+        Domain domain1 = Domain.of("domain.tld");
+        Domain domain2 = Domain.of("other.tld");
+
+        OpenPaaSUser user1 = testee().add(USERNAME, "Same", "Name").block();
+        OpenPaaSUser user2 = testee().add(USERNAME_2, "Same", "Name").block();
+
+        List<OpenPaaSUser> result = testee().search(domain1, "Same", 10).collectList().block();
+        assertThat(result).contains(user1).doesNotContain(user2);
+    }
+
 }

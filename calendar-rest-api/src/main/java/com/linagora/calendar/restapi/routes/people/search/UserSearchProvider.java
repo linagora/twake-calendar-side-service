@@ -27,7 +27,6 @@ import jakarta.inject.Inject;
 import jakarta.inject.Named;
 
 import org.apache.commons.collections4.CollectionUtils;
-import org.apache.commons.lang3.Strings;
 import org.apache.james.core.Username;
 
 import com.google.common.collect.ImmutableSet;
@@ -38,6 +37,7 @@ import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 public class UserSearchProvider implements PeopleSearchProvider {
 
@@ -63,15 +63,10 @@ public class UserSearchProvider implements PeopleSearchProvider {
         if (CollectionUtils.isEmpty(objectTypesFilter) || objectTypesFilter.contains(ObjectType.CONTACT)) {
             return Flux.empty(); // handled by ContactSearchProvider
         }
-        return userDAO.list()
-            .filter(user -> matchQuery(user, query))
-            .take(limit)
-            .map(this::toResponseDTO);
-    }
 
-    private boolean matchQuery(OpenPaaSUser user, String query) {
-        return Strings.CI.contains(user.username().asString(), query)
-            || Strings.CI.contains(user.fullName(), query);
+        return Mono.justOrEmpty(username.getDomainPart())
+            .flatMapMany(domain -> userDAO.search(domain, query, limit))
+            .map(this::toResponseDTO);
     }
 
     private ContactResponseDTO toResponseDTO(OpenPaaSUser user) {
