@@ -303,6 +303,71 @@ class PeopleSearchRouteTest {
     }
 
     @Test
+    void shouldReturnOnlyUserWhenFilterIsOnlyUser(TwakeCalendarGuiceServer server) {
+        String username = "naruto@" + DOMAIN;
+        addUser(server, Username.of(username), "naruto", "hokage");
+        addContact(server, username, "naruto", "hokage");
+
+        String response = given()
+            .body("""
+            {
+              "q" : "naruto",
+              "objectTypes" : [ "user" ],
+              "limit" : 10
+            }""")
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response)
+            .isArray()
+            .hasSize(1);
+
+        assertThatJson(response)
+            .inPath("[0].objectType")
+            .isEqualTo("user");
+    }
+
+    @Test
+    void shouldNotDropValidUsersWhenFilterIsOnlyUser(TwakeCalendarGuiceServer server) {
+        // given:
+        addContact(server, "contact1@domain.tld", "foo", "bar");
+        addContact(server, "contact2@domain.tld", "baz", "qux");
+        String validUserEmail = "naruto@" + DOMAIN;
+
+        addUser(server, Username.of(validUserEmail), "naruto", "hokage");
+        addContact(server, validUserEmail, "naruto", "hokage");
+
+        // when:
+        String response = given()
+            .body("""
+            {
+              "q": "naruto",
+              "objectTypes": ["user"],
+              "limit": 1
+            }
+            """)
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response)
+            .isArray()
+            .anySatisfy(json -> {
+                assertThatJson(json).node("objectType").isEqualTo("user");
+                assertThatJson(json).node("emailAddresses[0].value").isEqualTo(validUserEmail);
+            });
+    }
+
+    @Test
     void shouldRespectLimitParameter(TwakeCalendarGuiceServer server) {
         addContact(server, "naruto@domain.tld", "naruto", "hokage");
         addContact(server, "sasuke@domain.tld", "sasuke", "uchiha");
