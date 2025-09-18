@@ -53,6 +53,18 @@ public class MongoDBCollectionFactory {
                         .unique(true)
                         .partialFilterExpression(new Document("email", new Document("$exists", true)))))
             .block();
+
+        Mono.from(database.getCollection(USERS)
+                .createIndex(new Document("firstname", 1)))
+            .block();
+
+        Mono.from(database.getCollection(USERS)
+                .createIndex(new Document("lastname", 1)))
+            .block();
+
+        Mono.from(database.getCollection(USERS)
+                .createIndex(new Document("accounts.emails", 1)))
+            .block();
     }
 
     private static void createDomainsCollection(MongoDatabase database) {
