@@ -105,6 +105,11 @@ import com.linagora.calendar.storage.secretlink.SecretLinkPermissionChecker;
 import com.linagora.calendar.storage.secretlink.SecretLinkPermissionChecker.NoopPermissionChecker;
 
 public class RestApiModule extends AbstractModule {
+
+    public interface Audiences {
+        List<Aud> get();
+    }
+
     @Override
     protected void configure() {
         install(new AssetModule());
@@ -192,9 +197,10 @@ public class RestApiModule extends AbstractModule {
         return configuration.getIntrospectionEndpoint();
     }
 
+
     @Provides
-    Aud provideAudience(RestApiConfiguration configuration) {
-        return configuration.getAud();
+    Audiences provideAudience(RestApiConfiguration configuration) {
+        return configuration::getAud;
     }
 
     @Provides
