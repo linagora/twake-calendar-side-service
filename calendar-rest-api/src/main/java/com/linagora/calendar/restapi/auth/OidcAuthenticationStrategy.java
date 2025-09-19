@@ -22,6 +22,7 @@ import static com.linagora.calendar.restapi.auth.JwtAuthenticationStrategy.isAut
 import static org.apache.james.jmap.http.JWTAuthenticationStrategy.AUTHORIZATION_HEADER_PREFIX;
 
 import java.time.Clock;
+import java.util.List;
 
 import jakarta.inject.Inject;
 
@@ -37,6 +38,7 @@ import org.apache.james.mailbox.MailboxSession;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableMap;
+import com.linagora.calendar.restapi.RestApiModule;
 import com.linagora.calendar.storage.OIDCTokenCache;
 import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.model.Aud;
@@ -51,14 +53,14 @@ public class OidcAuthenticationStrategy implements AuthenticationStrategy {
     private final SimpleSessionProvider sessionProvider;
     private final OIDCTokenCache oidcTokenCache;
     private final Clock clock;
-    private final Aud aud;
+    private final List<Aud> aud;
 
     @Inject
-    public OidcAuthenticationStrategy(SimpleSessionProvider sessionProvider, OIDCTokenCache oidcTokenCache, Clock clock, Aud aud) {
+    public OidcAuthenticationStrategy(SimpleSessionProvider sessionProvider, OIDCTokenCache oidcTokenCache, Clock clock, RestApiModule.Audiences aud) {
         this.sessionProvider = sessionProvider;
         this.oidcTokenCache = oidcTokenCache;
         this.clock = clock;
-        this.aud = aud;
+        this.aud = aud.get();
     }
 
     @Override
@@ -70,8 +72,8 @@ public class OidcAuthenticationStrategy implements AuthenticationStrategy {
             .map(Token::new)
             .flatMap(oidcTokenCache::associatedInformation)
             .<TokenInfo>handle((tokenInfo, sink) -> {
-                if (!tokenInfo.aud().contains(aud)) {
-                    sink.error(new UnauthorizedException("Wrong audience. Expected " + aud.value() + " got " + tokenInfo.aud()));
+                if (tokenInfo.aud().stream().noneMatch(aud::contains)) {
+                    sink.error(new UnauthorizedException("Wrong audience. Expected one of " + aud + " got " + tokenInfo.aud()));
                     return;
                 }
                 if (clock.instant().isAfter(tokenInfo.exp())) {
