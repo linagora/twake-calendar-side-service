@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.storage;
 
+import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
 
 import reactor.core.publisher.Flux;
@@ -37,4 +38,6 @@ public interface OpenPaaSUserDAO {
     Mono<Void> delete(Username username);
 
     Flux<OpenPaaSUser> list();
+
+    Flux<OpenPaaSUser> search(Domain domain, String query, int limit);
 }

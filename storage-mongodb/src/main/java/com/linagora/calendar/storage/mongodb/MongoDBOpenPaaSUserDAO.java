@@ -19,9 +19,11 @@
 package com.linagora.calendar.storage.mongodb;
 
 import java.util.List;
+import java.util.regex.Pattern;
 
 import jakarta.inject.Inject;
 
+import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
 import org.bson.Document;
 import org.bson.types.ObjectId;
@@ -86,7 +88,7 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
                 .append("lastname", lastName)
                 .append("password", "secret")
                 .append("email", username.asString()) // not part of OpenPaaS datamodel but helps solve concurrency
-                .append("domains",  List.of(new Document("domain_id", new ObjectId(domain.id().value()))))
+                .append("domains", List.of(new Document("domain_id", new ObjectId(domain.id().value()))))
                 .append("accounts", List.of(new Document()
                     .append("type", "email")
                     .append("emails", List.of(username.asString())))))
@@ -145,9 +147,36 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
     @Override
     public Flux<OpenPaaSUser> list() {
         return Flux.from(database.getCollection(COLLECTION).find())
-            .map(document -> new OpenPaaSUser(
-                Username.of(document.getList("accounts", Document.class).get(0).getList("emails", String.class).get(0)),
-                new OpenPaaSId(document.getObjectId("_id").toHexString()),
-                document.getString("firstname"), document.getString("lastname")));
+            .map(this::toOpenPaaSUser);
+    }
+
+    @Override
+    public Flux<OpenPaaSUser> search(Domain domain, String query, int limit) {
+        Pattern searchPattern = Pattern.compile("^" + Pattern.quote(query),
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+
+        return domainDAO.retrieve(domain)
+            .flatMapMany(openPaaSDomain ->
+                Flux.from(database.getCollection(COLLECTION)
+                        .find(Filters.and(Filters.eq("domains.domain_id", new ObjectId(openPaaSDomain.id().value())),
+                            Filters.or(
+                                Filters.regex("accounts.emails", searchPattern),
+                                Filters.regex("firstname", searchPattern),
+                                Filters.regex("lastname", searchPattern))))
+                        .limit(limit))
+                    .map(this::toOpenPaaSUser));
+    }
+
+    private OpenPaaSUser toOpenPaaSUser(Document document) {
+        String email = document
+            .getList("accounts", Document.class)
+            .getFirst()
+            .getList("emails", String.class)
+            .getFirst();
+
+        return new OpenPaaSUser(Username.of(email),
+            new OpenPaaSId(document.getObjectId("_id").toHexString()),
+            document.getString("firstname"),
+            document.getString("lastname"));
     }
 }

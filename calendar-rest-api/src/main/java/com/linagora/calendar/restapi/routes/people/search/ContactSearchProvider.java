@@ -18,13 +18,15 @@
 
 package com.linagora.calendar.restapi.routes.people.search;
 
+import java.net.URI;
+import java.net.URL;
 import java.util.List;
 import java.util.Set;
-import java.util.function.Function;
 
 import jakarta.inject.Inject;
+import jakarta.inject.Named;
 
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.Strings;
 import org.apache.james.core.Username;
 import org.apache.james.jmap.api.model.AccountId;
 
@@ -32,8 +34,8 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
-import com.linagora.calendar.restapi.RestApiConfiguration;
 import com.linagora.calendar.restapi.routes.PeopleSearchRoute;
+import com.linagora.calendar.restapi.routes.PeopleSearchRoute.ObjectType;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.tmail.james.jmap.contact.EmailAddressContact;
 import com.linagora.tmail.james.jmap.contact.EmailAddressContactSearchEngine;
@@ -43,11 +45,17 @@ import reactor.core.publisher.Mono;
 
 public class ContactSearchProvider implements PeopleSearchProvider {
 
-    public static final ImmutableSet<PeopleSearchRoute.ObjectType> OBJECT_TYPES = ImmutableSet.of(PeopleSearchRoute.ObjectType.USER, PeopleSearchRoute.ObjectType.CONTACT);
+    public static final ImmutableSet<ObjectType> OBJECT_TYPES = ImmutableSet.of(ObjectType.CONTACT);
 
+    record UserLookupResult(ObjectType objectType, String id) {
 
-    public record UserLookupResult(PeopleSearchRoute.ObjectType objectType, String id) {
+        public static UserLookupResult contact(String id) {
+            return new UserLookupResult(ObjectType.CONTACT, id);
+        }
 
+        public static UserLookupResult user(String id) {
+            return new UserLookupResult(ObjectType.USER, id);
+        }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -83,48 +91,57 @@ public class ContactSearchProvider implements PeopleSearchProvider {
         }
     }
 
+    public static URI buildAvatarUrl(URL selfUrl, String email) {
+        String base = Strings.CI.removeEnd(selfUrl.toString(), "/");
+        return URI.create(base + "/api/avatars?email=" + email);
+    }
 
-    private final RestApiConfiguration configuration;
     private final EmailAddressContactSearchEngine contactSearchEngine;
     private final OpenPaaSUserDAO userDAO;
+    private final URL baseAvatarUrl;
 
     @Inject
-    public ContactSearchProvider(RestApiConfiguration configuration, EmailAddressContactSearchEngine contactSearchEngine, OpenPaaSUserDAO userDAO) {
-        this.configuration = configuration;
+    public ContactSearchProvider(@Named("selfUrl") URL baseAvatarUrl,
+                                 EmailAddressContactSearchEngine contactSearchEngine,
+                                 OpenPaaSUserDAO userDAO) {
         this.contactSearchEngine = contactSearchEngine;
         this.userDAO = userDAO;
+        this.baseAvatarUrl = baseAvatarUrl;
     }
 
     @Override
-    public Set<PeopleSearchRoute.ObjectType> supportedTypes() {
+    public Set<ObjectType> supportedTypes() {
         return OBJECT_TYPES;
     }
 
     @Override
-    public Flux<PeopleSearchRoute.ResponseDTO> search(Username username, String query, Set<PeopleSearchRoute.ObjectType> objectTypesFilter, int limit) {
+    public Flux<PeopleSearchRoute.ResponseDTO> search(Username username, String query, Set<ObjectType> objectTypesFilter, int limit) {
         return Flux.from(contactSearchEngine.autoComplete(AccountId.fromString(username.asString()), query, limit))
             .flatMap(contact -> resolveUserOrContactType(contact, objectTypesFilter)
-                .map(lookupResult -> contactToResponseDTO(lookupResult).apply(contact)));
+                .map(lookupResult -> toResponseDTO(lookupResult, contact)));
     }
 
-    private Mono<UserLookupResult> resolveUserOrContactType(EmailAddressContact contact, Set<PeopleSearchRoute.ObjectType> objectTypesFilter) {
-        if (CollectionUtils.isEmpty(objectTypesFilter) || objectTypesFilter.contains(PeopleSearchRoute.ObjectType.USER)) {
-            return resolveUserOrContactType(contact);
+    private Mono<UserLookupResult> resolveUserOrContactType(EmailAddressContact contact, Set<ObjectType> filter) {
+        boolean allowUser = filter.isEmpty() || filter.contains(ObjectType.USER);
+
+        if (allowUser) {
+            return tryResolveUser(contact)
+                .defaultIfEmpty(UserLookupResult.contact(contact.id().toString()));
         }
-        return Mono.just(new UserLookupResult(PeopleSearchRoute.ObjectType.CONTACT, contact.id().toString()));
+
+        return Mono.just(UserLookupResult.contact(contact.id().toString()));
     }
 
-    private Mono<UserLookupResult> resolveUserOrContactType(EmailAddressContact contact) {
+    private Mono<UserLookupResult> tryResolveUser(EmailAddressContact contact) {
         return userDAO.retrieve(Username.fromMailAddress(contact.fields().address()))
-            .map(user -> new UserLookupResult(PeopleSearchRoute.ObjectType.USER, user.id().value()))
-            .switchIfEmpty(Mono.just(new UserLookupResult(PeopleSearchRoute.ObjectType.CONTACT, contact.id().toString())));
+            .map(user -> UserLookupResult.user(user.id().value()));
     }
 
-    private Function<EmailAddressContact, PeopleSearchRoute.ResponseDTO> contactToResponseDTO(UserLookupResult userLookupResult) {
-        return contact -> new ContactResponseDTO(userLookupResult.id(),
+    private PeopleSearchRoute.ResponseDTO toResponseDTO(UserLookupResult lookupResult, EmailAddressContact contact) {
+        return new ContactResponseDTO(lookupResult.id(),
             contact.fields().address().asString(),
             contact.fields().fullName(),
-            configuration.getSelfUrl().toString() + "/api/avatars?email=" + contact.fields().address().asString(),
-            userLookupResult.objectType().name().toLowerCase());
+            buildAvatarUrl(baseAvatarUrl, contact.fields().address().asString()).toString(),
+            lookupResult.objectType().name().toLowerCase());
     }
 }
