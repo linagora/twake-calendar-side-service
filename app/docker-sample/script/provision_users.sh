@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # Define the server endpoint
-SERVER_URL="http://tcalendar-side-service.local:8000"
+SERVER_URL="http://tcalendar-side-service.linagora.local:8000"
 
 # Define a list of users (email,firstname,lastname)
 USERS="bob@linagora.local,Bob,Smith,

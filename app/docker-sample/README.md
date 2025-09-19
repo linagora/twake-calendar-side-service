@@ -5,6 +5,7 @@ This directory provides a complete `docker-compose` setup to run the **Twake Cal
 It includes:
 
 - Twake Calendar frontend: [twake-calendar-frontend](https://github.com/linagora/twake-calendar-frontend)
+- Openpaas ESN frontend
 - Twake Calendar side service
 - SabreDAV server for calendar storage
 - RabbitMQ, MongoDB
@@ -18,7 +19,7 @@ It includes:
 
 📝 **Before you start**, make sure to edit your `/etc/hosts` file and add the following line:
 ```
-127.0.0.1 tcalendar-side-service.local sso.linagora.local sabre-dav.local
+127.0.0.1 tcalendar-side-service.linagora.local sso.linagora.local sabre-dav.linagora.local
 127.0.0.1 calendar.linagora.local contacts.linagora.local account.linagora.local excal.linagora.local
 ```
 Then:
@@ -28,7 +29,7 @@ docker-compose up -d
 After running the Docker Compose setup, open your browser and visit:
 
 👉 http://localhost:3000
-
+👉 https://calendar.linagora.local
 At this address, the Twake Calendar frontend app will automatically redirect you to the SSO login page (OIDC login via Dex).
 
 You can log in using the following preconfigured accounts:

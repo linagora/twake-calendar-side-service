@@ -14,7 +14,7 @@ sh /provision/import-rabbitmq-definitions.sh
 echo "Waiting for twake-calendar-side-service to be available..."
 
 while true; do
-  status=$(curl -s -o /dev/null -w "%{http_code}" http://tcalendar-side-service.local:8000/healthcheck)
+  status=$(curl -s -o /dev/null -w "%{http_code}" http://tcalendar-side-service.linagora.local:8000/healthcheck)
   if [ "$status" -eq 200 ]; then
     echo "twake-calendar-side-service is up!"
     break
