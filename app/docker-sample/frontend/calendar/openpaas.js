@@ -1,6 +1,6 @@
 window.openpaas = {
     AUTH_PROVIDER: 'oidc',
-    OPENPAAS_API_URL: 'https://tcalendar-side-service.local',
+    OPENPAAS_API_URL: 'https://tcalendar-side-service.linagora.local',
     BASE_URL: '',
     ACCOUNT_SPA_URL: 'https://account.linagora.local/account',
     MAILTO_SPA_URL:'https://tmail.linagora.local',
