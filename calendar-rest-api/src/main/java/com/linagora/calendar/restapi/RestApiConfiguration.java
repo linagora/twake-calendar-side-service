@@ -23,8 +23,10 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.configuration2.ex.ConfigurationException;
@@ -71,7 +73,7 @@ public class RestApiConfiguration {
         private Optional<URL> oidcUserInfoUrl = Optional.empty();
         private Optional<IntrospectionEndpoint> oidcIntrospectionEndpoint = Optional.empty();
         private Optional<String> oidcIntrospectionClaim = Optional.empty();
-        private Optional<Aud> oidcAudience = Optional.empty();
+        private ImmutableList.Builder<Aud> oidcAudience = ImmutableList.builder();
         private Optional<String> defaultLanguage = Optional.empty();
         private Optional<String> defaultTimezone = Optional.empty();
         private Optional<JsonNode> defaultBusinessHours = Optional.empty();
@@ -194,8 +196,8 @@ public class RestApiConfiguration {
             return this;
         }
 
-        public Builder oidcAudience(Optional<Aud> aud) {
-            this.oidcAudience = aud;
+        public Builder oidcAudience(List<Aud> aud) {
+            this.oidcAudience.addAll(aud);
             return this;
         }
 
@@ -234,7 +236,7 @@ public class RestApiConfiguration {
                     oidcUserInfoUrl.orElse(URI.create("http://keycloak:8080/auth/realms/oidc/protocol/openid-connect/userInfo").toURL()),
                     oidcIntrospectionEndpoint.orElse(new IntrospectionEndpoint(URI.create("http://keycloak:8080/auth/realms/oidc/protocol/openid-connect/introspect").toURL(), Optional.empty())),
                     oidcIntrospectionClaim.orElse("email"),
-                    oidcAudience.orElse(new Aud("tcalendar")),
+                    oidcAudience.build(),
                     sharingCalendarEnabled.orElse(true),
                     sharingAddressbookEnabled.orElse(true),
                     domainMembersAddressbookEnabled.orElse(true),
@@ -291,7 +293,12 @@ public class RestApiConfiguration {
         Optional<URL> oidcUserInfoUrl = urlParser.apply("oidc.userInfo.url");
         Optional<URL> oidcIntrospectUrl = urlParser.apply("oidc.introspect.url");
         Optional<String> oidcIntrospectCreds = Optional.ofNullable(configuration.getString("oidc.introspect.credentials", null));
-        Optional<Aud> oidcAudience = Optional.ofNullable(configuration.getString("oidc.audience", null)).map(Aud::new);
+        List<Aud> oidcAudience = Optional.ofNullable(configuration.getStringArray("oidc.audience"))
+            .filter(array -> array.length > 0)
+            .map(s -> Arrays.stream(s)
+                .map(Aud::new)
+                .collect(Collectors.toList()))
+            .orElse(ImmutableList.of(new Aud("tcalendar")));
         Optional<String> oidcIntrospectionClaim = Optional.ofNullable(configuration.getString("oidc.claim", null));
         Optional<Boolean> calendarSharingEnabled = Optional.ofNullable(configuration.getBoolean("calendar.sharing.enabled", null));
         Optional<Boolean> sharingAddressbookEnabled = Optional.ofNullable(configuration.getBoolean("contacts.sharing.enabled", null));
@@ -372,7 +379,7 @@ public class RestApiConfiguration {
     private final URL oidcUserInfoUrl;
     private final IntrospectionEndpoint introspectionEndpoint;
     private final String oidcClaim;
-    private final Aud aud;
+    private final List<Aud> aud;
     private final boolean calendarSharingEnabled;
     private final boolean sharingContactsEnabled;
     private final boolean domainMembersAddressbookEnabled;
@@ -388,7 +395,7 @@ public class RestApiConfiguration {
     RestApiConfiguration(Optional<Port> port, URL calendarSpaUrl,
                          URL contactSpaUrl, URL selfUrl, Optional<URL> openpaasBackendURL, URL davURL, URL visioURL, boolean openpaasBackendTrustAllCerts,
                          String jwtPrivatePath, List<String> jwtPublicPath, Duration jwtValidity, URL oidcUserInfoUrl, IntrospectionEndpoint introspectionEndpoint,
-                         String oidcIntrospectionClaim, Aud aud, boolean calendarSharingENabled, boolean sharingCalendarEnabled,
+                         String oidcIntrospectionClaim, List<Aud> aud, boolean calendarSharingENabled, boolean sharingCalendarEnabled,
                          boolean domainMembersAddressbookEnabled, String defaultLanguage, String defaultTimezone, boolean defaultUse24hFormat,
                          JsonNode defaultBusinessHours, boolean enableBasicAuth, String adminUsername, String adminPassword) {
         this.port = port;
@@ -502,7 +509,7 @@ public class RestApiConfiguration {
         return introspectionEndpoint;
     }
 
-    public Aud getAud() {
+    public List<Aud> getAud() {
         return aud;
     }
 
