@@ -581,7 +581,7 @@ class TwakeCalendarGuiceServerTest  {
 
         String body = given()
             .auth().preemptive().basic(USERNAME.asString(), PASSWORD)
-            .body("[{\"name\":\"linagora.esn.contacts\",\"keys\":[\"features\"]}]")
+            .body("[{\"name\":\"linagora.esn.contact\",\"keys\":[\"features\"]}]")
         .when()
             .post("/api/configurations")
         .then()
@@ -591,7 +591,7 @@ class TwakeCalendarGuiceServerTest  {
             .asString();
 
         assertThatJson(body).isEqualTo("""
-    [{"name":"linagora.esn.contacts","configurations":[{"name":"features","value":{"isVirtualFollowingAddressbookEnabled":false,"isSharingAddressbookEnabled":true,"isVirtualUserAddressbookEnabled":false,"isDomainMembersAddressbookEnabled":true}}]}]""");
+    [{"name":"linagora.esn.contact","configurations":[{"name":"features","value":{"isVirtualFollowingAddressbookEnabled":false,"isSharingAddressbookEnabled":true,"isVirtualUserAddressbookEnabled":false,"isDomainMembersAddressbookEnabled":true}}]}]""");
     }
 
     @Test
@@ -1081,7 +1081,7 @@ class TwakeCalendarGuiceServerTest  {
                             ]
                         },
                         {
-                            "name": "linagora.esn.contacts",
+                            "name": "linagora.esn.contact",
                             "configurations": [
                                 {
                                     "name": "features",
