@@ -151,7 +151,7 @@ Will return user details and configuration:
         ]
     },
     {
-        "name": "linagora.esn.contacts",
+        "name": "linagora.esn.contact",
         "configurations": [
             {
                 "name": "features",

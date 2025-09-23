@@ -93,7 +93,7 @@ public class FileConfigurationEntryResolver implements ConfigurationEntryResolve
         .put(new ModuleName("linagora.esn.calendar"), new ConfigurationKey("features"), calendarSharingEnabled())
         .put(new ModuleName("linagora.esn.videoconference"), new ConfigurationKey("jitsiInstanceUrl"), visioConfiguration1())
         .put(new ModuleName("linagora.esn.videoconference"), new ConfigurationKey("openPaasVideoconferenceAppUrl"), visioConfiguration2())
-        .put(new ModuleName("linagora.esn.contacts"), new ConfigurationKey("features"), contactsFeaturesConfiguration())
+        .put(new ModuleName("linagora.esn.contact"), new ConfigurationKey("features"), contactsFeaturesConfiguration())
         .build();
 
     public static final ImmutableSet<EntryIdentifier> KEYS = TABLE.cellSet()
