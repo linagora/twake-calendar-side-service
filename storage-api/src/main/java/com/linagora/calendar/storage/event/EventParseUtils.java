@@ -18,6 +18,10 @@
 
 package com.linagora.calendar.storage.event;
 
+import java.net.MalformedURLException;
+import java.net.URI;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -41,6 +45,7 @@ import jakarta.mail.internet.AddressException;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import org.apache.james.core.MailAddress;
+import org.apache.james.mime4j.field.address.LenientAddressParser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -158,12 +163,12 @@ public class EventParseUtils {
     private static Optional<EventFields.Person> toPerson(Property property) {
         try {
             String cn = property.getParameter(Parameter.CN).map(Parameter::getValue).orElse("");
-            String email = Strings.CI.removeStart(property.getValue(), "mailto:");
+            MailAddress email = getEmail(property);
             Optional<PartStat> partStat = property.getParameter(Parameter.PARTSTAT)
                 .map(value -> (PartStat) value);
-            return Optional.of(new EventFields.Person(cn, new MailAddress(email), partStat));
-        } catch (AddressException e) {
-            LOGGER.info("Invalid person: {}", property.getValue());
+            return Optional.of(new EventFields.Person(cn, email, partStat));
+        } catch (AddressException | MalformedURLException e) {
+            LOGGER.error("Invalid person: {}", property.getValue());
             return Optional.empty();
         }
     }
@@ -299,4 +304,14 @@ public class EventParseUtils {
                         new IllegalArgumentException("VEVENT is missing UID, invalid ICS"))));
     }
 
+    private static MailAddress getEmail(Property property) throws MalformedURLException, AddressException {
+        try {
+            String email = Strings.CI.removeStart(property.getValue(), "mailto:");
+            return new MailAddress(email);
+        } catch (AddressException e) {
+            // Try to decode URL-encoded email
+            String decoded = URLDecoder.decode(URI.create(property.getValue()).toURL().getPath(), StandardCharsets.UTF_8);
+            return new MailAddress(LenientAddressParser.DEFAULT.parseAddress(decoded).toString());
+        }
+    }
 }
