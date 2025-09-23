@@ -24,15 +24,18 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.Optional;
 
+import org.apache.james.core.MailAddress;
 import org.junit.jupiter.api.Test;
 
 import com.linagora.calendar.api.CalendarUtil;
 
+import jakarta.mail.internet.AddressException;
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.component.VEvent;
 
 class EventParseUtilsTest {
+
     @Test
     void getEndTimeShouldReturnDtEndWhenPresent() {
         String ics = """
@@ -173,5 +176,49 @@ class EventParseUtilsTest {
         assertThat(result).isPresent();
         assertThat(result.get())
             .isEqualTo(ZonedDateTime.of(2025, 9, 13, 0, 0, 0, 0, ZoneId.of("UTC")));
+    }
+
+    @Test
+    void getOrganizerShouldReturnPerson() throws AddressException {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:event-1
+            DTSTART:20250911T100000Z
+            DTEND:20250911T120000Z
+            SUMMARY:Meeting with DTEND
+            ORGANIZER;CN=Test Organizer:mailto:organizer@abc.com
+            ATTENDEE;CN=Test Attendee:mailto:attendee@abc.com
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+        VEvent event = (VEvent) calendar.getComponent(Component.VEVENT).get();
+
+        assertThat(EventParseUtils.getOrganizer(event)).isEqualTo(new EventFields.Person("Test Organizer", new MailAddress("organizer@abc.com")));
+    }
+
+    @Test
+    void getEndTimeShouldReturnCorrectPersonWhenMailToStringHasComplexFormat() throws AddressException {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:event-1
+            DTSTART:20250911T100000Z
+            DTEND:20250911T120000Z
+            SUMMARY:Meeting with DTEND
+            ORGANIZER;CN=Test Organizer:mailto:Test%20Organizer%20%3Corganizer@abc.com%3E
+            ATTENDEE;CN=Test Attendee:mailto:attendee@abc.com
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+        VEvent event = (VEvent) calendar.getComponent(Component.VEVENT).get();
+
+        assertThat(EventParseUtils.getOrganizer(event)).isEqualTo(new EventFields.Person("Test Organizer", new MailAddress("organizer@abc.com")));
     }
 }
