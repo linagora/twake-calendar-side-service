@@ -201,7 +201,29 @@ class EventParseUtilsTest {
     }
 
     @Test
-    void getEndTimeShouldReturnCorrectPersonWhenMailToStringHasComplexFormat() throws AddressException {
+    void getOrganizerShouldReturnPersonWhenMailToStringContainsPlusSign() throws AddressException {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:event-1
+            DTSTART:20250911T100000Z
+            DTEND:20250911T120000Z
+            SUMMARY:Meeting with DTEND
+            ORGANIZER;CN=Test Organizer:mailto:organizer+calendar@abc.com
+            ATTENDEE;CN=Test Attendee:mailto:attendee@abc.com
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+        VEvent event = (VEvent) calendar.getComponent(Component.VEVENT).get();
+
+        assertThat(EventParseUtils.getOrganizer(event)).isEqualTo(new EventFields.Person("Test Organizer", new MailAddress("organizer+calendar@abc.com")));
+    }
+
+    @Test
+    void getOrganizerShouldReturnCorrectPersonWhenMailToStringHasComplexFormat() throws AddressException {
         String ics = """
             BEGIN:VCALENDAR
             VERSION:2.0

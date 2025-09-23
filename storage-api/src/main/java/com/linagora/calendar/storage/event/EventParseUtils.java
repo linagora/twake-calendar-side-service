@@ -43,11 +43,13 @@ import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import org.apache.james.core.MailAddress;
+import org.apache.james.mime4j.field.address.LenientAddressParser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 
+import jakarta.mail.internet.AddressException;
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.Content;
@@ -160,11 +162,11 @@ public class EventParseUtils {
     private static Optional<EventFields.Person> toPerson(Property property) {
         try {
             String cn = property.getParameter(Parameter.CN).map(Parameter::getValue).orElse("");
-            String email = getEmail(property);
+            MailAddress email = getEmail(property);
             Optional<PartStat> partStat = property.getParameter(Parameter.PARTSTAT)
                 .map(value -> (PartStat) value);
-            return Optional.of(new EventFields.Person(cn, new MailAddress(email), partStat));
-        } catch (Exception e) {
+            return Optional.of(new EventFields.Person(cn, email, partStat));
+        } catch (AddressException | MalformedURLException e) {
             LOGGER.error("Invalid person: {}", property.getValue());
             return Optional.empty();
         }
@@ -301,15 +303,14 @@ public class EventParseUtils {
                         new IllegalArgumentException("VEVENT is missing UID, invalid ICS"))));
     }
 
-    private static String getEmail(Property property) throws MalformedURLException {
-        String decoded = URLDecoder.decode(URI.create(property.getValue()).toURL().getPath(), StandardCharsets.UTF_8);
-        int start = decoded.indexOf('<');
-        int end = decoded.indexOf('>');
-
-        if (start >= 0 && end > start) {
-            return decoded.substring(start + 1, end);
-        } else {
-            return decoded.trim();
+    private static MailAddress getEmail(Property property) throws MalformedURLException, AddressException {
+        try {
+            String email = Strings.CI.removeStart(property.getValue(), "mailto:");
+            return new MailAddress(email);
+        } catch (AddressException e) {
+            // Try to decode URL-encoded email
+            String decoded = URLDecoder.decode(URI.create(property.getValue()).toURL().getPath(), StandardCharsets.UTF_8);
+            return new MailAddress(LenientAddressParser.DEFAULT.parseAddress(decoded).toString());
         }
     }
 }
