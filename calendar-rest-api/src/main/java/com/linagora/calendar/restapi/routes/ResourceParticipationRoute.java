@@ -94,7 +94,7 @@ public class ResourceParticipationRoute implements JMAPRoutes {
         this.calDavEventRepository = calDavEventRepository;
         this.resourceDAO = resourceDAO;
         this.openPaaSDomainDAO = openPaaSDomainDAO;
-        this.locationRedirectUri = URI.create(Strings.CS.removeEnd(calendarBaseUrl.toString(), "/") + "/#/calendar");
+        this.locationRedirectUri = URI.create(Strings.CS.removeEnd(calendarBaseUrl.toString(), "/") + "/calendar");
         this.jwtVerifier = jwtVerifier;
         this.metricFactory = metricFactory;
     }

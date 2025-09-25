@@ -177,7 +177,7 @@ public class ResourceParticipationRouteTest {
             .get(endpoint)
         .then()
             .statusCode(302)
-            .header("Location", equalTo("https://e-calendrier.avocat.fr/#/calendar"));
+            .header("Location", equalTo("https://e-calendrier.avocat.fr/calendar"));
     }
 
     @Test
