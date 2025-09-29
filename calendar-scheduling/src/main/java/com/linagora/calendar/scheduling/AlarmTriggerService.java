@@ -62,7 +62,6 @@ import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.component.VEvent;
-import net.fortuna.ical4j.model.property.DateProperty;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -76,7 +75,6 @@ public class AlarmTriggerService {
             .map(VEvent.class::cast)
             .orElseThrow(() -> new IllegalStateException("No VEvent found in the calendar event"));
 
-    public static final boolean RECURRING = true;
     public static final TemplateType TEMPLATE_TYPE = new TemplateType("event-alarm");
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AlarmTriggerService.class);
@@ -123,8 +121,7 @@ public class AlarmTriggerService {
             // If the event is recurring, we need to update the alarm time for the next occurrence
             return alarmInstantFactory.computeNextAlarmInstant(CalendarUtil.parseIcs(alarmEvent.ics()), Username.fromMailAddress(alarmEvent.recipient()))
                 .map(alarmInstant -> Flux.fromIterable(alarmInstant.recipients())
-                    .map(recipient -> new AlarmEvent(alarmEvent.eventUid(), alarmInstant.alarmTime(), alarmInstant.eventStartTime(),
-                        RECURRING, alarmInstant.recurrenceId().map(DateProperty::getValue), recipient, alarmEvent.ics()))
+                    .map(recipient -> alarmEvent.withNextOccurrence(alarmInstant))
                     .flatMap(alarmEventDAO::update)
                     .then())
                 .orElse(alarmEventDAO.delete(alarmEvent.eventUid(), alarmEvent.recipient()));
