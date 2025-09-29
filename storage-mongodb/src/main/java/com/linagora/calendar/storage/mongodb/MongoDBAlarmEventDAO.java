@@ -60,7 +60,8 @@ public class MongoDBAlarmEventDAO implements AlarmEventDAO {
     @Inject
     public MongoDBAlarmEventDAO(MongoDatabase database) {
         this.collection = database.getCollection(COLLECTION);
-        Mono.from(collection.createIndex(ascending(EVENT_UID_FIELD, RECIPIENT_FIELD), new IndexOptions())).block();
+        Mono.from(collection.createIndex(ascending(EVENT_UID_FIELD, RECIPIENT_FIELD), new IndexOptions()
+            .unique(true))).block();
         Mono.from(collection.createIndex(ascending(ALARM_TIME_FIELD), new IndexOptions())).block();
     }
 

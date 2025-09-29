@@ -24,7 +24,10 @@ import java.util.Optional;
 import org.apache.james.core.MailAddress;
 
 import com.google.common.base.MoreObjects;
+import com.linagora.calendar.storage.event.AlarmInstantFactory.AlarmInstant;
 import com.linagora.calendar.storage.eventsearch.EventUid;
+
+import net.fortuna.ical4j.model.property.DateProperty;
 
 public record AlarmEvent(EventUid eventUid,
                          Instant alarmTime,
@@ -34,11 +37,22 @@ public record AlarmEvent(EventUid eventUid,
                          MailAddress recipient,
                          String ics) {
 
-   public String toShortString() {
-       return MoreObjects.toStringHelper(this)
-           .add("eventUid", eventUid.value())
-           .add("recipient", recipient.asString())
-           .add("alarmTime", alarmTime.getEpochSecond())
-           .toString();
-   }
+    public String toShortString() {
+        return MoreObjects.toStringHelper(this)
+            .add("eventUid", eventUid.value())
+            .add("recipient", recipient.asString())
+            .add("alarmTime", alarmTime.getEpochSecond())
+            .toString();
+    }
+
+    public AlarmEvent withNextOccurrence(AlarmInstant instant) {
+        return new AlarmEvent(
+            this.eventUid,
+            instant.alarmTime(),
+            instant.eventStartTime(),
+            this.recurring,
+            instant.recurrenceId().map(DateProperty::getValue),
+            this.recipient,
+            this.ics);
+    }
 }
