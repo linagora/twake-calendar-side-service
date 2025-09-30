@@ -41,6 +41,7 @@ import org.slf4j.LoggerFactory;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.api.JwtSigner;
+import com.linagora.calendar.dav.CalDavEventRepository;
 import com.linagora.calendar.smtp.Mail;
 import com.linagora.calendar.smtp.MailSender;
 import com.linagora.calendar.smtp.i18n.I18NTranslator;
@@ -51,12 +52,14 @@ import com.linagora.calendar.smtp.template.TemplateType;
 import com.linagora.calendar.smtp.template.content.model.EventTimeModel;
 import com.linagora.calendar.smtp.template.content.model.LocationModel;
 import com.linagora.calendar.smtp.template.content.model.PersonModel;
+import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.ResourceDAO;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.exception.DomainNotFoundException;
+import com.linagora.calendar.storage.model.Resource;
 import com.linagora.calendar.storage.model.ResourceId;
 
 import net.fortuna.ical4j.model.Calendar;
@@ -96,30 +99,34 @@ public class EventResourceHandler {
     private final MailSender.Factory mailSenderFactory;
     private final MessageGenerator.Factory messageGeneratorFactory;
     private final OpenPaaSUserDAO userDAO;
+    private final OpenPaaSDomainDAO domainDAO;
     private final SettingsBasedResolver settingsResolver;
     private final EventEmailFilter eventEmailFilter;
     private final MaybeSender maybeSender;
     private final MailAddress senderAddress;
     private final String resourceReplyURL;
     private final JwtSigner jwtSigner;
+    private final CalDavEventRepository calDavEventRepository;
 
     @Inject
     public EventResourceHandler(ResourceDAO resourceDAO,
                                 MailSender.Factory mailSenderFactory,
                                 MessageGenerator.Factory messageGeneratorFactory,
-                                OpenPaaSUserDAO userDAO,
+                                OpenPaaSUserDAO userDAO, OpenPaaSDomainDAO domainDAO,
                                 @Named("language_timezone") SettingsBasedResolver settingsResolver,
                                 EventEmailFilter eventEmailFilter,
                                 MailTemplateConfiguration mailTemplateConfiguration,
                                 @Named("selfUrl") URL calendarBaseUrl,
-                                JwtSigner jwtSigner) {
+                                JwtSigner jwtSigner, CalDavEventRepository calDavEventRepository) {
         this.resourceDAO = resourceDAO;
         this.mailSenderFactory = mailSenderFactory;
         this.messageGeneratorFactory = messageGeneratorFactory;
         this.userDAO = userDAO;
+        this.domainDAO = domainDAO;
         this.settingsResolver = settingsResolver;
         this.eventEmailFilter = eventEmailFilter;
         this.maybeSender = mailTemplateConfiguration.sender();
+        this.calDavEventRepository = calDavEventRepository;
         this.senderAddress = maybeSender.asOptional()
             .orElseThrow(() -> new IllegalArgumentException("Sender address must not be empty"));
         this.resourceReplyURL = calendarBaseUrl.toString() + RESOURCE_REPLY_URI;
@@ -131,11 +138,26 @@ public class EventResourceHandler {
             message.resourceId(), message.eventId(), message.eventPath());
         return resourceDAO.findById(new ResourceId(message.resourceId()))
             .filter(resource -> !resource.deleted())
-            .flatMap(resource -> Flux.fromIterable(resource.administrators())
-                .flatMap(resourceAdministrator -> userDAO.retrieve(resourceAdministrator.refId()), ReactorUtils.DEFAULT_CONCURRENCY)
-                .filter(Throwing.predicate(openPaaSUser -> eventEmailFilter.shouldProcess(openPaaSUser.username().asMailAddress())))
-                .flatMap(Throwing.function(openPaaSUser -> sendRequestMail(message, resource.name(), openPaaSUser.username().asMailAddress())))
-                .then());
+            .flatMap(resource -> {
+                if (resource.administrators().isEmpty()) {
+                    return acceptInvite(message, resource);
+                } else {
+                    return sendValidationEmailToAdministrators(message, resource);
+                }
+            });
+    }
+
+    private Mono<Void> acceptInvite(CalendarResourceMessageDTO message, Resource resource) {
+        return domainDAO.retrieve(resource.domain())
+            .flatMap(domain -> calDavEventRepository.updatePartStat(domain, resource.id(), message.eventId(), PartStat.ACCEPTED));
+    }
+
+    private Mono<Void> sendValidationEmailToAdministrators(CalendarResourceMessageDTO message, Resource resource) {
+        return Flux.fromIterable(resource.administrators())
+            .flatMap(resourceAdministrator -> userDAO.retrieve(resourceAdministrator.refId()), ReactorUtils.DEFAULT_CONCURRENCY)
+            .filter(Throwing.predicate(openPaaSUser -> eventEmailFilter.shouldProcess(openPaaSUser.username().asMailAddress())))
+            .flatMap(Throwing.function(openPaaSUser -> sendRequestMail(message, resource.name(), openPaaSUser.username().asMailAddress())))
+            .then();
     }
 
     public Mono<Void> handleAcceptEvent(CalendarResourceMessageDTO message) {

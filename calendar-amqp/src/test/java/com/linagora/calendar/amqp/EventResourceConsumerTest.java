@@ -28,6 +28,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.net.MalformedURLException;
@@ -131,6 +132,7 @@ public class EventResourceConsumerTest {
 
     private ResourceDAO resourceDAO;
     private CalDavEventRepository calDavEventRepository;
+    private CalDavEventRepository eventRepository;
 
     @BeforeAll
     static void beforeAll(DockerSabreDavSetup dockerSabreDavSetup) throws Exception {
@@ -226,15 +228,18 @@ public class EventResourceConsumerTest {
         when(jwtSigner.generate(anyMap()))
             .thenReturn(Mono.just("jwtSecret"));
 
+        eventRepository = mock(CalDavEventRepository.class);
         EventResourceHandler eventResourceHandler = new EventResourceHandler(resourceDAO,
             mailSenderFactory,
             messageFactory,
             openPaaSUserDAO,
+            domainDAO,
             settingsResolver,
             eventEmailFilter,
             mailTemplateConfig,
             URI.create("https://calendar.linagora.local").toURL(),
-            jwtSigner);
+            jwtSigner,
+            eventRepository);
 
         EventResourceConsumer consumer = new EventResourceConsumer(channelPool, QueueArguments.Builder::new, eventResourceHandler);
         consumer.init();
@@ -312,6 +317,34 @@ public class EventResourceConsumerTest {
                 .contains("https://calendar.linagora.local/calendar/api/resources/" + resourceId.value() + "/" + resourceEventId + "/participation?status=ACCEPTED&amp;referrer=email&amp;jwt=jwtSecret")
                 .contains("https://calendar.linagora.local/calendar/api/resources/" + resourceId.value() + "/" + resourceEventId + "/participation?status=DECLINED&amp;referrer=email&amp;jwt=jwtSecret");
         }));
+    }
+
+    @Test
+    void shouldAcceptEventsWhenNoAdministrators(DockerSabreDavSetup dockerSabreDavSetup) {
+        OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
+        ResourceInsertRequest request = new ResourceInsertRequest(
+            List.of(),
+            resourceAdmin.id(),
+            "Test resource description",
+            domain.id(),
+            "icon.png",
+            "Projector");
+        ResourceId resourceId = resourceDAO.insert(request).block();
+
+        String eventUid = UUID.randomUUID().toString();
+        String calendarData = generateCalendarData(
+            eventUid,
+            organizer.username().asString(),
+            attendee.username().asString(),
+            "Sprint planning #01",
+            "Twake Meeting Room",
+            "This is a meeting to discuss the sprint planning for the next week.",
+            "30250411T100000",
+            "30250411T110000",
+            resourceId.value());
+        davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
+
+        verify(eventRepository).updatePartStat(any(OpenPaaSDomain.class), any(ResourceId.class), any(String.class), any(PartStat.class));
     }
 
     @Test
