@@ -271,6 +271,9 @@ Status codes:
  - 201 if created. Location includes the URL allowing to read resource details
  - 400 if invalid: the creator/domain/administrator do not exceed or extra fields / invalid JSON
 
+A resource witout administrator is not subject to the validation flow: any event request with this resource is 
+automatically accepted.
+
 ### Updating a resource
 
 ```
