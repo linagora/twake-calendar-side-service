@@ -320,7 +320,7 @@ public class EventResourceConsumerTest {
     }
 
     @Test
-    void shouldAcceptEventsWhenNoAdministrators(DockerSabreDavSetup dockerSabreDavSetup) {
+    void shouldAcceptEventsWhenNoAdministrators(DockerSabreDavSetup dockerSabreDavSetup) throws Exception {
         OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
         ResourceInsertRequest request = new ResourceInsertRequest(
             List.of(),
@@ -344,7 +344,7 @@ public class EventResourceConsumerTest {
             resourceId.value());
         davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
 
-        verify(eventRepository).updatePartStat(any(OpenPaaSDomain.class), any(ResourceId.class), any(String.class), any(PartStat.class));
+        awaitAtMost.untilAsserted(() -> verify(eventRepository).updatePartStat(any(OpenPaaSDomain.class), any(ResourceId.class), any(String.class), any(PartStat.class)));
     }
 
     @Test
