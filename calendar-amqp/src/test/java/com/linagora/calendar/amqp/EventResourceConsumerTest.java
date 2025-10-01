@@ -28,6 +28,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.net.MalformedURLException;
@@ -131,6 +132,7 @@ public class EventResourceConsumerTest {
 
     private ResourceDAO resourceDAO;
     private CalDavEventRepository calDavEventRepository;
+    private CalDavClient calDavClient;
 
     @BeforeAll
     static void beforeAll(DockerSabreDavSetup dockerSabreDavSetup) throws Exception {
@@ -166,6 +168,8 @@ public class EventResourceConsumerTest {
 
     @BeforeEach
     public void setUp() throws Exception {
+        calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
+        calDavEventRepository = new CalDavEventRepository(calDavClient);
         organizer = sabreDavExtension.newTestUser();
         attendee = sabreDavExtension.newTestUser();
         resourceAdmin = sabreDavExtension.newTestUser();
@@ -177,9 +181,6 @@ public class EventResourceConsumerTest {
                     TIMEZONE_IDENTIFIER, ZoneId.of("Asia/Ho_Chi_Minh")))));
         setupEventResourceConsumer();
         clearSmtpMock();
-
-        CalDavClient calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
-        calDavEventRepository = new CalDavEventRepository(calDavClient);
     }
 
     @AfterEach
@@ -230,11 +231,13 @@ public class EventResourceConsumerTest {
             mailSenderFactory,
             messageFactory,
             openPaaSUserDAO,
+            domainDAO,
             settingsResolver,
             eventEmailFilter,
             mailTemplateConfig,
             URI.create("https://calendar.linagora.local").toURL(),
-            jwtSigner);
+            jwtSigner,
+            calDavEventRepository);
 
         EventResourceConsumer consumer = new EventResourceConsumer(channelPool, QueueArguments.Builder::new, eventResourceHandler);
         consumer.init();
@@ -312,6 +315,38 @@ public class EventResourceConsumerTest {
                 .contains("https://calendar.linagora.local/calendar/api/resources/" + resourceId.value() + "/" + resourceEventId + "/participation?status=ACCEPTED&amp;referrer=email&amp;jwt=jwtSecret")
                 .contains("https://calendar.linagora.local/calendar/api/resources/" + resourceId.value() + "/" + resourceEventId + "/participation?status=DECLINED&amp;referrer=email&amp;jwt=jwtSecret");
         }));
+    }
+
+    @Test
+    void shouldAcceptEventsWhenNoAdministrators(DockerSabreDavSetup dockerSabreDavSetup) throws Exception {
+        OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
+        ResourceInsertRequest request = new ResourceInsertRequest(
+            List.of(),
+            resourceAdmin.id(),
+            "Test resource description",
+            domain.id(),
+            "icon.png",
+            "Projector");
+        ResourceId resourceId = resourceDAO.insert(request).block();
+
+        String eventUid = UUID.randomUUID().toString();
+        String calendarData = generateCalendarData(
+            eventUid,
+            organizer.username().asString(),
+            attendee.username().asString(),
+            "Sprint planning #01",
+            "Twake Meeting Room",
+            "This is a meeting to discuss the sprint planning for the next week.",
+            "30250411T100000",
+            "30250411T110000",
+            resourceId.value());
+        davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
+
+        awaitAtMost.untilAsserted(() -> {
+            String eventString = calDavClient.calendarReportByUid(organizer.username(), organizer.id(), eventUid).block()
+                .firstDavItemNode().toString();
+            assertThat(eventString).contains("[\"attendee\",{\"partstat\":\"ACCEPTED\",\"role\":\"REQ-PARTICIPANT\",\"cutype\":\"RESOURCE\",\"cn\":\"Projector\"");
+        });
     }
 
     @Test
