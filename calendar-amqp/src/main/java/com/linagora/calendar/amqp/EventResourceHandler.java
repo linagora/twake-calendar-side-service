@@ -173,6 +173,7 @@ public class EventResourceHandler {
     private Mono<Void> handleReplyEvent(CalendarResourceMessageDTO message, boolean approved) {
         return resourceDAO.findById(new ResourceId(message.resourceId()))
             .filter(resource -> !resource.deleted())
+            .filter(resource -> !resource.administrators().isEmpty())
             .flatMap(resource -> Mono.just(getOrganizerEmail(message))
                 .filter(eventEmailFilter::shouldProcess)
                 .flatMap(organizerEmail -> sendReplyMail(message, resource.name(), organizerEmail, approved)));
