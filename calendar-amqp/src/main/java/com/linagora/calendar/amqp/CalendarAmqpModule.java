@@ -113,6 +113,13 @@ public class CalendarAmqpModule extends AbstractModule {
     }
 
     @ProvidesIntoSet
+    public InitializationOperation provisionSabreResources(SabreResourceProvisioner provisioner) {
+        return InitilizationOperationBuilder
+            .forClass(SabreResourceProvisioner.class)
+            .init(provisioner::provisionSabreExchanges);
+    }
+
+    @ProvidesIntoSet
     SimpleConnectionPool.ReconnectionHandler provideEventAlarmReconnectionHandler(EventAlarmReconnectionHandler reconnectionHandler) {
         return reconnectionHandler;
     }
