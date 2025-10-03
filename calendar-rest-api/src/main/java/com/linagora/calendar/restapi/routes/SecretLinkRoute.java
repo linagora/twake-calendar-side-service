@@ -63,11 +63,11 @@ public class SecretLinkRoute extends CalendarRoute {
     public SecretLinkRoute(Authenticator authenticator,
                            MetricFactory metricFactory,
                            SecretLinkStore secretLinkStore,
-                           RestApiConfiguration secretLinkBaseUrl) {
+                           RestApiConfiguration configuration) {
         super(authenticator, metricFactory);
         this.objectMapper = new ObjectMapper();
         this.secretLinkStore = secretLinkStore;
-        this.secretLinkBaseUrl = secretLinkBaseUrl.getSelfUrl();
+        this.secretLinkBaseUrl = configuration.getSelfUrl();
     }
 
     @Override
