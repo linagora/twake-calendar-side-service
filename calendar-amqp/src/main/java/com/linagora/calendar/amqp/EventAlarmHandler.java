@@ -75,12 +75,17 @@ public class EventAlarmHandler {
         this.eventEmailFilter = eventEmailFilter;
     }
 
+    public Mono<Void> handleCreate(CalendarAlarmMessageDTO alarmMessageDTO) {
+        if (!hasVALARMComponent(alarmMessageDTO)) {
+            return Mono.empty();
+        }
+        return handleCreateOrUpdate(alarmMessageDTO);
+    }
+
     public Mono<Void> handleCreateOrUpdate(CalendarAlarmMessageDTO alarmMessageDTO) {
-        return Mono.just(alarmMessageDTO)
-            .filter(this::hasVALARMComponent)
-            .flatMap(dto -> openPaaSUserDAO.retrieve(dto.extractCalendarURL().base()))
-            .filterWhen(user -> isUserAlarmEnabled(user.username()))
-            .flatMap(user -> processCreateOrUpdate(user.username(), alarmMessageDTO));
+        return openPaaSUserDAO.retrieve(alarmMessageDTO.extractCalendarURL().base())
+            .filterWhen(openPaaSUser -> isUserAlarmEnabled(openPaaSUser.username()))
+            .flatMap(openPaaSUser -> processCreateOrUpdate(openPaaSUser.username(), alarmMessageDTO));
     }
 
     private boolean hasVALARMComponent(CalendarAlarmMessageDTO alarmMessageDTO) {

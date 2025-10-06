@@ -163,7 +163,7 @@ public class EventAlarmConsumer implements Closeable, Startable {
     }
 
     private PersistAlarmHandler handlerAdd() {
-        return eventAlarmHandler::handleCreateOrUpdate;
+        return eventAlarmHandler::handleCreate;
     }
 
     private PersistAlarmHandler handlerAddOrUpdate() {
