@@ -32,7 +32,6 @@ import org.apache.james.core.Username;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.storage.AlarmEvent;
@@ -76,7 +75,7 @@ public class EventAlarmHandler {
     }
 
     public Mono<Void> handleCreate(CalendarAlarmMessageDTO alarmMessageDTO) {
-        if (!hasVALARMComponent(alarmMessageDTO)) {
+        if (!alarmMessageDTO.hasVALARMComponent()) {
             return Mono.empty();
         }
         return handleCreateOrUpdate(alarmMessageDTO);
@@ -86,14 +85,6 @@ public class EventAlarmHandler {
         return openPaaSUserDAO.retrieve(alarmMessageDTO.extractCalendarURL().base())
             .filterWhen(openPaaSUser -> isUserAlarmEnabled(openPaaSUser.username()))
             .flatMap(openPaaSUser -> processCreateOrUpdate(openPaaSUser.username(), alarmMessageDTO));
-    }
-
-    private boolean hasVALARMComponent(CalendarAlarmMessageDTO alarmMessageDTO) {
-        JsonNode event = alarmMessageDTO.calendarEvent();
-        return event != null
-            && event.isArray()
-            && event.size() > 2
-            && event.get(2).toString().contains("\"valarm\"");
     }
 
     private Mono<Void> processCreateOrUpdate(Username username, CalendarAlarmMessageDTO alarmMessageDTO) {

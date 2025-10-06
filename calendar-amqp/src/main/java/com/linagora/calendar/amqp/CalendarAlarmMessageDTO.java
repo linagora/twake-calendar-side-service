@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.amqp;
 
+import java.util.stream.StreamSupport;
+
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -28,7 +30,28 @@ public record CalendarAlarmMessageDTO(@JsonProperty("eventPath") String eventPat
                                       @JsonProperty("event") JsonNode calendarEvent,
                                       @JsonProperty("import") boolean isImport) {
 
+    public static boolean hasVALARMComponent(JsonNode node) {
+        if (node == null) {
+            return false;
+        }
+        if (node.isArray()) {
+            return StreamSupport.stream(node.spliterator(), false)
+                .anyMatch(child -> ("valarm".equalsIgnoreCase(child.path(0).asText()))
+                    || hasVALARMComponent(child));
+        }
+
+        if (node.isObject()) {
+            return StreamSupport.stream(node.spliterator(), false)
+                .anyMatch(CalendarAlarmMessageDTO::hasVALARMComponent);
+        }
+        return false;
+    }
+
     public CalendarURL extractCalendarURL() {
         return EventFieldConverter.extractCalendarURL(eventPath);
+    }
+
+    public boolean hasVALARMComponent() {
+        return hasVALARMComponent(calendarEvent);
     }
 }
