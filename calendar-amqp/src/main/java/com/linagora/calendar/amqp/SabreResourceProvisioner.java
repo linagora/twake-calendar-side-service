@@ -57,7 +57,8 @@ public class SabreResourceProvisioner implements Startable {
             "contacts:addressbook:subscription:created",
             "contacts:addressbook:subscription:deleted",
             "contacts:addressbook:subscription:updated",
-            "contacts:addressbook:updated");
+            "contacts:addressbook:updated")
+            .block();
     }
 
     private Mono<Void> declareExchanges(Sender sender, String... exchanges) {
