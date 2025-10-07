@@ -74,6 +74,13 @@ public class EventAlarmHandler {
         this.eventEmailFilter = eventEmailFilter;
     }
 
+    public Mono<Void> handleCreate(CalendarAlarmMessageDTO alarmMessageDTO) {
+        if (!alarmMessageDTO.hasVALARMComponent()) {
+            return Mono.empty();
+        }
+        return handleCreateOrUpdate(alarmMessageDTO);
+    }
+
     public Mono<Void> handleCreateOrUpdate(CalendarAlarmMessageDTO alarmMessageDTO) {
         return openPaaSUserDAO.retrieve(alarmMessageDTO.extractCalendarURL().base())
             .filterWhen(openPaaSUser -> isUserAlarmEnabled(openPaaSUser.username()))
