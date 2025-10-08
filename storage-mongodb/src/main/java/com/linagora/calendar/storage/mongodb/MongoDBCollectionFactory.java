@@ -19,6 +19,8 @@
 package com.linagora.calendar.storage.mongodb;
 
 import org.bson.Document;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.mongodb.client.model.IndexOptions;
 import com.mongodb.client.model.Indexes;
@@ -28,6 +30,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 public class MongoDBCollectionFactory {
+    private static final Logger LOGGER = LoggerFactory.getLogger(MongoDBCollectionFactory.class);
 
     public static final String USERS = MongoDBOpenPaaSUserDAO.COLLECTION;
     public static final String DOMAINS = MongoDBOpenPaaSDomainDAO.COLLECTION;
@@ -68,6 +71,7 @@ public class MongoDBCollectionFactory {
                 .block();
         } catch (Exception e) {
             // ESN migration trick
+            LOGGER.warn("Incorrect index positionned on accounts.email. Ignoring.", e);
         }
     }
 
