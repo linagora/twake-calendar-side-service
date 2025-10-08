@@ -31,6 +31,7 @@ import org.apache.james.core.Username;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.fge.lambdas.Throwing;
+import com.linagora.calendar.dav.dto.SubscribedCalendarRequest;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -188,5 +189,139 @@ public class DavTestHelper extends DavClient {
                 .filter(throwable -> throwable instanceof DavClientException))
             .next()
             .blockOptional();
+    }
+
+    /**
+     * Examples of rights:
+     * - Administration (manage + admin): "dav:administration"
+     * - Read/Write: "dav:read-write"
+     * - Read Only: "dav:read"
+     */
+    public void grantDelegation(OpenPaaSUser userRequest, CalendarURL calendarURL, OpenPaaSUser delegate, String rightKey) {
+        String payload = """
+            {
+              "share": {
+                "set": [
+                  {
+                    "dav:href": "mailto:%s",
+                    "%s": true
+                  }
+                ],
+                "remove": []
+              }
+            }
+            """.formatted(delegate.username().asString(), rightKey);
+
+        sendDelegationRequest(userRequest, URI.create(calendarURL.asUri() + ".json"), payload);
+    }
+
+    public void revokeDelegation(OpenPaaSUser userRequest, CalendarURL calendarURL, OpenPaaSUser delegatedUser) {
+        String payload = """
+            {
+                "share": {
+                    "set": [],
+                    "remove": [
+                        {
+                            "dav:href": "mailto:%s"
+                        }
+                    ]
+                }
+            }
+            """.formatted(delegatedUser.username().asString());
+
+        sendDelegationRequest(userRequest, URI.create(calendarURL.asUri() + ".json"), payload);
+    }
+
+    private void sendDelegationRequest(OpenPaaSUser userRequest, URI calendarURI, String payload) {
+        httpClientWithImpersonation(userRequest.username())
+            .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, "application/json;charset=UTF-8")
+                .add(HttpHeaderNames.ACCEPT, "application/json"))
+            .request(HttpMethod.POST)
+            .uri(calendarURI.toString())
+            .send(Mono.just(Unpooled.wrappedBuffer(payload.getBytes(StandardCharsets.UTF_8))))
+            .responseSingle((response, responseContent) -> {
+                if (response.status().code() == 200) {
+                    return Mono.empty();
+                }
+                return responseContent.asString(StandardCharsets.UTF_8)
+                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .flatMap(errorBody -> Mono.error(new RuntimeException("""
+                        Unexpected status code: %d when sharing calendar '%s'
+                        %s
+                        """.formatted(response.status().code(), calendarURI.toASCIIString(), errorBody))));
+            }).block();
+    }
+
+    public void subscribeToSharedCalendar(OpenPaaSUser user, SubscribedCalendarRequest subscribedCalendarRequest) {
+        String uri = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/" + user.id().value() + ".json";
+
+        httpClientWithImpersonation(user.username())
+            .headers(headers -> headers
+                .add(HttpHeaderNames.CONTENT_TYPE, "application/json;charset=UTF-8")
+                .add(HttpHeaderNames.ACCEPT, "application/json, text/plain, */*"))
+            .request(HttpMethod.POST)
+            .uri(uri)
+            .send(Mono.just(Unpooled.wrappedBuffer(subscribedCalendarRequest.serialize().getBytes(StandardCharsets.UTF_8))))
+            .responseSingle((response, responseContent) -> {
+                if (response.status().code() == 201) {
+                    return Mono.empty();
+                }
+                return responseContent.asString(StandardCharsets.UTF_8)
+                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .flatMap(errorBody -> Mono.error(new RuntimeException("""
+                        Unexpected status code: %d when subscribing to shared calendar '%s'
+                        %s
+                        """.formatted(response.status().code(), uri, errorBody))));
+            }).block();
+    }
+
+
+    /**
+     * <p>Examples of {@code public_right} values:
+     * <ul>
+     *     <li><b>Hide calendar</b>:
+     *     <pre>{@code
+     *     {"public_right": ""}
+     *     }</pre>
+     *     </li>
+     *
+     *     <li><b>See all details</b>:
+     *     <pre>{@code
+     *     {"public_right": "{DAV:}read"}
+     *     }</pre>
+     *     </li>
+     *
+     *     <li><b>Edit (full access)</b>:
+     *     <pre>{@code
+     *     {"public_right": "{DAV:}write"}
+     *     }</pre>
+     *     </li>
+     * </ul>
+     */
+    public void updateCalendarAcl(OpenPaaSUser user, URI calendarURL, String publicRight) {
+        String uri = calendarURL.toString();
+        String payload = """
+            {
+              "public_right":"%s"
+            }
+            """.formatted(publicRight);
+
+        httpClientWithImpersonation(user.username()).headers(headers ->
+                headers.add(HttpHeaderNames.ACCEPT, "application/json, text/plain, */*")
+                    .add(HttpHeaderNames.CONTENT_TYPE, "application/json"))
+            .request(HttpMethod.valueOf("ACL"))
+            .uri(uri)
+            .send(Mono.just(Unpooled.wrappedBuffer(payload.getBytes(StandardCharsets.UTF_8))))
+            .responseSingle((response, responseContent) -> {
+                if (response.status().code() == 200) {
+                    return Mono.empty();
+                }
+                return responseContent.asString(StandardCharsets.UTF_8)
+                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .flatMap(errorBody -> Mono.error(new RuntimeException("""
+                        Unexpected status code: %d when updating ACL for calendar '%s'
+                        %s
+                        """.formatted(response.status().code(), uri, errorBody))));
+            }).block();
     }
 }

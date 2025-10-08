@@ -20,8 +20,8 @@ package com.linagora.calendar.restapi.routes;
 
 import static com.linagora.calendar.restapi.routes.SecretLinkRoute.CALENDAR_HOME_ID_PARAM;
 import static com.linagora.calendar.restapi.routes.SecretLinkRoute.CALENDAR_ID_PARAM;
-import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
 
+import java.net.URI;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
@@ -29,19 +29,22 @@ import java.util.stream.Stream;
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.james.core.Username;
 import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.JMAPRoute;
 import org.apache.james.jmap.JMAPRoutes;
-import org.apache.james.jmap.routes.ForbiddenException;
 import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.metrics.api.MetricFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.CharMatcher;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.CalendarNotFoundException;
 import com.linagora.calendar.restapi.ErrorResponse;
+import com.linagora.calendar.restapi.ForbiddenException;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.SimpleSessionProvider;
@@ -97,36 +100,65 @@ public class DownloadCalendarRoute implements JMAPRoutes {
     }
 
     Mono<Void> generateCalendarData(HttpServerRequest request, HttpServerResponse response) {
-        CalendarURL calendarURL = extractCalendarURL(request);
+        CalendarURL requestCalendarURL = extractCalendarURL(request);
         return Mono.defer(() -> Mono.justOrEmpty(extractToken(request)))
-            .flatMap(token -> secretLinkStore.checkSecretLink(calendarURL, token))
+            .flatMap(token -> secretLinkStore.checkSecretLink(requestCalendarURL, token))
             .map(sessionProvider::createSession)
-            .switchIfEmpty(Mono.error(new ForbiddenException()))
-            .flatMap(mailboxSession -> downloadCalendar(mailboxSession, calendarURL, response))
-            .onErrorResume(Exception.class, exception -> {
-                if (exception instanceof IllegalArgumentException illegalArgumentException) {
-                    return response.status(BAD_REQUEST)
-                        .header("Content-Type", CONTENT_TYPE_JSON)
-                        .sendByteArray(Mono.fromCallable(() -> ErrorResponse.of(illegalArgumentException).serializeAsBytes()))
-                        .then();
+            .switchIfEmpty(Mono.error(new ForbiddenException("Token validation failed")))
+            .flatMap(mailboxSession -> downloadCalendar(mailboxSession, requestCalendarURL, response))
+            .onErrorResume(exception -> switch (exception) {
+                case IllegalArgumentException illegalArgumentException -> {
+                    LOGGER.warn("Bad request for [{}]: {}", request.uri(), illegalArgumentException.getMessage());
+                    yield ErrorResponseHandler.handle(response, HttpResponseStatus.BAD_REQUEST, illegalArgumentException);
                 }
-
-                if (exception instanceof ForbiddenException) {
-                    LOGGER.warn("Forbidden access attempt", exception);
-                    return doOnForbidden(response);
+                case ForbiddenException forbidden -> {
+                    LOGGER.warn("Forbidden for [{}]: {}", request.uri(), forbidden.getMessage());
+                    yield ErrorResponseHandler.handle(response, HttpResponseStatus.FORBIDDEN, forbidden);
                 }
-                LOGGER.error("Unexpected error", exception);
-                return doOnError(response);
+                case CalendarNotFoundException notfound -> {
+                    LOGGER.warn("Not found for [{}]", request.uri());
+                    yield ErrorResponseHandler.handle(response, HttpResponseStatus.NOT_FOUND, notfound);
+                }
+                default -> {
+                    LOGGER.error("Unexpected error for [{}]", request.uri(), exception);
+                    yield doOnError(response);
+                }
             });
     }
 
     Mono<Void> downloadCalendar(MailboxSession session, CalendarURL calendarURL, HttpServerResponse response) {
-        return calDavClient.export(calendarURL, session)
+        return resolveDownloadCalendarURI(session.getUser(), calendarURL)
+            .flatMap(exportUri -> calDavClient.export(session.getUser(), exportUri))
             .flatMap(data -> response.status(HttpResponseStatus.OK)
                 .header("Content-Type", CONTENT_TYPE_ICS)
                 .header("Content-Disposition", CONTENT_DISPOSITION)
                 .sendByteArray(Mono.just(data))
                 .then());
+    }
+
+    Mono<URI> resolveDownloadCalendarURI(Username username, CalendarURL requestCalendarURL) {
+        return calDavClient.fetchCalendarMetadata(username, requestCalendarURL)
+            .map(node -> {
+                if (!isSubscribedCalendar(node)) {
+                    return requestCalendarURL.asUri();
+                }
+                String href = extractSourceHref(node);
+                Preconditions.checkArgument(StringUtils.isNotBlank(href),
+                    "Missing source href for subscribed calendar: " + node.toPrettyString());
+                return URI.create(href);
+            });
+    }
+
+    private boolean isSubscribedCalendar(JsonNode node) {
+        return node.hasNonNull("calendarserver:source");
+    }
+
+    private String extractSourceHref(JsonNode node) {
+        return node.path("calendarserver:source")
+            .path("_links")
+            .path("self")
+            .path("href")
+            .asText(null);
     }
 
     Optional<SecretLinkToken> extractToken(HttpServerRequest request) {
@@ -144,13 +176,6 @@ public class DownloadCalendarRoute implements JMAPRoutes {
         OpenPaaSId calendarHomeId = new OpenPaaSId(request.param(CALENDAR_HOME_ID_PARAM));
         OpenPaaSId calendarId = new OpenPaaSId(request.param(CALENDAR_ID_PARAM));
         return new CalendarURL(calendarHomeId, calendarId);
-    }
-
-    Mono<Void> doOnForbidden(HttpServerResponse response) {
-        return response.status(HttpResponseStatus.FORBIDDEN)
-            .header("Content-Type", CONTENT_TYPE_JSON)
-            .sendByteArray(Mono.fromCallable(() -> ErrorResponse.of(403, "Forbidden", "Forbidden").serializeAsBytes()))
-            .then();
     }
 
     Mono<Void> doOnError(HttpServerResponse response) {

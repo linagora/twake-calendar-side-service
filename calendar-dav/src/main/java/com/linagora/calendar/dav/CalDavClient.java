@@ -65,8 +65,8 @@ public class CalDavClient extends DavClient {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     public static class CalDavExportException extends DavClientException {
-        public CalDavExportException(CalendarURL calendarUrl, Username username, String davResponse) {
-            super("Failed to export calendar. URL: " + calendarUrl.asUri() + ", User: " + username.asString() +
+        public CalDavExportException(URI calendarUri, Username username, String davResponse) {
+            super("Failed to export calendar. URL: " + calendarUri.toASCIIString() + ", User: " + username.asString() +
                 "\nDav Response: " + davResponse);
         }
     }
@@ -90,21 +90,25 @@ public class CalDavClient extends DavClient {
     }
 
     public Mono<byte[]> export(CalendarURL calendarURL, Username username) {
+        return export(username, calendarURL.asUri());
+    }
+
+    public Mono<byte[]> export(Username username, URI calendarURI) {
         return httpClientWithImpersonation(username).headers(headers ->
                 headers.add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_XML))
             .request(HttpMethod.GET)
-            .uri(calendarURL.asUri() + "?export")
+            .uri(calendarURI.toString() + "?export")
             .responseSingle((response, byteBufMono) -> {
                 if (response.status().code() == HttpStatus.SC_OK) {
                     return byteBufMono.asByteArray();
                 } else {
                     if (response.status().code() == HttpStatus.SC_NOT_IMPLEMENTED) {
-                        LOGGER.info("Could not export for {} calendar {}", username.asString(), calendarURL.serialize());
+                        LOGGER.info("Could not export for {} calendar {}", username.asString(), calendarURI.toASCIIString());
                         return Mono.empty();
                     }
                     return byteBufMono
                         .asString(StandardCharsets.UTF_8)
-                        .flatMap(errorBody -> Mono.error(new CalDavExportException(calendarURL, username, "Response status: " + response.status().code() + " - " + errorBody)));
+                        .flatMap(errorBody -> Mono.error(new CalDavExportException(calendarURI, username, "Response status: " + response.status().code() + " - " + errorBody)));
                 }
             });
     }
@@ -380,4 +384,35 @@ public class CalDavClient extends DavClient {
                 })
         );
     }
+
+    public Mono<JsonNode> fetchCalendarMetadata(Username username, CalendarURL calendarURL) {
+        String uri = calendarURL.asUri().toString();
+
+        return httpClientWithImpersonation(username)
+            .headers(headers -> headers.add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_JSON))
+            .request(HttpMethod.GET)
+            .uri(uri)
+            .responseSingle((response, content) -> {
+                int statusCode = response.status().code();
+
+                return content.asString(StandardCharsets.UTF_8)
+                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .flatMap(body -> {
+                        if (statusCode == HttpStatus.SC_OK) {
+                            return Mono.fromCallable(() -> OBJECT_MAPPER.readTree(body))
+                                .onErrorResume(error -> Mono.error(new DavClientException(
+                                    "Failed to parse calendar metadata JSON for '" + uri + "'", error)));
+                        }
+                        if (statusCode == HttpStatus.SC_NOT_FOUND) {
+                            return Mono.error(new CalendarNotFoundException(calendarURL));
+                        }
+                        return Mono.error(new DavClientException("""
+                                Unexpected response when fetching calendar metadata for '%s'
+                                Status code: %d
+                                Body: %s
+                                """.formatted(uri, statusCode, body)));
+                    });
+            });
+    }
+
 }

@@ -16,20 +16,19 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage;
+package com.linagora.calendar.dav;
 
-import org.apache.commons.lang3.StringUtils;
+import com.linagora.calendar.storage.CalendarURL;
 
-import com.google.common.base.Preconditions;
+public class CalendarNotFoundException extends RuntimeException {
+    private final CalendarURL calendarURL;
 
-public record OpenPaaSId(String value) {
-
-    public OpenPaaSId {
-        Preconditions.checkArgument(StringUtils.isNotEmpty(value), "OpenPaaSId must not be empty");
+    public CalendarNotFoundException(CalendarURL calendarURL) {
+        super("Calendar not found: " + calendarURL.serialize());
+        this.calendarURL = calendarURL;
     }
 
-    @Override
-    public String toString() {
-        return value;
+    public CalendarURL calendarURL() {
+        return calendarURL;
     }
 }
