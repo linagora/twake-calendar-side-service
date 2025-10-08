@@ -71,7 +71,7 @@ public class MongoDBCollectionFactory {
                 .block();
         } catch (Exception e) {
             // ESN migration trick
-            LOGGER.warn("Incorrect index positionned on accounts.email. Ignoring.", e);
+            LOGGER.warn("Incorrect index positioned on accounts.emails. Ignoring.", e);
         }
     }
 
