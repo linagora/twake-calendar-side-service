@@ -62,9 +62,13 @@ public class MongoDBCollectionFactory {
                 .createIndex(new Document("lastname", 1)))
             .block();
 
-        Mono.from(database.getCollection(USERS)
-                .createIndex(new Document("accounts.emails", 1)))
-            .block();
+        try {
+            Mono.from(database.getCollection(USERS)
+                    .createIndex(new Document("accounts.emails", 1)))
+                .block();
+        } catch (Exception e) {
+            // ESN migration trick
+        }
     }
 
     private static void createDomainsCollection(MongoDatabase database) {
