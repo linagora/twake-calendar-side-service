@@ -29,7 +29,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import org.apache.james.webadmin.Constants;
 import org.apache.james.webadmin.Routes;
-import org.apache.james.webadmin.utils.ErrorResponder;
 import org.apache.james.webadmin.utils.JsonTransformer;
 import org.eclipse.jetty.http.HttpStatus;
 import org.slf4j.Logger;
@@ -85,22 +84,13 @@ public class CalendarChannelLogoutRoutes implements Routes {
             String token = request.queryParams(TOKEN_PARAM);
             Preconditions.checkArgument(StringUtils.isNotEmpty(token), "Missing logout token");
 
-            try {
-                extractSidFromLogoutToken(token)
-                    .ifPresentOrElse(sid -> {
-                        LOGGER.debug("Add new revoked token has sid: " + sid);
-                        oidcTokenCache.invalidate(sid).block();
-                    }, () -> LOGGER.warn("Cannot extract sid from logout token: {}", token));
-                response.status(HttpStatus.OK_200);
-                return Constants.EMPTY_BODY;
-            } catch (Exception e) {
-                throw ErrorResponder.builder()
-                    .statusCode(HttpStatus.INTERNAL_SERVER_ERROR_500)
-                    .type(ErrorResponder.ErrorType.SERVER_ERROR)
-                    .message(String.format("Error while adding revoked token '%s'", token))
-                    .cause(e)
-                    .haltError();
-            }
+            extractSidFromLogoutToken(token)
+                .ifPresentOrElse(sid -> {
+                    LOGGER.debug("Add new revoked token has sid: " + sid);
+                    oidcTokenCache.invalidate(sid).block();
+                }, () -> LOGGER.warn("Cannot extract sid from logout token: {}", token));
+            response.status(HttpStatus.OK_200);
+            return Constants.EMPTY_BODY;
         };
     }
 

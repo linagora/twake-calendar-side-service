@@ -77,6 +77,32 @@ class CalendarUserRoutesTest {
     }
 
     @Test
+    void getUsersShouldReturnUserWhenMatchEmailFilter() {
+        OpenPaaSUser user = userDAO.add(Username.of("james@linagora.com"), "James", "Bond").block();
+
+        given()
+            .queryParam("email", "james@linagora.com")
+            .get()
+        .then()
+            .contentType(ContentType.JSON)
+            .statusCode(200)
+            .body("email", equalTo("james@linagora.com"))
+            .body("firstname", equalTo("James"))
+            .body("lastname", equalTo("Bond"))
+            .body("id", equalTo(user.id().value()));
+    }
+
+    @Test
+    void getUsersShouldThrow404WhenNotMatchEmailFilter() {
+        given()
+            .queryParam("email", "james@linagora.com")
+            .get().prettyPeek()
+        .then()
+            .contentType(ContentType.JSON)
+            .statusCode(404);
+    }
+
+    @Test
     void getUsersShouldReturnEmptyListWhenNoUsersRegistered() {
         when()
             .get()

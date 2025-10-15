@@ -18,8 +18,6 @@
 
 package com.linagora.calendar.webadmin;
 
-import java.util.List;
-
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
@@ -105,20 +103,23 @@ public class CalendarUserRoutes implements Routes {
         service.patch(BASE_PATH, this::updateUser, jsonTransformer);
     }
 
-    private List<CalendarUserDTO> getUsers(Request request, Response response) {
-        try {
-            return userDAO.list()
-                .map(CalendarUserDTO::fromDomainObject)
-                .collectList()
-                .block();
-        } catch (Exception e) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.INTERNAL_SERVER_ERROR_500)
-                .type(ErrorResponder.ErrorType.SERVER_ERROR)
-                .message("Error while fetching all users")
-                .cause(e)
-                .haltError();
+    private Object getUsers(Request request, Response response) {
+        if (request.queryParams("email") != null) {
+            String email = request.queryParams("email");
+
+            OpenPaaSUser user = userDAO.retrieve(Username.of(email)).blockOptional()
+                .orElseThrow(() -> ErrorResponder.builder()
+                    .statusCode(HttpStatus.NOT_FOUND_404)
+                    .type(ErrorResponder.ErrorType.NOT_FOUND)
+                    .message("User does not exist")
+                    .haltError());
+            return CalendarUserDTO.fromDomainObject(user);
         }
+
+        return userDAO.list()
+            .map(CalendarUserDTO::fromDomainObject)
+            .collectList()
+            .block();
     }
 
     private String addUser(Request request, Response response) throws JsonExtractException {
@@ -141,13 +142,6 @@ public class CalendarUserRoutes implements Routes {
                 .statusCode(HttpStatus.CONFLICT_409)
                 .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
                 .message(e.getMessage())
-                .haltError();
-        } catch (Exception e) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.INTERNAL_SERVER_ERROR_500)
-                .type(ErrorResponder.ErrorType.SERVER_ERROR)
-                .message(String.format("Error while adding user '%s'", dto.email))
-                .cause(e)
                 .haltError();
         }
     }
@@ -181,21 +175,12 @@ public class CalendarUserRoutes implements Routes {
     private String headUser(Request request, Response response) {
         HeadUserRequest headUserRequest = HeadUserRequest.fromRequest(request);
 
-        try {
-            if (userExists(headUserRequest)) {
-                response.status(HttpStatus.OK_200);
-            } else {
-                response.status(HttpStatus.NOT_FOUND_404);
-            }
-            return Constants.EMPTY_BODY;
-        } catch (Exception e) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.INTERNAL_SERVER_ERROR_500)
-                .type(ErrorResponder.ErrorType.SERVER_ERROR)
-                .message("Error while checking user existence")
-                .cause(e)
-                .haltError();
+        if (userExists(headUserRequest)) {
+            response.status(HttpStatus.OK_200);
+        } else {
+            response.status(HttpStatus.NOT_FOUND_404);
         }
+        return Constants.EMPTY_BODY;
     }
 
     private boolean userExists(HeadUserRequest headUserRequest) {
