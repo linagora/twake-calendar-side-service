@@ -84,20 +84,17 @@ public class CalendarChannelLogoutRoutes implements Routes {
             String token = request.queryParams(TOKEN_PARAM);
             Preconditions.checkArgument(StringUtils.isNotEmpty(token), "Missing logout token");
 
-            extractSidFromLogoutToken(token)
-                .ifPresentOrElse(sid -> {
-                    LOGGER.debug("Add new revoked token has sid: " + sid);
-                    oidcTokenCache.invalidate(sid).block();
-                }, () -> LOGGER.warn("Cannot extract sid from logout token: {}", token));
-            response.status(HttpStatus.OK_200);
+            Sid sid = extractSidFromLogoutToken(token);
+            LOGGER.debug("Add new revoked token has sid: {}", sid);
+            oidcTokenCache.invalidate(sid).block();
             return Constants.EMPTY_BODY;
         };
     }
 
 
-    private Optional<Sid> extractSidFromLogoutToken(String token) {
+    private Sid extractSidFromLogoutToken(String token) {
         if (!Strings.CS.startsWith(token, "eyJ")) {  // Heuristic for detecting JWT
-            return Optional.empty();
+            throw new IllegalArgumentException("Token do not start with JWT prefix: " + token);
         }
 
         try {
@@ -106,18 +103,19 @@ public class CalendarChannelLogoutRoutes implements Routes {
                 .omitEmptyStrings()
                 .splitToList(token);
             if (parts.size() < 2) {
-                return Optional.empty();
+                throw new IllegalArgumentException("JWT do not contaim mandatory 2 parts: " + token);
             }
 
             String payloadJson = new String(BaseEncoding.base64Url().decode(parts.get(1)), StandardCharsets.UTF_8);
             Map<String, Object> payloadMap = objectMapper.readValue(payloadJson, new TypeReference<>() {
             });
 
-            return Optional.ofNullable((String) payloadMap.getOrDefault(SID_PROPERTY, null))
-                .map(Sid::new);
+            return Optional.ofNullable(payloadMap.getOrDefault(SID_PROPERTY, null))
+                .map(s -> (String) s)
+                .map(Sid::new)
+                .orElseThrow(() -> new IllegalArgumentException("Unable to extract Sid from logout token: " + token));
         } catch (Exception exception) {
-            LOGGER.warn("Unable to extract Sid from logout token: '{}'", token, exception);
-            return Optional.empty();
+            throw new IllegalArgumentException("Unable to extract Sid from logout token: " + token, exception);
         }
     }
 }

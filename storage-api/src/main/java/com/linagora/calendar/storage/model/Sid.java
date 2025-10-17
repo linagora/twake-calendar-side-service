@@ -18,5 +18,10 @@
 
 package com.linagora.calendar.storage.model;
 
+import com.google.common.base.Preconditions;
+
 public record Sid(String value) {
+    public Sid {
+        Preconditions.checkArgument(!value.isEmpty(), "sid cannot be empty");
+    }
 }

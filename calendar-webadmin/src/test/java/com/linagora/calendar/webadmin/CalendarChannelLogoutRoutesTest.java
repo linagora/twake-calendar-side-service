@@ -122,10 +122,9 @@ class CalendarChannelLogoutRoutesTest {
     @ParameterizedTest
     @ValueSource(strings = {
         "invalidtoken123456",
-        "eyJblablabla",
-        "eyJ12345.eyJzaWQiOiJzaWQxIn0."
+        "eyJblablabla"
     })
-    void postShouldReturn200WhenCanNotExtractSidFromToken(String invalidToken) {
+    void postShouldReturn400WhenCanNotExtractSidFromToken(String invalidToken) {
         given().log().ifValidationFails()
             .contentType(ContentType.URLENC)
             .formParam("logout_token", invalidToken)
@@ -133,11 +132,11 @@ class CalendarChannelLogoutRoutesTest {
             .post()
         .then()
             .log().ifValidationFails()
-            .statusCode(200);
+            .statusCode(400);
     }
 
     @Test
-    void postShouldReturn200WhenJwtHasNoSidClaim() {
+    void postShouldReturn400WhenJwtHasNoSidClaim() {
         String payload = Base64.getUrlEncoder().withoutPadding()
             .encodeToString(("{\"notSid\":\"abc\"}").getBytes(StandardCharsets.UTF_8));
         String tokenWithoutSid = "eyJblablabla." + payload + ".signature";
@@ -149,11 +148,11 @@ class CalendarChannelLogoutRoutesTest {
         .when()
             .post()
         .then()
-            .statusCode(200);
+            .statusCode(400);
     }
 
     @Test
-    void postShouldReturn200WhenSidIsEmpty() {
+    void postShouldReturn400WhenSidIsEmpty() {
         String payload = Base64.getUrlEncoder().withoutPadding()
             .encodeToString("{\"sid\":\"\"}".getBytes(StandardCharsets.UTF_8));
         String tokenWithEmptySid = "header." + payload + ".signature";
@@ -164,7 +163,7 @@ class CalendarChannelLogoutRoutesTest {
         .when()
             .post()
         .then()
-            .statusCode(200);
+            .statusCode(400);
     }
 
     @Test
