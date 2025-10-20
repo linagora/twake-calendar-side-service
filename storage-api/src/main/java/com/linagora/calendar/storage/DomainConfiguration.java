@@ -23,12 +23,12 @@ import java.util.List;
 import org.apache.commons.configuration2.Configuration;
 import org.apache.james.core.Domain;
 
-import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 
 public class DomainConfiguration {
     public static DomainConfiguration parseConfiguration(Configuration configuration) {
-        return new DomainConfiguration(Splitter.on(',').splitToStream(configuration.getString("domains", "linagora.com"))
+        List<String> domains = configuration.getList(String.class, "domains", List.of("linagora.com"));
+        return new DomainConfiguration(domains.stream()
             .map(Domain::of)
             .collect(ImmutableList.toImmutableList()));
     }
