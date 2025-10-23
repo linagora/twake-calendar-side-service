@@ -209,6 +209,47 @@ public class AlarmInstantFactoryTest {
     }
 
     @Test
+    void shouldPickEarliestValidAlarmWhenEarlierOneExpired() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:multi-alarm-event
+            DTSTART:20250829T100000Z
+            SUMMARY:Team Meeting
+            ATTENDEE;CN=Alice;PARTSTAT=ACCEPTED:mailto:alice@example.com
+            
+            BEGIN:VALARM
+            ACTION:EMAIL
+            TRIGGER:-PT30M
+            DESCRIPTION:Alarm 30 minutes before
+            END:VALARM
+            
+            BEGIN:VALARM
+            ACTION:EMAIL
+            TRIGGER:-PT10M
+            DESCRIPTION:Alarm 10 minutes before
+            END:VALARM
+            
+            BEGIN:VALARM
+            ACTION:EMAIL
+            TRIGGER:-PT15M
+            DESCRIPTION:Alarm 15 minutes before
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """;
+        Optional<Instant> result = computeNextAlarmTime(ics,
+            Instant.parse("2025-08-29T09:35:00Z"),
+            Username.of("alice@example.com"));
+
+        assertThat(result)
+            .describedAs("Should pick the next earliest valid alarm (-15m) when earlier ones already passed")
+            .isPresent()
+            .contains(Instant.parse("2025-08-29T09:45:00Z"));
+    }
+
+    @Test
     void shouldIgnorePastAlarmsAndPickValidFutureOne() {
         String ics = """
             BEGIN:VCALENDAR
