@@ -52,12 +52,12 @@ public class SabreResourceProvisioner implements Startable {
             "calendar:calendar:deleted",
             "calendar:calendar:updated",
             "calendar:event:reply",
-            "contacts:addressbook:created",
-            "contacts:addressbook:deleted",
-            "contacts:addressbook:subscription:created",
-            "contacts:addressbook:subscription:deleted",
-            "contacts:addressbook:subscription:updated",
-            "contacts:addressbook:updated")
+            "sabre:addressbook:created",
+            "sabre:addressbook:deleted",
+            "sabre:addressbook:subscription:created",
+            "sabre:addressbook:subscription:deleted",
+            "sabre:addressbook:subscription:updated",
+            "sabre:addressbook:updated")
             .block();
     }
 
