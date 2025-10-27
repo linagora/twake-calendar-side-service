@@ -68,6 +68,7 @@ import net.fortuna.ical4j.model.property.Method;
 import net.fortuna.ical4j.model.property.Uid;
 import net.fortuna.ical4j.model.property.immutable.ImmutableMethod;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 public class EventMailHandler {
 
@@ -155,6 +156,7 @@ public class EventMailHandler {
         @Override
         public Mono<Message> generate(ResolvedSettings resolvedSettings) {
             return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(resolvedSettings.locale()), EventType.INVITE.asTemplateType()))
+                .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(messageGenerator -> generateInvitationMessage(resolvedSettings, messageGenerator))
                 .onErrorResume(error -> Mono.error(new EventMailHandlerException("Error occurred when generate invitation event message", error)));
         }
@@ -184,6 +186,7 @@ public class EventMailHandler {
         @Override
         public Mono<Message> generate(ResolvedSettings resolvedSettings) {
             return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(resolvedSettings.locale()), EventType.UPDATE.asTemplateType()))
+                .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(messageGenerator -> generateUpdateMessage(resolvedSettings, messageGenerator))
                 .onErrorResume(error -> Mono.error(new EventMailHandlerException("Error occurred when generate update event message", error)));
         }
@@ -214,6 +217,7 @@ public class EventMailHandler {
         @Override
         public Mono<Message> generate(ResolvedSettings resolvedSettings) {
             return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(resolvedSettings.locale()), EventType.CANCEL.asTemplateType()))
+                .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(messageGenerator -> generateCancelMessage(resolvedSettings, messageGenerator))
                 .onErrorResume(error -> Mono.error(new EventMailHandlerException("Error occurred when generate cancel event message", error)));
         }
@@ -240,6 +244,7 @@ public class EventMailHandler {
         @Override
         public Mono<Message> generate(ResolvedSettings resolvedSettings) {
             return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(resolvedSettings.locale()), EventType.REPLY.asTemplateType()))
+                .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(messageGenerator -> generateReplyMessage(resolvedSettings, messageGenerator))
                 .onErrorResume(error -> Mono.error(new EventMailHandlerException("Error occurred when generate reply event message", error)));
         }
@@ -277,6 +282,7 @@ public class EventMailHandler {
         @Override
         public Mono<Message> generate(ResolvedSettings resolvedSettings) {
             return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(resolvedSettings.locale()), EventType.COUNTER.asTemplateType()))
+                .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(messageGenerator -> generateCounterMessage(resolvedSettings, messageGenerator))
                 .onErrorResume(error -> Mono.error(new EventMailHandlerException("Error occurred when generate counter event message", error)));
         }
