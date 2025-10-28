@@ -572,4 +572,15 @@ public class CalDavClientTest {
             .isEmpty();
     }
 
+    @Test
+    void updateCalendarAclShouldSucceed() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL calendarURL = CalendarURL.from(user.id());
+
+        testee.updateCalendarAcl(user.username(), calendarURL, CalDavClient.PublicRight.READ).block();
+
+        String response = davTestHelper.getCalendarMetadata(user).block();
+
+        assertThat(response).contains("{\"privilege\":\"{DAV:}read\",\"principal\":\"{DAV:}authenticated\",\"protected\":true}");
+    }
 }

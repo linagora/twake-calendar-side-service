@@ -26,6 +26,7 @@ import java.util.Optional;
 import javax.net.ssl.SSLException;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.http.HttpStatus;
 import org.apache.james.core.Username;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -323,5 +324,25 @@ public class DavTestHelper extends DavClient {
                         %s
                         """.formatted(response.status().code(), uri, errorBody))));
             }).block();
+    }
+
+    public Mono<String> getCalendarMetadata(OpenPaaSUser openPaaSUser) {
+        String uri = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/" + openPaaSUser.id() + ".json"
+            + "?personal=true&sharedDelegationStatus=accepted&sharedPublicSubscription=2&withRights=true";
+        return httpClientWithImpersonation(openPaaSUser.username()).headers(headers -> headers.add(HttpHeaderNames.ACCEPT, "application/json"))
+            .request(HttpMethod.GET)
+            .uri(uri)
+            .responseSingle((response, responseContent) -> {
+                if (response.status().code() == HttpStatus.SC_OK) {
+                    return responseContent.asString(StandardCharsets.UTF_8);
+                } else {
+                    return responseContent.asString(StandardCharsets.UTF_8)
+                        .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                        .flatMap(errorBody -> Mono.error(new RuntimeException("""
+                            Unexpected status code: %d when fetching calendar metadata for user '%s'
+                            %s
+                            """.formatted(response.status().code(), openPaaSUser.id(), errorBody))));
+                }
+            });
     }
 }
