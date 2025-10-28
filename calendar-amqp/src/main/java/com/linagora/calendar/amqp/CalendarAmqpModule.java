@@ -57,6 +57,7 @@ public class CalendarAmqpModule extends AbstractModule {
         bind(EventEmailConsumer.class).in(Scopes.SINGLETON);
         bind(EventAlarmConsumer.class).in(Scopes.SINGLETON);
         bind(EventResourceConsumer.class).in(Scopes.SINGLETON);
+        bind(EventCalendarHandler.class).in(Scopes.SINGLETON);
 
         Multibinder<HealthCheck> healthCheckMultibinder = Multibinder.newSetBinder(binder(), HealthCheck.class);
         healthCheckMultibinder.addBinding().to(RabbitMQCalendarQueueConsumerHealthCheck.class);
@@ -140,6 +141,18 @@ public class CalendarAmqpModule extends AbstractModule {
     public InitializationOperation initializeEventResourceConsumer(EventResourceConsumer instance) {
         return InitilizationOperationBuilder
             .forClass(EventResourceConsumer.class)
+            .init(instance::init);
+    }
+
+    @ProvidesIntoSet
+    SimpleConnectionPool.ReconnectionHandler provideEventCalendarReconnectionHandler(EventCalendarReconnectionHandler reconnectionHandler) {
+        return reconnectionHandler;
+    }
+
+    @ProvidesIntoSet
+    public InitializationOperation initializeEventCalendarConsumer(EventCalendarConsumer instance) {
+        return InitilizationOperationBuilder
+            .forClass(EventCalendarConsumer.class)
             .init(instance::init);
     }
 
