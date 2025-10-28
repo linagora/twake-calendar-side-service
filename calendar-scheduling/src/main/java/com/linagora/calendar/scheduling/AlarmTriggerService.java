@@ -64,6 +64,7 @@ import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.component.VEvent;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 public class AlarmTriggerService {
 
@@ -144,6 +145,7 @@ public class AlarmTriggerService {
                     locale,
                     Duration.between(now, alarmEvent.eventStartTime()));
                 return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(locale), TEMPLATE_TYPE))
+                    .subscribeOn(Schedulers.boundedElastic())
                     .flatMap(messageGenerator -> messageGenerator.generate(recipientUser, senderAddress, model, List.of()))
                     .flatMap(message -> mailSenderFactory.create()
                         .flatMap(mailSender -> mailSender.send(new Mail(maybeSender, List.of(alarmEvent.recipient()), message))));

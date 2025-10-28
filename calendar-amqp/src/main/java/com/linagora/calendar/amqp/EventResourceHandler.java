@@ -68,6 +68,7 @@ import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 public class EventResourceHandler {
 
@@ -205,6 +206,7 @@ public class EventResourceHandler {
         return getUserSettings(recipientUser)
             .flatMap(resolvedSettings ->
                 Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(resolvedSettings.locale()), templateType))
+                    .subscribeOn(Schedulers.boundedElastic())
                     .flatMap(messageGenerator ->
                         modelGenerator.apply(resolvedSettings, messageGenerator.getI18nTranslator())
                             .flatMap(model -> sendMessage(recipientUser, recipient, messageGenerator, model))));
