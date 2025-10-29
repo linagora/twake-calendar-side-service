@@ -22,7 +22,10 @@ import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Duration;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+
+import javax.net.ssl.SSLException;
 
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
@@ -43,6 +46,7 @@ import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
+import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
@@ -50,6 +54,8 @@ import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
 public class EventCalendarConsumerTest {
+
+    private static final boolean DEFAULT_CALENDAR_PUBLIC_VISIBILITY_ENABLED = true;
 
     private final ConditionFactory calmlyAwait = Awaitility.with()
         .pollInterval(Duration.ofMillis(500))
@@ -95,31 +101,72 @@ public class EventCalendarConsumerTest {
         connectionPool.close();
     }
 
-
     @BeforeEach
-    public void setUp() throws Exception {
+    public void setUp() throws SSLException {
         calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
-
-        setupConsumer();
     }
 
-    private void setupConsumer() {
+    private void setupConsumer(boolean defaultCalendarPublicVisibilityEnabled) {
         MongoDatabase mongoDB = sabreDavExtension.dockerSabreDavSetup().getMongoDB();
         MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
         OpenPaaSUserDAO openPaaSUserDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
 
-        EventCalendarConsumer consumer = new EventCalendarConsumer(channelPool, QueueArguments.Builder::new, new EventCalendarHandler(openPaaSUserDAO, calDavClient));
+        EventCalendarConsumer consumer = new EventCalendarConsumer(channelPool, QueueArguments.Builder::new,
+            new EventCalendarHandler(openPaaSUserDAO, calDavClient, defaultCalendarPublicVisibilityEnabled));
         consumer.init();
     }
 
     @Test
-    void shouldSetDefaultCalendarVisible(DockerSabreDavSetup dockerSabreDavSetup) {
+    void shouldSetDefaultCalendarPubliclyVisible(DockerSabreDavSetup dockerSabreDavSetup) {
+        setupConsumer(DEFAULT_CALENDAR_PUBLIC_VISIBILITY_ENABLED);
+
         OpenPaaSUser user = sabreDavExtension.newTestUser();
 
         awaitAtMost.untilAsserted(() -> {
             String actual = davTestHelper.getCalendarMetadata(user).block();
 
             assertThat(actual).contains("{\"privilege\":\"{DAV:}read\",\"principal\":\"{DAV:}authenticated\",\"protected\":true}");
+        });
+    }
+
+    @Test
+    void shouldNotSetNonDefaultCalendarPubliclyVisible(DockerSabreDavSetup dockerSabreDavSetup) throws InterruptedException {
+        setupConsumer(DEFAULT_CALENDAR_PUBLIC_VISIBILITY_ENABLED);
+
+        OpenPaaSUser user = sabreDavExtension.newTestUser();
+
+        String newCalendarId = UUID.randomUUID().toString();
+        CalDavClient.NewCalendar newCalendar = new CalDavClient.NewCalendar(
+            newCalendarId,
+            "Test Calendar",
+            "#97c3c1",
+            "A test calendar"
+        );
+        calDavClient.createNewCalendar(user.username(), user.id(), newCalendar).block();
+
+        Thread.sleep(3000); // wait for the consumer to process the message
+
+        awaitAtMost.untilAsserted(() -> {
+            String actual = davTestHelper.getCalendarMetadata(user, new OpenPaaSId(newCalendarId)).block();
+
+            assertThat(actual).doesNotContain("{\"privilege\":\"{DAV:}read\",\"principal\":\"{DAV:}authenticated\",\"protected\":true}");
+            assertThat(actual).contains("{\"privilege\":\"{urn:ietf:params:xml:ns:caldav}read-free-busy\",\"principal\":\"{DAV:}authenticated\",\"protected\":true}");
+        });
+    }
+
+    @Test
+    void shouldNotSetDefaultCalendarPubliclyVisibleWhenItIsNotEnabledInConfig(DockerSabreDavSetup dockerSabreDavSetup) throws InterruptedException {
+        setupConsumer(!DEFAULT_CALENDAR_PUBLIC_VISIBILITY_ENABLED);
+
+        OpenPaaSUser user = sabreDavExtension.newTestUser();
+
+        Thread.sleep(3000); // wait for the consumer to process the message
+
+        awaitAtMost.untilAsserted(() -> {
+            String actual = davTestHelper.getCalendarMetadata(user).block();
+
+            assertThat(actual).doesNotContain("{\"privilege\":\"{DAV:}read\",\"principal\":\"{DAV:}authenticated\",\"protected\":true}");
+            assertThat(actual).contains("{\"privilege\":\"{urn:ietf:params:xml:ns:caldav}read-free-busy\",\"principal\":\"{DAV:}authenticated\",\"protected\":true}");
         });
     }
 }

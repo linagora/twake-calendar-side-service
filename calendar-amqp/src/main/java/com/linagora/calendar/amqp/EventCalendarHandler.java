@@ -23,6 +23,7 @@ import jakarta.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.inject.name.Named;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
@@ -34,22 +35,30 @@ public class EventCalendarHandler {
 
     private final OpenPaaSUserDAO openPaaSUserDAO;
     private final CalDavClient calDavClient;
+    private final boolean defaultCalendarPublicVisibilityEnabled;
     
     @Inject
-    public EventCalendarHandler(OpenPaaSUserDAO openPaaSUserDAO, CalDavClient calDavClient) {
+    public EventCalendarHandler(OpenPaaSUserDAO openPaaSUserDAO,
+                                CalDavClient calDavClient,
+                                @Named("defaultCalendarPublicVisibilityEnabled") boolean defaultCalendarPublicVisibilityEnabled) {
         this.openPaaSUserDAO = openPaaSUserDAO;
         this.calDavClient = calDavClient;
+        this.defaultCalendarPublicVisibilityEnabled = defaultCalendarPublicVisibilityEnabled;
     }
 
     public Mono<Void> handleCreateEvent(CalendarMessageDTO message) {
-        LOGGER.debug("Handle creating calendar event with calendar path {}", message.calendarPath());
-        return setDefaultCalendarVisible(message);
+        LOGGER.debug("Handle calendar creation event with calendar path {}", message.calendarPath());
+        return setDefaultCalendarPubliclyVisible(message);
     }
 
-    private Mono<Void> setDefaultCalendarVisible(CalendarMessageDTO message) {
-        CalendarURL calendarURL = message.extractCalendarURL();
-        return openPaaSUserDAO.retrieve(calendarURL.base())
-            .filter(openPaaSUser -> openPaaSUser.id().equals(calendarURL.calendarId()))
-            .flatMap(openPaaSUser -> calDavClient.updateCalendarAcl(openPaaSUser, CalDavClient.PublicRight.READ));
+    private Mono<Void> setDefaultCalendarPubliclyVisible(CalendarMessageDTO message) {
+        if (defaultCalendarPublicVisibilityEnabled) {
+            CalendarURL calendarURL = message.extractCalendarURL();
+            return openPaaSUserDAO.retrieve(calendarURL.base())
+                .filter(openPaaSUser -> openPaaSUser.id().equals(calendarURL.calendarId()))
+                .flatMap(openPaaSUser -> calDavClient.updateCalendarAcl(openPaaSUser, CalDavClient.PublicRight.READ));
+        } else {
+            return Mono.empty();
+        }
     }
 }

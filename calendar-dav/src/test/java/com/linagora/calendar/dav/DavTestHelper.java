@@ -327,7 +327,11 @@ public class DavTestHelper extends DavClient {
     }
 
     public Mono<String> getCalendarMetadata(OpenPaaSUser openPaaSUser) {
-        String uri = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/" + openPaaSUser.id() + ".json"
+        return getCalendarMetadata(openPaaSUser, openPaaSUser.id());
+    }
+
+    public Mono<String> getCalendarMetadata(OpenPaaSUser openPaaSUser, OpenPaaSId calendarId) {
+        String uri = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/" + openPaaSUser.id().value() + "/" + calendarId.value() + ".json"
             + "?personal=true&sharedDelegationStatus=accepted&sharedPublicSubscription=2&withRights=true";
         return httpClientWithImpersonation(openPaaSUser.username()).headers(headers -> headers.add(HttpHeaderNames.ACCEPT, "application/json"))
             .request(HttpMethod.GET)

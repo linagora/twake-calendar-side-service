@@ -22,6 +22,7 @@ import java.io.FileNotFoundException;
 import java.util.Set;
 import java.util.function.Supplier;
 
+import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
@@ -168,5 +169,13 @@ public class CalendarAmqpModule extends AbstractModule {
     SettingsBasedResolver provideSettingsBasedResolver(SimpleSessionProvider sessionProvider,
                                                              ConfigurationResolver configurationResolver) {
         return SettingsBasedResolver.of(configurationResolver, sessionProvider, Set.of(LanguageSettingReader.INSTANCE, TimeZoneSettingReader.INSTANCE));
+    }
+
+    @Provides
+    @Singleton
+    @Named("defaultCalendarPublicVisibilityEnabled")
+    boolean provideDefaultCalendarPublicVisibilityEnabled(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
+        Configuration config = propertiesProvider.getConfiguration("configuration");
+        return config.getBoolean("default.calendar.public.visibility.enabled", false);
     }
 }
