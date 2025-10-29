@@ -18,7 +18,24 @@
 
 package com.linagora.calendar.amqp;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
+import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.base.Splitter;
+import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.OpenPaaSId;
+
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record CalendarMessageDTO(@JsonProperty("calendarPath") String calendarPath) {
+    public CalendarURL extractCalendarURL() {
+        List<String> paths = Splitter.on('/')
+            .omitEmptyStrings()
+            .splitToList(calendarPath);
+
+        if (paths.size() != 3 || !"calendars".equals(paths.get(0))) {
+            throw new CalendarEventDeserializeException("Invalid event path: " + calendarPath);
+        }
+        return new CalendarURL(new OpenPaaSId(paths.get(1)), new OpenPaaSId(paths.get(2)));
+    }
 }
