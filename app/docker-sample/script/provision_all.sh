@@ -1,15 +1,5 @@
 #!/bin/sh
 
-# Wait for RabbitMQ to be healthy
-echo "Waiting for RabbitMQ to be healthy..."
-until nc -z rabbitmq 5672; do
-  sleep 2
-done
-
-# Run RabbitMQ queue provisioning
-echo "Provisioning RabbitMQ queues..."
-sh /provision/import-rabbitmq-definitions.sh
-
 # Wait for Twake Calendar service to be up
 echo "Waiting for twake-calendar-side-service to be available..."
 
@@ -26,3 +16,5 @@ done
 # Run user provisioning
 echo "Provisioning users..."
 sh /provision/provision_users.sh
+echo "Provisioning resources..."
+sh /provision/provision_resources.sh
