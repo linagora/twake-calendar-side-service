@@ -20,11 +20,14 @@ package com.linagora.calendar.dav;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
+import java.util.function.Supplier;
 
 import javax.net.ssl.SSLException;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.apache.http.HttpStatus;
 import org.apache.james.core.Username;
 import org.apache.james.mailbox.MailboxSession;
@@ -33,9 +36,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Streams;
@@ -45,6 +50,7 @@ import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.TechnicalTokenService;
+import com.linagora.calendar.storage.model.ResourceId;
 
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -53,6 +59,7 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.client.HttpClient;
+import reactor.util.retry.Retry;
 
 public class CalDavClient extends DavClient {
 
@@ -459,4 +466,75 @@ public class CalDavClient extends DavClient {
                         """.formatted(response.status().code(), uri, errorBody))));
             });
     }
+    private byte[] buildPatchDelegationBodyRequest(List<Username> addOrUpdateAdmins, List<Username> revokeAdmins) {
+        ObjectMapper mapper = OBJECT_MAPPER;
+        ObjectNode shareNode = mapper.createObjectNode();
+        ArrayNode setArray = mapper.createArrayNode();
+        ArrayNode removeArray = mapper.createArrayNode();
+
+        addOrUpdateAdmins.forEach(admin -> {
+            ObjectNode adminNode = mapper.createObjectNode();
+            adminNode.put("dav:href", "mailto:" + admin.asString());
+            adminNode.put("dav:read-write", true);
+            setArray.add(adminNode);
+        });
+
+        revokeAdmins.forEach(admin -> {
+            ObjectNode adminNode = mapper.createObjectNode();
+            adminNode.put("dav:href", "mailto:" + admin.asString());
+            removeArray.add(adminNode);
+        });
+
+        shareNode.set("set", setArray);
+        shareNode.set("remove", removeArray);
+        ObjectNode bodyNode = mapper.createObjectNode();
+        bodyNode.set("share", shareNode);
+        try {
+            return mapper.writeValueAsBytes(bodyNode);
+        } catch (JsonProcessingException e) {
+            throw new DavClientException("Failed to serialize JSON for patching read/write delegations", e);
+        }
+    }
+
+    public Mono<Void> patchReadWriteDelegations(OpenPaaSId domainId,
+                                                CalendarURL calendarURL,
+                                                List<Username> addOrUpdateAdmins,
+                                                List<Username> revokeAdmins) {
+        if (addOrUpdateAdmins.isEmpty() && revokeAdmins.isEmpty()) {
+            LOGGER.debug("No add or revoke admins found for '{}'", calendarURL);
+            return Mono.empty();
+        }
+
+        return httpClientWithTechnicalToken(domainId)
+            .flatMap(client -> client
+                .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, "application/json;charset=UTF-8")
+                    .add(HttpHeaderNames.ACCEPT, "application/json, text/plain, */*"))
+                .request(HttpMethod.POST)
+                .uri(calendarURL.asUri() + ".json")
+                .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(buildPatchDelegationBodyRequest(addOrUpdateAdmins, revokeAdmins))))
+                .responseSingle((response, responseContent) -> {
+                    int status = response.status().code();
+                    if (status == 200 || status == 204) {
+                        return Mono.empty();
+                    } else {
+                        return responseContent.asString(StandardCharsets.UTF_8)
+                            .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                            .flatMap(body -> Mono.error(new DavClientException("Failed to patch read/write delegations. Status: " + status + ", body: " + body)));
+                    }
+                })
+                .retryWhen(Retry.fixedDelay(1, Duration.ofMillis(500))
+                        .filter(error -> Strings.CI.contains(error.getMessage(), "Could not find node at path:")))
+                .then());
+    }
+
+    public Mono<Void> grantReadWriteRights(OpenPaaSId domainId, ResourceId resourceId, List<Username> administrators) {
+        CalendarURL calendarURL = CalendarURL.from(resourceId.asOpenPaaSId());
+        return patchReadWriteDelegations(domainId, calendarURL, administrators, List.of());
+    }
+
+    public Mono<Void> revokeWriteRights(OpenPaaSId domainId, ResourceId resourceId, List<Username> administrators) {
+        CalendarURL calendarURL = CalendarURL.from(resourceId.asOpenPaaSId());
+        return patchReadWriteDelegations(domainId, calendarURL, List.of(), administrators);
+    }
+
 }

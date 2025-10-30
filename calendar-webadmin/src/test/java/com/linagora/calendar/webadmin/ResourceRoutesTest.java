@@ -18,12 +18,18 @@
 
 package com.linagora.calendar.webadmin;
 
+import static com.linagora.calendar.dav.SabreDavProvisioningService.DOMAIN;
+import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static io.restassured.RestAssured.given;
 import static io.restassured.RestAssured.when;
 import static java.time.ZoneOffset.UTC;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
+import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
 
 import java.time.Clock;
+import java.util.UUID;
+
+import javax.net.ssl.SSLException;
 
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
@@ -33,17 +39,25 @@ import org.apache.james.webadmin.utils.JsonTransformer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.testcontainers.shaded.com.google.common.collect.ImmutableList;
 
-import com.linagora.calendar.storage.MemoryOpenPaaSDomainDAO;
-import com.linagora.calendar.storage.MemoryOpenPaaSUserDAO;
-import com.linagora.calendar.storage.MemoryResourceDAO;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.DockerSabreDavSetup;
+import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.ResourceInsertRequest;
 import com.linagora.calendar.storage.model.ResourceAdministrator;
 import com.linagora.calendar.storage.model.ResourceId;
+import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
+import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
+import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
+import com.mongodb.reactivestreams.client.MongoDatabase;
 
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
@@ -51,17 +65,26 @@ import net.javacrumbs.jsonunit.core.Option;
 
 class ResourceRoutesTest {
 
+    @RegisterExtension
+    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+
     private WebAdminServer webAdminServer;
     private OpenPaaSUserDAO userDAO;
-    private MemoryOpenPaaSDomainDAO domainDAO;
-    private MemoryResourceDAO resourceDAO;
+    private MongoDBOpenPaaSDomainDAO domainDAO;
+    private MongoDBResourceDAO resourceDAO;
+    private CalDavClient calDavClient;
 
     @BeforeEach
-    void setUp() {
-        userDAO = new MemoryOpenPaaSUserDAO();
-        domainDAO = new MemoryOpenPaaSDomainDAO();
-        resourceDAO = new MemoryResourceDAO(Clock.system(UTC));
-        webAdminServer = WebAdminUtils.createWebAdminServer(new ResourceRoutes(resourceDAO, domainDAO, userDAO, new JsonTransformer())).start();
+    void setUp() throws SSLException {
+        MongoDatabase mongoDB = sabreDavExtension.dockerSabreDavSetup().getMongoDB();
+        domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
+        userDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
+        resourceDAO = new MongoDBResourceDAO(mongoDB, Clock.system(UTC));
+        calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
+
+        webAdminServer = WebAdminUtils.createWebAdminServer(
+            new ResourceRoutes(resourceDAO, domainDAO, userDAO,
+                new JsonTransformer(), calDavClient)).start();
 
         RestAssured.requestSpecification = WebAdminUtils.buildRequestSpecification(webAdminServer)
             .setBasePath(ResourceRoutes.BASE_PATH)
@@ -107,8 +130,9 @@ class ResourceRoutesTest {
 
     @Test
     void getResourcesFilteredByDomainShouldReturnInvalidRequestWhenDomainDoNotExist() {
+        String notExistDomain = UUID.randomUUID() + ".com";
         given()
-            .queryParam("domain", "linagora.com")
+            .queryParam("domain", notExistDomain)
         .when()
             .get()
         .then()
@@ -239,6 +263,7 @@ class ResourceRoutesTest {
 
 
         assertThatJson(string)
+            .withOptions(Option.IGNORING_ARRAY_ORDER)
             .isEqualTo("""
                            [
                            {
@@ -284,6 +309,7 @@ class ResourceRoutesTest {
 
 
         assertThatJson(string)
+            .withOptions(Option.IGNORING_ARRAY_ORDER)
             .isEqualTo("""
                            {
                                "name": "Resource name",
@@ -394,6 +420,7 @@ class ResourceRoutesTest {
             .asString();
 
         assertThatJson(string)
+            .withOptions(Option.IGNORING_ARRAY_ORDER)
             .isEqualTo("""
                            {
                                "name": "Resource name 2",
@@ -438,47 +465,52 @@ class ResourceRoutesTest {
             .statusCode(400);
     }
 
-    @Test
-    void patchShouldReturn404WhenResourceNotFound() {
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "notfound", // invalid ObjectId
+        "6901de931710f414cf7953a9" // valid ObjectId but not exist in database
+    })
+    void patchShouldReturn404WhenResourceNotFound(String notFoundId) {
         given()
             .body("""
                 {"name":"user2@linagora.com"}
                 """)
-            .patch("AN_ID")
+            .patch(notFoundId)
             .then()
             .statusCode(404);
     }
 
     @Test
     void postShouldCreateTheResource() {
-        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
-        OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
-        OpenPaaSUser user2 = userDAO.add(Username.of("user2@linagora.com")).block();
+        OpenPaaSUser user1 = sabreDavExtension.newTestUser();
+        OpenPaaSUser user2 = sabreDavExtension.newTestUser();
 
         given()
             .body("""
                 {
                                "name": "Resource name",
                                "description": "Descripting",
-                               "creator":"user1@linagora.com",
+                               "creator":"{USER1}",
                                "icon": "laptop",
-                               "domain": "linagora.com",
+                               "domain": "{DOMAIN}",
                                "administrators": [
                                    {
-                                       "email": "user1@linagora.com"
+                                       "email": "{USER1}"
                                    },
                                    {
-                                       "email": "user2@linagora.com"
+                                       "email": "{USER2}"
                                    }
                                ]
                            }
-                """)
+                """.replace("{DOMAIN}", DOMAIN)
+                .replace("{USER1}", user1.username().asString())
+                .replace("{USER2}", user2.username().asString()))
             .post()
         .then()
             .statusCode(201);
 
         String string = given()
-            .queryParam("domain", "linagora.com")
+            .queryParam("domain", DOMAIN)
         .when()
             .get()
          .then()
@@ -491,25 +523,29 @@ class ResourceRoutesTest {
 
         assertThatJson(string)
             .whenIgnoringPaths("[0].id")
+            .withOptions(Option.IGNORING_ARRAY_ORDER)
             .isEqualTo("""
                            [{
                                "name": "Resource name",
                                "deleted": false,
                                "description": "Descripting",
-                               "creator":"user1@linagora.com",
+                               "creator":"{USER1}",
                                "id": "RESOURCE_ID_1",
                                "icon": "laptop",
-                               "domain": "linagora.com",
+                               "domain": "{DOMAIN}",
                                "administrators": [
                                    {
-                                       "email": "user1@linagora.com"
+                                       "email": "{USER1}"
                                    },
                                    {
-                                       "email": "user2@linagora.com"
+                                       "email": "{USER2}"
                                    }
                                ]
                            }]
-                           """);
+                           """
+                .replace("{DOMAIN}", DOMAIN)
+                .replace("{USER1}", user1.username().asString())
+                .replace("{USER2}", user2.username().asString()));
     }
 
     @Test
@@ -712,6 +748,7 @@ class ResourceRoutesTest {
 
 
         assertThatJson(string)
+            .withOptions(Option.IGNORING_ARRAY_ORDER)
             .isEqualTo("""
                            {
                                "name": "Resource name",
@@ -743,13 +780,412 @@ class ResourceRoutesTest {
             .statusCode(404);
     }
 
-    @Test
-    void deleteResourceShouldReturnNotFoundWhenNotExist() {
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "notfound", // invalid ObjectId
+        "6901de931710f414cf7953a9" // valid ObjectId but not exist in database
+    })
+    void deleteResourceShouldReturnNotFoundWhenNotExist(String notFoundId) {
         when()
-            .delete("notfound")
-         .then()
-            .contentType(ContentType.JSON)
-            .statusCode(404);
+            .delete(notFoundId)
+        .then()
+            .statusCode(404)
+            .contentType(ContentType.JSON);
+    }
+
+    @Test
+    void createResourceShouldGrantDelegationRightsToSingleAdmin() {
+        // Given
+        OpenPaaSUser creator = sabreDavExtension.newTestUser();
+        OpenPaaSUser admin = sabreDavExtension.newTestUser();
+        // When
+        String location = given()
+            .body("""
+                {
+                    "name": "Meeting Room A",
+                    "description": "Room for team meetings",
+                    "creator": "%s",
+                    "icon": "door",
+                    "domain": "%s",
+                    "administrators": [
+                        { "email": "%s" }
+                    ]
+                }
+                """.formatted(creator.username().asString(), DOMAIN, admin.username().asString()))
+            .post()
+            .then()
+            .statusCode(201)
+            .extract()
+            .header("Location");
+
+        String resourceId = location.substring(location.lastIndexOf('/') + 1);
+
+        // Then verify delegation on DAV
+        OpenPaaSDomain openPaaSDomain = domainDAO.retrieve(creator.username().getDomainPart().get()).block();
+
+        ArrayNode invites = sabreDavExtension.davTestHelper()
+            .getCalendarDelegateInvites(openPaaSDomain.id(), new ResourceId(resourceId))
+            .block();
+
+        assertThat(invites)
+            .as("DAV invite list should contain admin delegation entry")
+            .isNotEmpty()
+            .anySatisfy(invite ->
+                assertThat(invite.get("href").asText()).contains(admin.username().asString()));
+    }
+
+    @Test
+    void createResourceShouldGrantDelegationRightsToMultipleAdmins() {
+        // Given
+        OpenPaaSUser creator = sabreDavExtension.newTestUser();
+        OpenPaaSUser admin1 = sabreDavExtension.newTestUser();
+        OpenPaaSUser admin2 = sabreDavExtension.newTestUser();
+
+        // When
+        String location = given()
+            .body("""
+                {
+                    "name": "Meeting Room B",
+                    "description": "Room for board meetings",
+                    "creator": "%s",
+                    "icon": "meeting_room",
+                    "domain": "%s",
+                    "administrators": [
+                        { "email": "%s" },
+                        { "email": "%s" }
+                    ]
+                }
+                """.formatted(creator.username().asString(), DOMAIN,
+                admin1.username().asString(), admin2.username().asString()))
+            .post()
+            .then()
+            .statusCode(201)
+            .extract()
+            .header("Location");
+
+        String resourceId = location.substring(location.lastIndexOf('/') + 1);
+
+        // Then verify delegation on DAV
+        OpenPaaSDomain openPaaSDomain = domainDAO.retrieve(creator.username().getDomainPart().get()).block();
+
+        ArrayNode invites = sabreDavExtension.davTestHelper()
+            .getCalendarDelegateInvites(openPaaSDomain.id(), new ResourceId(resourceId))
+            .block();
+
+        assertThat(invites)
+            .as("DAV invite list should contain both admin delegation entries")
+            .isNotEmpty();
+
+        assertThat(invites.findValuesAsText("href"))
+            .anyMatch(href -> href.contains(admin1.username().asString()))
+            .anyMatch(href -> href.contains(admin2.username().asString()));
+    }
+
+    @Test
+    void deleteResourceShouldRevokeDelegationRightsOnDav() {
+        // Given
+        OpenPaaSUser creator = sabreDavExtension.newTestUser();
+        OpenPaaSUser admin1 = sabreDavExtension.newTestUser();
+        OpenPaaSUser admin2 = sabreDavExtension.newTestUser();
+
+        // Create the resource
+        String location = given()
+            .body("""
+                {
+                    "name": "Meeting Room C",
+                    "description": "Room for presentations",
+                    "creator": "%s",
+                    "icon": "meeting_room",
+                    "domain": "%s",
+                    "administrators": [
+                        { "email": "%s" },
+                        { "email": "%s" }
+                    ]
+                }
+                """.formatted(creator.username().asString(), DOMAIN,
+                admin1.username().asString(), admin2.username().asString()))
+            .post()
+            .then()
+            .statusCode(201)
+            .extract()
+            .header("Location");
+
+        String resourceId = location.substring(location.lastIndexOf('/') + 1);
+
+        OpenPaaSDomain openPaaSDomain = domainDAO.retrieve(creator.username().getDomainPart().get()).block();
+
+        // Sanity check: ensure rights are present before delete
+        ArrayNode invitesBefore = sabreDavExtension.davTestHelper()
+            .getCalendarDelegateInvites(openPaaSDomain.id(), new ResourceId(resourceId))
+            .block();
+
+        assertThat(invitesBefore)
+            .as("Invite list before deletion should contain admin users")
+            .isNotEmpty()
+            .anySatisfy(invite ->
+                assertThat(invite.get("href").asText())
+                    .satisfiesAnyOf(href -> assertThat(href).contains(admin1.username().asString()),
+                        href -> assertThat(href).contains(admin2.username().asString())));
+
+        // When — delete the resource
+        when()
+            .delete(resourceId)
+            .then()
+            .statusCode(204);
+
+        // Then — DAV rights should be revoked
+        ArrayNode invitesAfter = sabreDavExtension.davTestHelper()
+            .getCalendarDelegateInvites(openPaaSDomain.id(), new ResourceId(resourceId))
+            .block();
+
+        assertThat(invitesAfter)
+            .as("Invite list after deletion should be empty or contain no admin delegations")
+            .allSatisfy(invite ->
+                assertThat(invite.get("href").asText())
+                    .doesNotContain(admin1.username().asString())
+                    .doesNotContain(admin2.username().asString()));
+    }
+
+    @Test
+    void updateResourceShouldAddNewAdminOnDav() {
+        // Given
+        OpenPaaSUser creator = sabreDavExtension.newTestUser();
+        OpenPaaSUser admin1 = sabreDavExtension.newTestUser();
+        OpenPaaSUser admin2 = sabreDavExtension.newTestUser();
+
+        // Create resource with 1 admin
+        String location = given()
+            .body("""
+                {
+                    "name": "Meeting Room D",
+                    "description": "Room for updates",
+                    "creator": "%s",
+                    "icon": "door",
+                    "domain": "%s",
+                    "administrators": [{ "email": "%s" }]
+                }
+                """.formatted(creator.username().asString(), DOMAIN, admin1.username().asString()))
+            .post()
+            .then()
+            .statusCode(201)
+            .extract()
+            .header("Location");
+
+        String resourceId = location.substring(location.lastIndexOf('/') + 1);
+        OpenPaaSDomain domain = domainDAO.retrieve(creator.username().getDomainPart().get()).block();
+
+        // Sanity check
+        ArrayNode before = sabreDavExtension.davTestHelper()
+            .getCalendarDelegateInvites(domain.id(), new ResourceId(resourceId))
+            .block();
+
+        assertThat(before.findValuesAsText("href"))
+            .contains("mailto:" + admin1.username().asString())
+            .doesNotContain("mailto:" + admin2.username().asString());
+
+        // When — add admin2
+        given()
+            .body("""
+                {
+                    "administrators": [
+                        { "email": "%s" },
+                        { "email": "%s" }
+                    ]
+                }
+                """.formatted(admin1.username().asString(), admin2.username().asString()))
+            .patch(resourceId)
+            .then()
+            .statusCode(204);
+
+        // Then — DAV invites should include both admins
+        ArrayNode after = sabreDavExtension.davTestHelper()
+            .getCalendarDelegateInvites(domain.id(), new ResourceId(resourceId))
+            .block();
+
+        assertThat(after.findValuesAsText("href"))
+            .contains("mailto:" + admin1.username().asString(),
+                "mailto:" + admin2.username().asString());
+    }
+
+    @Test
+    void updateResourceShouldRevokeRemovedAdminsOnDav() {
+        // Given
+        OpenPaaSUser creator = sabreDavExtension.newTestUser();
+        OpenPaaSUser admin1 = sabreDavExtension.newTestUser();
+        OpenPaaSUser admin2 = sabreDavExtension.newTestUser();
+
+        // Create resource with 2 admins
+        String location = given()
+            .body("""
+                {
+                    "name": "Meeting Room E",
+                    "description": "Room for admin revocation",
+                    "creator": "%s",
+                    "icon": "door",
+                    "domain": "%s",
+                    "administrators": [
+                        { "email": "%s" },
+                        { "email": "%s" }
+                    ]
+                }
+                """.formatted(creator.username().asString(), DOMAIN,
+                admin1.username().asString(), admin2.username().asString()))
+            .post()
+        .then()
+            .statusCode(201)
+            .extract()
+            .header("Location");
+
+        String resourceId = location.substring(location.lastIndexOf('/') + 1);
+        OpenPaaSDomain domain = domainDAO.retrieve(creator.username().getDomainPart().get()).block();
+
+        // Sanity check — before patch
+        ArrayNode before = sabreDavExtension.davTestHelper()
+            .getCalendarDelegateInvites(domain.id(), new ResourceId(resourceId))
+            .block();
+
+        assertThat(before.findValuesAsText("href"))
+            .contains("mailto:" + admin1.username().asString(),
+                "mailto:" + admin2.username().asString());
+
+        // When — remove admin2
+        given()
+            .body("""
+                {
+                    "administrators": [
+                        { "email": "%s" }
+                    ]
+                }
+                """.formatted(admin1.username().asString()))
+            .patch(resourceId)
+        .then()
+            .statusCode(204);
+
+        // Then — DAV should no longer contain admin2
+        ArrayNode after = sabreDavExtension.davTestHelper()
+            .getCalendarDelegateInvites(domain.id(), new ResourceId(resourceId))
+            .block();
+
+        assertThat(after.findValuesAsText("href"))
+            .contains("mailto:" + admin1.username().asString())
+            .doesNotContain("mailto:" + admin2.username().asString());
+    }
+
+    @Test
+    void updateResourceShouldIgnoreWhenAdministratorsFieldIsAbsent() {
+        // Given
+        OpenPaaSUser creator = sabreDavExtension.newTestUser();
+        OpenPaaSUser admin = sabreDavExtension.newTestUser();
+
+        String location = given()
+            .body("""
+                {
+                    "name": "Meeting Room F",
+                    "description": "Original description",
+                    "creator": "%s",
+                    "icon": "door",
+                    "domain": "%s",
+                    "administrators": [{ "email": "%s" }]
+                }
+                """.formatted(creator.username().asString(), DOMAIN, admin.username().asString()))
+            .post()
+        .then()
+            .statusCode(201)
+            .extract()
+            .header("Location");
+
+        String resourceId = location.substring(location.lastIndexOf('/') + 1);
+        OpenPaaSDomain domain = domainDAO.retrieve(creator.username().getDomainPart().get()).block();
+
+        // Sanity check — ensure admin exists before patch
+        ArrayNode before = sabreDavExtension.davTestHelper()
+            .getCalendarDelegateInvites(domain.id(), new ResourceId(resourceId))
+            .block();
+
+        assertThat(before.findValuesAsText("href"))
+            .contains("mailto:" + admin.username().asString());
+
+        // When — update description only
+        given()
+            .body("""
+                {
+                    "description": "Updated description only"
+                }
+                """)
+            .patch(resourceId)
+            .then()
+            .statusCode(204);
+
+        // Then — DAV should remain unchanged
+        ArrayNode after = sabreDavExtension.davTestHelper()
+            .getCalendarDelegateInvites(domain.id(), new ResourceId(resourceId))
+            .block();
+
+        assertThat(after.findValuesAsText("href"))
+            .contains("mailto:" + admin.username().asString());
+    }
+
+    @Test
+    void updateResourceShouldRevokeAllAdminsWhenAdministratorsListEmpty() {
+        // Given
+        OpenPaaSUser creator = sabreDavExtension.newTestUser();
+        OpenPaaSUser admin1 = sabreDavExtension.newTestUser();
+        OpenPaaSUser admin2 = sabreDavExtension.newTestUser();
+
+        // Create resource with 2 admins
+        String location = given()
+            .body("""
+                {
+                    "name": "Meeting Room G",
+                    "description": "Room for clearing all admins",
+                    "creator": "%s",
+                    "icon": "door",
+                    "domain": "%s",
+                    "administrators": [
+                        { "email": "%s" },
+                        { "email": "%s" }
+                    ]
+                }
+                """.formatted(creator.username().asString(), DOMAIN,
+                admin1.username().asString(), admin2.username().asString()))
+            .post()
+        .then()
+            .statusCode(201)
+            .extract()
+            .header("Location");
+
+        String resourceId = location.substring(location.lastIndexOf('/') + 1);
+        OpenPaaSDomain domain = domainDAO.retrieve(creator.username().getDomainPart().get()).block();
+
+        // Sanity check — before patch
+        ArrayNode before = sabreDavExtension.davTestHelper()
+            .getCalendarDelegateInvites(domain.id(), new ResourceId(resourceId))
+            .block();
+
+        assertThat(before.findValuesAsText("href"))
+            .contains("mailto:" + admin1.username().asString(),
+                "mailto:" + admin2.username().asString());
+
+        // When — update with empty admin list
+        given()
+            .body("""
+                {
+                    "administrators": []
+                }
+                """)
+            .patch(resourceId)
+        .then()
+            .statusCode(204);
+
+        // Then — DAV should have no admin delegations
+        ArrayNode after = sabreDavExtension.davTestHelper()
+            .getCalendarDelegateInvites(domain.id(), new ResourceId(resourceId))
+            .block();
+
+        assertThat(after.findValuesAsText("href"))
+            .as("All admin delegations should be revoked when administrators=[]")
+            .noneMatch(href -> href.contains("mailto:" + admin1.username().asString()))
+            .noneMatch(href -> href.contains("mailto:" + admin2.username().asString()));
     }
 
 }
