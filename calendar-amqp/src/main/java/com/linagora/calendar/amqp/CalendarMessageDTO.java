@@ -29,11 +29,14 @@ import com.linagora.calendar.storage.OpenPaaSId;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record CalendarMessageDTO(@JsonProperty("calendarPath") String calendarPath) {
     public CalendarURL extractCalendarURL() {
+        if (!calendarPath.startsWith(CalendarURL.CALENDAR_URL_PATH_PREFIX)) {
+            throw new CalendarEventDeserializeException("Invalid event path: " + calendarPath);
+        }
         List<String> paths = Splitter.on('/')
             .omitEmptyStrings()
             .splitToList(calendarPath);
 
-        if (paths.size() != 3 || !"calendars".equals(paths.get(0))) {
+        if (paths.size() != 3) {
             throw new CalendarEventDeserializeException("Invalid event path: " + calendarPath);
         }
         return new CalendarURL(new OpenPaaSId(paths.get(1)), new OpenPaaSId(paths.get(2)));

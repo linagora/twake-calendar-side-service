@@ -19,7 +19,7 @@
 package com.linagora.calendar.amqp;
 
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
-import static org.assertj.core.api.Assertions.assertThat;
+import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 
 import java.time.Duration;
 import java.util.UUID;
@@ -35,6 +35,7 @@ import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
 import org.apache.james.metrics.api.NoopGaugeRegistry;
 import org.apache.james.metrics.tests.RecordingMetricFactory;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -73,6 +74,7 @@ public class EventCalendarConsumerTest {
     private static DavTestHelper davTestHelper;
 
     private CalDavClient calDavClient;
+    private EventCalendarConsumer consumer;
 
     @BeforeAll
     static void beforeAll(DockerSabreDavSetup dockerSabreDavSetup) throws Exception {
@@ -102,7 +104,7 @@ public class EventCalendarConsumerTest {
     }
 
     @BeforeEach
-    public void setUp() throws SSLException {
+    void setUp() throws SSLException {
         calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
     }
 
@@ -111,9 +113,16 @@ public class EventCalendarConsumerTest {
         MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
         OpenPaaSUserDAO openPaaSUserDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
 
-        EventCalendarConsumer consumer = new EventCalendarConsumer(channelPool, QueueArguments.Builder::new,
+        consumer = new EventCalendarConsumer(channelPool, QueueArguments.Builder::new,
             new EventCalendarHandler(openPaaSUserDAO, calDavClient, defaultCalendarPublicVisibilityEnabled));
         consumer.init();
+    }
+
+    @AfterEach
+    void tearDown() {
+        if (consumer != null) {
+            consumer.close();
+        }
     }
 
     @Test
@@ -122,10 +131,22 @@ public class EventCalendarConsumerTest {
 
         OpenPaaSUser user = sabreDavExtension.newTestUser();
 
+        // To ensure calendar is activated
+        davTestHelper.getCalendarMetadata(user).block();
+
         awaitAtMost.untilAsserted(() -> {
             String actual = davTestHelper.getCalendarMetadata(user).block();
 
-            assertThat(actual).contains("{\"privilege\":\"{DAV:}read\",\"principal\":\"{DAV:}authenticated\",\"protected\":true}");
+            assertThatJson(actual)
+                .inPath("$.acl")
+                .isArray()
+                .contains("""
+                    {
+                      "privilege": "{DAV:}read",
+                      "principal": "{DAV:}authenticated",
+                      "protected": true
+                    }
+                    """);
         });
     }
 
@@ -146,12 +167,28 @@ public class EventCalendarConsumerTest {
 
         Thread.sleep(3000); // wait for the consumer to process the message
 
-        awaitAtMost.untilAsserted(() -> {
-            String actual = davTestHelper.getCalendarMetadata(user, new OpenPaaSId(newCalendarId)).block();
+        String actual = davTestHelper.getCalendarMetadata(user, new OpenPaaSId(newCalendarId)).block();
 
-            assertThat(actual).doesNotContain("{\"privilege\":\"{DAV:}read\",\"principal\":\"{DAV:}authenticated\",\"protected\":true}");
-            assertThat(actual).contains("{\"privilege\":\"{urn:ietf:params:xml:ns:caldav}read-free-busy\",\"principal\":\"{DAV:}authenticated\",\"protected\":true}");
-        });
+        assertThatJson(actual)
+            .inPath("$.acl")
+            .isArray()
+            .doesNotContain("""
+                    {
+                      "privilege": "{DAV:}read",
+                      "principal": "{DAV:}authenticated",
+                      "protected": true
+                    }
+                    """);
+        assertThatJson(actual)
+            .inPath("$.acl")
+            .isArray()
+            .contains("""
+                    {
+                        "privilege": "{urn:ietf:params:xml:ns:caldav}read-free-busy",
+                        "principal": "{DAV:}authenticated",
+                        "protected": true
+                    }
+                    """);
     }
 
     @Test
@@ -160,14 +197,33 @@ public class EventCalendarConsumerTest {
 
         OpenPaaSUser user = sabreDavExtension.newTestUser();
 
+        // To ensure calendar is activated
+        davTestHelper.getCalendarMetadata(user).block();
+
         Thread.sleep(3000); // wait for the consumer to process the message
 
-        awaitAtMost.untilAsserted(() -> {
-            String actual = davTestHelper.getCalendarMetadata(user).block();
+        String actual = davTestHelper.getCalendarMetadata(user).block();
 
-            assertThat(actual).doesNotContain("{\"privilege\":\"{DAV:}read\",\"principal\":\"{DAV:}authenticated\",\"protected\":true}");
-            assertThat(actual).contains("{\"privilege\":\"{urn:ietf:params:xml:ns:caldav}read-free-busy\",\"principal\":\"{DAV:}authenticated\",\"protected\":true}");
-        });
+        assertThatJson(actual)
+            .inPath("$.acl")
+            .isArray()
+            .doesNotContain("""
+                    {
+                      "privilege": "{DAV:}read",
+                      "principal": "{DAV:}authenticated",
+                      "protected": true
+                    }
+                    """);
+        assertThatJson(actual)
+            .inPath("$.acl")
+            .isArray()
+            .contains("""
+                    {
+                        "privilege": "{urn:ietf:params:xml:ns:caldav}read-free-busy",
+                        "principal": "{DAV:}authenticated",
+                        "protected": true
+                    }
+                    """);
     }
 }
 

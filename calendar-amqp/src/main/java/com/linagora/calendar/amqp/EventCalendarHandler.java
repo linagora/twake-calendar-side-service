@@ -48,10 +48,10 @@ public class EventCalendarHandler {
 
     public Mono<Void> handleCreateEvent(CalendarMessageDTO message) {
         LOGGER.debug("Handle calendar creation event with calendar path {}", message.calendarPath());
-        return setDefaultCalendarPubliclyVisible(message);
+        return setDefaultCalendarPublicRightRead(message);
     }
 
-    private Mono<Void> setDefaultCalendarPubliclyVisible(CalendarMessageDTO message) {
+    private Mono<Void> setDefaultCalendarPublicRightRead(CalendarMessageDTO message) {
         if (defaultCalendarPublicVisibilityEnabled) {
             CalendarURL calendarURL = message.extractCalendarURL();
             return openPaaSUserDAO.retrieve(calendarURL.base())

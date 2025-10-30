@@ -142,11 +142,10 @@ public class EventCalendarConsumer implements Closeable, Startable {
 
     @Override
     public void close() {
-        consumeDisposableMap.values().forEach(disposable -> {
-            if (!disposable.isDisposed()) {
-                disposable.dispose();
-            }
-        });
+        consumeDisposableMap.values()
+            .stream()
+            .filter(disposable -> !disposable.isDisposed())
+            .forEach(Disposable::dispose);
     }
 
     public interface EventHandler {
@@ -159,9 +158,7 @@ public class EventCalendarConsumer implements Closeable, Startable {
 
     private Disposable doConsumeCalendarEventMessages(Queue queue, EventHandler eventHandler) {
         return delivery(queue.queueName)
-            .flatMap(delivery -> messageConsume(delivery,
-                Throwing.supplier(() -> OBJECT_MAPPER.readValue(delivery.getBody(), CalendarMessageDTO.class)).get(),
-                eventHandler), DEFAULT_CONCURRENCY)
+            .flatMap(delivery -> messageConsume(delivery, eventHandler), DEFAULT_CONCURRENCY)
             .subscribe();
     }
 
@@ -171,9 +168,10 @@ public class EventCalendarConsumer implements Closeable, Startable {
             Receiver::close);
     }
 
-    private Mono<?> messageConsume(AcknowledgableDelivery ackDelivery, CalendarMessageDTO message, EventHandler eventHandler) {
-        return eventHandler.handle(message)
-            .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed calendar amqp event successfully {} '{}'", message.getClass().getSimpleName(), message.calendarPath())))
+    private Mono<?> messageConsume(AcknowledgableDelivery ackDelivery, EventHandler eventHandler) {
+        return Mono.fromCallable(() -> Throwing.supplier(() -> OBJECT_MAPPER.readValue(ackDelivery.getBody(), CalendarMessageDTO.class)).get())
+            .flatMap(message -> eventHandler.handle(message)
+                .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed calendar amqp event successfully {} '{}'", message.getClass().getSimpleName(), message.calendarPath()))))
             .doOnSuccess(result -> ackDelivery.ack())
             .onErrorResume(error -> {
                 LOGGER.error("Error when consume calendar amqp event", error);
