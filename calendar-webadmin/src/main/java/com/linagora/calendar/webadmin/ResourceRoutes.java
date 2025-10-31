@@ -21,12 +21,10 @@ package com.linagora.calendar.webadmin;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 import jakarta.inject.Inject;
 
-import org.apache.commons.lang3.Strings;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
 import org.apache.james.util.ReactorUtils;
@@ -35,16 +33,13 @@ import org.apache.james.webadmin.utils.ErrorResponder;
 import org.apache.james.webadmin.utils.JsonExtractException;
 import org.apache.james.webadmin.utils.JsonExtractor;
 import org.apache.james.webadmin.utils.JsonTransformer;
+import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Sets;
-import com.linagora.calendar.dav.CalDavClient;
-import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -60,6 +55,7 @@ import com.linagora.calendar.storage.model.ResourceId;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import spark.HaltException;
 import spark.Request;
 import spark.Response;
 import spark.Service;
@@ -74,10 +70,6 @@ public class ResourceRoutes implements Routes {
         public AdministratorDTO(@JsonProperty("email") String email) {
             this.email = email;
         }
-    }
-
-    private record AdminChanges(Set<OpenPaaSId> toAdd, Set<OpenPaaSId> toRemove) {
-
     }
 
     public record ResourceDTO(String name, boolean deleted, String description, String id, String icon, String domain,
@@ -138,7 +130,7 @@ public class ResourceRoutes implements Routes {
     private final OpenPaaSDomainDAO domainDAO;
     private final OpenPaaSUserDAO userDAO;
     private final JsonTransformer jsonTransformer;
-    private final CalDavClient calDavClient;
+    private final ResourceAdministratorService  resourceAdministratorService;
     private final JsonExtractor<ResourceCreationDTO> creationDTOJsonExtractor;
     private final JsonExtractor<ResourceUpdateDTO> updateDTOJsonExtractor;
 
@@ -147,12 +139,12 @@ public class ResourceRoutes implements Routes {
                           OpenPaaSDomainDAO domainDAO,
                           OpenPaaSUserDAO userDAO,
                           JsonTransformer jsonTransformer,
-                          CalDavClient calDavClient) {
+                          ResourceAdministratorService resourceAdministratorService) {
         this.resourceDAO = resourceDAO;
         this.domainDAO = domainDAO;
         this.userDAO = userDAO;
         this.jsonTransformer = jsonTransformer;
-        this.calDavClient = calDavClient;
+        this.resourceAdministratorService = resourceAdministratorService;
         creationDTOJsonExtractor = new JsonExtractor<>(ResourceCreationDTO.class);
         updateDTOJsonExtractor = new JsonExtractor<>(ResourceUpdateDTO.class);
     }
@@ -186,28 +178,16 @@ public class ResourceRoutes implements Routes {
     }
 
     private String deleteResource(Request req, Response res) {
-        ResourceId id = new ResourceId(req.params("id"));
+        ResourceId resourceId = new ResourceId(req.params("id"));
 
-        return findNotDeletedResource(id)
-            .flatMap(currentResource -> resolveAdminUsernames(currentResource)
-                .flatMap(adminUsers -> {
-                    if (!adminUsers.isEmpty()) {
-                        LOGGER.debug("Revoking write rights for resource {} from admins: {}", id.value(), adminUsers);
-                        return calDavClient.revokeWriteRights(currentResource.domain(), currentResource.id(), adminUsers)
-                            .doOnError(error -> LOGGER.error("Error revoking write rights for resource {}", id.value(), error))
-                            .then(resourceDAO.softDelete(id));
-                    }
-                    LOGGER.debug("No admin users found for resource {}, proceeding with soft delete.", id.value());
-                    return resourceDAO.softDelete(id);
-                }))
-            .doOnSuccess(v -> res.status(204))
-            .thenReturn("")
-            .onErrorResume(e -> {
-                if (e instanceof ResourceNotFoundException || e instanceof IllegalArgumentException) {
-                    LOGGER.warn("Failed to delete resource {}: not found or invalid.", id.value());
-                    return Mono.error(resourceNotFound(id));
-                }
-                return Mono.error(e);
+        return findNotDeletedResource(resourceId)
+            .flatMap(currentResource -> resourceAdministratorService.revokeAdmins(currentResource)
+                .then(resourceDAO.softDelete(resourceId)))
+            .doOnSuccess(any -> res.status(HttpStatus.NO_CONTENT_204))
+            .thenReturn(StringUtils.EMPTY)
+            .onErrorMap(ResourceNotFoundException.class, notFoundException -> {
+                LOGGER.warn("Failed to delete resource {}: not found or invalid.", resourceId.value());
+                return resourceNotFound(resourceId);
             })
             .block();
     }
@@ -215,115 +195,63 @@ public class ResourceRoutes implements Routes {
     private String createResource(Request req, Response res) throws JsonExtractException {
         ResourceCreationDTO creationDTO = creationDTOJsonExtractor.parse(req.body());
 
-        Mono<OpenPaaSId> creatorIdMono = userDAO.retrieve(Username.of(creationDTO.creator))
-            .switchIfEmpty(Mono.error(() -> new IllegalArgumentException(String.format("creator '%s' must exist", creationDTO.creator))))
+        Mono<OpenPaaSId> creatorIdMono = retrieveExistingUser(Username.of(creationDTO.creator))
             .map(OpenPaaSUser::id);
 
         Mono<OpenPaaSId> domainIdMono = domainDAO.retrieve(Domain.of(creationDTO.domain))
             .switchIfEmpty(Mono.error(() -> new IllegalArgumentException(String.format("domain '%s' must exist", creationDTO.domain))))
             .map(OpenPaaSDomain::id);
 
-        Mono<Map<Username, ResourceAdministrator>> adminsMono = resolveAdministratorsFromDTO(creationDTO.administrators);
+        Mono<Map<Username, ResourceAdministrator>> adminMapMono = resolveAdministratorsFromDTO(creationDTO.administrators);
 
-        return Mono.zip(creatorIdMono, domainIdMono, adminsMono)
-            .flatMap(tuple ->
-                insertAndGrantAdminRights(tuple.getT1(), tuple.getT2(), tuple.getT3(), creationDTO)
-                    .map(resourceId -> {
-                        res.header("Location", getBasePath() + "/" + resourceId.value());
-                        res.status(201);
-                        return "";
-                    }))
-            .onErrorResume(IllegalArgumentException.class, e -> Mono.error(
-                ErrorResponder.builder()
-                    .statusCode(HttpStatus.BAD_REQUEST_400)
-                    .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                    .message(e.getMessage())
-                    .cause(e)
-                    .haltError()))
-            .block();
-    }
-
-    private Mono<ResourceId> insertAndGrantAdminRights(OpenPaaSId creatorId,
-                                                       OpenPaaSId domainId,
-                                                       Map<Username, ResourceAdministrator> admins,
-                                                       ResourceCreationDTO dto) {
-        ResourceInsertRequest insertRequest = new ResourceInsertRequest(ImmutableList.copyOf(admins.values()),
-            creatorId, dto.description, domainId, dto.icon, dto.name);
-
-        return resourceDAO.insert(insertRequest)
-            .flatMap(resourceId ->
-                calDavClient.grantReadWriteRights(domainId, resourceId, ImmutableList.copyOf(admins.keySet()))
-                    .doOnError(err -> LOGGER.error("Error granting rights for resource {}", resourceId.value(), err))
-                    .thenReturn(resourceId));
-    }
-
-    private String updateResource(Request req, Response res) throws JsonExtractException {
-        ResourceUpdateDTO dto = updateDTOJsonExtractor.parse(req.body());
-        ResourceId id = new ResourceId(req.params("id"));
-
-        return findNotDeletedResource(id)
-            .flatMap(resource ->
-                updateAdminDelegationsIfNeeded(resource, dto, id)
-                    .map(Optional::of)
-                    .defaultIfEmpty(Optional.empty())
-                    .flatMap(newAdminOps -> resourceDAO.update(id,
-                        new ResourceUpdateRequest(dto.name(), dto.description(), dto.icon(), newAdminOps))))
-            .doOnSuccess(v -> res.status(204))
-            .thenReturn("")
-            .onErrorResume(e -> {
-                if (e instanceof ResourceNotFoundException || e instanceof IllegalArgumentException) {
-                    LOGGER.warn("Failed to update resource {}: not found or invalid.", id.value());
-                    return Mono.error(resourceNotFound(id));
-                }
-                return Mono.error(e);
+        return Mono.zip(creatorIdMono, domainIdMono, adminMapMono)
+            .flatMap(tuple -> {
+                OpenPaaSId creatorId = tuple.getT1();
+                OpenPaaSId domainId = tuple.getT2();
+                Map<Username, ResourceAdministrator> adminMap = tuple.getT3();
+                return resourceDAO.insert(buildInsertRequest(adminMap, creatorId, creationDTO, domainId))
+                    .flatMap(resourceId -> resourceAdministratorService.setAdmins(domainId, resourceId, adminMap.keySet().stream().toList())
+                        .thenReturn(resourceId));
+            })
+            .map(resourceId -> {
+                res.header(HttpHeader.LOCATION.asString(), getBasePath() + "/" + resourceId.value());
+                res.status(HttpStatus.CREATED_201);
+                return StringUtils.EMPTY;
             })
             .block();
     }
 
-    private Mono<List<ResourceAdministrator>> updateAdminDelegationsIfNeeded(Resource currentResource, ResourceUpdateDTO dto, ResourceId id) {
-        if (dto.administrators().isEmpty()) {
-            return Mono.empty();
-        }
-
-        return resolveAdministratorsFromDTO(dto.administrators().get())
-            .map(map -> ImmutableList.copyOf(map.values()))
-            .flatMap(newAdmins -> {
-                AdminChanges changes = detectUserAdminChanges(currentResource, newAdmins, id);
-                Mono<List<Username>> addUsernames = resolveUsernamesFromIds(changes.toAdd());
-                Mono<List<Username>> revokeUsernames = resolveUsernamesFromIds(changes.toRemove());
-
-                return Mono.zip(addUsernames, revokeUsernames)
-                    .flatMap(tuple ->
-                        calDavClient.patchReadWriteDelegations(currentResource.domain(), CalendarURL.from(id.asOpenPaaSId()),
-                                tuple.getT1(), tuple.getT2())
-                            .doOnError(err -> LOGGER.error("Failed to patch CalDAV delegation for resource {}", id.value(), err)))
-                    .thenReturn(newAdmins);
-            });
+    private ResourceInsertRequest buildInsertRequest(Map<Username, ResourceAdministrator> adminMap, OpenPaaSId creatorId,
+                                                     ResourceCreationDTO creationDTO, OpenPaaSId domainId) {
+        return new ResourceInsertRequest(adminMap.values().stream().toList(), creatorId, creationDTO.description, domainId, creationDTO.icon, creationDTO.name);
     }
 
-    private AdminChanges detectUserAdminChanges(Resource currentResource, List<ResourceAdministrator> newAdmins, ResourceId id) {
-        List<ResourceAdministrator> currentAdmins = filterUserAdministrators(currentResource);
+    private String updateResource(Request req, Response res) throws JsonExtractException {
+        ResourceUpdateDTO dto = updateDTOJsonExtractor.parse(req.body());
+        ResourceId resourceId = new ResourceId(req.params("id"));
 
-        Set<OpenPaaSId> currentIds = currentAdmins.stream()
-            .map(ResourceAdministrator::refId)
-            .collect(Collectors.toSet());
-        Set<OpenPaaSId> newIds = newAdmins.stream()
-            .map(ResourceAdministrator::refId)
-            .collect(Collectors.toSet());
+        return findNotDeletedResource(resourceId)
+            .flatMap(resource -> {
+                Mono<Optional<List<ResourceAdministrator>>> newAdminsMono = dto.administrators()
+                    .map(admins -> resourceAdministratorService.updateAdmins(resource, admins).map(Optional::of))
+                    .orElse(Mono.just(Optional.empty()));
 
-        Set<OpenPaaSId> toAdd = Sets.difference(newIds, currentIds);
-        Set<OpenPaaSId> toRemove = Sets.difference(currentIds, newIds);
-
-        LOGGER.info("Resource {} admin changes detected — add: {}, remove: {}", id.value(), toAdd, toRemove);
-        return new AdminChanges(toAdd, toRemove);
+                return newAdminsMono.flatMap(newAdminsOpt -> resourceDAO.update(resourceId,
+                    new ResourceUpdateRequest(dto.name(), dto.description(), dto.icon(), newAdminsOpt)));
+            })
+            .doOnSuccess(any -> res.status(HttpStatus.NO_CONTENT_204))
+            .thenReturn(StringUtils.EMPTY)
+            .onErrorMap(ResourceNotFoundException.class, notFoundException -> {
+                LOGGER.warn("Failed to update resource {}: not found or invalid.", resourceId.value());
+                return resourceNotFound(resourceId);
+            })
+            .block();
     }
 
     private Mono<Map<Username, ResourceAdministrator>> resolveAdministratorsFromDTO(List<AdministratorDTO> dtos) {
         return Flux.fromIterable(dtos)
-            .map(AdministratorDTO::email)
-            .map(Username::of)
-            .flatMap(user -> userDAO.retrieve(user)
-                .switchIfEmpty(Mono.error(() -> new IllegalArgumentException("administrator '" + user.asString() + "' must exist"))))
+            .map(dto -> Username.of(dto.email()))
+            .flatMap(this::retrieveExistingUser)
             .collectMap(OpenPaaSUser::username, user -> new ResourceAdministrator(user.id(), "user"));
     }
 
@@ -351,42 +279,23 @@ public class ResourceRoutes implements Routes {
             .map(Domain::of);
     }
 
-    private List<ResourceAdministrator> filterUserAdministrators(Resource currentResource) {
-        return Optional.ofNullable(currentResource.administrators()).orElse(List.of())
-            .stream()
-            .filter(admin -> Strings.CI.equals(admin.objectType(), "user"))
-            .toList();
-    }
-
-    private Mono<List<Username>> resolveAdminUsernames(Resource resource) {
-        return Flux.fromIterable(filterUserAdministrators(resource))
-            .flatMap(resourceAdmin -> userDAO.retrieve(resourceAdmin.refId()), ReactorUtils.LOW_CONCURRENCY)
-            .map(OpenPaaSUser::username)
-            .collectList();
-    }
-
     private Mono<Resource> findNotDeletedResource(ResourceId resourceId) {
         return resourceDAO.findById(resourceId)
             .filter(resource -> !resource.deleted())
-            .switchIfEmpty(Mono.error(new ResourceNotFoundException(resourceId)))
-            .doOnError(ResourceNotFoundException.class,
-                e -> LOGGER.warn("Resource {} not found or already deleted.", resourceId.value()));
+            .switchIfEmpty(Mono.error(() -> new ResourceNotFoundException(resourceId)));
     }
 
-    private Mono<List<Username>> resolveUsernamesFromIds(Set<OpenPaaSId> userIds) {
-        return Flux.fromIterable(userIds)
-            .flatMap(userId -> userDAO.retrieve(userId).map(OpenPaaSUser::username)
-                .switchIfEmpty(Mono.error(() -> new IllegalArgumentException("User id '" + userId + "' does not exist"))))
-            .collectList();
+    private Mono<OpenPaaSUser> retrieveExistingUser(Username username) {
+        return userDAO.retrieve(username)
+            .switchIfEmpty(Mono.error(() -> new IllegalArgumentException("Username '%s' must exist".formatted(username.asString()))));
     }
 
-    private RuntimeException resourceNotFound(ResourceId id) {
+    private HaltException resourceNotFound(ResourceId id) {
         LOGGER.warn("Resource {} not found or invalid.", id.value());
         return ErrorResponder.builder()
             .statusCode(HttpStatus.NOT_FOUND_404)
             .type(ErrorResponder.ErrorType.NOT_FOUND)
             .message("Resource does not exist")
-            .cause(new RuntimeException())
             .haltError();
     }
 }

@@ -72,7 +72,6 @@ class ResourceRoutesTest {
     private OpenPaaSUserDAO userDAO;
     private MongoDBOpenPaaSDomainDAO domainDAO;
     private MongoDBResourceDAO resourceDAO;
-    private CalDavClient calDavClient;
 
     @BeforeEach
     void setUp() throws SSLException {
@@ -80,11 +79,12 @@ class ResourceRoutesTest {
         domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
         userDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
         resourceDAO = new MongoDBResourceDAO(mongoDB, Clock.system(UTC));
-        calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
+        CalDavClient calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
 
+        ResourceAdministratorService resourceAdministratorService = new ResourceAdministratorService(calDavClient, userDAO);
         webAdminServer = WebAdminUtils.createWebAdminServer(
             new ResourceRoutes(resourceDAO, domainDAO, userDAO,
-                new JsonTransformer(), calDavClient)).start();
+                new JsonTransformer(), resourceAdministratorService)).start();
 
         RestAssured.requestSpecification = WebAdminUtils.buildRequestSpecification(webAdminServer)
             .setBasePath(ResourceRoutes.BASE_PATH)
@@ -467,8 +467,8 @@ class ResourceRoutesTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
-        "notfound", // invalid ObjectId
-        "6901de931710f414cf7953a9" // valid ObjectId but not exist in database
+        "notfound",
+        "6901de931710f414cf7953a9"
     })
     void patchShouldReturn404WhenResourceNotFound(String notFoundId) {
         given()
@@ -782,8 +782,8 @@ class ResourceRoutesTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
-        "notfound", // invalid ObjectId
-        "6901de931710f414cf7953a9" // valid ObjectId but not exist in database
+        "notfound",
+        "6901de931710f414cf7953a9"
     })
     void deleteResourceShouldReturnNotFoundWhenNotExist(String notFoundId) {
         when()

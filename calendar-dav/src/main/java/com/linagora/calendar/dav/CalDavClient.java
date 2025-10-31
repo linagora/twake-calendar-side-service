@@ -76,6 +76,9 @@ public class CalDavClient extends DavClient {
         }
     }
 
+    public static final String JSON_CHARSET_UTF_8 = "application/json;charset=UTF-8";
+    public static final String DEFAULT_JSON_ACCEPT = "application/json, text/plain, */*";
+
     public record NewCalendar(@JsonProperty("id") String id,
                               @JsonProperty("dav:name") String davName,
                               @JsonProperty("apple:color") String appleColor,
@@ -343,10 +346,6 @@ public class CalDavClient extends DavClient {
             });
     }
 
-    public Mono<Void> updateCalendarEvent(Username username, DavCalendarObject updatedCalendarObject) {
-        return updateCalendarEvent(Mono.just(httpClientWithImpersonation(username)), updatedCalendarObject);
-    }
-
     protected Mono<Void> updateCalendarEvent(Mono<HttpClient> httpClientPublisher, DavCalendarObject updatedCalendarObject) {
         return httpClientPublisher.flatMap(httpClient ->
             httpClient.headers(headers ->
@@ -465,34 +464,35 @@ public class CalDavClient extends DavClient {
                         """.formatted(response.status().code(), uri, errorBody))));
             });
     }
+
     private byte[] buildPatchDelegationBodyRequest(List<Username> addOrUpdateAdmins, List<Username> revokeAdmins) {
-        ObjectMapper mapper = OBJECT_MAPPER;
-        ObjectNode shareNode = mapper.createObjectNode();
-        ArrayNode setArray = mapper.createArrayNode();
-        ArrayNode removeArray = mapper.createArrayNode();
-
-        addOrUpdateAdmins.forEach(admin -> {
-            ObjectNode adminNode = mapper.createObjectNode();
-            adminNode.put("dav:href", "mailto:" + admin.asString());
-            adminNode.put("dav:read-write", true);
-            setArray.add(adminNode);
-        });
-
-        revokeAdmins.forEach(admin -> {
-            ObjectNode adminNode = mapper.createObjectNode();
-            adminNode.put("dav:href", "mailto:" + admin.asString());
-            removeArray.add(adminNode);
-        });
-
-        shareNode.set("set", setArray);
-        shareNode.set("remove", removeArray);
-        ObjectNode bodyNode = mapper.createObjectNode();
-        bodyNode.set("share", shareNode);
         try {
-            return mapper.writeValueAsBytes(bodyNode);
+            ObjectNode share = OBJECT_MAPPER.createObjectNode();
+            share.set("set", rightsToAddAsJson(addOrUpdateAdmins));
+            share.set("remove", rightsToRemoveAsJson(revokeAdmins));
+
+            ObjectNode body = OBJECT_MAPPER.createObjectNode().set("share", share);
+            return OBJECT_MAPPER.writeValueAsBytes(body);
         } catch (JsonProcessingException e) {
             throw new DavClientException("Failed to serialize JSON for patching read/write delegations", e);
         }
+    }
+
+    private ArrayNode rightsToRemoveAsJson(List<Username> revokeAdmins) {
+        return revokeAdmins.stream()
+            .collect(OBJECT_MAPPER::createArrayNode,
+                (arrayNode, admin) -> arrayNode.add(OBJECT_MAPPER.createObjectNode()
+                    .put("dav:href", "mailto:" + admin.asString())),
+                ArrayNode::addAll);
+    }
+
+    private ArrayNode rightsToAddAsJson(List<Username> addAdmins) {
+        return addAdmins.stream()
+            .collect(OBJECT_MAPPER::createArrayNode,
+                (arrayNode, admin) -> arrayNode.add(OBJECT_MAPPER.createObjectNode()
+                    .put("dav:href", "mailto:" + admin.asString())
+                    .put("dav:read-write", true)),
+                ArrayNode::addAll);
     }
 
     public Mono<Void> patchReadWriteDelegations(OpenPaaSId domainId,
@@ -506,8 +506,8 @@ public class CalDavClient extends DavClient {
 
         return httpClientWithTechnicalToken(domainId)
             .flatMap(client -> client
-                .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, "application/json;charset=UTF-8")
-                    .add(HttpHeaderNames.ACCEPT, "application/json, text/plain, */*"))
+                .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, JSON_CHARSET_UTF_8)
+                    .add(HttpHeaderNames.ACCEPT, DEFAULT_JSON_ACCEPT))
                 .request(HttpMethod.POST)
                 .uri(calendarURL.asUri() + ".json")
                 .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(buildPatchDelegationBodyRequest(addOrUpdateAdmins, revokeAdmins))))
@@ -521,8 +521,8 @@ public class CalDavClient extends DavClient {
                             .flatMap(body -> Mono.error(new DavClientException("Failed to patch read/write delegations. Status: " + status + ", body: " + body)));
                     }
                 })
-                .retryWhen(Retry.fixedDelay(1, Duration.ofMillis(500))
-                        .filter(error -> Strings.CI.contains(error.getMessage(), "Could not find node at path:")))
+                .retryWhen(Retry.fixedDelay(1, Duration.ofMillis(500)) // Retry once on first creation because DAV data not be provisioned yet.
+                    .filter(error -> Strings.CI.contains(error.getMessage(), "Could not find node at path:")))
                 .then());
     }
 

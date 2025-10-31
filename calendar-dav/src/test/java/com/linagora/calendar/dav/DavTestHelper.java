@@ -50,6 +50,8 @@ import reactor.util.retry.Retry;
 
 public class DavTestHelper extends DavClient {
 
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
     public record CounterRequest(String calendarData,
                                  String sender,
                                  String recipient,
@@ -353,8 +355,6 @@ public class DavTestHelper extends DavClient {
     }
 
     public Mono<ArrayNode> getCalendarDelegateInvites(OpenPaaSId domainId, ResourceId resourceId) {
-        ObjectMapper mapper = new ObjectMapper();
-
         return httpClientWithTechnicalToken(domainId)
             .flatMap(client ->
                 client.headers(headers -> headers.add(HttpHeaderNames.ACCEPT, "application/calendar+json"))
@@ -363,20 +363,8 @@ public class DavTestHelper extends DavClient {
                     .responseSingle((response, content) -> {
                         if (response.status().code() == 200) {
                             return content.asString(StandardCharsets.UTF_8)
-                                .map(body -> {
-                                    try {
-                                        JsonNode root = mapper.readTree(body);
-                                        JsonNode inviteNode = root.get("invite");
-                                        if (inviteNode != null && inviteNode.isArray()) {
-                                            return (ArrayNode) inviteNode;
-                                        }
-                                        return mapper.createArrayNode();
-                                    } catch (Exception e) {
-                                        throw new RuntimeException("Failed to parse invite array from response", e);
-                                    }
-                                });
+                                .map(this::parseDelegateInviteArray);
                         }
-
                         return content.asString(StandardCharsets.UTF_8)
                             .switchIfEmpty(Mono.just(StringUtils.EMPTY))
                             .flatMap(responseBody -> Mono.error(new DavClientException("""
@@ -385,5 +373,18 @@ public class DavTestHelper extends DavClient {
                                 """.formatted(response.status().code(), resourceId.value(), responseBody))));
                     })
             );
+    }
+
+    private ArrayNode parseDelegateInviteArray(String body) {
+        try {
+            JsonNode root = MAPPER.readTree(body);
+            JsonNode inviteNode = root.get("invite");
+            if (inviteNode != null && inviteNode.isArray()) {
+                return (ArrayNode) inviteNode;
+            }
+            return MAPPER.createArrayNode();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to parse invite array from response", e);
+        }
     }
 }
