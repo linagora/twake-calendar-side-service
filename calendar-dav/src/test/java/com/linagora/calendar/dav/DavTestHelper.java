@@ -29,7 +29,9 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpStatus;
 import org.apache.james.core.Username;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.dav.dto.SubscribedCalendarRequest;
@@ -47,6 +49,8 @@ import reactor.core.publisher.Mono;
 import reactor.util.retry.Retry;
 
 public class DavTestHelper extends DavClient {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     public record CounterRequest(String calendarData,
                                  String sender,
@@ -348,5 +352,39 @@ public class DavTestHelper extends DavClient {
                             """.formatted(response.status().code(), openPaaSUser.id(), errorBody))));
                 }
             });
+    }
+
+    public Mono<ArrayNode> getCalendarDelegateInvites(OpenPaaSId domainId, ResourceId resourceId) {
+        return httpClientWithTechnicalToken(domainId)
+            .flatMap(client ->
+                client.headers(headers -> headers.add(HttpHeaderNames.ACCEPT, "application/calendar+json"))
+                    .request(HttpMethod.GET)
+                    .uri(CalendarURL.from(resourceId.asOpenPaaSId()).asUri().toASCIIString() + ".json?withRights=true")
+                    .responseSingle((response, content) -> {
+                        if (response.status().code() == 200) {
+                            return content.asString(StandardCharsets.UTF_8)
+                                .map(this::parseDelegateInviteArray);
+                        }
+                        return content.asString(StandardCharsets.UTF_8)
+                            .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                            .flatMap(responseBody -> Mono.error(new DavClientException("""
+                                Unexpected status code: %d when fetching calendar invites '%s'
+                                %s
+                                """.formatted(response.status().code(), resourceId.value(), responseBody))));
+                    })
+            );
+    }
+
+    private ArrayNode parseDelegateInviteArray(String body) {
+        try {
+            JsonNode root = MAPPER.readTree(body);
+            JsonNode inviteNode = root.get("invite");
+            if (inviteNode != null && inviteNode.isArray()) {
+                return (ArrayNode) inviteNode;
+            }
+            return MAPPER.createArrayNode();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to parse invite array from response", e);
+        }
     }
 }

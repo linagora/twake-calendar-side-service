@@ -39,6 +39,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
+import javax.net.ssl.SSLException;
+
 import org.apache.commons.lang3.StringUtils;
 import org.bson.Document;
 import org.junit.jupiter.api.extension.AfterAllCallback;
@@ -57,7 +59,6 @@ import org.testcontainers.shaded.org.awaitility.Awaitility;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.fge.lambdas.Throwing;
-import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.TechnicalTokenService;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
@@ -198,4 +199,11 @@ public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup) impleme
             .until(this::importRabbitMQDefinitions);
     }
 
+    public DavTestHelper davTestHelper() {
+        try {
+            return new DavTestHelper(dockerSabreDavSetup.davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
+        } catch (SSLException e) {
+            throw new RuntimeException(e);
+        }
+    }
 }
