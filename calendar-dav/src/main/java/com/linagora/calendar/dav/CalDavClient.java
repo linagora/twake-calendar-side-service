@@ -41,11 +41,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.github.fge.lambdas.Throwing;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Streams;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.dto.CalendarEventReportResponse;
+import com.linagora.calendar.dav.dto.ITIPJsonBodyRequest;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -466,6 +468,26 @@ public class CalDavClient extends DavClient {
             });
     }
 
+    public Mono<Void> sendITIPRequest(Username username, CalendarURL calendarURL, ITIPJsonBodyRequest itipJsonBodyRequest) {
+        return httpClientWithImpersonation(username).headers(headers -> headers.add(HttpHeaderNames.ACCEPT, "application/json")
+                .add(HttpHeaderNames.CONTENT_TYPE, "application/json"))
+            .request(HttpMethod.valueOf("ITIP"))
+            .uri(calendarURL.asUri().toString())
+            .send(Mono.fromCallable(() -> Throwing.supplier(() ->
+                Unpooled.wrappedBuffer(OBJECT_MAPPER.writeValueAsString(itipJsonBodyRequest).getBytes(StandardCharsets.UTF_8))).get()))
+            .responseSingle((response, responseContent) -> {
+                if (response.status().code() == 204) {
+                    return Mono.empty();
+                }
+                return responseContent.asString(StandardCharsets.UTF_8)
+                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .flatMap(body -> Mono.error(new RuntimeException("""
+                        Unexpected status code: %d when sending ITIP to '%s'
+                        %s
+                        """.formatted(response.status().code(), calendarURL.serialize(), body))));
+            });
+    }
+
     private byte[] buildPatchDelegationBodyRequest(Collection<Username> addOrUpdateAdmins, Collection<Username> revokeAdmins) {
         try {
             ObjectNode share = OBJECT_MAPPER.createObjectNode();
@@ -542,5 +564,4 @@ public class CalDavClient extends DavClient {
         CalendarURL calendarURL = CalendarURL.from(resourceId.asOpenPaaSId());
         return patchReadWriteDelegations(domainId, calendarURL, List.of(), administrators);
     }
-
 }

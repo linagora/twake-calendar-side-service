@@ -24,6 +24,7 @@ import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
 import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.io.Closeable;
+import java.time.Clock;
 import java.util.function.Supplier;
 
 import jakarta.inject.Inject;
@@ -31,6 +32,7 @@ import jakarta.inject.Inject;
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.ReceiverProvider;
+import org.apache.james.core.Username;
 import org.apache.james.lifecycle.api.Startable;
 import org.apache.james.util.ReactorUtils;
 import org.slf4j.Logger;
@@ -39,6 +41,9 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.inject.name.Named;
+import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.rabbitmq.client.BuiltinExchangeType;
 
 import reactor.core.Disposable;
@@ -63,13 +68,21 @@ public class EventITIPConsumer implements Closeable, Startable {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module());
 
     private final ReceiverProvider receiverProvider;
+    private final CalDavClient calDavClient;
+    private final OpenPaaSUserDAO openPaaSUserDAO;
+    private final Clock clock;
 
     private Disposable consumeDisposable;
 
     @Inject
     public EventITIPConsumer(ReactorRabbitMQChannelPool channelPool,
-                             @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier) {
+                             @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier,
+                             CalDavClient calDavClient,
+                             OpenPaaSUserDAO openPaaSUserDAO, Clock clock) {
         this.receiverProvider = channelPool::createReceiver;
+        this.calDavClient = calDavClient;
+        this.openPaaSUserDAO = openPaaSUserDAO;
+        this.clock = clock;
 
         Sender sender = channelPool.getSender();
         Flux.concat(
@@ -137,7 +150,9 @@ public class EventITIPConsumer implements Closeable, Startable {
     }
 
     private Mono<Void> handleMessage(CalendarEventItipDTO calendarEventItipDTO) {
-        return Mono.empty();
+        return openPaaSUserDAO.retrieve(Username.of(calendarEventItipDTO.recipient()))
+            .flatMap(openPaaSUser ->
+                calDavClient.sendITIPRequest(openPaaSUser.username(), CalendarURL.from(openPaaSUser.id()), calendarEventItipDTO.toITIPJsonBodyRequest(clock.instant())));
     }
 }
 

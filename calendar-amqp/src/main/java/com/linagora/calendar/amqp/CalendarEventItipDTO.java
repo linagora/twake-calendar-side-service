@@ -18,7 +18,10 @@
 
 package com.linagora.calendar.amqp;
 
+import java.time.Instant;
+
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.linagora.calendar.dav.dto.ITIPJsonBodyRequest;
 
 public record CalendarEventItipDTO(@JsonProperty("sender") String sender,
                                    @JsonProperty("recipient") String recipient,
@@ -28,4 +31,15 @@ public record CalendarEventItipDTO(@JsonProperty("sender") String sender,
                                    @JsonProperty("hasChange") boolean hasChange,
                                    @JsonProperty("uid") String uid,
                                    @JsonProperty("component") String component) {
+
+    public ITIPJsonBodyRequest toITIPJsonBodyRequest(Instant now) {
+        return ITIPJsonBodyRequest.builder()
+            .ical(message)
+            .sender(sender)
+            .recipient(recipient)
+            .uid(uid)
+            .dtstamp(now)
+            .method(method)
+            .build();
+    }
 }

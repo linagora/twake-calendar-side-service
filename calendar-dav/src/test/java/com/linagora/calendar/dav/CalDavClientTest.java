@@ -25,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -40,6 +41,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.dto.CalendarEventReportResponse;
+import com.linagora.calendar.dav.dto.ITIPJsonBodyRequest;
 import com.linagora.calendar.dav.dto.VCalendarDto;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.MailboxSessionUtil;
@@ -49,7 +51,6 @@ import com.linagora.calendar.storage.OpenPaaSUser;
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.component.VEvent;
-import net.javacrumbs.jsonunit.assertj.JsonAssertions;
 
 public class CalDavClientTest {
 
@@ -592,5 +593,44 @@ public class CalDavClientTest {
                   "protected": true
                 }
                 """);
+    }
+
+    @Test
+    void itipRequestShouldResultInEventInDefaultCalendar() {
+        OpenPaaSUser bob = createOpenPaaSUser();
+        OpenPaaSUser cedric = createOpenPaaSUser();
+
+        String eventUid = "event-" + UUID.randomUUID();
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Example Corp.//CalDAV Client//EN
+            CALSCALE:GREGORIAN
+            METHOD:REQUEST
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20251003T080000Z
+            DTSTART:20251005T090000Z
+            DTEND:20251005T100000Z
+            SUMMARY:Meeting from Cedric
+            ORGANIZER;CN=Cedric:mailto:%s
+            ATTENDEE;CN=Bob;PARTSTAT=NEEDS-ACTION:mailto:%s
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(eventUid, cedric.username().asString(), bob.username().asString());
+
+        ITIPJsonBodyRequest itipRequest = ITIPJsonBodyRequest.builder()
+            .ical(ics)
+            .sender(cedric.username().asString())
+            .recipient(bob.username().asString())
+            .uid(eventUid)
+            .method("REQUEST")
+            .dtstamp(Instant.now())
+            .build();
+
+        testee.sendITIPRequest(bob.username(), CalendarURL.from(bob.id()), itipRequest).block();
+
+        assertThat(testee.calendarReportByUid(bob.username(), bob.id(), eventUid).block().value().toString())
+            .contains("Meeting from Cedric");
     }
 }
