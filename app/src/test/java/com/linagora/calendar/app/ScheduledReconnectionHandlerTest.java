@@ -132,6 +132,7 @@ public class ScheduledReconnectionHandlerTest {
                 "resource:tcalendar:event:created",
                 "resource:tcalendar:event:accepted",
                 "resource:tcalendar:event:declined",
+                "tcalendar:calendar:created",
                 "tcalendar:event:notificationEmail:send");
     }
 }

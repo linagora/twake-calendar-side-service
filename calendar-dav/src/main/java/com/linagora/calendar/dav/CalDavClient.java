@@ -43,6 +43,7 @@ import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.dto.CalendarEventReportResponse;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.TechnicalTokenService;
 
 import io.netty.buffer.Unpooled;
@@ -54,6 +55,20 @@ import reactor.core.publisher.Mono;
 import reactor.netty.http.client.HttpClient;
 
 public class CalDavClient extends DavClient {
+
+    public enum PublicRight {
+        READ("{DAV:}read");
+
+        private final String value;
+
+        PublicRight(String value) {
+            this.value = value;
+        }
+
+        public String getValue() {
+            return value;
+        }
+    }
 
     public record NewCalendar(@JsonProperty("id") String id,
                               @JsonProperty("dav:name") String davName,
@@ -415,4 +430,33 @@ public class CalDavClient extends DavClient {
             });
     }
 
+    public Mono<Void> updateCalendarAcl(OpenPaaSUser user, PublicRight publicRight) {
+        return updateCalendarAcl(user.username(), CalendarURL.from(user.id()), publicRight);
+    }
+
+    public Mono<Void> updateCalendarAcl(Username username, CalendarURL calendarURL, PublicRight publicRight) {
+        String uri = calendarURL.asUri() + ".json";
+        String payload = """
+            {
+              "public_right":"%s"
+            }
+            """.formatted(publicRight.getValue());
+
+        return httpClientWithImpersonation(username).headers(headers -> headers.add(HttpHeaderNames.ACCEPT, "application/json, text/plain, */*")
+                .add(HttpHeaderNames.CONTENT_TYPE, "application/json"))
+            .request(HttpMethod.valueOf("ACL"))
+            .uri(uri)
+            .send(Mono.just(Unpooled.wrappedBuffer(payload.getBytes(StandardCharsets.UTF_8))))
+            .responseSingle((response, responseContent) -> {
+                if (response.status().code() == 200) {
+                    return Mono.empty();
+                }
+                return responseContent.asString(StandardCharsets.UTF_8)
+                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .flatMap(errorBody -> Mono.error(new RuntimeException("""
+                        Unexpected status code: %d when updating ACL for calendar '%s'
+                        %s
+                        """.formatted(response.status().code(), uri, errorBody))));
+            });
+    }
 }

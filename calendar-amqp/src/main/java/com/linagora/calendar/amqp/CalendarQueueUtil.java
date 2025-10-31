@@ -35,6 +35,9 @@ public class CalendarQueueUtil {
             .addAll(Arrays.stream(EventResourceConsumer.Queue.values())
                 .map(EventResourceConsumer.Queue::queueName)
                 .collect(ImmutableList.toImmutableList()))
+            .addAll(Arrays.stream(EventCalendarConsumer.Queue.values())
+                .map(EventCalendarConsumer.Queue::queueName)
+                .collect(ImmutableList.toImmutableList()))
             .add(EventEmailConsumer.QUEUE_NAME)
             .build();
     }
@@ -49,6 +52,9 @@ public class CalendarQueueUtil {
                 .collect(ImmutableList.toImmutableList()))
             .addAll(Arrays.stream(EventResourceConsumer.Queue.values())
                 .map(EventResourceConsumer.Queue::deadLetter)
+                .collect(ImmutableList.toImmutableList()))
+            .addAll(Arrays.stream(EventCalendarConsumer.Queue.values())
+                .map(EventCalendarConsumer.Queue::deadLetter)
                 .collect(ImmutableList.toImmutableList()))
             .add(EventEmailConsumer.DEAD_LETTER_QUEUE)
             .build();

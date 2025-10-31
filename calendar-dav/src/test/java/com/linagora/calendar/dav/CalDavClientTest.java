@@ -49,6 +49,7 @@ import com.linagora.calendar.storage.OpenPaaSUser;
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.component.VEvent;
+import net.javacrumbs.jsonunit.assertj.JsonAssertions;
 
 public class CalDavClientTest {
 
@@ -572,4 +573,24 @@ public class CalDavClientTest {
             .isEmpty();
     }
 
+    @Test
+    void updateCalendarAclShouldSucceed() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL calendarURL = CalendarURL.from(user.id());
+
+        testee.updateCalendarAcl(user.username(), calendarURL, CalDavClient.PublicRight.READ).block();
+
+        String response = davTestHelper.getCalendarMetadata(user).block();
+
+        assertThatJson(response)
+            .inPath("$.acl")
+            .isArray()
+            .contains("""
+                {
+                  "privilege": "{DAV:}read",
+                  "principal": "{DAV:}authenticated",
+                  "protected": true
+                }
+                """);
+    }
 }

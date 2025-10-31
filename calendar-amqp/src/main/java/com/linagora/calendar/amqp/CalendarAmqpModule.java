@@ -22,6 +22,7 @@ import java.io.FileNotFoundException;
 import java.util.Set;
 import java.util.function.Supplier;
 
+import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
@@ -57,6 +58,7 @@ public class CalendarAmqpModule extends AbstractModule {
         bind(EventEmailConsumer.class).in(Scopes.SINGLETON);
         bind(EventAlarmConsumer.class).in(Scopes.SINGLETON);
         bind(EventResourceConsumer.class).in(Scopes.SINGLETON);
+        bind(EventCalendarHandler.class).in(Scopes.SINGLETON);
 
         Multibinder<HealthCheck> healthCheckMultibinder = Multibinder.newSetBinder(binder(), HealthCheck.class);
         healthCheckMultibinder.addBinding().to(RabbitMQCalendarQueueConsumerHealthCheck.class);
@@ -143,6 +145,18 @@ public class CalendarAmqpModule extends AbstractModule {
             .init(instance::init);
     }
 
+    @ProvidesIntoSet
+    SimpleConnectionPool.ReconnectionHandler provideEventCalendarReconnectionHandler(EventCalendarReconnectionHandler reconnectionHandler) {
+        return reconnectionHandler;
+    }
+
+    @ProvidesIntoSet
+    public InitializationOperation initializeEventCalendarConsumer(EventCalendarConsumer instance) {
+        return InitilizationOperationBuilder
+            .forClass(EventCalendarConsumer.class)
+            .init(instance::init);
+    }
+
     @Provides
     @Singleton
     public EventEmailFilter provideEventEmailFilter(PropertiesProvider propertiesProvider) throws ConfigurationException {
@@ -155,5 +169,13 @@ public class CalendarAmqpModule extends AbstractModule {
     SettingsBasedResolver provideSettingsBasedResolver(SimpleSessionProvider sessionProvider,
                                                              ConfigurationResolver configurationResolver) {
         return SettingsBasedResolver.of(configurationResolver, sessionProvider, Set.of(LanguageSettingReader.INSTANCE, TimeZoneSettingReader.INSTANCE));
+    }
+
+    @Provides
+    @Singleton
+    @Named("defaultCalendarPublicVisibilityEnabled")
+    boolean provideDefaultCalendarPublicVisibilityEnabled(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
+        Configuration config = propertiesProvider.getConfiguration("configuration");
+        return config.getBoolean("default.calendar.public.visibility.enabled", false);
     }
 }
