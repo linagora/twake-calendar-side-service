@@ -63,6 +63,7 @@ import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.TechnicalTokenService;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
+import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBSecretLinkStore;
 import com.linagora.calendar.storage.mongodb.MongoDBUploadedFileDAO;
 import com.mongodb.reactivestreams.client.MongoDatabase;
@@ -78,7 +79,8 @@ public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup) impleme
         MongoDBOpenPaaSDomainDAO.COLLECTION,
         MongoDBOpenPaaSUserDAO.COLLECTION,
         MongoDBUploadedFileDAO.COLLECTION,
-        MongoDBSecretLinkStore.COLLECTION);
+        MongoDBSecretLinkStore.COLLECTION,
+        MongoDBResourceDAO.COLLECTION);
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private static MockServerClient mockServerClient;
 

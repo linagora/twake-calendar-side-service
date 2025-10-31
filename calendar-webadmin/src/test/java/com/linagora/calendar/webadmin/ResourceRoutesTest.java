@@ -33,6 +33,9 @@ import javax.net.ssl.SSLException;
 
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
+import org.apache.james.task.Hostname;
+import org.apache.james.task.MemoryTaskManager;
+import org.apache.james.task.TaskManager;
 import org.apache.james.webadmin.WebAdminServer;
 import org.apache.james.webadmin.WebAdminUtils;
 import org.apache.james.webadmin.utils.JsonTransformer;
@@ -80,11 +83,12 @@ class ResourceRoutesTest {
         userDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
         resourceDAO = new MongoDBResourceDAO(mongoDB, Clock.system(UTC));
         CalDavClient calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
+        TaskManager taskManager = new MemoryTaskManager(new Hostname("foo"));
 
         ResourceAdministratorService resourceAdministratorService = new ResourceAdministratorService(calDavClient, userDAO);
         webAdminServer = WebAdminUtils.createWebAdminServer(
             new ResourceRoutes(resourceDAO, domainDAO, userDAO,
-                new JsonTransformer(), resourceAdministratorService)).start();
+                new JsonTransformer(), resourceAdministratorService, taskManager, calDavClient)).start();
 
         RestAssured.requestSpecification = WebAdminUtils.buildRequestSpecification(webAdminServer)
             .setBasePath(ResourceRoutes.BASE_PATH)

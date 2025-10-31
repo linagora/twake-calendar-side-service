@@ -25,10 +25,13 @@ import java.util.Optional;
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
+import org.apache.james.task.TaskManager;
 import org.apache.james.util.ReactorUtils;
 import org.apache.james.webadmin.Routes;
+import org.apache.james.webadmin.tasks.TaskFromRequest;
 import org.apache.james.webadmin.utils.ErrorResponder;
 import org.apache.james.webadmin.utils.JsonExtractException;
 import org.apache.james.webadmin.utils.JsonExtractor;
@@ -40,6 +43,7 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -52,6 +56,7 @@ import com.linagora.calendar.storage.ResourceUpdateRequest;
 import com.linagora.calendar.storage.model.Resource;
 import com.linagora.calendar.storage.model.ResourceAdministrator;
 import com.linagora.calendar.storage.model.ResourceId;
+import com.linagora.calendar.webadmin.task.RepositionResourceRightsTask;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -62,6 +67,8 @@ import spark.Service;
 
 public class ResourceRoutes implements Routes {
     private static final Logger LOGGER = LoggerFactory.getLogger(ResourceRoutes.class);
+
+    private static final String TASK_REPOSITION_WRITE_RIGHTS = "repositionWriteRights";
 
     public static final String BASE_PATH = "resources";
 
@@ -133,18 +140,24 @@ public class ResourceRoutes implements Routes {
     private final ResourceAdministratorService  resourceAdministratorService;
     private final JsonExtractor<ResourceCreationDTO> creationDTOJsonExtractor;
     private final JsonExtractor<ResourceUpdateDTO> updateDTOJsonExtractor;
+    private final TaskManager taskManager;
+    private final CalDavClient calDavClient;
 
     @Inject
     public ResourceRoutes(ResourceDAO resourceDAO,
                           OpenPaaSDomainDAO domainDAO,
                           OpenPaaSUserDAO userDAO,
                           JsonTransformer jsonTransformer,
-                          ResourceAdministratorService resourceAdministratorService) {
+                          ResourceAdministratorService resourceAdministratorService,
+                          TaskManager taskManager,
+                          CalDavClient calDavClient) {
         this.resourceDAO = resourceDAO;
         this.domainDAO = domainDAO;
         this.userDAO = userDAO;
         this.jsonTransformer = jsonTransformer;
         this.resourceAdministratorService = resourceAdministratorService;
+        this.taskManager = taskManager;
+        this.calDavClient = calDavClient;
         creationDTOJsonExtractor = new JsonExtractor<>(ResourceCreationDTO.class);
         updateDTOJsonExtractor = new JsonExtractor<>(ResourceUpdateDTO.class);
     }
@@ -154,8 +167,21 @@ public class ResourceRoutes implements Routes {
         service.get(getBasePath(), (req, res) -> listResources(req), jsonTransformer);
         service.get(getBasePath() + "/:id", (req, res) -> getResource(req), jsonTransformer);
         service.delete(getBasePath() + "/:id", this::deleteResource);
-        service.post(getBasePath(), this::createResource);
         service.patch(getBasePath() + "/:id", this::updateResource);
+        service.post(getBasePath(), this::handlePostRequest, jsonTransformer);
+    }
+
+    private Object handlePostRequest(Request req, Response res) throws Exception {
+        String taskParam = req.queryParams("task");
+        if (StringUtils.isBlank(taskParam)) {
+            return createResource(req, res);
+        }
+        if (Strings.CI.equals(TASK_REPOSITION_WRITE_RIGHTS, taskParam)) {
+            TaskFromRequest repositionWriteRightsTask = this::getRepositionResourceRightsTask;
+            return repositionWriteRightsTask.asRoute(taskManager).handle(req, res);
+        }
+        LOGGER.warn("Unknown task: {}", taskParam);
+        throw new IllegalArgumentException("Unknown task: " + taskParam);
     }
 
     private List<ResourceDTO> listResources(Request req) {
@@ -292,5 +318,9 @@ public class ResourceRoutes implements Routes {
 
     private ResourceUpdateRequest buildUpdateRequest(ResourceUpdateDTO dto, Optional<List<ResourceAdministrator>> adminsOpt) {
         return new ResourceUpdateRequest(dto.name(), dto.description(), dto.icon(), adminsOpt);
+    }
+
+    private RepositionResourceRightsTask getRepositionResourceRightsTask(Request request) {
+        return new RepositionResourceRightsTask(resourceDAO, userDAO, calDavClient);
     }
 }
