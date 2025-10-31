@@ -157,6 +157,18 @@ public class CalendarAmqpModule extends AbstractModule {
             .init(instance::init);
     }
 
+    @ProvidesIntoSet
+    SimpleConnectionPool.ReconnectionHandler provideEventITIPReconnectionHandler(EventITIPReconnectionHandler reconnectionHandler) {
+        return reconnectionHandler;
+    }
+
+    @ProvidesIntoSet
+    public InitializationOperation initializeEventITIPConsumer(EventITIPConsumer instance) {
+        return InitilizationOperationBuilder
+            .forClass(EventITIPConsumer.class)
+            .init(instance::init);
+    }
+
     @Provides
     @Singleton
     public EventEmailFilter provideEventEmailFilter(PropertiesProvider propertiesProvider) throws ConfigurationException {
