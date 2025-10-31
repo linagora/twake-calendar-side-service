@@ -39,6 +39,7 @@ public class CalendarQueueUtil {
                 .map(EventCalendarConsumer.Queue::queueName)
                 .collect(ImmutableList.toImmutableList()))
             .add(EventEmailConsumer.QUEUE_NAME)
+            .add(EventITIPConsumer.QUEUE_NAME)
             .build();
     }
 
@@ -57,6 +58,7 @@ public class CalendarQueueUtil {
                 .map(EventCalendarConsumer.Queue::deadLetter)
                 .collect(ImmutableList.toImmutableList()))
             .add(EventEmailConsumer.DEAD_LETTER_QUEUE)
+            .add(EventITIPConsumer.DEAD_LETTER_QUEUE)
             .build();
     }
 }
