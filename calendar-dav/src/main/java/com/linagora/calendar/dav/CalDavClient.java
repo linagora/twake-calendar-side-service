@@ -21,6 +21,7 @@ package com.linagora.calendar.dav;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Collection;
 import java.util.List;
 
 import javax.net.ssl.SSLException;
@@ -465,7 +466,7 @@ public class CalDavClient extends DavClient {
             });
     }
 
-    private byte[] buildPatchDelegationBodyRequest(List<Username> addOrUpdateAdmins, List<Username> revokeAdmins) {
+    private byte[] buildPatchDelegationBodyRequest(Collection<Username> addOrUpdateAdmins, Collection<Username> revokeAdmins) {
         try {
             ObjectNode share = OBJECT_MAPPER.createObjectNode();
             share.set("set", rightsToAddAsJson(addOrUpdateAdmins));
@@ -478,27 +479,33 @@ public class CalDavClient extends DavClient {
         }
     }
 
-    private ArrayNode rightsToRemoveAsJson(List<Username> revokeAdmins) {
+    private ArrayNode rightsToRemoveAsJson(Collection<Username> revokeAdmins) {
         return revokeAdmins.stream()
-            .collect(OBJECT_MAPPER::createArrayNode,
-                (arrayNode, admin) -> arrayNode.add(OBJECT_MAPPER.createObjectNode()
-                    .put("dav:href", "mailto:" + admin.asString())),
-                ArrayNode::addAll);
+            .map(this::toRemoveAdminNode)
+            .collect(OBJECT_MAPPER::createArrayNode, ArrayNode::add, ArrayNode::addAll);
     }
 
-    private ArrayNode rightsToAddAsJson(List<Username> addAdmins) {
+    private ObjectNode toRemoveAdminNode(Username admin) {
+        return OBJECT_MAPPER.createObjectNode()
+            .put("dav:href", "mailto:" + admin.asString());
+    }
+
+    private ObjectNode toReadWriteAdminNode(Username admin) {
+        return OBJECT_MAPPER.createObjectNode()
+            .put("dav:href", "mailto:" + admin.asString())
+            .put("dav:read-write", true);
+    }
+
+    private ArrayNode rightsToAddAsJson(Collection<Username> addAdmins) {
         return addAdmins.stream()
-            .collect(OBJECT_MAPPER::createArrayNode,
-                (arrayNode, admin) -> arrayNode.add(OBJECT_MAPPER.createObjectNode()
-                    .put("dav:href", "mailto:" + admin.asString())
-                    .put("dav:read-write", true)),
-                ArrayNode::addAll);
+            .map(this::toReadWriteAdminNode)
+            .collect(OBJECT_MAPPER::createArrayNode, ArrayNode::add, ArrayNode::addAll);
     }
 
     public Mono<Void> patchReadWriteDelegations(OpenPaaSId domainId,
                                                 CalendarURL calendarURL,
-                                                List<Username> addOrUpdateAdmins,
-                                                List<Username> revokeAdmins) {
+                                                Collection<Username> addOrUpdateAdmins,
+                                                Collection<Username> revokeAdmins) {
         if (addOrUpdateAdmins.isEmpty() && revokeAdmins.isEmpty()) {
             LOGGER.debug("No add or revoke admins found for '{}'", calendarURL);
             return Mono.empty();
@@ -526,7 +533,7 @@ public class CalDavClient extends DavClient {
                 .then());
     }
 
-    public Mono<Void> grantReadWriteRights(OpenPaaSId domainId, ResourceId resourceId, List<Username> administrators) {
+    public Mono<Void> grantReadWriteRights(OpenPaaSId domainId, ResourceId resourceId, Collection<Username> administrators) {
         CalendarURL calendarURL = CalendarURL.from(resourceId.asOpenPaaSId());
         return patchReadWriteDelegations(domainId, calendarURL, administrators, List.of());
     }

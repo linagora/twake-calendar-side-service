@@ -63,7 +63,7 @@ public class ResourceAdministratorService {
         this.userDAO = userDAO;
     }
 
-    public Mono<Void> setAdmins(OpenPaaSId domainId, ResourceId resourceId, List<Username> admins) {
+    public Mono<Void> setAdmins(OpenPaaSId domainId, ResourceId resourceId, Collection<Username> admins) {
         return calDavClient.grantReadWriteRights(domainId, resourceId, admins)
             .doOnError(err -> LOGGER.error("Error granting rights for resource {}", resourceId.value(), err));
     }

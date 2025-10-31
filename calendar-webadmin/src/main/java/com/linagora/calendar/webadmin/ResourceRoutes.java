@@ -185,10 +185,7 @@ public class ResourceRoutes implements Routes {
                 .then(resourceDAO.softDelete(resourceId)))
             .doOnSuccess(any -> res.status(HttpStatus.NO_CONTENT_204))
             .thenReturn(StringUtils.EMPTY)
-            .onErrorMap(ResourceNotFoundException.class, notFoundException -> {
-                LOGGER.warn("Failed to delete resource {}: not found or invalid.", resourceId.value());
-                return resourceNotFound(resourceId);
-            })
+            .onErrorMap(ResourceNotFoundException.class, exception -> resourceNotFound(resourceId))
             .block();
     }
 
@@ -210,7 +207,7 @@ public class ResourceRoutes implements Routes {
                 OpenPaaSId domainId = tuple.getT2();
                 Map<Username, ResourceAdministrator> adminMap = tuple.getT3();
                 return resourceDAO.insert(buildInsertRequest(adminMap, creatorId, creationDTO, domainId))
-                    .flatMap(resourceId -> resourceAdministratorService.setAdmins(domainId, resourceId, adminMap.keySet().stream().toList())
+                    .flatMap(resourceId -> resourceAdministratorService.setAdmins(domainId, resourceId, adminMap.keySet())
                         .thenReturn(resourceId));
             })
             .map(resourceId -> {
@@ -231,20 +228,14 @@ public class ResourceRoutes implements Routes {
         ResourceId resourceId = new ResourceId(req.params("id"));
 
         return findNotDeletedResource(resourceId)
-            .flatMap(resource -> {
-                Mono<Optional<List<ResourceAdministrator>>> newAdminsMono = dto.administrators()
-                    .map(admins -> resourceAdministratorService.updateAdmins(resource, admins).map(Optional::of))
-                    .orElse(Mono.just(Optional.empty()));
-
-                return newAdminsMono.flatMap(newAdminsOpt -> resourceDAO.update(resourceId,
-                    new ResourceUpdateRequest(dto.name(), dto.description(), dto.icon(), newAdminsOpt)));
-            })
+            .flatMap(resource -> dto.administrators()
+                .map(admins -> resourceAdministratorService.updateAdmins(resource, admins).map(Optional::of))
+                .orElse(Mono.just(Optional.empty()))
+                .map(adminsOpt -> buildUpdateRequest(dto, adminsOpt))
+                .flatMap(updateRequest -> resourceDAO.update(resourceId, updateRequest)))
             .doOnSuccess(any -> res.status(HttpStatus.NO_CONTENT_204))
             .thenReturn(StringUtils.EMPTY)
-            .onErrorMap(ResourceNotFoundException.class, notFoundException -> {
-                LOGGER.warn("Failed to update resource {}: not found or invalid.", resourceId.value());
-                return resourceNotFound(resourceId);
-            })
+            .onErrorMap(ResourceNotFoundException.class, exception -> resourceNotFound(resourceId))
             .block();
     }
 
@@ -297,5 +288,9 @@ public class ResourceRoutes implements Routes {
             .type(ErrorResponder.ErrorType.NOT_FOUND)
             .message("Resource does not exist")
             .haltError();
+    }
+
+    private ResourceUpdateRequest buildUpdateRequest(ResourceUpdateDTO dto, Optional<List<ResourceAdministrator>> adminsOpt) {
+        return new ResourceUpdateRequest(dto.name(), dto.description(), dto.icon(), adminsOpt);
     }
 }
