@@ -57,7 +57,6 @@ import com.linagora.calendar.storage.model.Resource;
 import com.linagora.calendar.storage.model.ResourceAdministrator;
 import com.linagora.calendar.storage.model.ResourceId;
 import com.linagora.calendar.webadmin.task.RepositionResourceRightsTask;
-import com.linagora.calendar.webadmin.task.RepositionResourceRightsTask.RunningOptions;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -322,6 +321,6 @@ public class ResourceRoutes implements Routes {
     }
 
     private RepositionResourceRightsTask getRepositionResourceRightsTask(Request request) {
-        return new RepositionResourceRightsTask(resourceDAO, userDAO, calDavClient, RunningOptions.parse(request));
+        return new RepositionResourceRightsTask(resourceDAO, userDAO, calDavClient);
     }
 }

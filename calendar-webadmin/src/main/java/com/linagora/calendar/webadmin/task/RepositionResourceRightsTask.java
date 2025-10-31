@@ -19,18 +19,15 @@
 package com.linagora.calendar.webadmin.task;
 
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.Username;
 import org.apache.james.task.Task;
 import org.apache.james.task.TaskExecutionDetails;
 import org.apache.james.task.TaskType;
-import org.apache.james.util.ReactorUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,7 +39,6 @@ import com.linagora.calendar.storage.model.Resource;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import spark.Request;
 
 public class RepositionResourceRightsTask implements Task {
 
@@ -77,23 +73,6 @@ public class RepositionResourceRightsTask implements Task {
     public record Details(long processedResourceCount, long failedResourceCount, Instant timestamp) implements TaskExecutionDetails.AdditionalInformation {
     }
 
-    public record RunningOptions(int resourcesPerSecond) {
-        public static final RunningOptions DEFAULT = new RunningOptions(1);
-
-        public static RunningOptions parse(Request request) {
-            String param = request.queryParams("resourcesPerSecond");
-            if (StringUtils.isBlank(param)) {
-                return DEFAULT;
-            }
-
-            try {
-                return new RunningOptions(Integer.parseInt(param));
-            } catch (NumberFormatException e) {
-                throw new IllegalArgumentException("Invalid resourcesPerSecond: " + param, e);
-            }
-        }
-    }
-
     public static final TaskType TYPE = TaskType.of("reposition-resource-rights");
 
     private static final Logger LOGGER = LoggerFactory.getLogger(RepositionResourceRightsTask.class);
@@ -102,27 +81,21 @@ public class RepositionResourceRightsTask implements Task {
     private final OpenPaaSUserDAO userDAO;
     private final CalDavClient calDavClient;
     private final Context context;
-    private final RunningOptions runningOptions;
 
     public RepositionResourceRightsTask(ResourceDAO resourceDAO,
                                         OpenPaaSUserDAO userDAO,
-                                        CalDavClient calDavClient,
-                                        RunningOptions runningOptions) {
+                                        CalDavClient calDavClient) {
         this.resourceDAO = resourceDAO;
         this.userDAO = userDAO;
         this.calDavClient = calDavClient;
         this.context = new Context();
-        this.runningOptions = runningOptions;
     }
 
     @Override
     public Result run() {
         return Flux.from(resourceDAO.findAll())
             .filter(resource -> !resource.deleted())
-            .transform(ReactorUtils.<Resource, Task.Result>throttle()
-                .elements(runningOptions.resourcesPerSecond())
-                .per(Duration.ofSeconds(1))
-                .forOperation(resource -> reapplyWriteRights(resource, context)))
+            .concatMap(resource -> reapplyWriteRights(resource, context))
             .reduce(Task.Result.COMPLETED, Task::combine)
             .doOnNext(result -> LOGGER.info("{} task result: {}. Processed: {}, Failed: {}", TYPE.asString(), result.name(), context.getProcessedResourceCount(), context.getFailedResourceCount()))
             .onErrorResume(e -> {
