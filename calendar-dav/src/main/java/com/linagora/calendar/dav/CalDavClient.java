@@ -468,11 +468,12 @@ public class CalDavClient extends DavClient {
             });
     }
 
-    public Mono<Void> sendITIPRequest(Username username, CalendarURL calendarURL, ITIPJsonBodyRequest itipJsonBodyRequest) {
+    public Mono<Void> sendIMIPCallback(Username username, OpenPaaSId userId, ITIPJsonBodyRequest itipJsonBodyRequest) {
+        String uri = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/" + userId.value();
         return httpClientWithImpersonation(username).headers(headers -> headers.add(HttpHeaderNames.ACCEPT, "application/json")
                 .add(HttpHeaderNames.CONTENT_TYPE, "application/json"))
-            .request(HttpMethod.valueOf("ITIP"))
-            .uri(calendarURL.asUri().toString())
+            .request(HttpMethod.valueOf("IMIPCALLBACK"))
+            .uri(uri)
             .send(Mono.fromCallable(() -> Throwing.supplier(() ->
                 Unpooled.wrappedBuffer(OBJECT_MAPPER.writeValueAsString(itipJsonBodyRequest).getBytes(StandardCharsets.UTF_8))).get()))
             .responseSingle((response, responseContent) -> {
@@ -482,9 +483,9 @@ public class CalDavClient extends DavClient {
                 return responseContent.asString(StandardCharsets.UTF_8)
                     .switchIfEmpty(Mono.just(StringUtils.EMPTY))
                     .flatMap(body -> Mono.error(new RuntimeException("""
-                        Unexpected status code: %d when sending ITIP to '%s'
+                        Unexpected status code: %d when sending IMIP callback to '%s'
                         %s
-                        """.formatted(response.status().code(), calendarURL.serialize(), body))));
+                        """.formatted(response.status().code(), uri, body))));
             });
     }
 

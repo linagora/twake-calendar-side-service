@@ -42,7 +42,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.inject.name.Named;
 import com.linagora.calendar.dav.CalDavClient;
-import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.rabbitmq.client.BuiltinExchangeType;
 
@@ -78,7 +77,8 @@ public class EventITIPConsumer implements Closeable, Startable {
     public EventITIPConsumer(ReactorRabbitMQChannelPool channelPool,
                              @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier,
                              CalDavClient calDavClient,
-                             OpenPaaSUserDAO openPaaSUserDAO, Clock clock) {
+                             OpenPaaSUserDAO openPaaSUserDAO,
+                             Clock clock) {
         this.receiverProvider = channelPool::createReceiver;
         this.calDavClient = calDavClient;
         this.openPaaSUserDAO = openPaaSUserDAO;
@@ -152,7 +152,7 @@ public class EventITIPConsumer implements Closeable, Startable {
     private Mono<Void> handleMessage(CalendarEventItipDTO calendarEventItipDTO) {
         return openPaaSUserDAO.retrieve(Username.of(calendarEventItipDTO.recipient()))
             .flatMap(openPaaSUser ->
-                calDavClient.sendITIPRequest(openPaaSUser.username(), CalendarURL.from(openPaaSUser.id()), calendarEventItipDTO.toITIPJsonBodyRequest(clock.instant())));
+                calDavClient.sendIMIPCallback(openPaaSUser.username(), openPaaSUser.id(), calendarEventItipDTO.toITIPJsonBodyRequest(clock.instant())));
     }
 }
 

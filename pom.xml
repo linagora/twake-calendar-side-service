@@ -197,6 +197,11 @@
                 <artifactId>classgraph</artifactId>
                 <version>4.8.181</version>
             </dependency>
+            <dependency>
+                <groupId>org.wiremock</groupId>
+                <artifactId>wiremock-standalone</artifactId>
+                <version>3.13.1</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 

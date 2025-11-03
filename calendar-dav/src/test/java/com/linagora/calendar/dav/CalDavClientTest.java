@@ -594,43 +594,4 @@ public class CalDavClientTest {
                 }
                 """);
     }
-
-    @Test
-    void itipRequestShouldResultInEventInDefaultCalendar() {
-        OpenPaaSUser bob = createOpenPaaSUser();
-        OpenPaaSUser cedric = createOpenPaaSUser();
-
-        String eventUid = "event-" + UUID.randomUUID();
-        String ics = """
-            BEGIN:VCALENDAR
-            VERSION:2.0
-            PRODID:-//Example Corp.//CalDAV Client//EN
-            CALSCALE:GREGORIAN
-            METHOD:REQUEST
-            BEGIN:VEVENT
-            UID:%s
-            DTSTAMP:20251003T080000Z
-            DTSTART:20251005T090000Z
-            DTEND:20251005T100000Z
-            SUMMARY:Meeting from Cedric
-            ORGANIZER;CN=Cedric:mailto:%s
-            ATTENDEE;CN=Bob;PARTSTAT=NEEDS-ACTION:mailto:%s
-            END:VEVENT
-            END:VCALENDAR
-            """.formatted(eventUid, cedric.username().asString(), bob.username().asString());
-
-        ITIPJsonBodyRequest itipRequest = ITIPJsonBodyRequest.builder()
-            .ical(ics)
-            .sender(cedric.username().asString())
-            .recipient(bob.username().asString())
-            .uid(eventUid)
-            .method("REQUEST")
-            .dtstamp(Instant.now())
-            .build();
-
-        testee.sendITIPRequest(bob.username(), CalendarURL.from(bob.id()), itipRequest).block();
-
-        assertThat(testee.calendarReportByUid(bob.username(), bob.id(), eventUid).block().value().toString())
-            .contains("Meeting from Cedric");
-    }
 }
