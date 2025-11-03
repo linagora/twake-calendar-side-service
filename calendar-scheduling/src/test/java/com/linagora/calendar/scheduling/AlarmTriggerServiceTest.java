@@ -208,6 +208,60 @@ public class AlarmTriggerServiceTest {
     }
 
     @Test
+    void shouldSendMultipleAlarmEmailsWhenEventHasMultipleVALARMs() throws Exception {
+        EventUid eventUid = new EventUid("multi-valarm-event");
+        MailAddress recipient = new MailAddress("attendee@abc.com");
+
+        AlarmEvent event = new AlarmEvent(
+            eventUid,
+            parse("30250801T094500Z"),
+            parse("30250801T100000Z"),
+            NO_RECURRING,
+            Optional.empty(),
+            recipient,
+            """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:multi-valarm-event
+                DTSTART:30250801T100000Z
+                DTEND:30250801T110000Z
+                SUMMARY:Multi-Alarm Event
+                LOCATION:Test Room
+                DESCRIPTION:Testing multiple VALARMs
+                ORGANIZER:mailto:organizer@abc.com
+                ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:attendee@abc.com
+                BEGIN:VALARM
+                TRIGGER:-PT30M
+                ACTION:EMAIL
+                DESCRIPTION:First Reminder
+                END:VALARM
+                BEGIN:VALARM
+                TRIGGER:-PT10M
+                ACTION:EMAIL
+                DESCRIPTION:Second Reminder
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """);
+        alarmEventDAO.create(event).block();
+
+        clock.setInstant(parse("30250801T083000Z"));
+        testee.sendMailAndCleanup(event).block();
+
+        awaitAtMost.untilAsserted(() ->
+            assertThat(smtpMailsResponse().getList("")).hasSize(1));
+
+        AlarmEvent persistedEvent = alarmEventDAO.find(eventUid, recipient).block();
+        assertThat(persistedEvent).isNotNull();
+        assertThat(persistedEvent.alarmTime()).isEqualTo(parse("30250801T095000Z"));
+        testee.sendMailAndCleanup(persistedEvent).block();
+
+        awaitAtMost.untilAsserted(() ->
+            assertThat(smtpMailsResponse().getList("")).hasSize(2));
+    }
+
+    @Test
     void shouldDeleteAlarmEventAfterSendingAlarmEmail() throws AddressException {
         Instant now = clock.instant();
         EventUid eventUid = new EventUid("event-uid-1");

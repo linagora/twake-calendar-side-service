@@ -1094,6 +1094,129 @@ public class AlarmInstantFactoryTest {
                 .extracting(AlarmInstant::eventStartTime)
                 .isEqualTo(Instant.parse("2025-08-30T10:00:00Z"));
         }
+
+        @Test
+        void shouldIterativelyReturnNextAlarmsForRecurringEvent() {
+            String ics = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:recurring-event
+                DTSTART:20250829T100000Z
+                DTEND:20250829T110000Z
+                RRULE:FREQ=DAILY;COUNT=3
+                ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                SUMMARY:Daily Standup
+                BEGIN:VALARM
+                ACTION:EMAIL
+                TRIGGER:-PT15M
+                DESCRIPTION:Reminder
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """;
+
+            Calendar calendar = CalendarUtil.parseIcs(ics);
+            Username user = Username.of("bob@example.com");
+            AlarmInstantFactory factory = testee(Instant.parse("2025-08-28T00:00:00Z"));
+
+            // Expected alarms for the 3 recurrences
+            Instant alarm1 = Instant.parse("2025-08-29T09:45:00Z");
+            Instant alarm2 = Instant.parse("2025-08-30T09:45:00Z");
+            Instant alarm3 = Instant.parse("2025-08-31T09:45:00Z");
+
+            // First call: no sinceInstant → first alarm
+            Optional<AlarmInstant> first = factory.computeNextAlarmInstant(calendar, user, Optional.empty());
+            assertThat(first)
+                .describedAs("First call should return the first recurrence alarm")
+                .isPresent()
+                .get()
+                .extracting(AlarmInstant::alarmTime)
+                .isEqualTo(alarm1);
+
+            // Second call: sinceInstant = alarm1 → next occurrence
+            Optional<AlarmInstant> second = factory.computeNextAlarmInstant(calendar, user, first.map(AlarmInstant::alarmTime));
+            assertThat(second)
+                .describedAs("Second call should return the next recurrence alarm")
+                .isPresent()
+                .get()
+                .extracting(AlarmInstant::alarmTime)
+                .isEqualTo(alarm2);
+
+            // Third call: sinceInstant = alarm2 → third occurrence
+            Optional<AlarmInstant> third = factory.computeNextAlarmInstant(calendar, user, second.map(AlarmInstant::alarmTime));
+            assertThat(third)
+                .describedAs("Third call should return the next recurrence alarm")
+                .isPresent()
+                .get()
+                .extracting(AlarmInstant::alarmTime)
+                .isEqualTo(alarm3);
+
+            // Fourth call: sinceInstant = alarm3 → no more recurrences
+            Optional<AlarmInstant> fourth = factory.computeNextAlarmInstant(calendar, user, third.map(AlarmInstant::alarmTime));
+            assertThat(fourth)
+                .describedAs("Should return empty after all recurrence alarms are consumed")
+                .isEmpty();
+        }
+
+        @Test
+        void shouldIterativelyReturnNextAlarmsAcrossMultipleVALARMsInRecurringEvent() {
+            String ics = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:recurring-multi-alarm
+                DTSTART:20250829T100000Z
+                DTEND:20250829T110000Z
+                RRULE:FREQ=DAILY;COUNT=3
+                ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                SUMMARY:Daily Meeting
+                BEGIN:VALARM
+                ACTION:EMAIL
+                TRIGGER:-PT30M
+                DESCRIPTION:Alarm 30m before
+                END:VALARM
+                BEGIN:VALARM
+                ACTION:EMAIL
+                TRIGGER:-PT10M
+                DESCRIPTION:Alarm 10m before
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """;
+
+            Calendar calendar = CalendarUtil.parseIcs(ics);
+            Username user = Username.of("bob@example.com");
+            AlarmInstantFactory factory = testee(Instant.parse("2025-08-28T00:00:00Z"));
+
+            // Expected order of all alarms
+            List<Instant> expectedAlarms = List.of(
+                Instant.parse("2025-08-29T09:30:00Z"),
+                Instant.parse("2025-08-29T09:50:00Z"),
+                Instant.parse("2025-08-30T09:30:00Z"),
+                Instant.parse("2025-08-30T09:50:00Z"),
+                Instant.parse("2025-08-31T09:30:00Z"),
+                Instant.parse("2025-08-31T09:50:00Z"));
+
+            Optional<AlarmInstant> current = factory.computeNextAlarmInstant(calendar, user, Optional.empty());
+
+            for (Instant expected : expectedAlarms) {
+                assertThat(current)
+                    .describedAs("Should return alarm at %s", expected)
+                    .isPresent()
+                    .get()
+                    .extracting(AlarmInstant::alarmTime)
+                    .isEqualTo(expected);
+
+                // use current alarm as sinceInstant for next iteration
+                current = factory.computeNextAlarmInstant(calendar, user, current.map(AlarmInstant::alarmTime));
+            }
+
+            // after all alarms consumed
+            assertThat(current)
+                .describedAs("No more alarms after all occurrences processed")
+                .isEmpty();
+        }
     }
 
     @Test
@@ -1289,6 +1412,198 @@ public class AlarmInstantFactoryTest {
                 .describedAs("Should return correct alarm for overridden all-day recurrence at %s", now)
                 .isEqualTo(expectedAlarm);
         }
+    }
+
+    @Test
+    void shouldReturnOnlyAlarmAfterSinceInstant() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            DTSTART:20250829T100000Z
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com
+            BEGIN:VALARM
+            ACTION:EMAIL
+            TRIGGER:-PT30M
+            END:VALARM
+            BEGIN:VALARM
+            ACTION:EMAIL
+            TRIGGER:-PT15M
+            END:VALARM
+            BEGIN:VALARM
+            ACTION:EMAIL
+            TRIGGER:-PT10M
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+        AlarmInstantFactory testee = testee(Instant.parse("2025-08-28T00:00:00Z"));
+        Username user = Username.of("bob@example.com");
+
+        Instant sinceInstant = Instant.parse("2025-08-29T09:45:00Z"); // -15m
+        Optional<AlarmInstant> result = testee.computeNextAlarmInstant(calendar, user, Optional.of(sinceInstant));
+
+        assertThat(result)
+            .isPresent()
+            .get()
+            .extracting(AlarmInstant::alarmTime)
+            .isEqualTo(Instant.parse("2025-08-29T09:50:00Z"));
+    }
+
+    @Test
+    void shouldIterativelyReturnNextAlarmsUsingSinceInstant() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            DTSTART:20250829T100000Z
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com
+            BEGIN:VALARM
+            ACTION:EMAIL
+            TRIGGER:-PT30M
+            END:VALARM
+            BEGIN:VALARM
+            ACTION:EMAIL
+            TRIGGER:-PT15M
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+        Username user = Username.of("bob@example.com");
+        AlarmInstantFactory factory = testee(Instant.parse("2025-08-28T00:00:00Z"));
+
+        // First call: sinceInstant empty → earliest alarm
+        Optional<AlarmInstant> first = factory.computeNextAlarmInstant(calendar, user, Optional.empty());
+        assertThat(first)
+            .describedAs("First call should return the earliest alarm")
+            .isPresent()
+            .get()
+            .extracting(AlarmInstant::alarmTime)
+            .isEqualTo(Instant.parse("2025-08-29T09:30:00Z"));
+
+        // Second call: sinceInstant = alarm1 → next alarm
+        Optional<AlarmInstant> second = factory.computeNextAlarmInstant(calendar, user, first.map(AlarmInstant::alarmTime));
+        assertThat(second)
+            .describedAs("Second call should return the next alarm after the first one")
+            .isPresent()
+            .get()
+            .extracting(AlarmInstant::alarmTime)
+            .isEqualTo(Instant.parse("2025-08-29T09:45:00Z"));
+
+        // Third call: sinceInstant = alarm2 → no more alarms
+        Optional<AlarmInstant> third = factory.computeNextAlarmInstant(calendar, user, second.map(AlarmInstant::alarmTime));
+        assertThat(third)
+            .describedAs("Should return empty after all alarms have been returned")
+            .isEmpty();
+    }
+
+    @Test
+    void shouldNotReturnAlarmEqualToSinceInstant() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            DTSTART:20250829T100000Z
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com
+            BEGIN:VALARM
+            ACTION:EMAIL
+            TRIGGER:-PT15M
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+        AlarmInstantFactory testee = testee(Instant.parse("2025-08-28T00:00:00Z"));
+        Username user = Username.of("bob@example.com");
+
+        // Alarm = 09:45Z, sinceInstant = same value
+        Optional<AlarmInstant> result = testee.computeNextAlarmInstant(calendar, user,
+            Optional.of(Instant.parse("2025-08-29T09:45:00Z")));
+
+        assertThat(result)
+            .describedAs("Should not return alarm when sinceInstant equals alarm time")
+            .isEmpty();
+    }
+
+    @Test
+    void shouldReturnEmptyWhenSinceInstantAfterAllAlarms() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            DTSTART:20250829T100000Z
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com
+            BEGIN:VALARM
+            ACTION:EMAIL
+            TRIGGER:-PT30M
+            END:VALARM
+            BEGIN:VALARM
+            ACTION:EMAIL
+            TRIGGER:-PT15M
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+        AlarmInstantFactory testee = testee(Instant.parse("2025-08-28T00:00:00Z"));
+        Username user = Username.of("bob@example.com");
+
+        // sinceInstant after last alarm (09:45Z)
+        Instant sinceInstant = Instant.parse("2025-08-29T09:50:00Z");
+        Optional<AlarmInstant> result = testee.computeNextAlarmInstant(calendar, user, Optional.of(sinceInstant));
+
+        assertThat(result)
+            .describedAs("Should return empty when sinceInstant is after all alarms")
+            .isEmpty();
+
+    }
+
+    @Test
+    void shouldHandleSinceInstantForAllDayEvent() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:allday-event
+            DTSTART;VALUE=DATE:20250829
+            DTEND;VALUE=DATE:20250830
+            SUMMARY:All Day Event
+            ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+            BEGIN:VALARM
+            ACTION:EMAIL
+            TRIGGER:-PT15M
+            DESCRIPTION:Reminder before all-day event
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+        Username user = Username.of("bob@example.com");
+
+        // All-day event starts at 2025-08-29T00:00:00Z -> alarm 2025-08-28T23:45:00Z
+        AlarmInstantFactory testee = testee(Instant.parse("2025-08-28T23:40:00Z"));
+        Optional<AlarmInstant> resultBefore = testee
+            .computeNextAlarmInstant(calendar, user, Optional.empty());
+
+        assertThat(resultBefore)
+            .describedAs("Should return alarm when sinceInstant before alarm")
+            .isPresent()
+            .get()
+            .extracting(AlarmInstant::alarmTime)
+            .isEqualTo(Instant.parse("2025-08-28T23:45:00Z"));
+
+        // If sinceInstant after alarm => no alarm
+        Optional<AlarmInstant> resultAfter = testee.computeNextAlarmInstant(calendar, user, resultBefore.map(AlarmInstant::alarmTime));
+        assertThat(resultAfter)
+            .describedAs("Should return empty when sinceInstant after all-day alarm")
+            .isEmpty();
     }
 
     private MailAddress asMailAddress(String email) {
