@@ -27,6 +27,7 @@ import static org.hamcrest.Matchers.notNullValue;
 import static org.mockito.Mockito.spy;
 
 import java.time.Clock;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -429,6 +430,86 @@ public class RepositionResourceRightsTest {
             .body("status", is("completed"))
             .body("additionalInformation.processedResourceCount", is(0))
             .body("additionalInformation.failedResourceCount", is(0));
+    }
+
+    @Test
+    void shouldNotRemoveExtraAdminsOnDavDuringReposition() {
+        // Given
+        OpenPaaSUser admin1 = sabreDavExtension.newTestUser();
+        OpenPaaSUser ghostAdmin = sabreDavExtension.newTestUser();
+        OpenPaaSUser creator = sabreDavExtension.newTestUser();
+
+        // Create resource with 1 admin (admin1)
+        ResourceId resourceId = createNewResource(creator, List.of(admin1));
+
+        // Sanity check — DAV initially contains only admin1
+        ArrayNode before = sabreDavExtension.davTestHelper()
+            .getCalendarDelegateInvites(domainId, resourceId)
+            .block();
+
+        assertThat(before.findValuesAsText("href"))
+            .contains("mailto:" + admin1.username().asString());
+
+        // Simulate an extra DAV-only admin (ghost)
+        calDavClient.grantReadWriteRights(domainId, resourceId, List.of(ghostAdmin.username()))
+            .block();
+
+        // Confirm both admins are now on DAV
+        ArrayNode withGhost = sabreDavExtension.davTestHelper()
+            .getCalendarDelegateInvites(domainId, resourceId)
+            .block();
+
+        assertThat(withGhost.findValuesAsText("href"))
+            .contains("mailto:" + admin1.username().asString())
+            .contains("mailto:" + ghostAdmin.username().asString());
+
+        // WHEN — run reposition task
+        runRepositionTaskAndAwait()
+            .statusCode(200)
+            .body("status", is("completed"))
+            .body("additionalInformation.processedResourceCount", is(1))
+            .body("additionalInformation.failedResourceCount", is(0));
+
+        // THEN — both admins (backend + extra) should still be present
+        ArrayNode after = sabreDavExtension.davTestHelper()
+            .getCalendarDelegateInvites(domainId, resourceId)
+            .block();
+
+        assertThat(after.findValuesAsText("href"))
+            .contains("mailto:" + admin1.username().asString())
+            .contains("mailto:" + ghostAdmin.username().asString());
+    }
+
+    @Test
+    void shouldGrantRightsOnlyForResourcesHavingAdministrators() {
+        // Given
+        OpenPaaSUser admin = sabreDavExtension.newTestUser();
+
+        // Resource A: has admin
+        ResourceId resourceWithAdmin = createNewResource(creator, List.of(admin));
+
+        // Resource B: has no admin
+        ResourceId resourceWithoutAdmin = createNewResource(creator, List.of());
+
+        Mockito.reset(calDavClient);
+
+        // WHEN
+        runRepositionTaskAndAwait()
+            .statusCode(200)
+            .body("status", is("completed"))
+            .body("additionalInformation.processedResourceCount", is(2))
+            .body("additionalInformation.failedResourceCount", is(0));
+
+        // THEN
+        Mockito.verify(calDavClient, Mockito.atLeastOnce())
+            .grantReadWriteRights(Mockito.any(),
+                Mockito.eq(resourceWithAdmin),
+                Mockito.any());
+
+        Mockito.verify(calDavClient)
+            .grantReadWriteRights(Mockito.any(),
+                Mockito.eq(resourceWithoutAdmin),
+                Mockito.argThat(Collection::isEmpty));
     }
 
     private ResourceId createNewResource(OpenPaaSUser creator, List<OpenPaaSUser> admins) {
