@@ -271,8 +271,12 @@ Status codes:
  - 201 if created. Location includes the URL allowing to read resource details
  - 400 if invalid: the creator/domain/administrator do not exceed or extra fields / invalid JSON
 
-A resource witout administrator is not subject to the validation flow: any event request with this resource is 
+A resource without administrator is not subject to the validation flow: any event request with this resource is 
 automatically accepted.
+
+Please note that resource administrators:
+ - are emails upon events created that book the resource
+ - have delegation write access to the calendar of the resource
 
 ### Updating a resource
 
@@ -292,6 +296,23 @@ Would update the resource accordingly. Each field is nullable and if unspecified
 
 Status code: 204 if updated, 400 if invalid eg administrator not found, 404 if the resource is not found.
 
+
+
+Please note that resource administrators:
+ - are emails upon events created that book the resource
+ - have delegation write access to the calendar of the resource. Removing administrator will revoke this delegation 
+right.
+
+### Repositioning write right for admins on resource calendar
+
+```
+POST /resources?task=repositionWriteRights
+```
+
+Will iterate on each resource and ensures current administrators have delegation write access to the resource calendar,
+allowing the to accept, reject and counter events in the name of the resource.
+
+Note that existing delegation write to no longer existing users will not be revoked.
 
 ## Domain admins routes
 
