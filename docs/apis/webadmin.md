@@ -364,3 +364,47 @@ Revokes administrator rights of user `user1@linagora.com` for domain `linagora.c
 - `204` if successful, even if the user exists but was not an admin (idempotent).
 - `404` if the domain or user does not exist.
 - `400` if `domainName` or `username` has an invalid format.  
+
+---
+
+### Running the resource rights reposition task
+
+This task allows re-applying or correcting CalDAV resource rights based on the current resources administrators stored
+in the database.
+
+```
+POST /resources/tasks?task=repositionWriteRights
+```
+
+**Status codes**
+
+- `201`
+
+```
+{
+  "taskId": "e1cbbf3e-fd3c-4c60-b06a-d75e05dfbfe0"
+}
+```
+
+You can then use the `taskId` to query the task status and details:
+
+```
+GET /tasks/e1cbbf3e-fd3c-4c60-b06a-d75e05dfbfe0/await
+```
+
+**Sample Response**
+
+```json
+{
+  "taskId": "e1cbbf3e-fd3c-4c60-b06a-d75e05dfbfe0",
+  "type": "reposition-resource-rights",
+  "startedDate": "2025-10-15T07:12:45Z",
+  "status": "inProgress",
+  "additionalInformation": {
+    "type": "reposition-resource-rights",
+    "processedResourceCount": 3,
+    "failedResourceCount": 0,
+    "timestamp": "2025-10-15T07:12:45Z"
+  }
+}
+```
