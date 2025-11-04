@@ -126,7 +126,6 @@ public class EventITIPConsumer implements Closeable, Startable {
     }
 
     private Mono<Void> consumeMessage(AcknowledgableDelivery ackDelivery) {
-        LOGGER.debug("Consuming calendar itip event message {}", new String(ackDelivery.getBody(), StandardCharsets.UTF_8));
         return calDavClient.sendIMIPCallback(ackDelivery.getBody())
             .doOnSuccess(result -> ackDelivery.ack())
             .onErrorResume(error -> {

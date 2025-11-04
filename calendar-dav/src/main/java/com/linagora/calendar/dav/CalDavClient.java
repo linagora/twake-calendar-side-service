@@ -475,7 +475,9 @@ public class CalDavClient extends DavClient {
             .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(payload)))
             .responseSingle((response, responseContent) -> {
                 if (response.status().code() == 204) {
-                    LOGGER.debug("IMIP callback sent successfully with content {}", new String(payload, StandardCharsets.UTF_8));
+                    if (LOGGER.isDebugEnabled()) {
+                        LOGGER.debug("IMIP callback sent successfully with content {}", new String(payload, StandardCharsets.UTF_8));
+                    }
                     return Mono.empty();
                 }
                 return responseContent.asString(StandardCharsets.UTF_8)
