@@ -25,12 +25,7 @@ import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
@@ -43,7 +38,6 @@ import org.apache.james.backends.rabbitmq.RabbitMQConnectionFactory;
 import org.apache.james.backends.rabbitmq.RabbitMQExtension;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
-import org.apache.james.core.Username;
 import org.apache.james.metrics.api.NoopGaugeRegistry;
 import org.apache.james.metrics.tests.RecordingMetricFactory;
 import org.junit.jupiter.api.AfterAll;
@@ -60,9 +54,6 @@ import com.github.tomakehurst.wiremock.client.WireMock;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavConfiguration;
-import com.linagora.calendar.storage.MemoryOpenPaaSUserDAO;
-import com.linagora.calendar.storage.OpenPaaSUser;
-import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.rabbitmq.client.AMQP;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
@@ -77,8 +68,6 @@ public class EventITIPConsumerTest {
         .await();
     private static final ConditionFactory awaitAtMost = calmlyAwait.atMost(20, TimeUnit.SECONDS);
 
-    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
-        .withZone(ZoneOffset.UTC);
     private static final Optional<Boolean> TRUST_ALL_SSL_CERTS = Optional.of(true);
 
     @RegisterExtension
@@ -87,14 +76,10 @@ public class EventITIPConsumerTest {
 
     private static ReactorRabbitMQChannelPool channelPool;
     private static SimpleConnectionPool connectionPool;
-    private static Connection connection;
     private static Channel channel;
     private static WireMockServer wireMockServer;
 
-    private OpenPaaSUserDAO openPaaSUserDAO;
-    private CalDavClient calDavClient;
     private EventITIPConsumer consumer;
-    private Clock clock;
 
     @BeforeAll
     static void beforeAll() throws Exception {
@@ -116,7 +101,7 @@ public class EventITIPConsumerTest {
             new RecordingMetricFactory(),
             new NoopGaugeRegistry());
         channelPool.start();
-        connection = connectionPool.getResilientConnection().block();
+        Connection connection = connectionPool.getResilientConnection().block();
         channel = connection.createChannel();
     }
 
@@ -129,14 +114,12 @@ public class EventITIPConsumerTest {
 
     @BeforeEach
     void setUp() throws SSLException {
-        openPaaSUserDAO = new MemoryOpenPaaSUserDAO();
         DavConfiguration davConfiguration = new DavConfiguration(new UsernamePasswordCredentials("abc", "123"),
             URI.create("http://localhost:" + wireMockServer.port()),
             TRUST_ALL_SSL_CERTS,
             Optional.empty());
-        calDavClient = new CalDavClient(davConfiguration, TECHNICAL_TOKEN_SERVICE_TESTING);
-        clock = Clock.fixed(Instant.now(), ZoneId.of("UTC"));
-        consumer = new EventITIPConsumer(channelPool, QueueArguments.Builder::new, calDavClient, openPaaSUserDAO, clock);
+        CalDavClient calDavClient = new CalDavClient(davConfiguration, TECHNICAL_TOKEN_SERVICE_TESTING);
+        consumer = new EventITIPConsumer(channelPool, QueueArguments.Builder::new, calDavClient);
         consumer.init();
     }
 
@@ -150,8 +133,7 @@ public class EventITIPConsumerTest {
 
     @Test
     void shouldRequestIMIPCallbackAfterConsumingEventITIPMessage() throws Exception {
-        OpenPaaSUser user = openPaaSUserDAO.add(Username.of("bob@example.com")).block();
-        wireMockServer.stubFor(WireMock.request("IMIPCALLBACK", WireMock.urlEqualTo("/calendars/" + user.id().value()))
+        wireMockServer.stubFor(WireMock.request("IMIPCALLBACK", WireMock.urlEqualTo("/calendars/imipCallback"))
             .willReturn(WireMock.aResponse().withStatus(204)));
 
         String json = """
@@ -170,20 +152,8 @@ public class EventITIPConsumerTest {
 
         awaitAtMost.untilAsserted(() -> {
             WireMock.verify(
-                WireMock.requestedFor("IMIPCALLBACK", WireMock.urlEqualTo("/calendars/" + user.id().value()))
-                    .withRequestBody(WireMock.equalToJson("""
-                        {
-                          "ical": "BEGIN:VCALENDAR\\nEND:VCALENDAR",
-                          "sender": "alice@example.com",
-                          "recipient": "bob@example.com",
-                          "replyTo": "alice@example.com",
-                          "uid": "a71aadec-40d9-4d1e-a1ab-984202fb1d1d",
-                          "dtstamp": "%s",
-                          "method": "REQUEST",
-                          "sequence": "0",
-                          "recurrence-id": null
-                        }
-                        """.formatted(TIME_FORMATTER.format(clock.instant()))))
+                WireMock.requestedFor("IMIPCALLBACK", WireMock.urlEqualTo("/calendars/imipCallback"))
+                    .withRequestBody(WireMock.equalToJson(json))
             );
         });
     }

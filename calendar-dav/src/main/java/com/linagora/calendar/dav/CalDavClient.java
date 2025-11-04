@@ -41,13 +41,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.github.fge.lambdas.Throwing;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Streams;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.dto.CalendarEventReportResponse;
-import com.linagora.calendar.dav.dto.ITIPJsonBodyRequest;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -468,24 +466,24 @@ public class CalDavClient extends DavClient {
             });
     }
 
-    public Mono<Void> sendIMIPCallback(Username username, OpenPaaSId userId, ITIPJsonBodyRequest itipJsonBodyRequest) {
-        String uri = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/" + userId.value();
-        return httpClientWithImpersonation(username).headers(headers -> headers.add(HttpHeaderNames.ACCEPT, "application/json")
+    public Mono<Void> sendIMIPCallback(byte[] payload) {
+        return authenticationByAdmin().headers(headers -> headers
+                .add(HttpHeaderNames.ACCEPT, "application/json")
                 .add(HttpHeaderNames.CONTENT_TYPE, "application/json"))
             .request(HttpMethod.valueOf("IMIPCALLBACK"))
-            .uri(uri)
-            .send(Mono.fromCallable(() -> Throwing.supplier(() ->
-                Unpooled.wrappedBuffer(OBJECT_MAPPER.writeValueAsString(itipJsonBodyRequest).getBytes(StandardCharsets.UTF_8))).get()))
+            .uri("/calendars/imipCallback")
+            .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(payload)))
             .responseSingle((response, responseContent) -> {
                 if (response.status().code() == 204) {
+                    LOGGER.debug("IMIP callback sent successfully with content {}", new String(payload, StandardCharsets.UTF_8));
                     return Mono.empty();
                 }
                 return responseContent.asString(StandardCharsets.UTF_8)
                     .switchIfEmpty(Mono.just(StringUtils.EMPTY))
                     .flatMap(body -> Mono.error(new RuntimeException("""
-                        Unexpected status code: %d when sending IMIP callback to '%s'
+                        Unexpected status code: %d when sending IMIP callback
                         %s
-                        """.formatted(response.status().code(), uri, body))));
+                        """.formatted(response.status().code(), body))));
             });
     }
 

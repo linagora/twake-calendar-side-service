@@ -25,7 +25,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.charset.StandardCharsets;
-import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -41,7 +40,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.dto.CalendarEventReportResponse;
-import com.linagora.calendar.dav.dto.ITIPJsonBodyRequest;
 import com.linagora.calendar.dav.dto.VCalendarDto;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.MailboxSessionUtil;
