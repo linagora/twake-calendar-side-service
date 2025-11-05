@@ -58,6 +58,8 @@ public class CalendarAmqpModule extends AbstractModule {
         bind(EventEmailConsumer.class).in(Scopes.SINGLETON);
         bind(EventAlarmConsumer.class).in(Scopes.SINGLETON);
         bind(EventResourceConsumer.class).in(Scopes.SINGLETON);
+        bind(EventCalendarConsumer.class).in(Scopes.SINGLETON);
+
         bind(EventCalendarHandler.class).in(Scopes.SINGLETON);
 
         Multibinder<HealthCheck> healthCheckMultibinder = Multibinder.newSetBinder(binder(), HealthCheck.class);
