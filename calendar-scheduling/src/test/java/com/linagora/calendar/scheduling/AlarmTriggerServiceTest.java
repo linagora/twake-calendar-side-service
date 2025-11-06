@@ -795,6 +795,67 @@ public class AlarmTriggerServiceTest {
         awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponse().getList("")).hasSize(3));
     }
 
+    @Test
+    void shouldComputeNextVALARMForSameRecipientWhenSomeVALARMsBelongToOthers() throws Exception {
+        EventUid eventUid = new EventUid("multi-recipient-valarm-event");
+        MailAddress bob = new MailAddress("bob@abc.com");
+        MailAddress alice = new MailAddress("alice@abc.com");
+
+        AlarmEvent event = new AlarmEvent(eventUid,
+            parse("30250801T093000Z"), // current alarm time (-30m)
+            parse("30250801T100000Z"), // event start
+            NO_RECURRING,
+            Optional.empty(),
+            bob,
+            """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:multi-recipient-valarm-event
+                DTSTART:30250801T100000Z
+                DTEND:30250801T110000Z
+                SUMMARY:Event with mixed VALARMs
+                LOCATION:Test Room
+                DESCRIPTION:Test mixed recipients
+                ORGANIZER:mailto:organizer@abc.com
+                ATTENDEE;PARTSTAT=accepted;CN=Test Attendee:mailto:bob@abc.com
+                ATTENDEE;PARTSTAT=accepted;CN=Test Attendee:mailto:alice@abc.com
+                BEGIN:VALARM
+                TRIGGER:-PT30M
+                ACTION:EMAIL
+                DESCRIPTION:First Reminder (Bob)
+                ATTENDEE:mailto:bob@abc.com
+                END:VALARM
+                BEGIN:VALARM
+                TRIGGER:-PT20M
+                ACTION:EMAIL
+                DESCRIPTION:Second Reminder (Alice)
+                ATTENDEE:mailto:alice@abc.com
+                END:VALARM
+                BEGIN:VALARM
+                TRIGGER:-PT10M
+                ACTION:EMAIL
+                DESCRIPTION:Third Reminder (Bob)
+                ATTENDEE:mailto:bob@abc.com
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """);
+
+        alarmEventDAO.create(event).block();
+
+        // Simulate current time after -30m (alarm 1) but before -20m (alarm 2)
+        clock.setInstant(parse("30250801T094000Z"));
+
+        // Trigger service
+        testee.sendMailAndCleanup(event).block();
+
+        // Verify that AlarmEvent is updated to the next alarm (Bob’s -10m)
+        AlarmEvent persisted = alarmEventDAO.find(eventUid, bob).block();
+        assertThat(persisted).isNotNull();
+        assertThat(persisted.alarmTime()).isEqualTo(parse("30250801T095000Z"));
+    }
+
     private JsonPath smtpMailsResponse() {
         return given(requestSpecification).get("/smtpMails").jsonPath();
     }

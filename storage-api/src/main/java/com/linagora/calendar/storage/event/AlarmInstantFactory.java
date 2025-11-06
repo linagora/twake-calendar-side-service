@@ -51,6 +51,7 @@ import org.apache.james.core.Username;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 
@@ -110,6 +111,7 @@ public interface AlarmInstantFactory {
                 .filter(event -> !EventParseUtils.isCancelled(event))
                 .flatMap(event -> computeAlarmInstants(event).stream())
                 .filter(alarmInstant -> alarmInstant.alarmTime().isAfter(sinceInstantValue))
+                .filter(Throwing.predicate(alarmInstant -> alarmInstant.recipients().contains(username.asMailAddress())))
                 .min(EARLIEST_FIRST_ALARM_COMPARATOR);
         }
 

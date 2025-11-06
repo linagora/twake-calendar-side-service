@@ -122,7 +122,6 @@ public class AlarmTriggerService {
 
         return Mono.fromCallable(() -> alarmInstantFactory.computeNextAlarmInstant(CalendarUtil.parseIcs(alarmEvent.ics()), username, Optional.of(sinceInstant)))
             .flatMap(alarmInstantOptional -> alarmInstantOptional
-                .filter(alarmInstant -> alarmInstant.recipients().contains(alarmEvent.recipient()))
                 .map(alarmInstant -> alarmEventDAO.update(alarmEvent.withNextOccurrence(alarmInstant)))
                 .orElseGet(() -> alarmEventDAO.delete(alarmEvent.eventUid(), alarmEvent.recipient())));
     }
