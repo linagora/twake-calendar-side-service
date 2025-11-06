@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.amqp;
 
+import static com.linagora.calendar.amqp.EventITIPConsumer.CONNECTED_USER;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static com.rabbitmq.client.MessageProperties.PERSISTENT_TEXT_PLAIN;
 import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
@@ -26,6 +27,8 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
@@ -52,6 +55,7 @@ import org.testcontainers.shaded.org.awaitility.core.ConditionFactory;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
+import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavConfiguration;
 import com.rabbitmq.client.AMQP;
@@ -148,7 +152,7 @@ public class EventITIPConsumerTest {
               "component" : "VEVENT"
             }
             """;
-        publishMessage(json);
+        publishMessage("bob@example.com", json);
 
         awaitAtMost.untilAsserted(() -> {
             WireMock.verify(
@@ -158,11 +162,12 @@ public class EventITIPConsumerTest {
         });
     }
 
-    private void publishMessage(String message) throws IOException {
+    private void publishMessage(String user, String message) throws IOException {
         AMQP.BasicProperties basicProperties = new AMQP.BasicProperties.Builder()
             .deliveryMode(PERSISTENT_TEXT_PLAIN.getDeliveryMode())
             .priority(PERSISTENT_TEXT_PLAIN.getPriority())
             .contentType(PERSISTENT_TEXT_PLAIN.getContentType())
+            .headers(ImmutableMap.of(CONNECTED_USER, user))
             .build();
 
         channel.basicPublish(EventITIPConsumer.EXCHANGE_NAME, EMPTY_ROUTING_KEY, basicProperties, message.getBytes(StandardCharsets.UTF_8));

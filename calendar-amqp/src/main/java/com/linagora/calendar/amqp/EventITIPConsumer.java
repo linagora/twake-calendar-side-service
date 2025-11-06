@@ -24,7 +24,6 @@ import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
 import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.io.Closeable;
-import java.nio.charset.StandardCharsets;
 import java.util.function.Supplier;
 
 import jakarta.inject.Inject;
@@ -32,6 +31,7 @@ import jakarta.inject.Inject;
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.ReceiverProvider;
+import org.apache.james.core.Username;
 import org.apache.james.lifecycle.api.Startable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,6 +56,7 @@ public class EventITIPConsumer implements Closeable, Startable {
     public static final String EXCHANGE_NAME = "calendar:itip:deliver";
     public static final String QUEUE_NAME = "tcalendar:itip:deliver";
     public static final String DEAD_LETTER_QUEUE = "tcalendar:itip:deliver:dead-letter";
+    public static final String CONNECTED_USER = "connectedUser";
 
     private static final Logger LOGGER = LoggerFactory.getLogger(EventITIPConsumer.class);
     private static final boolean REQUEUE_ON_NACK = true;
@@ -126,7 +127,8 @@ public class EventITIPConsumer implements Closeable, Startable {
     }
 
     private Mono<Void> consumeMessage(AcknowledgableDelivery ackDelivery) {
-        return calDavClient.sendIMIPCallback(ackDelivery.getBody())
+        return Mono.fromCallable(() -> Username.of(ackDelivery.getProperties().getHeaders().get(CONNECTED_USER).toString()))
+                .flatMap(user -> calDavClient.sendIMIPCallback(user, ackDelivery.getBody()))
             .doOnSuccess(result -> ackDelivery.ack())
             .onErrorResume(error -> {
                 LOGGER.error("Error when consume calendar itip event message", error);

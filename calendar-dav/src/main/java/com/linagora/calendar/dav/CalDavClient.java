@@ -466,8 +466,8 @@ public class CalDavClient extends DavClient {
             });
     }
 
-    public Mono<Void> sendIMIPCallback(byte[] payload) {
-        return authenticationByAdmin().headers(headers -> headers
+    public Mono<Void> sendIMIPCallback(Username connectedUser, byte[] payload) {
+        return httpClientWithImpersonation(connectedUser).headers(headers -> headers
                 .add(HttpHeaderNames.ACCEPT, "application/json")
                 .add(HttpHeaderNames.CONTENT_TYPE, "application/json"))
             .request(HttpMethod.valueOf("IMIPCALLBACK"))

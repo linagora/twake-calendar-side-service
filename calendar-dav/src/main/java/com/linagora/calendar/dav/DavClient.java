@@ -60,13 +60,6 @@ public abstract class DavClient {
         return client;
     }
 
-    protected HttpClient authenticationByAdmin() {
-        return client.headers(headers -> headers.add(HttpHeaderNames.AUTHORIZATION,
-            HttpUtils.createBasicAuthenticationToken(new UsernamePasswordCredentials(
-                config.adminCredential().getUserName(),
-                config.adminCredential().getPassword()))));
-    }
-
     private String authenticationToken(String username) {
         return HttpUtils.createBasicAuthenticationToken(new UsernamePasswordCredentials(
             config.adminCredential().getUserName() + "&" + username,
