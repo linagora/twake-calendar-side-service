@@ -143,8 +143,7 @@ public class AlarmInstantFactoryTest {
             ATTENDEE;CN=Jane Doe;PARTSTAT=ACCEPTED:mailto:jane@example.com
             BEGIN:VALARM
             ACTION:EMAIL
-            ATTENDEE:mailto:jane1@example.com
-            ATTENDEE:mailto:jane2@example.com
+            ATTENDEE:mailto:jane@example.com
             TRIGGER:-PT15M
             END:VALARM
             END:VEVENT
@@ -163,8 +162,7 @@ public class AlarmInstantFactoryTest {
             .contains(new AlarmInstant(Instant.parse("2025-08-29T09:45:00Z"),
                 Instant.parse("2025-08-29T10:00:00Z"),
                 Optional.empty(),
-                List.of(asMailAddress("jane1@example.com"),
-                    asMailAddress("jane2@example.com"))));
+                List.of(asMailAddress("jane@example.com"))));
     }
 
     @Test
@@ -663,7 +661,7 @@ public class AlarmInstantFactoryTest {
                 BEGIN:VALARM
                 TRIGGER:-PT15M
                 ACTION:EMAIL
-                ATTENDEE:mailto:bob1@example.com
+                ATTENDEE:mailto:bob@example.com
                 DESCRIPTION:Reminder
                 END:VALARM
                 END:VEVENT
@@ -672,7 +670,7 @@ public class AlarmInstantFactoryTest {
 
             Calendar calendar = CalendarUtil.parseIcs(calendarContent);
             Username attendee = Username.of("bob@example.com");
-            MailAddress alarmRecipient = asMailAddress("bob1@example.com");
+            MailAddress alarmRecipient = asMailAddress("bob@example.com");
             // Define recurrence instances
             Instant start1 = Instant.parse("2025-08-29T10:00:00Z");
             Instant start2 = Instant.parse("2025-08-30T10:00:00Z");

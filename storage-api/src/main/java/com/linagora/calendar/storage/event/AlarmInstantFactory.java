@@ -111,7 +111,8 @@ public interface AlarmInstantFactory {
                 .filter(event -> !EventParseUtils.isCancelled(event))
                 .flatMap(event -> computeAlarmInstants(event).stream())
                 .filter(alarmInstant -> alarmInstant.alarmTime().isAfter(sinceInstantValue))
-                .filter(Throwing.predicate(alarmInstant -> alarmInstant.recipients().contains(username.asMailAddress())))
+                .filter(Throwing.predicate(alarmInstant -> alarmInstant.recipients().isEmpty()
+                    || alarmInstant.recipients().contains(username.asMailAddress())))
                 .min(EARLIEST_FIRST_ALARM_COMPARATOR);
         }
 
