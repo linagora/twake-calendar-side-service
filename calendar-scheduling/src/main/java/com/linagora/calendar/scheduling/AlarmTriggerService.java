@@ -62,7 +62,6 @@ import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.component.VEvent;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
@@ -118,16 +117,13 @@ public class AlarmTriggerService {
     }
 
     private Mono<Void> cleanup(AlarmEvent alarmEvent) {
-        if (alarmEvent.recurring()) {
-            // If the event is recurring, we need to update the alarm time for the next occurrence
-            return alarmInstantFactory.computeNextAlarmInstant(CalendarUtil.parseIcs(alarmEvent.ics()), Username.fromMailAddress(alarmEvent.recipient()))
-                .map(alarmInstant -> Flux.fromIterable(alarmInstant.recipients())
-                    .map(recipient -> alarmEvent.withNextOccurrence(alarmInstant))
-                    .flatMap(alarmEventDAO::update)
-                    .then())
-                .orElse(alarmEventDAO.delete(alarmEvent.eventUid(), alarmEvent.recipient()));
-        }
-        return alarmEventDAO.delete(alarmEvent.eventUid(), alarmEvent.recipient());
+        Username username = Username.fromMailAddress(alarmEvent.recipient());
+        Instant sinceInstant = alarmEvent.alarmTime();
+
+        return Mono.fromCallable(() -> alarmInstantFactory.computeNextAlarmInstant(CalendarUtil.parseIcs(alarmEvent.ics()), username, Optional.of(sinceInstant)))
+            .flatMap(alarmInstantOptional -> alarmInstantOptional
+                .map(alarmInstant -> alarmEventDAO.update(alarmEvent.withNextOccurrence(alarmInstant)))
+                .orElseGet(() -> alarmEventDAO.delete(alarmEvent.eventUid(), alarmEvent.recipient())));
     }
 
     private Mono<Void> sendMail(AlarmEvent alarmEvent, Instant now) {

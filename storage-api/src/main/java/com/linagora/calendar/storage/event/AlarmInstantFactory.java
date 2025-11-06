@@ -51,6 +51,7 @@ import org.apache.james.core.Username;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 
@@ -81,7 +82,11 @@ public interface AlarmInstantFactory {
         }
     }
 
-    Optional<AlarmInstant> computeNextAlarmInstant(Calendar calendar, Username username);
+    Optional<AlarmInstant> computeNextAlarmInstant(Calendar calendar, Username username, Optional<Instant> sinceInstant);
+
+    default Optional<AlarmInstant> computeNextAlarmInstant(Calendar calendar, Username username) {
+        return computeNextAlarmInstant(calendar, username, Optional.empty());
+    }
 
     class Default implements AlarmInstantFactory {
 
@@ -99,12 +104,15 @@ public interface AlarmInstantFactory {
         }
 
         @Override
-        public Optional<AlarmInstant> computeNextAlarmInstant(Calendar calendar, Username username) {
-            Instant now = clock.instant();
+        public Optional<AlarmInstant> computeNextAlarmInstant(Calendar calendar, Username username, Optional<Instant> sinceInstant) {
+            Instant sinceInstantValue = sinceInstant
+                .orElse(clock.instant());
             return listUpcomingAcceptedVEvents(calendar, username).stream()
                 .filter(event -> !EventParseUtils.isCancelled(event))
                 .flatMap(event -> computeAlarmInstants(event).stream())
-                .filter(alarmInstant -> alarmInstant.alarmTime().isAfter(now))
+                .filter(alarmInstant -> alarmInstant.alarmTime().isAfter(sinceInstantValue))
+                .filter(Throwing.predicate(alarmInstant -> alarmInstant.recipients().isEmpty()
+                    || alarmInstant.recipients().contains(username.asMailAddress())))
                 .min(EARLIEST_FIRST_ALARM_COMPARATOR);
         }
 
