@@ -183,6 +183,7 @@ public class DockerSabreDavSetup {
             new UsernamePasswordCredentials(DAV_ADMIN, DAV_ADMIN_PASSWORD),
             getSabreDavURI(),
             Optional.of(TRUST_ALL_SSL_CERTS),
+            Optional.empty(),
             Optional.empty());
     }
 

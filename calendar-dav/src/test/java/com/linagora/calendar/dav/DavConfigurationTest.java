@@ -48,12 +48,14 @@ class DavConfigurationTest {
         configuration.addProperty("dav.admin.password", "123");
         configuration.addProperty("dav.rest.client.trust.all.ssl.certs", "true");
         configuration.addProperty("dav.rest.client.response.timeout", "500");
+        configuration.addProperty("dav.rest.client.imip.callback.response.timeout", "10000");
 
         DavConfiguration expected = new DavConfiguration(
             new UsernamePasswordCredentials("jhon_doe", "123"),
             new URI("http://localhost:8080"),
             Optional.of(true),
-            Optional.of(Duration.ofMillis(500)));
+            Optional.of(Duration.ofMillis(500)),
+            Optional.of(Duration.ofSeconds(10)));
 
         assertThat(DavConfiguration.from(configuration))
             .isEqualTo(expected);

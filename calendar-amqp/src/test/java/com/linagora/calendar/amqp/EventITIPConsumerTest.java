@@ -121,6 +121,7 @@ public class EventITIPConsumerTest {
         DavConfiguration davConfiguration = new DavConfiguration(new UsernamePasswordCredentials("abc", "123"),
             URI.create("http://localhost:" + wireMockServer.port()),
             TRUST_ALL_SSL_CERTS,
+            Optional.empty(),
             Optional.empty());
         CalDavClient calDavClient = new CalDavClient(davConfiguration, TECHNICAL_TOKEN_SERVICE_TESTING);
         consumer = new EventITIPConsumer(channelPool, QueueArguments.Builder::new, calDavClient);
