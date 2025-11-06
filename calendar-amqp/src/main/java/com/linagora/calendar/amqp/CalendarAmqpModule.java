@@ -47,6 +47,7 @@ import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolve
 
 public class CalendarAmqpModule extends AbstractModule {
     public static final String INJECT_KEY_DAV = "dav";
+    public static final int DEFAULT_ITIP_EVENT_MESSAGES_PREFETCH_COUNT = 16;
 
     private static final boolean FALLBACK_CLASSIC_QUEUES_VERSION_1 = Boolean.parseBoolean(System.getProperty("fallback.classic.queues.v1", "false"));
     private static final String QUEUES_QUORUM_BYPASS_PROPERTY = "dav.queues.quorum.bypass";
@@ -190,5 +191,13 @@ public class CalendarAmqpModule extends AbstractModule {
     boolean provideDefaultCalendarPublicVisibilityEnabled(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
         Configuration config = propertiesProvider.getConfiguration("configuration");
         return config.getBoolean("default.calendar.public.visibility.enabled", false);
+    }
+
+    @Provides
+    @Singleton
+    @Named("itipEventMessagesPrefetchCount")
+    int provideITIPEventMessagesPrefetchCount(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
+        Configuration config = propertiesProvider.getConfiguration("configuration");
+        return config.getInt("itip.event.messages.prefetch.count", DEFAULT_ITIP_EVENT_MESSAGES_PREFETCH_COUNT);
     }
 }

@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.amqp;
 
+import static com.linagora.calendar.amqp.CalendarAmqpModule.DEFAULT_ITIP_EVENT_MESSAGES_PREFETCH_COUNT;
 import static com.linagora.calendar.amqp.EventITIPConsumer.CONNECTED_USER;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static com.rabbitmq.client.MessageProperties.PERSISTENT_TEXT_PLAIN;
@@ -27,8 +28,6 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
@@ -124,7 +123,7 @@ public class EventITIPConsumerTest {
             Optional.empty(),
             Optional.empty());
         CalDavClient calDavClient = new CalDavClient(davConfiguration, TECHNICAL_TOKEN_SERVICE_TESTING);
-        consumer = new EventITIPConsumer(channelPool, QueueArguments.Builder::new, calDavClient);
+        consumer = new EventITIPConsumer(channelPool, QueueArguments.Builder::new, calDavClient, DEFAULT_ITIP_EVENT_MESSAGES_PREFETCH_COUNT);
         consumer.init();
     }
 

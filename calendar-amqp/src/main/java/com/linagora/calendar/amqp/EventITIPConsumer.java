@@ -63,15 +63,18 @@ public class EventITIPConsumer implements Closeable, Startable {
 
     private final ReceiverProvider receiverProvider;
     private final CalDavClient calDavClient;
+    private final int itipEventMessagesPrefetchCount;
 
     private Disposable consumeDisposable;
 
     @Inject
     public EventITIPConsumer(ReactorRabbitMQChannelPool channelPool,
                              @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier,
-                             CalDavClient calDavClient) {
+                             CalDavClient calDavClient,
+                             @Named("itipEventMessagesPrefetchCount") int itipEventMessagesPrefetchCount) {
         this.receiverProvider = channelPool::createReceiver;
         this.calDavClient = calDavClient;
+        this.itipEventMessagesPrefetchCount = itipEventMessagesPrefetchCount;
 
         Sender sender = channelPool.getSender();
         Flux.concat(
@@ -122,7 +125,7 @@ public class EventITIPConsumer implements Closeable, Startable {
 
     public Flux<AcknowledgableDelivery> delivery(String queue) {
         return Flux.using(receiverProvider::createReceiver,
-            receiver -> receiver.consumeManualAck(queue, new ConsumeOptions().qos(DEFAULT_CONCURRENCY)),
+            receiver -> receiver.consumeManualAck(queue, new ConsumeOptions().qos(itipEventMessagesPrefetchCount)),
             Receiver::close);
     }
 
