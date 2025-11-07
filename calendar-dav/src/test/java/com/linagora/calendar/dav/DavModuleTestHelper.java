@@ -45,7 +45,8 @@ public class DavModuleTestHelper {
                 new UsernamePasswordCredentials("dummy", "dummy"),
                 new URI("http://localhost:8080"),
                 Optional.of(true),
-                Optional.of(Duration.ofMillis(500)));
+                Optional.of(Duration.ofMillis(500)),
+                Optional.of(Duration.ofSeconds(10)));
         }
     };
 

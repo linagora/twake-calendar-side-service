@@ -33,13 +33,15 @@ import com.google.common.base.Preconditions;
 public record DavConfiguration(UsernamePasswordCredentials adminCredential,
                                URI baseUrl,
                                Optional<Boolean> trustAllSslCerts,
-                               Optional<Duration> responseTimeout) {
+                               Optional<Duration> responseTimeout,
+                               Optional<Duration> imipCallbackResponseTimeout) {
     static final boolean CLIENT_TRUST_ALL_SSL_CERTS_DISABLED = false;
     static final String DAV_API_URI_PROPERTY = "dav.url";
     static final String DAV_ADMIN_USER_PROPERTY = "dav.admin.user";
     static final String DAV_ADMIN_PASSWORD_PROPERTY = "dav.admin.password";
     static final String DAV_REST_CLIENT_TRUST_ALL_SSL_CERTS_PROPERTY = "dav.rest.client.trust.all.ssl.certs";
     static final String DAV_REST_CLIENT_RESPONSE_TIMEOUT_PROPERTY = "dav.rest.client.response.timeout";
+    static final String DAV_REST_CLIENT_IMIP_CALLBACK_RESPONSE_TIMEOUT_PROPERTY = "dav.rest.client.imip.callback.response.timeout";
 
     public static DavConfiguration from(Configuration configuration) {
 
@@ -63,6 +65,13 @@ public record DavConfiguration(UsernamePasswordCredentials adminCredential,
                 Preconditions.checkArgument(duration.isPositive(), "Response timeout should not be negative");
                 return duration;
             });
-        return new DavConfiguration(adminCredential, baseUrl, trustAllSslCerts, responseTimeout);
+        Optional<Duration> imipCallbackResponseTimeout = Optional.ofNullable(configuration.getString(
+                DAV_REST_CLIENT_IMIP_CALLBACK_RESPONSE_TIMEOUT_PROPERTY, null))
+            .map(string -> DurationParser.parse(string, ChronoUnit.MILLIS))
+            .map(duration -> {
+                Preconditions.checkArgument(duration.isPositive(), "Response timeout should not be negative");
+                return duration;
+            });
+        return new DavConfiguration(adminCredential, baseUrl, trustAllSslCerts, responseTimeout, imipCallbackResponseTimeout);
     }
 }

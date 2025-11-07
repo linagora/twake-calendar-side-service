@@ -80,6 +80,8 @@ public class CalDavClient extends DavClient {
     public static final String JSON_CHARSET_UTF_8 = "application/json;charset=UTF-8";
     public static final String DEFAULT_JSON_ACCEPT = "application/json, text/plain, */*";
 
+    protected static final Duration DEFAULT_IMIP_CALLBACK_RESPONSE_TIMEOUT = Duration.ofMinutes(3);
+
     public record NewCalendar(@JsonProperty("id") String id,
                               @JsonProperty("dav:name") String davName,
                               @JsonProperty("apple:color") String appleColor,
@@ -106,8 +108,11 @@ public class CalDavClient extends DavClient {
     private static final String CONTENT_TYPE_JSON = "application/json";
     private static final HttpMethod REPORT_METHOD = HttpMethod.valueOf("REPORT");
 
+    private Duration imipCallbackResponseTimeout;
+
     public CalDavClient(DavConfiguration config, TechnicalTokenService technicalTokenService) throws SSLException {
         super(config, technicalTokenService);
+        imipCallbackResponseTimeout = config.imipCallbackResponseTimeout().orElse(DEFAULT_IMIP_CALLBACK_RESPONSE_TIMEOUT);
     }
 
     public Mono<byte[]> export(CalendarURL calendarURL, MailboxSession session) {
@@ -466,6 +471,31 @@ public class CalDavClient extends DavClient {
             });
     }
 
+    public Mono<Void> sendIMIPCallback(Username connectedUser, byte[] payload) {
+        return httpClientWithImpersonation(connectedUser)
+            .responseTimeout(imipCallbackResponseTimeout)
+            .headers(headers -> headers
+                .add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_JSON)
+                .add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_JSON))
+            .request(HttpMethod.valueOf("IMIPCALLBACK"))
+            .uri("/calendars/imipCallback")
+            .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(payload)))
+            .responseSingle((response, responseContent) -> {
+                if (response.status().code() == 204) {
+                    if (LOGGER.isDebugEnabled()) {
+                        LOGGER.debug("IMIP callback sent successfully with content {}", new String(payload, StandardCharsets.UTF_8));
+                    }
+                    return Mono.empty();
+                }
+                return responseContent.asString(StandardCharsets.UTF_8)
+                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .flatMap(body -> Mono.error(new RuntimeException("""
+                        Unexpected status code: %d when sending IMIP callback
+                        %s
+                        """.formatted(response.status().code(), body))));
+            });
+    }
+
     private byte[] buildPatchDelegationBodyRequest(Collection<Username> addOrUpdateAdmins, Collection<Username> revokeAdmins) {
         try {
             ObjectNode share = OBJECT_MAPPER.createObjectNode();
@@ -542,5 +572,4 @@ public class CalDavClient extends DavClient {
         CalendarURL calendarURL = CalendarURL.from(resourceId.asOpenPaaSId());
         return patchReadWriteDelegations(domainId, calendarURL, List.of(), administrators);
     }
-
 }

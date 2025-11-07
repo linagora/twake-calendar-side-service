@@ -49,7 +49,6 @@ import com.linagora.calendar.storage.OpenPaaSUser;
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.component.VEvent;
-import net.javacrumbs.jsonunit.assertj.JsonAssertions;
 
 public class CalDavClientTest {
 
