@@ -31,17 +31,11 @@ import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_
 import static org.mockserver.model.HttpResponse.response;
 import static org.mockserver.model.Parameter.param;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 
 import javax.net.ssl.SSLException;
 
-import org.apache.commons.lang3.StringUtils;
 import org.bson.Document;
 import org.junit.jupiter.api.extension.AfterAllCallback;
 import org.junit.jupiter.api.extension.AfterEachCallback;
@@ -55,7 +49,6 @@ import org.mockserver.model.Header;
 import org.mockserver.model.HttpRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.testcontainers.shaded.org.awaitility.Awaitility;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.fge.lambdas.Throwing;
@@ -69,7 +62,6 @@ import com.linagora.calendar.storage.mongodb.MongoDBUploadedFileDAO;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
 import reactor.core.publisher.Mono;
-import reactor.netty.ByteBufFlux;
 
 public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup) implements BeforeAllCallback, AfterAllCallback,
     AfterEachCallback, ParameterResolver {
@@ -88,8 +80,6 @@ public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup) impleme
     public void beforeAll(ExtensionContext extensionContext) {
         dockerSabreDavSetup.start();
         mockServerClient = new MockServerClient(dockerSabreDavSetup.getHost(MOCK_ESN), dockerSabreDavSetup.getPort(MOCK_ESN));
-        waitForRabbitMQToBeReady();
-
         setupMockAuthenticationTokenEndpoint();
     }
 
@@ -162,43 +152,6 @@ public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup) impleme
                         .onErrorResume(e -> Mono.just("error: " + e.getMessage()))
                         .block());
             });
-    }
-
-    private boolean importRabbitMQDefinitions() {
-        try {
-            Path parentDirectory = Files.createTempDirectory("davIntegrationTests");
-            Path definitionFilePath = Files.createTempFile(parentDirectory, "rabbitmq-definitions.json", "");
-            Files.copy(Objects.requireNonNull(SabreDavExtension.class.getResourceAsStream("/" + "rabbitmq-definitions.json")), definitionFilePath, StandardCopyOption.REPLACE_EXISTING);
-
-            dockerSabreDavSetup.rabbitmqAdminHttpclient().post()
-                .uri("/api/definitions")
-                .send(ByteBufFlux.fromPath(definitionFilePath))
-                .responseSingle((res, bytes) -> {
-                    if (res.status().code() == 204) {
-                        LOGGER.info("Successfully imported RabbitMQ definitions (HTTP 204)");
-                        return Mono.empty();
-                    } else {
-                        return bytes.asString()
-                            .switchIfEmpty(Mono.just(StringUtils.EMPTY))
-                            .doOnNext(body ->
-                                LOGGER.warn("Unexpected response from RabbitMQ (status={}): {}",
-                                    res.status().code(), body));
-                    }
-                })
-                .block();
-
-            return true;
-        } catch (Exception e) {
-            LOGGER.error("Failed to import RabbitMQ definitions", e);
-            return false;
-        }
-    }
-
-    private void waitForRabbitMQToBeReady() {
-        Awaitility.await()
-            .atMost(60, TimeUnit.SECONDS)
-            .pollInterval(100, TimeUnit.MILLISECONDS)
-            .until(this::importRabbitMQDefinitions);
     }
 
     public DavTestHelper davTestHelper() {
