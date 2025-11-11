@@ -65,6 +65,7 @@ import com.rabbitmq.client.ConnectionFactory;
 
 import reactor.core.publisher.Mono;
 import reactor.rabbitmq.ExchangeSpecification;
+import reactor.rabbitmq.RabbitFlux;
 import reactor.rabbitmq.Sender;
 import reactor.rabbitmq.SenderOptions;
 
@@ -168,7 +169,7 @@ public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup) impleme
             factory.setUsername("calendar");
             factory.setPassword("calendar");
 
-            try (var sender = new Sender(new SenderOptions().connectionFactory(factory))) {
+            try (Sender sender = RabbitFlux.createSender(new SenderOptions().connectionFactory(factory))) {
                 DavExchangeNames.ALL.forEach(name -> sender.declareExchange(
                         ExchangeSpecification.exchange(name)
                             .durable(true)
