@@ -19,7 +19,8 @@
 package com.linagora.calendar.amqp;
 
 import static com.linagora.calendar.amqp.CalendarAmqpModule.DEFAULT_ITIP_EVENT_MESSAGES_PREFETCH_COUNT;
-import static com.linagora.calendar.amqp.EventITIPConsumer.CONNECTED_USER;
+import static com.linagora.calendar.amqp.EventITIPConsumer.CONNECTED_USER_HEADER;
+import static com.linagora.calendar.amqp.EventITIPConsumer.REQUEST_URI_HEADER;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static com.rabbitmq.client.MessageProperties.PERSISTENT_TEXT_PLAIN;
 import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
@@ -167,7 +168,8 @@ public class EventITIPConsumerTest {
             .deliveryMode(PERSISTENT_TEXT_PLAIN.getDeliveryMode())
             .priority(PERSISTENT_TEXT_PLAIN.getPriority())
             .contentType(PERSISTENT_TEXT_PLAIN.getContentType())
-            .headers(ImmutableMap.of(CONNECTED_USER, user))
+            .headers(ImmutableMap.of(CONNECTED_USER_HEADER, user,
+                REQUEST_URI_HEADER, "calendars/imipCallback"))
             .build();
 
         channel.basicPublish(EventITIPConsumer.EXCHANGE_NAME, EMPTY_ROUTING_KEY, basicProperties, message.getBytes(StandardCharsets.UTF_8));
