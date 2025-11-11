@@ -29,7 +29,6 @@ import java.util.function.Supplier;
 
 import jakarta.inject.Inject;
 
-import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.james.backends.rabbitmq.QueueArguments;
