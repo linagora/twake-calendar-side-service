@@ -28,6 +28,7 @@ package com.linagora.calendar.dav;
 
 import static com.linagora.calendar.dav.DockerSabreDavSetup.DockerService.MOCK_ESN;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
+import static com.rabbitmq.client.BuiltinExchangeType.FANOUT;
 import static org.mockserver.model.HttpResponse.response;
 import static org.mockserver.model.Parameter.param;
 
@@ -60,8 +61,12 @@ import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBSecretLinkStore;
 import com.linagora.calendar.storage.mongodb.MongoDBUploadedFileDAO;
 import com.mongodb.reactivestreams.client.MongoDatabase;
+import com.rabbitmq.client.ConnectionFactory;
 
 import reactor.core.publisher.Mono;
+import reactor.rabbitmq.ExchangeSpecification;
+import reactor.rabbitmq.Sender;
+import reactor.rabbitmq.SenderOptions;
 
 public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup) implements BeforeAllCallback, AfterAllCallback,
     AfterEachCallback, ParameterResolver {
@@ -80,6 +85,7 @@ public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup) impleme
     public void beforeAll(ExtensionContext extensionContext) {
         dockerSabreDavSetup.start();
         mockServerClient = new MockServerClient(dockerSabreDavSetup.getHost(MOCK_ESN), dockerSabreDavSetup.getPort(MOCK_ESN));
+        provisionQueueExchanges();
         setupMockAuthenticationTokenEndpoint();
     }
 
@@ -152,6 +158,29 @@ public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup) impleme
                         .onErrorResume(e -> Mono.just("error: " + e.getMessage()))
                         .block());
             });
+    }
+
+    private void provisionQueueExchanges() {
+        LOGGER.debug("Provisioning RabbitMQ exchanges...");
+        try {
+            var factory = new ConnectionFactory();
+            factory.setUri(dockerSabreDavSetup.rabbitMqUri().toASCIIString());
+            factory.setUsername("calendar");
+            factory.setPassword("calendar");
+
+            try (var sender = new Sender(new SenderOptions().connectionFactory(factory))) {
+                DavExchangeNames.ALL.forEach(name -> sender.declareExchange(
+                        ExchangeSpecification.exchange(name)
+                            .durable(true)
+                            .type(FANOUT.getType()))
+                    .doOnSuccess(v -> LOGGER.debug("Declared exchange: {}", name))
+                    .block());
+            }
+
+            LOGGER.debug("Provisioned {} RabbitMQ exchanges successfully", DavExchangeNames.ALL.size());
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to provision RabbitMQ exchanges", e);
+        }
     }
 
     public DavTestHelper davTestHelper() {
