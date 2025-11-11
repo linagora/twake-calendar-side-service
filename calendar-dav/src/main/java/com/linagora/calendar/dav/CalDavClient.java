@@ -471,14 +471,14 @@ public class CalDavClient extends DavClient {
             });
     }
 
-    public Mono<Void> sendIMIPCallback(Username connectedUser, byte[] payload) {
+    public Mono<Void> sendIMIPCallback(Username connectedUser, URI requestURI, byte[] payload) {
         return httpClientWithImpersonation(connectedUser)
             .responseTimeout(imipCallbackResponseTimeout)
             .headers(headers -> headers
                 .add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_JSON)
                 .add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_JSON))
             .request(HttpMethod.valueOf("IMIPCALLBACK"))
-            .uri("/calendars/imipCallback")
+            .uri(requestURI.toASCIIString())
             .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(payload)))
             .responseSingle((response, responseContent) -> {
                 if (response.status().code() == 204) {

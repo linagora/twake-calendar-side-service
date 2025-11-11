@@ -24,10 +24,13 @@ import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
 import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.io.Closeable;
+import java.net.URI;
 import java.util.function.Supplier;
 
 import jakarta.inject.Inject;
 
+import org.apache.commons.lang3.Strings;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.ReceiverProvider;
@@ -56,7 +59,8 @@ public class EventITIPConsumer implements Closeable, Startable {
     public static final String EXCHANGE_NAME = "calendar:itip:deliver";
     public static final String QUEUE_NAME = "tcalendar:itip:deliver";
     public static final String DEAD_LETTER_QUEUE = "tcalendar:itip:deliver:dead-letter";
-    public static final String CONNECTED_USER = "connectedUser";
+    public static final String CONNECTED_USER_HEADER = "connectedUser";
+    public static final String REQUEST_URI_HEADER = "requestURI";
 
     private static final Logger LOGGER = LoggerFactory.getLogger(EventITIPConsumer.class);
     private static final boolean REQUEUE_ON_NACK = true;
@@ -130,14 +134,23 @@ public class EventITIPConsumer implements Closeable, Startable {
     }
 
     private Mono<Void> consumeMessage(AcknowledgableDelivery ackDelivery) {
-        return Mono.fromCallable(() -> Username.of(ackDelivery.getProperties().getHeaders().get(CONNECTED_USER).toString()))
-                .flatMap(user -> calDavClient.sendIMIPCallback(user, ackDelivery.getBody()))
+        return Mono.fromCallable(() -> extractHeaderProperties(ackDelivery))
+            .flatMap(usernameURIPair -> calDavClient.sendIMIPCallback(usernameURIPair.getLeft(),
+                usernameURIPair.getRight(), ackDelivery.getBody()))
             .doOnSuccess(result -> ackDelivery.ack())
             .onErrorResume(error -> {
                 LOGGER.error("Error when consume calendar itip event message", error);
                 ackDelivery.nack(!REQUEUE_ON_NACK);
                 return Mono.empty();
             });
+    }
+
+    private Pair<Username, URI> extractHeaderProperties(AcknowledgableDelivery ackDelivery) {
+        Username user = Username.of(ackDelivery.getProperties().getHeaders().get(CONNECTED_USER_HEADER).toString());
+        String requestUriHeader = ackDelivery.getProperties().getHeaders().get(REQUEST_URI_HEADER).toString();
+        String normalizedUri = Strings.CS.startsWith(requestUriHeader, "/") ? requestUriHeader : "/" + requestUriHeader;
+        URI requestURI = URI.create(normalizedUri);
+        return Pair.of(user, requestURI);
     }
 }
 
