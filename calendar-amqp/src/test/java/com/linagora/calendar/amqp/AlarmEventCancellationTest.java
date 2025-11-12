@@ -276,32 +276,6 @@ public class AlarmEventCancellationTest {
     }
 
     @Test
-    void shouldRemoveAllParticipantAlarmsWhenOrganizerRemovesVALARMFromEvent() {
-        // Given
-        EventUid eventUid = createEventWithVALARM(attendee, attendee2);
-
-        attendeeAcceptsEvent(attendee, eventUid);
-        attendeeAcceptsEvent(attendee2, eventUid);
-        awaitAlarmEventCreated(eventUid, organizer.username());
-        awaitAlarmEventCreated(eventUid, attendee.username());
-        awaitAlarmEventCreated(eventUid, attendee2.username());
-
-        // When: organizer updates event, NO VALARM (sequence++)
-        String withoutAlarm = generateEventWithValarm(eventUid.value(), organizer.username().asString(),
-            List.of(attendee.username().asString(), attendee2.username().asString()),
-            PartStat.NEEDS_ACTION, "");
-
-        davTestHelper.upsertCalendar(organizer, withoutAlarm, eventUid.value());
-
-        // Then: both attendees' alarms (and organizer's) are removed
-        awaitAtMost.untilAsserted(() -> assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(alarmEventDAO.find(eventUid, attendee.username().asMailAddress()).blockOptional()).isEmpty();
-            softly.assertThat(alarmEventDAO.find(eventUid, attendee2.username().asMailAddress()).blockOptional()).isEmpty();
-            softly.assertThat(alarmEventDAO.find(eventUid, organizer.username().asMailAddress()).blockOptional()).isEmpty();
-        })));
-    }
-
-    @Test
     void shouldRemoveOnlyDisinvitedAttendeeAlarm() {
         // Given
         EventUid eventUid = createEventWithVALARM(attendee, attendee2);

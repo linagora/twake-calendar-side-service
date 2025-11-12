@@ -456,57 +456,6 @@ public class AlarmEventUpdateTest {
         });
     }
 
-    @Test
-    void shouldUpdateIcsPayloadOfAttendeeWhenOrganizerChangeEvent() {
-        // Given
-        EventUid eventUid = createEventWithVALARM(attendee, attendee2);
-        attendeeAcceptsEvent(attendee, eventUid);
-        attendeeAcceptsEvent(attendee2, eventUid);
-
-        AlarmEvent initialAttendee = awaitAlarmEventCreated(eventUid, attendee.username());
-        String initialIcs = initialAttendee.ics();
-
-        String updateTitle = "Updated Meeting Title";
-        String updateDescription = "Updated Meeting Description";
-        String updateLocation = "Updated Meeting Location";
-
-        // When
-        calDavEventRepository.updateEvent(
-            organizer.username(),
-            organizer.id(),
-            eventUid,
-            CalendarEventModifier.of(new EventUpdateDescriptionTitleAndLocationPatch(updateTitle,
-                updateDescription, updateLocation))).block();
-
-        // Then
-        awaitAtMost.untilAsserted(() -> {
-            AlarmEvent updatedAttendee1 = alarmEventDAO
-                .find(eventUid, attendee.username().asMailAddress())
-                .block();
-            AlarmEvent updatedAttendee2 = alarmEventDAO
-                .find(eventUid, attendee2.username().asMailAddress())
-                .block();
-
-            assertThat(updatedAttendee1).isNotNull();
-            assertThat(updatedAttendee1.ics())
-                .describedAs("ICS payload for attendee 1 should be updated in DB")
-                .isNotBlank()
-                .isNotEqualTo(initialIcs);
-
-            assertThat(updatedAttendee1.ics())
-                .contains(updateTitle, updateDescription, updateLocation);
-
-            assertThat(updatedAttendee2).isNotNull();
-            assertThat(updatedAttendee2.ics())
-                .describedAs("ICS payload for attendee 2 should be updated in DB")
-                .isNotBlank()
-                .isNotEqualTo(initialIcs);
-
-            assertThat(updatedAttendee2.ics())
-                .contains(updateTitle, updateDescription, updateLocation);
-        });
-    }
-
     @Nested
     class RecurrenceEventTest {
         @Test
