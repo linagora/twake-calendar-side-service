@@ -305,7 +305,7 @@ public class EventIndexerConsumerTest {
             ORGANIZER;CN=John1 Doe1:mailto:{organizer}
             ATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVI
              DUAL;CN=John2 Doe2;SCHEDULE-STATUS=1.1:mailto:{attendee1}
-            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:{organizer}
+            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:{organizer}
             DTSTAMP:20250516T060320Z
             END:VEVENT
             BEGIN:VEVENT
@@ -433,7 +433,7 @@ public class EventIndexerConsumerTest {
             ORGANIZER;CN=John1 Doe1:mailto:{organizer}
             ATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVI
              DUAL;CN=John2 Doe2;SCHEDULE-STATUS=1.1:mailto:{attendee1}
-            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:{organizer}
+            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:{organizer}
             DTSTAMP:20250516T060320Z
             END:VEVENT
             BEGIN:VEVENT
@@ -517,7 +517,7 @@ public class EventIndexerConsumerTest {
             ORGANIZER;CN=John1 Doe1:mailto:{organizer}
             ATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVI
              DUAL;CN=John2 Doe2;SCHEDULE-STATUS=1.1:mailto:{attendee1}
-            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:{organizer}
+            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:{organizer}
             DTSTAMP:20250516T060320Z
             END:VEVENT
             BEGIN:VEVENT
