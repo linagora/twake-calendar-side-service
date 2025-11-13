@@ -300,11 +300,11 @@ public class AlarmEventCreateTest {
         davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
 
         // When: Both attendees accept the invitation
-        // Then: AlarmEvent should be created for both attendees
         attendeeAcceptsEvent(attendee1, eventUid);
-        awaitAlarmEventCreated(eventUid, attendee1.username());
-
         attendeeAcceptsEvent(attendee2, eventUid);
+
+        // Then: AlarmEvent should be created for both attendees
+        awaitAlarmEventCreated(eventUid, attendee1.username());
         awaitAlarmEventCreated(eventUid, attendee2.username());
 
         AlarmEvent alarmEvent1 = alarmEventDAO.find(new EventUid(eventUid), attendee1.username().asMailAddress()).block();

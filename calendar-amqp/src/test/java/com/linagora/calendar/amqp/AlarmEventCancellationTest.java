@@ -218,9 +218,8 @@ public class AlarmEventCancellationTest {
         EventUid eventUid = createEventWithVALARM(attendee, attendee2);
 
         attendeeAcceptsEvent(attendee, eventUid);
-        awaitAlarmEventCreated(eventUid, attendee.username());
-
         attendeeAcceptsEvent(attendee2, eventUid);
+        awaitAlarmEventCreated(eventUid, attendee.username());
         awaitAlarmEventCreated(eventUid, attendee2.username());
 
         // When
@@ -280,12 +279,11 @@ public class AlarmEventCancellationTest {
     void shouldRemoveAllParticipantAlarmsWhenOrganizerRemovesVALARMFromEvent() {
         // Given
         EventUid eventUid = createEventWithVALARM(attendee, attendee2);
-        awaitAlarmEventCreated(eventUid, organizer.username());
 
         attendeeAcceptsEvent(attendee, eventUid);
-        awaitAlarmEventCreated(eventUid, attendee.username());
-
         attendeeAcceptsEvent(attendee2, eventUid);
+        awaitAlarmEventCreated(eventUid, organizer.username());
+        awaitAlarmEventCreated(eventUid, attendee.username());
         awaitAlarmEventCreated(eventUid, attendee2.username());
 
         // When: organizer updates event, NO VALARM (sequence++)
@@ -308,8 +306,8 @@ public class AlarmEventCancellationTest {
         // Given
         EventUid eventUid = createEventWithVALARM(attendee, attendee2);
         attendeeAcceptsEvent(attendee, eventUid);
-        awaitAlarmEventCreated(eventUid, attendee.username());
         attendeeAcceptsEvent(attendee2, eventUid);
+        awaitAlarmEventCreated(eventUid, attendee.username());
         awaitAlarmEventCreated(eventUid, attendee2.username());
 
         // When: organizer updates the event to remove attendee2 from ATTENDEE list

@@ -24,7 +24,6 @@ import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
 import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.io.Closeable;
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.Map;
@@ -177,12 +176,9 @@ public class EventAlarmConsumer implements Closeable, Startable {
 
     private Disposable doConsumeCalendarEventMessages(Queue queue, PersistAlarmHandler persistAlarmHandler) {
         return delivery(queue.queueName)
-            .flatMap(delivery -> {
-                System.out.println("Queue: " + queue.queueName() + " : " + new String(delivery.getBody(), StandardCharsets.UTF_8));
-                return messageConsume(delivery,
-                    Throwing.supplier(() -> OBJECT_MAPPER.readValue(delivery.getBody(), CalendarAlarmMessageDTO.class)).get(),
-                    persistAlarmHandler);
-            }, DEFAULT_CONCURRENCY)
+            .flatMap(delivery -> messageConsume(delivery,
+                Throwing.supplier(() -> OBJECT_MAPPER.readValue(delivery.getBody(), CalendarAlarmMessageDTO.class)).get(),
+                persistAlarmHandler), DEFAULT_CONCURRENCY)
             .subscribeOn(Schedulers.boundedElastic())
             .subscribe();
     }

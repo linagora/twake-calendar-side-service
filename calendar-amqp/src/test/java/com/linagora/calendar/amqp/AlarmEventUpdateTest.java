@@ -375,9 +375,9 @@ public class AlarmEventUpdateTest {
         // Given
         EventUid eventUid = createEventWithVALARM(attendee, attendee2);
         attendeeAcceptsEvent(attendee, eventUid);
-        AlarmEvent initialAttendee = awaitAlarmEventCreated(eventUid, attendee.username());
-
         attendeeAcceptsEvent(attendee2, eventUid);
+
+        AlarmEvent initialAttendee = awaitAlarmEventCreated(eventUid, attendee.username());
         AlarmEvent initialAttendee2 = awaitAlarmEventCreated(eventUid, attendee2.username());
 
         Duration delta = Duration.ofMinutes(20);
@@ -418,9 +418,9 @@ public class AlarmEventUpdateTest {
         // Given
         EventUid eventUid = createEventWithVALARM(attendee, attendee2);
         attendeeAcceptsEvent(attendee, eventUid);
-        AlarmEvent initialAttendee1 = awaitAlarmEventCreated(eventUid, attendee.username());
-
         attendeeAcceptsEvent(attendee2, eventUid);
+
+        AlarmEvent initialAttendee1 = awaitAlarmEventCreated(eventUid, attendee.username());
         AlarmEvent initialAttendee2 = awaitAlarmEventCreated(eventUid, attendee2.username());
 
         Duration delta = Duration.ofMinutes(20);
