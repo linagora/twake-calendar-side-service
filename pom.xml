@@ -48,6 +48,7 @@
         <module>storage-opensearch</module>
         <module>calendar-smtp</module>
         <module>calendar-scheduling</module>
+        <module>calendar-websocket</module>
     </modules>
 
     <properties>
@@ -143,6 +144,11 @@
             <dependency>
                 <groupId>${project.groupId}</groupId>
                 <artifactId>calendar-webadmin</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>${project.groupId}</groupId>
+                <artifactId>calendar-websocket</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

@@ -48,6 +48,10 @@
             <artifactId>calendar-smtp</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.linagora.tmail</groupId>
+            <artifactId>calendar-websocket</artifactId>
+        </dependency>
+        <dependency>
             <groupId>${project.groupId}</groupId>
             <artifactId>jmap-extensions-api</artifactId>
             <version>${project.version}</version>
