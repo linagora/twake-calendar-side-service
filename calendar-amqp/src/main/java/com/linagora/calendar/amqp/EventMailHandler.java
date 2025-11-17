@@ -365,7 +365,7 @@ public class EventMailHandler {
                 .doOnSuccess(any -> AuditTrail.entry()
                     .action("IMIP")
                     .action(eventMessageGenerator.getClass().getName())
-                    .parameters(()-> ImmutableMap.of(
+                    .parameters(() -> ImmutableMap.of(
                         "sender", senderEmail.asString(),
                         "recipient", recipientUser.asString()))
                     .log("IMIP mail sent")));
