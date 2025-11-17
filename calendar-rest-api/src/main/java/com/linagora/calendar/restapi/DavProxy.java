@@ -20,7 +20,6 @@ package com.linagora.calendar.restapi;
 
 import java.util.Optional;
 
-import io.netty.handler.codec.http.HttpStatusClass;
 import javax.net.ssl.SSLException;
 
 import jakarta.inject.Inject;
@@ -36,6 +35,7 @@ import com.linagora.calendar.dav.DavConfiguration;
 import com.linagora.calendar.storage.TechnicalTokenService;
 
 import io.netty.handler.codec.http.HttpHeaders;
+import io.netty.handler.codec.http.HttpStatusClass;
 import reactor.core.publisher.Mono;
 import reactor.netty.ByteBufFlux;
 import reactor.netty.NettyOutbound;
