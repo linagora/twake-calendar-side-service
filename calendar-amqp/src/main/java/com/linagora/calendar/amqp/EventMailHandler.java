@@ -35,11 +35,13 @@ import org.apache.james.core.Username;
 import org.apache.james.mailbox.model.ContentType;
 import org.apache.james.mime4j.dom.Message;
 import org.apache.james.user.api.UsersRepository;
+import org.apache.james.util.AuditTrail;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.amqp.model.CalendarEventCancelNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventCounterNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventInviteNotificationEmail;
@@ -359,6 +361,13 @@ public class EventMailHandler {
             .flatMap(eventMessageGenerator::generate)
             .flatMap(mailMessage -> mailSenderFactory.create()
                 .flatMap(mailSender -> mailSender.send(new Mail(MaybeSender.of(senderEmail),
-                    ImmutableList.of(Throwing.supplier(recipientUser::asMailAddress).get()), mailMessage))));
+                    ImmutableList.of(Throwing.supplier(recipientUser::asMailAddress).get()), mailMessage)))
+                .doOnSuccess(any -> AuditTrail.entry()
+                    .action("IMIP")
+                    .action(eventMessageGenerator.getClass().getName())
+                    .parameters(()-> ImmutableMap.of(
+                        "sender", senderEmail.asString(),
+                        "recipient", recipientUser.asString()))
+                    .log("IMIP mail sent")));
     }
 }
