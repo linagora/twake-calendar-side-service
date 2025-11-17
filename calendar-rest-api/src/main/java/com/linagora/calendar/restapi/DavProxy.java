@@ -87,7 +87,7 @@ public class DavProxy extends DavClient {
                         .field("url", req.uri())
                         .field("statusCode", Integer.toString(res.status().code()))
                         .field("response", new String(sabreResponseBytes))
-                        .log(logger -> logger.error("Sarbe server error upon AV request"));
+                        .log(logger -> logger.error("Sabre server error upon DAV request"));
                     LOGGER.error("Server error calling sabre");
                 }
                 return sabreResponseBytes;
