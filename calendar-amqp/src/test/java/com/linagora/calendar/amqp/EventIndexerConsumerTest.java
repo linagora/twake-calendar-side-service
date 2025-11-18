@@ -149,7 +149,7 @@ public class EventIndexerConsumerTest {
         ResourceDAO resourceDAO = new MongoDBResourceDAO(mongoDB, Clock.systemUTC());
 
         EventIndexerConsumer calendarEventConsumer = new EventIndexerConsumer(channelPool, calendarSearchService, openPaaSUserDAO,
-            QueueArguments.Builder::new, resourceDAO);
+            QueueArguments.Builder::new, resourceDAO, new RecordingMetricFactory());
         calendarEventConsumer.init();
 
         sender = channelPool.getSender();

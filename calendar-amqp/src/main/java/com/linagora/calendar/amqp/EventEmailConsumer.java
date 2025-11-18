@@ -32,6 +32,8 @@ import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.ReceiverProvider;
 import org.apache.james.lifecycle.api.Startable;
+import org.apache.james.metrics.api.Metric;
+import org.apache.james.metrics.api.MetricFactory;
 import org.apache.james.util.ReactorUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -71,6 +73,12 @@ public class EventEmailConsumer implements Closeable, Startable {
     private final ReceiverProvider receiverProvider;
     private final EventMailHandler eventMailHandler;
     private final EventEmailFilter eventEmailFilter;
+    private final Metric inviteSentMetric;
+    private final Metric updateSentMetric;
+    private final Metric replySentMetric;
+    private final Metric cancelSentMetric;
+    private final Metric counterSentMetric;
+    private final MetricFactory metricFactory;
 
     private Disposable consumeDisposable;
 
@@ -78,7 +86,8 @@ public class EventEmailConsumer implements Closeable, Startable {
     public EventEmailConsumer(ReactorRabbitMQChannelPool channelPool,
                               @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier,
                               EventMailHandler eventMailHandler,
-                              EventEmailFilter eventEmailFilter) {
+                              EventEmailFilter eventEmailFilter,
+                              MetricFactory metricFactory) {
         this.receiverProvider = channelPool::createReceiver;
         this.eventMailHandler = eventMailHandler;
         this.eventEmailFilter = eventEmailFilter;
@@ -101,6 +110,13 @@ public class EventEmailConsumer implements Closeable, Startable {
                     .routingKey(EMPTY_ROUTING_KEY)))
             .then()
             .block();
+
+        this.metricFactory = metricFactory;
+        inviteSentMetric = metricFactory.generate("calendar.imip.invite");
+        replySentMetric = metricFactory.generate("calendar.imip.reply");
+        cancelSentMetric = metricFactory.generate("calendar.imip.cancel");
+        updateSentMetric = metricFactory.generate("calendar.imip.update");
+        counterSentMetric = metricFactory.generate("calendar.imip.counter");
     }
 
     public void init() {
@@ -137,16 +153,17 @@ public class EventEmailConsumer implements Closeable, Startable {
     }
 
     private Mono<Void> consumeMessage(AcknowledgableDelivery ackDelivery) {
-        return Mono.fromCallable(() -> OBJECT_MAPPER.readValue(ackDelivery.getBody(), CalendarEventNotificationEmailDTO.class))
-            .filter(eventEmailFilter::shouldProcess)
-            .flatMap(message -> handleMessage(message)
-                .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed calendar mail event message successfully {} '{}'", message.getClass().getSimpleName(), message.eventPath()))))
-            .doOnSuccess(result -> ackDelivery.ack())
-            .onErrorResume(error -> {
-                LOGGER.error("Error when consume calendar mail event message", error);
-                ackDelivery.nack(!REQUEUE_ON_NACK);
-                return Mono.empty();
-            });
+        return Mono.from(metricFactory.decoratePublisherWithTimerMetric("calendar.imip",
+            Mono.fromCallable(() -> OBJECT_MAPPER.readValue(ackDelivery.getBody(), CalendarEventNotificationEmailDTO.class))
+                .filter(eventEmailFilter::shouldProcess)
+                .flatMap(message -> handleMessage(message)
+                    .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed calendar mail event message successfully {} '{}'", message.getClass().getSimpleName(), message.eventPath()))))
+                .doOnSuccess(result -> ackDelivery.ack())
+                .onErrorResume(error -> {
+                    LOGGER.error("Error when consume calendar mail event message", error);
+                    ackDelivery.nack(!REQUEUE_ON_NACK);
+                    return Mono.empty();
+                })));
     }
 
     private Mono<Void> handleMessage(CalendarEventNotificationEmailDTO calendarEventMessage) {
@@ -155,28 +172,33 @@ public class EventEmailConsumer implements Closeable, Startable {
                 boolean isNewEvent = calendarEventMessage.isNewEvent().orElse(false);
                 if (isNewEvent) {
                     LOGGER.info("Received new calendar event message with method REQUEST and eventPath {}", calendarEventMessage.eventPath());
-                    yield eventMailHandler.handInviteEvent(CalendarEventInviteNotificationEmail.from(calendarEventMessage));
+                    yield eventMailHandler.handInviteEvent(CalendarEventInviteNotificationEmail.from(calendarEventMessage))
+                        .doOnSuccess(any -> inviteSentMetric.increment());
                 } else {
                     if (calendarEventMessage.changes().isEmpty()) {
                         yield Mono.empty();
                     } else {
                         LOGGER.info("Received updated calendar event message with method REQUEST and eventPath {}", calendarEventMessage.eventPath());
-                        yield eventMailHandler.handleUpdateEvent(CalendarEventUpdateNotificationEmail.from(calendarEventMessage));
+                        yield eventMailHandler.handleUpdateEvent(CalendarEventUpdateNotificationEmail.from(calendarEventMessage))
+                            .doOnSuccess(any -> updateSentMetric.increment());
                     }
                 }
             }
             case Method.VALUE_REPLY -> {
                 LOGGER.info("Received calendar event message with method REPLY and eventPath {}", calendarEventMessage.eventPath());
-                yield eventMailHandler.handleReplyEvent(CalendarEventReplyNotificationEmail.from(calendarEventMessage));
+                yield eventMailHandler.handleReplyEvent(CalendarEventReplyNotificationEmail.from(calendarEventMessage))
+                    .doOnSuccess(any -> replySentMetric.increment());
             }
             case Method.VALUE_CANCEL -> {
                 LOGGER.info("Received calendar event message with method CANCEL and eventPath {}", calendarEventMessage.eventPath());
                 CalendarEventCancelNotificationEmail calendarEventCancelNotificationEmail = CalendarEventCancelNotificationEmail.from(calendarEventMessage);
-                yield eventMailHandler.handleCancelEvent(calendarEventCancelNotificationEmail);
+                yield eventMailHandler.handleCancelEvent(calendarEventCancelNotificationEmail)
+                    .doOnSuccess(any -> cancelSentMetric.increment());
             }
             case Method.VALUE_COUNTER -> {
                 LOGGER.info("Received calendar event message with method COUNTER and eventPath {}", calendarEventMessage.eventPath());
-                yield eventMailHandler.handleCounterEvent(CalendarEventCounterNotificationEmail.from(calendarEventMessage));
+                yield eventMailHandler.handleCounterEvent(CalendarEventCounterNotificationEmail.from(calendarEventMessage))
+                    .doOnSuccess(any -> counterSentMetric.increment());
             }
             default -> throw new IllegalArgumentException("Unknown method: " + calendarEventMessage.method());
         };

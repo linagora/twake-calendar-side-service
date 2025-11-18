@@ -54,6 +54,11 @@
             <artifactId>calendar-smtp</artifactId>
         </dependency>
         <dependency>
+            <groupId>${james.groupId}</groupId>
+            <artifactId>metrics-tests</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-annotations</artifactId>
         </dependency>
