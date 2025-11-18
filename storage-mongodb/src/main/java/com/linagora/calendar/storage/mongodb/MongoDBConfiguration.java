@@ -20,20 +20,16 @@ package com.linagora.calendar.storage.mongodb;
 
 import java.util.Optional;
 
-import org.apache.commons.configuration2.AbstractConfiguration;
 import org.apache.commons.configuration2.Configuration;
-import org.apache.commons.configuration2.convert.DisabledListDelimiterHandler;
+
+import com.google.common.base.Joiner;
 
 public record MongoDBConfiguration(String mongoURL, String database) {
     public static MongoDBConfiguration parse(Configuration configuration) {
-        if (configuration instanceof AbstractConfiguration) {
-            ((AbstractConfiguration) configuration)
-                .setListDelimiterHandler(new DisabledListDelimiterHandler());
-        }
+        String url = Joiner.on(',').join(Optional.ofNullable(configuration.getStringArray("mongo.url"))
+            .orElseThrow(() -> new IllegalArgumentException("'mongo.url' is mandatory")));
 
-        return new MongoDBConfiguration(
-            Optional.ofNullable(configuration.getString("mongo.url", null))
-                .orElseThrow(() -> new IllegalArgumentException("'mongo.url' is mandatory")),
+        return new MongoDBConfiguration(url,
             Optional.ofNullable(configuration.getString("mongo.database", null))
                 .orElseThrow(() -> new IllegalArgumentException("'mongo.database' is mandatory")));
     }
