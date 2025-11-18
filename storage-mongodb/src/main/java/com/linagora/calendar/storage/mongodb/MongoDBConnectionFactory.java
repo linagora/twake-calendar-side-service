@@ -22,17 +22,29 @@ import org.apache.james.metrics.api.MetricFactory;
 
 import com.mongodb.ConnectionString;
 import com.mongodb.MongoClientSettings;
+import com.mongodb.MongoCredential;
 import com.mongodb.reactivestreams.client.MongoClients;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
 public class MongoDBConnectionFactory {
     public static MongoDatabase instantiateDB(MongoDBConfiguration configuration,
                                               MetricFactory metricFactory) {
-        MongoClientSettings settings = MongoClientSettings.builder()
-            .applyConnectionString(new ConnectionString(configuration.mongoURL()))
-            .addCommandListener(new MongoCommandMetricsListener(metricFactory))
-            .build();
+        ConnectionString connectionString = new ConnectionString(configuration.mongoURL());
 
-        return MongoClients.create(settings).getDatabase(configuration.database());
+        MongoClientSettings.Builder settingsBuilder = MongoClientSettings.builder()
+            .applyConnectionString(connectionString)
+            .addCommandListener(new MongoCommandMetricsListener(metricFactory));
+
+        // Override credential to use the database name as authSource if credentials are present
+        if (connectionString.getCredential() != null) {
+            MongoCredential credential = MongoCredential.createCredential(
+                connectionString.getCredential().getUserName(),
+                configuration.database(),
+                connectionString.getCredential().getPassword()
+            );
+            settingsBuilder.credential(credential);
+        }
+
+        return MongoClients.create(settingsBuilder.build()).getDatabase(configuration.database());
     }
 }
