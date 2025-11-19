@@ -45,7 +45,7 @@ services:
 
   sabre_dav:
     hostname: esn_sabre
-    image: linagora/esn-sabre:v4-dev2
+    image: linagora/esn-sabre:sabre-4_1_5-19-11-2025-rc1
     environment:
       - SABRE_ENV=dev
       - SABRE_MONGO_HOST=mongo

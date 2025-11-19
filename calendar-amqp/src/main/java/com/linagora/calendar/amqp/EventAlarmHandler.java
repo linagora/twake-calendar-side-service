@@ -24,6 +24,8 @@ import java.net.URI;
 import java.util.List;
 import java.util.Optional;
 
+import com.linagora.calendar.api.CalendarUtil;
+import com.linagora.calendar.dav.DavCalendarObject;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 import jakarta.inject.Singleton;
@@ -88,8 +90,15 @@ public class EventAlarmHandler {
     }
 
     private Mono<Void> processCreateOrUpdate(Username username, CalendarAlarmMessageDTO alarmMessageDTO) {
-        return calDavClient.fetchCalendarEvent(username, URI.create(alarmMessageDTO.eventPath()))
-            .flatMap(davCalendarObject -> applyNextAlarmDecision(username, davCalendarObject.calendarData(), alarmMessageDTO))
+        System.out.println(alarmMessageDTO.rawEvent());
+
+        Mono<Calendar> calendarMono = alarmMessageDTO.rawEvent()
+            .map(CalendarUtil::parseIcs)
+            .map(Mono::just)
+            .orElseGet(() -> calDavClient.fetchCalendarEvent(username, URI.create(alarmMessageDTO.eventPath()))
+                .map(DavCalendarObject::calendarData));
+
+        return calendarMono.flatMap(ics -> applyNextAlarmDecision(username, ics, alarmMessageDTO))
             .onErrorResume(error -> {
                 LOGGER.error("Failed to create/update alarm for {} at {}", username.asString(), alarmMessageDTO.eventPath(), error);
                 return Mono.empty();
