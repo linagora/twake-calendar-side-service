@@ -38,6 +38,7 @@ import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.ReceiverProvider;
 import org.apache.james.lifecycle.api.Startable;
+import org.apache.james.metrics.api.MetricFactory;
 import org.apache.james.util.ReactorUtils;
 import org.apache.james.vacation.api.AccountId;
 import org.slf4j.Logger;
@@ -103,6 +104,7 @@ public class EventIndexerConsumer implements Closeable, Startable {
     private final CalendarSearchService calendarSearchService;
     private final OpenPaaSUserDAO openPaaSUserDAO;
     private final ResourceDAO resourceDAO;
+    private final MetricFactory metricFactory;
     private final Map<Queue, Disposable> consumeDisposableMap;
 
     @Inject
@@ -110,11 +112,13 @@ public class EventIndexerConsumer implements Closeable, Startable {
     public EventIndexerConsumer(ReactorRabbitMQChannelPool channelPool,
                                 CalendarSearchService calendarSearchService,
                                 OpenPaaSUserDAO openPaaSUserDAO,
-                                @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier, ResourceDAO resourceDAO) {
+                                @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier, ResourceDAO resourceDAO,
+                                MetricFactory metricFactory) {
         this.receiverProvider = channelPool::createReceiver;
         this.calendarSearchService = calendarSearchService;
         this.openPaaSUserDAO = openPaaSUserDAO;
         this.resourceDAO = resourceDAO;
+        this.metricFactory = metricFactory;
 
         Sender sender = channelPool.getSender();
         this.declareExchangeAndQueue = eventQueue -> Flux.concat(
@@ -260,10 +264,10 @@ public class EventIndexerConsumer implements Closeable, Startable {
 
     private Mono<?> messageConsume(AcknowledgableDelivery ackDelivery, Mono<CalendarEventMessage> messagePublisher, CalendarEventHandler calendarEventHandler) {
         return messagePublisher
-            .flatMap(message ->
+            .flatMap(message -> Mono.from(metricFactory.decoratePublisherWithTimerMetric("calendar.event.indexing",
                 getAccountId(message.extractCalendarURL().base())
                     .flatMap(accountId -> calendarEventHandler.handle(accountId, message))
-                    .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed calendar event successfully {} '{}'", message.getClass().getSimpleName(), message.eventPath))))
+                    .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed calendar event successfully {} '{}'", message.getClass().getSimpleName(), message.eventPath))))))
             .doOnSuccess(result -> ackDelivery.ack())
             .onErrorResume(error -> {
                 LOGGER.error("Error when consume calendar event", error);

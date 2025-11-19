@@ -240,7 +240,7 @@ public class EventReplyEmailConsumerTest {
             actionLinkFactory);
 
         EventEmailConsumer consumer = new EventEmailConsumer(channelPool, QueueArguments.Builder::new, mailHandler,
-            eventEmailFilter);
+            eventEmailFilter, new RecordingMetricFactory());
         consumer.init();
 
         sender = channelPool.getSender();

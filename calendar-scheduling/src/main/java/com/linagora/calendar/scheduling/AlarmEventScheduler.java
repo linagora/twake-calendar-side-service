@@ -28,6 +28,8 @@ import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
 import org.apache.james.lifecycle.api.Startable;
+import org.apache.james.metrics.api.Metric;
+import org.apache.james.metrics.api.MetricFactory;
 import org.apache.james.util.DurationParser;
 import org.apache.james.util.ReactorUtils;
 import org.slf4j.Logger;
@@ -54,6 +56,8 @@ public class AlarmEventScheduler implements Startable, Closeable {
     private final AlarmEventLeaseProvider alarmEventLeaseProvider;
     private final AlarmTriggerService alarmTriggerService;
     private final AlarmEventSchedulerConfiguration configuration;
+    private final Metric alarmMetric;
+    private final MetricFactory metricFactory;
 
     private Disposable loop;
 
@@ -62,12 +66,16 @@ public class AlarmEventScheduler implements Startable, Closeable {
     public AlarmEventScheduler(Clock clock, AlarmEventDAO alarmEventDAO,
                                @Named("scheduler") AlarmEventLeaseProvider alarmEventLeaseProvider,
                                AlarmTriggerService alarmTriggerService,
-                               AlarmEventSchedulerConfiguration configuration) {
+                               AlarmEventSchedulerConfiguration configuration,
+                               MetricFactory metricFactory) {
         this.clock = clock;
         this.alarmEventDAO = alarmEventDAO;
         this.alarmTriggerService = alarmTriggerService;
         this.configuration = configuration;
         this.alarmEventLeaseProvider = alarmEventLeaseProvider;
+
+        this.metricFactory = metricFactory;
+        alarmMetric = metricFactory.generate("calendar.alarm");
     }
 
     public void start() {
@@ -106,19 +114,22 @@ public class AlarmEventScheduler implements Startable, Closeable {
     }
 
     private Mono<Long> pollAndProcess() {
-        return alarmEventDAO.findAlarmsToTrigger(clock.instant())
-            .take(configuration.batchSize())
-            .flatMap(this::processOneAlarm, ReactorUtils.LOW_CONCURRENCY)
-            .onErrorResume(ex -> {
-                LOGGER.warn("Batch processing error", ex);
-                return Mono.empty();
-            })
-            .count();
+        return Mono.from(metricFactory.decoratePublisherWithTimerMetric("calendar.alarm.tick.duration",
+            alarmEventDAO.findAlarmsToTrigger(clock.instant())
+                .take(configuration.batchSize())
+                .flatMap(this::processOneAlarm, ReactorUtils.LOW_CONCURRENCY)
+                .onErrorResume(ex -> {
+                    LOGGER.warn("Batch processing error", ex);
+                    return Mono.empty();
+                })
+                .count()));
     }
 
     private Mono<Void> processOneAlarm(AlarmEvent alarmEvent) {
-        return alarmEventLeaseProvider.acquire(alarmEvent, LEASE_TTL)
+        return Mono.from(metricFactory.decoratePublisherWithTimerMetric("calendar.alarm.duration",
+            alarmEventLeaseProvider.acquire(alarmEvent, LEASE_TTL)
             .then(alarmTriggerService.sendMailAndCleanup(alarmEvent)
+                .doOnSuccess(any -> alarmMetric.increment())
                 .onErrorResume(error -> {
                     LOGGER.error("Error processing send mail and cleanup for event: {}", alarmEvent.toShortString(), error);
                    return alarmEventLeaseProvider.release(alarmEvent);
@@ -131,6 +142,6 @@ public class AlarmEventScheduler implements Startable, Closeable {
             .onErrorResume(ex -> {
                 LOGGER.error("Send failed for {}", alarmEvent.toShortString(), ex);
                 return Mono.empty();
-            });
+            })));
     }
 }

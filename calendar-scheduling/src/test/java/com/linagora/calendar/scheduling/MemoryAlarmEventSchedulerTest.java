@@ -31,6 +31,7 @@ import java.util.Optional;
 
 import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
+import org.apache.james.metrics.tests.RecordingMetricFactory;
 import org.apache.james.server.core.filesystem.FileSystemImpl;
 import org.apache.james.util.Port;
 import org.apache.james.utils.UpdatableTickingClock;
@@ -108,7 +109,8 @@ public class MemoryAlarmEventSchedulerTest implements AlarmEventSchedulerContrac
             alarmEventDAO,
             AlarmEventLeaseProvider.NOOP,
             alarmTriggerService,
-            alarmEventSchedulerConfiguration);
+            alarmEventSchedulerConfiguration,
+            new RecordingMetricFactory());
 
         requestSpecification = new RequestSpecBuilder()
             .setPort(mockSmtpExtension.getMockSmtp().getRestApiPort())
