@@ -90,7 +90,6 @@ public class EventAlarmHandler {
     }
 
     private Mono<Void> processCreateOrUpdate(Username username, CalendarAlarmMessageDTO alarmMessageDTO) {
-        System.out.println(alarmMessageDTO.rawEvent());
 
         Mono<Calendar> calendarMono = alarmMessageDTO.rawEvent()
             .map(CalendarUtil::parseIcs)
