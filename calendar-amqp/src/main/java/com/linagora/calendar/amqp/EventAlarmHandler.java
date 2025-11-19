@@ -33,7 +33,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.github.fge.lambdas.Throwing;
+import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.DavCalendarObject;
 import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.AlarmEventDAO;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
@@ -88,8 +90,14 @@ public class EventAlarmHandler {
     }
 
     private Mono<Void> processCreateOrUpdate(Username username, CalendarAlarmMessageDTO alarmMessageDTO) {
-        return calDavClient.fetchCalendarEvent(username, URI.create(alarmMessageDTO.eventPath()))
-            .flatMap(davCalendarObject -> applyNextAlarmDecision(username, davCalendarObject.calendarData(), alarmMessageDTO))
+
+        Mono<Calendar> calendarMono = alarmMessageDTO.rawEvent()
+            .map(CalendarUtil::parseIcs)
+            .map(Mono::just)
+            .orElseGet(() -> calDavClient.fetchCalendarEvent(username, URI.create(alarmMessageDTO.eventPath()))
+                .map(DavCalendarObject::calendarData));
+
+        return calendarMono.flatMap(ics -> applyNextAlarmDecision(username, ics, alarmMessageDTO))
             .onErrorResume(error -> {
                 LOGGER.error("Failed to create/update alarm for {} at {}", username.asString(), alarmMessageDTO.eventPath(), error);
                 return Mono.empty();

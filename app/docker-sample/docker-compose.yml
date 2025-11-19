@@ -130,7 +130,7 @@ services:
       RABBITMQ_DEFAULT_PASS: tcalendar
 
   sabre_dav:
-    image: linagora/esn-sabre:v4-dev2
+    image: linagora/esn-sabre:sabre-4_1_5-19-11-2025-rc1
     container_name: sabre_dav
     hostname: sabre-dav.linagora.local
     networks:
@@ -192,10 +192,7 @@ services:
       tcalendar-side-service:
         condition: service_started
     volumes:
-      - ./script/provision_all.sh:/provision/provision_all.sh:ro
-      - ./script/import-rabbitmq-definitions.sh:/provision/import-rabbitmq-definitions.sh:ro
-      - ./script/provision_users.sh:/provision/provision_users.sh:ro
-      - ./rabbitmq/rabbitmq-definitions.json:/provision/rabbitmq-definitions.json:ro
+      - ./script:/provision:ro
     entrypoint: ["sh", "/provision/provision_all.sh"]
     networks:
       - tcalendar

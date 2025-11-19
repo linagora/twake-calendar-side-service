@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.amqp;
 
+import java.util.Optional;
 import java.util.stream.StreamSupport;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -28,6 +29,7 @@ import com.linagora.calendar.storage.CalendarURL;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record CalendarAlarmMessageDTO(@JsonProperty("eventPath") String eventPath,
                                       @JsonProperty("event") JsonNode calendarEvent,
+                                      @JsonProperty("rawEvent") Optional<String> rawEvent,
                                       @JsonProperty("import") boolean isImport) {
 
     public static boolean hasVALARMComponent(JsonNode node) {

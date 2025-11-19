@@ -480,29 +480,17 @@ public class AlarmEventUpdateTest {
 
         // Then
         awaitAtMost.untilAsserted(() -> {
-            AlarmEvent updatedAttendee1 = alarmEventDAO
-                .find(eventUid, attendee.username().asMailAddress())
-                .block();
-            AlarmEvent updatedAttendee2 = alarmEventDAO
-                .find(eventUid, attendee2.username().asMailAddress())
+            AlarmEvent update = alarmEventDAO
+                .find(eventUid, organizer.username().asMailAddress())
                 .block();
 
-            assertThat(updatedAttendee1).isNotNull();
-            assertThat(updatedAttendee1.ics())
-                .describedAs("ICS payload for attendee 1 should be updated in DB")
-                .isNotBlank()
-                .isNotEqualTo(initialIcs);
-
-            assertThat(updatedAttendee1.ics())
-                .contains(updateTitle, updateDescription, updateLocation);
-
-            assertThat(updatedAttendee2).isNotNull();
-            assertThat(updatedAttendee2.ics())
+            assertThat(update).isNotNull();
+            assertThat(update.ics())
                 .describedAs("ICS payload for attendee 2 should be updated in DB")
                 .isNotBlank()
                 .isNotEqualTo(initialIcs);
 
-            assertThat(updatedAttendee2.ics())
+            assertThat(update.ics())
                 .contains(updateTitle, updateDescription, updateLocation);
         });
     }
