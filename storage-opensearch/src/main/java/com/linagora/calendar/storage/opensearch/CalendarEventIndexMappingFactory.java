@@ -75,6 +75,7 @@ public class CalendarEventIndexMappingFactory {
         String ALL_DAY = "allDay";
         String IS_RECURRENT_MASTER = "isRecurrentMaster";
         String CLAZZ = "clazz";
+        String SEQUENCE = "sequence";
     }
 
     interface CalendarAnalyzers {

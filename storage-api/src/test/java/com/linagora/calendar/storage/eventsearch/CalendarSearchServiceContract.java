@@ -255,6 +255,7 @@ public interface CalendarSearchServiceContract {
             .uid(generateEventUid())
             .summary("Stable")
             .calendarURL(generateCalendarURL())
+            .sequence(1)
             .build();
 
         CalendarEvents calendarEvents = CalendarEvents.of(event);
