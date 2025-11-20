@@ -21,6 +21,7 @@ package com.linagora.calendar.restapi.routes;
 import static com.linagora.calendar.restapi.routes.AvatarRoute.extractEmail;
 
 import jakarta.inject.Inject;
+import jakarta.inject.Named;
 
 import org.apache.james.core.Username;
 import org.apache.james.jmap.Endpoint;
@@ -30,11 +31,13 @@ import org.apache.james.metrics.api.MetricFactory;
 import org.apache.james.user.api.UsersRepository;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 
 import io.netty.handler.codec.http.HttpMethod;
 import reactor.core.publisher.Mono;
@@ -43,18 +46,26 @@ import reactor.netty.http.server.HttpServerResponse;
 
 public class UsersRoute extends CalendarRoute {
     public static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
-        .registerModule(new JavaTimeModule());
+        .registerModule(new JavaTimeModule())
+        .registerModule(new Jdk8Module());
 
     private final OpenPaaSUserDAO userDAO;
     private final OpenPaaSDomainDAO domainDAO;
     private final UsersRepository usersRepository;
+    private final SettingsBasedResolver settingsResolver;
 
     @Inject
-    public UsersRoute(Authenticator authenticator, MetricFactory metricFactory, OpenPaaSUserDAO userDAO, OpenPaaSDomainDAO domainDAO, UsersRepository usersRepository) {
+    public UsersRoute(Authenticator authenticator,
+                      MetricFactory metricFactory,
+                      OpenPaaSUserDAO userDAO,
+                      OpenPaaSDomainDAO domainDAO,
+                      UsersRepository usersRepository,
+                      @Named("language_timezone") SettingsBasedResolver settingsResolver) {
         super(authenticator, metricFactory);
         this.userDAO = userDAO;
         this.domainDAO = domainDAO;
         this.usersRepository = usersRepository;
+        this.settingsResolver = settingsResolver;
     }
 
     @Override
@@ -68,7 +79,9 @@ public class UsersRoute extends CalendarRoute {
         return userDAO.retrieve(username)
             .switchIfEmpty(provisionUser(username))
             .flatMap(user -> domainDAO.retrieve(user.username().getDomainPart().get())
-                .map(domain -> new UserRoute.ResponseDTO(user, domain.id())))
+                .flatMap(domain -> settingsResolver.resolveOrDefault(user.username())
+                    .map(settings -> settings.zoneId().toString())
+                    .map(tz -> new UserRoute.ResponseDTO(user, domain.id(), tz))))
             .map(Throwing.function(OBJECT_MAPPER::writeValueAsString))
             .map(s -> "[" + s + "]")
             .switchIfEmpty(Mono.just("[]"))
