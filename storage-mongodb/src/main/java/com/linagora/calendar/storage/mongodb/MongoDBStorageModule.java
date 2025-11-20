@@ -46,6 +46,7 @@ import com.linagora.calendar.storage.ResourceDAO;
 import com.linagora.calendar.storage.UploadedFileDAO;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
 import com.linagora.calendar.storage.secretlink.SecretLinkStore;
+import com.linagora.tmail.james.jmap.ticket.TicketStore;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
 public class MongoDBStorageModule extends AbstractModule {
@@ -76,6 +77,9 @@ public class MongoDBStorageModule extends AbstractModule {
         bind(AlarmEventLeaseProvider.class).to(MongoAlarmEventLeaseProvider.class);
 
         bind(ResourceDAO.class).to(MongoDBResourceDAO.class);
+
+        bind(MongoDBTicketDAO.class).in(Scopes.SINGLETON);
+        bind(TicketStore.class).to(MongoDBTicketDAO.class);
 
         Multibinder.newSetBinder(binder(), HealthCheck.class)
             .addBinding()

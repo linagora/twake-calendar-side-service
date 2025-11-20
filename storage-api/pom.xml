@@ -30,6 +30,11 @@
 
     <dependencies>
         <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>jmap-extensions</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>${james.groupId}</groupId>
             <artifactId>apache-james-mailbox-store</artifactId>
         </dependency>
