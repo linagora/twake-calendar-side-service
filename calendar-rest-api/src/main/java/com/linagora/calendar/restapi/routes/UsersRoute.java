@@ -34,6 +34,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.github.fge.lambdas.Throwing;
+import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
@@ -78,10 +79,14 @@ public class UsersRoute extends CalendarRoute {
         Username username = Username.of(extractEmail(request));
         return userDAO.retrieve(username)
             .switchIfEmpty(provisionUser(username))
-            .flatMap(user -> domainDAO.retrieve(user.username().getDomainPart().get())
-                .flatMap(domain -> settingsResolver.resolveOrDefault(user.username())
-                    .map(settings -> settings.zoneId().toString())
-                    .map(tz -> new UserRoute.ResponseDTO(user, domain.id(), tz))))
+            .flatMap(user -> Mono.zip(domainDAO.retrieve(user.username().getDomainPart().get()),
+                    settingsResolver.resolveOrDefault(user.username()))
+                .map(tuple -> {
+                    OpenPaaSDomain domain = tuple.getT1();
+                    SettingsBasedResolver.ResolvedSettings settings = tuple.getT2();
+                    String timezone = settings.zoneId().toString();
+                    return new UserRoute.ResponseDTO(user, domain.id(), timezone);
+                }))
             .map(Throwing.function(OBJECT_MAPPER::writeValueAsString))
             .map(s -> "[" + s + "]")
             .switchIfEmpty(Mono.just("[]"))

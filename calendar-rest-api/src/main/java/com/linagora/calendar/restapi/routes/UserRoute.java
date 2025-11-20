@@ -40,6 +40,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.restapi.NotFoundException;
+import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -184,10 +185,14 @@ public class UserRoute extends CalendarRoute {
     Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response, MailboxSession session) {
         OpenPaaSId userId = new OpenPaaSId(request.param("userId"));
         return userDAO.retrieve(userId)
-            .flatMap(user -> domainDAO.retrieve(user.username().getDomainPart().get())
-                .flatMap(domain -> settingsResolver.resolveOrDefault(user.username())
-                    .map(settings -> settings.zoneId().toString())
-                    .map(tz -> new ResponseDTO(user, domain.id(), tz))))
+            .flatMap(user -> Mono.zip(domainDAO.retrieve(user.username().getDomainPart().get()),
+                    settingsResolver.resolveOrDefault(user.username()))
+                .map(tuple -> {
+                    OpenPaaSDomain domain = tuple.getT1();
+                    SettingsBasedResolver.ResolvedSettings settings = tuple.getT2();
+                    String timezone = settings.zoneId().toString();
+                    return new UserRoute.ResponseDTO(user, domain.id(), timezone);
+                }))
             .map(Throwing.function(OBJECT_MAPPER::writeValueAsBytes))
             .switchIfEmpty(Mono.error(NotFoundException::new))
             .flatMap(bytes -> response.status(200)
