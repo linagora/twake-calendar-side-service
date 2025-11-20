@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.app;
 
+import java.util.Set;
+
 import jakarta.inject.Singleton;
 
 import org.apache.james.filesystem.api.FileSystem;
@@ -39,6 +41,10 @@ import org.apache.james.utils.PropertiesProvider;
 
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
+import com.google.inject.name.Named;
+import com.linagora.calendar.storage.SimpleSessionProvider;
+import com.linagora.calendar.storage.configuration.resolver.ConfigurationResolver;
+import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 
 public class TwakeCalendarCommonServicesModule extends AbstractModule {
 
@@ -85,5 +91,13 @@ public class TwakeCalendarCommonServicesModule extends AbstractModule {
     @Singleton
     public PropertiesProvider providePropertiesProvider(FileSystem fileSystem, Configuration.ConfigurationPath configurationPrefix) {
         return new PropertiesProvider(fileSystem, configurationPrefix);
+    }
+
+    @Provides
+    @Singleton
+    @Named("language_timezone")
+    SettingsBasedResolver provideSettingsBasedResolver(SimpleSessionProvider sessionProvider,
+                                                       ConfigurationResolver configurationResolver) {
+        return SettingsBasedResolver.of(configurationResolver, sessionProvider, Set.of(SettingsBasedResolver.LanguageSettingReader.INSTANCE, SettingsBasedResolver.TimeZoneSettingReader.INSTANCE));
     }
 }

@@ -19,7 +19,6 @@
 package com.linagora.calendar.amqp;
 
 import java.io.FileNotFoundException;
-import java.util.Set;
 import java.util.function.Supplier;
 
 import org.apache.commons.configuration2.Configuration;
@@ -39,11 +38,6 @@ import com.google.inject.Singleton;
 import com.google.inject.multibindings.Multibinder;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.google.inject.name.Named;
-import com.linagora.calendar.storage.SimpleSessionProvider;
-import com.linagora.calendar.storage.configuration.resolver.ConfigurationResolver;
-import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
-import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.LanguageSettingReader;
-import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.TimeZoneSettingReader;
 
 public class CalendarAmqpModule extends AbstractModule {
     public static final String INJECT_KEY_DAV = "dav";
@@ -177,14 +171,6 @@ public class CalendarAmqpModule extends AbstractModule {
     @Singleton
     public EventEmailFilter provideEventEmailFilter(PropertiesProvider propertiesProvider) throws ConfigurationException {
         return EventEmailFilter.from(propertiesProvider);
-    }
-
-    @Provides
-    @Singleton
-    @Named("language_timezone")
-    SettingsBasedResolver provideSettingsBasedResolver(SimpleSessionProvider sessionProvider,
-                                                             ConfigurationResolver configurationResolver) {
-        return SettingsBasedResolver.of(configurationResolver, sessionProvider, Set.of(LanguageSettingReader.INSTANCE, TimeZoneSettingReader.INSTANCE));
     }
 
     @Provides

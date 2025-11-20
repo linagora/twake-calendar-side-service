@@ -21,8 +21,10 @@ package com.linagora.calendar.restapi.routes;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
+import java.util.Optional;
 
 import jakarta.inject.Inject;
+import jakarta.inject.Named;
 
 import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.http.Authenticator;
@@ -30,16 +32,20 @@ import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.metrics.api.MetricFactory;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.restapi.NotFoundException;
+import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 
 import io.netty.handler.codec.http.HttpMethod;
 import reactor.core.publisher.Mono;
@@ -48,15 +54,24 @@ import reactor.netty.http.server.HttpServerResponse;
 
 public class UserRoute extends CalendarRoute {
     public static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
-        .registerModule(new JavaTimeModule());
+        .registerModule(new JavaTimeModule())
+        .registerModule(new Jdk8Module());
 
     public static class ResponseDTO {
         private final OpenPaaSUser user;
         private final OpenPaaSId domainId;
+        private final Optional<String> timezone;
 
         public ResponseDTO(OpenPaaSUser user, OpenPaaSId domainId) {
             this.user = user;
             this.domainId = domainId;
+            this.timezone = Optional.empty();
+        }
+
+        public ResponseDTO(OpenPaaSUser user, OpenPaaSId domainId, String timezone) {
+            this.user = user;
+            this.domainId = domainId;
+            this.timezone = Optional.of(timezone);
         }
 
         @JsonProperty("_id")
@@ -118,6 +133,12 @@ public class UserRoute extends CalendarRoute {
         public String getLastname() {
             return user.lastname();
         }
+
+        @JsonProperty("timezone")
+        @JsonInclude(JsonInclude.Include.NON_ABSENT)
+        public Optional<String> getTimezone() {
+            return timezone;
+        }
     }
 
     public static class DomainInfo {
@@ -141,12 +162,18 @@ public class UserRoute extends CalendarRoute {
 
     private final OpenPaaSUserDAO userDAO;
     private final OpenPaaSDomainDAO domainDAO;
+    private final SettingsBasedResolver settingsResolver;
 
     @Inject
-    public UserRoute(Authenticator authenticator, MetricFactory metricFactory, OpenPaaSUserDAO userDAO, OpenPaaSDomainDAO domainDAO) {
+    public UserRoute(Authenticator authenticator,
+                     MetricFactory metricFactory,
+                     OpenPaaSUserDAO userDAO,
+                     OpenPaaSDomainDAO domainDAO,
+                     @Named("language_timezone") SettingsBasedResolver settingsResolver) {
         super(authenticator, metricFactory);
         this.userDAO = userDAO;
         this.domainDAO = domainDAO;
+        this.settingsResolver = settingsResolver;
     }
 
     @Override
@@ -158,8 +185,14 @@ public class UserRoute extends CalendarRoute {
     Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response, MailboxSession session) {
         OpenPaaSId userId = new OpenPaaSId(request.param("userId"));
         return userDAO.retrieve(userId)
-            .flatMap(user -> domainDAO.retrieve(user.username().getDomainPart().get())
-                .map(domain -> new ResponseDTO(user, domain.id())))
+            .flatMap(user -> Mono.zip(domainDAO.retrieve(user.username().getDomainPart().get()),
+                    settingsResolver.resolveOrDefault(user.username()))
+                .map(tuple -> {
+                    OpenPaaSDomain domain = tuple.getT1();
+                    SettingsBasedResolver.ResolvedSettings settings = tuple.getT2();
+                    String timezone = settings.zoneId().toString();
+                    return new UserRoute.ResponseDTO(user, domain.id(), timezone);
+                }))
             .map(Throwing.function(OBJECT_MAPPER::writeValueAsBytes))
             .switchIfEmpty(Mono.error(NotFoundException::new))
             .flatMap(bytes -> response.status(200)

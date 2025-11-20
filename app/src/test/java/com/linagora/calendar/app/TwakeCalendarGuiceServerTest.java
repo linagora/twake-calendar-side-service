@@ -826,7 +826,8 @@ class TwakeCalendarGuiceServerTest  {
                     ],
                     "firstname": "btellier@linagora.com",
                     "lastname": "btellier@linagora.com",
-                    "objectType": "user"
+                    "objectType": "user",
+                    "timezone" : "Europe/Paris"
                 }
                 """, userId, domainId));
     }
@@ -869,7 +870,8 @@ class TwakeCalendarGuiceServerTest  {
                     ],
                     "firstname": "btellier@linagora.com",
                     "lastname": "btellier@linagora.com",
-                    "objectType": "user"
+                    "objectType": "user",
+                    "timezone" : "Europe/Paris"
                 }]
                 """, userId, domainId));
     }
@@ -912,7 +914,8 @@ class TwakeCalendarGuiceServerTest  {
                     ],
                     "firstname": "btellier@linagora.com",
                     "lastname": "btellier@linagora.com",
-                    "objectType": "user"
+                    "objectType": "user",
+                    "timezone" : "Europe/Paris"
                 }]
                 """, userId, domainId));
     }
@@ -976,7 +979,8 @@ class TwakeCalendarGuiceServerTest  {
                     ],
                     "firstname": "to-be-provisionned@linagora.com",
                     "lastname": "to-be-provisionned@linagora.com",
-                    "objectType": "user"
+                    "objectType": "user",
+                    "timezone" : "Europe/Paris"
                 }]
                 """, userId, domainId));
     }
