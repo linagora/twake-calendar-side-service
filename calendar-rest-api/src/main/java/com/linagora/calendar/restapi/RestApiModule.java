@@ -64,6 +64,7 @@ import com.linagora.calendar.restapi.auth.OidcEndpointsInfoResolver;
 import com.linagora.calendar.restapi.auth.OidcFallbackCookieAuthenticationStrategy;
 import com.linagora.calendar.restapi.routes.AvatarRoute;
 import com.linagora.calendar.restapi.routes.CalendarSearchRoute;
+import com.linagora.calendar.restapi.routes.CalendarTicketRoutes;
 import com.linagora.calendar.restapi.routes.CheckTechnicalUserTokenRoute;
 import com.linagora.calendar.restapi.routes.ConfigurationRoute;
 import com.linagora.calendar.restapi.routes.DomainRoute;
@@ -103,8 +104,12 @@ import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolve
 import com.linagora.calendar.storage.model.Aud;
 import com.linagora.calendar.storage.secretlink.SecretLinkPermissionChecker;
 import com.linagora.calendar.storage.secretlink.SecretLinkPermissionChecker.NoopPermissionChecker;
+import com.linagora.tmail.james.jmap.ticket.TicketManager;
+import com.linagora.tmail.james.jmap.ticket.TicketStore;
 
 public class RestApiModule extends AbstractModule {
+
+    private static final boolean TICKET_IP_VALIDATION_DISABLED = false;
 
     public interface Audiences {
         List<Aud> get();
@@ -142,6 +147,7 @@ public class RestApiModule extends AbstractModule {
         routes.addBinding().to(ResourceIconRoute.class);
         routes.addBinding().to(ResourceParticipationRoute.class);
         routes.addBinding().to(ResourceRoute.class);
+        routes.addBinding().to(CalendarTicketRoutes.class);
 
         Multibinder<AuthenticationStrategy> authenticationStrategies = Multibinder.newSetBinder(binder(), AuthenticationStrategy.class);
         authenticationStrategies.addBinding().to(BasicAuthenticationStrategy.class);
@@ -296,5 +302,11 @@ public class RestApiModule extends AbstractModule {
     @Named("language")
     SettingsBasedResolver provideLocaleResolver(ConfigurationResolver configurationResolver, SimpleSessionProvider sessionProvider) {
         return SettingsBasedResolver.of(configurationResolver, sessionProvider, Set.of(SettingsBasedResolver.LanguageSettingReader.INSTANCE));
+    }
+
+    @Provides
+    @Singleton
+    TicketManager provideTicketManager(Clock clock, TicketStore ticketStore) {
+        return new TicketManager(clock, ticketStore, TICKET_IP_VALIDATION_DISABLED);
     }
 }
