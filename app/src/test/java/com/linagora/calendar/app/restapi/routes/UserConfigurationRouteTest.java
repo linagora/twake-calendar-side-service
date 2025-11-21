@@ -343,6 +343,89 @@ class UserConfigurationRouteTest {
             """);
     }
 
+    @Test
+    void putShouldSaveDisplayWeekNumbersConfiguration() {
+        String configuration = """
+            [
+              {
+                "name": "calendaar",
+                "configurations": [
+                  {
+                    "name": "displayWeekNumbers",
+                    "value": false
+                  }
+                ]
+              }
+            ]
+            """;
+
+        given()
+            .body(configuration)
+        .when()
+            .put("/api/configurations?scope=user")
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        String body = given()
+            .auth().preemptive().basic(USERNAME.asString(), PASSWORD)
+            .body("""
+                [ {
+                  "name" : "calendar",
+                  "keys" : [ "displayWeekNumbers" ]
+                } ]""")
+        .when()
+            .post("/api/configurations")
+        .then()
+            .statusCode(200)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(body).isEqualTo("""
+            [
+                {
+                    "name": "calendar",
+                    "configurations": [
+                        {
+                            "name": "displayWeekNumbers",
+                            "value": false
+                        }
+                    ]
+                }
+            ]""");
+    }
+
+    @Test
+    void postShouldReturnDefaultTrueForDisplayWeekNumbersWhenNotConfigured() {
+        String body = given()
+            .auth().preemptive().basic(USERNAME.asString(), PASSWORD)
+            .body("""
+                [ {
+                  "name" : "calendar",
+                  "keys" : [ "displayWeekNumbers" ]
+                } ]""")
+        .when()
+            .post("/api/configurations")
+        .then()
+            .statusCode(200)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(body).isEqualTo("""
+            [
+                {
+                    "name": "calendar",
+                    "configurations": [
+                        {
+                            "name": "displayWeekNumbers",
+                            "value": true
+                        }
+                    ]
+                }
+            ]""");
+    }
+
     JsonNode toJsonNode(String json) {
         try {
             return MAPPER.readTree(json);
