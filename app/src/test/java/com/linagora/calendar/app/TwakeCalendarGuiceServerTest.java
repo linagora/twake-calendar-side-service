@@ -1127,6 +1127,9 @@ class TwakeCalendarGuiceServerTest  {
                                 {
                                     "name": "alarmEmails",
                                     "value": null
+                                }, {
+                                    "name":"displayWeekNumbers",
+                                    "value":true
                                 }
                             ],
                             "name": "calendar"

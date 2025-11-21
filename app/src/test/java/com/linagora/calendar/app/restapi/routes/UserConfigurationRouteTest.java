@@ -348,7 +348,7 @@ class UserConfigurationRouteTest {
         String configuration = """
             [
               {
-                "name": "calendaar",
+                "name": "calendar",
                 "configurations": [
                   {
                     "name": "displayWeekNumbers",
