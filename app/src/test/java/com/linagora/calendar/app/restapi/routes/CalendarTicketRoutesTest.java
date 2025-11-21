@@ -190,4 +190,65 @@ public class CalendarTicketRoutesTest {
             .statusCode(HttpStatus.SC_NO_CONTENT);
     }
 
+    @Test
+    void shouldAllowUsingTicketToAuthenticateAnotherApi(TwakeCalendarGuiceServer server) throws UnknownHostException {
+        // Create a ticket using basic auth
+        String ticketResponse = given()
+            .when()
+            .post("/ws/ticket")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract()
+            .body()
+            .asString();
+
+        String ticketValue = JsonPath.from(ticketResponse).getString("value");
+
+        // the generated ticket to authenticate a second ticket creation
+        String secondResponse = given()
+            .auth().none()
+            .queryParam("ticket", ticketValue)
+            .when()
+            .post("/ws/ticket")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(secondResponse)
+            .isEqualTo("""
+                {
+                     "clientAddress": "${json-unit.ignore}",
+                     "value": "${json-unit.ignore}",
+                     "generatedOn": "${json-unit.ignore}",
+                     "validUntil": "${json-unit.ignore}",
+                     "username": "${json-unit.ignore}"
+                 }""");
+    }
+
+    @Test
+    void shouldRejectInvalidTicketWhenAuthenticatingAnotherApi() {
+        // Use an invalid / random ticket
+        String invalidTicket = UUID.randomUUID().toString();
+
+        String response = given()
+            .auth().none()
+            .queryParam("ticket", invalidTicket)
+        .when()
+            .post("/ws/ticket")
+        .then()
+            .statusCode(HttpStatus.SC_UNAUTHORIZED)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response)
+            .isEqualTo("""
+                {
+                    "type": "about:blank",
+                    "status": 401,
+                    "detail": "${json-unit.ignore}"
+                }""");
+    }
 }

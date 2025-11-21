@@ -33,12 +33,15 @@ import jakarta.inject.Named;
 import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.commons.io.IOUtils;
+import org.apache.james.core.Username;
 import org.apache.james.filesystem.api.FileSystem;
 import org.apache.james.jmap.JMAPRoutes;
 import org.apache.james.jmap.http.AuthenticationStrategy;
 import org.apache.james.jmap.http.Authenticator;
 import org.apache.james.jwt.JwtConfiguration;
 import org.apache.james.jwt.introspection.IntrospectionEndpoint;
+import org.apache.james.mailbox.MailboxSession;
+import org.apache.james.mailbox.SessionProvider;
 import org.apache.james.metrics.api.MetricFactory;
 import org.apache.james.utils.GuiceProbe;
 import org.apache.james.utils.InitializationOperation;
@@ -104,12 +107,14 @@ import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolve
 import com.linagora.calendar.storage.model.Aud;
 import com.linagora.calendar.storage.secretlink.SecretLinkPermissionChecker;
 import com.linagora.calendar.storage.secretlink.SecretLinkPermissionChecker.NoopPermissionChecker;
+import com.linagora.tmail.james.jmap.ticket.TicketAuthenticationStrategy;
 import com.linagora.tmail.james.jmap.ticket.TicketManager;
 import com.linagora.tmail.james.jmap.ticket.TicketStore;
 
 public class RestApiModule extends AbstractModule {
 
     private static final boolean TICKET_IP_VALIDATION_DISABLED = false;
+    private static final String TICKET_AUTHENTICATION_CHALLENGE_REALM = "ws";
 
     public interface Audiences {
         List<Aud> get();
@@ -308,5 +313,30 @@ public class RestApiModule extends AbstractModule {
     @Singleton
     TicketManager provideTicketManager(Clock clock, TicketStore ticketStore) {
         return new TicketManager(clock, ticketStore, TICKET_IP_VALIDATION_DISABLED);
+    }
+
+    @ProvidesIntoSet
+    public AuthenticationStrategy provideTicketAuthenticationStrategy(TicketManager ticketManager,
+                                                                      SimpleSessionProvider sessionProvider) {
+        return new TicketAuthenticationStrategy(ticketManager, provideSessionProvider(sessionProvider), TICKET_AUTHENTICATION_CHALLENGE_REALM);
+    }
+
+    public SessionProvider provideSessionProvider(SimpleSessionProvider simpleSessionProvider) {
+        return new SessionProvider() {
+            @Override
+            public MailboxSession createSystemSession(Username userName) {
+                return simpleSessionProvider.createSession(userName);
+            }
+
+            @Override
+            public AuthorizationStep authenticate(Username givenUserid, String passwd) {
+                throw new UnsupportedOperationException("Not supported");
+            }
+
+            @Override
+            public AuthorizationStep authenticate(Username givenUserid) {
+                throw new UnsupportedOperationException("Not supported");
+            }
+        };
     }
 }
