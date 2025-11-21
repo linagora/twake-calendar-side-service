@@ -311,6 +311,7 @@ Supported configuration keys:
    - `hideDeclinedEvents`
  - `calendar`
    - `alarmEmails`: allows the user to disable alarm emails.
+   - `displayWeekNumbers`: Should the front display week numbers? Defaults to true.
  - `linagora.esn.videoconference`
    - `jitsiInstanceUrl`: URL of the jitsi server. Advertised from configuration
    - `openPaasVideoconferenceAppUrl`: legacy. Points to the jisi url.
