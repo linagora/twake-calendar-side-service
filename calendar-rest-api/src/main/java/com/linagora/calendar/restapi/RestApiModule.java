@@ -109,6 +109,8 @@ import com.linagora.tmail.james.jmap.ticket.TicketStore;
 
 public class RestApiModule extends AbstractModule {
 
+    private static final boolean TICKET_IP_VALIDATION_DISABLED = false;
+
     public interface Audiences {
         List<Aud> get();
     }
@@ -305,6 +307,6 @@ public class RestApiModule extends AbstractModule {
     @Provides
     @Singleton
     TicketManager provideTicketManager(Clock clock, TicketStore ticketStore) {
-        return new TicketManager(clock, ticketStore, false);
+        return new TicketManager(clock, ticketStore, TICKET_IP_VALIDATION_DISABLED);
     }
 }
