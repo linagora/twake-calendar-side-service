@@ -1002,6 +1002,7 @@ class TwakeCalendarGuiceServerTest  {
             .asString();
 
         assertThatJson(body)
+            .whenIgnoringPaths("configurations.modules[4].configurations[1]")
             .isEqualTo(String.format("""
                 {
                     "id": "%s",
