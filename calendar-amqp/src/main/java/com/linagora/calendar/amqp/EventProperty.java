@@ -58,6 +58,7 @@ public class EventProperty {
     public static final String DESCRIPTION_PROPERTY = "description";
     public static final String LOCATION_PROPERTY = "location";
     public static final String ORGANIZER_PROPERTY = "organizer";
+    public static final String SEQUENCE_PROPERTY = "sequence";
     public static final String ATTENDEE_PROPERTY = "attendee";
     public static final String RECURRENCE_ID_PROPERTY = "recurrence-id";
     public static final String RRULE_PROPERTY = "rrule";
@@ -202,6 +203,27 @@ public class EventProperty {
 
         public EventUid getEventUid() {
             return eventUid;
+        }
+    }
+
+    public static class SequenceProperty extends EventProperty {
+        private static final String INTEGER = "integer";
+
+        private final Integer sequence;
+
+        public SequenceProperty(EventProperty base) {
+            super(base.name, base.attributes, base.valueType, base.value);
+            if (!INTEGER.equalsIgnoreCase(base.valueType)) {
+                throw new CalendarEventDeserializeException("Invalid value type for sequence property, expected 'integer' but got " + base.valueType);
+            }
+
+            this.sequence = Optional.ofNullable(base.value)
+                .map(Integer::valueOf)
+                .orElse(null);
+        }
+
+        public Integer getSequence() {
+            return sequence;
         }
     }
 

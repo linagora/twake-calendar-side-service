@@ -54,6 +54,7 @@ public record EventFields(EventUid uid,
                           Person organizer,
                           List<Person> attendees,
                           List<Person> resources,
+                          Integer sequence,
                           CalendarURL calendarURL) {
 
     public static final Logger LOGGER = LoggerFactory.getLogger(EventFields.class);
@@ -97,6 +98,7 @@ public record EventFields(EventUid uid,
         private List<EventFields.Person> attendees = new ArrayList<>();
         private List<EventFields.Person> resources = new ArrayList<>();
         private CalendarURL calendarURL;
+        private Integer sequence;
 
         public Builder uid(String uid) {
             return uid(new EventUid(uid));
@@ -182,6 +184,11 @@ public record EventFields(EventUid uid,
             return this;
         }
 
+        public Builder sequence(Integer sequence) {
+            this.sequence = sequence;
+            return this;
+        }
+
         int calculateDurationInDays() {
             if (start == null || end == null || !end.isAfter(start)) {
                 return 0;
@@ -210,6 +217,7 @@ public record EventFields(EventUid uid,
                 organizer,
                 attendees,
                 resources,
+                sequence,
                 calendarURL);
         }
     }

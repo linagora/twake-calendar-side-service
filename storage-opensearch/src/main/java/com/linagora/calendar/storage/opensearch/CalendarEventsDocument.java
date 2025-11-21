@@ -26,11 +26,13 @@ import jakarta.mail.internet.AddressException;
 
 import org.apache.james.vacation.api.AccountId;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.opensearch.CalendarEventIndexMappingFactory.CalendarFields;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record CalendarEventsDocument(@JsonProperty(CalendarFields.ACCOUNT_ID) String accountId,
                                      @JsonProperty(CalendarFields.EVENT_UID) String eventUid,
                                      @JsonProperty(CalendarFields.SUMMARY) String summary,
@@ -45,7 +47,8 @@ public record CalendarEventsDocument(@JsonProperty(CalendarFields.ACCOUNT_ID) St
                                      @JsonProperty(CalendarFields.ORGANIZER) SimplePerson organizer,
                                      @JsonProperty(CalendarFields.ATTENDEES) List<SimplePerson> attendees,
                                      @JsonProperty(CalendarFields.RESOURCES) List<SimplePerson> resources,
-                                     @JsonProperty(CalendarFields.CALENDAR_URL) String calendarURL) {
+                                     @JsonProperty(CalendarFields.CALENDAR_URL) String calendarURL,
+                                     @JsonProperty("sequence") Integer sequence) {
 
     public static class DeserializeException extends RuntimeException {
         public DeserializeException(String message, Throwable cause) {
@@ -91,7 +94,8 @@ public record CalendarEventsDocument(@JsonProperty(CalendarFields.ACCOUNT_ID) St
             eventFields.resources().stream()
                 .map(SimplePerson::from)
                 .toList(),
-            eventFields.calendarURL().serialize());
+            eventFields.calendarURL().serialize(),
+            eventFields.sequence());
     }
 
     public EventFields toEventFields() {
@@ -120,6 +124,9 @@ public record CalendarEventsDocument(@JsonProperty(CalendarFields.ACCOUNT_ID) St
         }
         if (isRecurrentMaster != null) {
             builder.isRecurrentMaster(isRecurrentMaster);
+        }
+        if (sequence != null) {
+            builder.sequence(sequence);
         }
 
         return builder.build();
