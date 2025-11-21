@@ -29,6 +29,7 @@ import org.apache.james.mailbox.MailboxSession;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.BooleanNode;
 import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
@@ -74,6 +75,7 @@ public class StoredConfigurationEntryResolver implements ConfigurationEntryResol
         .put(new ModuleName("core"), new ConfigurationKey("businessHours"), defaultBusinessHours())
         .put(new ModuleName("linagora.esn.calendar"), new ConfigurationKey("workingDays"), any -> NullNode.getInstance())
         .put(new ModuleName("linagora.esn.calendar"), new ConfigurationKey("hideDeclinedEvents"), any -> NullNode.getInstance())
+        .put(new ModuleName("calendar"), new ConfigurationKey("displayWeekNumbers"), any -> BooleanNode.TRUE)
         .put(new ModuleName("calendar"), new ConfigurationKey("alarmEmails"), any -> NullNode.getInstance())
 
         .build();

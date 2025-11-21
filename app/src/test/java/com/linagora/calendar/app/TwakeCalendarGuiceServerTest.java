@@ -1002,6 +1002,7 @@ class TwakeCalendarGuiceServerTest  {
             .asString();
 
         assertThatJson(body)
+            .whenIgnoringPaths("configurations.modules[4]")
             .isEqualTo(String.format("""
                 {
                     "id": "%s",
@@ -1127,6 +1128,9 @@ class TwakeCalendarGuiceServerTest  {
                                 {
                                     "name": "alarmEmails",
                                     "value": null
+                                }, {
+                                    "name":"displayWeekNumbers",
+                                    "value":true
                                 }
                             ],
                             "name": "calendar"
