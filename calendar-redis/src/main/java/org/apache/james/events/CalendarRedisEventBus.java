@@ -26,12 +26,15 @@ import jakarta.annotation.PreDestroy;
 import org.apache.james.events.EventListener.ReactiveEventListener;
 import org.apache.james.lifecycle.api.Startable;
 import org.apache.james.metrics.api.MetricFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 
 import io.lettuce.core.api.reactive.RedisSetReactiveCommands;
 import io.lettuce.core.pubsub.api.reactive.RedisPubSubReactiveCommands;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 /**
@@ -43,6 +46,7 @@ import reactor.core.publisher.Mono;
 public class CalendarRedisEventBus implements EventBus, Startable {
     public static final EventBusName EVENT_BUS_NAME = new EventBusName("calendar-redis-eventbus");
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(CalendarRedisEventBus.class);
     private static final String NOT_RUNNING_ERROR_MESSAGE = "Event Bus is not running";
 
     private final EventSerializer eventSerializer;
@@ -60,7 +64,8 @@ public class CalendarRedisEventBus implements EventBus, Startable {
     private volatile boolean isRunning;
     private volatile boolean isStopping;
     private RedisKeyRegistrationHandler keyRegistrationHandler;
-    private RedisEventKeyDispatcher eventDispatcher;
+    private LocalKeyListenerExecutor localKeyListenerExecutor;
+    private RedisKeyEventDispatcher redisKeyEventDispatcher;
 
     public CalendarRedisEventBus(EventSerializer eventSerializer,
                                  RetryBackoffConfiguration retryBackoff,
@@ -88,10 +93,10 @@ public class CalendarRedisEventBus implements EventBus, Startable {
     public void start() {
         if (!isRunning && !isStopping) {
             LocalListenerRegistry localListenerRegistry = new LocalListenerRegistry();
+            localKeyListenerExecutor = new LocalKeyListenerExecutor(localListenerRegistry, listenerExecutor);
+            redisKeyEventDispatcher = new RedisKeyEventDispatcher(eventBusId, eventSerializer, redisPublisher, redisSetReactiveCommands, redisEventBusConfiguration);
             keyRegistrationHandler = new RedisKeyRegistrationHandler(namingStrategy, eventBusId, eventSerializer, routingKeyConverter,
                 localListenerRegistry, listenerExecutor, retryBackoff, metricFactory, redisEventBusClientFactory, redisSetReactiveCommands, redisEventBusConfiguration);
-            eventDispatcher = new RedisEventKeyDispatcher(eventBusId, eventSerializer, localListenerRegistry,
-                listenerExecutor, redisPublisher, redisSetReactiveCommands, redisEventBusConfiguration);
             keyRegistrationHandler.start();
             isRunning = true;
         }
@@ -116,7 +121,7 @@ public class CalendarRedisEventBus implements EventBus, Startable {
     public Mono<Void> dispatch(Event event, Set<RegistrationKey> key) {
         Preconditions.checkState(isRunning, NOT_RUNNING_ERROR_MESSAGE);
         if (!event.isNoop()) {
-            return Mono.from(metricFactory.decoratePublisherWithTimerMetric("redis-dispatch", eventDispatcher.dispatch(event, key)));
+            return Mono.from(metricFactory.decoratePublisherWithTimerMetric("redis-dispatch", dispatchEvent(event, key)));
         }
         return Mono.empty();
     }
@@ -129,7 +134,7 @@ public class CalendarRedisEventBus implements EventBus, Startable {
             .filter(e -> !e.event().isNoop())
             .collect(ImmutableList.toImmutableList());
         if (!notNoopEvents.isEmpty()) {
-            return Mono.from(metricFactory.decoratePublisherWithTimerMetric("redis-dispatch", eventDispatcher.dispatch(events)));
+            return Mono.from(metricFactory.decoratePublisherWithTimerMetric("redis-dispatch", dispatchEvent(events)));
         }
         return Mono.empty();
     }
@@ -147,6 +152,20 @@ public class CalendarRedisEventBus implements EventBus, Startable {
     @Override
     public EventBusName eventBusName() {
         return EVENT_BUS_NAME;
+    }
+
+    private Mono<Void> dispatchEvent(Event event, Set<RegistrationKey> keys) {
+        return Flux.concat(localKeyListenerExecutor.execute(event, keys),
+                redisKeyEventDispatcher.dispatch(event, keys))
+            .doOnError(err -> LOGGER.error("Error while dispatching event {}", event.getEventId(), err))
+            .then();
+    }
+
+    private Mono<Void> dispatchEvent(Collection<EventBus.EventWithRegistrationKey> events) {
+        return Flux.concat(localKeyListenerExecutor.execute(events),
+                redisKeyEventDispatcher.dispatch(events))
+            .doOnError(err -> LOGGER.error("Error while dispatching events batch", err))
+            .then();
     }
 
 }
