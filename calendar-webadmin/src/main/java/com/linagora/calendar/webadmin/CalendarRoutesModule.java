@@ -35,6 +35,7 @@ import com.google.inject.multibindings.Multibinder;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.google.inject.name.Named;
 import com.google.inject.name.Names;
+import com.linagora.calendar.webadmin.task.AddMissingFieldsTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.AlarmScheduleTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.CalendarEventsReindexTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.RepositionResourceRightsTaskAdditionalInformationDTO;
@@ -76,5 +77,11 @@ public class CalendarRoutesModule extends AbstractModule {
     @ProvidesIntoSet
     public AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO> repositionResourceRightsTaskAdditionalInformation() {
         return RepositionResourceRightsTaskAdditionalInformationDTO.module();
+    }
+
+    @Named(DTOModuleInjections.WEBADMIN_DTO)
+    @ProvidesIntoSet
+    public AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO> addMissingFieldsTaskAdditionalInformation() {
+        return AddMissingFieldsTaskAdditionalInformationDTO.module();
     }
 }
