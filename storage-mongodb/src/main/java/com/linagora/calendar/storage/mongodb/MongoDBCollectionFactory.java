@@ -67,6 +67,10 @@ public class MongoDBCollectionFactory {
                 .createIndex(new Document("lastname", 1)))
             .block();
 
+        Mono.from(database.getCollection(USERS)
+                .createIndex(new Document("firstnames", 1)))
+            .block();
+
         try {
             Mono.from(database.getCollection(USERS)
                     .createIndex(new Document("accounts.emails", 1)))

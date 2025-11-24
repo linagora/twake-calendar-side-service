@@ -192,4 +192,37 @@ public interface OpenPaaSUserDAOContract {
         assertThat(result).contains(user1).doesNotContain(user2);
     }
 
+    @Test
+    default void searchShouldReturnUserWhenMatchingPartOfComposedFirstname() {
+        Domain domain = Domain.of("domain.tld");
+        OpenPaaSUser user = testee().add(USERNAME, "Nhan Phung", "Le").block();
+
+        assertThat(testee().search(domain, "Nhan", 10).collectList().block()).contains(user);
+        assertThat(testee().search(domain, "Phung", 10).collectList().block()).contains(user);
+        assertThat(testee().search(domain, "Phu", 10).collectList().block()).contains(user);
+    }
+
+    @Test
+    default void searchShouldReturnUserWhenMatchingPartOfComposedFirstnameCaseInsensitive() {
+        Domain domain = Domain.of("domain.tld");
+        OpenPaaSUser user = testee().add(USERNAME, "Nhan Phung", "Le").block();
+
+        assertThat(testee().search(domain, "nhan", 10).collectList().block()).contains(user);
+        assertThat(testee().search(domain, "PHUNG", 10).collectList().block()).contains(user);
+        assertThat(testee().search(domain, "pHu", 10).collectList().block()).contains(user);
+    }
+
+    @Test
+    default void searchShouldReturnUserWhenMatchingMultipleSpacedFirstname() {
+        Domain domain = Domain.of("domain.tld");
+        OpenPaaSUser user1 = testee().add(USERNAME, "Jean Paul Pierre", "Dupont").block();
+        OpenPaaSUser user2 = testee().add(Username.of("other@domain.tld"), "Marie Claire", "Martin").block();
+
+        assertThat(testee().search(domain, "Jean", 10).collectList().block()).contains(user1);
+        assertThat(testee().search(domain, "Paul", 10).collectList().block()).contains(user1);
+        assertThat(testee().search(domain, "Pierre", 10).collectList().block()).contains(user1);
+        assertThat(testee().search(domain, "Marie", 10).collectList().block()).contains(user2);
+        assertThat(testee().search(domain, "Claire", 10).collectList().block()).contains(user2);
+    }
+
 }

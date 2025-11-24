@@ -28,6 +28,7 @@ import org.apache.james.core.Username;
 import org.bson.Document;
 import org.bson.types.ObjectId;
 
+import com.google.common.base.Splitter;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
@@ -86,6 +87,7 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
             .map(domain -> new Document()
                 .append("firstname", firstName)
                 .append("lastname", lastName)
+                .append("firstnames", computeFirstnames(firstName))
                 .append("password", "secret")
                 .append("email", username.asString()) // not part of OpenPaaS datamodel but helps solve concurrency
                 .append("domains", List.of(new Document("domain_id", new ObjectId(domain.id().value()))))
@@ -112,6 +114,7 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
                     Updates.combine(
                         Updates.set("firstname", newFirstname),
                         Updates.set("lastname", newLastname),
+                        Updates.set("firstnames", computeFirstnames(newFirstname)),
                         Updates.set("email", newUsername.asString()),
                         Updates.set("domains", List.of(new Document("domain_id", new ObjectId(domain.id().value())))),
                         Updates.set("accounts", List.of(new Document()
@@ -162,7 +165,8 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
                             Filters.or(
                                 Filters.regex("accounts.emails", searchPattern),
                                 Filters.regex("firstname", searchPattern),
-                                Filters.regex("lastname", searchPattern))))
+                                Filters.regex("lastname", searchPattern),
+                                Filters.regex("firstnames", searchPattern))))
                         .limit(limit))
                     .map(this::toOpenPaaSUser));
     }
@@ -178,5 +182,15 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
             new OpenPaaSId(document.getObjectId("_id").toHexString()),
             document.getString("firstname"),
             document.getString("lastname"));
+    }
+
+    private List<String> computeFirstnames(String firstname) {
+        if (firstname == null || firstname.trim().isEmpty()) {
+            return List.of();
+        }
+        return Splitter.on(' ')
+            .trimResults()
+            .omitEmptyStrings()
+            .splitToList(firstname);
     }
 }
