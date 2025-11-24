@@ -27,8 +27,11 @@ import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
 import org.bson.Document;
 import org.bson.types.ObjectId;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Splitter;
+import com.linagora.calendar.storage.MigrationResult;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
@@ -45,6 +48,7 @@ import reactor.core.publisher.Mono;
 
 public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
     public static final String COLLECTION = "users";
+    private static final Logger LOGGER = LoggerFactory.getLogger(MongoDBOpenPaaSUserDAO.class);
 
     private final MongoDatabase database;
     private final MongoDBOpenPaaSDomainDAO domainDAO;
@@ -192,5 +196,46 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
             .trimResults()
             .omitEmptyStrings()
             .splitToList(firstname);
+    }
+
+    @Override
+    public Mono<MigrationResult> addMissingFields() {
+        return Flux.from(database.getCollection(COLLECTION).find())
+            .flatMap(document -> addMissingFields(document)
+                .switchIfEmpty(Mono.just(new MigrationResult(1, 0, 0))))
+            .reduce(MigrationResult.empty(),
+                (acc, result) -> new MigrationResult(
+                    acc.processedUsers() + result.processedUsers(),
+                    acc.upgradedUsers() + result.upgradedUsers(),
+                    acc.errorCount() + result.errorCount()));
+    }
+
+    private Mono<MigrationResult> addMissingFields(Document document) {
+        if (document.containsKey("email") && document.containsKey("firstnames")) {
+            return Mono.empty();
+        }
+
+        Document updates = new Document();
+
+        addMissingEmail(document, updates);
+        updates.append("firstnames", computeFirstnames(document.getString("firstname")));
+
+        return Mono.from(database.getCollection(COLLECTION)
+                .updateOne(Filters.eq("_id", document.getObjectId("_id")), new Document("$set", updates)))
+            .map(result -> new MigrationResult(1, result.getModifiedCount(), 0))
+            .onErrorResume(e -> {
+                LOGGER.error("Error adding missing fields", e);
+                return Mono.just(new MigrationResult(1, 0, 1));
+            });
+    }
+
+    private static void addMissingEmail(Document document, Document updates) {
+        List<Document> accounts = document.getList("accounts", Document.class);
+        if (accounts != null && !accounts.isEmpty()) {
+            List<String> emails = accounts.get(0).getList("emails", String.class);
+            if (emails != null && !emails.isEmpty()) {
+                updates.append("email", emails.get(0));
+            }
+        }
     }
 }

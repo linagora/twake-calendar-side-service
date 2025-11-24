@@ -225,4 +225,23 @@ public interface OpenPaaSUserDAOContract {
         assertThat(testee().search(domain, "Claire", 10).collectList().block()).contains(user2);
     }
 
+    @Test
+    default void addMissingFieldsShouldReturnEmptyWhenNoUsers() {
+        MigrationResult result = testee().addMissingFields().block();
+        assertThat(result.processedUsers()).isEqualTo(0);
+        assertThat(result.upgradedUsers()).isEqualTo(0);
+        assertThat(result.errorCount()).isEqualTo(0);
+    }
+
+    @Test
+    default void addMissingFieldsShouldCountExistingUsers() {
+        testee().add(USERNAME, "James", "Bond").block();
+        testee().add(USERNAME_2, "John", "Doe").block();
+
+        MigrationResult result = testee().addMissingFields().block();
+        assertThat(result.processedUsers()).isEqualTo(2);
+        assertThat(result.upgradedUsers()).isEqualTo(0);
+        assertThat(result.errorCount()).isEqualTo(0);
+    }
+
 }

@@ -123,4 +123,9 @@ public class MemoryOpenPaaSUserDAO implements OpenPaaSUserDAO {
             .take(limit);
     }
 
+    @Override
+    public Mono<MigrationResult> addMissingFields() {
+        return Mono.fromCallable(() -> new MigrationResult(hashMap.size(), 0, 0));
+    }
+
 }
