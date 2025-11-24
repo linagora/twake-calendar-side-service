@@ -18,28 +18,8 @@
 
 package com.linagora.calendar.storage;
 
-import org.apache.james.core.Domain;
-import org.apache.james.core.Username;
-
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
-
-public interface OpenPaaSUserDAO {
-    Mono<OpenPaaSUser> retrieve(OpenPaaSId id);
-
-    Mono<OpenPaaSUser> retrieve(Username username);
-
-    Mono<OpenPaaSUser> add(Username username);
-
-    Mono<OpenPaaSUser> add(Username username, String firstName, String lastName);
-
-    Mono<Void> update(OpenPaaSId id, Username newUsername, String newFirstname, String newLastname);
-
-    Mono<Void> delete(Username username);
-
-    Flux<OpenPaaSUser> list();
-
-    Flux<OpenPaaSUser> search(Domain domain, String query, int limit);
-
-    Mono<MigrationResult> addMissingFields();
+public record MigrationResult(long processedUsers, long upgradedUsers, long errorCount) {
+    public static MigrationResult empty() {
+        return new MigrationResult(0, 0, 0);
+    }
 }
