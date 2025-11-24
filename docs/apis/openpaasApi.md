@@ -40,6 +40,20 @@ Some broken legacy SPA feature (import) do rely directly on the lemon cookie and
 
 In order to fix the implementation of the SPA atop the side service, we provide this authentication mechanism.
 
+### Ticket Authentication
+
+The side service supports ticket-based authentication for cross-API access and WebSocket connections. This mechanism allows users to generate short-lived authentication tickets using their existing credentials (OIDC, Basic Auth, etc.) and then use these tickets to authenticate subsequent requests without re-providing credentials.
+
+**Key features:**
+- Short-lived tickets (default: 1 minute validity)
+- IP address validation to prevent ticket theft
+- Persistent storage support (in-memory or MongoDB)
+- Used primarily for WebSocket authentication and cross-API access
+
+Tickets can be used as authentication credentials by passing them as a query parameter (`?ticket=TICKET_v1_xxx`) or in the Authorization header.
+
+For detailed endpoint documentation, see [Ticket Authentication API](ticketAuthentication.md).
+
 ## Endpoints
 
 ### GET /api/user
@@ -311,6 +325,7 @@ Supported configuration keys:
    - `hideDeclinedEvents`
  - `calendar`
    - `alarmEmails`: allows the user to disable alarm emails.
+  - `displayWeekNumbers`: Should the front display week numbers? Defaults to true.
  - `linagora.esn.videoconference`
    - `jitsiInstanceUrl`: URL of the jitsi server. Advertised from configuration
    - `openPaasVideoconferenceAppUrl`: legacy. Points to the jisi url.
