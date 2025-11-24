@@ -103,6 +103,39 @@ This endpoint returns a webdmin task with the following additional information:
 - processedUserCount: integer
 - failedUserCount: integer
 
+### Add missing fields to registered users
+
+```
+POST /registeredUsers?action=addMissingFields
+```
+
+Will add missing `email` and `firstnames` fields to existing registered users that don't have them.
+This is a migration task to update legacy user documents.
+
+The `email` field is extracted from `accounts.emails[0]`.
+The `firstnames` field is computed by splitting the `firstname` field by spaces (e.g., "Jean Paul" becomes ["Jean", "Paul"]).
+
+This endpoint returns a webadmin task with the following additional information:
+
+```json
+{
+  "type": "add-missing-fields",
+  "timestamp": "2025-11-24T10:15:30.00Z",
+  "processedUsers": 100,
+  "upgradedUsers": 25,
+  "errorCount": 0
+}
+```
+
+Where:
+- `processedUsers`: Total number of users processed
+- `upgradedUsers`: Number of users that were updated with missing fields
+- `errorCount`: Number of errors encountered during migration
+
+Status codes:
+- `201`: Task successfully submitted
+- `400`: Invalid action parameter
+
 ## Domain member synchronisation
 
 Only enabled if LDAP is configured.
