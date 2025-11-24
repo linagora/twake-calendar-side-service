@@ -20,36 +20,54 @@ package com.linagora.calendar.webadmin;
 
 import static io.restassured.RestAssured.given;
 import static io.restassured.RestAssured.when;
+import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.notNullValue;
 
 import java.util.UUID;
 
 import org.apache.james.core.Username;
+import org.apache.james.json.DTOConverter;
+import org.apache.james.server.task.json.dto.AdditionalInformationDTO;
+import org.apache.james.server.task.json.dto.AdditionalInformationDTOModule;
+import org.apache.james.task.Hostname;
+import org.apache.james.task.MemoryTaskManager;
+import org.apache.james.task.TaskExecutionDetails;
 import org.apache.james.webadmin.WebAdminServer;
 import org.apache.james.webadmin.WebAdminUtils;
+import org.apache.james.webadmin.routes.TasksRoutes;
 import org.apache.james.webadmin.utils.JsonTransformer;
 import org.eclipse.jetty.http.HttpStatus;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.storage.MemoryOpenPaaSUserDAO;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.webadmin.task.AddMissingFieldsTaskAdditionalInformationDTO;
 
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
+import net.javacrumbs.jsonunit.core.Option;
 
 class CalendarUserRoutesTest {
 
     private WebAdminServer webAdminServer;
     private OpenPaaSUserDAO userDAO;
+    private MemoryTaskManager taskManager;
 
     @BeforeEach
     void setUp() {
         userDAO = new MemoryOpenPaaSUserDAO();
-        webAdminServer = WebAdminUtils.createWebAdminServer(new CalendarUserRoutes(userDAO, new JsonTransformer())).start();
+        taskManager = new MemoryTaskManager(Hostname.fromLocalHostname());
+        webAdminServer = WebAdminUtils.createWebAdminServer(new CalendarUserRoutes(userDAO, taskManager, new JsonTransformer()),
+            new TasksRoutes(taskManager, new JsonTransformer(),
+                new DTOConverter<>(ImmutableSet.<AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO>>builder()
+                    .add(AddMissingFieldsTaskAdditionalInformationDTO.module())
+                    .build()))).start();
 
         RestAssured.requestSpecification = WebAdminUtils.buildRequestSpecification(webAdminServer)
             .setBasePath(CalendarUserRoutes.BASE_PATH)
@@ -307,4 +325,62 @@ class CalendarUserRoutesTest {
             .statusCode(404)
             .body("message", equalTo("User with id " + nonExistingId + " not found"));
     }
+
+    @Test
+    void postWithAddMissingFieldsActionShouldSubmitTask() {
+        userDAO.add(Username.of("user1@linagora.com"), "User", "One").block();
+        userDAO.add(Username.of("user2@linagora.com"), "User", "Two").block();
+
+        String taskId = given()
+            .queryParam("action", "addMissingFields")
+        .when()
+            .post()
+        .then()
+            .statusCode(201)
+            .contentType(ContentType.JSON)
+            .body("taskId", notNullValue())
+            .extract()
+            .body()
+            .jsonPath()
+            .get("taskId");
+
+        String taskResponse = given()
+            .basePath(TasksRoutes.BASE)
+        .when()
+            .get(taskId + "/await")
+        .then()
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(taskResponse)
+            .withOptions(Option.IGNORING_EXTRA_FIELDS)
+            .isEqualTo("""
+                {
+                    "additionalInformation": {
+                        "type": "add-missing-fields",
+                        "processedUsers": 2,
+                        "upgradedUsers": 0,
+                        "errorCount": 0
+                    },
+                    "type": "add-missing-fields",
+                    "taskId": "%s",
+                    "status": "completed"
+                }""".formatted(taskId));
+    }
+
+    @Test
+    void postWithInvalidActionShouldReturn400() {
+        given()
+            .queryParam("action", "invalidAction")
+        .when()
+            .post()
+        .then()
+            .statusCode(400)
+            .contentType(ContentType.JSON)
+            .body("statusCode", is(HttpStatus.BAD_REQUEST_400))
+            .body("type", is("InvalidArgument"))
+            .body("message", is("Invalid action: 'invalidAction'. Supported actions are: addMissingFields"));
+    }
+
 }
