@@ -40,7 +40,7 @@ public class RedisClusterOIDCTokenCacheTest extends RedisOIDCTokenCacheContract 
     @BeforeAll
     static void setUp(RedisClusterExtension.RedisClusterContainer container) {
         redisClusterContainer = container;
-        container.forEach(genericContainer ->  waitUntilClusterReady(genericContainer, Duration.ofSeconds(10)));
+        container.forEach(genericContainer -> waitUntilClusterReady(genericContainer, Duration.ofSeconds(10)));
     }
 
     private static void waitUntilClusterReady(GenericContainer<?> container, Duration timeout) {

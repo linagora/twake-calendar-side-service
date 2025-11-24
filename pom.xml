@@ -44,7 +44,6 @@
         <module>storage-api</module>
         <module>storage-ldap</module>
         <module>storage-mongodb</module>
-        <module>storage-redis</module>
         <module>storage-opensearch</module>
         <module>calendar-smtp</module>
         <module>calendar-scheduling</module>
@@ -80,6 +79,17 @@
                 <version>${project.version}</version>
                 <type>test-jar</type>
                 <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>${project.groupId}</groupId>
+                <artifactId>calendar-redis</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>${project.groupId}</groupId>
+                <artifactId>calendar-redis</artifactId>
+                <version>${project.version}</version>
+                <type>test-jar</type>
             </dependency>
             <dependency>
                 <groupId>${project.groupId}</groupId>
@@ -122,17 +132,6 @@
             <dependency>
                 <groupId>${project.groupId}</groupId>
                 <artifactId>calendar-storage-mongodb</artifactId>
-                <version>${project.version}</version>
-                <type>test-jar</type>
-            </dependency>
-            <dependency>
-                <groupId>${project.groupId}</groupId>
-                <artifactId>calendar-storage-redis</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>${project.groupId}</groupId>
-                <artifactId>calendar-storage-redis</artifactId>
                 <version>${project.version}</version>
                 <type>test-jar</type>
             </dependency>

@@ -90,7 +90,7 @@ public class DockerRedisExtension implements BeforeAllCallback, AfterAllCallback
     }
 
     public void flushAll() throws IOException, InterruptedException {
-        redisContainer.execInContainer("redis-cli",  "flushall");
+        redisContainer.execInContainer("redis-cli", "flushall");
     }
 
     public RedisURI redisURI() {
