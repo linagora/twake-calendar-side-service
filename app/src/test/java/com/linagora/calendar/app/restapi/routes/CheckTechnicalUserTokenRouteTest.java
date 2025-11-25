@@ -41,7 +41,6 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.google.inject.Inject;
 import com.google.inject.multibindings.Multibinder;
-import com.linagora.calendar.app.AppTestHelper;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
@@ -91,7 +90,6 @@ class CheckTechnicalUserTokenRouteTest {
             .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY),
         BY_PASS_MODULE.apply(rabbitMQExtension),
-        AppTestHelper.EVENT_BUS_BY_PASS_MODULE,
         DavModuleTestHelper.BY_PASS_MODULE,
         binder -> Multibinder.newSetBinder(binder, GuiceProbe.class)
             .addBinding().to(TechnicalTokenProbe.class));

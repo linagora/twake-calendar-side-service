@@ -109,7 +109,6 @@ class TwakeCalendarGuiceServerTest  {
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY),
         DavModuleTestHelper.RABBITMQ_MODULE.apply(rabbitMQExtension),
         DavModuleTestHelper.BY_PASS_MODULE,
-        AppTestHelper.EVENT_BUS_BY_PASS_MODULE,
         binder -> binder.bind(URL.class).annotatedWith(Names.named("userInfo")).toProvider(TwakeCalendarGuiceServerTest::getUserInfoTokenEndpoint),
         binder -> binder.bind(IntrospectionEndpoint.class).toProvider(() -> new IntrospectionEndpoint(getInrospectTokenEndpoint(), Optional.empty())),
         binder -> Multibinder.newSetBinder(binder, GuiceProbe.class)

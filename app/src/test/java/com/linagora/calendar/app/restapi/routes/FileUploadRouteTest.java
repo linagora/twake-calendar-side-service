@@ -40,7 +40,6 @@ import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
-import com.linagora.calendar.app.AppTestHelper;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
@@ -75,7 +74,6 @@ class FileUploadRouteTest {
             .configurationFromClasspath()
             .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY),
-        AppTestHelper.EVENT_BUS_BY_PASS_MODULE,
         BY_PASS_MODULE.apply(rabbitMQExtension),
         DavModuleTestHelper.BY_PASS_MODULE,
         binder -> binder.bind(FileUploadConfiguration.class).toProvider(() ->

@@ -85,7 +85,6 @@ class SecretLinkRouteTest {
             .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY),
         AppTestHelper.BY_PASS_MODULE.apply(rabbitMQExtension),
-        AppTestHelper.EVENT_BUS_BY_PASS_MODULE,
         binder -> {
             Mockito.doReturn(Throwing.supplier(() -> URI.create(SECRET_LINK_BASE_URL).toURL()).get())
                 .when(spyRestApiConfiguration).getSelfUrl();

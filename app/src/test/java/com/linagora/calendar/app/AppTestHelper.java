@@ -24,26 +24,14 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.time.Duration;
 import java.util.Optional;
-import java.util.Set;
 import java.util.function.Function;
 
 import jakarta.inject.Named;
-import reactor.core.publisher.Mono;
 
 import org.apache.james.backends.opensearch.DockerOpenSearchExtension;
 import org.apache.james.backends.opensearch.OpenSearchConfiguration;
 import org.apache.james.backends.rabbitmq.RabbitMQExtension;
-import org.apache.james.events.Event;
-import org.apache.james.events.EventBus;
-import org.apache.james.events.EventBusName;
-import org.apache.james.events.EventListener;
-import org.apache.james.events.Group;
-import org.apache.james.events.GroupAlreadyRegistered;
-import org.apache.james.events.Registration;
-import org.apache.james.events.RegistrationKey;
 import org.apache.james.jmap.http.AuthenticationStrategy;
-import org.mockito.Mockito;
-import org.reactivestreams.Publisher;
 
 import com.google.inject.AbstractModule;
 import com.google.inject.Module;
@@ -57,33 +45,6 @@ import com.linagora.calendar.restapi.auth.OidcFallbackCookieAuthenticationStrate
 import com.linagora.calendar.storage.SimpleSessionProvider;
 
 public class AppTestHelper {
-
-    public static class FakeEventBus implements EventBus {
-        @Override
-        public Publisher<Registration> register(EventListener.ReactiveEventListener listener, RegistrationKey key) {
-            return Mono.empty();
-        }
-
-        @Override
-        public Registration register(EventListener.ReactiveEventListener listener, Group group) throws GroupAlreadyRegistered {
-            return null;
-        }
-
-        @Override
-        public Mono<Void> dispatch(Event event, Set<RegistrationKey> key) {
-            return Mono.empty();
-        }
-
-        @Override
-        public Mono<Void> reDeliver(Group group, Event event) {
-            return Mono.empty();
-        }
-
-        @Override
-        public EventBusName eventBusName() {
-            return new EventBusName("FakeEventBus");
-        }
-    }
 
     public static final String COOKIE_RESOLUTION_PATH = "/mysession/whoami";
 
@@ -107,13 +68,6 @@ public class AppTestHelper {
                         throw new RuntimeException(e);
                     }
                 });
-        }
-    };
-
-    public static final Module EVENT_BUS_BY_PASS_MODULE = new AbstractModule() {
-        @Override
-        protected void configure() {
-            bind(EventBus.class).to(FakeEventBus.class);
         }
     };
 

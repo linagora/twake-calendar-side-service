@@ -99,7 +99,6 @@ class TwakeCalendarAuthenticationTest {
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY),
         DavModuleTestHelper.RABBITMQ_MODULE.apply(rabbitMQExtension),
         DavModuleTestHelper.BY_PASS_MODULE,
-        AppTestHelper.EVENT_BUS_BY_PASS_MODULE,
         AppTestHelper.LEMON_COOKIE_AUTHENTICATION_STRATEGY_MODULE.apply(getResolutionConfiguration()),
         binder -> binder.bind(URL.class).annotatedWith(Names.named("userInfo"))
             .toProvider(TwakeCalendarAuthenticationTest::getUserInfoTokenEndpoint),

@@ -77,7 +77,6 @@ class MongoTest {
         .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
         .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB),
         DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
-        AppTestHelper.EVENT_BUS_BY_PASS_MODULE,
         binder -> binder.bind(URL.class).annotatedWith(Names.named("userInfo"))
             .toProvider(MongoTest::getUserInfoTokenEndpoint));
 

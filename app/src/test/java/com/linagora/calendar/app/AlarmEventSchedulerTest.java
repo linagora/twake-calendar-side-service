@@ -107,7 +107,6 @@ public class AlarmEventSchedulerTest {
             .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB),
         AppTestHelper.OIDC_BY_PASS_MODULE,
-        AppTestHelper.EVENT_BUS_BY_PASS_MODULE,
         DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
         binder -> {
             binder.bind(AlarmEventSchedulerConfiguration.class)
