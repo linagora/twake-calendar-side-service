@@ -78,6 +78,7 @@ class UserConfigurationRouteTest {
             .configurationFromClasspath()
             .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY),
+        AppTestHelper.EVENT_BUS_BY_PASS_MODULE,
         AppTestHelper.BY_PASS_MODULE.apply(rabbitMQExtension));
 
     @AfterAll

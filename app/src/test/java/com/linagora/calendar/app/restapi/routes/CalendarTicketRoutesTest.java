@@ -46,6 +46,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.google.inject.multibindings.Multibinder;
+import com.linagora.calendar.app.AppTestHelper;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
@@ -97,6 +98,7 @@ public class CalendarTicketRoutesTest {
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY),
         BY_PASS_MODULE.apply(rabbitMQExtension),
         DavModuleTestHelper.BY_PASS_MODULE,
+        AppTestHelper.EVENT_BUS_BY_PASS_MODULE,
         binder -> Multibinder.newSetBinder(binder, GuiceProbe.class)
             .addBinding().to(TicketManagerProbe.class));
 

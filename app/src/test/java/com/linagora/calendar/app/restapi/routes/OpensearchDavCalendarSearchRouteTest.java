@@ -74,6 +74,7 @@ class OpensearchDavCalendarSearchRouteTest implements CalendarSearchRouteContrac
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB)
             .calendarEventSearchChoice(TwakeCalendarConfiguration.CalendarEventSearchChoice.OPENSEARCH),
         AppTestHelper.OIDC_BY_PASS_MODULE,
+        AppTestHelper.EVENT_BUS_BY_PASS_MODULE,
         FROM_SABRE_EXTENSION.apply(sabreDavExtension),
         OPENSEARCH_TEST_MODULE.apply(openSearchExtension));
 

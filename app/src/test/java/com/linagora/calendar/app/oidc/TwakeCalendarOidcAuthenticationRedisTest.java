@@ -105,6 +105,7 @@ public class TwakeCalendarOidcAuthenticationRedisTest {
             .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY)
             .oidcTokenStorageChoice(TwakeCalendarConfiguration.OIDCTokenStorageChoice.REDIS),
+        AppTestHelper.EVENT_BUS_BY_PASS_MODULE,
         DavModuleTestHelper.BY_PASS_MODULE,
         DavModuleTestHelper.RABBITMQ_MODULE.apply(rabbitMQExtension),
         AppTestHelper.LEMON_COOKIE_AUTHENTICATION_STRATEGY_MODULE.apply(getResolutionConfiguration()),

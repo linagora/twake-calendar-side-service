@@ -84,6 +84,7 @@ public class ResourceRouteTest {
             .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB),
         AppTestHelper.OIDC_BY_PASS_MODULE,
+        AppTestHelper.EVENT_BUS_BY_PASS_MODULE,
         DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(SABRE_DAV_EXTENSION),
         binder -> {
             Multibinder.newSetBinder(binder, GuiceProbe.class)

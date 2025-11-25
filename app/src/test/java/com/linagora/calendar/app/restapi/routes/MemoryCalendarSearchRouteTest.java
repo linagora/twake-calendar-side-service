@@ -25,6 +25,7 @@ import org.apache.james.backends.rabbitmq.RabbitMQExtension;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import com.linagora.calendar.app.AppTestHelper;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.dav.DavModuleTestHelper;
@@ -41,6 +42,7 @@ public class MemoryCalendarSearchRouteTest implements CalendarSearchRouteContrac
             .configurationFromClasspath()
             .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY),
+        AppTestHelper.EVENT_BUS_BY_PASS_MODULE,
         BY_PASS_MODULE.apply(rabbitMQExtension),
         DavModuleTestHelper.BY_PASS_MODULE);
 }
