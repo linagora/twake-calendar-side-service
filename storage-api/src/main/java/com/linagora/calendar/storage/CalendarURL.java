@@ -41,6 +41,18 @@ public record CalendarURL(OpenPaaSId base, OpenPaaSId calendarId) {
         return new CalendarURL(base, calendarId);
     }
 
+    public static CalendarURL fromEventPath(String eventPath) {
+        List<String> parts = Splitter.on('/')
+            .omitEmptyStrings().trimResults()
+            .splitToList(eventPath);
+        Preconditions.checkArgument(
+            parts.size() == 4 && "calendars".equals(parts.get(0)),
+            "Invalid eventPath format: %s", eventPath);
+        OpenPaaSId base = new OpenPaaSId(parts.get(1));
+        OpenPaaSId calendarId = new OpenPaaSId(parts.get(2));
+        return new CalendarURL(base, calendarId);
+    }
+
     public CalendarURL {
         Preconditions.checkArgument(base != null, "baseCalendarId must not be null");
         Preconditions.checkArgument(calendarId != null, "calendarId must not be null");
