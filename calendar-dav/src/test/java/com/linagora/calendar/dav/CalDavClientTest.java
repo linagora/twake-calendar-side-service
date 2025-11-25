@@ -43,12 +43,15 @@ import com.linagora.calendar.dav.dto.CalendarEventReportResponse;
 import com.linagora.calendar.dav.dto.VCalendarDto;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.MailboxSessionUtil;
+import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.component.VEvent;
+import com.linagora.calendar.dav.CalDavClient.NewCalendar;
+import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 
 public class CalDavClientTest {
 
@@ -591,5 +594,89 @@ public class CalDavClientTest {
                   "protected": true
                 }
                 """);
+    }
+
+    @Test
+    void shouldRetrieveSyncTokenWhenOwnerAccessesCalendar() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL calendarURL = CalendarURL.from(user.id());
+
+        SyncToken syncToken = testee.retrieveSyncToken(user.username(), calendarURL).block();
+        assertThat(syncToken).isEqualTo(new SyncToken("http://sabre.io/ns/sync/1"));
+    }
+
+    @Test
+    void shouldRetrieveSyncTokenWhenPublicCalendarIsShared() {
+        OpenPaaSUser owner = createOpenPaaSUser();
+        OpenPaaSUser otherUser = createOpenPaaSUser();
+
+        CalDavClient.NewCalendar publicCalendar = new CalDavClient.NewCalendar(UUID.randomUUID().toString(),
+            "Public Calendar", "#123456", "Public calendar for testing");
+
+        testee.createNewCalendar(owner.username(), owner.id(), publicCalendar).block();
+
+        // Owner sets public ACL (READ)
+        CalendarURL calendarURL = new CalendarURL(owner.id(), new OpenPaaSId(publicCalendar.id()));
+        testee.updateCalendarAcl(owner.username(), calendarURL, CalDavClient.PublicRight.READ).block();
+
+        // Other user should be allowed to retrieve sync token due to public rights
+        SyncToken syncToken = testee.retrieveSyncToken(otherUser.username(), calendarURL).block();
+
+        assertThat(syncToken).isNotNull();
+    }
+
+
+    @Test
+    void shouldRetrieveSyncTokenWhenDelegateHasRights() {
+        // Owner & delegate
+        OpenPaaSUser owner = createOpenPaaSUser();
+        OpenPaaSUser delegate = createOpenPaaSUser();
+
+        NewCalendar newCalendar = new NewCalendar(UUID.randomUUID().toString(),
+            "Delegated Calendar", "#00AA00", "A calendar shared via delegation");
+
+        testee.createNewCalendar(owner.username(), owner.id(), newCalendar).block();
+
+        OpenPaaSId domainId = new MongoDBOpenPaaSDomainDAO(sabreDavExtension.dockerSabreDavSetup().getMongoDB())
+            .retrieve(owner.username().getDomainPart().get())
+            .map(OpenPaaSDomain::id).block();
+
+        CalendarURL calendarURL = new CalendarURL(owner.id(), new OpenPaaSId(newCalendar.id()));
+        testee.patchReadWriteDelegations(domainId, calendarURL, List.of(delegate.username()), List.of()).block();
+
+        List<CalendarURL> delegateCalendars = testee.findUserCalendars(delegate.username(), delegate.id()).collectList().block();
+
+        // Find the delegated calendar (not equal to ownerCalendarUrl)
+        CalendarURL delegatedCalendar = delegateCalendars.stream()
+            .filter(url -> !url.equals(CalendarURL.from(delegate.id()))) // exclude personal calendar
+            .findFirst()
+            .orElseThrow();
+
+        SyncToken token = testee.retrieveSyncToken(delegate.username(), delegatedCalendar).block();
+        assertThat(token).isNotNull();
+    }
+
+    @Test
+    void retrieveSyncTokenShouldReturnEmptyWhenUserHasNoRights() {
+        OpenPaaSUser owner = createOpenPaaSUser();
+        OpenPaaSUser other = createOpenPaaSUser();
+        NewCalendar newCalendar = new NewCalendar(UUID.randomUUID().toString(),
+            "My Calendar", "#00ff00", "Test");
+
+        testee.createNewCalendar(owner.username(), owner.id(), newCalendar).block();
+
+        CalendarURL calendarURL = new CalendarURL(owner.id(), new OpenPaaSId(newCalendar.id()));
+
+        assertThat(testee.retrieveSyncToken(other.username(), calendarURL).blockOptional()).isEmpty();
+    }
+
+    @Test
+    void retrieveSyncTokenShouldThrowWhenCalendarNotFound() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL notFoundCalendarURL = new CalendarURL(user.id(), new OpenPaaSId(UUID.randomUUID().toString()));
+
+        assertThatThrownBy(() -> testee.retrieveSyncToken(user.username(), notFoundCalendarURL).block())
+            .isInstanceOf(CalendarNotFoundException.class);
+
     }
 }
