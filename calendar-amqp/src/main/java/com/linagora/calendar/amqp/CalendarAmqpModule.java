@@ -174,7 +174,7 @@ public class CalendarAmqpModule extends AbstractModule {
     @ProvidesIntoSet
     public InitializationOperation initializeEventCalendarNotificationConsumer(EventCalendarNotificationConsumer instance) {
         return InitilizationOperationBuilder
-            .forClass(EventResourceConsumer.class)
+            .forClass(EventCalendarNotificationConsumer.class)
             .init(instance::init);
     }
 

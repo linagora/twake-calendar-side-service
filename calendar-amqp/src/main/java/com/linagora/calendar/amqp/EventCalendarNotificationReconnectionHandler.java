@@ -35,8 +35,8 @@ public class EventCalendarNotificationReconnectionHandler implements SimpleConne
     private final EventCalendarNotificationConsumer eventCalendarNotificationConsumer;
 
     @Inject
-    public EventCalendarNotificationReconnectionHandler(EventCalendarNotificationConsumer eventResourceConsumer) {
-        this.eventCalendarNotificationConsumer = eventResourceConsumer;
+    public EventCalendarNotificationReconnectionHandler(EventCalendarNotificationConsumer eventCalendarNotificationConsumer) {
+        this.eventCalendarNotificationConsumer = eventCalendarNotificationConsumer;
     }
 
     @Override
