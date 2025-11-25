@@ -16,10 +16,9 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.amqp;
+package org.apache.james.events;
 
 import org.apache.james.core.Username;
-import org.apache.james.events.Event;
 
 public record CalendarChangeEvent(EventId eventId) implements Event {
 

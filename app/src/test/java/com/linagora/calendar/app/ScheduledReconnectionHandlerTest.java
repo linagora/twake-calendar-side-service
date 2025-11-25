@@ -27,10 +27,12 @@ import java.util.concurrent.TimeUnit;
 
 import jakarta.inject.Inject;
 
+import org.apache.james.events.EventBus;
 import org.apache.james.utils.GuiceProbe;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.mockito.Mockito;
 import org.testcontainers.shaded.org.awaitility.Awaitility;
 import org.testcontainers.shaded.org.awaitility.core.ConditionFactory;
 
@@ -88,6 +90,7 @@ public class ScheduledReconnectionHandlerTest {
             Multibinder.newSetBinder(binder, GuiceProbe.class).addBinding().to(ScheduledReconnectionHandlerProbe.class);
             binder.bind(ScheduledReconnectionHandlerConfiguration.class)
                 .toInstance(new ScheduledReconnectionHandlerConfiguration(true, Duration.ofSeconds(2)));
+            binder.bind(EventBus.class).toInstance(Mockito.mock(EventBus.class));
         });
 
 
@@ -119,7 +122,7 @@ public class ScheduledReconnectionHandlerTest {
     @Test
     void shouldMonitorDavCalendarEventQueues(TwakeCalendarGuiceServer server) {
         assertThat(server.getProbe(ScheduledReconnectionHandlerProbe.class).getQueuesToMonitor())
-            .contains("tcalendar:event:created:search",
+            .containsExactlyInAnyOrder("tcalendar:event:created:search",
                 "tcalendar:event:updated:search",
                 "tcalendar:event:deleted:search",
                 "tcalendar:event:cancel:search",
@@ -134,6 +137,12 @@ public class ScheduledReconnectionHandlerTest {
                 "resource:tcalendar:event:declined",
                 "tcalendar:calendar:created",
                 "tcalendar:event:notificationEmail:send",
-                "tcalendar:itip:deliver");
+                "tcalendar:itip:deliver",
+                "tcalendar:event:created:notification",
+                "tcalendar:event:updated:notification",
+                "tcalendar:event:deleted:notification",
+                "tcalendar:event:cancel:notification",
+                "tcalendar:event:request:notification",
+                "tcalendar:event:reply:notification");
     }
 }

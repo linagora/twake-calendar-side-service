@@ -38,6 +38,7 @@ import jakarta.inject.Singleton;
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.ReceiverProvider;
+import org.apache.james.events.CalendarChangeEvent;
 import org.apache.james.events.CalendarURLRegistrationKey;
 import org.apache.james.events.Event;
 import org.apache.james.events.EventBus;
@@ -190,11 +191,11 @@ public class EventCalendarNotificationConsumer implements Closeable, Startable {
 
     private String getEventPath(byte[] json) throws IOException {
         JsonNode root = OBJECT_MAPPER.readTree(json);
-        return root.at("eventPath").asText();
+        return root.at("/eventPath").asText();
     }
 
     private Mono<Void> handle(String eventPath) {
         CalendarURL calendarURL = CalendarURL.fromEventPath(eventPath);
-        return Mono.from(eventBus.dispatch(new CalendarChangeEvent(Event.EventId.random()), new CalendarURLRegistrationKey(calendarURL)));
+        return eventBus.dispatch(new CalendarChangeEvent(Event.EventId.random()), new CalendarURLRegistrationKey(calendarURL));
     }
 }
