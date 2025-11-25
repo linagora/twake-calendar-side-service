@@ -605,6 +605,7 @@ public class CalDavClient extends DavClient {
     private Mono<SyncToken> parseSyncToken(String body, String uri) {
         return Mono.fromCallable(() -> OBJECT_MAPPER.readTree(body))
             .flatMap(jsonNode -> Mono.justOrEmpty(jsonNode.path(SYNC_TOKEN_PROPERTY).asText(null)))
+            .filter(StringUtils::isNotEmpty)
             .map(SyncToken::new)
             .switchIfEmpty(Mono.error(() -> new DavClientException("Missing '%s' when retrieving sync token for: %s".formatted(SYNC_TOKEN_PROPERTY, uri))));
     }
