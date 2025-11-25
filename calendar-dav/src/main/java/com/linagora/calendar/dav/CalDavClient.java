@@ -80,6 +80,8 @@ public class CalDavClient extends DavClient {
     public static final String JSON_CHARSET_UTF_8 = "application/json;charset=UTF-8";
     public static final String DEFAULT_JSON_ACCEPT = "application/json, text/plain, */*";
 
+    private static final String SYNC_TOKEN_PROPERTY = "calendarserver:ctag";
+
     protected static final Duration DEFAULT_IMIP_CALLBACK_RESPONSE_TIMEOUT = Duration.ofMinutes(3);
 
     public record NewCalendar(@JsonProperty("id") String id,
@@ -108,7 +110,7 @@ public class CalDavClient extends DavClient {
     private static final String CONTENT_TYPE_JSON = "application/json";
     private static final HttpMethod REPORT_METHOD = HttpMethod.valueOf("REPORT");
 
-    private Duration imipCallbackResponseTimeout;
+    private final Duration imipCallbackResponseTimeout;
 
     public CalDavClient(DavConfiguration config, TechnicalTokenService technicalTokenService) throws SSLException {
         super(config, technicalTokenService);
@@ -572,4 +574,40 @@ public class CalDavClient extends DavClient {
         CalendarURL calendarURL = CalendarURL.from(resourceId.asOpenPaaSId());
         return patchReadWriteDelegations(domainId, calendarURL, List.of(), administrators);
     }
+
+    public Mono<SyncToken> retrieveSyncToken(Username username, CalendarURL calendarUrl) {
+        String uri = calendarUrl.asUri() + ".json";
+
+        return httpClientWithImpersonation(username)
+            .headers(headers -> headers.add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_JSON))
+            .request(HttpMethod.GET)
+            .uri(uri)
+            .responseSingle((response, content) -> {
+                int status = response.status().code();
+                return content.asString(StandardCharsets.UTF_8)
+                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .flatMap(body -> switch (status) {
+                        case HttpStatus.SC_OK -> parseSyncToken(body, uri);
+                        case HttpStatus.SC_NOT_FOUND -> Mono.error(new CalendarNotFoundException(calendarUrl));
+                        case HttpStatus.SC_FORBIDDEN -> {
+                            LOGGER.debug("User {} has no rights to read calendar {}", username.asString(), uri);
+                            yield Mono.empty();
+                        }
+                        default -> Mono.error(() -> new DavClientException("""
+                            Unexpected response when retrieving sync-token for '%s'
+                            Status: %d
+                            Body: %s
+                            """.formatted(uri, status, body)));
+                    });
+            });
+    }
+
+    private Mono<SyncToken> parseSyncToken(String body, String uri) {
+        return Mono.fromCallable(() -> OBJECT_MAPPER.readTree(body))
+            .flatMap(jsonNode -> Mono.justOrEmpty(jsonNode.path(SYNC_TOKEN_PROPERTY).asText(null)))
+            .filter(StringUtils::isNotEmpty)
+            .map(SyncToken::new)
+            .switchIfEmpty(Mono.error(() -> new DavClientException("Missing '%s' when retrieving sync token for: %s".formatted(SYNC_TOKEN_PROPERTY, uri))));
+    }
+
 }
