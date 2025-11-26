@@ -37,10 +37,6 @@
         </dependency>
         <dependency>
             <groupId>${project.groupId}</groupId>
-            <artifactId>calendar-redis</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>${project.groupId}</groupId>
             <artifactId>calendar-storage-api</artifactId>
         </dependency>
         <dependency>

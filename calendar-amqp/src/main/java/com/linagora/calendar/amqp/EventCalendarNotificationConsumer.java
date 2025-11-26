@@ -38,8 +38,6 @@ import jakarta.inject.Singleton;
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.ReceiverProvider;
-import org.apache.james.events.CalendarChangeEvent;
-import org.apache.james.events.CalendarURLRegistrationKey;
 import org.apache.james.events.Event;
 import org.apache.james.events.EventBus;
 import org.apache.james.lifecycle.api.Startable;
@@ -51,7 +49,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.github.fge.lambdas.Throwing;
+import com.linagora.calendar.storage.CalendarChangeEvent;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.CalendarURLRegistrationKey;
 import com.rabbitmq.client.BuiltinExchangeType;
 
 import reactor.core.Disposable;
@@ -94,6 +94,10 @@ public class EventCalendarNotificationConsumer implements Closeable, Startable {
 
         public String deadLetter() {
             return deadLetter;
+        }
+
+        public String exchangeName() {
+            return exchangeName;
         }
     }
 

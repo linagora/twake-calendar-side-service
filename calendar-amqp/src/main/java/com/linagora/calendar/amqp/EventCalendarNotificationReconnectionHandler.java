@@ -42,7 +42,7 @@ public class EventCalendarNotificationReconnectionHandler implements SimpleConne
     @Override
     public Publisher<Void> handleReconnection(Connection connection) {
         return Mono.fromRunnable(eventCalendarNotificationConsumer::restart)
-            .doOnError(error -> LOGGER.error("Error while handle reconnection for disconnector consumer", error))
+            .doOnError(error -> LOGGER.error("Error while handle reconnection for EventCalendarNotificationConsumer", error))
             .then();
     }
 }

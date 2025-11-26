@@ -20,11 +20,13 @@ package com.linagora.calendar.amqp;
 
 import static com.rabbitmq.client.MessageProperties.PERSISTENT_TEXT_PLAIN;
 import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.net.ssl.SSLException;
 
@@ -34,23 +36,27 @@ import org.apache.james.backends.rabbitmq.RabbitMQConnectionFactory;
 import org.apache.james.backends.rabbitmq.RabbitMQExtension;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
-import org.apache.james.events.CalendarChangeEvent;
-import org.apache.james.events.CalendarURLRegistrationKey;
-import org.apache.james.events.Event;
 import org.apache.james.events.EventBus;
+import org.apache.james.events.InVMEventBus;
+import org.apache.james.events.MemoryEventDeadLetters;
+import org.apache.james.events.RegistrationKey;
+import org.apache.james.events.RetryBackoffConfiguration;
+import org.apache.james.events.delivery.InVmEventDelivery;
 import org.apache.james.metrics.api.NoopGaugeRegistry;
 import org.apache.james.metrics.tests.RecordingMetricFactory;
+import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionFactory;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
-import org.mockito.Mockito;
-import org.testcontainers.shaded.org.awaitility.Awaitility;
-import org.testcontainers.shaded.org.awaitility.core.ConditionFactory;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
+import com.linagora.calendar.storage.CalendarChangeEvent;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.CalendarURLRegistrationKey;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.rabbitmq.client.AMQP;
 import com.rabbitmq.client.Channel;
@@ -68,6 +74,12 @@ public class EventCalendarNotificationConsumerTest {
         .await();
     private static final ConditionFactory awaitAtMost = calmlyAwait.atMost(20, TimeUnit.SECONDS);
 
+    private static final RetryBackoffConfiguration RETRY_BACKOFF_CONFIGURATION = RetryBackoffConfiguration.builder()
+        .maxRetries(3)
+        .firstBackoff(Duration.ofMillis(5))
+        .jitterFactor(0.5)
+        .build();
+
     @RegisterExtension
     static RabbitMQExtension rabbitMQExtension = RabbitMQExtension.singletonRabbitMQ()
         .isolationPolicy(RabbitMQExtension.IsolationPolicy.STRONG);
@@ -75,14 +87,12 @@ public class EventCalendarNotificationConsumerTest {
     private static ReactorRabbitMQChannelPool channelPool;
     private static SimpleConnectionPool connectionPool;
     private static Channel channel;
-    private static EventBus eventBus;
 
+    private EventBus eventBus;
     private EventCalendarNotificationConsumer consumer;
 
     @BeforeAll
     static void beforeAll() throws Exception {
-        eventBus = Mockito.mock(EventBus.class);
-
         RabbitMQConfiguration rabbitMQConfiguration = rabbitMQExtension.getRabbitMQ().getConfiguration();
         RabbitMQConnectionFactory connectionFactory = new RabbitMQConnectionFactory(rabbitMQConfiguration);
         connectionPool = new SimpleConnectionPool(connectionFactory,
@@ -109,6 +119,7 @@ public class EventCalendarNotificationConsumerTest {
 
     @BeforeEach
     void setUp() throws SSLException {
+        eventBus = new InVMEventBus(new InVmEventDelivery(new RecordingMetricFactory()), RETRY_BACKOFF_CONFIGURATION, new MemoryEventDeadLetters());
         consumer = new EventCalendarNotificationConsumer(channelPool, QueueArguments.Builder::new, eventBus);
         consumer.init();
     }
@@ -120,32 +131,47 @@ public class EventCalendarNotificationConsumerTest {
         }
     }
 
-    @Test
-    void shouldDispatchEventAfterConsumingEventCalendarNotificationMessage() throws Exception {
-        Mockito.when(eventBus.dispatch(Mockito.any(Event.class), Mockito.any(CalendarURLRegistrationKey.class)))
-            .thenReturn(Mono.empty());
+    @ParameterizedTest
+    @EnumSource(EventCalendarNotificationConsumer.Queue.class)
+    void shouldDispatchEventToCorrectChannelAfterConsumingEventCalendarNotificationMessage(EventCalendarNotificationConsumer.Queue queue) throws Exception {
+        RegistrationKey registrationKey = new CalendarURLRegistrationKey(new CalendarURL(new OpenPaaSId("base1"), new OpenPaaSId("calendar1")));
+        RegistrationKey registrationKey2 = new CalendarURLRegistrationKey(new CalendarURL(new OpenPaaSId("base1"), new OpenPaaSId("calendar")));
+
+        AtomicBoolean eventReceived = new AtomicBoolean(false);
+        Mono.from(eventBus.register(event -> {
+            if (event instanceof CalendarChangeEvent) {
+                eventReceived.set(true);
+            }
+        }, registrationKey)).block();
+
+        AtomicBoolean eventReceived2 = new AtomicBoolean(false);
+        Mono.from(eventBus.register(event -> {
+            if (event instanceof CalendarChangeEvent) {
+                eventReceived2.set(true);
+            }
+        }, registrationKey2)).block();
 
         String json = """
             {
-               "eventPath": "/calendars/123/456/3423434.ics",
+               "eventPath": "/calendars/base1/calendar1/3423434.ics",
                "event": []
             }
             """;
-        publishMessage(json);
+        publishMessage(queue.exchangeName(), json);
 
-        awaitAtMost.untilAsserted(() ->
-            Mockito.verify(eventBus, Mockito.times(1))
-                .dispatch(Mockito.any(CalendarChangeEvent.class),
-                    Mockito.eq(new CalendarURLRegistrationKey(new CalendarURL(new OpenPaaSId("123"), new OpenPaaSId("456"))))));
+        // Verify only the correct listener receives the event
+        awaitAtMost.untilAsserted(() -> assertThat(eventReceived.get()).isTrue());
+        Thread.sleep(100);
+        assertThat(eventReceived2.get()).isFalse();
     }
 
-    private void publishMessage(String message) throws IOException {
+    private void publishMessage(String exchange, String message) throws IOException {
         AMQP.BasicProperties basicProperties = new AMQP.BasicProperties.Builder()
             .deliveryMode(PERSISTENT_TEXT_PLAIN.getDeliveryMode())
             .priority(PERSISTENT_TEXT_PLAIN.getPriority())
             .contentType(PERSISTENT_TEXT_PLAIN.getContentType())
             .build();
 
-        channel.basicPublish("calendar:event:created", EMPTY_ROUTING_KEY, basicProperties, message.getBytes(StandardCharsets.UTF_8));
+        channel.basicPublish(exchange, EMPTY_ROUTING_KEY, basicProperties, message.getBytes(StandardCharsets.UTF_8));
     }
 }

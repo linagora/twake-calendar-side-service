@@ -16,14 +16,27 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package org.apache.james.events;
+package com.linagora.calendar.storage;
 
-import com.linagora.calendar.storage.CalendarURL;
+import org.apache.james.core.Username;
+import org.apache.james.events.Event;
 
-public record CalendarURLRegistrationKey(CalendarURL calendarURL) implements RegistrationKey {
+public record CalendarChangeEvent(Event.EventId eventId) implements Event {
+
+    public static final Username USERNAME = Username.of("CalendarChange");
 
     @Override
-    public String asString() {
-        return calendarURL.base().value() + ":" + calendarURL.calendarId().value();
+    public Username getUsername() {
+        return USERNAME;
+    }
+
+    @Override
+    public boolean isNoop() {
+        return false;
+    }
+
+    @Override
+    public EventId getEventId() {
+        return eventId;
     }
 }
