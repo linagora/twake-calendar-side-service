@@ -18,8 +18,13 @@
 
 package org.apache.james.events;
 
+import java.util.List;
+
+import com.google.common.base.Preconditions;
+import com.google.common.base.Splitter;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.CalendarURLRegistrationKey;
+import com.linagora.calendar.storage.OpenPaaSId;
 
 public class CalendarURLRegistrationKeyFactory implements RegistrationKey.Factory {
 
@@ -30,6 +35,16 @@ public class CalendarURLRegistrationKeyFactory implements RegistrationKey.Factor
 
     @Override
     public RegistrationKey fromString(String asString) {
-        return new CalendarURLRegistrationKey(CalendarURL.deserialize(asString));
+        return new CalendarURLRegistrationKey(parse(asString));
+    }
+
+    private CalendarURL parse(String asString) {
+        List<String> parts = Splitter.on(':')
+            .omitEmptyStrings().trimResults()
+            .splitToList(asString);
+        Preconditions.checkArgument(parts.size() == 2, "Invalid CalendarURL format: %s", asString);
+        OpenPaaSId base = new OpenPaaSId(parts.get(0));
+        OpenPaaSId calendarId = new OpenPaaSId(parts.get(1));
+        return new CalendarURL(base, calendarId);
     }
 }

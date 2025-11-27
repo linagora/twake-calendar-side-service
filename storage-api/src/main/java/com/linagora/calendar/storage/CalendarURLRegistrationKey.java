@@ -24,6 +24,6 @@ public record CalendarURLRegistrationKey(CalendarURL calendarURL) implements Reg
 
     @Override
     public String asString() {
-        return calendarURL.serialize();
+        return calendarURL.base().value() + ":" + calendarURL.calendarId().value();
     }
 }
