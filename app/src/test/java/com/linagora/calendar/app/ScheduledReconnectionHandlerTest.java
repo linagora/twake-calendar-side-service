@@ -27,12 +27,10 @@ import java.util.concurrent.TimeUnit;
 
 import jakarta.inject.Inject;
 
-import org.apache.james.events.EventBus;
 import org.apache.james.utils.GuiceProbe;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
-import org.mockito.Mockito;
 import org.testcontainers.shaded.org.awaitility.Awaitility;
 import org.testcontainers.shaded.org.awaitility.core.ConditionFactory;
 
@@ -90,7 +88,6 @@ public class ScheduledReconnectionHandlerTest {
             Multibinder.newSetBinder(binder, GuiceProbe.class).addBinding().to(ScheduledReconnectionHandlerProbe.class);
             binder.bind(ScheduledReconnectionHandlerConfiguration.class)
                 .toInstance(new ScheduledReconnectionHandlerConfiguration(true, Duration.ofSeconds(2)));
-            binder.bind(EventBus.class).toInstance(Mockito.mock(EventBus.class));
         });
 
 

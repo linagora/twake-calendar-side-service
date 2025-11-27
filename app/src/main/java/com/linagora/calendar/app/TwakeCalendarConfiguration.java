@@ -36,6 +36,7 @@ import com.github.fge.lambdas.Throwing;
 public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, JamesDirectoriesProvider directories,
                                          UserChoice userChoice, DbChoice dbChoice, AutoCompleteChoice autoCompleteChoice,
                                          OIDCTokenStorageChoice oidcTokenStorageChoice,
+                                         EventBusChoice eventBusChoice,
                                          CalendarEventSearchChoice calendarEventSearchChoice) implements Configuration {
     public static class Builder {
         private Optional<String> rootDirectory;
@@ -44,6 +45,7 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
         private Optional<DbChoice> dbChoice;
         private Optional<AutoCompleteChoice> autoCompleteChoice;
         private Optional<OIDCTokenStorageChoice> oidcTokenStorageChoice;
+        private Optional<EventBusChoice> eventBusStorageChoice = Optional.empty();
         private Optional<CalendarEventSearchChoice> calendarEventSearchChoice;
 
         private Builder() {
@@ -83,6 +85,11 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
 
         public Builder oidcTokenStorageChoice(OIDCTokenStorageChoice choice) {
             oidcTokenStorageChoice = Optional.of(choice);
+            return this;
+        }
+
+        public Builder eventBusChoice(EventBusChoice choice) {
+            eventBusStorageChoice = Optional.of(choice);
             return this;
         }
 
@@ -151,6 +158,15 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                 }
             }));
 
+            EventBusChoice eventBusChoice =  this.eventBusStorageChoice.orElseGet(Throwing.supplier(() -> {
+                try {
+                    propertiesProvider.getConfiguration("redis");
+                    return EventBusChoice.REDIS;
+                } catch (FileNotFoundException e) {
+                    return EventBusChoice.MEMORY;
+                }
+            }));
+
             CalendarEventSearchChoice calendarEventSearchChoice = this.calendarEventSearchChoice.orElseGet(Throwing.supplier(() -> {
                 try {
                     propertiesProvider.getConfiguration("opensearch");
@@ -167,6 +183,7 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                 dbChoice,
                 autoCompleteChoice,
                 oidcTokenStorageChoice,
+                eventBusChoice,
                 calendarEventSearchChoice);
         }
     }
@@ -187,6 +204,11 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
     }
 
     public enum OIDCTokenStorageChoice {
+        REDIS,
+        MEMORY
+    }
+
+    public enum EventBusChoice {
         REDIS,
         MEMORY
     }

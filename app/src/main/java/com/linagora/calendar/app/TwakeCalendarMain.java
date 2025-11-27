@@ -18,9 +18,18 @@
 
 package com.linagora.calendar.app;
 
+import static com.google.inject.util.Modules.EMPTY_MODULE;
+
 import org.apache.james.ExtraProperties;
 import org.apache.james.UserEntityValidator;
 import org.apache.james.data.LdapUsersRepositoryModule;
+import org.apache.james.events.EventBus;
+import org.apache.james.events.EventDeadLetters;
+import org.apache.james.events.InVMEventBus;
+import org.apache.james.events.MemoryEventDeadLetters;
+import org.apache.james.events.RetryBackoffConfiguration;
+import org.apache.james.events.delivery.EventDelivery;
+import org.apache.james.events.delivery.InVmEventDelivery;
 import org.apache.james.json.DTOConverter;
 import org.apache.james.modules.mailbox.OpenSearchMailboxConfigurationModule;
 import org.apache.james.modules.server.DNSServiceModule;
@@ -72,7 +81,9 @@ import com.linagora.calendar.storage.eventsearch.MemoryCalendarSearchService;
 import com.linagora.calendar.storage.ldap.LdapStorageModule;
 import com.linagora.calendar.storage.mongodb.MongoDBStorageModule;
 import com.linagora.calendar.storage.opensearch.OpensearchCalendarSearchModule;
-import com.linagora.calendar.storage.redis.RedisStorageModule;
+import com.linagora.calendar.storage.redis.RedisCommonModule;
+import com.linagora.calendar.storage.redis.RedisEventBusModule;
+import com.linagora.calendar.storage.redis.RedisOIDCModule;
 import com.linagora.calendar.webadmin.CalendarRoutesModule;
 import com.linagora.calendar.webadmin.DomainMembersSyncRouteModule;
 import com.linagora.calendar.webadmin.LdapUsersImportRouteModule;
@@ -124,7 +135,9 @@ public class TwakeCalendarMain {
                 chooseAutoComplete(configuration.autoCompleteChoice())
                     .calendarEventSearch(configuration.calendarEventSearchChoice()),
                 chooseUsersModule(configuration.userChoice()),
+                enableRedisCommonStuffIfNeeded(configuration.oidcTokenStorageChoice(), configuration.eventBusChoice()),
                 chooseOIDCTokenStorage(configuration.oidcTokenStorageChoice()),
+                chooseEventBusModule(configuration.eventBusChoice()),
                 new FileUploadConfigurationModule(),
                 new RestApiModule(),
                 new TaskManagerModule(),
@@ -200,7 +213,31 @@ public class TwakeCalendarMain {
                         bind(OIDCTokenCache.class).to(CaffeineOIDCTokenCache.class);
                     }
                 };
-                case REDIS -> new RedisStorageModule();
+                case REDIS -> new RedisOIDCModule();
             });
+    }
+
+    public static Module chooseEventBusModule(TwakeCalendarConfiguration.EventBusChoice eventBusChoice) {
+        return switch (eventBusChoice) {
+            case MEMORY -> new AbstractModule() {
+                @Override
+                protected void configure() {
+                    bind(RetryBackoffConfiguration.class).toInstance(RetryBackoffConfiguration.DEFAULT);
+                    bind(EventDelivery.class).to(InVmEventDelivery.class);
+                    bind(EventDeadLetters.class).to(MemoryEventDeadLetters.class);
+                    bind(EventBus.class).to(InVMEventBus.class);
+                }
+            };
+            case REDIS -> new RedisEventBusModule();
+        };
+    }
+
+    public static Module enableRedisCommonStuffIfNeeded(TwakeCalendarConfiguration.OIDCTokenStorageChoice oidcTokenStorageChoice,
+                                                                 TwakeCalendarConfiguration.EventBusChoice eventBusChoice) {
+        if (oidcTokenStorageChoice == TwakeCalendarConfiguration.OIDCTokenStorageChoice.REDIS ||
+            eventBusChoice == TwakeCalendarConfiguration.EventBusChoice.REDIS) {
+            return new RedisCommonModule();
+        }
+        return EMPTY_MODULE;
     }
 }
