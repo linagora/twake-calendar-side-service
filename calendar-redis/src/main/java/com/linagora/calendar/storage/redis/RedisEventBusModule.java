@@ -26,13 +26,13 @@ import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.james.events.CalendarEventSerializer;
 import org.apache.james.events.CalendarRedisEventBus;
+import org.apache.james.events.CalendarURLRegistrationKeyFactory;
 import org.apache.james.events.EventBus;
 import org.apache.james.events.EventBusId;
 import org.apache.james.events.EventSerializer;
 import org.apache.james.events.RedisEventBusConfiguration;
 import org.apache.james.events.RetryBackoffConfiguration;
 import org.apache.james.events.RoutingKeyConverter;
-import org.apache.james.jmap.change.Factory;
 import org.apache.james.utils.InitializationOperation;
 import org.apache.james.utils.InitilizationOperationBuilder;
 import org.apache.james.utils.PropertiesProvider;
@@ -50,7 +50,7 @@ public class RedisEventBusModule extends AbstractModule {
     protected void configure() {
         bind(RetryBackoffConfiguration.class).toInstance(RetryBackoffConfiguration.DEFAULT);
         bind(EventSerializer.class).to(CalendarEventSerializer.class);
-        bind(RoutingKeyConverter.class).toInstance(new RoutingKeyConverter(ImmutableSet.of(new Factory())));
+        bind(RoutingKeyConverter.class).toInstance(new RoutingKeyConverter(ImmutableSet.of(new CalendarURLRegistrationKeyFactory())));
         bind(EventBusId.class).toInstance(EventBusId.random());
         bind(EventBus.class).to(CalendarRedisEventBus.class);
     }

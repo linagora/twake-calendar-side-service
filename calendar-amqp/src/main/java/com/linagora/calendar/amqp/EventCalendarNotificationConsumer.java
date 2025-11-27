@@ -188,7 +188,11 @@ public class EventCalendarNotificationConsumer implements Closeable, Startable {
 
     private String getEventPath(byte[] json) throws IOException {
         JsonNode root = OBJECT_MAPPER.readTree(json);
-        return root.at("/eventPath").asText();
+        JsonNode eventPathNode = root.at("/eventPath");
+        if (eventPathNode.isMissingNode() || eventPathNode.isNull()) {
+            throw new IllegalArgumentException("Missing required field 'eventPath' in message payload");
+        }
+        return eventPathNode.asText();
     }
 
     private Mono<Void> handle(String eventPath) {

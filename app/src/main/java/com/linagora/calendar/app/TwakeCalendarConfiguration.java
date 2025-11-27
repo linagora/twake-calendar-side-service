@@ -22,6 +22,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.util.Optional;
 
+import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.james.filesystem.api.FileSystem;
 import org.apache.james.filesystem.api.JamesDirectoriesProvider;
 import org.apache.james.server.core.JamesServerResourceLoader;
@@ -37,7 +38,8 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                                          UserChoice userChoice, DbChoice dbChoice, AutoCompleteChoice autoCompleteChoice,
                                          OIDCTokenStorageChoice oidcTokenStorageChoice,
                                          EventBusChoice eventBusChoice,
-                                         CalendarEventSearchChoice calendarEventSearchChoice) implements Configuration {
+                                         CalendarEventSearchChoice calendarEventSearchChoice,
+                                         boolean redisEnabled) implements Configuration {
     public static class Builder {
         private Optional<String> rootDirectory;
         private Optional<ConfigurationPath> configurationPath;
@@ -149,20 +151,20 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                 }
             }));
 
+            boolean redisEnabled =  Throwing.supplier(() -> isRedisConfigFileExisting(propertiesProvider)).get();
+
             OIDCTokenStorageChoice oidcTokenStorageChoice =  this.oidcTokenStorageChoice.orElseGet(Throwing.supplier(() -> {
-                try {
-                    propertiesProvider.getConfiguration("redis");
+                if (redisEnabled) {
                     return OIDCTokenStorageChoice.REDIS;
-                } catch (FileNotFoundException e) {
+                } else {
                     return OIDCTokenStorageChoice.MEMORY;
                 }
             }));
 
             EventBusChoice eventBusChoice =  this.eventBusStorageChoice.orElseGet(Throwing.supplier(() -> {
-                try {
-                    propertiesProvider.getConfiguration("redis");
+                if (redisEnabled) {
                     return EventBusChoice.REDIS;
-                } catch (FileNotFoundException e) {
+                } else {
                     return EventBusChoice.MEMORY;
                 }
             }));
@@ -184,7 +186,17 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                 autoCompleteChoice,
                 oidcTokenStorageChoice,
                 eventBusChoice,
-                calendarEventSearchChoice);
+                calendarEventSearchChoice,
+                redisEnabled);
+        }
+
+        private boolean isRedisConfigFileExisting(PropertiesProvider propertiesProvider) throws ConfigurationException {
+            try {
+                propertiesProvider.getConfiguration("redis");
+                return true;
+            } catch (FileNotFoundException e) {
+                return false;
+            }
         }
     }
 

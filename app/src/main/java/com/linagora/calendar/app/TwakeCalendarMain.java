@@ -135,7 +135,7 @@ public class TwakeCalendarMain {
                 chooseAutoComplete(configuration.autoCompleteChoice())
                     .calendarEventSearch(configuration.calendarEventSearchChoice()),
                 chooseUsersModule(configuration.userChoice()),
-                enableRedisCommonStuffIfNeeded(configuration.oidcTokenStorageChoice(), configuration.eventBusChoice()),
+                enableRedisCommonDependencyIfNeeded(configuration.redisEnabled()),
                 chooseOIDCTokenStorage(configuration.oidcTokenStorageChoice()),
                 chooseEventBusModule(configuration.eventBusChoice()),
                 new FileUploadConfigurationModule(),
@@ -232,10 +232,8 @@ public class TwakeCalendarMain {
         };
     }
 
-    public static Module enableRedisCommonStuffIfNeeded(TwakeCalendarConfiguration.OIDCTokenStorageChoice oidcTokenStorageChoice,
-                                                                 TwakeCalendarConfiguration.EventBusChoice eventBusChoice) {
-        if (oidcTokenStorageChoice == TwakeCalendarConfiguration.OIDCTokenStorageChoice.REDIS ||
-            eventBusChoice == TwakeCalendarConfiguration.EventBusChoice.REDIS) {
+    public static Module enableRedisCommonDependencyIfNeeded(boolean redisEnabled) {
+        if (redisEnabled) {
             return new RedisCommonModule();
         }
         return EMPTY_MODULE;

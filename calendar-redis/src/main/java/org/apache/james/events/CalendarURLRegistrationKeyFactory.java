@@ -16,14 +16,20 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage;
+package org.apache.james.events;
 
-import org.apache.james.events.RegistrationKey;
+import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.CalendarURLRegistrationKey;
 
-public record CalendarURLRegistrationKey(CalendarURL calendarURL) implements RegistrationKey {
+public class CalendarURLRegistrationKeyFactory implements RegistrationKey.Factory {
 
     @Override
-    public String asString() {
-        return calendarURL.serialize();
+    public Class<? extends RegistrationKey> forClass() {
+        return CalendarURLRegistrationKey.class;
+    }
+
+    @Override
+    public RegistrationKey fromString(String asString) {
+        return new CalendarURLRegistrationKey(CalendarURL.deserialize(asString));
     }
 }
