@@ -135,7 +135,7 @@ public class EventCalendarNotificationConsumerTest {
     @EnumSource(EventCalendarNotificationConsumer.Queue.class)
     void shouldDispatchEventToCorrectChannelAfterConsumingEventCalendarNotificationMessage(EventCalendarNotificationConsumer.Queue queue) throws Exception {
         RegistrationKey registrationKey = new CalendarURLRegistrationKey(new CalendarURL(new OpenPaaSId("base1"), new OpenPaaSId("calendar1")));
-        RegistrationKey registrationKey2 = new CalendarURLRegistrationKey(new CalendarURL(new OpenPaaSId("base1"), new OpenPaaSId("calendar")));
+        RegistrationKey registrationKey2 = new CalendarURLRegistrationKey(new CalendarURL(new OpenPaaSId("base1"), new OpenPaaSId("calendar2")));
 
         AtomicBoolean eventReceived = new AtomicBoolean(false);
         Mono.from(eventBus.register(event -> {

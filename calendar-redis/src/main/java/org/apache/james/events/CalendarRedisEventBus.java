@@ -22,6 +22,7 @@ import java.util.Collection;
 import java.util.Set;
 
 import jakarta.annotation.PreDestroy;
+import jakarta.inject.Inject;
 
 import org.apache.james.events.EventListener.ReactiveEventListener;
 import org.apache.james.lifecycle.api.Startable;
@@ -67,6 +68,7 @@ public class CalendarRedisEventBus implements EventBus, Startable {
     private LocalKeyListenerExecutor localKeyListenerExecutor;
     private RedisKeyEventDispatcher redisKeyEventDispatcher;
 
+    @Inject
     public CalendarRedisEventBus(EventSerializer eventSerializer,
                                  RetryBackoffConfiguration retryBackoff,
                                  RoutingKeyConverter routingKeyConverter,

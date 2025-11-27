@@ -33,7 +33,6 @@ import java.util.function.Supplier;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
-import jakarta.inject.Singleton;
 
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
@@ -107,7 +106,6 @@ public class EventCalendarNotificationConsumer implements Closeable, Startable {
     private final EventBus eventBus;
 
     @Inject
-    @Singleton
     public EventCalendarNotificationConsumer(ReactorRabbitMQChannelPool channelPool,
                                              @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier, EventBus eventBus) {
         this.receiverProvider = channelPool::createReceiver;
@@ -146,12 +144,7 @@ public class EventCalendarNotificationConsumer implements Closeable, Startable {
     }
 
     public void start() {
-        consumeDisposableMap.put(Queue.ADD, doConsumeCalendarEventMessages(Queue.ADD));
-        consumeDisposableMap.put(Queue.UPDATE, doConsumeCalendarEventMessages(Queue.UPDATE));
-        consumeDisposableMap.put(Queue.DELETE, doConsumeCalendarEventMessages(Queue.DELETE));
-        consumeDisposableMap.put(Queue.CANCEL, doConsumeCalendarEventMessages(Queue.CANCEL));
-        consumeDisposableMap.put(Queue.REQUEST, doConsumeCalendarEventMessages(Queue.REQUEST));
-        consumeDisposableMap.put(Queue.REPLY, doConsumeCalendarEventMessages(Queue.REPLY));
+        Arrays.stream(Queue.values()).forEach(queue -> consumeDisposableMap.put(queue, doConsumeCalendarEventMessages(queue)));
     }
 
     public void restart() {
