@@ -38,6 +38,7 @@ import org.apache.james.vacation.api.AccountId;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -127,12 +128,14 @@ public class CalendarSearchRoute extends CalendarRoute {
                     Data.from(event, userId, calendarId));
             }
 
-            public record Data(String uid, String summary, String location, String description, String start, String end,
+            public record Data(String uid, Optional<String> summary, Optional<String> location, Optional<String> description,
+                               Optional<String> start, Optional<String> end,
                                @JsonProperty("class") String clazz, Boolean allDay, Boolean hasResources,
                                Integer durationInDays, Boolean isRecurrentMaster, List<Attendee> attendees,
                                EventResource.Data.Organizer organizer, List<Resource> resources, String userId,
                                String calendarId, String dtstamp) {
-                public Data(String uid, String summary, String location, String description, String start, String end, String clazz,
+                public Data(String uid, Optional<String> summary, Optional<String> location, Optional<String> description,
+                            Optional<String> start, Optional<String> end, String clazz,
                             Boolean allDay, Boolean hasResources, Integer durationInDays, Boolean isRecurrentMaster,
                             List<Attendee> attendees, Organizer organizer, List<Resource> resources, String userId,
                             String calendarId, String dtstamp) {
@@ -157,19 +160,27 @@ public class CalendarSearchRoute extends CalendarRoute {
 
                 public static Data from(EventFields event, String userId, String calendarId) {
                     List<Attendee> attendees = event.attendees().stream()
-                        .map(person -> new Attendee(person.email().asString(), person.cn()))
+                        .map(person -> new Attendee(Optional.ofNullable(person.email())
+                            .map(MailAddress::asString),
+                            Optional.ofNullable(person.cn())))
                         .collect(Collectors.toList());
-                    Organizer organizer = new Organizer(event.organizer().email().asString(), event.organizer().cn());
+                    Organizer organizer = new Organizer(Optional.ofNullable(event.organizer())
+                        .flatMap(person -> Optional.ofNullable(person.email()))
+                    .map(MailAddress::asString),
+                        Optional.ofNullable(event.organizer())
+                            .flatMap(p -> Optional.ofNullable(p.cn())));
                     List<Resource> resources = event.resources().stream()
-                        .map(resource -> new Resource(resource.email().asString(), resource.cn()))
+                        .map(resource -> new Resource(Optional.ofNullable(resource.email())
+                            .map(MailAddress::asString),
+                            Optional.ofNullable(resource.cn())))
                         .toList();
 
                     return new Data(event.uid().value(),
-                        event.summary(),
-                        event.location(),
-                        event.description(),
-                        ISO_INSTANT.format(event.start()),
-                        ISO_INSTANT.format(event.end()),
+                        Optional.ofNullable(event.summary()),
+                        Optional.ofNullable(event.location()),
+                        Optional.ofNullable(event.description()),
+                        Optional.ofNullable(event.start()).map(ISO_INSTANT::format),
+                        Optional.ofNullable(event.end()).map(ISO_INSTANT::format),
                         event.clazz(),
                         event.allDay(),
                         event.hasResources(),
@@ -183,13 +194,13 @@ public class CalendarSearchRoute extends CalendarRoute {
                         ISO_INSTANT.format(event.dtStamp()));
                 }
 
-                public record Attendee(String email, String cn) {
+                public record Attendee(Optional<String> email, Optional<String> cn) {
                 }
 
-                public record Organizer(String email, String cn) {
+                public record Organizer(Optional<String> email, Optional<String> cn) {
                 }
 
-                public record Resource(String email, String cn) {
+                public record Resource(Optional<String> email, Optional<String> cn) {
                 }
             }
         }
@@ -200,7 +211,7 @@ public class CalendarSearchRoute extends CalendarRoute {
     public static final int DEFAULT_LIMIT = 30;
     public static final int DEFAULT_OFFSET = 0;
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module());
 
     private final CalendarSearchService searchService;
 
