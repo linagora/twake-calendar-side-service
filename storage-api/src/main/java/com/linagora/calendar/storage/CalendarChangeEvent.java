@@ -21,7 +21,7 @@ package com.linagora.calendar.storage;
 import org.apache.james.core.Username;
 import org.apache.james.events.Event;
 
-public record CalendarChangeEvent(Event.EventId eventId) implements Event {
+public record CalendarChangeEvent(Event.EventId eventId, CalendarURL calendarURL) implements Event {
 
     public static final Username USERNAME = Username.of("CalendarChange");
 
