@@ -19,7 +19,6 @@
 package com.linagora.calendar.app.restapi.routes;
 
 import static io.restassured.RestAssured.given;
-import static io.restassured.RestAssured.request;
 import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
 import static org.hamcrest.Matchers.equalTo;
@@ -203,6 +202,48 @@ public interface CalendarSearchRouteContract {
             .body("_embedded.events[0].data.userId", equalTo(userId))
             .body("_embedded.events[0].data.calendarId", equalTo(calendarId))
             .body("_embedded.events[0].data.dtstamp", equalTo("2025-04-18T07:47:48Z"));
+    }
+
+    @Test
+    default void shouldSupportWithoutOrganizer(TwakeCalendarGuiceServer server) throws Exception {
+        String userId = "6053022c9da5ef001f430b43";
+        String calendarId = "6053022c9da5ef001f430b43";
+        String attendeeEmail = "attendee@linagora.com";
+
+        // Match all search criteria
+        EventFields event = EventFields.builder()
+            .uid("event-1")
+            .summary("Title 1")
+            .location("office")
+            .description("note 1")
+            .start(Instant.parse("2025-04-19T11:00:00Z"))
+            .end(Instant.parse("2025-04-19T11:30:00Z"))
+            .clazz("PUBLIC")
+            .allDay(true)
+            .isRecurrentMaster(true)
+            .addAttendee(EventFields.Person.of("attendee", attendeeEmail))
+            .addResource(new EventFields.Person("resource 1", new MailAddress("resource1@linagora.com")))
+            .calendarURL(new CalendarURL(new OpenPaaSId(userId), new OpenPaaSId(calendarId)))
+            .dtStamp(Instant.parse("2025-04-18T07:47:48Z"))
+            .build();
+
+        server.getProbe(CalendarDataProbe.class).indexCalendar(USERNAME, CalendarEvents.of(event));
+
+        String requestBody = """
+            {
+                "calendars": [
+                    { "userId": "%s", "calendarId": "%s" }
+                ],
+                "query": "note",
+                "attendees": [ "%s" ]
+            }
+            """.formatted(userId, calendarId, attendeeEmail);
+
+        given()
+            .body(requestBody)
+            .post("/calendar/api/events/search")
+        .then()
+            .statusCode(200);
     }
 
     @Test
