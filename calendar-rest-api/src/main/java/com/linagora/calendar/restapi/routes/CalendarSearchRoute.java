@@ -237,7 +237,7 @@ public class CalendarSearchRoute extends CalendarRoute {
             .map(Throwing.function(string -> OBJECT_MAPPER.readValue(string, SearchRequest.class)))
             .flatMap(searchRequest -> {
                 EventSearchQuery.Builder queryBuilder = EventSearchQuery.builder()
-                    .query(extractQuery(searchRequest))
+                    .query(Optional.ofNullable(searchRequest.query).orElse(""))
                     .limit(limit)
                     .offset(offset);
                 extractCalendarUrls(searchRequest).ifPresent(queryBuilder::calendars);
@@ -289,14 +289,6 @@ public class CalendarSearchRoute extends CalendarRoute {
                     throw new IllegalArgumentException("Invalid offset param: " + s);
                 }
             }).orElse(DEFAULT_OFFSET);
-    }
-
-    private String extractQuery(SearchRequest searchRequest) {
-        if (StringUtils.isNotBlank(searchRequest.query)) {
-            return searchRequest.query;
-        } else {
-            throw new IllegalArgumentException("Query field is required");
-        }
     }
 
     private Optional<List<CalendarURL>> extractCalendarUrls(SearchRequest searchRequest) {

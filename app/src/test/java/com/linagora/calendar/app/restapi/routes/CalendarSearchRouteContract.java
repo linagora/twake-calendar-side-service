@@ -359,7 +359,7 @@ public interface CalendarSearchRouteContract {
     }
 
     @Test
-    default void shouldReturn400WhenQueryFieldIsMissing(TwakeCalendarGuiceServer server) {
+    default void shouldReturn200WhenQueryFieldIsMissing(TwakeCalendarGuiceServer server) {
         String userId = "6053022c9da5ef001f430b43";
         String calendarId = "6053022c9da5ef001f430b43";
         String organizerEmail = "organizer@linagora.com";
@@ -379,10 +379,7 @@ public interface CalendarSearchRouteContract {
             .body(requestBody)
             .post("/calendar/api/events/search?limit=30&offset=0")
             .then()
-            .statusCode(400)
-            .body("error.code", equalTo(400))
-            .body("error.message", equalTo("Bad request"))
-            .body("error.details", equalTo("Query field is required"));
+            .statusCode(200);
     }
 
     @Test
@@ -390,6 +387,22 @@ public interface CalendarSearchRouteContract {
         String requestBody = """
             {
                 "query": "note"
+            }
+            """;
+
+        given()
+            .body(requestBody)
+            .post("/calendar/api/events/search?limit=30&offset=0")
+            .then()
+            .statusCode(200)
+            .body("_total_hits", equalTo(0));
+    }
+
+    @Test
+    default void shouldAcceptEmptyQueryField(TwakeCalendarGuiceServer server) {
+        String requestBody = """
+            {
+                "query": ""
             }
             """;
 
