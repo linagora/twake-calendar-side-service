@@ -135,9 +135,7 @@ public class TwakeCalendarMain {
                 chooseAutoComplete(configuration.autoCompleteChoice())
                     .calendarEventSearch(configuration.calendarEventSearchChoice()),
                 chooseUsersModule(configuration.userChoice()),
-                enableRedisCommonDependencyIfNeeded(configuration.redisEnabled()),
-                chooseOIDCTokenStorage(configuration.oidcTokenStorageChoice()),
-                chooseEventBusModule(configuration.eventBusChoice()),
+                chooseCacheAndPubSub(configuration.redisEnabled()),
                 new FileUploadConfigurationModule(),
                 new RestApiModule(),
                 new TaskManagerModule(),
@@ -203,39 +201,22 @@ public class TwakeCalendarMain {
         };
     }
 
-    public static Module chooseOIDCTokenStorage(TwakeCalendarConfiguration.OIDCTokenStorageChoice oidcTokenStorageChoice) {
-        return Modules.combine(new OIDCTokenCacheConfigurationModule(),
-            switch (oidcTokenStorageChoice) {
-                case MEMORY -> new AbstractModule() {
-                    @Override
-                    protected void configure() {
-                        bind(CaffeineOIDCTokenCache.class).in(Scopes.SINGLETON);
-                        bind(OIDCTokenCache.class).to(CaffeineOIDCTokenCache.class);
-                    }
-                };
-                case REDIS -> new RedisOIDCModule();
-            });
-    }
-
-    public static Module chooseEventBusModule(TwakeCalendarConfiguration.EventBusChoice eventBusChoice) {
-        return switch (eventBusChoice) {
-            case MEMORY -> new AbstractModule() {
-                @Override
-                protected void configure() {
-                    bind(RetryBackoffConfiguration.class).toInstance(RetryBackoffConfiguration.DEFAULT);
-                    bind(EventDelivery.class).to(InVmEventDelivery.class);
-                    bind(EventDeadLetters.class).to(MemoryEventDeadLetters.class);
-                    bind(EventBus.class).to(InVMEventBus.class);
-                }
-            };
-            case REDIS -> new RedisEventBusModule();
-        };
-    }
-
-    public static Module enableRedisCommonDependencyIfNeeded(boolean redisEnabled) {
+    public static Module chooseCacheAndPubSub(boolean redisEnabled) {
         if (redisEnabled) {
-            return new RedisCommonModule();
+            return Modules.combine(new RedisCommonModule(),
+                new RedisOIDCModule(),
+                new RedisEventBusModule());
         }
-        return EMPTY_MODULE;
+        return new AbstractModule() {
+            @Override
+            protected void configure() {
+                bind(CaffeineOIDCTokenCache.class).in(Scopes.SINGLETON);
+                bind(OIDCTokenCache.class).to(CaffeineOIDCTokenCache.class);
+                bind(RetryBackoffConfiguration.class).toInstance(RetryBackoffConfiguration.DEFAULT);
+                bind(EventDelivery.class).to(InVmEventDelivery.class);
+                bind(EventDeadLetters.class).to(MemoryEventDeadLetters.class);
+                bind(EventBus.class).to(InVMEventBus.class);
+            }
+        };
     }
 }

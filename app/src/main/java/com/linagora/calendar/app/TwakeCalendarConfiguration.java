@@ -36,8 +36,6 @@ import com.github.fge.lambdas.Throwing;
 
 public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, JamesDirectoriesProvider directories,
                                          UserChoice userChoice, DbChoice dbChoice, AutoCompleteChoice autoCompleteChoice,
-                                         OIDCTokenStorageChoice oidcTokenStorageChoice,
-                                         EventBusChoice eventBusChoice,
                                          CalendarEventSearchChoice calendarEventSearchChoice,
                                          boolean redisEnabled) implements Configuration {
     public static class Builder {
@@ -46,8 +44,7 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
         private Optional<UserChoice> userChoice;
         private Optional<DbChoice> dbChoice;
         private Optional<AutoCompleteChoice> autoCompleteChoice;
-        private Optional<OIDCTokenStorageChoice> oidcTokenStorageChoice;
-        private Optional<EventBusChoice> eventBusStorageChoice = Optional.empty();
+        private Optional<Boolean> redisEnabled;
         private Optional<CalendarEventSearchChoice> calendarEventSearchChoice;
 
         private Builder() {
@@ -56,7 +53,7 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
             userChoice = Optional.empty();
             dbChoice = Optional.empty();
             autoCompleteChoice = Optional.empty();
-            oidcTokenStorageChoice = Optional.empty();
+            redisEnabled = Optional.empty();
             calendarEventSearchChoice = Optional.empty();
         }
 
@@ -85,13 +82,8 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
             return this;
         }
 
-        public Builder oidcTokenStorageChoice(OIDCTokenStorageChoice choice) {
-            oidcTokenStorageChoice = Optional.of(choice);
-            return this;
-        }
-
-        public Builder eventBusChoice(EventBusChoice choice) {
-            eventBusStorageChoice = Optional.of(choice);
+        public Builder enableRedis() {
+            redisEnabled = Optional.of(true);
             return this;
         }
 
@@ -153,22 +145,6 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
 
             boolean redisEnabled =  Throwing.supplier(() -> redisConfigurationFileExists(propertiesProvider)).get();
 
-            OIDCTokenStorageChoice oidcTokenStorageChoice =  this.oidcTokenStorageChoice.orElseGet(Throwing.supplier(() -> {
-                if (redisEnabled) {
-                    return OIDCTokenStorageChoice.REDIS;
-                } else {
-                    return OIDCTokenStorageChoice.MEMORY;
-                }
-            }));
-
-            EventBusChoice eventBusChoice =  this.eventBusStorageChoice.orElseGet(Throwing.supplier(() -> {
-                if (redisEnabled) {
-                    return EventBusChoice.REDIS;
-                } else {
-                    return EventBusChoice.MEMORY;
-                }
-            }));
-
             CalendarEventSearchChoice calendarEventSearchChoice = this.calendarEventSearchChoice.orElseGet(Throwing.supplier(() -> {
                 try {
                     propertiesProvider.getConfiguration("opensearch");
@@ -184,8 +160,6 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                 userChoice,
                 dbChoice,
                 autoCompleteChoice,
-                oidcTokenStorageChoice,
-                eventBusChoice,
                 calendarEventSearchChoice,
                 redisEnabled);
         }
@@ -212,16 +186,6 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
 
     public enum AutoCompleteChoice {
         OPENSEARCH,
-        MEMORY
-    }
-
-    public enum OIDCTokenStorageChoice {
-        REDIS,
-        MEMORY
-    }
-
-    public enum EventBusChoice {
-        REDIS,
         MEMORY
     }
 
