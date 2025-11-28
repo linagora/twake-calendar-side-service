@@ -54,6 +54,17 @@ Tickets can be used as authentication credentials by passing them as a query par
 
 For detailed endpoint documentation, see [Ticket Authentication API](ticketAuthentication.md).
 
+### WebSocket API
+
+The side service exposes a WebSocket endpoint used by Twake Calendar and external clients to receive real‑time calendar updates.
+
+WebSocket connections rely on the Ticket Authentication mechanism described above.  
+A client must first obtain a short‑lived ticket, then use it in the WebSocket handshake.
+
+For complete documentation (handshake, message formats, register/unregister semantics, and event push samples), see:
+
+- [Calendar WebSocket API](websocket.md)
+
 ## Endpoints
 
 ### GET /api/user

@@ -64,7 +64,8 @@ import reactor.util.retry.Retry;
 public class CalDavClient extends DavClient {
 
     public enum PublicRight {
-        READ("{DAV:}read");
+        READ("{DAV:}read"),
+        HIDE_ALL_EVENT("");
 
         private final String value;
 

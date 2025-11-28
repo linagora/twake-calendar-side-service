@@ -41,6 +41,7 @@ import org.slf4j.Logger;
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
+import com.google.inject.Scopes;
 import com.google.inject.multibindings.ProvidesIntoSet;
 
 public class RedisEventBusModule extends AbstractModule {
@@ -52,6 +53,7 @@ public class RedisEventBusModule extends AbstractModule {
         bind(EventSerializer.class).to(CalendarEventSerializer.class);
         bind(RoutingKeyConverter.class).toInstance(new RoutingKeyConverter(ImmutableSet.of(new CalendarURLRegistrationKeyFactory())));
         bind(EventBusId.class).toInstance(EventBusId.random());
+        bind(CalendarRedisEventBus.class).in(Scopes.SINGLETON);
         bind(EventBus.class).to(CalendarRedisEventBus.class);
     }
 

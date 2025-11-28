@@ -216,6 +216,8 @@ public class TwakeCalendarMain {
                 bind(EventDelivery.class).to(InVmEventDelivery.class);
                 bind(EventDeadLetters.class).to(MemoryEventDeadLetters.class);
                 bind(EventBus.class).to(InVMEventBus.class);
+                bind(InVMEventBus.class).in(Scopes.SINGLETON);
+                bind(MemoryEventDeadLetters.class).in(Scopes.SINGLETON);
             }
         };
     }
