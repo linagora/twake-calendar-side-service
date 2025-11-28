@@ -18,8 +18,6 @@
 
 package com.linagora.calendar.app;
 
-import static com.google.inject.util.Modules.EMPTY_MODULE;
-
 import org.apache.james.ExtraProperties;
 import org.apache.james.UserEntityValidator;
 import org.apache.james.data.LdapUsersRepositoryModule;
@@ -204,12 +202,14 @@ public class TwakeCalendarMain {
     public static Module chooseCacheAndPubSub(boolean redisEnabled) {
         if (redisEnabled) {
             return Modules.combine(new RedisCommonModule(),
+                new OIDCTokenCacheConfigurationModule(),
                 new RedisOIDCModule(),
                 new RedisEventBusModule());
         }
         return new AbstractModule() {
             @Override
             protected void configure() {
+                install(new OIDCTokenCacheConfigurationModule());
                 bind(CaffeineOIDCTokenCache.class).in(Scopes.SINGLETON);
                 bind(OIDCTokenCache.class).to(CaffeineOIDCTokenCache.class);
                 bind(RetryBackoffConfiguration.class).toInstance(RetryBackoffConfiguration.DEFAULT);
