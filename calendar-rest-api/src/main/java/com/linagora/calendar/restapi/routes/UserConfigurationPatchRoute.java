@@ -126,7 +126,7 @@ public class UserConfigurationPatchRoute extends CalendarRoute {
                 return objectMapper.readValue(body, new TypeReference<>() {
                     });
             } catch (Exception e) {
-                LOGGER.warn("Failed to deserialize body: {}", body);
+                LOGGER.warn("Failed to deserialize body: {}", new String(body, StandardCharsets.UTF_8));
                 throw new IllegalArgumentException("Invalid request body", e);
             }
         };
