@@ -68,7 +68,7 @@ public class MemoryCalendarSearchService implements CalendarSearchService {
         return Flux.fromIterable(indexStore.row(accountId).values())
             .flatMapIterable(CalendarEvents::events)
             .filter(event -> matchesQuery(event, query))
-            .sort(Comparator.comparing(EventFields::start, Comparator.nullsLast(Comparator.naturalOrder())))
+            .sort(Comparator.comparing(EventFields::start, Comparator.nullsLast(Comparator.reverseOrder())))
             .skip(query.offset())
             .take(query.limit());
     }

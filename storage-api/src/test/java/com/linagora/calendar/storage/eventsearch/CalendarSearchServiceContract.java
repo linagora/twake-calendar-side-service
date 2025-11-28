@@ -654,8 +654,10 @@ public interface CalendarSearchServiceContract {
             .map(EventFields::uid)
             .collectList().block();
 
+        // Events are sorted by start date descending (newest first)
+        // With offset=1 and limit=2, we skip event5 and get event4 and event3
         assertThat(result)
-            .containsExactly(new EventUid(eventPrefix + "2"), new EventUid(eventPrefix + "3"));
+            .containsExactly(new EventUid(eventPrefix + "4"), new EventUid(eventPrefix + "3"));
     }
 
     @Test
