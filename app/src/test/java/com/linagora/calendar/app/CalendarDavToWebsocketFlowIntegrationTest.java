@@ -84,7 +84,7 @@ class CalendarDavToWebsocketFlowIntegrationTest {
             .configurationFromClasspath()
             .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB)
-            .eventBusChoice(TwakeCalendarConfiguration.EventBusChoice.REDIS),
+            .enableRedis(),
         AppTestHelper.OIDC_BY_PASS_MODULE,
         DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
         new AbstractModule() {
