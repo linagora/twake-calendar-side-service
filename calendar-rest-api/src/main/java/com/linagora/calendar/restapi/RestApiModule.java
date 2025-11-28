@@ -90,6 +90,7 @@ import com.linagora.calendar.restapi.routes.UserConfigurationsRoute;
 import com.linagora.calendar.restapi.routes.UserProfileRoute;
 import com.linagora.calendar.restapi.routes.UserRoute;
 import com.linagora.calendar.restapi.routes.UsersRoute;
+import com.linagora.calendar.restapi.routes.WebsocketRoute;
 import com.linagora.calendar.restapi.routes.configuration.FileConfigurationEntryResolver;
 import com.linagora.calendar.restapi.routes.configuration.OpenpaasConfigurationEntryResolver;
 import com.linagora.calendar.restapi.routes.configuration.StoredConfigurationEntryResolver;
@@ -153,6 +154,7 @@ public class RestApiModule extends AbstractModule {
         routes.addBinding().to(ResourceParticipationRoute.class);
         routes.addBinding().to(ResourceRoute.class);
         routes.addBinding().to(CalendarTicketRoutes.class);
+        routes.addBinding().to(WebsocketRoute.class);
 
         Multibinder<AuthenticationStrategy> authenticationStrategies = Multibinder.newSetBinder(binder(), AuthenticationStrategy.class);
         authenticationStrategies.addBinding().to(BasicAuthenticationStrategy.class);
@@ -316,8 +318,14 @@ public class RestApiModule extends AbstractModule {
     }
 
     @ProvidesIntoSet
-    public AuthenticationStrategy provideTicketAuthenticationStrategy(TicketManager ticketManager,
-                                                                      SimpleSessionProvider sessionProvider) {
+    public AuthenticationStrategy provideAuthenticationStrategy(TicketAuthenticationStrategy ticketAuthenticationStrategy) {
+        return ticketAuthenticationStrategy;
+    }
+
+    @Provides
+    @Singleton
+    public TicketAuthenticationStrategy provideTicketAuthenticationStrategy(TicketManager ticketManager,
+                                                                            SimpleSessionProvider sessionProvider) {
         return new TicketAuthenticationStrategy(ticketManager, provideSessionProvider(sessionProvider), TICKET_AUTHENTICATION_CHALLENGE_REALM);
     }
 
