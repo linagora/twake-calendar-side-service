@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
 
@@ -87,28 +88,13 @@ public class UserConfigurationPatchRoute extends CalendarRoute {
     }
 
     private Set<ConfigurationEntry> mergeConfigurations(Set<ConfigurationEntry> existingEntries, Set<ConfigurationEntry> patchEntries) {
-        // Group existing entries by module and configuration key for efficient lookup
-        Map<ModuleName, Map<ConfigurationKey, ConfigurationEntry>> existingByModule = existingEntries.stream()
+        Map<ModuleName, Map<ConfigurationKey, ConfigurationEntry>> existingByModule = Stream.concat(existingEntries.stream(),
+            patchEntries.stream())
             .collect(Collectors.groupingBy(
                 ConfigurationEntry::moduleName,
                 Collectors.toMap(ConfigurationEntry::configurationKey, Function.identity(), (a, b) -> b)));
 
-        // Group patch entries by module
-        Map<ModuleName, Map<ConfigurationKey, ConfigurationEntry>> patchByModule = patchEntries.stream()
-            .collect(Collectors.groupingBy(
-                ConfigurationEntry::moduleName,
-                Collectors.toMap(ConfigurationEntry::configurationKey, Function.identity(), (a, b) -> b)));
-
-        // Merge: for each module in patch, update or add configurations
-        Map<ModuleName, Map<ConfigurationKey, ConfigurationEntry>> mergedByModule = new HashMap<>(existingByModule);
-        patchByModule.forEach((moduleName, patchConfigs) -> {
-            Map<ConfigurationKey, ConfigurationEntry> moduleConfigs = mergedByModule.getOrDefault(moduleName, new HashMap<>());
-            moduleConfigs.putAll(patchConfigs); // Patch entries override existing ones
-            mergedByModule.put(moduleName, moduleConfigs);
-        });
-
-        // Flatten back to Set<ConfigurationEntry>
-        return mergedByModule.values().stream()
+        return existingByModule.values().stream()
             .flatMap(configMap -> configMap.values().stream())
             .collect(Collectors.toSet());
     }
