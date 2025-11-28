@@ -426,6 +426,276 @@ class UserConfigurationRouteTest {
             ]""");
     }
 
+    @Test
+    void patchShouldReturn204WhenValidRequest() {
+        given()
+            .body("""
+                [
+                  {
+                    "name": "core",
+                    "configurations": [
+                      {
+                        "name": "language",
+                        "value": "vi"
+                      }
+                    ]
+                  }
+                ]
+                """)
+        .when()
+            .patch("/api/configurations?scope=user")
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+    }
+
+    @Test
+    void patchShouldMergeWithExistingConfiguration() {
+        given()
+            .body("""
+                [
+                  {
+                    "name": "core",
+                    "configurations": [
+                      {
+                        "name": "language",
+                        "value": "en"
+                      },
+                      {
+                        "name": "homePage",
+                        "value": "calendar"
+                      }
+                    ]
+                  }
+                ]
+                """)
+        .when()
+            .put("/api/configurations?scope=user")
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        given()
+            .body("""
+                [
+                  {
+                    "name": "core",
+                    "configurations": [
+                      {
+                        "name": "language",
+                        "value": "vi"
+                      }
+                    ]
+                  }
+                ]
+                """)
+        .when()
+            .patch("/api/configurations?scope=user")
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        String body = given()
+            .body("""
+                [ {
+                  "name" : "core",
+                  "keys" : [ "language", "homePage" ]
+                } ]""")
+        .when()
+            .post("/api/configurations")
+        .then()
+            .statusCode(200)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(body).isEqualTo("""
+            [
+                {
+                    "name": "core",
+                    "configurations": [
+                        {
+                            "name": "language",
+                            "value": "vi"
+                        },
+                        {
+                            "name": "homePage",
+                            "value": "calendar"
+                        }
+                    ]
+                }
+            ]""");
+    }
+
+    @Test
+    void patchShouldAddNewModule() {
+        // First, create initial configuration with one module
+        given()
+            .body("""
+                [
+                  {
+                    "name": "core",
+                    "configurations": [
+                      {
+                        "name": "language",
+                        "value": "en"
+                      }
+                    ]
+                  }
+                ]
+                """)
+        .when()
+            .put("/api/configurations?scope=user")
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        // PATCH to add a new module
+        given()
+            .body("""
+                [
+                  {
+                    "name": "linagora.esn.unifiedinbox",
+                    "configurations": [
+                      {
+                        "name": "useEmailLinks",
+                        "value": true
+                      }
+                    ]
+                  }
+                ]
+                """)
+        .when()
+            .patch("/api/configurations?scope=user")
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        // Verify both modules exist
+        String body = given()
+            .body("""
+                [
+                  {
+                    "name" : "core",
+                    "keys" : [ "language" ]
+                  },
+                  {
+                    "name" : "linagora.esn.unifiedinbox",
+                    "keys" : [ "useEmailLinks" ]
+                  }
+                ]""")
+        .when()
+            .post("/api/configurations")
+        .then()
+            .statusCode(200)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(body).isEqualTo("""
+            [
+                {
+                    "name": "core",
+                    "configurations": [
+                        {
+                            "name": "language",
+                            "value": "en"
+                        }
+                    ]
+                },
+                {
+                    "name": "linagora.esn.unifiedinbox",
+                    "configurations": [
+                        {
+                            "name": "useEmailLinks",
+                            "value": true
+                        }
+                    ]
+                }
+            ]""");
+    }
+
+    @Test
+    void patchShouldWorkWithComplexConfiguration(TwakeCalendarGuiceServer server) {
+        // Setup initial configuration
+        given()
+            .body("""
+                [
+                  {
+                    "name": "core",
+                    "configurations": [
+                      {
+                        "name": "language",
+                        "value": "en"
+                      },
+                      {
+                        "name": "datetime",
+                        "value": {
+                          "timeZone": "UTC",
+                          "use24hourFormat": false
+                        }
+                      }
+                    ]
+                  }
+                ]
+                """)
+        .when()
+            .put("/api/configurations?scope=user")
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        // PATCH to update datetime configuration
+        given()
+            .body("""
+                [
+                  {
+                    "name": "core",
+                    "configurations": [
+                      {
+                        "name": "datetime",
+                        "value": {
+                          "timeZone": "Asia/Ho_Chi_Minh",
+                          "use24hourFormat": true
+                        }
+                      }
+                    ]
+                  }
+                ]
+                """)
+        .when()
+            .patch("/api/configurations?scope=user")
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        List<ConfigurationEntry> configurationEntries = server.getProbe(CalendarDataProbe.class).
+            retrieveConfiguration(MailboxSessionUtil.create(USERNAME));
+
+        assertThat(configurationEntries)
+            .usingElementComparator(Comparator.comparing(Object::toString))
+            .contains(
+                ConfigurationEntry.of("core", "language", new TextNode("en")),
+                ConfigurationEntry.of("core", "datetime", toJsonNode("""
+                    {
+                         "timeZone": "Asia/Ho_Chi_Minh",
+                         "use24hourFormat": true
+                     }""")));
+    }
+
+    @Test
+    void patchShouldReturn400WhenInvalidRequestBody() {
+        given()
+            .body("invalid json")
+        .when()
+            .patch("/api/configurations?scope=user")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @Test
+    void patchShouldReturn400WhenEmptyBody() {
+        given()
+            .body("")
+        .when()
+            .patch("/api/configurations?scope=user")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
     JsonNode toJsonNode(String json) {
         try {
             return MAPPER.readTree(json);
