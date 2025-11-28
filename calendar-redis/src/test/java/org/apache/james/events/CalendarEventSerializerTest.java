@@ -18,12 +18,38 @@
 
 package org.apache.james.events;
 
+import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
+import static org.assertj.core.api.Assertions.assertThat;
+
+import org.junit.jupiter.api.Test;
+
+import com.linagora.calendar.storage.CalendarChangeEvent;
 import com.linagora.calendar.storage.CalendarURL;
 
-public record CalendarURLRegistrationKey(CalendarURL calendarURL) implements RegistrationKey {
+public class CalendarEventSerializerTest {
+    public static final String CALENDAR_CHANGE_JSON = """
+        {
+            "type": "CalendarEventSerializer$CalendarChangeDTO",
+            "eventId": "34392fb0-8fc1-442e-bd33-5bd1af689f0e",
+            "username": "calendarchange",
+            "calendarUrl": "baseId/calendarId"
+        }
+        """;
+    public static final CalendarChangeEvent CALENDAR_CHANGE_EVENT = new CalendarChangeEvent(
+        Event.EventId.of("34392fb0-8fc1-442e-bd33-5bd1af689f0e"),
+        CalendarURL.deserialize("baseId/calendarId"));
 
-    @Override
-    public String asString() {
-        return calendarURL.base().value() + ":" + calendarURL.calendarId().value();
+    private final CalendarEventSerializer serializer = new CalendarEventSerializer();
+
+    @Test
+    void shouldSerializeCalendarChangeEvent() {
+        String json = serializer.toJson(CALENDAR_CHANGE_EVENT);
+        assertThatJson(json).isEqualTo(CALENDAR_CHANGE_JSON);
+    }
+
+    @Test
+    void shouldDeserializeJsonToCalendarChangeEvent() {
+        Event event = serializer.asEvent(CALENDAR_CHANGE_JSON);
+        assertThat(event).isEqualTo(CALENDAR_CHANGE_EVENT);
     }
 }

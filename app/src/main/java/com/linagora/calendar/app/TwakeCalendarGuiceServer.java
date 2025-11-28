@@ -77,10 +77,6 @@ public class TwakeCalendarGuiceServer {
         return new TwakeCalendarGuiceServer(isStartedProbe, Modules.combine(Iterables.concat(Arrays.asList(module), modules)));
     }
 
-    public TwakeCalendarGuiceServer overrideWith(Module... overrides) {
-        return new TwakeCalendarGuiceServer(isStartedProbe, Modules.override(module).with(overrides));
-    }
-
     public TwakeCalendarGuiceServer overrideWith(List<Module> overrides) {
         return new TwakeCalendarGuiceServer(isStartedProbe, Modules.override(module).with(overrides));
     }

@@ -22,6 +22,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.util.Optional;
 
+import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.james.filesystem.api.FileSystem;
 import org.apache.james.filesystem.api.JamesDirectoriesProvider;
 import org.apache.james.server.core.JamesServerResourceLoader;
@@ -35,15 +36,15 @@ import com.github.fge.lambdas.Throwing;
 
 public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, JamesDirectoriesProvider directories,
                                          UserChoice userChoice, DbChoice dbChoice, AutoCompleteChoice autoCompleteChoice,
-                                         OIDCTokenStorageChoice oidcTokenStorageChoice,
-                                         CalendarEventSearchChoice calendarEventSearchChoice) implements Configuration {
+                                         CalendarEventSearchChoice calendarEventSearchChoice,
+                                         boolean redisEnabled) implements Configuration {
     public static class Builder {
         private Optional<String> rootDirectory;
         private Optional<ConfigurationPath> configurationPath;
         private Optional<UserChoice> userChoice;
         private Optional<DbChoice> dbChoice;
         private Optional<AutoCompleteChoice> autoCompleteChoice;
-        private Optional<OIDCTokenStorageChoice> oidcTokenStorageChoice;
+        private Optional<Boolean> redisEnabled;
         private Optional<CalendarEventSearchChoice> calendarEventSearchChoice;
 
         private Builder() {
@@ -52,7 +53,7 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
             userChoice = Optional.empty();
             dbChoice = Optional.empty();
             autoCompleteChoice = Optional.empty();
-            oidcTokenStorageChoice = Optional.empty();
+            redisEnabled = Optional.empty();
             calendarEventSearchChoice = Optional.empty();
         }
 
@@ -81,8 +82,8 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
             return this;
         }
 
-        public Builder oidcTokenStorageChoice(OIDCTokenStorageChoice choice) {
-            oidcTokenStorageChoice = Optional.of(choice);
+        public Builder enableRedis() {
+            redisEnabled = Optional.of(true);
             return this;
         }
 
@@ -142,14 +143,7 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                 }
             }));
 
-            OIDCTokenStorageChoice oidcTokenStorageChoice =  this.oidcTokenStorageChoice.orElseGet(Throwing.supplier(() -> {
-                try {
-                    propertiesProvider.getConfiguration("redis");
-                    return OIDCTokenStorageChoice.REDIS;
-                } catch (FileNotFoundException e) {
-                    return OIDCTokenStorageChoice.MEMORY;
-                }
-            }));
+            boolean redisEnabled =  Throwing.supplier(() -> redisConfigurationFileExists(propertiesProvider)).get();
 
             CalendarEventSearchChoice calendarEventSearchChoice = this.calendarEventSearchChoice.orElseGet(Throwing.supplier(() -> {
                 try {
@@ -166,8 +160,17 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                 userChoice,
                 dbChoice,
                 autoCompleteChoice,
-                oidcTokenStorageChoice,
-                calendarEventSearchChoice);
+                calendarEventSearchChoice,
+                redisEnabled);
+        }
+
+        private boolean redisConfigurationFileExists(PropertiesProvider propertiesProvider) throws ConfigurationException {
+            try {
+                propertiesProvider.getConfiguration("redis");
+                return true;
+            } catch (FileNotFoundException e) {
+                return false;
+            }
         }
     }
 
@@ -183,11 +186,6 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
 
     public enum AutoCompleteChoice {
         OPENSEARCH,
-        MEMORY
-    }
-
-    public enum OIDCTokenStorageChoice {
-        REDIS,
         MEMORY
     }
 

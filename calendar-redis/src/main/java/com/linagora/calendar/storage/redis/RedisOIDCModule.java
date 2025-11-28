@@ -18,18 +18,15 @@
 
 package com.linagora.calendar.storage.redis;
 
-import java.io.FileNotFoundException;
 import java.util.List;
 import java.util.function.Function;
 
-import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.james.backends.redis.ClusterRedisConfiguration;
 import org.apache.james.backends.redis.MasterReplicaRedisConfiguration;
 import org.apache.james.backends.redis.RedisClientFactory;
 import org.apache.james.backends.redis.RedisConfiguration;
 import org.apache.james.backends.redis.SentinelRedisConfiguration;
 import org.apache.james.backends.redis.StandaloneRedisConfiguration;
-import org.apache.james.utils.PropertiesProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,8 +49,8 @@ import io.lettuce.core.codec.StringCodec;
 import io.lettuce.core.masterreplica.MasterReplica;
 import scala.jdk.javaapi.CollectionConverters;
 
-public class RedisStorageModule extends AbstractModule {
-    public static final Logger LOGGER = LoggerFactory.getLogger(RedisStorageModule.class);
+public class RedisOIDCModule extends AbstractModule {
+    public static final Logger LOGGER = LoggerFactory.getLogger(RedisOIDCModule.class);
 
     @Override
     protected void configure() {
@@ -102,11 +99,5 @@ public class RedisStorageModule extends AbstractModule {
         };
 
         return new RedisOIDCTokenCache(tokenInfoResolver, oidcTokenCacheConfiguration, redisReactiveCommands);
-    }
-
-    @Provides
-    @Singleton
-    public RedisConfiguration redisConfiguration(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
-        return RedisConfiguration.from(propertiesProvider.getConfiguration("redis"));
     }
 }

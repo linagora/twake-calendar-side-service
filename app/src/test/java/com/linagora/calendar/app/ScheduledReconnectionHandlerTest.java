@@ -119,7 +119,7 @@ public class ScheduledReconnectionHandlerTest {
     @Test
     void shouldMonitorDavCalendarEventQueues(TwakeCalendarGuiceServer server) {
         assertThat(server.getProbe(ScheduledReconnectionHandlerProbe.class).getQueuesToMonitor())
-            .contains("tcalendar:event:created:search",
+            .containsExactlyInAnyOrder("tcalendar:event:created:search",
                 "tcalendar:event:updated:search",
                 "tcalendar:event:deleted:search",
                 "tcalendar:event:cancel:search",
@@ -134,6 +134,12 @@ public class ScheduledReconnectionHandlerTest {
                 "resource:tcalendar:event:declined",
                 "tcalendar:calendar:created",
                 "tcalendar:event:notificationEmail:send",
-                "tcalendar:itip:deliver");
+                "tcalendar:itip:deliver",
+                "tcalendar:event:created:notification",
+                "tcalendar:event:updated:notification",
+                "tcalendar:event:deleted:notification",
+                "tcalendar:event:cancel:notification",
+                "tcalendar:event:request:notification",
+                "tcalendar:event:reply:notification");
     }
 }
