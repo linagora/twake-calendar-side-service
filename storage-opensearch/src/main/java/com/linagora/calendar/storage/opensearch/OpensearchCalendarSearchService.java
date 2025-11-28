@@ -165,7 +165,7 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
         SortOptions sortOption = new SortOptions.Builder()
             .field(f -> f
                 .field(CalendarFields.START)
-                .order(SortOrder.Asc)
+                .order(SortOrder.Desc)
                 .missing(FieldValue.of("_last")))
             .build();
 
