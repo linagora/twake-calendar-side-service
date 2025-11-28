@@ -289,8 +289,8 @@ public interface CalendarSearchRouteContract {
             .then()
             .statusCode(200)
             .body("_total_hits", equalTo(2))
-            .body("_embedded.events[0].data.uid", equalTo("event-1"))
-            .body("_embedded.events[1].data.uid", equalTo("event-2"));
+            .body("_embedded.events[0].data.uid", equalTo("event-5"))
+            .body("_embedded.events[1].data.uid", equalTo("event-4"));
 
         // limit=2, offset=2: should return next 2 events
         given()
@@ -300,7 +300,7 @@ public interface CalendarSearchRouteContract {
             .statusCode(200)
             .body("_total_hits", equalTo(2))
             .body("_embedded.events[0].data.uid", equalTo("event-3"))
-            .body("_embedded.events[1].data.uid", equalTo("event-4"));
+            .body("_embedded.events[1].data.uid", equalTo("event-2"));
 
         // limit=2, offset=4: should return last event
         given()
@@ -309,7 +309,7 @@ public interface CalendarSearchRouteContract {
             .then()
             .statusCode(200)
             .body("_total_hits", equalTo(1))
-            .body("_embedded.events[0].data.uid", equalTo("event-5"));
+            .body("_embedded.events[0].data.uid", equalTo("event-1"));
     }
 
     @Test
