@@ -151,7 +151,7 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                 }
             }));
 
-            boolean redisEnabled =  Throwing.supplier(() -> isRedisConfigFileExisting(propertiesProvider)).get();
+            boolean redisEnabled =  Throwing.supplier(() -> redisConfigurationFileExists(propertiesProvider)).get();
 
             OIDCTokenStorageChoice oidcTokenStorageChoice =  this.oidcTokenStorageChoice.orElseGet(Throwing.supplier(() -> {
                 if (redisEnabled) {
@@ -190,7 +190,7 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                 redisEnabled);
         }
 
-        private boolean isRedisConfigFileExisting(PropertiesProvider propertiesProvider) throws ConfigurationException {
+        private boolean redisConfigurationFileExists(PropertiesProvider propertiesProvider) throws ConfigurationException {
             try {
                 propertiesProvider.getConfiguration("redis");
                 return true;
