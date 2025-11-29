@@ -643,7 +643,7 @@ class UserConfigurationRouteTest {
                 ]
                 """)
         .when()
-            .put("/api/configurations")
+            .put("/api/configurations?scope=user")
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
@@ -666,7 +666,7 @@ class UserConfigurationRouteTest {
                 ]
                 """)
         .when()
-            .patch("/api/configurations?scope=user")
+            .patch("/api/configurations")
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
