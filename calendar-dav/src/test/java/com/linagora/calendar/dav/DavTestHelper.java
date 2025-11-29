@@ -387,4 +387,31 @@ public class DavTestHelper extends DavClient {
             throw new RuntimeException("Failed to parse invite array from response", e);
         }
     }
+
+    public Mono<String> fetchEventsBySyncToken(OpenPaaSUser user, CalendarURL calendarURL, String syncToken) {
+        String body = """
+            {
+                "sync-token": "{syncToken}"
+            }
+            """.replace("{syncToken}", syncToken);
+
+        return httpClientWithImpersonation(user.username())
+            .headers(headers -> headers
+                .add(HttpHeaderNames.ACCEPT, "application/json")
+                .add("Depth", "0"))
+            .request(HttpMethod.valueOf("REPORT"))
+            .uri(calendarURL.asUri() + ".json")
+            .send(Mono.just(Unpooled.wrappedBuffer(body.getBytes(StandardCharsets.UTF_8))))
+            .responseSingle((response, content) -> {
+                if (response.status().code() == 207) {
+                    return content.asString(StandardCharsets.UTF_8);
+                }
+                return content.asString(StandardCharsets.UTF_8)
+                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .flatMap(error -> Mono.error(new DavClientException("""
+                        Unexpected status code: %d when fetching events by sync-token '%s'
+                        %s
+                        """.formatted(response.status().code(), syncToken, error))));
+            });
+    }
 }
