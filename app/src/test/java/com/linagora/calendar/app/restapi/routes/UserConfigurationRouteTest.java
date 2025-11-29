@@ -58,6 +58,7 @@ import com.linagora.calendar.storage.configuration.ConfigurationEntry;
 import io.restassured.RestAssured;
 import io.restassured.authentication.PreemptiveBasicAuthScheme;
 import io.restassured.builder.RequestSpecBuilder;
+import net.javacrumbs.jsonunit.core.Option;
 
 class UserConfigurationRouteTest {
 
@@ -461,8 +462,11 @@ class UserConfigurationRouteTest {
                         "value": "en"
                       },
                       {
-                        "name": "homePage",
-                        "value": "calendar"
+                        "name": "datetime",
+                        "value": {
+                          "timeZone": "Asia/Ho_Chi_Minh",
+                          "use24hourFormat": true
+                        }
                       }
                     ]
                   }
@@ -496,7 +500,7 @@ class UserConfigurationRouteTest {
             .body("""
                 [ {
                   "name" : "core",
-                  "keys" : [ "language", "homePage" ]
+                  "keys" : [ "language", "datetime" ]
                 } ]""")
         .when()
             .post("/api/configurations")
@@ -506,7 +510,9 @@ class UserConfigurationRouteTest {
             .body()
             .asString();
 
-        assertThatJson(body).isEqualTo("""
+        assertThatJson(body)
+            .withOptions(Option.IGNORING_ARRAY_ORDER)
+            .isEqualTo("""
             [
                 {
                     "name": "core",
@@ -516,8 +522,11 @@ class UserConfigurationRouteTest {
                             "value": "vi"
                         },
                         {
-                            "name": "homePage",
-                            "value": "calendar"
+                          "name": "datetime",
+                          "value": {
+                            "timeZone": "Asia/Ho_Chi_Minh",
+                            "use24hourFormat": true
+                          }
                         }
                     ]
                 }
@@ -549,20 +558,19 @@ class UserConfigurationRouteTest {
         // PATCH to add a new module
         given()
             .body("""
-                [
-                  {
-                    "name": "linagora.esn.unifiedinbox",
+            [
+                {
+                    "name": "calendar",
                     "configurations": [
-                      {
-                        "name": "useEmailLinks",
-                        "value": true
-                      }
+                        {
+                            "name": "displayWeekNumbers",
+                            "value": false
+                        }
                     ]
-                  }
-                ]
-                """)
+                }
+            ]""")
         .when()
-            .patch("/api/configurations?scope=user")
+            .patch("/api/configurations")
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
@@ -575,8 +583,8 @@ class UserConfigurationRouteTest {
                     "keys" : [ "language" ]
                   },
                   {
-                    "name" : "linagora.esn.unifiedinbox",
-                    "keys" : [ "useEmailLinks" ]
+                    "name" : "calendar",
+                    "keys" : [ "displayWeekNumbers" ]
                   }
                 ]""")
         .when()
@@ -599,11 +607,11 @@ class UserConfigurationRouteTest {
                     ]
                 },
                 {
-                    "name": "linagora.esn.unifiedinbox",
+                    "name": "calendar",
                     "configurations": [
                         {
-                            "name": "useEmailLinks",
-                            "value": true
+                            "name": "displayWeekNumbers",
+                            "value": false
                         }
                     ]
                 }

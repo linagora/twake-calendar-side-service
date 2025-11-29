@@ -20,14 +20,13 @@ package com.linagora.calendar.restapi.routes;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
 
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.http.Authenticator;
 import org.apache.james.mailbox.MailboxSession;
@@ -40,11 +39,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.restapi.routes.UserConfigurationsRoute.UserConfigDTO;
 import com.linagora.calendar.storage.configuration.ConfigurationEntry;
-import com.linagora.calendar.storage.configuration.ConfigurationKey;
-import com.linagora.calendar.storage.configuration.ModuleName;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
 
 import io.netty.handler.codec.http.HttpMethod;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.server.HttpServerRequest;
 import reactor.netty.http.server.HttpServerResponse;
@@ -73,34 +71,22 @@ public class UserConfigurationPatchRoute extends CalendarRoute {
             .switchIfEmpty(Mono.error(new IllegalArgumentException("Invalid request body")))
             .flatMap(bodyAsBytes -> Mono.fromCallable(() -> serializeBodyRequest().apply(bodyAsBytes))
                 .doOnError(e -> LOGGER.error("Failed to deserialize body request. User: {}", session.getUser().asString())))
-            .map(toConfigurationEntries())
+            .map(this::toConfigurationEntries)
             .flatMap(patchEntries -> mergeWithExistingConfiguration(patchEntries, session))
             .flatMap(mergedEntries -> userConfigurationDAO.persistConfiguration(mergedEntries, session))
             .then(response.status(204).send());
     }
 
     private Mono<Set<ConfigurationEntry>> mergeWithExistingConfiguration(Set<ConfigurationEntry> patchEntries, MailboxSession session) {
-        return userConfigurationDAO.retrieveConfiguration(session)
-            .collect(ImmutableSet.toImmutableSet())
-            .map(existingEntries -> mergeConfigurations(existingEntries, patchEntries))
-            .defaultIfEmpty(patchEntries);
+        return Flux.concat(
+                Flux.fromIterable(patchEntries),
+                userConfigurationDAO.retrieveConfiguration(session))
+            .distinct(entry -> Pair.of(entry.moduleName(), entry.configurationKey()))
+            .collect(ImmutableSet.toImmutableSet());
     }
 
-    private Set<ConfigurationEntry> mergeConfigurations(Set<ConfigurationEntry> existingEntries, Set<ConfigurationEntry> patchEntries) {
-        Map<ModuleName, Map<ConfigurationKey, ConfigurationEntry>> existingByModule = Stream.concat(existingEntries.stream(),
-            patchEntries.stream())
-            .collect(Collectors.groupingBy(
-                ConfigurationEntry::moduleName,
-                Collectors.toMap(ConfigurationEntry::configurationKey, Function.identity(), (a, b) -> b)));
-
-        return existingByModule.values().stream()
-            .flatMap(configMap -> configMap.values().stream())
-            .collect(Collectors.toSet());
-    }
-
-
-    private Function<List<UserConfigDTO>, Set<ConfigurationEntry>> toConfigurationEntries() {
-        return dtos -> dtos.stream()
+    private Set<ConfigurationEntry> toConfigurationEntries(List<UserConfigDTO> dtos) {
+        return dtos.stream()
             .flatMap(UserConfigDTO::toConfigurationEntries)
             .collect(Collectors.toSet());
     }
