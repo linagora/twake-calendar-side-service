@@ -643,7 +643,7 @@ class UserConfigurationRouteTest {
                 ]
                 """)
         .when()
-            .put("/api/configurations?scope=user")
+            .put("/api/configurations")
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
@@ -689,7 +689,7 @@ class UserConfigurationRouteTest {
         given()
             .body("invalid json")
         .when()
-            .patch("/api/configurations?scope=user")
+            .patch("/api/configurations")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST);
     }
@@ -699,7 +699,7 @@ class UserConfigurationRouteTest {
         given()
             .body("")
         .when()
-            .patch("/api/configurations?scope=user")
+            .patch("/api/configurations")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST);
     }
