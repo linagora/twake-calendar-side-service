@@ -356,7 +356,7 @@ Status code: 201
 ### PATCH /api/configurations
 
 ```
-PUT /api/configurations?scope=user
+PATCH /api/configurations?scope=user
 [
  {
   "name": "core",
