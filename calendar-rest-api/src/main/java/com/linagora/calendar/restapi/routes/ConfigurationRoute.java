@@ -19,7 +19,7 @@
 package com.linagora.calendar.restapi.routes;
 
 import java.util.List;
-import java.util.Set;
+import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
 
@@ -27,11 +27,14 @@ import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.http.Authenticator;
 import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.metrics.api.MetricFactory;
+import org.apache.james.util.streams.Iterators;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.github.fge.lambdas.Throwing;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.storage.configuration.ConfigurationKey;
 import com.linagora.calendar.storage.configuration.EntryIdentifier;
@@ -58,11 +61,10 @@ public class ConfigurationRoute extends CalendarRoute {
             this.keys = keys;
         }
 
-        Set<EntryIdentifier> asConfigurationKeys() {
+        Stream<EntryIdentifier> asConfigurationKeys() {
             ModuleName moduleName = new ModuleName(name);
             return keys.stream()
-                .map(key -> new EntryIdentifier(moduleName, new ConfigurationKey(key)))
-                .collect(ImmutableSet.toImmutableSet());
+                .map(key -> new EntryIdentifier(moduleName, new ConfigurationKey(key)));
         }
     }
 
@@ -83,9 +85,14 @@ public class ConfigurationRoute extends CalendarRoute {
     Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response, MailboxSession session) {
         return request.receive().aggregate().asByteArray()
             .map(Throwing.function(OBJECT_MAPPER::readTree))
-            .map(node -> node.get(0))
-            .map(Throwing.function(node -> OBJECT_MAPPER.treeToValue(node, RequestDTO.class)))
-            .map(RequestDTO::asConfigurationKeys)
+            .map(node -> {
+                Preconditions.checkArgument(node instanceof ArrayNode,"Expecting a JSON array");
+                return (ArrayNode) node;
+            })
+            .map(arrayNode -> Iterators.toStream(arrayNode.elements())
+                .map(Throwing.function(node -> OBJECT_MAPPER.treeToValue(node, RequestDTO.class)))
+                .flatMap(RequestDTO::asConfigurationKeys)
+                .collect(ImmutableSet.toImmutableSet()))
             .flatMap(keys -> configurationResolver.resolve(keys, session))
             .map(ConfigurationDocument::asJson)
             .map(Throwing.function(OBJECT_MAPPER::writeValueAsString))

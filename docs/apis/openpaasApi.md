@@ -358,9 +358,32 @@ PUT /api/configurations?scope=user
 ]
 ```
 
-Allows to update configuration of a user
+Allows to update configuration of a user.
+
+This sets the whole configuration object.
 
 Status code: 201
+
+### PATCH /api/configurations
+
+```
+PATCH /api/configurations?scope=user
+[
+ {
+  "name": "core",
+  "configurations": [
+   {
+    "name": "language",
+    "value": "vi"
+   }
+  ]
+ }
+]
+```
+
+Allows to update configuration of a user. This updates only the specified modules and configuration keys, leaving others 
+untouched.
+
 
 ### GET /calendar/api/calendars/{calendarHomeId}/{calendarId}/secret-link
 
