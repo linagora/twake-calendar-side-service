@@ -52,7 +52,7 @@ public class OpenSearchCalendarDeletionTaskStepTest implements CalendarSearchDel
             .createIndexAndAliases(client, Optional.of(calendarEventIndexMappingFactory.indexSettings(CALENDAR_EVENT_OPENSEARCH_CONFIGURATION)),
                 Optional.of(calendarEventIndexMappingFactory.createTypeMapping()));
 
-        calendarSearchService = new OpensearchCalendarSearchService(client, CALENDAR_EVENT_OPENSEARCH_CONFIGURATION);
+        calendarSearchService = new OpensearchCalendarSearchService(client, null, CALENDAR_EVENT_OPENSEARCH_CONFIGURATION);
         testee = new CalendarSearchDeletionTaskStep(calendarSearchService);
     }
 
