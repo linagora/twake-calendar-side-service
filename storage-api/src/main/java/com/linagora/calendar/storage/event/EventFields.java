@@ -54,6 +54,7 @@ public record EventFields(EventUid uid,
                           Person organizer,
                           List<Person> attendees,
                           List<Person> resources,
+                          String videoconferenceUrl,
                           CalendarURL calendarURL) {
 
     public static final Logger LOGGER = LoggerFactory.getLogger(EventFields.class);
@@ -96,6 +97,7 @@ public record EventFields(EventUid uid,
         private EventFields.Person organizer;
         private List<EventFields.Person> attendees = new ArrayList<>();
         private List<EventFields.Person> resources = new ArrayList<>();
+        private String videoconferenceUrl;
         private CalendarURL calendarURL;
 
         public Builder uid(String uid) {
@@ -177,6 +179,11 @@ public record EventFields(EventUid uid,
             return this;
         }
 
+        public Builder videoconferenceUrl(String videoconferenceUrl) {
+            this.videoconferenceUrl = videoconferenceUrl;
+            return this;
+        }
+
         public Builder calendarURL(CalendarURL calendarURL) {
             this.calendarURL = calendarURL;
             return this;
@@ -210,6 +217,7 @@ public record EventFields(EventUid uid,
                 organizer,
                 attendees,
                 resources,
+                videoconferenceUrl,
                 calendarURL);
         }
     }
@@ -230,6 +238,7 @@ public record EventFields(EventUid uid,
         EventParseUtils.getEndTime(vEvent).map(ChronoZonedDateTime::toInstant).ifPresent(builder::end);
         vEvent.getProperty(Property.DTSTAMP).flatMap(EventParseUtils::parseTimeAsInstant).ifPresent(builder::dtStamp);
         EventParseUtils.isRecurrentMaster(vEvent).ifPresent(builder::isRecurrentMaster);
+        EventParseUtils.getPropertyValueIgnoreCase(vEvent, "X-OPENPAAS-VIDEOCONFERENCE").ifPresent(builder::videoconferenceUrl);
         builder.organizer(EventParseUtils.getOrganizer(vEvent));
         builder.attendees(EventParseUtils.getAttendees(vEvent));
         builder.resources(EventParseUtils.getResources(vEvent));

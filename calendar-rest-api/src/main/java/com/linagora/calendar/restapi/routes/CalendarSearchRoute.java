@@ -132,13 +132,14 @@ public class CalendarSearchRoute extends CalendarRoute {
                                Optional<String> start, Optional<String> end,
                                @JsonProperty("class") String clazz, Boolean allDay, Boolean hasResources,
                                Integer durationInDays, Boolean isRecurrentMaster, List<Attendee> attendees,
-                               EventResource.Data.Organizer organizer, List<Resource> resources, String userId,
-                               String calendarId, String dtstamp) {
+                               EventResource.Data.Organizer organizer, List<Resource> resources,
+                               @JsonProperty("x-openpaas-videoconference") Optional<String> videoconferenceUrl,
+                               String userId, String calendarId, String dtstamp) {
                 public Data(String uid, Optional<String> summary, Optional<String> location, Optional<String> description,
                             Optional<String> start, Optional<String> end, String clazz,
                             Boolean allDay, Boolean hasResources, Integer durationInDays, Boolean isRecurrentMaster,
-                            List<Attendee> attendees, Organizer organizer, List<Resource> resources, String userId,
-                            String calendarId, String dtstamp) {
+                            List<Attendee> attendees, Organizer organizer, List<Resource> resources,
+                            Optional<String> videoconferenceUrl, String userId, String calendarId, String dtstamp) {
                     this.uid = uid;
                     this.summary = summary;
                     this.location = location;
@@ -153,6 +154,7 @@ public class CalendarSearchRoute extends CalendarRoute {
                     this.attendees = attendees;
                     this.organizer = organizer;
                     this.resources = resources;
+                    this.videoconferenceUrl = videoconferenceUrl;
                     this.userId = userId;
                     this.calendarId = calendarId;
                     this.dtstamp = dtstamp;
@@ -189,6 +191,7 @@ public class CalendarSearchRoute extends CalendarRoute {
                         attendees,
                         organizer,
                         resources,
+                        Optional.ofNullable(event.videoconferenceUrl()),
                         userId,
                         calendarId,
                         ISO_INSTANT.format(event.dtStamp()));

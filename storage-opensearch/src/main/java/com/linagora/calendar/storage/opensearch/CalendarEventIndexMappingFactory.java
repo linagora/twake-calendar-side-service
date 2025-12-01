@@ -75,6 +75,7 @@ public class CalendarEventIndexMappingFactory {
         String ALL_DAY = "allDay";
         String IS_RECURRENT_MASTER = "isRecurrentMaster";
         String CLAZZ = "clazz";
+        String VIDEOCONFERENCE_URL = "videoconferenceUrl";
     }
 
     interface CalendarAnalyzers {
@@ -180,6 +181,7 @@ public class CalendarEventIndexMappingFactory {
                 .put(CalendarFields.CLAZZ, nonIndexedKeywordProperty)
                 .put(CalendarFields.ALL_DAY, nonIndexedBooleanProperty)
                 .put(CalendarFields.IS_RECURRENT_MASTER, nonIndexedBooleanProperty)
+                .put(CalendarFields.VIDEOCONFERENCE_URL, nonIndexedKeywordProperty)
                 .build())
             .build();
     }
