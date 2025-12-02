@@ -45,7 +45,7 @@ import reactor.core.publisher.Mono;
  * - GROUP registration and RabbitMQ dispatching are intentionally not implemented
  */
 public class CalendarRedisEventBus implements EventBus, Startable {
-    public static final EventBusName EVENT_BUS_NAME = new EventBusName("calendar-redis-eventbus");
+    public static final EventBusName EVENT_BUS_NAME = new EventBusName("tcalendarEvents");
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CalendarRedisEventBus.class);
     private static final String NOT_RUNNING_ERROR_MESSAGE = "Event Bus is not running";
