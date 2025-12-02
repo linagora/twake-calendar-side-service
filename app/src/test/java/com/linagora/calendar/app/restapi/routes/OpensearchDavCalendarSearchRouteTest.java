@@ -251,7 +251,7 @@ class OpensearchDavCalendarSearchRouteTest implements CalendarSearchRouteContrac
                     .asString();
 
                 assertThatJson(searchResponse)
-                    .withOptions(Option.IGNORING_ARRAY_ORDER)
+                    .withOptions(Option.IGNORING_ARRAY_ORDER, Option.TREATING_NULL_AS_ABSENT)
                     .isEqualTo(expectedResponse);
             });
     }

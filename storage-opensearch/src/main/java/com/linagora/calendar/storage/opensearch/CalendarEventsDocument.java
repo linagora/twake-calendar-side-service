@@ -45,6 +45,7 @@ public record CalendarEventsDocument(@JsonProperty(CalendarFields.ACCOUNT_ID) St
                                      @JsonProperty(CalendarFields.ORGANIZER) SimplePerson organizer,
                                      @JsonProperty(CalendarFields.ATTENDEES) List<SimplePerson> attendees,
                                      @JsonProperty(CalendarFields.RESOURCES) List<SimplePerson> resources,
+                                     @JsonProperty(CalendarFields.VIDEOCONFERENCE_URL) String videoconferenceUrl,
                                      @JsonProperty(CalendarFields.CALENDAR_URL) String calendarURL) {
 
     public static class DeserializeException extends RuntimeException {
@@ -91,6 +92,7 @@ public record CalendarEventsDocument(@JsonProperty(CalendarFields.ACCOUNT_ID) St
             eventFields.resources().stream()
                 .map(SimplePerson::from)
                 .toList(),
+            eventFields.videoconferenceUrl(),
             eventFields.calendarURL().serialize());
     }
 
@@ -113,6 +115,7 @@ public record CalendarEventsDocument(@JsonProperty(CalendarFields.ACCOUNT_ID) St
                 .stream()
                 .map(SimplePerson::toEventPerson)
                 .toList())
+            .videoconferenceUrl(videoconferenceUrl)
             .calendarURL(CalendarURL.deserialize(calendarURL));
 
         if (allDay != null) {

@@ -605,5 +605,47 @@ public interface CalendarSearchRouteContract {
             .body("error.message", equalTo("Bad request"))
             .body("error.details", equalTo("offset param must be non-negative"));
     }
+
+    @Test
+    default void shouldReturnVideoconferenceUrlInSearchResults(TwakeCalendarGuiceServer server) {
+        String userId = "6053022c9da5ef001f430b43";
+        String calendarId = "6053022c9da5ef001f430b43";
+        String videoconferenceUrl = "https://meet.linagora.com/sje-ntan-voo";
+
+        EventFields event = EventFields.builder()
+            .uid("event-with-video")
+            .summary("Meeting with video")
+            .description("Video conference meeting")
+            .start(Instant.parse("2025-04-19T11:00:00Z"))
+            .end(Instant.parse("2025-04-19T11:30:00Z"))
+            .clazz("PUBLIC")
+            .allDay(false)
+            .isRecurrentMaster(false)
+            .videoconferenceUrl(videoconferenceUrl)
+            .calendarURL(new CalendarURL(new OpenPaaSId(userId), new OpenPaaSId(calendarId)))
+            .dtStamp(Instant.parse("2025-04-18T07:47:48Z"))
+            .build();
+
+        server.getProbe(CalendarDataProbe.class).indexCalendar(USERNAME, CalendarEvents.of(event));
+
+        String requestBody = """
+            {
+                "calendars": [
+                    { "userId": "%s", "calendarId": "%s" }
+                ],
+                "query": "video"
+            }
+            """.formatted(userId, calendarId);
+
+        given()
+            .body(requestBody)
+            .post("/calendar/api/events/search")
+            .then()
+            .statusCode(200)
+            .contentType(ContentType.JSON)
+            .body("_total_hits", equalTo(1))
+            .body("_embedded.events[0].data.uid", equalTo("event-with-video"))
+            .body("_embedded.events[0].data.x-openpaas-videoconference", equalTo(videoconferenceUrl));
+    }
 }
 
