@@ -1,5 +1,3 @@
-version: "3.8"
-
 networks:
   tcalendar:
     ipam:
@@ -27,6 +25,7 @@ services:
       - mongo
       - rabbitmq
       - sabre_dav
+      - redis
     networks:
       - tcalendar
     extra_hosts:
@@ -130,7 +129,7 @@ services:
       RABBITMQ_DEFAULT_PASS: tcalendar
 
   sabre_dav:
-    image: linagora/esn-sabre:sabre-4_1_5-19-11-2025-rc1
+    image: linagora/esn-sabre:sabre-4_1_5-21-11-2025-rc1
     container_name: sabre_dav
     hostname: sabre-dav.linagora.local
     networks:
@@ -175,6 +174,14 @@ services:
     networks:
       tcalendar:
         ipv4_address: 172.32.32.32
+
+  redis:
+    image: redis:6.2.6
+    container_name: redis
+    networks:
+      - tcalendar
+    ports:
+      - "6379:6379"
 
   mock-smtp:
     image: linagora/mock-smtp-server:0.7
