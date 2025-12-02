@@ -34,6 +34,7 @@ pipeline {
         }
         stage('Test') {
             steps {
+                sh 'bash pre-build.sh'
                 sh 'mvn -B surefire:test'
             }
             post {
