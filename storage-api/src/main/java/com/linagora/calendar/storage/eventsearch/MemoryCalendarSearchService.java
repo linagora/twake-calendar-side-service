@@ -19,6 +19,7 @@
 package com.linagora.calendar.storage.eventsearch;
 
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -55,7 +56,38 @@ public class MemoryCalendarSearchService implements CalendarSearchService {
 
     @Override
     public Mono<Void> index(AccountId accountId, CalendarEvents calendarEvents) {
-        return Mono.fromRunnable(() -> indexStore.put(accountId, calendarEvents.eventUid(), calendarEvents));
+        return Mono.fromRunnable(() -> {
+            EventUid uid = calendarEvents.eventUid();
+
+            HashSet<EventFields> existingEvents = Optional.ofNullable(indexStore.get(accountId, uid))
+                .map(CalendarEvents::events)
+                .map(HashSet::new)
+                .orElseGet(HashSet::new);
+
+            for (EventFields incoming : calendarEvents.events()) {
+                boolean isMaster = Boolean.TRUE.equals(incoming.isRecurrentMaster());
+                Optional<EventFields> existing = existingEvents.stream()
+                    .filter(ev -> Boolean.TRUE.equals(ev.isRecurrentMaster()) == isMaster)
+                    .findFirst();
+
+                if (shouldReplace(existing, incoming)) {
+                    existingEvents.removeIf(ev -> Boolean.TRUE.equals(ev.isRecurrentMaster()) == isMaster);
+                    existingEvents.add(incoming);
+                }
+            }
+
+            indexStore.put(accountId, uid, new CalendarEvents(uid, calendarEvents.calendarURL(), existingEvents));
+        });
+    }
+
+    private boolean shouldReplace(Optional<EventFields> existing, EventFields incoming) {
+        Integer incomingSequence = incoming.sequence();
+        return existing
+            .map(eventFields -> {
+                Integer existingSequence = eventFields.sequence();
+                return existingSequence == null || (incomingSequence != null && incomingSequence > existingSequence);
+            })
+            .orElse(true);
     }
 
     @Override

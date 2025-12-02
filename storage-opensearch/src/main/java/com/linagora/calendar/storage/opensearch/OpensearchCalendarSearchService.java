@@ -20,11 +20,14 @@ package com.linagora.calendar.storage.opensearch;
 
 import static org.apache.james.backends.opensearch.IndexCreationFactory.RAW;
 
+import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -38,18 +41,24 @@ import org.apache.james.backends.opensearch.RoutingKey;
 import org.apache.james.core.MailAddress;
 import org.apache.james.util.ReactorUtils;
 import org.apache.james.vacation.api.AccountId;
+import org.opensearch.client.json.JsonData;
+import org.opensearch.client.opensearch.OpenSearchAsyncClient;
 import org.opensearch.client.opensearch._types.FieldValue;
+import org.opensearch.client.opensearch._types.Script;
 import org.opensearch.client.opensearch._types.SortOptions;
 import org.opensearch.client.opensearch._types.SortOrder;
+import org.opensearch.client.opensearch._types.WriteResponseBase;
 import org.opensearch.client.opensearch._types.query_dsl.Query;
 import org.opensearch.client.opensearch._types.query_dsl.QueryBuilders;
 import org.opensearch.client.opensearch._types.query_dsl.TermsQueryField;
-import org.opensearch.client.opensearch.core.IndexResponse;
 import org.opensearch.client.opensearch.core.SearchRequest;
+import org.opensearch.client.opensearch.core.UpdateRequest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.storage.CalendarURL;
@@ -63,21 +72,40 @@ import com.linagora.calendar.storage.opensearch.CalendarEventIndexMappingFactory
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 public class OpensearchCalendarSearchService implements CalendarSearchService {
+
+    private static final BiFunction<Integer, ObjectNode, Script> UPSERT_WITH_SEQUENCE_SCRIPT =
+        (seq, doc) -> new Script.Builder()
+            .inline(i -> i
+                .lang("painless")
+                .source("""
+                        if (ctx._source.sequence == null || params.sequence > ctx._source.sequence) {
+                            ctx._source.putAll(params.doc);
+                            ctx._source.sequence = params.sequence;
+                        }
+                    """)
+                .params("sequence", JsonData.of(seq))
+                .params("doc", JsonData.of(doc)))
+            .build();
+
     private static final Function<AccountId, RoutingKey> ROUTING_KEY =
         accountId -> RoutingKey.fromString(accountId.getIdentifier());
     private static final String DELIMITER = ":";
 
     private final OpenSearchIndexer indexer;
     private final ReactorOpenSearchClient client;
+    private final OpenSearchAsyncClient opensearchAsyncClient;
     private final ObjectMapper mapper;
     private final CalendarEventOpensearchConfiguration configuration;
 
     @Inject
     public OpensearchCalendarSearchService(ReactorOpenSearchClient client,
+                                           OpenSearchAsyncClient opensearchAsyncClient,
                                            CalendarEventOpensearchConfiguration configuration) {
         this.client = client;
+        this.opensearchAsyncClient = opensearchAsyncClient;
         this.configuration = configuration;
         this.indexer = new OpenSearchIndexer(client, configuration.writeAliasName());
         this.mapper = new ObjectMapper()
@@ -111,16 +139,21 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
         }
 
         return Flux.fromIterable(fields.events())
-            .flatMap(eventFields -> indexSingleEvent(accountId, eventFields), ReactorUtils.DEFAULT_CONCURRENCY)
+            .flatMap(eventFields -> indexSingleEvent(accountId, eventFields)
+                    .onErrorResume(throwable -> Mono.error(CalendarSearchIndexingException.of("Error while indexing event", accountId, eventFields.uid(), throwable))),
+                ReactorUtils.DEFAULT_CONCURRENCY)
             .then();
     }
 
-    private Mono<IndexResponse> indexSingleEvent(AccountId accountId, EventFields eventFields) {
+    private Mono<WriteResponseBase> indexSingleEvent(AccountId accountId, EventFields eventFields) {
+        if (eventFields.sequence() != null) {
+            return Mono.fromCallable(() -> CalendarEventsDocument.fromEventFields(accountId, eventFields))
+                .flatMap(Throwing.function(eventsDocument -> updateWithSequence(accountId, eventFields, eventsDocument)));
+        }
+
         return Mono.fromCallable(() -> mapper.writeValueAsString(CalendarEventsDocument.fromEventFields(accountId, eventFields)))
             .flatMap(content -> indexer.index(buildDocumentIdForEvent(accountId, eventFields), content,
-                ROUTING_KEY.apply(accountId)))
-            .onErrorResume(throwable
-                -> Mono.error(CalendarSearchIndexingException.of("Error while indexing event", accountId, eventFields.uid(), throwable)));
+                ROUTING_KEY.apply(accountId)));
     }
 
     @Override
@@ -265,5 +298,30 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
                 .build())
             .build()
             .toQuery();
+    }
+
+    public Mono<WriteResponseBase> updateWithSequence(AccountId accountId,
+                                                      EventFields eventFields,
+                                                      CalendarEventsDocument eventsDocument) throws IOException {
+        Integer sequence = eventFields.sequence();
+        DocumentId docId = buildDocumentIdForEvent(accountId, eventFields);
+        ObjectNode docMap = mapper.convertValue(eventsDocument, ObjectNode.class);
+
+        UpdateRequest<ObjectNode, ObjectNode> request =
+            new UpdateRequest.Builder<ObjectNode, ObjectNode>()
+                .index(configuration.writeAliasName().getValue())
+                .id(docId.asString())
+                .routing(ROUTING_KEY.apply(accountId).asString())
+                .script(UPSERT_WITH_SEQUENCE_SCRIPT.apply(sequence, docMap))
+                .scriptedUpsert(false)
+                .upsert(docMap)
+                .build();
+
+        return toReactor(opensearchAsyncClient.update(request, ObjectNode.class))
+            .map(updateResponse -> (WriteResponseBase) updateResponse);
+    }
+
+    private static <T> Mono<T> toReactor(CompletableFuture<T> async) {
+        return Mono.fromFuture(async).publishOn(Schedulers.boundedElastic());
     }
 }

@@ -45,6 +45,7 @@ import com.linagora.calendar.amqp.EventProperty.DateProperty;
 import com.linagora.calendar.amqp.EventProperty.DtStampProperty;
 import com.linagora.calendar.amqp.EventProperty.EventUidProperty;
 import com.linagora.calendar.amqp.EventProperty.OrganizerProperty;
+import com.linagora.calendar.amqp.EventProperty.SequenceProperty;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.event.EventFields;
@@ -108,6 +109,7 @@ public class EventFieldConverter {
                 }
                 case EventProperty.RECURRENCE_ID_PROPERTY -> builder.isRecurrentMaster(false);
                 case EventProperty.RRULE_PROPERTY -> builder.isRecurrentMaster(true);
+                case EventProperty.SEQUENCE_PROPERTY -> builder.sequence(((SequenceProperty) property).getSequence());
                 default -> {
                 }
             }
@@ -153,7 +155,8 @@ public class EventFieldConverter {
             EventProperty.DTSTART_PROPERTY, DateProperty::new,
             EventProperty.DTEND_PROPERTY, DateProperty::new,
             EventProperty.DTSTAMP_PROPERTY, DtStampProperty::new,
-            EventProperty.DURATION_PROPERTY, EventProperty.DurationProperty::new);
+            EventProperty.DURATION_PROPERTY, EventProperty.DurationProperty::new,
+            EventProperty.SEQUENCE_PROPERTY, EventProperty.SequenceProperty::new);
 
         private void validateNode(JsonNode node) throws JsonMappingException {
             if (!node.isArray()) {

@@ -380,6 +380,7 @@ public class EventIndexerConsumerTest {
             .organizer(EventFields.Person.of("John1 Doe1", openPaasUser.username().asString()))
             .addAttendee(EventFields.Person.of("John2 Doe2", attendee1.username().asString()))
             .addAttendee(EventFields.Person.of("John1 Doe1", openPaasUser.username().asString()))
+            .sequence(1)
             .build();
 
         assertThat(eventFields)

@@ -76,6 +76,7 @@ public class CalendarEventIndexMappingFactory {
         String IS_RECURRENT_MASTER = "isRecurrentMaster";
         String CLAZZ = "clazz";
         String VIDEOCONFERENCE_URL = "videoconferenceUrl";
+        String SEQUENCE = "sequence";
     }
 
     interface CalendarAnalyzers {
