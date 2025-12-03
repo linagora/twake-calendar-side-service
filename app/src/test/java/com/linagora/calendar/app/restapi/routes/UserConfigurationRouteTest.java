@@ -685,6 +685,66 @@ class UserConfigurationRouteTest {
     }
 
     @Test
+    void patchShouldAllowSetTimezoneToNull(TwakeCalendarGuiceServer server) {
+        // Setup initial configuration
+        given()
+            .body("""
+                [
+                  {
+                    "name": "core",
+                    "configurations": [
+                      {
+                        "name": "datetime",
+                        "value": {
+                          "timeZone": "UTC",
+                          "use24hourFormat": false
+                        }
+                      }
+                    ]
+                  }
+                ]
+                """)
+        .when()
+            .put("/api/configurations?scope=user")
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        // PATCH to update datetime configuration
+        given()
+            .body("""
+                [
+                  {
+                    "name": "core",
+                    "configurations": [
+                      {
+                        "name": "datetime",
+                        "value": {
+                          "timeZone": null,
+                          "use24hourFormat": true
+                        }
+                      }
+                    ]
+                  }
+                ]
+                """)
+        .when()
+            .patch("/api/configurations")
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        List<ConfigurationEntry> configurationEntries = server.getProbe(CalendarDataProbe.class).
+            retrieveConfiguration(MailboxSessionUtil.create(USERNAME));
+
+        assertThat(configurationEntries)
+            .usingElementComparator(Comparator.comparing(Object::toString))
+            .contains(ConfigurationEntry.of("core", "datetime", toJsonNode("""
+                    {
+                         "timeZone": null,
+                         "use24hourFormat": true
+                     }""")));
+    }
+
+    @Test
     void patchShouldReturn400WhenInvalidRequestBody() {
         given()
             .body("invalid json")
