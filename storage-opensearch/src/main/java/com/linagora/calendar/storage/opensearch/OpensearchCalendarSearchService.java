@@ -146,14 +146,14 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
     }
 
     private Mono<WriteResponseBase> indexSingleEvent(AccountId accountId, EventFields eventFields) {
-        if (eventFields.sequence() != null) {
-            return Mono.fromCallable(() -> CalendarEventsDocument.fromEventFields(accountId, eventFields))
-                .flatMap(Throwing.function(eventsDocument -> updateWithSequence(accountId, eventFields, eventsDocument)));
-        }
+        DocumentId documentId = buildDocumentIdForEvent(accountId, eventFields);
+        RoutingKey routingKey = ROUTING_KEY.apply(accountId);
 
-        return Mono.fromCallable(() -> mapper.writeValueAsString(CalendarEventsDocument.fromEventFields(accountId, eventFields)))
-            .flatMap(content -> indexer.index(buildDocumentIdForEvent(accountId, eventFields), content,
-                ROUTING_KEY.apply(accountId)));
+        return Mono.fromCallable(() -> CalendarEventsDocument.fromEventFields(accountId, eventFields))
+            .flatMap(eventsDocument ->
+                eventFields.sequence()
+                    .map(Throwing.function(sequence -> indexWithSequence(documentId, routingKey, sequence, eventsDocument)))
+                    .orElseGet(() -> indexWithoutSequence(documentId, routingKey, eventsDocument)));
     }
 
     @Override
@@ -300,18 +300,23 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
             .toQuery();
     }
 
-    public Mono<WriteResponseBase> updateWithSequence(AccountId accountId,
-                                                      EventFields eventFields,
-                                                      CalendarEventsDocument eventsDocument) throws IOException {
-        Integer sequence = eventFields.sequence();
-        DocumentId docId = buildDocumentIdForEvent(accountId, eventFields);
-        ObjectNode docMap = mapper.convertValue(eventsDocument, ObjectNode.class);
+    private Mono<WriteResponseBase> indexWithoutSequence(DocumentId documentId,
+                                                         RoutingKey routingKey,
+                                                         CalendarEventsDocument eventsDocument) {
+        return Mono.fromCallable(() -> mapper.writeValueAsString(eventsDocument))
+            .flatMap(content -> indexer.index(documentId, content, routingKey));
+    }
 
+    public Mono<WriteResponseBase> indexWithSequence(DocumentId documentId,
+                                                     RoutingKey routingKey,
+                                                     Integer sequence,
+                                                     CalendarEventsDocument eventsDocument) throws IOException {
+        ObjectNode docMap = mapper.convertValue(eventsDocument, ObjectNode.class);
         UpdateRequest<ObjectNode, ObjectNode> request =
             new UpdateRequest.Builder<ObjectNode, ObjectNode>()
                 .index(configuration.writeAliasName().getValue())
-                .id(docId.asString())
-                .routing(ROUTING_KEY.apply(accountId).asString())
+                .id(documentId.asString())
+                .routing(routingKey.asString())
                 .script(UPSERT_WITH_SEQUENCE_SCRIPT.apply(sequence, docMap))
                 .scriptedUpsert(false)
                 .upsert(docMap)

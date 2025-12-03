@@ -39,6 +39,8 @@ import org.apache.commons.lang3.Strings;
 import org.apache.james.core.MailAddress;
 import org.apache.james.mime4j.dom.address.Mailbox;
 import org.apache.james.mime4j.field.address.LenientAddressParser;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Preconditions;
@@ -48,6 +50,7 @@ import net.fortuna.ical4j.model.TimeZone;
 import net.fortuna.ical4j.model.property.Duration;
 
 public class EventProperty {
+    private static final Logger LOGGER = LoggerFactory.getLogger(EventProperty.class);
 
     public static final String UID_PROPERTY = "uid";
     public static final String DTSTART_PROPERTY = "dtstart";
@@ -218,7 +221,14 @@ public class EventProperty {
             }
 
             this.sequence = Optional.ofNullable(base.value)
-                .map(Integer::valueOf)
+                .map(rawValue -> {
+                    try {
+                        return Integer.valueOf(rawValue);
+                    } catch (NumberFormatException e) {
+                        LOGGER.warn("Invalid SEQUENCE value '{}', treating as null", rawValue);
+                        return null;
+                    }
+                })
                 .orElse(null);
         }
 

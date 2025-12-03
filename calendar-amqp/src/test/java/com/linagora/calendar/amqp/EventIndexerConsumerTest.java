@@ -717,8 +717,8 @@ public class EventIndexerConsumerTest {
         assertEventExistsInSearch(attendee1.username(), originalSummary, eventUid);
         assertEventExistsInSearch(attendee2.username(), originalSummary, eventUid);
 
-        String updatedCalendar = originalCalendar.replace(originalSummary, updatedSummary);
-
+        String updatedCalendar = originalCalendar.replace(originalSummary, updatedSummary)
+            .replace("END:VEVENT", "SEQUENCE:1\nEND:VEVENT");
         davTestHelper.updateCalendar(openPaasUser, updatedCalendar, eventUid);
 
         assertEventNotInSearch(attendee1.username(), originalSummary, eventUid);

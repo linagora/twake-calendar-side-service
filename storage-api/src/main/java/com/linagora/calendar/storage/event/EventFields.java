@@ -55,7 +55,7 @@ public record EventFields(EventUid uid,
                           List<Person> attendees,
                           List<Person> resources,
                           String videoconferenceUrl,
-                          Integer sequence,
+                          Optional<Integer> sequence,
                           CalendarURL calendarURL) {
 
     public static final Logger LOGGER = LoggerFactory.getLogger(EventFields.class);
@@ -100,7 +100,7 @@ public record EventFields(EventUid uid,
         private List<EventFields.Person> resources = new ArrayList<>();
         private String videoconferenceUrl;
         private CalendarURL calendarURL;
-        private Integer sequence;
+        private Optional<Integer> sequence = Optional.empty();
 
         public Builder uid(String uid) {
             return uid(new EventUid(uid));
@@ -192,7 +192,7 @@ public record EventFields(EventUid uid,
         }
 
         public Builder sequence(Integer sequence) {
-            this.sequence = sequence;
+            this.sequence = Optional.of(sequence);
             return this;
         }
 
@@ -250,11 +250,16 @@ public record EventFields(EventUid uid,
         builder.organizer(EventParseUtils.getOrganizer(vEvent));
         builder.attendees(EventParseUtils.getAttendees(vEvent));
         builder.resources(EventParseUtils.getResources(vEvent));
-        vEvent.getProperty(Property.SEQUENCE)
-            .ifPresent(prop -> builder.sequence(Integer.valueOf(prop.getValue())));
 
+        vEvent.getProperty(Property.SEQUENCE)
+            .ifPresent(prop -> {
+                try {
+                    builder.sequence(Integer.valueOf(prop.getValue()));
+                } catch (NumberFormatException e) {
+                    LOGGER.warn("Invalid SEQUENCE value: {}", prop.getValue(), e);
+                }
+            });
         return builder.build();
     }
-
 
 }

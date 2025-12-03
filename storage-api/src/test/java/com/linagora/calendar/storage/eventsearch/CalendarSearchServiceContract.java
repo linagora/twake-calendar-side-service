@@ -1367,7 +1367,7 @@ public interface CalendarSearchServiceContract {
             .build();
 
         testee().index(accountId, CalendarEvents.of(masterV1, recurrence)).block();
-        testee().index(accountId, CalendarEvents.of(masterV2)).block();
+        testee().index(accountId, CalendarEvents.of(masterV2, recurrence)).block();
 
         CALMLY_AWAIT.untilAsserted(() -> {
             List<EventFields> results = testee().search(accountId, simpleQuery(""))

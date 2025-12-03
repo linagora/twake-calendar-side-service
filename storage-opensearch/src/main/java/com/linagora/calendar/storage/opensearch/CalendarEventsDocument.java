@@ -95,7 +95,7 @@ public record CalendarEventsDocument(@JsonProperty(CalendarFields.ACCOUNT_ID) St
                 .toList(),
             eventFields.videoconferenceUrl(),
             eventFields.calendarURL().serialize(),
-            eventFields.sequence());
+            eventFields.sequence().orElse(null));
     }
 
     public EventFields toEventFields() {
