@@ -19,15 +19,22 @@
 package com.linagora.calendar.storage.opensearch;
 
 import java.io.FileNotFoundException;
+import java.time.Duration;
 
 import jakarta.inject.Singleton;
 
 import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.commons.lang3.time.DurationFormatUtils;
 import org.apache.james.backends.opensearch.OpenSearchConfiguration;
+import org.apache.james.backends.opensearch.ReactorOpenSearchClient;
 import org.apache.james.utils.InitializationOperation;
 import org.apache.james.utils.InitilizationOperationBuilder;
 import org.apache.james.utils.PropertiesProvider;
+import org.opensearch.client.RestClient;
+import org.opensearch.client.json.jackson.JacksonJsonpMapper;
+import org.opensearch.client.opensearch.OpenSearchAsyncClient;
+import org.opensearch.client.transport.rest_client.RestClientTransport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,6 +44,10 @@ import com.google.inject.Provides;
 import com.google.inject.Scopes;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
+
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
+import reactor.util.retry.Retry;
 
 public class OpensearchCalendarSearchModule extends AbstractModule {
 
@@ -80,5 +91,23 @@ public class OpensearchCalendarSearchModule extends AbstractModule {
             LOGGER.warn("Could not find opensearch configuration file. Using default calendar event search configuration");
             return CalendarEventOpensearchConfiguration.DEFAULT;
         }
+    }
+
+    @Provides
+    @Singleton
+    private OpenSearchAsyncClient provideOpenSearchAsyncClient(OpenSearchConfiguration configuration,
+                                                               ReactorOpenSearchClient reactorOpenSearchClient) {
+        RestClient lowLevelClient = reactorOpenSearchClient.getLowLevelClient();
+        RestClientTransport transport = new RestClientTransport(lowLevelClient, new JacksonJsonpMapper());
+
+        Duration waitDelay = Duration.ofMillis(configuration.getMinDelay());
+        boolean suppressLeadingZeroElements = true;
+        boolean suppressTrailingZeroElements = true;
+        return Mono.fromCallable(() -> new OpenSearchAsyncClient(transport))
+            .doOnError(e -> LOGGER.warn("Error establishing OpenSearch connection. Next retry scheduled in {}",
+                DurationFormatUtils.formatDurationWords(waitDelay.toMillis(), suppressLeadingZeroElements, suppressTrailingZeroElements), e))
+            .retryWhen(Retry.backoff(configuration.getMaxRetries(), waitDelay).scheduler(Schedulers.boundedElastic()))
+            .publishOn(Schedulers.boundedElastic())
+            .block();
     }
 }
