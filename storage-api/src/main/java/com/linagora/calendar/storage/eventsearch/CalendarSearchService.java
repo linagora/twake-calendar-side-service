@@ -29,6 +29,8 @@ public interface CalendarSearchService {
 
     Mono<Void> index(AccountId accountId, CalendarEvents fields);
 
+    Mono<Void> reindex(AccountId accountId, CalendarEvents fields);
+
     Mono<Void> delete(AccountId accountId, EventUid eventUid);
 
     Flux<EventFields> search(AccountId accountId, EventSearchQuery query);

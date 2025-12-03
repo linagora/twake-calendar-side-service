@@ -137,7 +137,7 @@ public class CalendarEventsReindexService {
     }
 
     private Mono<Task.Result> reindex(Context context, IndexItem indexItem) {
-        return calendarSearchService.index(AccountId.fromUsername(indexItem.user().username()), indexItem.calendarEvents())
+        return calendarSearchService.reindex(AccountId.fromUsername(indexItem.user().username()), indexItem.calendarEvents())
             .then(Mono.fromCallable(() -> {
                 context.incrementProcessedEvent();
                 return Task.Result.COMPLETED;

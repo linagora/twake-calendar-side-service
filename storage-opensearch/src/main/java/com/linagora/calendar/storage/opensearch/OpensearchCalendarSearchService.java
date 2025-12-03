@@ -83,7 +83,6 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
                 .source("""
                         if (ctx._source.sequence == null || params.sequence > ctx._source.sequence) {
                             ctx._source.putAll(params.doc);
-                            ctx._source.sequence = params.sequence;
                         }
                     """)
                 .params("sequence", JsonData.of(seq))
@@ -93,6 +92,7 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
     private static final Function<AccountId, RoutingKey> ROUTING_KEY =
         accountId -> RoutingKey.fromString(accountId.getIdentifier());
     private static final String DELIMITER = ":";
+    private static final boolean INDEX_CHECK_SEQUENCE = true;
 
     private final OpenSearchIndexer indexer;
     private final ReactorOpenSearchClient client;
@@ -134,26 +134,40 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
 
     @Override
     public Mono<Void> index(AccountId accountId, CalendarEvents fields) {
+        return doIndex(accountId, fields, INDEX_CHECK_SEQUENCE);
+    }
+
+    @Override
+    public Mono<Void> reindex(AccountId accountId, CalendarEvents fields) {
+        return doIndex(accountId, fields, !INDEX_CHECK_SEQUENCE);
+    }
+
+    private Mono<Void> doIndex(AccountId accountId, CalendarEvents fields, boolean checkSequence) {
         if (fields.events().isEmpty()) {
             return Mono.empty();
         }
 
         return Flux.fromIterable(fields.events())
-            .flatMap(eventFields -> indexSingleEvent(accountId, eventFields)
-                    .onErrorResume(throwable -> Mono.error(CalendarSearchIndexingException.of("Error while indexing event", accountId, eventFields.uid(), throwable))),
+            .flatMap(event -> indexSingleEvent(accountId, event, checkSequence)
+                    .onErrorResume(err -> Mono.error(CalendarSearchIndexingException.of("Error while indexing event", accountId, event.uid(), err))),
                 ReactorUtils.DEFAULT_CONCURRENCY)
             .then();
     }
 
-    private Mono<WriteResponseBase> indexSingleEvent(AccountId accountId, EventFields eventFields) {
+    private Mono<WriteResponseBase> indexSingleEvent(AccountId accountId,
+                                                     EventFields eventFields,
+                                                     boolean checkSequence) {
+
         DocumentId documentId = buildDocumentIdForEvent(accountId, eventFields);
         RoutingKey routingKey = ROUTING_KEY.apply(accountId);
 
         return Mono.fromCallable(() -> CalendarEventsDocument.fromEventFields(accountId, eventFields))
-            .flatMap(eventsDocument ->
-                eventFields.sequence()
-                    .map(Throwing.function(sequence -> indexWithSequence(documentId, routingKey, sequence, eventsDocument)))
-                    .orElseGet(() -> indexWithoutSequence(documentId, routingKey, eventsDocument)));
+            .flatMap(eventsDocument -> {
+                if (checkSequence && eventFields.sequence().isPresent()) {
+                    return Throwing.supplier(() -> indexWithSequence(documentId, routingKey, eventFields.sequence().get(), eventsDocument)).get();
+                }
+                return indexWithoutSequence(documentId, routingKey, eventsDocument);
+            });
     }
 
     @Override

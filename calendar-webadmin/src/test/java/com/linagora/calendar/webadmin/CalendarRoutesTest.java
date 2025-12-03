@@ -350,6 +350,7 @@ public class CalendarRoutesTest {
             .attendees(List.of(person))
             .resources(List.of())
             .calendarURL(calendarURL)
+            .sequence(1)
             .build();
 
         EventFields expected3 = EventFields.builder()
@@ -493,7 +494,7 @@ public class CalendarRoutesTest {
                 return Mono.error(new RuntimeException("Simulated failure for uid2"));
             }
             return Mono.empty();
-        }).when(calendarSearchService).index(any(), any());
+        }).when(calendarSearchService).reindex(any(), any());
 
         String taskId = given()
             .queryParam("task", "reindex")

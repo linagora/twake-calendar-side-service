@@ -70,6 +70,11 @@ public class MemoryCalendarSearchService implements CalendarSearchService {
     }
 
     @Override
+    public Mono<Void> reindex(AccountId accountId, CalendarEvents calendarEvents) {
+        return Mono.fromRunnable(() -> indexStore.put(accountId, calendarEvents.eventUid(), CalendarEventsDTO.from(calendarEvents)));
+    }
+
+    @Override
     public Mono<Void> delete(AccountId accountId, EventUid eventUid) {
         return Mono.fromRunnable(() -> indexStore.remove(accountId, eventUid));
     }
