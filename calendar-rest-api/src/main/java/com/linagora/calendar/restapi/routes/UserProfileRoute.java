@@ -169,7 +169,6 @@ public class UserProfileRoute extends CalendarRoute {
             .map(Throwing.function(OBJECT_MAPPER::writeValueAsBytes))
             .flatMap(bytes -> response.status(200)
                 .header("Content-Type", "application/json;charset=utf-8")
-                .header("Cache-Control", "max-age=60, public")
                 .sendByteArray(Mono.just(bytes))
                 .then());
     }
