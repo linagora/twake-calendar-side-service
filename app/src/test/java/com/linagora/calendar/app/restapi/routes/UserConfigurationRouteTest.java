@@ -428,6 +428,89 @@ class UserConfigurationRouteTest {
     }
 
     @Test
+    void postShouldReturnDefaultTrueForAlarmEmailsWhenNotConfigured() {
+        String body = given()
+            .auth().preemptive().basic(USERNAME.asString(), PASSWORD)
+            .body("""
+                [ {
+                  "name" : "calendar",
+                  "keys" : [ "alarmEmails" ]
+                } ]""")
+        .when()
+            .post("/api/configurations")
+        .then()
+            .statusCode(200)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(body).isEqualTo("""
+            [
+                {
+                    "name": "calendar",
+                    "configurations": [
+                        {
+                            "name": "alarmEmails",
+                            "value": true
+                        }
+                    ]
+                }
+            ]""");
+    }
+
+    @Test
+    void postShouldReturnFalseForAlarmEmailsWhenConfiguredFalse() {
+        // Save user configuration with alarmEmails = false
+        given()
+            .body("""
+                [
+                  {
+                    "name": "calendar",
+                    "configurations": [
+                      {
+                        "name": "alarmEmails",
+                        "value": false
+                      }
+                    ]
+                  }
+                ]
+                """)
+        .when()
+            .put("/api/configurations?scope=user")
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        // Then
+        String body = given()
+            .auth().preemptive().basic(USERNAME.asString(), PASSWORD)
+            .body("""
+                [ {
+                  "name" : "calendar",
+                  "keys" : [ "alarmEmails" ]
+                } ]""")
+        .when()
+            .post("/api/configurations")
+        .then()
+            .statusCode(200)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(body).isEqualTo("""
+            [
+                {
+                    "name": "calendar",
+                    "configurations": [
+                        {
+                            "name": "alarmEmails",
+                            "value": false
+                        }
+                    ]
+                }
+            ]""");
+    }
+
+    @Test
     void patchShouldReturn204WhenValidRequest() {
         given()
             .body("""

@@ -193,7 +193,7 @@ Will return user details and configuration:
         "configurations": [
             {
                 "name": "alarmEmails",
-                "value": null
+                "value": true
             }
         ],
         "name": "calendar"

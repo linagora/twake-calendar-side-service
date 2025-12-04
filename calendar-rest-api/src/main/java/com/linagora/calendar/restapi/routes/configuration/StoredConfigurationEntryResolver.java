@@ -69,6 +69,8 @@ public class StoredConfigurationEntryResolver implements ConfigurationEntryResol
         return Throwing.function(RestApiConfiguration::getDefaultBusinessHours);
     }
 
+    private static final BooleanNode DEFAULT_ALARM_ENABLED = BooleanNode.TRUE;
+
     private static final Table<ModuleName, ConfigurationKey, Function<RestApiConfiguration, JsonNode>> TABLE = ImmutableTable.<ModuleName, ConfigurationKey, Function<RestApiConfiguration, JsonNode>>builder()
         .put(new ModuleName("core"), new ConfigurationKey("language"), defaultLanguage())
         .put(new ModuleName("core"), new ConfigurationKey("datetime"), defaultTimezone())
@@ -76,7 +78,7 @@ public class StoredConfigurationEntryResolver implements ConfigurationEntryResol
         .put(new ModuleName("linagora.esn.calendar"), new ConfigurationKey("workingDays"), any -> NullNode.getInstance())
         .put(new ModuleName("linagora.esn.calendar"), new ConfigurationKey("hideDeclinedEvents"), any -> NullNode.getInstance())
         .put(new ModuleName("calendar"), new ConfigurationKey("displayWeekNumbers"), any -> BooleanNode.TRUE)
-        .put(new ModuleName("calendar"), new ConfigurationKey("alarmEmails"), any -> NullNode.getInstance())
+        .put(new ModuleName("calendar"), new ConfigurationKey("alarmEmails"), any -> DEFAULT_ALARM_ENABLED)
 
         .build();
 

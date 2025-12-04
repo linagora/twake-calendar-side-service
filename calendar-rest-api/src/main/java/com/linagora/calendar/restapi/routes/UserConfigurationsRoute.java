@@ -54,7 +54,7 @@ public class UserConfigurationsRoute extends CalendarRoute {
     public static final Logger LOGGER = LoggerFactory.getLogger(UserConfigurationsRoute.class);
 
     public record ConfigurationEntryDTO(@JsonProperty(value = "name", required = true) String name,
-                                 @JsonProperty(value = "value", required = true)  JsonNode value) {
+                                        @JsonProperty(value = "value", required = true) JsonNode value) {
 
         public ConfigurationEntryDTO {
             Preconditions.checkArgument(StringUtils.isNotBlank(name), "Name cannot be blank");
@@ -63,7 +63,7 @@ public class UserConfigurationsRoute extends CalendarRoute {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record UserConfigDTO(@JsonProperty(value = "name", required = true) String name,
-                         @JsonProperty(value = "configurations", required = true) List<ConfigurationEntryDTO> configurations) {
+                                @JsonProperty(value = "configurations", required = true) List<ConfigurationEntryDTO> configurations) {
 
         public UserConfigDTO {
             Preconditions.checkArgument(StringUtils.isNotBlank(name), "Name cannot be blank");
