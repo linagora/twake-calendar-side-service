@@ -37,7 +37,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.ComposeContainer;
 import org.testcontainers.containers.ContainerState;
-import org.testcontainers.containers.wait.strategy.Wait;
+import org.testcontainers.containers.wait.strategy.HostPortWaitStrategy;
+import org.testcontainers.containers.wait.strategy.LogMessageWaitStrategy;
+import org.testcontainers.containers.wait.strategy.WaitAllStrategy;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
@@ -79,6 +81,7 @@ public class DockerSabreDavSetup {
     public static final String DAV_ADMIN = "admin";
     public static final String DAV_ADMIN_PASSWORD = "secret123";
     private static final boolean TRUST_ALL_SSL_CERTS = true;
+    private static final Duration SERVICE_START_UP_TIMEOUT = Duration.ofMinutes(10);
 
     private final ComposeContainer environment;
     private SabreDavProvisioningService sabreDavProvisioningService;
@@ -96,8 +99,14 @@ public class DockerSabreDavSetup {
                 .withExposedService(DockerService.SABRE_DAV.serviceName(), DockerService.SABRE_DAV.port())
                 .withExposedService(DockerService.MONGO.serviceName(), DockerService.MONGO.port())
                 .withLogConsumer(DockerService.RABBITMQ.serviceName(), frame -> LOGGER.info("[SABRE_DAV] " + frame.getUtf8String()))
-                .waitingFor(DockerService.SABRE_DAV.serviceName(), Wait.forLogMessage(".*ready to handle connections.*", 1)
-                    .withStartupTimeout(Duration.ofMinutes(5)));
+                .waitingFor(DockerService.SABRE_DAV.serviceName(),
+                    new WaitAllStrategy()
+                        .withStrategy(new HostPortWaitStrategy()
+                            .withStartupTimeout(SERVICE_START_UP_TIMEOUT))
+                        .withStrategy(new LogMessageWaitStrategy()
+                            .withRegEx(".*ready to handle connections.*")
+                            .withTimes(1)
+                            .withStartupTimeout(SERVICE_START_UP_TIMEOUT)));
         } catch (IOException e) {
             throw new RuntimeException("Failed to load or create temporary docker-compose file", e);
         }
