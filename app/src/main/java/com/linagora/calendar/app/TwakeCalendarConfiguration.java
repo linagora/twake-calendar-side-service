@@ -143,7 +143,7 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                 }
             }));
 
-            boolean redisEnabled =  Throwing.supplier(() -> redisConfigurationFileExists(propertiesProvider)).get();
+            boolean redisEnabledValue = redisEnabled.orElseGet(Throwing.supplier(() -> redisConfigurationFileExists(propertiesProvider)));
 
             CalendarEventSearchChoice calendarEventSearchChoice = this.calendarEventSearchChoice.orElseGet(Throwing.supplier(() -> {
                 try {
@@ -161,7 +161,7 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                 dbChoice,
                 autoCompleteChoice,
                 calendarEventSearchChoice,
-                redisEnabled);
+                redisEnabledValue);
         }
 
         private boolean redisConfigurationFileExists(PropertiesProvider propertiesProvider) throws ConfigurationException {
