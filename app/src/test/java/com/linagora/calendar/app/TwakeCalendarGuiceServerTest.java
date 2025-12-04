@@ -994,7 +994,7 @@ class TwakeCalendarGuiceServerTest  {
         String body = given()
             .auth().preemptive().basic(USERNAME.asString(), PASSWORD)
         .when()
-            .get("/api/user").prettyPeek()
+            .get("/api/user")
         .then()
             .statusCode(200)
             .extract()
@@ -1127,7 +1127,7 @@ class TwakeCalendarGuiceServerTest  {
                             "configurations": [
                                 {
                                     "name": "alarmEmails",
-                                    "value": null
+                                    "value": true
                                 }, {
                                     "name":"displayWeekNumbers",
                                     "value":true
