@@ -145,7 +145,6 @@ public class MemoryCalendarSearchService implements CalendarSearchService {
     record CalendarEventsDTO(CalendarURL calendarURL,
                              HashMap<String, EventEntry> eventsByKey) {
         static final boolean DELETED = true;
-        static final boolean SHOULD_REPLACE = true;
 
         record EventEntry(EventFields event, boolean deleted, Optional<Integer> lastSequence) {
             static EventEntry from(EventFields event) {
@@ -177,13 +176,10 @@ public class MemoryCalendarSearchService implements CalendarSearchService {
             Optional<Integer> oldSeq = existing.flatMap(EventFields::sequence);
             Optional<Integer> newSeq = incoming.sequence();
 
-            if (oldSeq.isEmpty()) {
-                return SHOULD_REPLACE;
-            }
-            if (newSeq.isEmpty()) {
-                return SHOULD_REPLACE;
-            }
-            return newSeq.get() > oldSeq.get();
+            boolean hasNoExistingSequence = oldSeq.isEmpty();
+            boolean hasNoIncomingSequence = newSeq.isEmpty();
+            boolean incomingIsNewer = oldSeq.isPresent() && newSeq.isPresent() && newSeq.get() > oldSeq.get();
+            return hasNoExistingSequence || hasNoIncomingSequence || incomingIsNewer;
         }
 
         List<EventFields> visibleEvents() {

@@ -107,7 +107,6 @@ public class OpensearchCalendarSearchModule extends AbstractModule {
             .doOnError(e -> LOGGER.warn("Error establishing OpenSearch connection. Next retry scheduled in {}",
                 DurationFormatUtils.formatDurationWords(waitDelay.toMillis(), suppressLeadingZeroElements, suppressTrailingZeroElements), e))
             .retryWhen(Retry.backoff(configuration.getMaxRetries(), waitDelay).scheduler(Schedulers.boundedElastic()))
-            .publishOn(Schedulers.boundedElastic())
             .block();
     }
 }
