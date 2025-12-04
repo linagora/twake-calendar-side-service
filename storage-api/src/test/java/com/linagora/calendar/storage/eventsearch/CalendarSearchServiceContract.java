@@ -1188,6 +1188,371 @@ public interface CalendarSearchServiceContract {
         });
     }
 
+    @Test
+    default void indexShouldUpdateWhenNewSequenceIsHigher() {
+        EventUid uid = generateEventUid();
+        CalendarURL url = generateCalendarURL();
+
+        EventFields v1 = EventFields.builder()
+            .uid(uid)
+            .sequence(1)
+            .summary("v1")
+            .calendarURL(url)
+            .build();
+
+        EventFields v2 = EventFields.builder()
+            .uid(uid)
+            .sequence(2)
+            .summary("v2")
+            .calendarURL(url)
+            .build();
+
+        indexEvents(accountId, v1);
+        testee().index(accountId, CalendarEvents.of(v2)).block();
+
+        CALMLY_AWAIT.untilAsserted(() ->
+            assertThat(testee().search(accountId, simpleQuery("v2"))
+                .collectList().block())
+                .containsExactly(v2));
+
+        assertThat(testee().search(accountId, simpleQuery("v1"))
+            .collectList().block()).isEmpty();
+    }
+
+    @Test
+    default void indexShouldIgnoreWhenNewSequenceIsLower() {
+        EventUid uid = generateEventUid();
+        CalendarURL url = generateCalendarURL();
+
+        EventFields v2 = EventFields.builder()
+            .uid(uid)
+            .sequence(2)
+            .summary("v2")
+            .calendarURL(url)
+            .build();
+        indexEvents(accountId, v2);
+
+        EventFields v1 = EventFields.builder()
+            .uid(uid)
+            .sequence(1)
+            .summary("v1")
+            .calendarURL(url)
+            .build();
+        testee().index(accountId, CalendarEvents.of(v1)).block();
+
+        CALMLY_AWAIT.untilAsserted(() ->
+            assertThat(testee().search(accountId, simpleQuery("v2"))
+                .collectList().block())
+                .containsExactly(v2));
+    }
+
+    @Test
+    default void indexShouldNotUpdateWhenSequenceIsEqual() {
+        EventUid uid = generateEventUid();
+        CalendarURL url = generateCalendarURL();
+
+        EventFields v1 = EventFields.builder()
+            .uid(uid)
+            .sequence(5)
+            .summary("original")
+            .calendarURL(url)
+            .build();
+
+        EventFields sameSeq = EventFields.builder()
+            .uid(uid)
+            .sequence(5)
+            .summary("ignored")
+            .calendarURL(url)
+            .build();
+
+        indexEvents(accountId, v1);
+        testee().index(accountId, CalendarEvents.of(sameSeq)).block();
+
+        CALMLY_AWAIT.untilAsserted(() ->
+            assertThat(testee().search(accountId, simpleQuery("original"))
+                .collectList().block())
+                .containsExactly(v1));
+
+        assertThat(testee().search(accountId, simpleQuery("ignored"))
+            .collectList().block()).isEmpty();
+    }
+
+    @Test
+    default void indexShouldUpdateWhenExistingSequenceIsNull() {
+        EventUid uid = generateEventUid();
+        CalendarURL url = generateCalendarURL();
+
+        EventFields noSeq = EventFields.builder()
+            .uid(uid)
+            .summary("noSeq")
+            .calendarURL(url)
+            .build();
+        indexEvents(accountId, noSeq);
+
+        EventFields newSeq = EventFields.builder()
+            .uid(uid)
+            .sequence(3)
+            .summary("withSeq")
+            .calendarURL(url)
+            .build();
+        testee().index(accountId, CalendarEvents.of(newSeq)).block();
+
+        CALMLY_AWAIT.untilAsserted(() ->
+            assertThat(testee().search(accountId, simpleQuery("withSeq"))
+                .collectList().block())
+                .containsExactly(newSeq));
+
+        assertThat(testee().search(accountId, simpleQuery("noSeq"))
+            .collectList().block()).isEmpty();
+    }
+
+    @Test
+    default void indexShouldUpdateOnLargeSequenceJump() {
+        EventUid uid = generateEventUid();
+        CalendarURL url = generateCalendarURL();
+
+        EventFields small = EventFields.builder()
+            .uid(uid)
+            .sequence(1)
+            .summary("old")
+            .calendarURL(url)
+            .build();
+
+        EventFields big = EventFields.builder()
+            .uid(uid)
+            .sequence(10_000)
+            .summary("new")
+            .calendarURL(url)
+            .build();
+
+        indexEvents(accountId, small);
+        testee().index(accountId, CalendarEvents.of(big)).block();
+
+        CALMLY_AWAIT.untilAsserted(() ->
+            assertThat(testee().search(accountId, simpleQuery("new"))
+                .collectList().block())
+                .containsExactly(big));
+
+        assertThat(testee().search(accountId, simpleQuery("old"))
+            .collectList().block()).isEmpty();
+    }
+
+    @Test
+    default void indexShouldRespectSequenceForRecurrenceMasterAndInstances() {
+        CalendarURL url = generateCalendarURL();
+        EventUid uid = generateEventUid();
+
+        EventFields masterV1 = EventFields.builder()
+            .uid(uid)
+            .sequence(1)
+            .summary("master-v1")
+            .isRecurrentMaster(true)
+            .calendarURL(url)
+            .build();
+
+        EventFields masterV2 = EventFields.builder()
+            .uid(uid)
+            .sequence(2)
+            .summary("master-v2")
+            .isRecurrentMaster(true)
+            .calendarURL(url)
+            .build();
+
+        EventFields recurrence = EventFields.builder()
+            .uid(uid)
+            .sequence(1)
+            .summary("instance")
+            .isRecurrentMaster(false)
+            .calendarURL(url)
+            .build();
+
+        testee().index(accountId, CalendarEvents.of(masterV1, recurrence)).block();
+        testee().index(accountId, CalendarEvents.of(masterV2, recurrence)).block();
+
+        CALMLY_AWAIT.untilAsserted(() -> {
+            List<EventFields> results = testee().search(accountId, simpleQuery(""))
+                .collectList().block();
+
+            assertThat(results).extracting(EventFields::summary)
+                .contains("master-v2", "instance");
+        });
+    }
+
+    @Test
+    default void indexShouldOverrideAllFieldsOnlyWhenSequenceIsHigher() {
+        EventUid uid = generateEventUid();
+        CalendarURL url = generateCalendarURL();
+
+        EventFields v1 = EventFields.builder()
+            .uid(uid)
+            .sequence(1)
+            .summary("old")
+            .location("loc1")
+            .calendarURL(url)
+            .build();
+
+        EventFields v2 = EventFields.builder()
+            .uid(uid)
+            .sequence(2)
+            .summary("new")
+            .location("loc2")
+            .calendarURL(url)
+            .build();
+
+        indexEvents(accountId, v1);
+        testee().index(accountId, CalendarEvents.of(v2)).block();
+
+        CALMLY_AWAIT.untilAsserted(() -> {
+            List<EventFields> result = testee().search(accountId, simpleQuery("new"))
+                .collectList().block();
+
+            assertThat(result).hasSize(1);
+            assertThat(result.getFirst().location()).isEqualTo("loc2");
+        });
+    }
+
+    @Test
+    default void sequenceUpdateShouldNotAffectSearchResultContent() {
+        EventUid uid = generateEventUid();
+        CalendarURL url = generateCalendarURL();
+
+        EventFields v1 = EventFields.builder()
+            .uid(uid)
+            .sequence(1)
+            .summary("alpha")
+            .calendarURL(url)
+            .build();
+
+        EventFields v2 = EventFields.builder()
+            .uid(uid)
+            .sequence(2)
+            .summary("beta")
+            .calendarURL(url)
+            .build();
+
+        indexEvents(accountId, v1);
+        testee().index(accountId, CalendarEvents.of(v2)).block();
+
+        CALMLY_AWAIT.untilAsserted(() ->
+            assertThat(testee().search(accountId, simpleQuery("beta"))
+                .collectList().block())
+                .containsExactly(v2));
+    }
+
+    @Test
+    default void reindexShouldOverrideRegardlessOfSequence() {
+        CalendarURL url = generateCalendarURL();
+        EventUid uid = generateEventUid();
+
+        EventFields oldSeq = EventFields.builder()
+            .uid(uid)
+            .sequence(10)
+            .summary("old")
+            .calendarURL(url)
+            .build();
+
+        EventFields newSeq = EventFields.builder()
+            .uid(uid)
+            .sequence(1)
+            .summary("new")
+            .calendarURL(url)
+            .build();
+
+        // index initial high sequence
+        indexEvents(accountId, oldSeq);
+
+        // reindex with lower sequence => MUST override
+        testee().reindex(accountId, CalendarEvents.of(newSeq)).block();
+
+        CALMLY_AWAIT.untilAsserted(() ->
+            assertThat(testee().search(accountId, simpleQuery("new"))
+                .collectList().block())
+                .containsExactly(newSeq));
+
+        assertThat(testee().search(accountId, simpleQuery("old"))
+            .collectList().block())
+            .isEmpty();
+    }
+
+    @Test
+    default void reindexShouldIgnoreSequenceForRecurrenceEvents() {
+        CalendarURL url = generateCalendarURL();
+        EventUid uid = generateEventUid();
+
+        EventFields masterHigh = EventFields.builder()
+            .uid(uid)
+            .sequence(100)
+            .summary("master-high")
+            .isRecurrentMaster(true)
+            .calendarURL(url)
+            .build();
+
+        EventFields masterLow = EventFields.builder()
+            .uid(uid)
+            .sequence(1)
+            .summary("master-low")
+            .isRecurrentMaster(true)
+            .calendarURL(url)
+            .build();
+
+        // index high sequence
+        indexEvents(accountId, masterHigh);
+
+        // reindex lower => MUST replace
+        testee().reindex(accountId, CalendarEvents.of(masterLow)).block();
+
+        CALMLY_AWAIT.untilAsserted(() -> {
+            List<EventFields> results = testee().search(accountId, simpleQuery(""))
+                .collectList().block();
+
+            assertThat(results)
+                .extracting(EventFields::summary)
+                .containsExactly("master-low");
+        });
+    }
+
+    @Test
+    default void reindexShouldNotAffectOtherAccounts() {
+        CalendarURL url = generateCalendarURL();
+
+        EventUid uid1 = generateEventUid();
+        EventFields eventAcc1 = EventFields.builder()
+            .uid(uid1)
+            .summary("acc1")
+            .calendarURL(url)
+            .build();
+
+        EventFields eventAcc2 = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("acc2")
+            .calendarURL(url)
+            .build();
+
+        indexEvents(accountId, eventAcc1);
+        indexEvents(accountId2, eventAcc2);
+
+        EventFields newAcc1 = EventFields.builder()
+            .uid(uid1)
+            .summary("new-acc1")
+            .calendarURL(url)
+            .build();
+
+        testee().reindex(accountId, CalendarEvents.of(newAcc1)).block();
+
+        CALMLY_AWAIT.untilAsserted(() -> {
+            // account1 must see only new event
+            assertThat(testee().search(accountId, simpleQuery(""))
+                .collectList().block())
+                .containsExactly(newAcc1);
+
+            // account2 must remain unchanged
+            assertThat(testee().search(accountId2, simpleQuery(""))
+                .collectList().block())
+                .extracting(EventFields::summary)
+                .containsExactly("acc2");
+        });
+    }
+
     private void indexEvents(AccountId accountId, EventFields events) {
         testee().index(accountId, CalendarEvents.of(events)).block();
 

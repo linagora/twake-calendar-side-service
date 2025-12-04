@@ -1383,6 +1383,7 @@ public class EventFieldConverterTest {
             .organizer(EventFields.Person.of("John1 Doe1", "user1@open-paas.org"))
             .addAttendee(EventFields.Person.of("John1 Doe1", "user1@open-paas.org"))
             .dtStamp(Instant.parse("2025-05-14T06:08:28Z"))
+            .sequence(1)
             .build();
 
         assertThat(calendarEvents)

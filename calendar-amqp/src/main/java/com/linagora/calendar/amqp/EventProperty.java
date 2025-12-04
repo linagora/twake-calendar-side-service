@@ -39,6 +39,8 @@ import org.apache.commons.lang3.Strings;
 import org.apache.james.core.MailAddress;
 import org.apache.james.mime4j.dom.address.Mailbox;
 import org.apache.james.mime4j.field.address.LenientAddressParser;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Preconditions;
@@ -48,6 +50,7 @@ import net.fortuna.ical4j.model.TimeZone;
 import net.fortuna.ical4j.model.property.Duration;
 
 public class EventProperty {
+    private static final Logger LOGGER = LoggerFactory.getLogger(EventProperty.class);
 
     public static final String UID_PROPERTY = "uid";
     public static final String DTSTART_PROPERTY = "dtstart";
@@ -58,6 +61,7 @@ public class EventProperty {
     public static final String DESCRIPTION_PROPERTY = "description";
     public static final String LOCATION_PROPERTY = "location";
     public static final String ORGANIZER_PROPERTY = "organizer";
+    public static final String SEQUENCE_PROPERTY = "sequence";
     public static final String ATTENDEE_PROPERTY = "attendee";
     public static final String RECURRENCE_ID_PROPERTY = "recurrence-id";
     public static final String RRULE_PROPERTY = "rrule";
@@ -202,6 +206,34 @@ public class EventProperty {
 
         public EventUid getEventUid() {
             return eventUid;
+        }
+    }
+
+    public static class SequenceProperty extends EventProperty {
+        private static final String INTEGER = "integer";
+
+        private final Integer sequence;
+
+        public SequenceProperty(EventProperty base) {
+            super(base.name, base.attributes, base.valueType, base.value);
+            if (!INTEGER.equalsIgnoreCase(base.valueType)) {
+                throw new CalendarEventDeserializeException("Invalid value type for sequence property, expected 'integer' but got " + base.valueType);
+            }
+
+            this.sequence = Optional.ofNullable(base.value)
+                .map(rawValue -> {
+                    try {
+                        return Integer.valueOf(rawValue);
+                    } catch (NumberFormatException e) {
+                        LOGGER.warn("Invalid SEQUENCE value '{}', treating as null", rawValue);
+                        return null;
+                    }
+                })
+                .orElse(null);
+        }
+
+        public Integer getSequence() {
+            return sequence;
         }
     }
 

@@ -26,6 +26,10 @@ import org.apache.james.backends.opensearch.OpenSearchConfiguration;
 import org.apache.james.backends.opensearch.ReactorOpenSearchClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.opensearch.client.RestClient;
+import org.opensearch.client.json.jackson.JacksonJsonpMapper;
+import org.opensearch.client.opensearch.OpenSearchAsyncClient;
+import org.opensearch.client.transport.rest_client.RestClientTransport;
 
 import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchDeletionTaskStep;
@@ -52,7 +56,11 @@ public class OpenSearchCalendarDeletionTaskStepTest implements CalendarSearchDel
             .createIndexAndAliases(client, Optional.of(calendarEventIndexMappingFactory.indexSettings(CALENDAR_EVENT_OPENSEARCH_CONFIGURATION)),
                 Optional.of(calendarEventIndexMappingFactory.createTypeMapping()));
 
-        calendarSearchService = new OpensearchCalendarSearchService(client, CALENDAR_EVENT_OPENSEARCH_CONFIGURATION);
+        RestClient lowLevelClient = client.getLowLevelClient();
+        RestClientTransport transport = new RestClientTransport(lowLevelClient, new JacksonJsonpMapper());
+        OpenSearchAsyncClient openSearchAsyncClient = new OpenSearchAsyncClient(transport);
+
+        calendarSearchService = new OpensearchCalendarSearchService(client, openSearchAsyncClient, CALENDAR_EVENT_OPENSEARCH_CONFIGURATION);
         testee = new CalendarSearchDeletionTaskStep(calendarSearchService);
     }
 

@@ -4,6 +4,30 @@ This document describes breaking changes and migration steps required when upgra
 
 ## [UNRELEASED]
 
+### Added sequence field to Calendar Event index mapping
+
+Date: 03/12/2025
+
+We added the `sequence` field to support proper event versioning and conflict resolution during indexing.  
+This field must be declared in the OpenSearch mapping as an `integer` (non‑indexed).
+
+If you have an existing OpenSearch index for calendar events, you need to add the `sequence` field to your
+index mapping:
+
+Add the new field to your existing index using the OpenSearch API:
+
+```bash
+PUT /calendar_events/_mapping
+{
+  "properties": {
+    "sequence": {
+      "type": "integer",
+      "index": false
+    }
+  }
+}
+```
+
 ### Added videoconferenceUrl field to Event Search API
 
 Date: 01/12/2025

@@ -40,6 +40,7 @@ import org.opensearch.client.opensearch._types.analysis.TokenFilter;
 import org.opensearch.client.opensearch._types.analysis.TokenFilterDefinition;
 import org.opensearch.client.opensearch._types.mapping.BooleanProperty;
 import org.opensearch.client.opensearch._types.mapping.DateProperty;
+import org.opensearch.client.opensearch._types.mapping.IntegerNumberProperty;
 import org.opensearch.client.opensearch._types.mapping.KeywordProperty;
 import org.opensearch.client.opensearch._types.mapping.ObjectProperty;
 import org.opensearch.client.opensearch._types.mapping.Property;
@@ -76,6 +77,7 @@ public class CalendarEventIndexMappingFactory {
         String IS_RECURRENT_MASTER = "isRecurrentMaster";
         String CLAZZ = "clazz";
         String VIDEOCONFERENCE_URL = "videoconferenceUrl";
+        String SEQUENCE = "sequence";
     }
 
     interface CalendarAnalyzers {
@@ -141,6 +143,7 @@ public class CalendarEventIndexMappingFactory {
         Property nonIndexedDateProperty = new Property(new DateProperty.Builder().index(false).build());
         Property nonIndexedKeywordProperty = new Property(new KeywordProperty.Builder().index(false).build());
         Property nonIndexedBooleanProperty = new Property(new BooleanProperty.Builder().index(false).build());
+        Property nonIndexedIntegerProperty = new Property(new IntegerNumberProperty.Builder().index(false).build());
         Property indexedKeywordProperty = new Property(new KeywordProperty.Builder().index(true).build());
 
         Property emailTextProperty = new TextProperty.Builder()
@@ -182,6 +185,7 @@ public class CalendarEventIndexMappingFactory {
                 .put(CalendarFields.ALL_DAY, nonIndexedBooleanProperty)
                 .put(CalendarFields.IS_RECURRENT_MASTER, nonIndexedBooleanProperty)
                 .put(CalendarFields.VIDEOCONFERENCE_URL, nonIndexedKeywordProperty)
+                .put(CalendarFields.SEQUENCE, nonIndexedIntegerProperty)
                 .build())
             .build();
     }

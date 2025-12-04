@@ -18,11 +18,15 @@
 
 package com.linagora.calendar.storage.eventsearch;
 
+import java.time.Instant;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
@@ -42,6 +46,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 public class MemoryCalendarSearchService implements CalendarSearchService {
+    private static final String DELIMITER = ":";
 
     public static Module MODULE = new AbstractModule() {
         @Override
@@ -51,11 +56,22 @@ public class MemoryCalendarSearchService implements CalendarSearchService {
         }
     };
 
-    private final Table<AccountId, EventUid, CalendarEvents> indexStore = Tables.synchronizedTable(HashBasedTable.create());
+    private final Table<AccountId, EventUid, CalendarEventsDTO> indexStore = Tables.synchronizedTable(HashBasedTable.create());
 
     @Override
     public Mono<Void> index(AccountId accountId, CalendarEvents calendarEvents) {
-        return Mono.fromRunnable(() -> indexStore.put(accountId, calendarEvents.eventUid(), calendarEvents));
+        return Mono.fromRunnable(() -> {
+            CalendarEventsDTO calendarEventsDTO = Optional.ofNullable(indexStore.get(accountId, calendarEvents.eventUid()))
+                .map(dto -> dto.replaceWith(calendarEvents.events()))
+                .orElseGet(() -> CalendarEventsDTO.from(calendarEvents));
+
+            indexStore.put(accountId, calendarEvents.eventUid(), calendarEventsDTO);
+        });
+    }
+
+    @Override
+    public Mono<Void> reindex(AccountId accountId, CalendarEvents calendarEvents) {
+        return Mono.fromRunnable(() -> indexStore.put(accountId, calendarEvents.eventUid(), CalendarEventsDTO.from(calendarEvents)));
     }
 
     @Override
@@ -66,7 +82,7 @@ public class MemoryCalendarSearchService implements CalendarSearchService {
     @Override
     public Flux<EventFields> search(AccountId accountId, EventSearchQuery query) {
         return Flux.fromIterable(indexStore.row(accountId).values())
-            .flatMapIterable(CalendarEvents::events)
+            .flatMapIterable(CalendarEventsDTO::visibleEvents)
             .filter(event -> matchesQuery(event, query))
             .sort(Comparator.comparing(EventFields::start, Comparator.nullsLast(Comparator.reverseOrder())))
             .skip(query.offset())
@@ -124,5 +140,72 @@ public class MemoryCalendarSearchService implements CalendarSearchService {
         return event.attendees().stream()
             .anyMatch(attendee -> attendees.stream()
                 .anyMatch(attendeeMail -> Objects.equals(attendeeMail, attendee.email())));
+    }
+
+    record CalendarEventsDTO(CalendarURL calendarURL,
+                             HashMap<String, EventEntry> eventsByKey) {
+        static final boolean DELETED = true;
+
+        record EventEntry(EventFields event, boolean deleted, Optional<Integer> lastSequence) {
+            static EventEntry from(EventFields event) {
+                return new EventEntry(event, !DELETED, event.sequence());
+            }
+        }
+
+        static CalendarEventsDTO from(CalendarEvents calendarEvents) {
+            HashMap<String, EventEntry> eventMap = new HashMap<>();
+            calendarEvents.events()
+                .forEach(event -> eventMap.put(eventKey(event), EventEntry.from(event)));
+            return new CalendarEventsDTO(calendarEvents.calendarURL(), eventMap);
+        }
+
+        CalendarEventsDTO replaceWith(Set<EventFields> incomingEvents) {
+            for (EventFields incomingEvent : incomingEvents) {
+                String key = eventKey(incomingEvent);
+                Optional<EventFields> existingEvent = Optional.ofNullable(eventsByKey.get(key))
+                    .map(EventEntry::event);
+
+                if (shouldReplace(existingEvent, incomingEvent)) {
+                    eventsByKey.put(key, new EventEntry(incomingEvent, false, incomingEvent.sequence()));
+                }
+            }
+            return this;
+        }
+
+        static boolean shouldReplace(Optional<EventFields> existing, EventFields incoming) {
+            Optional<Integer> oldSeq = existing.flatMap(EventFields::sequence);
+            Optional<Integer> newSeq = incoming.sequence();
+
+            boolean hasNoExistingSequence = oldSeq.isEmpty();
+            boolean hasNoIncomingSequence = newSeq.isEmpty();
+            boolean incomingIsNewer = oldSeq.isPresent() && newSeq.isPresent() && newSeq.get() > oldSeq.get();
+            return hasNoExistingSequence || hasNoIncomingSequence || incomingIsNewer;
+        }
+
+        List<EventFields> visibleEvents() {
+            return eventsByKey.values().stream()
+                .filter(entry -> !entry.deleted())
+                .map(EventEntry::event)
+                .toList();
+        }
+
+        private static String eventKey(EventFields eventFields) {
+            Supplier<String> masterRecurrence = () -> {
+                if (eventFields.isRecurrentMaster() == null) {
+                    return "single";
+                }
+                if (eventFields.isRecurrentMaster()) {
+                    return "master";
+                }
+                return "recurrence";
+            };
+
+            return String.join(DELIMITER,
+                eventFields.uid().value(),
+                masterRecurrence.get(),
+                Optional.ofNullable(eventFields.start())
+                    .map(Instant::toEpochMilli)
+                    .map(String::valueOf).orElse(StringUtils.EMPTY));
+        }
     }
 }
