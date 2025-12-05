@@ -48,6 +48,8 @@
         <module>calendar-smtp</module>
         <module>calendar-scheduling</module>
         <module>calendar-redis</module>
+
+        <module>utility-app</module>
     </modules>
 
     <properties>
