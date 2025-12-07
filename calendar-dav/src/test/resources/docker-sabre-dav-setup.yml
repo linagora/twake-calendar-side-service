@@ -45,7 +45,7 @@ services:
 
   sabre_dav:
     hostname: esn_sabre
-    image: tungtv202/esn-sabre:pr-236
+    image: hungphan227/esn-sabre:master
     environment:
       - SABRE_ENV=dev
       - SABRE_MONGO_HOST=mongo
