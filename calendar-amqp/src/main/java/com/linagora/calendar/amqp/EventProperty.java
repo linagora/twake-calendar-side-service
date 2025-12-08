@@ -66,6 +66,7 @@ public class EventProperty {
     public static final String RECURRENCE_ID_PROPERTY = "recurrence-id";
     public static final String RRULE_PROPERTY = "rrule";
     public static final String DURATION_PROPERTY = "duration";
+    public static final String VIDEOCONFERENCE = "x-openpaas-videoconference";
 
     protected final String name;
     protected final JsonNode attributes;

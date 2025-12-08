@@ -647,6 +647,58 @@ public class EventIndexerConsumerTest {
     }
 
     @Test
+    void shouldIndexVideoconferenceUrl() {
+        String eventUid = UUID.randomUUID().toString();
+        String summary = "Meeting with video conference";
+        String videoconferenceUrl = "https://meet.example.com/abc-123-def";
+        String organizer = openPaasUser.username().asString();
+
+        String calendarData = """
+            BEGIN:VCALENDAR\r
+            VERSION:2.0\r
+            CALSCALE:GREGORIAN\r
+            PRODID:-//SabreDAV//SabreDAV 3.2.2//EN\r
+            X-WR-CALNAME:#default\r
+            BEGIN:VTIMEZONE\r
+            TZID:Asia/Jakarta\r
+            BEGIN:STANDARD\r
+            TZOFFSETFROM:+0700\r
+            TZOFFSETTO:+0700\r
+            TZNAME:WIB\r
+            DTSTART:19700101T000000\r
+            END:STANDARD\r
+            END:VTIMEZONE\r
+            BEGIN:VEVENT\r
+            UID:{eventUid}\r
+            TRANSP:OPAQUE\r
+            DTSTART;TZID=Asia/Jakarta:20250515T113000\r
+            DTEND;TZID=Asia/Jakarta:20250515T120000\r
+            CLASS:PUBLIC\r
+            SUMMARY:{summary}\r
+            X-OPENPAAS-VIDEOCONFERENCE:{videoconferenceUrl}\r
+            ORGANIZER;CN=John1 Doe1:mailto:{organizer}\r
+            ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:{organizer}\r
+            DTSTAMP:20250515T091619Z\r
+            END:VEVENT\r
+            END:VCALENDAR\r
+            """.replace("{eventUid}", eventUid)
+            .replace("{summary}", summary)
+            .replace("{videoconferenceUrl}", videoconferenceUrl)
+            .replace("{organizer}", organizer);
+
+        davTestHelper.upsertCalendar(openPaasUser, calendarData, eventUid);
+
+        assertEventExistsInSearch(openPaasUser.username(), summary, eventUid);
+
+        EventFields eventFields = calendarSearchService.search(AccountId.fromUsername(openPaasUser.username()), simpleQuery(summary))
+            .next()
+            .block();
+
+        assertThat(eventFields.videoconferenceUrl())
+            .isEqualTo(videoconferenceUrl);
+    }
+
+    @Test
     void shouldRemoveEventFromSearchIndexForOrganizerWhenCalendarDeleted() {
         String eventUid = UUID.randomUUID().toString();
         String calendarData = getSampleCalendar(eventUid);
