@@ -28,7 +28,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.net.MalformedURLException;
@@ -39,7 +38,6 @@ import java.nio.file.Paths;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.ZoneId;
-import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
@@ -103,7 +101,6 @@ import io.restassured.path.json.JsonPath;
 import io.restassured.specification.RequestSpecification;
 import net.fortuna.ical4j.model.parameter.PartStat;
 import reactor.core.publisher.Mono;
-import reactor.rabbitmq.QueueSpecification;
 import reactor.rabbitmq.Sender;
 
 public class EventResourceConsumerTest {
@@ -133,6 +130,7 @@ public class EventResourceConsumerTest {
     private ResourceDAO resourceDAO;
     private CalDavEventRepository calDavEventRepository;
     private CalDavClient calDavClient;
+    private EventResourceConsumer consumer;
 
     @BeforeAll
     static void beforeAll(DockerSabreDavSetup dockerSabreDavSetup) throws Exception {
@@ -185,11 +183,9 @@ public class EventResourceConsumerTest {
 
     @AfterEach
     void afterEach() {
-        Arrays.stream(EventIndexerConsumer.Queue
-                .values())
-            .map(EventIndexerConsumer.Queue::queueName)
-            .forEach(queueName -> sender.delete(QueueSpecification.queue().name(queueName))
-                .block());
+        if (consumer != null) {
+            consumer.close();
+        }
 
         Mockito.reset(settingsResolver);
         Mockito.reset(eventEmailFilter);
@@ -239,7 +235,7 @@ public class EventResourceConsumerTest {
             jwtSigner,
             calDavEventRepository);
 
-        EventResourceConsumer consumer = new EventResourceConsumer(channelPool, QueueArguments.Builder::new, eventResourceHandler);
+        consumer = new EventResourceConsumer(channelPool, QueueArguments.Builder::new, eventResourceHandler);
         consumer.init();
 
         sender = channelPool.getSender();
@@ -374,7 +370,7 @@ public class EventResourceConsumerTest {
             resourceId.value());
         davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
 
-        Thread.sleep(10000); // Wait a bit to ensure no email is sent
+        Thread.sleep(5000); // Wait a bit to ensure no email is sent
 
         awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(0));
     }

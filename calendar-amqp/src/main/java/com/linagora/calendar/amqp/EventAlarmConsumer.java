@@ -177,7 +177,6 @@ public class EventAlarmConsumer implements Closeable, Startable {
     private Disposable doConsumeCalendarEventMessages(Queue queue, PersistAlarmHandler persistAlarmHandler) {
         return delivery(queue.queueName)
             .flatMap(delivery -> messageConsume(delivery,
-                Throwing.supplier(() -> OBJECT_MAPPER.readValue(delivery.getBody(), CalendarAlarmMessageDTO.class)).get(),
                 persistAlarmHandler), DEFAULT_CONCURRENCY)
             .subscribeOn(Schedulers.boundedElastic())
             .subscribe();
@@ -189,9 +188,10 @@ public class EventAlarmConsumer implements Closeable, Startable {
             Receiver::close);
     }
 
-    private Mono<?> messageConsume(AcknowledgableDelivery ackDelivery, CalendarAlarmMessageDTO message, PersistAlarmHandler persistAlarmHandler) {
-        return persistAlarmHandler.handle(message)
-            .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed calendar alarm event successfully {} '{}'", message.getClass().getSimpleName(), message.eventPath())))
+    private Mono<?> messageConsume(AcknowledgableDelivery ackDelivery, PersistAlarmHandler persistAlarmHandler) {
+        return Mono.fromSupplier(Throwing.supplier(() -> OBJECT_MAPPER.readValue(ackDelivery.getBody(), CalendarAlarmMessageDTO.class)))
+            .flatMap(message -> persistAlarmHandler.handle(message)
+                .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed calendar alarm event successfully {} '{}'", message.getClass().getSimpleName(), message.eventPath()))))
             .doOnSuccess(result -> ackDelivery.ack())
             .onErrorResume(error -> {
                 LOGGER.error("Error when consume calendar alarm event", error);
