@@ -29,12 +29,10 @@ import java.util.stream.StreamSupport;
 
 import org.apache.commons.lang3.Strings;
 
-import com.fasterxml.jackson.core.JacksonException;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.JsonDeserializer;
-import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
@@ -110,6 +108,7 @@ public class EventFieldConverter {
                 case EventProperty.RECURRENCE_ID_PROPERTY -> builder.isRecurrentMaster(false);
                 case EventProperty.RRULE_PROPERTY -> builder.isRecurrentMaster(true);
                 case EventProperty.SEQUENCE_PROPERTY -> builder.sequence(((SequenceProperty) property).getSequence());
+                case EventProperty.VIDEOCONFERENCE -> builder.videoconferenceUrl(property.value);
                 default -> {
                 }
             }
@@ -158,14 +157,14 @@ public class EventFieldConverter {
             EventProperty.DURATION_PROPERTY, EventProperty.DurationProperty::new,
             EventProperty.SEQUENCE_PROPERTY, EventProperty.SequenceProperty::new);
 
-        private void validateNode(JsonNode node) throws JsonMappingException {
+        private void validateNode(JsonNode node) {
             if (!node.isArray()) {
                 throw new CalendarEventDeserializeException("Expected an array for EventProperty but got " + node.getNodeType() + ": " + node.toPrettyString());
             }
         }
 
         @Override
-        public EventProperty deserialize(JsonParser p, DeserializationContext ctxt) throws IOException, JacksonException {
+        public EventProperty deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
             JsonNode node = p.getCodec().readTree(p);
 
             validateNode(node);
@@ -177,7 +176,7 @@ public class EventFieldConverter {
 
             EventProperty eventProperty = new EventProperty(name, param, valueType, value);
 
-            return PROPERTY_HANDLERS.getOrDefault(name, (ep) -> ep).apply(eventProperty);
+            return PROPERTY_HANDLERS.getOrDefault(name, ep -> ep).apply(eventProperty);
         }
     }
 
