@@ -21,6 +21,7 @@ package com.linagora.calendar.utility;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.time.Duration;
@@ -37,6 +38,7 @@ import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MongoDBContainer;
 import org.testcontainers.containers.Network;
+import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.MountableFile;
@@ -79,9 +81,11 @@ class CalendarUtilityCliTest {
             .toAbsolutePath()
             .toString();
 
-        utilityContainer.getDockerClient()
-            .loadImageCmd(Files.newInputStream(Paths.get(dockerSaveFileUrl)))
-            .exec();
+        try (InputStream inputStream = Files.newInputStream(Paths.get(dockerSaveFileUrl))) {
+            utilityContainer.getDockerClient()
+                .loadImageCmd(inputStream)
+                .exec();
+        }
     }
 
     @AfterAll
@@ -106,7 +110,7 @@ class CalendarUtilityCliTest {
     }
 
     @Test
-    void cliShouldRunPurgeSuccessfully() throws InterruptedException {
+    void cliShouldRunPurgeSuccessfully() {
         // Insert >100 old documents (should be deleted)
         Instant oldInstant = Instant.now().minus(Duration.ofDays(30));
         for (int i = 0; i < 120; i++) {
@@ -122,9 +126,15 @@ class CalendarUtilityCliTest {
         assertThat(before).isEqualTo(121);
 
         // Start utility container with purge command
-        utilityContainer.withCommand("purgeInbox", "--retention-period", "10d").start();
+        utilityContainer
+            .withCommand("purgeInbox", "--retention-period", "10d")
+            .waitingFor(Wait.forLogMessage(".*Purge completed successfully.*", 1)
+                .withStartupTimeout(Duration.ofSeconds(30)))
+            .start();
 
-        Thread.sleep(3000);
+        assertThat(utilityContainer.getLogs())
+            .contains("Purge completed successfully: deleted 120 items, skipped 1 recent docs");
+
         // Validate only the recent document remains
         long after = Mono.from(collection.countDocuments()).block();
         assertThat(after).isEqualTo(1);

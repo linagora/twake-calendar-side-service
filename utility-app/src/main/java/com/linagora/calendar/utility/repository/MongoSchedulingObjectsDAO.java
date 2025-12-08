@@ -68,4 +68,8 @@ public class MongoSchedulingObjectsDAO {
         long epochSeconds = threshold.getEpochSecond();
         return Mono.from(collection.countDocuments(Filters.lt(FIELD_LAST_MODIFIED, epochSeconds)));
     }
+
+    public Mono<Long> countAll() {
+        return Mono.from(collection.countDocuments());
+    }
 }
