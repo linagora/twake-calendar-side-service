@@ -15,7 +15,7 @@ This project uses **Jib** to build the Docker image without requiring a Dockerfi
 mvn clean prepare-package jib:dockerBuild
 ```
 
-After this, you will find the new image in your local Docker images: `linagora/twake-calendar-utility:latest `
+After this, you will find the new image in your local Docker images: `linagora/twake-calendar-utility:latest`
 
 
 ## ⚙️ Configuration
@@ -24,7 +24,7 @@ The utility CLI reads its configuration from a properties file.
 
 When running via Docker, mount a directory containing:
 
-```
+```bash
 /root/conf/configuration.properties
 ```
 
@@ -64,7 +64,7 @@ docker run --rm \
 
 Example output:
 
-```
+```text
 Starting purge of schedulingobjects older than 2024-10-20T00:00:00Z
 Found 121 total records, 120 old records to delete
 Batch 1/2 (50%) - 100 deleted
