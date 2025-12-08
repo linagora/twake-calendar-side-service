@@ -45,7 +45,7 @@ services:
 
   sabre_dav:
     hostname: esn_sabre
-    image: hungphan227/esn-sabre:test-pr236
+    image: linagora/esn-sabre:test-branch-ISSUE-235
     environment:
       - SABRE_ENV=dev
       - SABRE_MONGO_HOST=mongo
