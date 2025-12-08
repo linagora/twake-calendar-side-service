@@ -43,7 +43,7 @@ General usage pattern:
 
 ```bash
 docker run --rm \
-    -v $(pwd)/config:/config \
+    -v $(pwd)/config:/root/conf \
     twake-calendar-utility:latest \
     <command> [options] 
 ```
