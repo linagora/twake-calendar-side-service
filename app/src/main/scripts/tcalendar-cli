@@ -1,0 +1,8 @@
+#!/bin/bash
+
+unset JAVA_TOOL_OPTIONS
+java \
+  -Dworking.directory=/root/tcalendar-cli/ \
+  -cp "/root/resources:/root/classes:/root/libs/*" \
+  -Dlogback.configurationFile=/root/tcalendar-cli/conf/logback-cli.xml \
+  com.linagora.calendar.utility.TwakeCalendarUtilityCli "$@"

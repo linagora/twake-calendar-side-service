@@ -32,7 +32,8 @@ import picocli.CommandLine;
 
 @CommandLine.Command(
     name = "tcalendar-cli",
-    description = "Twake Calendar Utility CLI")
+    description = "Twake Calendar Utility CLI",
+    mixinStandardHelpOptions = true)
 public class TwakeCalendarUtilityCli implements Callable<Integer> {
 
     public static final int CLI_FINISHED_SUCCESS = 0;
