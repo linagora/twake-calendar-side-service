@@ -85,6 +85,10 @@ public class EventResourceConsumer implements Closeable, Startable {
         public String deadLetter() {
             return deadLetter;
         }
+
+        public String exchangeName() {
+            return exchangeName;
+        }
     }
 
     private final ReceiverProvider receiverProvider;
@@ -171,9 +175,7 @@ public class EventResourceConsumer implements Closeable, Startable {
 
     private Disposable doConsumeCalendarEventMessages(Queue queue, EventHandler eventHandler) {
         return delivery(queue.queueName)
-            .flatMap(delivery -> messageConsume(delivery,
-                Throwing.supplier(() -> OBJECT_MAPPER.readValue(delivery.getBody(), CalendarResourceMessageDTO.class)).get(),
-                eventHandler), DEFAULT_CONCURRENCY)
+            .flatMap(delivery -> messageConsume(delivery, eventHandler), DEFAULT_CONCURRENCY)
             .subscribe();
     }
 
@@ -183,9 +185,10 @@ public class EventResourceConsumer implements Closeable, Startable {
             Receiver::close);
     }
 
-    private Mono<?> messageConsume(AcknowledgableDelivery ackDelivery, CalendarResourceMessageDTO message, EventHandler eventHandler) {
-        return eventHandler.handle(message)
-            .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed calendar resource event successfully {} '{}'", message.getClass().getSimpleName(), message.eventPath())))
+    private Mono<?> messageConsume(AcknowledgableDelivery ackDelivery, EventHandler eventHandler) {
+        return Mono.fromSupplier(Throwing.supplier(() -> OBJECT_MAPPER.readValue(ackDelivery.getBody(), CalendarResourceMessageDTO.class)))
+            .flatMap(message -> eventHandler.handle(message)
+                .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed calendar resource event successfully {} '{}'", message.getClass().getSimpleName(), message.eventPath()))))
             .doOnSuccess(result -> ackDelivery.ack())
             .onErrorResume(error -> {
                 LOGGER.error("Error when consume calendar resource event", error);

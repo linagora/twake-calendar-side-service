@@ -22,7 +22,9 @@ import static com.linagora.calendar.amqp.TestFixture.awaitAtMost;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader.ALARM_SETTING_IDENTIFIER;
 import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader.ENABLE_ALARM;
+import static com.rabbitmq.client.MessageProperties.PERSISTENT_TEXT_PLAIN;
 import static java.time.temporal.ChronoUnit.MINUTES;
+import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
@@ -31,6 +33,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -79,6 +83,8 @@ import com.linagora.calendar.storage.eventsearch.EventUid;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
 import com.mongodb.reactivestreams.client.MongoDatabase;
+import com.rabbitmq.client.AMQP;
+import com.rabbitmq.client.Channel;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.component.VEvent;
@@ -98,6 +104,7 @@ public class AlarmEventCreateTest {
     private static ReactorRabbitMQChannelPool channelPool;
     private static SimpleConnectionPool connectionPool;
     private static DavTestHelper davTestHelper;
+    private static Channel channel;
 
     @BeforeAll
     static void beforeAll(DockerSabreDavSetup dockerSabreDavSetup) throws Exception {
@@ -120,6 +127,8 @@ public class AlarmEventCreateTest {
         MongoDatabase mongoDB = dockerSabreDavSetup.getMongoDB();
         MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
         openPaaSUserDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
+
+        channel = connectionPool.getResilientConnection().block().createChannel();
     }
 
     @AfterAll
@@ -554,6 +563,47 @@ public class AlarmEventCreateTest {
             .isEmpty();
     }
 
+    @Test
+    void shouldNotCrashWhenReceivingInvalidAMQPMessage() throws Exception {
+        // Given an invalid AMQP message
+        publishMessage(EventAlarmConsumer.Queue.CREATE.exchangeName(), "invalid json");
+        Thread.sleep(1000);
+
+        // When: Organizer creates an event with VALARM
+        String eventUid = UUID.randomUUID().toString();
+        String vAlarm = """
+            BEGIN:VALARM
+            TRIGGER:-PT15M
+            ACTION:EMAIL
+            ATTENDEE:mailto:%s
+            SUMMARY:Test
+            DESCRIPTION:This is an automatic alarm sent by OpenPaas
+            END:VALARM""".trim().formatted(organizer.username().asString());
+        String calendarData = generateEventWithValarm(
+            eventUid,
+            organizer.username().asString(),
+            List.of(attendee.username().asString()),
+            PartStat.NEEDS_ACTION,
+            vAlarm);
+        davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
+
+        // Then: An AlarmEvent should be created for the organizer
+        awaitAlarmEventCreated(eventUid, organizer.username());
+
+        AlarmEvent alarmEvent = alarmEventDAO.find(new EventUid(eventUid), organizer.username().asMailAddress()).block();
+
+        Instant eventStartTime = extractStartTime(calendarData);
+        Instant alarmTime = eventStartTime.minus(15, MINUTES);
+
+        assertSoftly(softly -> {
+            softly.assertThat(alarmEvent.eventUid().value()).isEqualTo(eventUid);
+            softly.assertThat(alarmEvent.alarmTime()).isEqualTo(alarmTime);
+            softly.assertThat(alarmEvent.eventStartTime()).isEqualTo(eventStartTime);
+            softly.assertThat(alarmEvent.recurring()).isFalse();
+            softly.assertThat(alarmEvent.recipient().asString()).isEqualTo(organizer.username().asString());
+        });
+    }
+
 
     private void attendeeAcceptsEvent(OpenPaaSUser attendee, String eventUid) {
         waitForFirstEventCreation(attendee);
@@ -687,5 +737,15 @@ public class AlarmEventCreateTest {
         });
 
         return idRef.get();
+    }
+
+    private void publishMessage(String exchange, String message) throws IOException {
+        AMQP.BasicProperties basicProperties = new AMQP.BasicProperties.Builder()
+            .deliveryMode(PERSISTENT_TEXT_PLAIN.getDeliveryMode())
+            .priority(PERSISTENT_TEXT_PLAIN.getPriority())
+            .contentType(PERSISTENT_TEXT_PLAIN.getContentType())
+            .build();
+
+        channel.basicPublish(exchange, EMPTY_ROUTING_KEY, basicProperties, message.getBytes(StandardCharsets.UTF_8));
     }
 }
