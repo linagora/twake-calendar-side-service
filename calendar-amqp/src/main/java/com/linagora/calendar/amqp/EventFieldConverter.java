@@ -105,7 +105,10 @@ public class EventFieldConverter {
                         builder.addAttendee(person);
                     }
                 }
-                case EventProperty.RECURRENCE_ID_PROPERTY -> builder.isRecurrentMaster(false);
+                case EventProperty.RECURRENCE_ID_PROPERTY -> {
+                    builder.isRecurrentMaster(false);
+                    builder.recurrenceId(property.value);
+                }
                 case EventProperty.RRULE_PROPERTY -> builder.isRecurrentMaster(true);
                 case EventProperty.SEQUENCE_PROPERTY -> builder.sequence(((SequenceProperty) property).getSequence());
                 case EventProperty.VIDEOCONFERENCE -> builder.videoconferenceUrl(property.value);

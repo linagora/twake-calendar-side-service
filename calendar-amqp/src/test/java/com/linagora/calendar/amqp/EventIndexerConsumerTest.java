@@ -384,6 +384,7 @@ public class EventIndexerConsumerTest {
             .build();
 
         assertThat(eventFields)
+            .usingRecursiveFieldByFieldElementComparatorIgnoringFields("recurrenceId")
             .containsExactlyInAnyOrder(masterEvent, recurrenceEvent);
 
         // Check that the recurrence event is indexed for the attendee
@@ -394,6 +395,7 @@ public class EventIndexerConsumerTest {
             .block();
 
         assertThat(eventFieldsAttendee)
+            .usingRecursiveFieldByFieldElementComparatorIgnoringFields("recurrenceId")
             .containsExactlyInAnyOrder(masterEvent, recurrenceEvent);
     }
 
@@ -777,6 +779,91 @@ public class EventIndexerConsumerTest {
         assertEventNotInSearch(attendee2.username(), originalSummary, eventUid);
         assertEventExistsInSearch(attendee1.username(), updatedSummary, eventUid);
         assertEventExistsInSearch(attendee2.username(), updatedSummary, eventUid);
+    }
+
+    @Test
+    void shouldNotDuplicateSingleEventWhenDtstartUpdated() {
+        String eventUid = UUID.randomUUID().toString();
+
+        // Initial calendar with DTSTART 2025-05-10T10:00
+        String calendarV1 = getSampleCalendar(eventUid)
+            .replace("20250314T210000", "20250510T100000")
+            .replace("20250314T220000", "20250510T110000");
+
+        davTestHelper.upsertCalendar(openPaasUser, calendarV1, eventUid);
+
+        assertEventExistsInSearch(openPaasUser.username(), "Test1", eventUid);
+
+        // Updated DTSTART 2025-05-11T10:00 — SEQUENCE added
+        String calendarV2 = calendarV1
+            .replace("20250510T100000", "20250511T100000")
+            .replace("20250510T110000", "20250511T110000")
+            .replace("END:VEVENT", "SEQUENCE:1\nEND:VEVENT");
+
+        davTestHelper.updateCalendar(openPaasUser, calendarV2, eventUid);
+
+        awaitAtMost.untilAsserted(() -> {
+            List<EventFields> results = calendarSearchService
+                .search(AccountId.fromUsername(openPaasUser.username()), simpleQuery("Test1"))
+                .collectList()
+                .block();
+
+            // Expect ONLY ONE event after update
+            assertThat(results).hasSize(1);
+        });
+    }
+
+    @Test
+    void shouldNotDuplicateRecurrenceInstanceWhenDtstartUpdated() {
+        String eventUid = UUID.randomUUID().toString();
+        String summary = "RecurTest";
+
+        // Master + recurrence instance
+        String initialCalendar = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:%s
+            DTSTART:20250510T080000Z
+            DTEND:20250510T090000Z
+            SUMMARY:%s
+            RRULE:FREQ=WEEKLY;COUNT=2
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:%s
+            DTSTART:20250517T080000Z
+            DTEND:20250517T090000Z
+            SUMMARY:%s
+            RECURRENCE-ID:20250517T080000Z
+            SEQUENCE:1
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(eventUid, summary, eventUid, summary);
+
+        davTestHelper.upsertCalendar(openPaasUser, initialCalendar, eventUid);
+
+        awaitAtMost.untilAsserted(() -> assertEventExistsInSearch(openPaasUser.username(), summary, eventUid));
+
+        // Update recurrence instance DTSTART
+        String updatedCalendar = initialCalendar
+            .replace("20250517T080000Z", "20250518T080000Z")
+            .replace("SEQUENCE:1", "SEQUENCE:2");
+
+        davTestHelper.updateCalendar(openPaasUser, updatedCalendar, eventUid);
+
+        awaitAtMost.untilAsserted(() -> {
+            List<EventFields> results = calendarSearchService
+                .search(AccountId.fromUsername(openPaasUser.username()), simpleQuery(summary))
+                .collectList()
+                .block();
+
+            // Expect only 2 events (master + updated instance)
+            assertThat(results).hasSize(2);
+
+            // The updated instance should be present
+            assertThat(results)
+                .anySatisfy(e -> assertThat(e.start()).isEqualTo(Instant.parse("2025-05-18T08:00:00Z")));
+        });
     }
 
     @Nested

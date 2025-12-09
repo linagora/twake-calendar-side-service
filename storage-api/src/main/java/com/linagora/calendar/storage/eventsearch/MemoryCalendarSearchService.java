@@ -18,7 +18,6 @@
 
 package com.linagora.calendar.storage.eventsearch;
 
-import java.time.Instant;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -26,7 +25,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
-import java.util.function.Supplier;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
@@ -190,22 +188,13 @@ public class MemoryCalendarSearchService implements CalendarSearchService {
         }
 
         private static String eventKey(EventFields eventFields) {
-            Supplier<String> masterRecurrence = () -> {
-                if (eventFields.isRecurrentMaster() == null) {
-                    return "single";
-                }
-                if (eventFields.isRecurrentMaster()) {
-                    return "master";
-                }
-                return "recurrence";
-            };
-
-            return String.join(DELIMITER,
-                eventFields.uid().value(),
-                masterRecurrence.get(),
-                Optional.ofNullable(eventFields.start())
-                    .map(Instant::toEpochMilli)
-                    .map(String::valueOf).orElse(StringUtils.EMPTY));
+            if (eventFields.isRecurrentMaster() == null) {
+                return "single" + DELIMITER + eventFields.uid().value();
+            }
+            if (eventFields.isRecurrentMaster()) {
+                return "master" + DELIMITER + eventFields.uid().value();
+            }
+            return "recurrence" + DELIMITER + eventFields.uid().value() + DELIMITER + eventFields.recurrenceId().orElse(StringUtils.EMPTY);
         }
     }
 }

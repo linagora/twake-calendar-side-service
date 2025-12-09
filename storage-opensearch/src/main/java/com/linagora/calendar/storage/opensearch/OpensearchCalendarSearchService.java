@@ -21,7 +21,6 @@ package com.linagora.calendar.storage.opensearch;
 import static org.apache.james.backends.opensearch.IndexCreationFactory.RAW;
 
 import java.io.IOException;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -29,7 +28,6 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiFunction;
 import java.util.function.Function;
-import java.util.function.Supplier;
 
 import jakarta.inject.Inject;
 
@@ -114,22 +112,14 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
     }
 
     private DocumentId buildDocumentIdForEvent(AccountId accountId, EventFields eventFields) {
-        Supplier<String> masterRecurrence = () -> {
-            if (eventFields.isRecurrentMaster() == null) {
-                return "single";
-            }
-            if (eventFields.isRecurrentMaster()) {
-                return "master";
-            }
-            return "recurrence";
-        };
-
-        return DocumentId.fromString(String.join(DELIMITER, accountId.getIdentifier(),
-            eventFields.uid().value(),
-            masterRecurrence.get(),
-            Optional.ofNullable(eventFields.start())
-                .map(Instant::toEpochMilli)
-                .map(String::valueOf).orElse(null)));
+        if (eventFields.isRecurrentMaster() == null) {
+            return DocumentId.fromString(String.join(DELIMITER, accountId.getIdentifier(), eventFields.uid().value(), "single"));
+        }
+        if (eventFields.isRecurrentMaster()) {
+            return DocumentId.fromString(String.join(DELIMITER, accountId.getIdentifier(), eventFields.uid().value(), "master"));
+        }
+        return DocumentId.fromString(String.join(DELIMITER, accountId.getIdentifier(), eventFields.uid().value(), "recurrence",
+            eventFields.recurrenceId().orElse(null)));
     }
 
     @Override
