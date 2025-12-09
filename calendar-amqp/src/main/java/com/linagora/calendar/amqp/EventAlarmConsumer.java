@@ -88,6 +88,10 @@ public class EventAlarmConsumer implements Closeable, Startable {
         public String deadLetter() {
             return deadLetter;
         }
+
+        public String exchangeName() {
+            return exchangeName;
+        }
     }
 
     private final ReceiverProvider receiverProvider;

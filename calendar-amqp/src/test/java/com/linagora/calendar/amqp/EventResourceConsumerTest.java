@@ -21,7 +21,9 @@ package com.linagora.calendar.amqp;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static com.linagora.calendar.storage.configuration.EntryIdentifier.LANGUAGE_IDENTIFIER;
 import static com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.TimeZoneSettingReader.TIMEZONE_IDENTIFIER;
+import static com.rabbitmq.client.MessageProperties.PERSISTENT_TEXT_PLAIN;
 import static io.restassured.RestAssured.given;
+import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.mockito.ArgumentMatchers.any;
@@ -30,6 +32,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
+import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -95,6 +98,8 @@ import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
 import com.mongodb.reactivestreams.client.MongoDatabase;
+import com.rabbitmq.client.AMQP;
+import com.rabbitmq.client.Channel;
 
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.path.json.JsonPath;
@@ -126,6 +131,7 @@ public class EventResourceConsumerTest {
     private static ReactorRabbitMQChannelPool channelPool;
     private static SimpleConnectionPool connectionPool;
     private static DavTestHelper davTestHelper;
+    private static Channel channel;
 
     private ResourceDAO resourceDAO;
     private CalDavEventRepository calDavEventRepository;
@@ -151,6 +157,7 @@ public class EventResourceConsumerTest {
         channelPool.start();
 
         davTestHelper = new DavTestHelper(dockerSabreDavSetup.davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
+        channel = connectionPool.getResilientConnection().block().createChannel();
     }
 
     @AfterAll
@@ -526,6 +533,73 @@ public class EventResourceConsumerTest {
         }));
     }
 
+    @Test
+    void shouldNotCrashWhenReceivingInvalidAMQPMessage(DockerSabreDavSetup dockerSabreDavSetup) throws Exception {
+        // Given an invalid AMQP message
+        publishMessage(EventResourceConsumer.Queue.CREATE.exchangeName(), "invalid json");
+        Thread.sleep(1000);
+
+        // When creating resource projector with resourceAdmin as administrator
+        OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
+        ResourceInsertRequest request = new ResourceInsertRequest(
+            List.of(new ResourceAdministrator(resourceAdmin.id(), "user")),
+            resourceAdmin.id(),
+            "Test resource description",
+            domain.id(),
+            "icon.png",
+            "Projector");
+        ResourceId resourceId = resourceDAO.insert(request).block();
+
+        // And organizer creates an event booking the resource projector
+        String eventUid = UUID.randomUUID().toString();
+        String calendarData = generateCalendarData(
+            eventUid,
+            organizer.username().asString(),
+            attendee.username().asString(),
+            "Sprint planning #01",
+            "Twake Meeting Room",
+            "This is a meeting to discuss the sprint planning for the next week.",
+            "30250411T100000",
+            "30250411T110000",
+            resourceId.value());
+        davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
+
+        String resourceEventId = awaitAtMost.until(() -> davTestHelper.findFirstEventId(resourceId, domain.id()), Optional::isPresent).get();
+
+        // Wait for the mail to be received via mock SMTP
+        awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
+
+        // Then resource administrator should receive a resource booking request email
+        assertSoftly(Throwing.consumer(softly -> {
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(resourceAdmin.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[0].message"))
+                .contains("Subject: A user booked the resource Projector")
+                .contains("Content-Type: multipart/mixed;")
+                .containsIgnoringNewLines("""
+                    Content-Transfer-Encoding: base64
+                    Content-Type: text/html; charset=UTF-8
+                    """);
+
+            String html = getHtml(smtpMailsResponse.getString("[0].message"));
+
+            assertThat(html).contains("Van Tung TRAN")
+                .contains("has requested to book the resource")
+                .contains("Projector")
+                .contains("Monday, 11 April 3025 10:00 - 11:00")
+                .contains("Asia/Ho_Chi_Minh")
+                .contains("Twake Meeting Room")
+                .contains(organizer.username().asString())
+                .contains(attendee.username().asString())
+                .contains("Projector")
+                .contains("This is a meeting to discuss the sprint planning for the next week.")
+                .contains("https://calendar.linagora.local/calendar/api/resources/" + resourceId.value() + "/" + resourceEventId + "/participation?status=ACCEPTED&amp;referrer=email&amp;jwt=jwtSecret")
+                .contains("https://calendar.linagora.local/calendar/api/resources/" + resourceId.value() + "/" + resourceEventId + "/participation?status=DECLINED&amp;referrer=email&amp;jwt=jwtSecret");
+        }));
+    }
+
     private String getHtml(String rawMessage) {
         Pattern htmlPattern = Pattern.compile(
             "Content-Transfer-Encoding: base64\r?\nContent-Type: text/html; charset=UTF-8\r?\nContent-Language: [^\r\n]+\r?\n\r?\n([A-Za-z0-9+/=\r\n]+)\r?\n---=Part",
@@ -597,6 +671,16 @@ public class EventResourceConsumerTest {
             .replace("{dtend}", dtend)
             .replace("{partStat}", partStat)
             .replace("{resourceId}", resourceId);
+    }
+
+    private void publishMessage(String exchange, String message) throws IOException {
+        AMQP.BasicProperties basicProperties = new AMQP.BasicProperties.Builder()
+            .deliveryMode(PERSISTENT_TEXT_PLAIN.getDeliveryMode())
+            .priority(PERSISTENT_TEXT_PLAIN.getPriority())
+            .contentType(PERSISTENT_TEXT_PLAIN.getContentType())
+            .build();
+
+        channel.basicPublish(exchange, EMPTY_ROUTING_KEY, basicProperties, message.getBytes(StandardCharsets.UTF_8));
     }
 }
 
