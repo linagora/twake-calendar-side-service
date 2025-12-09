@@ -4,6 +4,28 @@ This document describes breaking changes and migration steps required when upgra
 
 ## [UNRELEASED]
 
+### Changed document ID computation for OpenSearch indexing
+
+Date: 09/12/2025
+
+Updated Event Document ID computation to remove DTSTART, ensuring a stable identifier and preventing duplicate documents
+in OpenSearch.
+
+#### Breaking Change
+
+Existing indexed documents still use the old DTSTART-based IDs. Updates to existing events may create duplicates after
+deployment.
+
+#### Required Action
+
+Admins **must run a full reindex** after upgrading:
+
+```
+POST {webadminBaseURL}/calendars?task=reindex
+```
+
+Without this step, old and new documents may coexist and appear duplicated in search.
+
 ### Added sequence field to Calendar Event index mapping
 
 Date: 03/12/2025
