@@ -505,7 +505,7 @@ public class CalDavClientTest {
                   "vcalendar",
                   [
                     ["version", {}, "text", "2.0"],
-                    ["prodid", {}, "text", "-//Sabre//Sabre VObject 4.2.2//EN"]
+                    ["prodid", {}, "text", "-//Sabre//Sabre VObject 4.5.7//EN"]
                   ],
                   [
                     [
