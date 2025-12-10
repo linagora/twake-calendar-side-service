@@ -304,6 +304,11 @@ public class EventParseUtils {
                         new IllegalArgumentException("VEVENT is missing UID, invalid ICS"))));
     }
 
+    public static Optional<String> getRecurrenceId(VEvent vEvent) {
+        return vEvent.getProperty(Property.RECURRENCE_ID)
+            .map(Content::getValue);
+    }
+
     private static MailAddress getEmail(Property property) throws MalformedURLException, AddressException {
         try {
             String email = Strings.CI.removeStart(property.getValue(), "mailto:");

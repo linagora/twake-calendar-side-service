@@ -1553,6 +1553,94 @@ public interface CalendarSearchServiceContract {
         });
     }
 
+    @Test
+    default void updateSingleEventStartDateShouldNotCreateDuplicate() {
+        CalendarURL url = generateCalendarURL();
+        EventUid uid = generateEventUid();
+
+        EventFields v1 = EventFields.builder()
+            .uid(uid)
+            .summary("single")
+            .start(Instant.parse("2025-01-01T10:00:00Z"))
+            .sequence(1)
+            .calendarURL(url)
+            .build();
+
+        // index initial
+        testee().index(accountId, CalendarEvents.of(v1)).block();
+
+        EventFields v2 = EventFields.builder()
+            .uid(uid)
+            .summary("single")
+            .start(Instant.parse("2025-01-02T10:00:00Z")) // updated DTSTART
+            .sequence(2)
+            .calendarURL(url)
+            .build();
+
+        // update with new DTSTART
+        testee().index(accountId, CalendarEvents.of(v2)).block();
+
+        CALMLY_AWAIT.untilAsserted(() -> {
+            List<EventFields> results = testee().search(accountId, simpleQuery("single"))
+                .collectList().block();
+
+            assertThat(results)
+                .hasSize(1)
+                .containsExactly(v2);
+        });
+    }
+
+    @Test
+    default void updateRecurrenceInstanceStartDateShouldNotCreateDuplicate() {
+        CalendarURL url = generateCalendarURL();
+        EventUid uid = generateEventUid();
+
+        EventFields master = EventFields.builder()
+            .uid(uid)
+            .summary("recur")
+            .sequence(1)
+            .isRecurrentMaster(true)
+            .start(Instant.parse("2025-01-01T09:00:00Z"))
+            .calendarURL(url)
+            .build();
+
+        EventFields instanceV1 = EventFields.builder()
+            .uid(uid)
+            .summary("recur")
+            .isRecurrentMaster(false)
+            .sequence(1)
+            .start(Instant.parse("2025-01-03T10:00:00Z"))
+            .recurrenceId("2025-01-03T10:00:00Z")
+            .calendarURL(url)
+            .build();
+
+        // index initial recurrence
+        testee().index(accountId, CalendarEvents.of(master, instanceV1)).block();
+
+        EventFields instanceV2 = EventFields.builder()
+            .uid(uid)
+            .summary("recur")
+            .isRecurrentMaster(false)
+            .sequence(2)
+            .start(Instant.parse("2025-01-04T10:00:00Z"))
+            .recurrenceId("2025-01-03T10:00:00Z")
+            .calendarURL(url)
+            .build();
+
+        // update instance
+        testee().index(accountId, CalendarEvents.of(master, instanceV2)).block();
+
+        CALMLY_AWAIT.untilAsserted(() -> {
+            List<EventFields> results = testee().search(accountId, simpleQuery("recur"))
+                .collectList().block();
+
+            assertThat(results)
+                .extracting(EventFields::start)
+                .containsExactlyInAnyOrder(master.start(), instanceV2.start());
+        });
+    }
+
+    // private helper
     private void indexEvents(AccountId accountId, EventFields events) {
         testee().index(accountId, CalendarEvents.of(events)).block();
 

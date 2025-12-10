@@ -56,6 +56,7 @@ public record EventFields(EventUid uid,
                           List<Person> resources,
                           String videoconferenceUrl,
                           Optional<Integer> sequence,
+                          Optional<String> recurrenceId,
                           CalendarURL calendarURL) {
 
     public static final Logger LOGGER = LoggerFactory.getLogger(EventFields.class);
@@ -101,6 +102,7 @@ public record EventFields(EventUid uid,
         private String videoconferenceUrl;
         private CalendarURL calendarURL;
         private Optional<Integer> sequence = Optional.empty();
+        private Optional<String> recurrenceId = Optional.empty();
 
         public Builder uid(String uid) {
             return uid(new EventUid(uid));
@@ -196,6 +198,11 @@ public record EventFields(EventUid uid,
             return this;
         }
 
+        public Builder recurrenceId(String recurrenceId) {
+            this.recurrenceId = Optional.of(recurrenceId);
+            return this;
+        }
+
         int calculateDurationInDays() {
             if (start == null || end == null || !end.isAfter(start)) {
                 return 0;
@@ -226,6 +233,7 @@ public record EventFields(EventUid uid,
                 resources,
                 videoconferenceUrl,
                 sequence,
+                recurrenceId,
                 calendarURL);
         }
     }
@@ -250,6 +258,7 @@ public record EventFields(EventUid uid,
         builder.organizer(EventParseUtils.getOrganizer(vEvent));
         builder.attendees(EventParseUtils.getAttendees(vEvent));
         builder.resources(EventParseUtils.getResources(vEvent));
+        EventParseUtils.getRecurrenceId(vEvent).ifPresent(builder::recurrenceId);
 
         vEvent.getProperty(Property.SEQUENCE)
             .ifPresent(prop -> {
