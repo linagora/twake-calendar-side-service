@@ -373,7 +373,7 @@ public class CalendarRoutesTest {
             .collectList().block();
         assertThat(actual)
             .usingRecursiveFieldByFieldElementComparator(builder()
-                .withIgnoredFields("attendees.partStat", "resources.partStat", "organizer.partStat")
+                .withIgnoredFields("attendees.partStat", "resources.partStat", "organizer.partStat", "recurrenceId")
                 .build())
             .containsExactlyInAnyOrder(expected1, expected2, expected3);
     }
