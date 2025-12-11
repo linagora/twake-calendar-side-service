@@ -61,6 +61,7 @@ import com.google.inject.name.Names;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.app.modules.MemoryAutoCompleteModule;
 import com.linagora.calendar.dav.DavModuleTestHelper;
+import com.linagora.calendar.dav.Fixture;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -132,40 +133,52 @@ class TwakeCalendarGuiceServerTest  {
 
     @Test
     void shouldExposeWebAdminHealthcheck() {
-        String body = given()
-        .when()
-            .get("/healthcheck")
-        .then()
-            .extract()
-            .body()
-            .asString();
+        Fixture.awaitAtMost.untilAsserted(() -> {
+            String body = given()
+                .when()
+                .get("/healthcheck")
+            .then()
+                .extract()
+                .body()
+                .asString();
 
-        assertThatJson(body).withOptions(Option.IGNORING_ARRAY_ORDER).isEqualTo("""
-            {
-              "status" : "healthy",
-              "checks" : [ {
-                "componentName" : "Guice application lifecycle",
-                "escapedComponentName" : "Guice%20application%20lifecycle",
-                "status" : "healthy",
-                "cause" : null
-              }, {
-                "componentName" : "RabbitMQDeadLetterQueueEmptiness",
-                "escapedComponentName" : "RabbitMQDeadLetterQueueEmptiness",
-                "status" : "healthy",
-                "cause" : null
-              }, {
-                "componentName" : "CalendarQueueConsumers",
-                "escapedComponentName" : "CalendarQueueConsumers",
-                "status" : "healthy",
-                "cause" : null
-              }, {
-                "componentName" : "RabbitMQ backend",
-                "escapedComponentName" : "RabbitMQ%20backend",
-                "status" : "healthy",
-                "cause" : null
-              } ]
-            }
-            """);
+            assertThatJson(body).withOptions(Option.IGNORING_ARRAY_ORDER).isEqualTo("""
+                {
+                  "status" : "healthy",
+                  "checks" : [ {
+                    "componentName" : "Guice application lifecycle",
+                    "escapedComponentName" : "Guice%20application%20lifecycle",
+                    "status" : "healthy",
+                    "cause" : null
+                  }, {
+                    "componentName" : "RabbitMQDeadLetterQueueEmptiness",
+                    "escapedComponentName" : "RabbitMQDeadLetterQueueEmptiness",
+                    "status" : "healthy",
+                    "cause" : null
+                  }, {
+                    "componentName" : "CalendarQueueConsumers",
+                    "escapedComponentName" : "CalendarQueueConsumers",
+                    "status" : "healthy",
+                    "cause" : null
+                  }, {
+                    "componentName" : "RabbitMQ backend",
+                    "escapedComponentName" : "RabbitMQ%20backend",
+                    "status" : "healthy",
+                    "cause" : null
+                  }, {
+                   "componentName": "TWPSettingsDeadLetterQueueHealthCheck",
+                   "escapedComponentName": "TWPSettingsDeadLetterQueueHealthCheck",
+                   "status": "healthy",
+                   "cause": null
+                  }, {
+                   "componentName": "TWPSettingsQueueConsumerHealthCheck",
+                   "escapedComponentName": "TWPSettingsQueueConsumerHealthCheck",
+                   "status": "healthy",
+                   "cause": null
+                  }]
+                }
+                """);
+        });
     }
 
     @Test

@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.app;
 
+import static com.linagora.calendar.saas.TWPCalendarSettingsModule.TWP_CALENDAR_SETTINGS_AGGREGATE_MODULE;
+
 import org.apache.james.ExtraProperties;
 import org.apache.james.UserEntityValidator;
 import org.apache.james.data.LdapUsersRepositoryModule;
@@ -143,7 +145,8 @@ public class TwakeCalendarMain {
                 new TechnicalUserTokenModule(),
                 new AlarmEventModule(),
                 new SmtpModule(),
-                WEBADMIN));
+                WEBADMIN,
+                TWP_CALENDAR_SETTINGS_AGGREGATE_MODULE));
     }
 
     @FunctionalInterface

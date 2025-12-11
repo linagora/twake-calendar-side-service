@@ -25,4 +25,8 @@ public record ConfigurationEntry(ModuleName moduleName, ConfigurationKey configu
     public static ConfigurationEntry of(String moduleName, String configurationKey, JsonNode node) {
         return new ConfigurationEntry(new ModuleName(moduleName), new ConfigurationKey(configurationKey), node);
     }
+
+    public static ConfigurationEntry of(EntryIdentifier entryIdentifier, JsonNode node) {
+        return new ConfigurationEntry(entryIdentifier.moduleName(), entryIdentifier.configurationKey(), node);
+    }
 }

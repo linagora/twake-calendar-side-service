@@ -50,6 +50,7 @@
         <module>calendar-redis</module>
 
         <module>utility-app</module>
+        <module>saas/saas-rabbitmq</module>
     </modules>
 
     <properties>
