@@ -18,15 +18,28 @@
 
 package com.linagora.calendar.storage.configuration;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
-public record ConfigurationEntry(ModuleName moduleName, ConfigurationKey configurationKey, JsonNode node) {
+import org.apache.commons.lang3.tuple.Pair;
 
-    public static ConfigurationEntry of(String moduleName, String configurationKey, JsonNode node) {
-        return new ConfigurationEntry(new ModuleName(moduleName), new ConfigurationKey(configurationKey), node);
+public class ConfigurationEntryUtils {
+
+    public static final Set<ConfigurationEntry> EMPTY_CONFIGURATION_ENTRIES = Set.of();
+
+    public static Set<ConfigurationEntry> mergeIncomingWithExistingConfiguration(Set<ConfigurationEntry> incoming, Set<ConfigurationEntry> existing) {
+        return mergeIncomingWithExistingConfiguration(incoming.stream(), existing.stream());
     }
 
-    public static ConfigurationEntry of(EntryIdentifier entryIdentifier, JsonNode node) {
-        return new ConfigurationEntry(entryIdentifier.moduleName(), entryIdentifier.configurationKey(), node);
+    public static Set<ConfigurationEntry> mergeIncomingWithExistingConfiguration(Stream<ConfigurationEntry> incoming, Stream<ConfigurationEntry> existing) {
+        return Stream.concat(existing, incoming)
+            .collect(Collectors.toMap(entry -> Pair.of(entry.moduleName(), entry.configurationKey()),
+                entry -> entry,
+                (oldVal, newVal) -> newVal))
+            .values()
+            .stream()
+            .collect(Collectors.toUnmodifiableSet());
     }
+
 }
