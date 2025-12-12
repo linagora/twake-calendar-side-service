@@ -18,17 +18,15 @@
 
 package com.linagora.calendar.saas;
 
+import static com.linagora.calendar.storage.configuration.ConfigurationEntryUtils.EMPTY_CONFIGURATION_ENTRIES;
 import static com.linagora.calendar.storage.configuration.EntryIdentifier.LANGUAGE_IDENTIFIER;
 
-import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
-import org.apache.commons.lang3.tuple.Pair;
 import org.apache.james.core.Username;
 import org.apache.james.mailbox.MailboxSession;
 import org.slf4j.Logger;
@@ -42,6 +40,7 @@ import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.ConfigurationEntry;
+import com.linagora.calendar.storage.configuration.ConfigurationEntryUtils;
 import com.linagora.calendar.storage.configuration.ConfigurationKey;
 import com.linagora.calendar.storage.configuration.EntryIdentifier;
 import com.linagora.calendar.storage.configuration.ModuleName;
@@ -49,6 +48,7 @@ import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.LanguageSettingReader;
 import com.linagora.calendar.storage.exception.UserNotFoundException;
 import com.linagora.tmail.saas.rabbitmq.settings.TWPCommonSettingsMessage;
+import com.linagora.tmail.saas.rabbitmq.settings.TWPCommonSettingsMessage.IncomingLanguageSetting;
 import com.linagora.tmail.saas.rabbitmq.settings.TWPSettingsUpdater;
 
 import reactor.core.publisher.Mono;
@@ -60,7 +60,6 @@ public class CalendarSettingUpdater implements TWPSettingsUpdater {
         new EntryIdentifier(new ModuleName("core"), new ConfigurationKey("language_version"));
 
     private static final boolean SHOULD_UPDATE = true;
-    private static final List<ConfigurationEntry> EMPTY_ENTRIES = List.of();
 
     private final UserConfigurationDAO userConfigurationDAO;
     private final OpenPaaSUserDAO openPaaSUserDAO;
@@ -76,45 +75,43 @@ public class CalendarSettingUpdater implements TWPSettingsUpdater {
 
     @Override
     public Mono<Void> updateSettings(TWPCommonSettingsMessage message) {
-        return Mono.justOrEmpty(IncomingLanguageSetting.extractFromMessage(message))
-            .flatMap(incoming -> resolveUsername(message)
-                .flatMap(session -> updateSetting(session, incoming)));
+        return message.languageSettings()
+            .map(incomingLanguageSetting -> resolveUsername(message)
+                .flatMap(session -> updateSetting(session, incomingLanguageSetting))
+                .then())
+            .orElse(Mono.empty())
+            .doOnError(error -> LOGGER.error("Error occurred while updating calendar settings for user={} ", message.payload().email(), error));
     }
 
-    private Mono<Void> updateSetting(MailboxSession session, IncomingLanguageSetting incoming) {
+    private Mono<Void> updateSetting(MailboxSession session, IncomingLanguageSetting incomingLanguageSetting) {
+        return getConfigurationEntries(session)
+            .filter(configurationEntries -> shouldUpdate(StoredLanguageSetting.fromConfigurationEntries(configurationEntries), incomingLanguageSetting))
+            .flatMap(configurationEntries -> applyUpdate(session, incomingLanguageSetting, configurationEntries));
+    }
+
+    private Mono<Set<ConfigurationEntry>> getConfigurationEntries(MailboxSession session) {
         return userConfigurationDAO.retrieveConfiguration(session)
-            .collectList()
-            .switchIfEmpty(Mono.just(EMPTY_ENTRIES))
-            .filter(configurationEntries -> shouldUpdate(StoredLanguageSetting.fromConfigurationEntries(configurationEntries), incoming))
-            .flatMap(configurationEntries -> applyUpdate(session, incoming, configurationEntries))
-            .doOnError(error -> LOGGER.error("Error updating calendar settings for user={}", session.getUser().asString(), error));
+            .collect(Collectors.toUnmodifiableSet())
+            .switchIfEmpty(Mono.just(EMPTY_CONFIGURATION_ENTRIES));
     }
 
     private boolean shouldUpdate(Optional<StoredLanguageSetting> storedLanguageSetting,
-                                 IncomingLanguageSetting incoming) {
+                                 IncomingLanguageSetting incomingLanguageSetting) {
         return storedLanguageSetting
             .map(StoredLanguageSetting::version)
             .flatMap(Functions.identity())
-            .map(storedVersion -> incoming.version() > storedVersion)
+            .map(storedVersion -> incomingLanguageSetting.version() > storedVersion)
             .orElse(SHOULD_UPDATE);
     }
 
-    private Mono<Void> applyUpdate(MailboxSession session, IncomingLanguageSetting incoming, List<ConfigurationEntry> existingConfigurationEntries) {
-        ConfigurationEntry languageEntry = ConfigurationEntry.of(LANGUAGE_IDENTIFIER, TextNode.valueOf(incoming.locale().getLanguage()));
-        ConfigurationEntry versionEntry = ConfigurationEntry.of(LANGUAGE_VERSION_IDENTIFIER, LongNode.valueOf(incoming.version()));
+    private Mono<Void> applyUpdate(MailboxSession session, IncomingLanguageSetting incomingLanguageSetting,
+                                   Set<ConfigurationEntry> existingConfigurationEntries) {
+        Locale incomingLocale = incomingLanguageSetting.toLocale();
+        ConfigurationEntry languageEntry = ConfigurationEntry.of(LANGUAGE_IDENTIFIER, TextNode.valueOf(incomingLocale.getLanguage()));
+        ConfigurationEntry versionEntry = ConfigurationEntry.of(LANGUAGE_VERSION_IDENTIFIER, LongNode.valueOf(incomingLanguageSetting.version()));
         Set<ConfigurationEntry> newIncomingEntries = Set.of(languageEntry, versionEntry);
-        Set<ConfigurationEntry> mergedConfiguration = mergeIncomingWithExistingConfiguration(newIncomingEntries, existingConfigurationEntries);
+        Set<ConfigurationEntry> mergedConfiguration = ConfigurationEntryUtils.mergeIncomingWithExistingConfiguration(newIncomingEntries, existingConfigurationEntries);
         return userConfigurationDAO.persistConfiguration(mergedConfiguration, session);
-    }
-
-    private Set<ConfigurationEntry> mergeIncomingWithExistingConfiguration(Set<ConfigurationEntry> incoming, List<ConfigurationEntry> stored) {
-        return Stream.concat(stored.stream(), incoming.stream())
-            .collect(Collectors.toMap(entry -> Pair.of(entry.moduleName(), entry.configurationKey()),
-                entry -> entry,
-                (oldVal, newVal) -> newVal))
-            .values()
-            .stream()
-            .collect(Collectors.toUnmodifiableSet());
     }
 
     private Mono<MailboxSession> resolveUsername(TWPCommonSettingsMessage message) {
@@ -127,19 +124,19 @@ public class CalendarSettingUpdater implements TWPSettingsUpdater {
 
     record StoredLanguageSetting(Locale locale, Optional<Long> version) {
 
-        static Optional<StoredLanguageSetting> fromConfigurationEntries(List<ConfigurationEntry> entries) {
+        static Optional<StoredLanguageSetting> fromConfigurationEntries(Set<ConfigurationEntry> entries) {
             return findLocale(entries)
                 .map(locale -> new StoredLanguageSetting(locale, findLanguageVersion(entries)));
         }
 
-        static Optional<Locale> findLocale(List<ConfigurationEntry> entries) {
+        static Optional<Locale> findLocale(Set<ConfigurationEntry> entries) {
             return entries.stream()
                 .filter(configurationEntryPredicate(LANGUAGE_IDENTIFIER))
                 .flatMap(languageEntry -> LanguageSettingReader.INSTANCE.parse(languageEntry.node()).stream())
                 .findFirst();
         }
 
-        static Optional<Long> findLanguageVersion(List<ConfigurationEntry> entries) {
+        static Optional<Long> findLanguageVersion(Set<ConfigurationEntry> entries) {
             return entries.stream()
                 .filter(configurationEntryPredicate(LANGUAGE_VERSION_IDENTIFIER))
                 .map(versionEntry -> {
@@ -152,20 +149,6 @@ public class CalendarSettingUpdater implements TWPSettingsUpdater {
         static Predicate<ConfigurationEntry> configurationEntryPredicate(EntryIdentifier entryIdentifier) {
             return configurationEntry -> configurationEntry.moduleName().equals(entryIdentifier.moduleName())
                 && configurationEntry.configurationKey().equals(entryIdentifier.configurationKey());
-        }
-    }
-
-    record IncomingLanguageSetting(Locale locale, Long version) {
-        static Optional<IncomingLanguageSetting> extractFromMessage(TWPCommonSettingsMessage message) {
-            return message.payload().language()
-                .flatMap(lang -> {
-                    Locale locale = Locale.forLanguageTag(lang);
-                    if (locale.getLanguage().isEmpty()) {
-                        LOGGER.warn("Skip updating: invalid language tag '{}' for user email={}", lang, message.payload().email());
-                        return Optional.empty();
-                    }
-                    return Optional.of(new IncomingLanguageSetting(locale, message.version()));
-                });
         }
     }
 }

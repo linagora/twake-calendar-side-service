@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.restapi.routes;
 
+import static com.linagora.calendar.storage.configuration.ConfigurationEntryUtils.EMPTY_CONFIGURATION_ENTRIES;
+
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Set;
@@ -26,7 +28,6 @@ import java.util.stream.Collectors;
 
 import jakarta.inject.Inject;
 
-import org.apache.commons.lang3.tuple.Pair;
 import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.http.Authenticator;
 import org.apache.james.mailbox.MailboxSession;
@@ -36,16 +37,16 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.restapi.routes.UserConfigurationsRoute.UserConfigDTO;
 import com.linagora.calendar.storage.configuration.ConfigurationEntry;
+import com.linagora.calendar.storage.configuration.ConfigurationEntryUtils;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
 
 import io.netty.handler.codec.http.HttpMethod;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.server.HttpServerRequest;
 import reactor.netty.http.server.HttpServerResponse;
+
 
 public class UserConfigurationPatchRoute extends CalendarRoute {
     public static final Logger LOGGER = LoggerFactory.getLogger(UserConfigurationPatchRoute.class);
@@ -78,11 +79,10 @@ public class UserConfigurationPatchRoute extends CalendarRoute {
     }
 
     private Mono<Set<ConfigurationEntry>> mergeWithExistingConfiguration(Set<ConfigurationEntry> patchEntries, MailboxSession session) {
-        return Flux.concat(
-                Flux.fromIterable(patchEntries),
-                userConfigurationDAO.retrieveConfiguration(session))
-            .distinct(entry -> Pair.of(entry.moduleName(), entry.configurationKey()))
-            .collect(ImmutableSet.toImmutableSet());
+        return userConfigurationDAO.retrieveConfiguration(session)
+            .collect(Collectors.toUnmodifiableSet())
+            .switchIfEmpty(Mono.just(EMPTY_CONFIGURATION_ENTRIES))
+            .map(existingEntries -> ConfigurationEntryUtils.mergeIncomingWithExistingConfiguration(patchEntries, existingEntries));
     }
 
     private Set<ConfigurationEntry> toConfigurationEntries(List<UserConfigDTO> dtos) {
