@@ -45,6 +45,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -74,6 +75,28 @@ public interface CalendarSearchServiceContract {
             .build();
 
         EventSearchQuery query = simpleQuery("planning");
+
+        testee().index(accountId, CalendarEvents.of(event)).block();
+
+        CALMLY_AWAIT.untilAsserted(() -> {
+            List<EventFields> searchResults = testee().search(accountId, query)
+                .collectList().block();
+
+            assertThat(searchResults).hasSize(1)
+                .containsExactly(event);
+        });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"spr", "spri", "sprint"})
+    default void searchShouldMatchSummaryPrefix(String search) {
+        EventFields event = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("Sprint planning meeting")
+            .calendarURL(generateCalendarURL())
+            .build();
+
+        EventSearchQuery query = simpleQuery(search);
 
         testee().index(accountId, CalendarEvents.of(event)).block();
 

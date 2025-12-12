@@ -34,7 +34,8 @@ public record CalendarEventOpensearchConfiguration(IndexName indexName,
                                                    int minNgram,
                                                    int maxNgramDiff,
                                                    int nbShards,
-                                                   int nbReplicas) {
+                                                   int nbReplicas,
+                                                   boolean searchSummaryPrefix) {
 
     public CalendarEventOpensearchConfiguration {
         Preconditions.checkArgument(minNgram > 0, "minNgram must be greater than 0");
@@ -61,9 +62,11 @@ public record CalendarEventOpensearchConfiguration(IndexName indexName,
         int nbShards = configuration.getInteger(OpenSearchConfiguration.OPENSEARCH_NB_SHARDS, OpenSearchConfiguration.DEFAULT_NB_SHARDS);
         int nbReplicas = configuration.getInteger(OpenSearchConfiguration.OPENSEARCH_NB_REPLICA, OpenSearchConfiguration.DEFAULT_NB_REPLICA);
 
+        boolean searchSummaryPrefix = configuration.getBoolean(OPENSEARCH_INDEX_CALENDAR_EVENTS_SUMMARY_SEARCH_PREFIX, DEFAULT_SUMMARY_SEARCH_PREFIX);
+
         return new CalendarEventOpensearchConfiguration(indexName, readAliasName,
             writeAliasName, minNgram, maxNgramDiff,
-            nbShards, nbReplicas);
+            nbShards, nbReplicas, searchSummaryPrefix);
     }
 
     public static final IndexName DEFAULT_INDEX_NAME = new IndexName("calendar-events");
@@ -71,12 +74,14 @@ public record CalendarEventOpensearchConfiguration(IndexName indexName,
     public static final WriteAliasName DEFAULT_WRITE_ALIAS_NAME = new WriteAliasName("calendar-events-write");
     public static final int DEFAULT_MIN_NGRAM = 3;
     public static final int DEFAULT_MAX_NGRAM_DIFF = 4;
+    public static final boolean DEFAULT_SUMMARY_SEARCH_PREFIX = true;
 
     private static final String PROPERTY_INDEX_CALENDAR_EVENTS_NAME = "opensearch.index.calendar.events.name";
     private static final String PROPERTY_ALIAS_READ_CALENDAR_EVENTS_NAME = "opensearch.alias.read.calendar.events.name";
     private static final String PROPERTY_ALIAS_WRITE_CALENDAR_EVENTS_NAME = "opensearch.alias.write.calendar.events.name";
     private static final String PROPERTY_INDEX_CALENDAR_EVENTS_MAX_NGRAM_DIFF = "opensearch.index.calendar.events.max.ngram.diff";
     private static final String PROPERTY_INDEX_CALENDAR_EVENTS_MIN_NGRAM = "opensearch.index.calendar.events.min.ngram";
+    private static final String OPENSEARCH_INDEX_CALENDAR_EVENTS_SUMMARY_SEARCH_PREFIX = "opensearch.index.calendar.events.summary.searchPrefix";
 
     public static CalendarEventOpensearchConfiguration DEFAULT =
         new CalendarEventOpensearchConfiguration(
@@ -86,5 +91,6 @@ public record CalendarEventOpensearchConfiguration(IndexName indexName,
             DEFAULT_MIN_NGRAM,
             DEFAULT_MAX_NGRAM_DIFF,
             OpenSearchConfiguration.DEFAULT_NB_SHARDS,
-            OpenSearchConfiguration.DEFAULT_NB_REPLICA);
+            OpenSearchConfiguration.DEFAULT_NB_REPLICA,
+            DEFAULT_SUMMARY_SEARCH_PREFIX);
 }
