@@ -25,7 +25,10 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.james.core.Username;
 import org.apache.james.mailbox.MailboxSession;
 import org.slf4j.Logger;
@@ -33,6 +36,8 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.node.LongNode;
 import com.fasterxml.jackson.databind.node.TextNode;
+import com.google.common.base.Functions;
+import com.google.common.base.Preconditions;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.SimpleSessionProvider;
@@ -42,6 +47,7 @@ import com.linagora.calendar.storage.configuration.EntryIdentifier;
 import com.linagora.calendar.storage.configuration.ModuleName;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.LanguageSettingReader;
+import com.linagora.calendar.storage.exception.UserNotFoundException;
 import com.linagora.tmail.saas.rabbitmq.settings.TWPCommonSettingsMessage;
 import com.linagora.tmail.saas.rabbitmq.settings.TWPSettingsUpdater;
 
@@ -54,6 +60,7 @@ public class CalendarSettingUpdater implements TWPSettingsUpdater {
         new EntryIdentifier(new ModuleName("core"), new ConfigurationKey("language_version"));
 
     private static final boolean SHOULD_UPDATE = true;
+    private static final List<ConfigurationEntry> EMPTY_ENTRIES = List.of();
 
     private final UserConfigurationDAO userConfigurationDAO;
     private final OpenPaaSUserDAO openPaaSUserDAO;
@@ -69,60 +76,58 @@ public class CalendarSettingUpdater implements TWPSettingsUpdater {
 
     @Override
     public Mono<Void> updateSettings(TWPCommonSettingsMessage message) {
-        return Mono.justOrEmpty(IncomingLanguageSetting.maybeFrom(message))
+        return Mono.justOrEmpty(IncomingLanguageSetting.extractFromMessage(message))
             .flatMap(incoming -> resolveUsername(message)
                 .flatMap(session -> updateSetting(session, incoming)));
     }
 
     private Mono<Void> updateSetting(MailboxSession session, IncomingLanguageSetting incoming) {
-        return fetchStoredSetting(session)
-            .switchIfEmpty(Mono.just(Optional.empty()))
-            .filter(stored -> shouldUpdate(stored, incoming))
-            .flatMap(stored -> applyUpdate(session, incoming))
+        return userConfigurationDAO.retrieveConfiguration(session)
+            .collectList()
+            .switchIfEmpty(Mono.just(EMPTY_ENTRIES))
+            .filter(configurationEntries -> shouldUpdate(StoredLanguageSetting.fromConfigurationEntries(configurationEntries), incoming))
+            .flatMap(configurationEntries -> applyUpdate(session, incoming, configurationEntries))
             .doOnError(error -> LOGGER.error("Error updating calendar settings for user={}", session.getUser().asString(), error));
     }
 
-    private boolean shouldUpdate(Optional<StoredLanguageSetting> storedOpt,
+    private boolean shouldUpdate(Optional<StoredLanguageSetting> storedLanguageSetting,
                                  IncomingLanguageSetting incoming) {
-        if (storedOpt.isEmpty()) {
-            return SHOULD_UPDATE;
-        }
-
-        StoredLanguageSetting stored = storedOpt.get();
-
-        // If no version stored → always apply
-        if (stored.version().isEmpty()) {
-            return SHOULD_UPDATE;
-        }
-        return incoming.version() > stored.version().get();
+        return storedLanguageSetting
+            .map(StoredLanguageSetting::version)
+            .flatMap(Functions.identity())
+            .map(storedVersion -> incoming.version() > storedVersion)
+            .orElse(SHOULD_UPDATE);
     }
 
-    private Mono<Void> applyUpdate(MailboxSession session, IncomingLanguageSetting incoming) {
-        ConfigurationEntry langEntry = ConfigurationEntry.of(LANGUAGE_IDENTIFIER, TextNode.valueOf(incoming.locale().getLanguage()));
+    private Mono<Void> applyUpdate(MailboxSession session, IncomingLanguageSetting incoming, List<ConfigurationEntry> existingConfigurationEntries) {
+        ConfigurationEntry languageEntry = ConfigurationEntry.of(LANGUAGE_IDENTIFIER, TextNode.valueOf(incoming.locale().getLanguage()));
         ConfigurationEntry versionEntry = ConfigurationEntry.of(LANGUAGE_VERSION_IDENTIFIER, LongNode.valueOf(incoming.version()));
+        Set<ConfigurationEntry> newIncomingEntries = Set.of(languageEntry, versionEntry);
+        Set<ConfigurationEntry> mergedConfiguration = mergeIncomingWithExistingConfiguration(newIncomingEntries, existingConfigurationEntries);
+        return userConfigurationDAO.persistConfiguration(mergedConfiguration, session);
+    }
 
-        return userConfigurationDAO.persistConfiguration(Set.of(langEntry, versionEntry), session);
+    private Set<ConfigurationEntry> mergeIncomingWithExistingConfiguration(Set<ConfigurationEntry> incoming, List<ConfigurationEntry> stored) {
+        return Stream.concat(stored.stream(), incoming.stream())
+            .collect(Collectors.toMap(entry -> Pair.of(entry.moduleName(), entry.configurationKey()),
+                entry -> entry,
+                (oldVal, newVal) -> newVal))
+            .values()
+            .stream()
+            .collect(Collectors.toUnmodifiableSet());
     }
 
     private Mono<MailboxSession> resolveUsername(TWPCommonSettingsMessage message) {
-        return openPaaSUserDAO.retrieve(Username.of(message.payload().email()))
+        Username username = Username.of(message.payload().email());
+        return openPaaSUserDAO.retrieve(username)
             .map(OpenPaaSUser::username)
             .map(sessionProvider::createSession)
-            .switchIfEmpty(Mono.defer(() -> {
-                LOGGER.warn("Cannot resolve username: user not found for email={}", message.payload().email());
-                return Mono.empty();
-            }));
-    }
-
-    private Mono<Optional<StoredLanguageSetting>> fetchStoredSetting(MailboxSession session) {
-        return userConfigurationDAO.retrieveConfiguration(session)
-            .collectList()
-            .map(StoredLanguageSetting::maybeFrom);
+            .switchIfEmpty(Mono.defer(() -> Mono.error(new UserNotFoundException(username))));
     }
 
     record StoredLanguageSetting(Locale locale, Optional<Long> version) {
 
-        static Optional<StoredLanguageSetting> maybeFrom(List<ConfigurationEntry> entries) {
+        static Optional<StoredLanguageSetting> fromConfigurationEntries(List<ConfigurationEntry> entries) {
             return findLocale(entries)
                 .map(locale -> new StoredLanguageSetting(locale, findLanguageVersion(entries)));
         }
@@ -137,7 +142,10 @@ public class CalendarSettingUpdater implements TWPSettingsUpdater {
         static Optional<Long> findLanguageVersion(List<ConfigurationEntry> entries) {
             return entries.stream()
                 .filter(configurationEntryPredicate(LANGUAGE_VERSION_IDENTIFIER))
-                .map(versionEntry -> versionEntry.node().asLong())
+                .map(versionEntry -> {
+                    Preconditions.checkArgument(versionEntry.node().isNumber(), "version is not number");
+                    return versionEntry.node().asLong();
+                })
                 .findFirst();
         }
 
@@ -148,7 +156,7 @@ public class CalendarSettingUpdater implements TWPSettingsUpdater {
     }
 
     record IncomingLanguageSetting(Locale locale, Long version) {
-        static Optional<IncomingLanguageSetting> maybeFrom(TWPCommonSettingsMessage message) {
+        static Optional<IncomingLanguageSetting> extractFromMessage(TWPCommonSettingsMessage message) {
             return message.payload().language()
                 .flatMap(lang -> {
                     Locale locale = Locale.forLanguageTag(lang);

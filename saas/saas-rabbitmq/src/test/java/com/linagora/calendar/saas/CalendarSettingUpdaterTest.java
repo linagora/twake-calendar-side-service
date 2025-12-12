@@ -19,10 +19,9 @@
 package com.linagora.calendar.saas;
 
 import static com.linagora.calendar.saas.CalendarSettingUpdater.LANGUAGE_VERSION_IDENTIFIER;
-import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
+import static com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.TimeZoneSettingReader.TIMEZONE_IDENTIFIER;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
-import com.linagora.calendar.storage.exception.UserNotFoundException;
+import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
 
 import java.util.List;
 import java.util.Optional;
@@ -45,6 +44,7 @@ import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.ConfigurationEntry;
 import com.linagora.calendar.storage.configuration.EntryIdentifier;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
+import com.linagora.calendar.storage.exception.UserNotFoundException;
 import com.linagora.tmail.saas.rabbitmq.settings.TWPCommonSettingsMessage;
 
 public class CalendarSettingUpdaterTest {
@@ -93,7 +93,7 @@ public class CalendarSettingUpdaterTest {
 
         userConfigurationDAO.persistConfiguration(Set.of(existingLanguage, existingVersion), sessionProvider.createSession(USER)).block();
 
-        // When: incoming version=5 (>1)
+        // When
         testee.updateSettings(newMessage(2, "en")).block();
 
         // Then
@@ -169,22 +169,13 @@ public class CalendarSettingUpdaterTest {
     }
 
     @Test
-    void shouldSkipUpdateWhenUserNotFound() {
-        // Given a message for a NON-EXISTING user
+    void shouldThrowWhenUserNotFound() {
         String unknownUser = UUID.randomUUID() + "@domain.tld";
         TWPCommonSettingsMessage message = new TWPCommonSettingsMessage("source", "nick", "req-404",
             System.currentTimeMillis(), 3L,
             new TWPCommonSettingsMessage.Payload(unknownUser, Optional.of("en")));
 
-        // When
-        testee.updateSettings(message).block();
-
-        // Then: retrieving config for unknown user should throw UserNotFoundException
-        assertThatThrownBy(() ->
-            userConfigurationDAO
-                .retrieveConfiguration(sessionProvider.createSession(Username.of(unknownUser)))
-                .collectList()
-                .block())
+        assertThatThrownBy(() -> testee.updateSettings(message).block())
             .isInstanceOf(UserNotFoundException.class);
     }
 
@@ -249,10 +240,8 @@ public class CalendarSettingUpdaterTest {
         assertThat(entries)
             .isNotNull()
             .hasSize(2)
-            .containsExactlyInAnyOrder(
-                ConfigurationEntry.of(EntryIdentifier.LANGUAGE_IDENTIFIER, TextNode.valueOf("en")),
-                ConfigurationEntry.of(LANGUAGE_VERSION_IDENTIFIER, LongNode.valueOf(version))
-            );
+            .containsExactlyInAnyOrder(ConfigurationEntry.of(EntryIdentifier.LANGUAGE_IDENTIFIER, TextNode.valueOf("en")),
+                ConfigurationEntry.of(LANGUAGE_VERSION_IDENTIFIER, LongNode.valueOf(version)));
     }
 
     @Test
@@ -284,6 +273,54 @@ public class CalendarSettingUpdaterTest {
             .block();
 
         assertThat(bobEntries).isEmpty();
+    }
+
+    @Test
+    void shouldUpdateLanguageWithoutAffectingExistingSettings() {
+        // Given: existing timezone + existing language + version
+        ConfigurationEntry timezone = ConfigurationEntry.of(TIMEZONE_IDENTIFIER, TextNode.valueOf("Asia/Ho_Chi_Minh"));
+        ConfigurationEntry language = ConfigurationEntry.of(EntryIdentifier.LANGUAGE_IDENTIFIER, TextNode.valueOf("fr"));
+        ConfigurationEntry version = ConfigurationEntry.of(CalendarSettingUpdater.LANGUAGE_VERSION_IDENTIFIER, LongNode.valueOf(1));
+
+        userConfigurationDAO.persistConfiguration(Set.of(timezone, language, version), sessionProvider.createSession(USER)).block();
+
+        // When: update language to "en"
+        testee.updateSettings(newMessage(2, "en")).block();
+
+        // Then: timezone MUST remain unchanged
+        List<ConfigurationEntry> entries = userConfigurationDAO
+            .retrieveConfiguration(sessionProvider.createSession(USER))
+            .collectList()
+            .block();
+
+        assertThat(entries)
+            .hasSize(3)
+            .containsExactlyInAnyOrder(timezone,
+                ConfigurationEntry.of(EntryIdentifier.LANGUAGE_IDENTIFIER, TextNode.valueOf("en")),
+                ConfigurationEntry.of(CalendarSettingUpdater.LANGUAGE_VERSION_IDENTIFIER, LongNode.valueOf(2)));
+    }
+
+    @Test
+    void shouldAddLanguageWithoutAffectingExistingSettings() {
+        // Given: user has unrelated setting (timezone), but NO language setting yet
+        ConfigurationEntry timezone = ConfigurationEntry.of(TIMEZONE_IDENTIFIER, TextNode.valueOf("Asia/Ho_Chi_Minh"));
+
+        userConfigurationDAO.persistConfiguration(Set.of(timezone), sessionProvider.createSession(USER)).block();
+
+        // When: update language to "en" with version 2
+        testee.updateSettings(newMessage(2, "en")).block();
+
+        // Then: timezone MUST remain unchanged, and language + version added
+        List<ConfigurationEntry> entries = userConfigurationDAO
+            .retrieveConfiguration(sessionProvider.createSession(USER))
+            .collectList()
+            .block();
+
+        assertThat(entries)
+            .hasSize(3)
+            .containsExactlyInAnyOrder(timezone,
+                ConfigurationEntry.of(EntryIdentifier.LANGUAGE_IDENTIFIER, TextNode.valueOf("en")),
+                ConfigurationEntry.of(LANGUAGE_VERSION_IDENTIFIER, LongNode.valueOf(2)));
     }
 
     private TWPCommonSettingsMessage newMessage(long version, String language) {

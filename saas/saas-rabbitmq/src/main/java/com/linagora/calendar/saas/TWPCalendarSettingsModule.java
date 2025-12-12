@@ -21,7 +21,6 @@ package com.linagora.calendar.saas;
 import static com.linagora.tmail.saas.rabbitmq.TWPConstants.TWP_INJECTION_KEY;
 
 import jakarta.inject.Named;
-import jakarta.inject.Singleton;
 
 import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
@@ -29,6 +28,7 @@ import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import com.google.inject.AbstractModule;
 import com.google.inject.Module;
 import com.google.inject.Provides;
+import com.google.inject.Singleton;
 import com.google.inject.util.Modules;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.SimpleSessionProvider;
@@ -51,15 +51,20 @@ public class TWPCalendarSettingsModule extends AbstractModule {
     @Singleton
     TWPSettingsConsumer provideTWPSettingsConsumer(@Named(TWP_INJECTION_KEY) ReactorRabbitMQChannelPool channelPool,
                                                    @Named(TWP_INJECTION_KEY) RabbitMQConfiguration rabbitMQConfiguration,
+                                                   @Named(TWP_INJECTION_KEY) TWPSettingsUpdater twpSettingsUpdater,
                                                    TWPCommonRabbitMQConfiguration twpCommonRabbitMQConfiguration,
-                                                   TWPSettingsRabbitMQConfiguration twpSettingsRabbitMQConfiguration,
-                                                   UserConfigurationDAO userConfigurationDAO,
-                                                   OpenPaaSUserDAO openPaaSUserDAO,
-                                                   SimpleSessionProvider sessionProvider) {
-
-        TWPSettingsUpdater twpSettingsUpdater = new CalendarSettingUpdater(userConfigurationDAO, openPaaSUserDAO, sessionProvider);
+                                                   TWPSettingsRabbitMQConfiguration twpSettingsRabbitMQConfiguration) {
         return new TWPSettingsConsumer(channelPool, rabbitMQConfiguration, twpCommonRabbitMQConfiguration,
             twpSettingsRabbitMQConfiguration, CONSUMER_CONFIG, twpSettingsUpdater);
+    }
+
+    @Provides
+    @Singleton
+    @Named(TWP_INJECTION_KEY)
+    TWPSettingsUpdater provideTWPSettingsUpdater(UserConfigurationDAO userConfigurationDAO,
+                                                 OpenPaaSUserDAO openPaaSUserDAO,
+                                                 SimpleSessionProvider sessionProvider) {
+        return new CalendarSettingUpdater(userConfigurationDAO, openPaaSUserDAO, sessionProvider);
     }
 
     @Provides
