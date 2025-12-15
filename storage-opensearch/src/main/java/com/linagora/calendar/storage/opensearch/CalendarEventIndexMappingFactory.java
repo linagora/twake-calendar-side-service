@@ -103,7 +103,7 @@ public class CalendarEventIndexMappingFactory {
                 .filter(EDGE_NGRAM_FILTER, "lowercase", PRESERVED_ASCII_FOLDING_FILTER)
                 .build()))
             .put(SUMMARY_PREFIX_ANALYZER, new Analyzer(new CustomAnalyzer.Builder()
-                .tokenizer(KEYWORD)
+                .tokenizer(STANDARD)
                 .filter(EDGE_NGRAM_FILTER, "lowercase", PRESERVED_ASCII_FOLDING_FILTER)
                 .build()))
             .put(SUMMARY_SEARCH_PREFIX_ANALYZER, new Analyzer(new CustomAnalyzer.Builder()
@@ -242,7 +242,7 @@ public class CalendarEventIndexMappingFactory {
                 .addAlias(configuration.writeAliasName())
                 .addAlias(configuration.readAliasName())
                 .createIndexAndAliases(client, Optional.of(mappingFactory.indexSettings(configuration)),
-                    Optional.of(mappingFactory.createTypeMapping()));
+                    Optional.of(mappingFactory.createTypeMapping(configuration)));
         }
     }
 }

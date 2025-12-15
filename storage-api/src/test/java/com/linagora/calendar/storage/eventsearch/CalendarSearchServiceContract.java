@@ -88,7 +88,7 @@ public interface CalendarSearchServiceContract {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"spr", "spri", "sprint"})
+    @ValueSource(strings = {"spr", "spri", "sprint", "plann", "meet"})
     default void searchShouldMatchSummaryPrefix(String search) {
         EventFields event = EventFields.builder()
             .uid(generateEventUid())
