@@ -36,19 +36,19 @@
 
     <modules>
         <module>app</module>
-        <module>calendar-api</module>
         <module>calendar-amqp</module>
+        <module>calendar-api</module>
         <module>calendar-dav</module>
+        <module>calendar-redis</module>
         <module>calendar-rest-api</module>
+        <module>calendar-scheduling</module>
+        <module>calendar-smtp</module>
         <module>calendar-webadmin</module>
+        <module>saas/saas-rabbitmq</module>
         <module>storage-api</module>
         <module>storage-ldap</module>
         <module>storage-mongodb</module>
         <module>storage-opensearch</module>
-        <module>calendar-smtp</module>
-        <module>calendar-scheduling</module>
-        <module>calendar-redis</module>
-
         <module>utility-app</module>
     </modules>
 
