@@ -18,6 +18,9 @@
 
 package com.linagora.calendar.storage.opensearch;
 
+import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
+
+import java.util.List;
 import java.util.Optional;
 
 import org.apache.james.backends.opensearch.DockerOpenSearchExtension;
@@ -25,14 +28,18 @@ import org.apache.james.backends.opensearch.IndexCreationFactory;
 import org.apache.james.backends.opensearch.OpenSearchConfiguration;
 import org.apache.james.backends.opensearch.ReactorOpenSearchClient;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.opensearch.client.RestClient;
 import org.opensearch.client.json.jackson.JacksonJsonpMapper;
 import org.opensearch.client.opensearch.OpenSearchAsyncClient;
 import org.opensearch.client.transport.rest_client.RestClientTransport;
 
+import com.linagora.calendar.storage.event.EventFields;
+import com.linagora.calendar.storage.eventsearch.CalendarEvents;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchServiceContract;
+import com.linagora.calendar.storage.eventsearch.EventSearchQuery;
 
 public class OpensearchCalendarSearchServiceTest implements CalendarSearchServiceContract {
     private static final CalendarEventOpensearchConfiguration CALENDAR_EVENT_OPENSEARCH_CONFIGURATION = CalendarEventOpensearchConfiguration.DEFAULT;
@@ -64,5 +71,35 @@ public class OpensearchCalendarSearchServiceTest implements CalendarSearchServic
     @Override
     public CalendarSearchService testee() {
         return calendarSearchService;
+    }
+
+    @Test
+    void searchShouldOnlyMatchSummaryPrefixThatIsNotOverMaxNgramLength() {
+        EventFields event = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("anticonstitutionnel")
+            .calendarURL(generateCalendarURL())
+            .build();
+
+        testee().index(accountId, CalendarEvents.of(event)).block();
+
+        // Search for a prefix that is not over the max n-gram length
+        EventSearchQuery query = simpleQuery("anticon");
+
+        // Search for a prefix that is over the max n-gram length
+        EventSearchQuery query2 = simpleQuery("anticons");
+
+        CALMLY_AWAIT.untilAsserted(() -> {
+            List<EventFields> searchResults = testee().search(accountId, query)
+                .collectList().block();
+
+            assertThat(searchResults).hasSize(1)
+                .containsExactly(event);
+
+            List<EventFields> searchResults2 = testee().search(accountId, query2)
+                .collectList().block();
+
+            assertThat(searchResults2).hasSize(0);
+        });
     }
 }
