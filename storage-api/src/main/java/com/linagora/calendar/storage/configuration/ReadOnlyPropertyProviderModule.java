@@ -18,19 +18,26 @@
 
 package com.linagora.calendar.storage.configuration;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import com.google.inject.AbstractModule;
+import com.google.inject.Provides;
+import com.google.inject.Singleton;
+import com.linagora.calendar.storage.configuration.ReadOnlyPropertyProvider.EmptyReadOnlyPropertyProvider;
 
-public record ConfigurationEntry(ModuleName moduleName, ConfigurationKey configurationKey, JsonNode node) {
+public class ReadOnlyPropertyProviderModule {
 
-    public static ConfigurationEntry of(String moduleName, String configurationKey, JsonNode node) {
-        return new ConfigurationEntry(new ModuleName(moduleName), new ConfigurationKey(configurationKey), node);
-    }
+    public static final AbstractModule EMPTY = new AbstractModule() {
+        @Provides
+        @Singleton
+        ReadOnlyPropertyProvider provideReadOnlyPropertyProvider() {
+            return new EmptyReadOnlyPropertyProvider();
+        }
+    };
 
-    public static ConfigurationEntry of(EntryIdentifier entryIdentifier, JsonNode node) {
-        return new ConfigurationEntry(entryIdentifier.moduleName(), entryIdentifier.configurationKey(), node);
-    }
-
-    public EntryIdentifier getEntryIdentifier() {
-        return new EntryIdentifier(moduleName, configurationKey);
-    }
+    public static final AbstractModule WITH_READ_ONLY_LANGUAGE = new AbstractModule() {
+        @Provides
+        @Singleton
+        ReadOnlyPropertyProvider provideReadOnlyPropertyProvider() {
+            return ReadOnlyPropertyProvider.of(EntryIdentifier.LANGUAGE_IDENTIFIER);
+        }
+    };
 }

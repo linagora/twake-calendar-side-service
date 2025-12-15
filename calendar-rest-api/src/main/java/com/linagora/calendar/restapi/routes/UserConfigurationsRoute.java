@@ -50,6 +50,12 @@ import reactor.core.publisher.Mono;
 import reactor.netty.http.server.HttpServerRequest;
 import reactor.netty.http.server.HttpServerResponse;
 
+/**
+ * @deprecated Use {@link UserConfigurationPatchRoute} instead.
+ *             This PUT endpoint resets all user configurations and does not
+ *             support read-only settings semantics.
+ */
+@Deprecated
 public class UserConfigurationsRoute extends CalendarRoute {
     public static final Logger LOGGER = LoggerFactory.getLogger(UserConfigurationsRoute.class);
 

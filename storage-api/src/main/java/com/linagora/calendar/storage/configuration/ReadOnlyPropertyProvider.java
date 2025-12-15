@@ -18,19 +18,29 @@
 
 package com.linagora.calendar.storage.configuration;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import java.util.Objects;
+import java.util.Set;
 
-public record ConfigurationEntry(ModuleName moduleName, ConfigurationKey configurationKey, JsonNode node) {
+public interface ReadOnlyPropertyProvider {
 
-    public static ConfigurationEntry of(String moduleName, String configurationKey, JsonNode node) {
-        return new ConfigurationEntry(new ModuleName(moduleName), new ConfigurationKey(configurationKey), node);
+    Set<EntryIdentifier> readOnlySettings();
+
+    static ReadOnlyPropertyProvider of(EntryIdentifier... entries) {
+        Objects.requireNonNull(entries, "entries must not be null");
+        return new ListBasedReadOnlyPropertyProvider(Set.of(entries));
     }
 
-    public static ConfigurationEntry of(EntryIdentifier entryIdentifier, JsonNode node) {
-        return new ConfigurationEntry(entryIdentifier.moduleName(), entryIdentifier.configurationKey(), node);
+    record EmptyReadOnlyPropertyProvider() implements ReadOnlyPropertyProvider {
+        @Override
+        public Set<EntryIdentifier> readOnlySettings() {
+            return Set.of();
+        }
     }
 
-    public EntryIdentifier getEntryIdentifier() {
-        return new EntryIdentifier(moduleName, configurationKey);
+    record ListBasedReadOnlyPropertyProvider(Set<EntryIdentifier> readOnlySettings) implements ReadOnlyPropertyProvider {
+
+        public ListBasedReadOnlyPropertyProvider(Set<EntryIdentifier> readOnlySettings) {
+            this.readOnlySettings = Set.copyOf(readOnlySettings);
+        }
     }
 }
