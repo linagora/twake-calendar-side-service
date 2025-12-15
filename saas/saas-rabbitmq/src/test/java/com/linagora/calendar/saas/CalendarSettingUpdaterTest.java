@@ -202,25 +202,13 @@ public class CalendarSettingUpdaterTest {
     }
 
     @Test
-    void shouldNotUpdateWhenIncorrectLanguage() {
-        // Given an invalid language tag
-        // Ensure clean state for USER
+    void shouldThrowWhenIncorrectLanguage() {
         TWPCommonSettingsMessage message = new TWPCommonSettingsMessage("source", "nick", "req-invalid-lang",
             System.currentTimeMillis(), 1L,
             new TWPCommonSettingsMessage.Payload(USER.asString(), Optional.of("??invalid??")));
 
-        // When
-        testee.updateSettings(message).block();
-
-        // Then: configuration should NOT be persisted
-        List<ConfigurationEntry> entries = userConfigurationDAO
-            .retrieveConfiguration(sessionProvider.createSession(USER))
-            .collectList()
-            .block();
-
-        assertThat(entries)
-            .isNotNull()
-            .isEmpty();
+        assertThatThrownBy(() -> testee.updateSettings(message).block())
+            .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
