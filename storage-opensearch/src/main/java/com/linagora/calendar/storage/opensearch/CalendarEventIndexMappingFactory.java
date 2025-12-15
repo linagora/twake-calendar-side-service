@@ -80,11 +80,18 @@ public class CalendarEventIndexMappingFactory {
         String SEQUENCE = "sequence";
     }
 
+    interface MultiField {
+        String SUMMARY_PREFIX = "prefix";
+    }
+
     interface CalendarAnalyzers {
         String STANDARD = "standard";
+        String KEYWORD = "keyword";
         String PREFIX_KEY = "calendar_event_";
         String CN_NAME_ANALYZER = PREFIX_KEY + "cn_name_analyzer";
         String KEEP_MAIL_AND_URL_ANALYZER = PREFIX_KEY + "keep_mail_and_url_analyzer";
+        String SUMMARY_PREFIX_ANALYZER = PREFIX_KEY + "summary_prefix_analyzer";
+        String SUMMARY_SEARCH_PREFIX_ANALYZER = PREFIX_KEY + "summary_search_prefix_analyzer";
         String LOCATION_ANALYZER = PREFIX_KEY + "location_analyzer";
 
         String EDGE_NGRAM_FILTER = "edge_ngram_filter";
@@ -94,6 +101,14 @@ public class CalendarEventIndexMappingFactory {
             .put(CN_NAME_ANALYZER, new Analyzer(new CustomAnalyzer.Builder()
                 .tokenizer(STANDARD)
                 .filter(EDGE_NGRAM_FILTER, "lowercase", PRESERVED_ASCII_FOLDING_FILTER)
+                .build()))
+            .put(SUMMARY_PREFIX_ANALYZER, new Analyzer(new CustomAnalyzer.Builder()
+                .tokenizer(STANDARD)
+                .filter(EDGE_NGRAM_FILTER, "lowercase", PRESERVED_ASCII_FOLDING_FILTER)
+                .build()))
+            .put(SUMMARY_SEARCH_PREFIX_ANALYZER, new Analyzer(new CustomAnalyzer.Builder()
+                .tokenizer(KEYWORD)
+                .filter("lowercase", PRESERVED_ASCII_FOLDING_FILTER)
                 .build()))
             .put(KEEP_MAIL_AND_URL_ANALYZER, new Analyzer(new CustomAnalyzer.Builder()
                 .tokenizer("uax_url_email")
@@ -140,6 +155,10 @@ public class CalendarEventIndexMappingFactory {
     }
 
     public TypeMapping createTypeMapping() {
+        return createTypeMapping(CalendarEventOpensearchConfiguration.DEFAULT);
+    }
+
+    public TypeMapping createTypeMapping(CalendarEventOpensearchConfiguration configuration) {
         Property nonIndexedDateProperty = new Property(new DateProperty.Builder().index(false).build());
         Property nonIndexedKeywordProperty = new Property(new KeywordProperty.Builder().index(false).build());
         Property nonIndexedBooleanProperty = new Property(new BooleanProperty.Builder().index(false).build());
@@ -170,7 +189,7 @@ public class CalendarEventIndexMappingFactory {
                 .put(CalendarFields.ACCOUNT_ID, indexedKeywordProperty)
                 .put(CalendarFields.EVENT_UID, indexedKeywordProperty)
                 .put(CalendarFields.CALENDAR_URL, indexedKeywordProperty)
-                .put(CalendarFields.SUMMARY, new Property(new TextProperty.Builder().analyzer(CalendarAnalyzers.KEEP_MAIL_AND_URL_ANALYZER).build()))
+                .put(CalendarFields.SUMMARY, summaryProperty(configuration.searchSummaryPrefix()))
                 .put(CalendarFields.LOCATION,  new Property(new TextProperty.Builder().analyzer(CalendarAnalyzers.LOCATION_ANALYZER).build()))
                 .put(CalendarFields.DESCRIPTION,  new Property(new TextProperty.Builder().analyzer(CalendarAnalyzers.STANDARD).build()))
                 .put(CalendarFields.ORGANIZER, emailCNObjectProperty)
@@ -188,6 +207,18 @@ public class CalendarEventIndexMappingFactory {
                 .put(CalendarFields.SEQUENCE, nonIndexedIntegerProperty)
                 .build())
             .build();
+    }
+
+    private Property summaryProperty(boolean searchSummaryPrefix) {
+        TextProperty.Builder summaryTextPropertyBuilder = new TextProperty.Builder()
+            .analyzer(CalendarAnalyzers.KEEP_MAIL_AND_URL_ANALYZER);
+        if (searchSummaryPrefix) {
+            summaryTextPropertyBuilder.fields(MultiField.SUMMARY_PREFIX, new Property(new TextProperty.Builder()
+                .analyzer(CalendarAnalyzers.SUMMARY_PREFIX_ANALYZER)
+                .searchAnalyzer(CalendarAnalyzers.SUMMARY_SEARCH_PREFIX_ANALYZER)
+                .build()));
+        }
+        return new Property(summaryTextPropertyBuilder.build());
     }
 
     public static class IndexCreator implements Startable {
@@ -211,7 +242,7 @@ public class CalendarEventIndexMappingFactory {
                 .addAlias(configuration.writeAliasName())
                 .addAlias(configuration.readAliasName())
                 .createIndexAndAliases(client, Optional.of(mappingFactory.indexSettings(configuration)),
-                    Optional.of(mappingFactory.createTypeMapping()));
+                    Optional.of(mappingFactory.createTypeMapping(configuration)));
         }
     }
 }

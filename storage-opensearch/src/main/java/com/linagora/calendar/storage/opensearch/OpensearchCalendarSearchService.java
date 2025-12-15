@@ -22,7 +22,6 @@ import static org.apache.james.backends.opensearch.IndexCreationFactory.RAW;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -67,6 +66,7 @@ import com.linagora.calendar.storage.eventsearch.EventSearchQuery;
 import com.linagora.calendar.storage.eventsearch.EventUid;
 import com.linagora.calendar.storage.exception.CalendarSearchIndexingException;
 import com.linagora.calendar.storage.opensearch.CalendarEventIndexMappingFactory.CalendarFields;
+import com.linagora.calendar.storage.opensearch.CalendarEventIndexMappingFactory.MultiField;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -247,12 +247,17 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
             return Optional.empty();
         }
 
+        ImmutableList.Builder<String> fieldsBuilder = ImmutableList.builder();
+        fieldsBuilder.add(CalendarFields.SUMMARY,
+            CalendarFields.DESCRIPTION,
+            CalendarFields.LOCATION);
+        if (configuration.searchSummaryPrefix()) {
+            fieldsBuilder.add(CalendarFields.SUMMARY + "." + MultiField.SUMMARY_PREFIX);
+        }
+
         Query summaryDescLocationQuery = QueryBuilders.multiMatch()
             .query(searchRequest.query())
-            .fields(Arrays.asList(
-                CalendarFields.SUMMARY,
-                CalendarFields.DESCRIPTION,
-                CalendarFields.LOCATION))
+            .fields(fieldsBuilder.build())
             .build()
             .toQuery();
 
