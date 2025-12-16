@@ -186,7 +186,7 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
     public Flux<EventFields> search(AccountId accountId, EventSearchQuery query) {
         List<Query> mustClauses = new ArrayList<>();
         mustClauses.add(accountIdQuery(accountId));
-        buildKeywordQuery(query).ifPresent(mustClauses::add);
+        buildSearchStringQuery(query).ifPresent(mustClauses::add);
 
         query.calendars().ifPresent(calendarURLList
             -> mustClauses.add(buildCalendarFilter(calendarURLList)));
@@ -243,7 +243,7 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
             .toQuery();
     }
 
-    private Optional<Query> buildKeywordQuery(EventSearchQuery searchRequest) {
+    private Optional<Query> buildSearchStringQuery(EventSearchQuery searchRequest) {
         if (StringUtils.isBlank(searchRequest.query())) {
             return Optional.empty();
         }

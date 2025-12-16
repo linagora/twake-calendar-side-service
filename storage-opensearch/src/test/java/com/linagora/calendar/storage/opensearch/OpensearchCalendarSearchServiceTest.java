@@ -130,4 +130,36 @@ public class OpensearchCalendarSearchServiceTest implements CalendarSearchServic
                 .containsExactly(event);
         });
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"sphamt", "nning", "strmeeting"})
+    void searchShouldNotMatchWhenInputIsTooFuzzy(String search) {
+        Mockito.when(calendarEventOpensearchConfiguration.fuzzySearch()).thenReturn(true);
+
+        EventFields event = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("sprint planning meeting")
+            .calendarURL(generateCalendarURL())
+            .build();
+
+        testee().index(accountId, CalendarEvents.of(event)).block();
+
+        // Verify that document has been indexed
+        EventSearchQuery query = simpleQuery("sprint");
+        CALMLY_AWAIT.untilAsserted(() -> {
+            List<EventFields> searchResults = testee().search(accountId, query)
+                .collectList().block();
+
+            assertThat(searchResults).hasSize(1)
+                .containsExactly(event);
+        });
+
+        // Now test with fuzzy input
+        EventSearchQuery query2 = simpleQuery(search);
+
+        List<EventFields> searchResults = testee().search(accountId, query2)
+            .collectList().block();
+
+        assertThat(searchResults).hasSize(0);
+    }
 }
