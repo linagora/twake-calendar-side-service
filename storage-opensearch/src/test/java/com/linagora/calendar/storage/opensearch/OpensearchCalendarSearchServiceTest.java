@@ -30,6 +30,9 @@ import org.apache.james.backends.opensearch.ReactorOpenSearchClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.Mockito;
 import org.opensearch.client.RestClient;
 import org.opensearch.client.json.jackson.JacksonJsonpMapper;
 import org.opensearch.client.opensearch.OpenSearchAsyncClient;
@@ -42,30 +45,31 @@ import com.linagora.calendar.storage.eventsearch.CalendarSearchServiceContract;
 import com.linagora.calendar.storage.eventsearch.EventSearchQuery;
 
 public class OpensearchCalendarSearchServiceTest implements CalendarSearchServiceContract {
-    private static final CalendarEventOpensearchConfiguration CALENDAR_EVENT_OPENSEARCH_CONFIGURATION = CalendarEventOpensearchConfiguration.DEFAULT;
-
     @RegisterExtension
     public final DockerOpenSearchExtension openSearch = new DockerOpenSearchExtension();
 
+    private CalendarEventOpensearchConfiguration calendarEventOpensearchConfiguration;
     private OpensearchCalendarSearchService calendarSearchService;
 
     @BeforeEach
     void setup() {
+        calendarEventOpensearchConfiguration = Mockito.spy(CalendarEventOpensearchConfiguration.DEFAULT);
+
         CalendarEventIndexMappingFactory calendarEventIndexMappingFactory = new CalendarEventIndexMappingFactory();
         ReactorOpenSearchClient client = openSearch.getDockerOpenSearch().clientProvider().get();
 
         new IndexCreationFactory(OpenSearchConfiguration.DEFAULT_CONFIGURATION)
-            .useIndex(CALENDAR_EVENT_OPENSEARCH_CONFIGURATION.indexName())
-            .addAlias(CALENDAR_EVENT_OPENSEARCH_CONFIGURATION.readAliasName())
-            .addAlias(CALENDAR_EVENT_OPENSEARCH_CONFIGURATION.writeAliasName())
-            .createIndexAndAliases(client, Optional.of(calendarEventIndexMappingFactory.indexSettings(CALENDAR_EVENT_OPENSEARCH_CONFIGURATION)),
+            .useIndex(calendarEventOpensearchConfiguration.indexName())
+            .addAlias(calendarEventOpensearchConfiguration.readAliasName())
+            .addAlias(calendarEventOpensearchConfiguration.writeAliasName())
+            .createIndexAndAliases(client, Optional.of(calendarEventIndexMappingFactory.indexSettings(calendarEventOpensearchConfiguration)),
                 Optional.of(calendarEventIndexMappingFactory.createTypeMapping()));
 
         RestClient lowLevelClient = client.getLowLevelClient();
         RestClientTransport transport = new RestClientTransport(lowLevelClient, new JacksonJsonpMapper());
         OpenSearchAsyncClient openSearchAsyncClient = new OpenSearchAsyncClient(transport);
 
-        calendarSearchService = new OpensearchCalendarSearchService(client, openSearchAsyncClient, CALENDAR_EVENT_OPENSEARCH_CONFIGURATION);
+        calendarSearchService = new OpensearchCalendarSearchService(client, openSearchAsyncClient, calendarEventOpensearchConfiguration);
     }
 
     @Override
@@ -101,5 +105,61 @@ public class OpensearchCalendarSearchServiceTest implements CalendarSearchServic
 
             assertThat(searchResults2).hasSize(0);
         });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"sprant", "plenning", "print", "splanning", "sphant"})
+    void searchShouldSupportFuzziness(String search) {
+        Mockito.when(calendarEventOpensearchConfiguration.fuzzySearch()).thenReturn(true);
+
+        EventFields event = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("sprint planning meeting")
+            .calendarURL(generateCalendarURL())
+            .build();
+
+        testee().index(accountId, CalendarEvents.of(event)).block();
+
+        EventSearchQuery query = simpleQuery(search);
+
+        CALMLY_AWAIT.untilAsserted(() -> {
+            List<EventFields> searchResults = testee().search(accountId, query)
+                .collectList().block();
+
+            assertThat(searchResults).hasSize(1)
+                .containsExactly(event);
+        });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"sphamt", "nning", "strmeeting"})
+    void searchShouldNotMatchWhenInputIsTooFuzzy(String search) {
+        Mockito.when(calendarEventOpensearchConfiguration.fuzzySearch()).thenReturn(true);
+
+        EventFields event = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("sprint planning meeting")
+            .calendarURL(generateCalendarURL())
+            .build();
+
+        testee().index(accountId, CalendarEvents.of(event)).block();
+
+        // Verify that document has been indexed
+        EventSearchQuery query = simpleQuery("sprint");
+        CALMLY_AWAIT.untilAsserted(() -> {
+            List<EventFields> searchResults = testee().search(accountId, query)
+                .collectList().block();
+
+            assertThat(searchResults).hasSize(1)
+                .containsExactly(event);
+        });
+
+        // Now test with fuzzy input
+        EventSearchQuery query2 = simpleQuery(search);
+
+        List<EventFields> searchResults = testee().search(accountId, query2)
+            .collectList().block();
+
+        assertThat(searchResults).hasSize(0);
     }
 }

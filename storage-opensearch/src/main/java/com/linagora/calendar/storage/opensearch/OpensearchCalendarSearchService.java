@@ -45,6 +45,7 @@ import org.opensearch.client.opensearch._types.Script;
 import org.opensearch.client.opensearch._types.SortOptions;
 import org.opensearch.client.opensearch._types.SortOrder;
 import org.opensearch.client.opensearch._types.WriteResponseBase;
+import org.opensearch.client.opensearch._types.query_dsl.MultiMatchQuery;
 import org.opensearch.client.opensearch._types.query_dsl.Query;
 import org.opensearch.client.opensearch._types.query_dsl.QueryBuilders;
 import org.opensearch.client.opensearch._types.query_dsl.TermsQueryField;
@@ -185,7 +186,7 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
     public Flux<EventFields> search(AccountId accountId, EventSearchQuery query) {
         List<Query> mustClauses = new ArrayList<>();
         mustClauses.add(accountIdQuery(accountId));
-        buildKeywordQuery(query).ifPresent(mustClauses::add);
+        buildSearchStringQuery(query).ifPresent(mustClauses::add);
 
         query.calendars().ifPresent(calendarURLList
             -> mustClauses.add(buildCalendarFilter(calendarURLList)));
@@ -242,7 +243,7 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
             .toQuery();
     }
 
-    private Optional<Query> buildKeywordQuery(EventSearchQuery searchRequest) {
+    private Optional<Query> buildSearchStringQuery(EventSearchQuery searchRequest) {
         if (StringUtils.isBlank(searchRequest.query())) {
             return Optional.empty();
         }
@@ -255,11 +256,13 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
             fieldsBuilder.add(CalendarFields.SUMMARY + "." + MultiField.SUMMARY_PREFIX);
         }
 
-        Query summaryDescLocationQuery = QueryBuilders.multiMatch()
+        MultiMatchQuery.Builder summaryDescLocationQueryBuilder = QueryBuilders.multiMatch()
             .query(searchRequest.query())
-            .fields(fieldsBuilder.build())
-            .build()
-            .toQuery();
+            .fields(fieldsBuilder.build());
+        if (configuration.fuzzySearch()) {
+            summaryDescLocationQueryBuilder.fuzziness("AUTO");
+        }
+        Query summaryDescLocationQuery = summaryDescLocationQueryBuilder.build().toQuery();
 
         Query organizerEmailQuery = objectFieldMatch(CalendarFields.ORGANIZER, CalendarFields.EMAIL, searchRequest.query());
         Query organizerCnQuery = objectFieldMatch(CalendarFields.ORGANIZER, CalendarFields.CN, searchRequest.query());
