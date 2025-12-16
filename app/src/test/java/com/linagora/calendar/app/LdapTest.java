@@ -49,7 +49,6 @@ import com.google.inject.Module;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
-import com.linagora.calendar.dav.Fixture;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.TechnicalTokenService;
 
@@ -116,62 +115,50 @@ class LdapTest {
 
     @Test
     void shouldExposeWebAdminHealthcheck() {
-        Fixture.awaitAtMost.untilAsserted(() -> {
-            String body = given()
-            .when()
-                .get("/healthcheck")
-            .then()
-                .extract()
-                .body()
-                .asString();
+        String body = given()
+        .when()
+            .get("/healthcheck")
+        .then()
+            .extract()
+            .body()
+            .asString();
 
-            assertThatJson(body).withOptions(IGNORING_ARRAY_ORDER).isEqualTo("""
-                {
-                   "status" : "healthy",
-                   "checks" : [ {
-                     "componentName" : "Guice application lifecycle",
-                     "escapedComponentName" : "Guice%20application%20lifecycle",
-                     "status" : "healthy",
-                     "cause" : null
-                   }, {
-                     "componentName" : "MongoDB",
-                     "escapedComponentName" : "MongoDB",
-                     "status" : "healthy",
-                     "cause" : null
-                   }, {
-                     "componentName" : "LDAP User Server",
-                     "escapedComponentName" : "LDAP%20User%20Server",
-                     "status" : "healthy",
-                     "cause" : null
-                   }, {
-                     "componentName" : "RabbitMQ backend",
-                     "escapedComponentName" : "RabbitMQ%20backend",
-                     "status" : "healthy",
-                     "cause" : null
-                   }, {
-                     "componentName" : "CalendarQueueConsumers",
-                     "escapedComponentName" : "CalendarQueueConsumers",
-                     "status" : "healthy",
-                     "cause" : null
-                   }, {
-                     "componentName" : "RabbitMQDeadLetterQueueEmptiness",
-                     "escapedComponentName" : "RabbitMQDeadLetterQueueEmptiness",
-                     "status" : "healthy",
-                     "cause" : null
-                   }, {
-                   "componentName": "TWPSettingsDeadLetterQueueHealthCheck",
-                   "escapedComponentName": "TWPSettingsDeadLetterQueueHealthCheck",
-                   "status": "healthy",
-                   "cause": null
-                  }, {
-                   "componentName": "TWPSettingsQueueConsumerHealthCheck",
-                   "escapedComponentName": "TWPSettingsQueueConsumerHealthCheck",
-                   "status": "healthy",
-                   "cause": null
-                  }]
-                }
-                """);
-        });
+        assertThatJson(body).withOptions(IGNORING_ARRAY_ORDER).isEqualTo("""
+            {
+               "status" : "healthy",
+               "checks" : [ {
+                 "componentName" : "Guice application lifecycle",
+                 "escapedComponentName" : "Guice%20application%20lifecycle",
+                 "status" : "healthy",
+                 "cause" : null
+               }, {
+                 "componentName" : "MongoDB",
+                 "escapedComponentName" : "MongoDB",
+                 "status" : "healthy",
+                 "cause" : null
+               }, {
+                 "componentName" : "LDAP User Server",
+                 "escapedComponentName" : "LDAP%20User%20Server",
+                 "status" : "healthy",
+                 "cause" : null
+               }, {
+                 "componentName" : "RabbitMQ backend",
+                 "escapedComponentName" : "RabbitMQ%20backend",
+                 "status" : "healthy",
+                 "cause" : null
+               }, {
+                 "componentName" : "CalendarQueueConsumers",
+                 "escapedComponentName" : "CalendarQueueConsumers",
+                 "status" : "healthy",
+                 "cause" : null
+               }, {
+                 "componentName" : "RabbitMQDeadLetterQueueEmptiness",
+                 "escapedComponentName" : "RabbitMQDeadLetterQueueEmptiness",
+                 "status" : "healthy",
+                 "cause" : null
+               } ]
+            }
+            """);
     }
 
     @Test

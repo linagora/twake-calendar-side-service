@@ -112,6 +112,8 @@ class TWPSyncSettingsIntegrationTest {
                 .addBinding().to(TWPSettingsProbe.class);
         });
 
+    private RequestSpecification webadminRequestSpecification;
+
     @BeforeEach
     void setUp(TwakeCalendarGuiceServer server) {
         server.getProbe(CalendarDataProbe.class)
@@ -131,7 +133,7 @@ class TWPSyncSettingsIntegrationTest {
             .setAuth(basicAuthScheme)
             .build();
 
-        RequestSpecification webadminRequestSpecification = new RequestSpecBuilder()
+        webadminRequestSpecification = new RequestSpecBuilder()
             .setContentType(JSON)
             .setAccept(JSON)
             .setConfig(newConfig().encoderConfig(encoderConfig().defaultContentCharset(StandardCharsets.UTF_8)))
@@ -379,6 +381,41 @@ class TWPSyncSettingsIntegrationTest {
                     ]
                 }]
                 """);
+    }
+
+    @Test
+    void shouldExposeWebAdminHealthcheck() {
+        Fixture.awaitAtMost.untilAsserted(() -> {
+            String body = given(webadminRequestSpecification)
+            .when()
+                .get("/healthcheck")
+            .then()
+                .extract()
+                .body()
+                .asString();
+
+            assertThatJson(body)
+                .inPath("checks")
+                .isArray()
+                .anySatisfy(node ->
+                    assertThatJson(node).isEqualTo("""
+                            {
+                              "componentName": "TWPSettingsDeadLetterQueueHealthCheck",
+                              "escapedComponentName": "TWPSettingsDeadLetterQueueHealthCheck",
+                              "status": "healthy",
+                              "cause": null
+                            }
+                        """))
+                .anySatisfy(node ->
+                    assertThatJson(node).isEqualTo("""
+                            {
+                              "componentName": "TWPSettingsQueueConsumerHealthCheck",
+                              "escapedComponentName": "TWPSettingsQueueConsumerHealthCheck",
+                              "status": "healthy",
+                              "cause": null
+                            }
+                        """));
+        });
     }
 
     private void publishAmqpSettingsMessage(String message) {
