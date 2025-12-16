@@ -76,6 +76,7 @@ import com.linagora.calendar.storage.OIDCTokenCache;
 import com.linagora.calendar.storage.OIDCTokenCacheConfigurationModule;
 import com.linagora.calendar.storage.OpenPaaSUserDeletionTaskStep;
 import com.linagora.calendar.storage.TechnicalUserTokenModule;
+import com.linagora.calendar.storage.configuration.ReadOnlyPropertyProviderModule;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchDeletionTaskStep;
 import com.linagora.calendar.storage.eventsearch.MemoryCalendarSearchService;
 import com.linagora.calendar.storage.ldap.LdapStorageModule;
@@ -136,6 +137,7 @@ public class TwakeCalendarMain {
                     .calendarEventSearch(configuration.calendarEventSearchChoice()),
                 chooseUsersModule(configuration.userChoice()),
                 chooseCacheAndPubSub(configuration.redisEnabled()),
+                chooseTWPCalendarSetting(configuration.twpSettingEnabled()),
                 new FileUploadConfigurationModule(),
                 new RestApiModule(),
                 new TaskManagerModule(),
@@ -145,8 +147,7 @@ public class TwakeCalendarMain {
                 new TechnicalUserTokenModule(),
                 new AlarmEventModule(),
                 new SmtpModule(),
-                WEBADMIN,
-                TWP_CALENDAR_SETTINGS_AGGREGATE_MODULE));
+                WEBADMIN));
     }
 
     @FunctionalInterface
@@ -224,4 +225,14 @@ public class TwakeCalendarMain {
             }
         };
     }
+
+    public static Module chooseTWPCalendarSetting(boolean enabled) {
+        if (enabled) {
+            return Modules.combine(TWP_CALENDAR_SETTINGS_AGGREGATE_MODULE,
+                ReadOnlyPropertyProviderModule.WITH_READ_ONLY_LANGUAGE);
+        }
+
+        return ReadOnlyPropertyProviderModule.EMPTY;
+    }
+
 }

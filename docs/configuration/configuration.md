@@ -59,6 +59,7 @@ Here is the detail of the configuration entries:
 | basic.auth.enabled | Optional. Defaults to false (basic auth disabled). Alows regular user to use bsic auth mecanism. While implemented by OpenPaaS it shall not be needed by the SPAs.                                                                                                                          | basic.auth.enabled=true |
 | default.calendar.public.visibility.enabled | Optional. Defaults to false. Enable function that set default calendars publicly visible upon creation.                                                                                                                                                                                     | default.calendar.public.visibility.enabled=true |
 | itip.event.messages.prefetch.count | Optional. Defaults to 16. The maximum number of unacknowledged messages the broker will deliver to the event itip consumer.                                                                                                                                                                 | itip.event.messages.prefetch.count=16 |
+| twp.settings.enabled | Optional. Defaults to `false`. Enables synchronization of user settings from Twake Workplace. When enabled, some settings become read-only via REST APIs. | twp.settings.enabled=true |
 
 Please find hereby a [working example](../../app/src/main/conf/configuration.properties).
 

@@ -37,7 +37,11 @@ import com.github.fge.lambdas.Throwing;
 public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, JamesDirectoriesProvider directories,
                                          UserChoice userChoice, DbChoice dbChoice, AutoCompleteChoice autoCompleteChoice,
                                          CalendarEventSearchChoice calendarEventSearchChoice,
-                                         boolean redisEnabled) implements Configuration {
+                                         boolean redisEnabled,
+                                         boolean twpSettingEnabled) implements Configuration {
+
+    public static final boolean ENABLED = true;
+
     public static class Builder {
         private Optional<String> rootDirectory;
         private Optional<ConfigurationPath> configurationPath;
@@ -45,6 +49,7 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
         private Optional<DbChoice> dbChoice;
         private Optional<AutoCompleteChoice> autoCompleteChoice;
         private Optional<Boolean> redisEnabled;
+        private Optional<Boolean> twpSettingEnabled;
         private Optional<CalendarEventSearchChoice> calendarEventSearchChoice;
 
         private Builder() {
@@ -54,6 +59,7 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
             dbChoice = Optional.empty();
             autoCompleteChoice = Optional.empty();
             redisEnabled = Optional.empty();
+            twpSettingEnabled = Optional.empty();
             calendarEventSearchChoice = Optional.empty();
         }
 
@@ -84,6 +90,11 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
 
         public Builder enableRedis() {
             redisEnabled = Optional.of(true);
+            return this;
+        }
+
+        public Builder enableTwpSetting() {
+            twpSettingEnabled = Optional.of(true);
             return this;
         }
 
@@ -145,6 +156,11 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
 
             boolean redisEnabledValue = redisEnabled.orElseGet(Throwing.supplier(() -> redisConfigurationFileExists(propertiesProvider)));
 
+            boolean twpSettingEnabledValue = this.twpSettingEnabled.orElseGet(Throwing.supplier(() -> {
+                var configuration = propertiesProvider.getConfiguration("configuration");
+                return configuration.getBoolean("twp.settings.enabled", !ENABLED);
+            }));
+
             CalendarEventSearchChoice calendarEventSearchChoice = this.calendarEventSearchChoice.orElseGet(Throwing.supplier(() -> {
                 try {
                     propertiesProvider.getConfiguration("opensearch");
@@ -161,7 +177,8 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                 dbChoice,
                 autoCompleteChoice,
                 calendarEventSearchChoice,
-                redisEnabledValue);
+                redisEnabledValue,
+                twpSettingEnabledValue);
         }
 
         private boolean redisConfigurationFileExists(PropertiesProvider propertiesProvider) throws ConfigurationException {

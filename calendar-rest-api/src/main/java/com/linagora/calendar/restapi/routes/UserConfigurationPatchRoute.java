@@ -28,6 +28,7 @@ import java.util.stream.Collectors;
 
 import jakarta.inject.Inject;
 
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.http.Authenticator;
 import org.apache.james.mailbox.MailboxSession;
@@ -37,9 +38,12 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.Sets;
 import com.linagora.calendar.restapi.routes.UserConfigurationsRoute.UserConfigDTO;
 import com.linagora.calendar.storage.configuration.ConfigurationEntry;
 import com.linagora.calendar.storage.configuration.ConfigurationEntryUtils;
+import com.linagora.calendar.storage.configuration.EntryIdentifier;
+import com.linagora.calendar.storage.configuration.ReadOnlyPropertyProvider;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
 
 import io.netty.handler.codec.http.HttpMethod;
@@ -53,12 +57,17 @@ public class UserConfigurationPatchRoute extends CalendarRoute {
 
     private final UserConfigurationDAO userConfigurationDAO;
     private final ObjectMapper objectMapper;
+    private final ReadOnlyPropertyProvider readOnlyPropertyProvider;
 
     @Inject
-    public UserConfigurationPatchRoute(Authenticator authenticator, MetricFactory metricFactory, UserConfigurationDAO userConfigurationDAO) {
+    public UserConfigurationPatchRoute(Authenticator authenticator,
+                                       MetricFactory metricFactory,
+                                       UserConfigurationDAO userConfigurationDAO,
+                                       ReadOnlyPropertyProvider readOnlyPropertyProvider) {
         super(authenticator, metricFactory);
         this.userConfigurationDAO = userConfigurationDAO;
         this.objectMapper = new ObjectMapper();
+        this.readOnlyPropertyProvider = readOnlyPropertyProvider;
     }
 
     @Override
@@ -73,6 +82,7 @@ public class UserConfigurationPatchRoute extends CalendarRoute {
             .flatMap(bodyAsBytes -> Mono.fromCallable(() -> serializeBodyRequest().apply(bodyAsBytes))
                 .doOnError(e -> LOGGER.error("Failed to deserialize body request. User: {}", session.getUser().asString())))
             .map(this::toConfigurationEntries)
+            .doOnNext(this::validateNoReadOnlySettingsAreModified)
             .flatMap(patchEntries -> mergeWithExistingConfiguration(patchEntries, session))
             .flatMap(mergedEntries -> userConfigurationDAO.persistConfiguration(mergedEntries, session))
             .then(response.status(204).send());
@@ -102,4 +112,24 @@ public class UserConfigurationPatchRoute extends CalendarRoute {
             }
         };
     }
+
+    private void validateNoReadOnlySettingsAreModified(Set<ConfigurationEntry> patchEntries) {
+        if (CollectionUtils.isEmpty(readOnlyPropertyProvider.readOnlySettings())) {
+            return;
+        }
+
+        Set<EntryIdentifier> entryIdentifierSet = patchEntries.stream()
+            .map(ConfigurationEntry::getEntryIdentifier)
+            .collect(Collectors.toSet());
+
+        Set<EntryIdentifier> forbidden = Sets.intersection(entryIdentifierSet, readOnlyPropertyProvider.readOnlySettings());
+
+        if (!forbidden.isEmpty()) {
+            throw new IllegalArgumentException("Cannot modify read-only settings: " +
+                forbidden.stream()
+                    .map(id -> id.configurationKey().value())
+                    .collect(Collectors.joining(", ")));
+        }
+    }
+
 }

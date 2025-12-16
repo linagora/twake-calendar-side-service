@@ -23,6 +23,7 @@ import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
 import static io.restassured.http.ContentType.JSON;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.apache.james.backends.rabbitmq.RabbitMQExtension.IsolationPolicy.WEAK;
 import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
 import static org.hamcrest.Matchers.equalTo;
@@ -99,7 +100,8 @@ class TWPSyncSettingsIntegrationTest {
         TwakeCalendarConfiguration.builder()
             .configurationFromClasspath()
             .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
-            .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY),
+            .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY)
+            .enableTwpSetting(),
         DavModuleTestHelper.RABBITMQ_MODULE.apply(rabbitMQExtension),
         DavModuleTestHelper.BY_PASS_MODULE,
         AppTestHelper.OIDC_BY_PASS_MODULE,
@@ -109,6 +111,8 @@ class TWPSyncSettingsIntegrationTest {
             Multibinder.newSetBinder(binder, GuiceProbe.class)
                 .addBinding().to(TWPSettingsProbe.class);
         });
+
+    private RequestSpecification webadminRequestSpecification;
 
     @BeforeEach
     void setUp(TwakeCalendarGuiceServer server) {
@@ -129,7 +133,7 @@ class TWPSyncSettingsIntegrationTest {
             .setAuth(basicAuthScheme)
             .build();
 
-        RequestSpecification webadminRequestSpecification = new RequestSpecBuilder()
+        webadminRequestSpecification = new RequestSpecBuilder()
             .setContentType(JSON)
             .setAccept(JSON)
             .setConfig(newConfig().encoderConfig(encoderConfig().defaultContentCharset(StandardCharsets.UTF_8)))
@@ -274,6 +278,143 @@ class TWPSyncSettingsIntegrationTest {
                 .getString("[0].configurations.find { it.name == 'language' }.value");
 
             assertThat(updatedLanguage).isEqualTo(LANGUAGE_FR);
+        });
+    }
+
+    @Test
+    void shouldRejectLanguageUpdateViaAPIWhenTWPSyncEnabled() {
+        // When: try to manually update language via REST API while TWP sync is enabled
+        given()
+            .body("""
+                [
+                  {
+                    "name": "core",
+                    "configurations": [
+                      {
+                        "name": "language",
+                        "value": "vi"
+                      }
+                    ]
+                  }
+                ]
+                """)
+        .when()
+            .patch("/api/configurations?scope=user")
+        .then()
+            .statusCode(400)
+            .body("error.details", equalTo("Cannot modify read-only settings: language"));
+
+        String languageAfterReject =
+            given()
+                .body(QUERY_LANGUAGE)
+            .when()
+                .post("/api/configurations")
+            .then()
+                .statusCode(200)
+                .extract()
+                .path("[0].configurations.find { it.name == 'language' }.value");
+
+        assertThat(languageAfterReject)
+            .as("Language must not be updated when PATCH is rejected")
+            .isEqualTo(LANGUAGE_EN);
+    }
+
+    @Test
+    void shouldAllowPatchNonReadOnlySettingWhenTWPSyncEnabled() {
+        // When: patch another setting (datetime)
+        given()
+            .body("""
+                [
+                  {
+                    "name": "core",
+                    "configurations": [
+                      {
+                        "name": "datetime",
+                        "value": {
+                          "timeZone": "Asia/Ho_Chi_Minh",
+                          "use24hourFormat": true
+                        }
+                      }
+                    ]
+                  }
+                ]
+                """)
+        .when()
+            .patch("/api/configurations?scope=user")
+        .then()
+            .statusCode(204);
+
+        // Then: datetime is updated, and language is still unchanged
+        String response =
+            given()
+                .body("""
+                    [
+                      {
+                        "name": "core",
+                        "keys": [ "datetime", "language" ]
+                      }
+                    ]
+                    """)
+            .when()
+                .post("/api/configurations")
+            .then()
+                .statusCode(200)
+                .extract()
+                .asString();
+
+        assertThatJson(response)
+            .isEqualTo("""
+                [{
+                    "name": "core",
+                    "configurations": [
+                        {
+                            "name": "datetime",
+                            "value": {
+                                "timeZone": "Asia/Ho_Chi_Minh",
+                                "use24hourFormat": true
+                            }
+                        },
+                        {
+                            "name": "language",
+                            "value": "en"
+                        }
+                    ]
+                }]
+                """);
+    }
+
+    @Test
+    void shouldExposeWebAdminHealthcheck() {
+        Fixture.awaitAtMost.untilAsserted(() -> {
+            String body = given(webadminRequestSpecification)
+            .when()
+                .get("/healthcheck")
+            .then()
+                .extract()
+                .body()
+                .asString();
+
+            assertThatJson(body)
+                .inPath("checks")
+                .isArray()
+                .anySatisfy(node ->
+                    assertThatJson(node).isEqualTo("""
+                            {
+                              "componentName": "TWPSettingsDeadLetterQueueHealthCheck",
+                              "escapedComponentName": "TWPSettingsDeadLetterQueueHealthCheck",
+                              "status": "healthy",
+                              "cause": null
+                            }
+                        """))
+                .anySatisfy(node ->
+                    assertThatJson(node).isEqualTo("""
+                            {
+                              "componentName": "TWPSettingsQueueConsumerHealthCheck",
+                              "escapedComponentName": "TWPSettingsQueueConsumerHealthCheck",
+                              "status": "healthy",
+                              "cause": null
+                            }
+                        """));
         });
     }
 
