@@ -19,6 +19,7 @@
 package com.linagora.calendar.webadmin;
 
 import static io.restassured.RestAssured.given;
+import static io.restassured.RestAssured.with;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
@@ -58,7 +59,7 @@ import com.linagora.calendar.webadmin.task.LdapUsersImportTaskAdditionalInformat
 import io.restassured.RestAssured;
 import reactor.core.publisher.Mono;
 
-public class LdapUsersImportTest {
+class LdapUsersImportTest {
 
     private WebAdminServer webAdminServer;
     private OpenPaaSUserDAO userDAO;
@@ -108,7 +109,7 @@ public class LdapUsersImportTest {
             .when()
             .post()
             .jsonPath()
-            .get("taskId");;
+            .get("taskId");
 
         given()
             .basePath(TasksRoutes.BASE)
@@ -150,7 +151,7 @@ public class LdapUsersImportTest {
             .when()
             .post()
             .jsonPath()
-            .get("taskId");;
+            .get("taskId");
 
         given()
             .basePath(TasksRoutes.BASE)
@@ -203,7 +204,7 @@ public class LdapUsersImportTest {
             .when()
             .post()
             .jsonPath()
-            .get("taskId");;
+            .get("taskId");
 
         given()
             .basePath(TasksRoutes.BASE)
@@ -247,7 +248,7 @@ public class LdapUsersImportTest {
             .when()
             .post()
             .jsonPath()
-            .get("taskId");;
+            .get("taskId");
 
         given()
             .basePath(TasksRoutes.BASE)
@@ -263,6 +264,41 @@ public class LdapUsersImportTest {
             .body("additionalInformation.type", is("import-ldap-users"))
             .body("startedDate", is(notNullValue()))
             .body("submitDate", is(notNullValue()));
+    }
+
+    @Test
+    void shouldFixWrongNames() throws Exception {
+        LdapUser ldapUser1 = LdapUser.builder()
+            .uid("james-user")
+            .cn("James User")
+            .sn("User")
+            .givenName("James")
+            .mail(new MailAddress("james-user@james.org"))
+            .telephoneNumber("+33612345678")
+            .displayName("James User")
+            .build();
+        LdapUser ldapUser2 = LdapUser.builder()
+            .uid("james-user2")
+            .cn("James User2")
+            .sn("User2")
+            .mail(new MailAddress("james-user2@james.org"))
+            .build();
+        Mockito.when(ldapUserDAO.getAllUsers()).thenReturn(ImmutableList.of(ldapUser1, ldapUser2));
+
+        Username username = Username.fromMailAddress(ldapUser1.mail().get());
+        userDAO.add(username).block();
+
+        String taskId = given()
+            .queryParam("task", "importFromLDAP")
+            .when()
+            .post()
+            .jsonPath()
+            .get("taskId");
+        with()
+            .basePath(TasksRoutes.BASE)
+            .get(taskId + "/await");
+
+        assertThat(userDAO.retrieve(username).block().fullName()).isEqualTo("James User");
     }
 
     @Test
@@ -297,7 +333,7 @@ public class LdapUsersImportTest {
             .when()
             .post()
             .jsonPath()
-            .get("taskId");;
+            .get("taskId");
 
         given()
             .basePath(TasksRoutes.BASE)

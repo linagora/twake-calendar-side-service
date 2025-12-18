@@ -21,6 +21,7 @@ package com.linagora.calendar.webadmin.service;
 import static com.linagora.calendar.webadmin.CalendarUserTaskRoutes.LdapUsersImportRequestToTask.TASK_NAME;
 
 import java.time.Duration;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
 import jakarta.inject.Inject;
@@ -106,19 +107,36 @@ public class LdapUsersImportService {
     }
 
     private Mono<Task.Result> importUser(Context context, LdapUser ldapUser) {
-        return userDAO.add(Username.fromMailAddress(ldapUser.mail().get()), getFirstName(ldapUser), ldapUser.sn())
+        return ldapUser.mail()
+            .map(Username::fromMailAddress)
+            .map(user -> importUser(context, user, ldapUser))
+            .orElseGet(() -> {
+                LOGGER.info("Skipping import of user without mail {}", ldapUser.uid());
+                return Mono.just(Task.Result.COMPLETED);
+            });
+    }
+
+    private Mono<Task.Result> importUser(Context context, Username username, LdapUser ldapUser) {
+       return userDAO.retrieve(username)
+           .flatMap(storedUser -> {
+               context.incrementProcessedUser();
+               if (storedUser.firstname().equals(getFirstName(ldapUser)) &&
+                   storedUser.lastname().equals(ldapUser.sn())) {
+                   return Mono.just(Task.Result.COMPLETED);
+               }
+               return userDAO.update(storedUser.id(), username, getFirstName(ldapUser), ldapUser.sn())
+                   .then(Mono.just(Task.Result.COMPLETED));
+           })
+           .switchIfEmpty(userDAO.add(Username.fromMailAddress(ldapUser.mail().get()), getFirstName(ldapUser), ldapUser.sn())
             .then(Mono.fromCallable(() -> {
                 context.incrementProcessedUser();
                 return Task.Result.COMPLETED;
-            })).onErrorResume(e -> {
-                if (e instanceof UserConflictException) {
-                    context.incrementProcessedUser();
-                    return Mono.just(Task.Result.COMPLETED);
-                }
+            })))
+           .onErrorResume(e -> {
                 LOGGER.error("Error importing ldap user {}", ldapUser.cn(), e);
                 context.incrementFailedUser();
                 return Mono.just(Task.Result.PARTIAL);
-            });
+           });
     }
 
     private String getFirstName(LdapUser ldapUser) {
