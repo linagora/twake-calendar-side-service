@@ -95,10 +95,8 @@ public class LdapUsersImportService {
                 .per(Duration.ofSeconds(1))
                 .forOperation(ldapUser -> importUser(context, ldapUser)))
             .reduce(Task.Result.COMPLETED, Task::combine)
-            .map(result -> {
-                LOGGER.info("{} task result: {}. Detail:\n{}", TASK_NAME.asString(), result.toString(), context.snapshot());
-                return result;
-            }).onErrorResume(e -> {
+            .doOnNext(result -> LOGGER.info("{} task result: {}. Details: {}", TASK_NAME.asString(), result, context.snapshot()))
+            .onErrorResume(e -> {
                 LOGGER.error("Task {} is incomplete", TASK_NAME.asString(), e);
                 return Mono.just(Task.Result.PARTIAL);
             });
