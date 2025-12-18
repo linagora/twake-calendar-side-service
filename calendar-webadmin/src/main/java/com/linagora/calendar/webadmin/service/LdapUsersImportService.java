@@ -117,7 +117,6 @@ public class LdapUsersImportService {
     private Mono<Task.Result> importUser(Context context, Username username, LdapUser ldapUser) {
        return userDAO.retrieve(username)
            .flatMap(storedUser -> {
-               context.incrementProcessedUser();
                if (Objects.equals(storedUser.firstname(), getFirstName(ldapUser)) &&
                    Objects.equals(storedUser.lastname(), ldapUser.sn())) {
                    return Mono.just(Task.Result.COMPLETED);
@@ -125,11 +124,12 @@ public class LdapUsersImportService {
                return userDAO.update(storedUser.id(), username, getFirstName(ldapUser), ldapUser.sn())
                    .then(Mono.just(Task.Result.COMPLETED));
            })
+           .doOnNext(completed -> context.incrementProcessedUser())
            .switchIfEmpty(userDAO.add(username, getFirstName(ldapUser), ldapUser.sn())
-            .then(Mono.fromCallable(() -> {
-                context.incrementProcessedUser();
-                return Task.Result.COMPLETED;
-            })))
+               .then(Mono.fromCallable(() -> {
+                   context.incrementProcessedUser();
+                   return Task.Result.COMPLETED;
+               })))
            .onErrorResume(e -> {
                 LOGGER.error("Error importing ldap user {}", ldapUser.cn(), e);
                 context.incrementFailedUser();
