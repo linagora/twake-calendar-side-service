@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.storage.mongodb;
 
+import static com.linagora.calendar.storage.mongodb.MongoConstants.MONGO_DUPLICATE_KEY_CODE;
+
 import java.time.Instant;
 import java.util.Date;
 import java.util.List;
@@ -39,6 +41,7 @@ import com.linagora.calendar.storage.OpenPaaSDomainAdminDAO;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.exception.DomainNotFoundException;
+import com.mongodb.MongoWriteException;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
 import com.mongodb.client.result.InsertOneResult;
@@ -96,9 +99,9 @@ public class MongoDBOpenPaaSDomainDAO implements OpenPaaSDomainDAO, OpenPaaSDoma
         return Mono.from(database.getCollection(COLLECTION).insertOne(document))
             .map(InsertOneResult::getInsertedId)
             .map(id -> new OpenPaaSDomain(domain, new OpenPaaSId(id.asObjectId().getValue().toHexString())))
-            .onErrorResume(e -> {
-                if (e.getMessage().contains("E11000 duplicate key error collection")) {
-                    return Mono.error(new IllegalStateException(domain.asString() + " already exists"));
+            .onErrorResume(MongoWriteException.class, e -> {
+                if (e.getError().getCode() == MONGO_DUPLICATE_KEY_CODE) {
+                    return Mono.error(new IllegalStateException(domain.asString() + " already exists", e));
                 }
                 return Mono.error(e);
             });
