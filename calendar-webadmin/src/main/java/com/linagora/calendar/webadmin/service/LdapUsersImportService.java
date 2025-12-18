@@ -21,7 +21,7 @@ package com.linagora.calendar.webadmin.service;
 import static com.linagora.calendar.webadmin.CalendarUserTaskRoutes.LdapUsersImportRequestToTask.TASK_NAME;
 
 import java.time.Duration;
-import java.util.Optional;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 
 import jakarta.inject.Inject;
@@ -35,7 +35,6 @@ import org.slf4j.LoggerFactory;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.base.MoreObjects;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
-import com.linagora.calendar.storage.exception.UserConflictException;
 import com.linagora.calendar.storage.ldap.LdapUser;
 import com.linagora.calendar.storage.ldap.LdapUserDAO;
 
@@ -91,7 +90,6 @@ public class LdapUsersImportService {
 
     public Mono<Task.Result> importUsers(Context context, int usersPerSecond) {
         return Flux.fromIterable(Throwing.supplier(ldapUserDAO::getAllUsers).get())
-            .filter(ldapUser -> ldapUser.mail().isPresent())
             .transform(ReactorUtils.<LdapUser, Task.Result>throttle()
                 .elements(usersPerSecond)
                 .per(Duration.ofSeconds(1))
@@ -120,14 +118,14 @@ public class LdapUsersImportService {
        return userDAO.retrieve(username)
            .flatMap(storedUser -> {
                context.incrementProcessedUser();
-               if (storedUser.firstname().equals(getFirstName(ldapUser)) &&
-                   storedUser.lastname().equals(ldapUser.sn())) {
+               if (Objects.equals(storedUser.firstname(), getFirstName(ldapUser)) &&
+                   Objects.equals(storedUser.lastname(), ldapUser.sn())) {
                    return Mono.just(Task.Result.COMPLETED);
                }
                return userDAO.update(storedUser.id(), username, getFirstName(ldapUser), ldapUser.sn())
                    .then(Mono.just(Task.Result.COMPLETED));
            })
-           .switchIfEmpty(userDAO.add(Username.fromMailAddress(ldapUser.mail().get()), getFirstName(ldapUser), ldapUser.sn())
+           .switchIfEmpty(userDAO.add(username, getFirstName(ldapUser), ldapUser.sn())
             .then(Mono.fromCallable(() -> {
                 context.incrementProcessedUser();
                 return Task.Result.COMPLETED;
