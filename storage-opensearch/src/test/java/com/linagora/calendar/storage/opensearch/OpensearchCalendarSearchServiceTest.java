@@ -166,8 +166,6 @@ public class OpensearchCalendarSearchServiceTest implements CalendarSearchServic
     @ParameterizedTest
     @ValueSource(strings = {"\"sprint planning\"", "sprint*", "sprint -retro"})
     void searchShouldSupportQueryStringQuery(String search) {
-        Mockito.when(calendarEventOpensearchConfiguration.fuzzySearch()).thenReturn(true);
-
         EventFields event = EventFields.builder()
             .uid(generateEventUid())
             .summary("Sprint planning meeting")
@@ -190,8 +188,6 @@ public class OpensearchCalendarSearchServiceTest implements CalendarSearchServic
     @ParameterizedTest
     @ValueSource(strings = {"\"sprint retro\"", "sprant*", "sprint -planning"})
     void searchShouldReturnEmptyResultWhenQueryStringQueryDoesNotMatch(String search) {
-        Mockito.when(calendarEventOpensearchConfiguration.fuzzySearch()).thenReturn(true);
-
         EventFields event = EventFields.builder()
             .uid(generateEventUid())
             .summary("sprint planning meeting")
