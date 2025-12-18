@@ -116,7 +116,7 @@ public class LdapUsersImportService {
        return userDAO.retrieve(username)
            .flatMap(storedUser -> {
                if (Objects.equals(storedUser.firstname(), getFirstName(ldapUser)) &&
-                   Objects.equals(storedUser.lastname(), ldapUser.sn())) {
+                   Objects.equals(storedUser.lastname(), ldapUser.sn().orElse(""))) {
                    return Mono.just(Task.Result.COMPLETED);
                }
                return userDAO.update(storedUser.id(), username, getFirstName(ldapUser), ldapUser.sn().orElse(""))
