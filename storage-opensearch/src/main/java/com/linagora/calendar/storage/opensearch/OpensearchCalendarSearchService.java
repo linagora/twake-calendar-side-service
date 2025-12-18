@@ -57,7 +57,9 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.github.fge.lambdas.Throwing;
+import com.google.common.base.CharMatcher;
 import com.google.common.base.Preconditions;
+import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.event.EventFields;
@@ -92,6 +94,7 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
         accountId -> RoutingKey.fromString(accountId.getIdentifier());
     private static final String DELIMITER = ":";
     private static final boolean INDEX_CHECK_SEQUENCE = true;
+    private static final CharMatcher QUERY_STRING_CONTROL_CHAR = CharMatcher.anyOf("\"~|*");
 
     private final OpenSearchIndexer indexer;
     private final ReactorOpenSearchClient client;
@@ -248,21 +251,7 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
             return Optional.empty();
         }
 
-        ImmutableList.Builder<String> fieldsBuilder = ImmutableList.builder();
-        fieldsBuilder.add(CalendarFields.SUMMARY,
-            CalendarFields.DESCRIPTION,
-            CalendarFields.LOCATION);
-        if (configuration.searchSummaryPrefix()) {
-            fieldsBuilder.add(CalendarFields.SUMMARY + "." + MultiField.SUMMARY_PREFIX);
-        }
-
-        MultiMatchQuery.Builder summaryDescLocationQueryBuilder = QueryBuilders.multiMatch()
-            .query(searchRequest.query())
-            .fields(fieldsBuilder.build());
-        if (configuration.fuzzySearch()) {
-            summaryDescLocationQueryBuilder.fuzziness("AUTO");
-        }
-        Query summaryDescLocationQuery = summaryDescLocationQueryBuilder.build().toQuery();
+        Query summaryDescLocationQuery = buildSummaryDescLocationQuery(searchRequest);
 
         Query organizerEmailQuery = objectFieldMatch(CalendarFields.ORGANIZER, CalendarFields.EMAIL, searchRequest.query());
         Query organizerCnQuery = objectFieldMatch(CalendarFields.ORGANIZER, CalendarFields.CN, searchRequest.query());
@@ -278,6 +267,36 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
             .minimumShouldMatch("1")
             .build()
             .toQuery());
+    }
+
+    private Query buildSummaryDescLocationQuery(EventSearchQuery searchRequest) {
+        ImmutableList.Builder<String> fieldsBuilder = ImmutableList.builder();
+        fieldsBuilder.add(CalendarFields.SUMMARY,
+            CalendarFields.DESCRIPTION,
+            CalendarFields.LOCATION);
+
+        if (configuration.useQueryStringQuery() && matchesQueryStringHeuristic(searchRequest.query())) {
+            return QueryBuilders.simpleQueryString()
+                .fields(fieldsBuilder.build())
+                .query(searchRequest.query())
+                .defaultOperator(org.opensearch.client.opensearch._types.query_dsl.Operator.And)
+                .lenient(true)
+                .build()
+                .toQuery();
+
+        } else {
+            if (configuration.searchSummaryPrefix()) {
+                fieldsBuilder.add(CalendarFields.SUMMARY + "." + MultiField.SUMMARY_PREFIX);
+            }
+
+            MultiMatchQuery.Builder summaryDescLocationQueryBuilder = QueryBuilders.multiMatch()
+                .query(searchRequest.query())
+                .fields(fieldsBuilder.build());
+            if (configuration.fuzzySearch()) {
+                summaryDescLocationQueryBuilder.fuzziness("AUTO");
+            }
+            return summaryDescLocationQueryBuilder.build().toQuery();
+        }
     }
 
     private Query objectFieldMatch(String objectField, String subField, String value) {
@@ -317,6 +336,14 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
                                                          CalendarEventsDocument eventsDocument) {
         return Mono.fromCallable(() -> mapper.writeValueAsString(eventsDocument))
             .flatMap(content -> indexer.index(documentId, content, routingKey));
+    }
+
+    private boolean matchesQueryStringHeuristic(String query) {
+        if (QUERY_STRING_CONTROL_CHAR.matchesAnyOf(query)) {
+            return true;
+        }
+        return Splitter.on(' ').splitToStream(query)
+            .anyMatch(s -> s.startsWith("-"));
     }
 
     public Mono<WriteResponseBase> indexWithSequence(DocumentId documentId,
