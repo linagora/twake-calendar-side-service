@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.storage.mongodb;
 
+import static com.linagora.calendar.storage.mongodb.MongoConstants.MONGO_DUPLICATE_KEY_CODE;
+
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -38,6 +40,7 @@ import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.exception.DomainNotFoundException;
 import com.linagora.calendar.storage.exception.UserConflictException;
 import com.linagora.calendar.storage.exception.UserNotFoundException;
+import com.mongodb.MongoWriteException;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
 import com.mongodb.client.result.InsertOneResult;
@@ -101,8 +104,8 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
             .flatMap(document -> Mono.from(database.getCollection(COLLECTION).insertOne(document)))
             .map(InsertOneResult::getInsertedId)
             .map(id -> new OpenPaaSUser(username, new OpenPaaSId(id.asObjectId().getValue().toHexString()), firstName, lastName))
-            .onErrorResume(e -> {
-                if (e.getMessage().contains("E11000 duplicate key error collection")) {
+            .onErrorResume(MongoWriteException.class, e -> {
+                if (e.getError().getCode() == MONGO_DUPLICATE_KEY_CODE) {
                     return Mono.error(new UserConflictException(username));
                 }
                 return Mono.error(e);
@@ -132,8 +135,8 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
                     return Mono.empty();
                 })
                 .then()
-                .onErrorResume(e -> {
-                    if (e.getMessage().contains("E11000 duplicate key error collection")) {
+                .onErrorResume(MongoWriteException.class, e -> {
+                    if (e.getError().getCode() == MONGO_DUPLICATE_KEY_CODE) {
                         return Mono.error(new UserConflictException(newUsername));
                     }
                     return Mono.error(e);
