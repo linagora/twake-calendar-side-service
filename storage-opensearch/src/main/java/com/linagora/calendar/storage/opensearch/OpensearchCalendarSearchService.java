@@ -46,6 +46,7 @@ import org.opensearch.client.opensearch._types.SortOptions;
 import org.opensearch.client.opensearch._types.SortOrder;
 import org.opensearch.client.opensearch._types.WriteResponseBase;
 import org.opensearch.client.opensearch._types.query_dsl.MultiMatchQuery;
+import org.opensearch.client.opensearch._types.query_dsl.Operator;
 import org.opensearch.client.opensearch._types.query_dsl.Query;
 import org.opensearch.client.opensearch._types.query_dsl.QueryBuilders;
 import org.opensearch.client.opensearch._types.query_dsl.TermsQueryField;
@@ -279,7 +280,7 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
             return QueryBuilders.simpleQueryString()
                 .fields(fieldsBuilder.build())
                 .query(searchRequest.query())
-                .defaultOperator(org.opensearch.client.opensearch._types.query_dsl.Operator.And)
+                .defaultOperator(Operator.And)
                 .lenient(true)
                 .build()
                 .toQuery();
