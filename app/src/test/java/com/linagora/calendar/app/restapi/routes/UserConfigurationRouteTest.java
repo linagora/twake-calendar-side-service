@@ -193,6 +193,7 @@ class UserConfigurationRouteTest {
             .post("/api/configurations")
         .then()
             .statusCode(200)
+            .contentType(JSON)
             .extract()
             .body()
             .asString();

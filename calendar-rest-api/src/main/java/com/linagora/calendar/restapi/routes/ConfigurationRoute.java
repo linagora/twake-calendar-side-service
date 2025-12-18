@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.restapi.routes;
 
+import static com.linagora.calendar.restapi.RestApiConstants.JSON_HEADER;
+
 import java.util.List;
 import java.util.stream.Stream;
 
@@ -97,6 +99,7 @@ public class ConfigurationRoute extends CalendarRoute {
             .map(ConfigurationDocument::asJson)
             .map(Throwing.function(OBJECT_MAPPER::writeValueAsString))
             .flatMap(string -> response.status(HttpResponseStatus.OK)
+                .headers(JSON_HEADER)
                 .sendString(Mono.just(string))
                 .then());
     }
