@@ -94,7 +94,7 @@ public record DomainMemberUpdate(Set<AddressBookContact> added,
                                                           Optional<String> uid) {
         return AddressBookContact.builder()
             .uid(uid)
-            .familyName(Optional.ofNullable(ldap.sn()))
+            .familyName(ldap.sn())
             .givenName(ldap.givenName())
             .displayName(ldap.displayName())
             .mail(ldap.mail())

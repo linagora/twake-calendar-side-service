@@ -121,11 +121,11 @@ public class LdapUsersImportService {
                    Objects.equals(storedUser.lastname(), ldapUser.sn())) {
                    return Mono.just(Task.Result.COMPLETED);
                }
-               return userDAO.update(storedUser.id(), username, getFirstName(ldapUser), ldapUser.sn())
+               return userDAO.update(storedUser.id(), username, getFirstName(ldapUser), ldapUser.sn().orElse(""))
                    .then(Mono.just(Task.Result.COMPLETED));
            })
            .doOnNext(completed -> context.incrementProcessedUser())
-           .switchIfEmpty(userDAO.add(username, getFirstName(ldapUser), ldapUser.sn())
+           .switchIfEmpty(userDAO.add(username, getFirstName(ldapUser), ldapUser.sn().orElse(""))
                .then(Mono.fromCallable(() -> {
                    context.incrementProcessedUser();
                    return Task.Result.COMPLETED;
@@ -139,6 +139,11 @@ public class LdapUsersImportService {
 
     private String getFirstName(LdapUser ldapUser) {
         // cn is full name, we try to extract first name from it by removing last name (sn)
-        return ldapUser.cn().replace(ldapUser.sn(), "").trim();
+        String sn = ldapUser.sn().orElse("");
+        String cn = ldapUser.cn().orElse("");
+        if (!sn.isEmpty()) {
+            return cn.replace(sn, "").trim();
+        }
+        return cn;
     }
 }
