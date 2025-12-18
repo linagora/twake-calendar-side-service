@@ -22,25 +22,6 @@ services:
       RABBITMQ_DEFAULT_USER: calendar
       RABBITMQ_DEFAULT_PASS: calendar
 
-  mongo:
-    image: mongo
-    networks:
-      - tcalendar
-    command: ["mongod", "--bind_ip", "0.0.0.0"]
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "mongosh",
-          "--quiet",
-          "--eval",
-          "'quit(db.runCommand({ ping: 1 }).ok ? 0 : 2)'",
-        ]
-      start_period: 40s
-      interval: 10s
-      timeout: 10s
-      retries: 10
-
   sabre_dav:
     hostname: esn_sabre
     image: linagora/esn-sabre:sabre-4_7_0-09-12-2025
@@ -67,3 +48,25 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+
+  postgres:
+    image: ghcr.io/ferretdb/postgres-documentdb:17-0.107.0-ferretdb-2.7.0
+    hostname: postgres
+    environment:
+      - POSTGRES_USER=username
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=postgres
+    networks:
+      - tcalendar
+
+  mongo:
+    image: ghcr.io/ferretdb/ferretdb:2.7.0
+    hostname: mongo
+    depends_on:
+      - postgres
+    environment:
+      - FERRETDB_AUTH=false
+      - FERRETDB_LOG_LEVEL=debug
+      - FERRETDB_POSTGRESQL_URL=postgres://username:password@postgres:5432/postgres?sslmode=disable
+    networks:
+      - tcalendar
