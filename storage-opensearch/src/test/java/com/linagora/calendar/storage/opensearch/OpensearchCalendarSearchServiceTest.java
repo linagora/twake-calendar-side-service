@@ -162,4 +162,56 @@ public class OpensearchCalendarSearchServiceTest implements CalendarSearchServic
 
         assertThat(searchResults).hasSize(0);
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"\"sprint planning\"", "sprint*", "sprint -retro"})
+    void searchShouldSupportQueryStringQuery(String search) {
+        EventFields event = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("Sprint planning meeting")
+            .calendarURL(generateCalendarURL())
+            .build();
+
+        testee().index(accountId, CalendarEvents.of(event)).block();
+
+        EventSearchQuery query = simpleQuery(search);
+
+        CALMLY_AWAIT.untilAsserted(() -> {
+            List<EventFields> searchResults = testee().search(accountId, query)
+                .collectList().block();
+
+            assertThat(searchResults).hasSize(1)
+                .containsExactly(event);
+        });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"\"sprint retro\"", "sprant*", "sprint -planning"})
+    void searchShouldReturnEmptyResultWhenQueryStringQueryDoesNotMatch(String search) {
+        EventFields event = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("sprint planning meeting")
+            .calendarURL(generateCalendarURL())
+            .build();
+
+        testee().index(accountId, CalendarEvents.of(event)).block();
+
+        // Verify that document has been indexed
+        EventSearchQuery query = simpleQuery("sprint");
+        CALMLY_AWAIT.untilAsserted(() -> {
+            List<EventFields> searchResults = testee().search(accountId, query)
+                .collectList().block();
+
+            assertThat(searchResults).hasSize(1)
+                .containsExactly(event);
+        });
+
+        // Now test with query string query
+        EventSearchQuery query2 = simpleQuery(search);
+
+        List<EventFields> searchResults = testee().search(accountId, query2)
+            .collectList().block();
+
+        assertThat(searchResults).hasSize(0);
+    }
 }

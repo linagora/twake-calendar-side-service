@@ -36,7 +36,8 @@ public record CalendarEventOpensearchConfiguration(IndexName indexName,
                                                    int nbShards,
                                                    int nbReplicas,
                                                    boolean searchSummaryPrefix,
-                                                   boolean fuzzySearch) {
+                                                   boolean fuzzySearch,
+                                                   boolean useQueryStringQuery) {
 
     public CalendarEventOpensearchConfiguration {
         Preconditions.checkArgument(minNgram > 0, "minNgram must be greater than 0");
@@ -65,11 +66,12 @@ public record CalendarEventOpensearchConfiguration(IndexName indexName,
 
         boolean searchSummaryPrefix = configuration.getBoolean(OPENSEARCH_INDEX_CALENDAR_EVENTS_SUMMARY_SEARCH_PREFIX, DEFAULT_SUMMARY_SEARCH_PREFIX);
         boolean fuzzySearch = configuration.getBoolean(OPENSEARCH_INDEX_CALENDAR_EVENTS_FUZZY_SEARCH, DEFAULT_FUZZY_SEARCH);
+        boolean queryStringQuery = configuration.getBoolean(OPENSEARCH_INDEX_CALENDAR_EVENTS_QUERY_STRING_QUERY, DEFAULT_QUERY_STRING_QUERY);
 
         return new CalendarEventOpensearchConfiguration(indexName, readAliasName,
             writeAliasName, minNgram, maxNgramDiff,
             nbShards, nbReplicas, searchSummaryPrefix,
-            fuzzySearch);
+            fuzzySearch, queryStringQuery);
     }
 
     public static final IndexName DEFAULT_INDEX_NAME = new IndexName("calendar-events");
@@ -79,6 +81,7 @@ public record CalendarEventOpensearchConfiguration(IndexName indexName,
     public static final int DEFAULT_MAX_NGRAM_DIFF = 4;
     public static final boolean DEFAULT_SUMMARY_SEARCH_PREFIX = true;
     public static final boolean DEFAULT_FUZZY_SEARCH = false;
+    public static final boolean DEFAULT_QUERY_STRING_QUERY = true;
 
     private static final String PROPERTY_INDEX_CALENDAR_EVENTS_NAME = "opensearch.index.calendar.events.name";
     private static final String PROPERTY_ALIAS_READ_CALENDAR_EVENTS_NAME = "opensearch.alias.read.calendar.events.name";
@@ -87,6 +90,7 @@ public record CalendarEventOpensearchConfiguration(IndexName indexName,
     private static final String PROPERTY_INDEX_CALENDAR_EVENTS_MIN_NGRAM = "opensearch.index.calendar.events.min.ngram";
     private static final String OPENSEARCH_INDEX_CALENDAR_EVENTS_SUMMARY_SEARCH_PREFIX = "opensearch.index.calendar.events.summary.searchPrefix";
     private static final String OPENSEARCH_INDEX_CALENDAR_EVENTS_FUZZY_SEARCH = "opensearch.index.calendar.events.fuzzySearch";
+    private static final String OPENSEARCH_INDEX_CALENDAR_EVENTS_QUERY_STRING_QUERY = "opensearch.index.calendar.events.queryStringQuery";
 
     public static CalendarEventOpensearchConfiguration DEFAULT =
         new CalendarEventOpensearchConfiguration(
@@ -98,5 +102,6 @@ public record CalendarEventOpensearchConfiguration(IndexName indexName,
             OpenSearchConfiguration.DEFAULT_NB_SHARDS,
             OpenSearchConfiguration.DEFAULT_NB_REPLICA,
             DEFAULT_SUMMARY_SEARCH_PREFIX,
-            DEFAULT_FUZZY_SEARCH);
+            DEFAULT_FUZZY_SEARCH,
+            DEFAULT_QUERY_STRING_QUERY);
 }
