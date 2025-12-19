@@ -29,9 +29,13 @@ services:
       - SABRE_ENV=dev
       - SABRE_MONGO_HOST=mongo
       - SABRE_MONGO_PORT=27017
+      - SABRE_MONGO_USER=username
+      - SABRE_MONGO_PASSWORD=password
       - ESN_MONGO_HOST=mongo
       - ESN_MONGO_PORT=27017
       - ESN_MONGO_DBNAME=esn_docker
+      - ESN_MONGO_USER=username
+      - ESN_MONGO_PASSWORD=password
       - MONGO_TIMEOUT=100000
       - ESN_HOST=esn
       - ESN_PORT=1080
@@ -65,7 +69,6 @@ services:
     depends_on:
       - postgres
     environment:
-      - FERRETDB_AUTH=false
       - FERRETDB_LOG_LEVEL=debug
       - FERRETDB_POSTGRESQL_URL=postgres://username:password@postgres:5432/postgres?sslmode=disable
     networks:
