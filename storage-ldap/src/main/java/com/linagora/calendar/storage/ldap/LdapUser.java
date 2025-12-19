@@ -28,16 +28,16 @@ import com.google.common.base.Preconditions;
 import com.unboundid.ldap.sdk.SearchResultEntry;
 
 public record LdapUser(Optional<String> uid,
-                       String cn,
-                       String sn,
+                       Optional<String> cn,
+                       Optional<String> sn,
                        Optional<String> givenName,
                        Optional<MailAddress> mail,
                        Optional<String> telephoneNumber,
                        Optional<String> displayName) {
     public static class Builder {
         private Optional<String> uid = Optional.empty();
-        private String cn;
-        private String sn;
+        private Optional<String> cn = Optional.empty();
+        private Optional<String> sn = Optional.empty();
         private Optional<String> givenName = Optional.empty();
         private Optional<MailAddress> mail = Optional.empty();
         private Optional<String> telephoneNumber = Optional.empty();
@@ -49,12 +49,12 @@ public record LdapUser(Optional<String> uid,
         }
 
         public Builder cn(String cn) {
-            this.cn = cn;
+            this.cn = Optional.of(cn);
             return this;
         }
 
         public Builder sn(String sn) {
-            this.sn = sn;
+            this.sn = Optional.of(sn);
             return this;
         }
 

@@ -21,6 +21,7 @@ package com.linagora.calendar.webadmin.service;
 import static com.linagora.calendar.webadmin.CalendarUserTaskRoutes.LdapUsersImportRequestToTask.TASK_NAME;
 
 import java.time.Duration;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 
 import jakarta.inject.Inject;
@@ -34,7 +35,6 @@ import org.slf4j.LoggerFactory;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.base.MoreObjects;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
-import com.linagora.calendar.storage.exception.UserConflictException;
 import com.linagora.calendar.storage.ldap.LdapUser;
 import com.linagora.calendar.storage.ldap.LdapUserDAO;
 
@@ -90,39 +90,58 @@ public class LdapUsersImportService {
 
     public Mono<Task.Result> importUsers(Context context, int usersPerSecond) {
         return Flux.fromIterable(Throwing.supplier(ldapUserDAO::getAllUsers).get())
-            .filter(ldapUser -> ldapUser.mail().isPresent())
             .transform(ReactorUtils.<LdapUser, Task.Result>throttle()
                 .elements(usersPerSecond)
                 .per(Duration.ofSeconds(1))
                 .forOperation(ldapUser -> importUser(context, ldapUser)))
             .reduce(Task.Result.COMPLETED, Task::combine)
-            .map(result -> {
-                LOGGER.info("{} task result: {}. Detail:\n{}", TASK_NAME.asString(), result.toString(), context.snapshot());
-                return result;
-            }).onErrorResume(e -> {
+            .doOnNext(result -> LOGGER.info("{} task result: {}. Details: {}", TASK_NAME.asString(), result, context.snapshot()))
+            .onErrorResume(e -> {
                 LOGGER.error("Task {} is incomplete", TASK_NAME.asString(), e);
                 return Mono.just(Task.Result.PARTIAL);
             });
     }
 
     private Mono<Task.Result> importUser(Context context, LdapUser ldapUser) {
-        return userDAO.add(Username.fromMailAddress(ldapUser.mail().get()), getFirstName(ldapUser), ldapUser.sn())
-            .then(Mono.fromCallable(() -> {
-                context.incrementProcessedUser();
-                return Task.Result.COMPLETED;
-            })).onErrorResume(e -> {
-                if (e instanceof UserConflictException) {
-                    context.incrementProcessedUser();
-                    return Mono.just(Task.Result.COMPLETED);
-                }
+        return ldapUser.mail()
+            .map(Username::fromMailAddress)
+            .map(user -> importUser(context, user, ldapUser))
+            .orElseGet(() -> {
+                LOGGER.info("Skipping import of user without mail {}", ldapUser.uid());
+                return Mono.just(Task.Result.COMPLETED);
+            });
+    }
+
+    private Mono<Task.Result> importUser(Context context, Username username, LdapUser ldapUser) {
+       return userDAO.retrieve(username)
+           .flatMap(storedUser -> {
+               if (Objects.equals(storedUser.firstname(), getFirstName(ldapUser)) &&
+                   Objects.equals(storedUser.lastname(), ldapUser.sn().orElse(""))) {
+                   return Mono.just(Task.Result.COMPLETED);
+               }
+               return userDAO.update(storedUser.id(), username, getFirstName(ldapUser), ldapUser.sn().orElse(""))
+                   .then(Mono.just(Task.Result.COMPLETED));
+           })
+           .doOnNext(completed -> context.incrementProcessedUser())
+           .switchIfEmpty(userDAO.add(username, getFirstName(ldapUser), ldapUser.sn().orElse(""))
+               .then(Mono.fromCallable(() -> {
+                   context.incrementProcessedUser();
+                   return Task.Result.COMPLETED;
+               })))
+           .onErrorResume(e -> {
                 LOGGER.error("Error importing ldap user {}", ldapUser.cn(), e);
                 context.incrementFailedUser();
                 return Mono.just(Task.Result.PARTIAL);
-            });
+           });
     }
 
     private String getFirstName(LdapUser ldapUser) {
         // cn is full name, we try to extract first name from it by removing last name (sn)
-        return ldapUser.cn().replace(ldapUser.sn(), "").trim();
+        String sn = ldapUser.sn().orElse("");
+        String cn = ldapUser.cn().orElse("");
+        if (!sn.isEmpty()) {
+            return cn.replace(sn, "").trim();
+        }
+        return cn;
     }
 }
