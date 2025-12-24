@@ -34,7 +34,7 @@ import com.linagora.calendar.storage.CalendarURL;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
 
-public record CalendarStateChangeListener(Sinks.Many<CalendarChangeMessage> outbound,
+public record CalendarStateChangeListener(Sinks.Many<WebsocketRoute.WebsocketMessage> outbound,
                                           CalDavClient calDavClient,
                                           Username username) implements EventListener.ReactiveEventListener {
 
