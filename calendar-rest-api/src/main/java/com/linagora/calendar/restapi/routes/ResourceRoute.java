@@ -37,6 +37,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.restapi.NotFoundException;
+import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainAdminDAO;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -121,7 +122,7 @@ public class ResourceRoute extends CalendarRoute {
         ResourceId resourceId = new ResourceId(req.param(RESOURCE_ID_PATH_PARAM));
         return resourceDAO.findById(resourceId)
             .switchIfEmpty(Mono.error(NotFoundException::new))
-            .flatMap(resource -> retrieveDomainResponse(resource.domain())
+            .flatMap(resource -> retrieveAuthorizedDomainResponse(resource.domain(), session)
                 .map(domainResponse -> buildResponseDTO(resource, domainResponse)))
             .map(Throwing.function(OBJECT_MAPPER::writeValueAsBytes))
             .flatMap(bytes -> res.status(200)
@@ -130,11 +131,17 @@ public class ResourceRoute extends CalendarRoute {
                 .then());
     }
 
-    private Mono<DomainRoute.ResponseDTO> retrieveDomainResponse(OpenPaaSId domainId) {
+    private Mono<DomainRoute.ResponseDTO> retrieveAuthorizedDomainResponse(OpenPaaSId domainId, MailboxSession session) {
         return openPaaSDomainDAO.retrieve(domainId)
-            .flatMap(openPaaSDomain -> domainAdminDAO.listAdmins(domainId)
-                .collectList()
-                .map(adminList -> new DomainRoute.ResponseDTO(openPaaSDomain, adminList)));
+            .filter(resource -> !crossDomainAccess(session, resource.domain()))
+            .switchIfEmpty(Mono.error(NotFoundException::new))
+            .flatMap(domain -> buildDomainResponse(domainId, domain));
+    }
+
+    private Mono<DomainRoute.ResponseDTO> buildDomainResponse(OpenPaaSId domainId, OpenPaaSDomain domain) {
+        return domainAdminDAO.listAdmins(domainId)
+            .collectList()
+            .map(adminList -> new DomainRoute.ResponseDTO(domain, adminList));
     }
 
     private ResourceResponseDTO buildResponseDTO(Resource resource,  DomainRoute.ResponseDTO domainResponseDTO) {
