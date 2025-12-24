@@ -149,6 +149,7 @@ public class DomainRoute extends CalendarRoute {
     Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response, MailboxSession session) {
         OpenPaaSId domainId = new OpenPaaSId(request.param("domainId"));
         return domainDAO.retrieve(domainId)
+            .filter(openPaaSDomain -> !crossDomainAccess(session, openPaaSDomain.domain()))
             .switchIfEmpty(Mono.error(NotFoundException::new))
             .flatMap(openPaaSDomain -> domainAdminDAO.listAdmins(openPaaSDomain.id())
                 .collectList()
