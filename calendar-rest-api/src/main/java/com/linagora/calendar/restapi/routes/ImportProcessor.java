@@ -32,6 +32,8 @@ import jakarta.inject.Named;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.Username;
+import org.apache.james.events.Event;
+import org.apache.james.events.EventBus;
 import org.apache.james.mailbox.MailboxSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -178,24 +180,16 @@ public class ImportProcessor {
 
     private final ImportICSToDavHandler importICSHandler;
     private final ImportVCardToDavHandler importVCardHandler;
-    private final Scheduler mailScheduler;
-    private final MailSender.Factory mailSenderFactory;
-    private final ImportMailReportRender mailReportRender;
-    private final SettingsBasedResolver settingsResolver;
+    private final List<ImportAfterProcessor> afterProcessors;
 
     @Inject
     public ImportProcessor(CardDavClient cardDavClient,
                            CalDavClient calDavClient,
-                           MailSender.Factory mailSenderFactory,
-                           ImportMailReportRender mailReportRender,
-                           @Named("language") SettingsBasedResolver settingsResolver) {
+                           SendMailProcessor sendMailProcessor,
+                           ImportWebSocketProcessor importWebSocketProcessor) {
         this.importICSHandler = new ImportICSToDavHandler(calDavClient);
         this.importVCardHandler = new ImportVCardToDavHandler(cardDavClient);
-        this.mailScheduler = Schedulers.newBoundedElastic(1, DEFAULT_BOUNDED_ELASTIC_QUEUESIZE,
-            "sendMailScheduler");
-        this.mailSenderFactory = mailSenderFactory;
-        this.mailReportRender = mailReportRender;
-        this.settingsResolver = settingsResolver;
+        this.afterProcessors = List.of(sendMailProcessor, importWebSocketProcessor);
     }
 
     public Mono<Void> process(ImportType importType, UploadedFile uploadedFile,
@@ -208,19 +202,12 @@ public class ImportProcessor {
         };
 
         return importToDavHandler.handle(uploadedFile, username, baseId, resourceId)
-            .flatMap(importResult -> settingsResolver.resolveOrDefault(mailboxSession)
-                .map(ResolvedSettings::locale)
-                .doOnSuccess(locale -> sendReportMail(importType, new Language(locale), importResult, username)))
+            .doOnSuccess(importResult -> afterProcessors.forEach(
+                processor -> processor.process(
+                    new ImportRequest(importType, baseId.value(), resourceId),
+                    importResult,
+                    username)))
             .then();
-    }
-
-
-    private Disposable sendReportMail(ImportType importType, Language language, ImportResult importResult, Username receiver) {
-        return mailReportRender.generateMail(importType, language, importResult, receiver)
-            .flatMap(mail -> mailSenderFactory.create().flatMap(mailSender -> mailSender.send(mail)))
-            .doOnError(error -> LOGGER.error("Error sending import `{}` report mail to {}: {}", importType.name(), receiver, error.getMessage()))
-            .subscribeOn(mailScheduler)
-            .subscribe();
     }
 
     public record ImportResult(int succeedCount, ImmutableList<FailedItem> failed) {
@@ -247,6 +234,74 @@ public class ImportProcessor {
                     .addAll(this.failed)
                     .addAll(other.failed)
                     .build());
+        }
+    }
+
+    public record ImportRequest(ImportType importType, String baseId, String resourceId) {
+    }
+
+    public interface ImportAfterProcessor {
+        Disposable process(ImportRequest importRequest, ImportResult importResult, Username receiver);
+    }
+
+    public static class ImportWebSocketProcessor implements ImportAfterProcessor {
+
+        private static final Logger LOGGER = LoggerFactory.getLogger(ImportWebSocketProcessor.class);
+
+        private final EventBus eventBus;
+
+        @Inject
+        public ImportWebSocketProcessor(EventBus eventBus) {
+            this.eventBus = eventBus;
+        }
+
+        @Override
+        public Disposable process(ImportRequest importRequest, ImportResult importResult, Username receiver) {
+            ImportEvent event = new ImportEvent(
+                Event.EventId.random(),
+                receiver,
+                importRequest.importType(),
+                importRequest.baseId(),
+                importRequest.resourceId(),
+                importResult.succeedCount(),
+                importResult.failed().size());
+
+            return eventBus.dispatch(event, new UsernameRegistrationKey(receiver))
+                .doOnError(e -> LOGGER.error("Error publishing import websocket event for {}", receiver, e))
+                .subscribe();
+        }
+    }
+
+    public static class SendMailProcessor implements ImportAfterProcessor {
+        private final SettingsBasedResolver settingsResolver;
+        private final ImportMailReportRender mailReportRender;
+        private final MailSender.Factory mailSenderFactory;
+        private final Scheduler mailScheduler;
+
+        @Inject
+        public SendMailProcessor(@Named("language") SettingsBasedResolver settingsResolver,
+                                 ImportMailReportRender mailReportRender,
+                                 MailSender.Factory mailSenderFactory) {
+            this.settingsResolver = settingsResolver;
+            this.mailReportRender = mailReportRender;
+            this.mailSenderFactory = mailSenderFactory;
+            this.mailScheduler = Schedulers.newBoundedElastic(1, DEFAULT_BOUNDED_ELASTIC_QUEUESIZE,
+                "sendMailScheduler");
+        }
+
+        @Override
+        public Disposable process(ImportRequest importRequest, ImportResult importResult, Username receiver) {
+            return settingsResolver.resolveOrDefault(receiver)
+                .map(ResolvedSettings::locale)
+                .flatMap(locale -> sendReportMail(importRequest.importType(), new Language(locale), importResult, receiver))
+                .subscribe();
+        }
+
+        private Mono<Void> sendReportMail(ImportType importType, Language language, ImportResult importResult, Username receiver) {
+            return mailReportRender.generateMail(importType, language, importResult, receiver)
+                .flatMap(mail -> mailSenderFactory.create().flatMap(mailSender -> mailSender.send(mail)))
+                .doOnError(error -> LOGGER.error("Error sending import `{}` report mail to {}: {}", importType.name(), receiver, error.getMessage()))
+                .subscribeOn(mailScheduler);
         }
     }
 }
