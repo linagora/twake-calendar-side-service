@@ -111,17 +111,12 @@ public class ImportRoute extends CalendarRoute {
 
         return fileDAO.getFile(session.getUser(), new OpenPaaSId(request.fileId))
             .switchIfEmpty(Mono.error(new IllegalArgumentException("Uploaded file not found")))
-            .map(uploadedFile -> {
-                ImportType importType = getImportType(uploadedFile.uploadedMimeType());
-                ImportCommand importCommand = ImportCommand.create(importType, uploadedFile, baseId, davCollectionId);
-
-                importProcessor.process(importCommand, session)
-                    .doOnSuccess(unused -> LOGGER.info("Import of {} with fileId {} completed successfully", importType.name(), request.fileId))
-                    .doOnError(ex -> LOGGER.error("Error during import of {} with fileId {}", importType.name(), request.fileId, ex))
-                    .subscribe();
-
-                return importCommand.importId();
-            });
+            .map(uploadedFile -> ImportCommand.create(getImportType(uploadedFile.uploadedMimeType()), uploadedFile, baseId, davCollectionId))
+            .doOnSuccess(importCommand -> importProcessor.process(importCommand, session)
+                .doOnSuccess(unused -> LOGGER.info("Import of {} with fileId {} completed successfully", importCommand.importType().name(), request.fileId))
+                .doOnError(ex -> LOGGER.error("Error during import of {} with fileId {}", importCommand.importType().name(), request.fileId, ex))
+                .subscribe())
+            .map(ImportCommand::importId);
     }
 
     private ImportType getImportType(UploadedMimeType mimeType) {
