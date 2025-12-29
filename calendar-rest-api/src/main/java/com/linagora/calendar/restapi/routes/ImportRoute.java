@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.restapi.routes;
 
+import static com.linagora.calendar.restapi.RestApiConstants.JSON_HEADER;
+
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
@@ -32,12 +34,15 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
+import com.linagora.calendar.restapi.routes.ImportProcessor.ImportCommand;
+import com.linagora.calendar.restapi.routes.ImportProcessor.ImportId;
 import com.linagora.calendar.restapi.routes.ImportProcessor.ImportType;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.UploadedFileDAO;
 import com.linagora.calendar.storage.model.UploadedMimeType;
 
 import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.server.HttpServerRequest;
 import reactor.netty.http.server.HttpServerResponse;
@@ -62,6 +67,7 @@ public class ImportRoute extends CalendarRoute {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ImportRoute.class);
+    private static final String IMPORT_ID_PROPERTY = "importId";
 
     private final UploadedFileDAO fileDAO;
     private final ImportProcessor importProcessor;
@@ -86,10 +92,13 @@ public class ImportRoute extends CalendarRoute {
         return request.receive().aggregate().asInputStream()
             .map(Throwing.function(inputStream -> OBJECT_MAPPER.readValue(inputStream, ImportRequest.class)))
             .flatMap(importRequest -> handleImport(importRequest, session))
-            .then(response.status(202).send());
+            .flatMap(importId -> response.status(HttpResponseStatus.ACCEPTED)
+                .headers(JSON_HEADER)
+                .sendString(Mono.just(serializeImportResponse(importId)))
+                .then());
     }
 
-    private Mono<Void> handleImport(ImportRequest request, MailboxSession session) {
+    private Mono<ImportId> handleImport(ImportRequest request, MailboxSession session) {
         Preconditions.checkArgument(StringUtils.isNotEmpty(request.fileId), "fileId must be present");
         Preconditions.checkArgument(StringUtils.isNotEmpty(request.target), "target must be present");
 
@@ -102,21 +111,28 @@ public class ImportRoute extends CalendarRoute {
 
         return fileDAO.getFile(session.getUser(), new OpenPaaSId(request.fileId))
             .switchIfEmpty(Mono.error(new IllegalArgumentException("Uploaded file not found")))
-            .doOnSuccess(uploadedFile -> {
+            .map(uploadedFile -> {
                 ImportType importType = getImportType(uploadedFile.uploadedMimeType());
-                importProcessor.process(importType, uploadedFile, new OpenPaaSId(baseId), davCollectionId, session)
+                ImportCommand importCommand = ImportCommand.create(importType, uploadedFile, baseId, davCollectionId);
+
+                importProcessor.process(importCommand, session)
                     .doOnSuccess(unused -> LOGGER.info("Import of {} with fileId {} completed successfully", importType.name(), request.fileId))
                     .doOnError(ex -> LOGGER.error("Error during import of {} with fileId {}", importType.name(), request.fileId, ex))
                     .subscribe();
-            })
-            .then();
+
+                return importCommand.importId();
+            });
     }
 
     private ImportType getImportType(UploadedMimeType mimeType) {
         return switch (mimeType) {
             case TEXT_CALENDAR -> ImportProcessor.ImportType.ICS;
             case TEXT_VCARD -> ImportProcessor.ImportType.VCARD;
-            default -> throw new IllegalArgumentException("Unsupported mime type: " + mimeType);
         };
     }
+
+    private String serializeImportResponse(ImportId importId) {
+        return "{\"" + IMPORT_ID_PROPERTY + "\":\"" + importId.value() + "\"}";
+    }
+
 }
