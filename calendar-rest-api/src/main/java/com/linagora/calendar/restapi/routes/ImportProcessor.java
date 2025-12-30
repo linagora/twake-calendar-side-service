@@ -21,6 +21,7 @@ package com.linagora.calendar.restapi.routes;
 import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 import static reactor.core.scheduler.Schedulers.DEFAULT_BOUNDED_ELASTIC_QUEUESIZE;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +33,8 @@ import jakarta.inject.Named;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.Username;
+import org.apache.james.events.EventBus;
+import org.apache.james.events.RegistrationKey;
 import org.apache.james.mailbox.MailboxSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,7 +48,11 @@ import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.smtp.MailSender;
 import com.linagora.calendar.smtp.template.Language;
 import com.linagora.calendar.smtp.template.TemplateType;
+import com.linagora.calendar.storage.AddressBookURL;
+import com.linagora.calendar.storage.AddressBookURLRegistrationKey;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.CalendarURLRegistrationKey;
+import com.linagora.calendar.storage.ImportEvent;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.ResolvedSettings;
@@ -60,7 +67,6 @@ import ezvcard.property.Uid;
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.component.VEvent;
-import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Scheduler;
@@ -83,6 +89,10 @@ public class ImportProcessor {
         public TemplateType getTemplateType() {
             return templateType;
         }
+
+        public String asString() {
+            return this.templateType.value();
+        }
     }
 
     public record ImportCommand(ImportId importId,
@@ -100,6 +110,13 @@ public class ImportProcessor {
                 uploadedFile.data(),
                 new OpenPaaSId(baseId),
                 resourceId);
+        }
+
+        public URI importURI() {
+            return switch (importType) {
+                case ICS -> new CalendarURL(baseId(), new OpenPaaSId(resourceId)).asUri();
+                case VCARD -> new AddressBookURL(baseId(), resourceId).asUri();
+            };
         }
     }
 
@@ -197,24 +214,16 @@ public class ImportProcessor {
 
     private final ImportICSToDavHandler importICSHandler;
     private final ImportVCardToDavHandler importVCardHandler;
-    private final Scheduler mailScheduler;
-    private final MailSender.Factory mailSenderFactory;
-    private final ImportMailReportRender mailReportRender;
-    private final SettingsBasedResolver settingsResolver;
+    private final List<ImportAfterProcessor> afterProcessors;
 
     @Inject
     public ImportProcessor(CardDavClient cardDavClient,
                            CalDavClient calDavClient,
-                           MailSender.Factory mailSenderFactory,
-                           ImportMailReportRender mailReportRender,
-                           @Named("language") SettingsBasedResolver settingsResolver) {
+                           SendMailProcessor sendMailProcessor,
+                           ImportWebSocketProcessor importWebSocketProcessor) {
         this.importICSHandler = new ImportICSToDavHandler(calDavClient);
         this.importVCardHandler = new ImportVCardToDavHandler(cardDavClient);
-        this.mailScheduler = Schedulers.newBoundedElastic(1, DEFAULT_BOUNDED_ELASTIC_QUEUESIZE,
-            "sendMailScheduler");
-        this.mailSenderFactory = mailSenderFactory;
-        this.mailReportRender = mailReportRender;
-        this.settingsResolver = settingsResolver;
+        this.afterProcessors = List.of(sendMailProcessor, importWebSocketProcessor);
     }
 
 
@@ -228,19 +237,12 @@ public class ImportProcessor {
         };
 
         return importToDavHandler.handle(importCommand, username)
-            .flatMap(importResult -> settingsResolver.resolveOrDefault(mailboxSession)
-                .map(ResolvedSettings::locale)
-                .doOnSuccess(locale -> sendReportMail(importCommand.importType(), new Language(locale), importResult, username)))
-            .then();
-    }
-
-
-    private Disposable sendReportMail(ImportType importType, Language language, ImportResult importResult, Username receiver) {
-        return mailReportRender.generateMail(importType, language, importResult, receiver)
-            .flatMap(mail -> mailSenderFactory.create().flatMap(mailSender -> mailSender.send(mail)))
-            .doOnError(error -> LOGGER.error("Error sending import `{}` report mail to {}: {}", importType.name(), receiver, error.getMessage()))
-            .subscribeOn(mailScheduler)
-            .subscribe();
+            .map(importResult -> (ImportExecutionResult) new ImportExecutionResult.Success(importResult))
+            .onErrorResume(error -> Mono.just(new ImportExecutionResult.Failed(error)))
+            .flatMap(importExecutionResult ->
+                Flux.fromIterable(afterProcessors)
+                    .flatMap(p -> p.process(importCommand, importExecutionResult, username))
+                    .then());
     }
 
     public record ImportResult(int succeedCount, ImmutableList<FailedItem> failed) {
@@ -267,6 +269,99 @@ public class ImportProcessor {
                     .addAll(this.failed)
                     .addAll(other.failed)
                     .build());
+        }
+    }
+
+    public sealed interface ImportExecutionResult permits ImportExecutionResult.Success, ImportExecutionResult.Failed {
+        record Success(ImportResult result) implements ImportExecutionResult {
+        }
+
+        record Failed(Throwable error) implements ImportExecutionResult {
+        }
+    }
+
+    public interface ImportAfterProcessor {
+        Mono<Void> process(ImportCommand importCommand, ImportExecutionResult importExecutionResult, Username username);
+    }
+
+    public static class ImportWebSocketProcessor implements ImportAfterProcessor {
+
+        private static final Logger LOGGER = LoggerFactory.getLogger(ImportWebSocketProcessor.class);
+
+        private final EventBus eventBus;
+
+        @Inject
+        public ImportWebSocketProcessor(EventBus eventBus) {
+            this.eventBus = eventBus;
+        }
+
+        @Override
+        public Mono<Void> process(ImportCommand importCommand, ImportExecutionResult importExecutionResult, Username username) {
+            ImportEvent event = buildImportEvent(importCommand, importExecutionResult);
+            return eventBus.dispatch(event, registrationKey(importCommand))
+                .doOnError(e -> LOGGER.error("Error publishing import websocket event for {}", username, e))
+                .then();
+        }
+
+        private RegistrationKey registrationKey(ImportCommand importCommand) {
+            return switch (importCommand.importType()) {
+                case ICS ->
+                    new CalendarURLRegistrationKey(new CalendarURL(importCommand.baseId(), new OpenPaaSId(importCommand.resourceId())));
+                case VCARD ->
+                    new AddressBookURLRegistrationKey(new AddressBookURL(importCommand.baseId(), importCommand.resourceId()));
+            };
+        }
+
+        private ImportEvent buildImportEvent(ImportCommand importCommand,
+                                             ImportExecutionResult importExecutionResult) {
+            return switch (importExecutionResult) {
+                case ImportExecutionResult.Success success -> ImportEvent.succeeded(importCommand.importId(),
+                    importCommand.importURI(),
+                    importCommand.importType().asString(),
+                    success.result().succeedCount(),
+                    success.result().failed().size());
+
+                case ImportExecutionResult.Failed failed -> ImportEvent.failed(importCommand.importId(),
+                    importCommand.importURI(), importCommand.importType().asString());
+            };
+        }
+    }
+
+    public static class SendMailProcessor implements ImportAfterProcessor {
+        private final SettingsBasedResolver settingsResolver;
+        private final ImportMailReportRender mailReportRender;
+        private final MailSender.Factory mailSenderFactory;
+        private final Scheduler mailScheduler;
+
+        @Inject
+        public SendMailProcessor(@Named("language") SettingsBasedResolver settingsResolver,
+                                 ImportMailReportRender mailReportRender,
+                                 MailSender.Factory mailSenderFactory) {
+            this.settingsResolver = settingsResolver;
+            this.mailReportRender = mailReportRender;
+            this.mailSenderFactory = mailSenderFactory;
+            this.mailScheduler = Schedulers.newBoundedElastic(1, DEFAULT_BOUNDED_ELASTIC_QUEUESIZE,
+                "sendMailScheduler");
+        }
+
+        @Override
+        public Mono<Void> process(ImportCommand importCommand, ImportExecutionResult importExecutionResult, Username username) {
+            if (importExecutionResult instanceof ImportExecutionResult.Failed) {
+                return Mono.empty();
+            }
+
+            ImportResult importResult = ((ImportExecutionResult.Success) importExecutionResult).result();
+            return settingsResolver.resolveOrDefault(username)
+                .map(ResolvedSettings::locale)
+                .flatMap(locale -> sendReportMail(importCommand.importType(), new Language(locale), importResult, username))
+                .then();
+        }
+
+        private Mono<Void> sendReportMail(ImportType importType, Language language, ImportResult importResult, Username receiver) {
+            return mailReportRender.generateMail(importType, language, importResult, receiver)
+                .flatMap(mail -> mailSenderFactory.create().flatMap(mailSender -> mailSender.send(mail)))
+                .doOnError(error -> LOGGER.error("Error sending import `{}` report mail to {}: {}", importType.name(), receiver, error.getMessage()))
+                .subscribeOn(mailScheduler);
         }
     }
 }

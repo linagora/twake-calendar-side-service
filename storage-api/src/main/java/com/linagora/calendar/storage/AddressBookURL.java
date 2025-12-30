@@ -16,19 +16,23 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package org.apache.james.events;
+package com.linagora.calendar.storage;
 
-import com.linagora.calendar.storage.CalendarURLRegistrationKey;
+import java.net.URI;
 
-public class CalendarURLRegistrationKeyFactory implements RegistrationKey.Factory {
+import org.apache.commons.lang3.StringUtils;
 
-    @Override
-    public Class<? extends RegistrationKey> forClass() {
-        return CalendarURLRegistrationKey.class;
+import com.google.common.base.Preconditions;
+
+public record AddressBookURL(OpenPaaSId base, String addressBookId) {
+    public static final String ADDRESS_BOOK_URL_PATH_PREFIX = "/addressbooks";
+
+    public AddressBookURL {
+        Preconditions.checkArgument(base != null, "baseCalendarId must not be null");
+        Preconditions.checkArgument(StringUtils.isNoneEmpty(addressBookId), "addressBookId must not be empty");
     }
 
-    @Override
-    public RegistrationKey fromString(String asString) {
-        return CalendarURLRegistrationKey.fromString(asString);
+    public URI asUri() {
+        return URI.create(ADDRESS_BOOK_URL_PATH_PREFIX + "/" + base.value() + "/" + addressBookId);
     }
 }

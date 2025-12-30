@@ -28,6 +28,11 @@ import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.time.Instant;
+import java.nio.charset.StandardCharsets;
+import com.linagora.calendar.storage.MailboxSessionUtil;
+import com.linagora.calendar.storage.model.Upload;
+import com.linagora.calendar.storage.model.UploadedMimeType;
 
 import org.apache.http.HttpStatus;
 
@@ -974,5 +979,274 @@ class WebsocketRouteTest {
                 messages.offer(text);
             }
         });
+    }
+
+    @Test
+    void websocketShouldReceiveEventWhenImportingIntoRegisteredCalendar(TwakeCalendarGuiceServer guiceServer) throws Exception {
+        // Given: Bob owns a calendar and subscribes to it via WebSocket
+        CalendarURL calendarABC = CalendarURL.from(bob.id());
+        String calendarUri = calendarABC.asUri().toString();
+
+        // And: Bob opens a WebSocket connection and registers the calendar
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        webSocket.send("""
+            { "register": ["%s"] }
+            """.formatted(calendarUri));
+
+        // Wait for and validate the WebSocket registration acknowledgment
+        String ack = messages.poll(5, TimeUnit.SECONDS);
+        assertThat(ack).isNotNull();
+        assertThatJson(ack)
+            .isEqualTo("""
+                { "registered": ["%s"] }
+                """.formatted(calendarUri));
+
+        // When: import ICS into the registered calendar using the helper
+        String importId = importIcsIntoCalendar(guiceServer, calendarABC, calendarUri, bob);
+
+        // Then: the WebSocket client should receive an import-completed notification
+        String pushed = messages.poll(10, TimeUnit.SECONDS);
+        assertThat(pushed)
+            .as("WebSocket should receive event pushed after import")
+            .isNotNull();
+
+        assertThatJson(pushed)
+            .isEqualTo("""
+                {
+                  "%s" : {
+                    "imports" : {
+                      "%s" : {
+                        "status" : "completed",
+                        "succeedCount" : 1,
+                        "failedCount" : 0
+                      }
+                    }
+                  }
+                }
+                """.formatted(calendarUri, importId));
+    }
+
+    @Test
+    void websocketShouldReceiveFailedImportEventWhenImportFails(TwakeCalendarGuiceServer guiceServer) throws Exception {
+        // Given: Bob owns a calendar and subscribes via WebSocket
+        CalendarURL calendar = CalendarURL.from(bob.id());
+        String calendarUri = calendar.asUri().toString();
+
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        webSocket.send("""
+            { "register": ["%s"] }
+            """.formatted(calendarUri));
+
+        String ack = messages.poll(5, TimeUnit.SECONDS);
+        assertThatJson(ack)
+            .isEqualTo("""
+                { "registered": ["%s"] }
+                """.formatted(calendarUri));
+
+        // When: import an INVALID ICS file
+        String importId = importIcsBytesIntoCalendar(guiceServer, calendar, calendarUri, bob, "NOT_A_VALID_ICS".getBytes(StandardCharsets.UTF_8));
+        // Then: WebSocket receives FAILED import event
+        String pushed = messages.poll(10, TimeUnit.SECONDS);
+        assertThat(pushed)
+            .as("WebSocket should receive failed import notification")
+            .isNotNull();
+
+        assertThatJson(pushed)
+            .isEqualTo("""
+                {
+                  "%s" : {
+                    "imports" : {
+                      "%s" : {
+                        "status" : "failed"
+                      }
+                    }
+                  }
+                }
+                """.formatted(calendarUri, importId));
+    }
+
+    @Test
+    void websocketShouldReceiveImportEventAndCalendarSyncEvent(TwakeCalendarGuiceServer guiceServer) throws Exception {
+        // Given: Bob owns a calendar and subscribes to it via WebSocket
+        CalendarURL calendar = CalendarURL.from(bob.id());
+        String calendarUri = calendar.asUri().toString();
+
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        webSocket.send("""
+            { "register": ["%s"] }
+            """.formatted(calendarUri));
+
+        String ack = messages.poll(5, TimeUnit.SECONDS);
+        assertThatJson(ack)
+            .isEqualTo("""
+                { "registered": ["%s"] }
+                """.formatted(calendarUri));
+
+        // When: import ICS into the registered calendar
+        String importId = importIcsIntoCalendar(guiceServer, calendar, calendarUri, bob);
+
+        // Then: WebSocket receives the import-completed notification
+        String importMessage = messages.poll(10, TimeUnit.SECONDS);
+        assertThat(importMessage)
+            .as("WebSocket should receive import-completed notification")
+            .isNotNull();
+
+        assertThatJson(importMessage)
+            .isEqualTo("""
+                {
+                  "%s" : {
+                    "imports" : {
+                      "%s" : {
+                        "status" : "completed",
+                        "succeedCount" : 1,
+                        "failedCount" : 0
+                      }
+                    }
+                  }
+                }
+                """.formatted(calendarUri, importId));
+
+        // When: a calendar change event is dispatched
+        EventBusProbe eventBusProbe = guiceServer.getProbe(EventBusProbe.class);
+        CalendarChangeEvent event = new CalendarChangeEvent(Event.EventId.random(), calendar);
+        eventBusProbe.dispatch(event, calendar);
+
+        // Then: WebSocket also receives a syncToken notification
+        String syncMessage = messages.poll(5, TimeUnit.SECONDS);
+        assertThat(syncMessage)
+            .as("WebSocket should receive calendar syncToken notification")
+            .isNotNull();
+
+        assertThatJson(syncMessage)
+            .isEqualTo("""
+                {
+                  "%s" : {
+                    "syncToken" : "${json-unit.ignore}"
+                  }
+                }
+                """.formatted(calendarUri));
+    }
+
+    @Test
+    void websocketShouldNotReceiveImportEventWhenCalendarNotRegistered(TwakeCalendarGuiceServer guiceServer) throws Exception {
+        CalendarURL calendar = CalendarURL.from(bob.id());
+        String calendarUri = CalendarURL.from(bob.id()).asUri().toString();
+
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        // Import without registering the calendar
+        importIcsIntoCalendar(guiceServer, calendar, calendarUri, bob);
+
+        String pushed = messages.poll(3, TimeUnit.SECONDS);
+        assertThat(pushed)
+            .as("WebSocket should NOT receive import event when calendar is not registered")
+            .isNull();
+    }
+
+    @Test
+    void websocketShouldNotReceiveImportEventAfterUnregister(TwakeCalendarGuiceServer guiceServer) throws Exception {
+        CalendarURL calendar = CalendarURL.from(bob.id());
+        String calendarUri = calendar.asUri().toString();
+
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        // Register calendar
+        webSocket.send("""
+            { "register": ["%s"] }
+            """.formatted(calendarUri));
+
+        String ack = messages.poll(5, TimeUnit.SECONDS);
+        assertThatJson(ack)
+            .isEqualTo("""
+                { "registered": ["%s"] }
+                """.formatted(calendarUri));
+
+        // Unregister calendar
+        webSocket.send("""
+            { "unregister": ["%s"] }
+            """.formatted(calendarUri));
+
+        String unregAck = messages.poll(5, TimeUnit.SECONDS);
+        assertThatJson(unregAck)
+            .isEqualTo("""
+                { "unregistered": ["%s"] }
+                """.formatted(calendarUri));
+
+        // Import after unregister
+        importIcsIntoCalendar(guiceServer, calendar, calendarUri, bob);
+
+        String pushed = messages.poll(3, TimeUnit.SECONDS);
+        assertThat(pushed)
+            .as("WebSocket should NOT receive import event after unregister")
+            .isNull();
+    }
+
+    private String importIcsBytesIntoCalendar(TwakeCalendarGuiceServer guiceServer,
+                                              CalendarURL calendarURL,
+                                              String calendarUri,
+                                              OpenPaaSUser user,
+                                              byte[] icsContent) {
+        OpenPaaSId fileId = guiceServer.getProbe(CalendarDataProbe.class)
+            .saveUploadedFile(user.username(),
+                new Upload(
+                    "import.ics",
+                    UploadedMimeType.TEXT_CALENDAR,
+                    Instant.now(),
+                    (long) icsContent.length,
+                    icsContent));
+
+        // Ensure calendar directory is activated
+        guiceServer.getProbe(CalendarDataProbe.class)
+            .exportCalendarFromCalDav(calendarURL, MailboxSessionUtil.create(user.username()));
+
+        return given()
+            .auth().preemptive().basic(user.username().asString(), PASSWORD)
+            .port(restApiPort)
+            .contentType("application/json")
+            .body("""
+                {
+                    "fileId": "%s",
+                    "target": "%s.json"
+                }
+                """.formatted(fileId.value(), calendarUri))
+        .when()
+            .post("/api/import")
+        .then()
+            .statusCode(HttpStatus.SC_ACCEPTED)
+            .extract()
+            .jsonPath()
+            .getString("importId");
+    }
+
+    private String importIcsIntoCalendar(TwakeCalendarGuiceServer guiceServer,
+                                         CalendarURL calendarURL,
+                                         String calendarUri,
+                                         OpenPaaSUser user) {
+        String uid = UUID.randomUUID().toString();
+        byte[] ics = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250102T120000Z
+            DTEND:20250102T130000Z
+            SUMMARY:Imported Event
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uid).getBytes(StandardCharsets.UTF_8);
+        return importIcsBytesIntoCalendar(guiceServer, calendarURL, calendarUri, user, ics);
     }
 }

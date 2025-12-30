@@ -18,17 +18,17 @@
 
 package org.apache.james.events;
 
-import com.linagora.calendar.storage.CalendarURLRegistrationKey;
+import com.linagora.calendar.storage.AddressBookURLRegistrationKey;
 
-public class CalendarURLRegistrationKeyFactory implements RegistrationKey.Factory {
+public class AddressBookURLRegistrationKeyFactory implements RegistrationKey.Factory {
 
     @Override
     public Class<? extends RegistrationKey> forClass() {
-        return CalendarURLRegistrationKey.class;
+        return AddressBookURLRegistrationKey.class;
     }
 
     @Override
     public RegistrationKey fromString(String asString) {
-        return CalendarURLRegistrationKey.fromString(asString);
+        return AddressBookURLRegistrationKey.fromString(asString);
     }
 }
