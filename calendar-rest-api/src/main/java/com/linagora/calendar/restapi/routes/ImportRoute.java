@@ -35,10 +35,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.restapi.routes.ImportProcessor.ImportCommand;
-import com.linagora.calendar.restapi.routes.ImportProcessor.ImportId;
 import com.linagora.calendar.restapi.routes.ImportProcessor.ImportType;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.UploadedFileDAO;
+import com.linagora.calendar.storage.model.ImportId;
 import com.linagora.calendar.storage.model.UploadedMimeType;
 
 import io.netty.handler.codec.http.HttpMethod;

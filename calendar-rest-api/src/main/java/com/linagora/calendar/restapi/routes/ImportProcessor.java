@@ -50,6 +50,7 @@ import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.ResolvedSettings;
 import com.linagora.calendar.storage.event.EventParseUtils;
+import com.linagora.calendar.storage.model.ImportId;
 import com.linagora.calendar.storage.model.UploadedFile;
 
 import ezvcard.Ezvcard;
@@ -99,12 +100,6 @@ public class ImportProcessor {
                 uploadedFile.data(),
                 new OpenPaaSId(baseId),
                 resourceId);
-        }
-    }
-
-    public record ImportId(String value) {
-        public static ImportId generate() {
-            return new ImportId(UUID.randomUUID().toString());
         }
     }
 
