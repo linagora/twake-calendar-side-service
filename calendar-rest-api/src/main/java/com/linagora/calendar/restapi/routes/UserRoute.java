@@ -185,14 +185,12 @@ public class UserRoute extends CalendarRoute {
     Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response, MailboxSession session) {
         OpenPaaSId userId = new OpenPaaSId(request.param("userId"));
         return userDAO.retrieve(userId)
-            .flatMap(user -> Mono.zip(domainDAO.retrieve(user.username().getDomainPart().get()),
-                    settingsResolver.resolveOrDefault(user.username()))
-                .map(tuple -> {
-                    OpenPaaSDomain domain = tuple.getT1();
-                    SettingsBasedResolver.ResolvedSettings settings = tuple.getT2();
-                    String timezone = settings.zoneId().toString();
-                    return new UserRoute.ResponseDTO(user, domain.id(), timezone);
-                }))
+            .flatMap(user -> {
+                if (crossDomainAccess(session, user.username().getDomainPart().get())) {
+                    return Mono.error(NotFoundException::new);
+                }
+                return buildUserResponse(user);
+            })
             .map(Throwing.function(OBJECT_MAPPER::writeValueAsBytes))
             .switchIfEmpty(Mono.error(NotFoundException::new))
             .flatMap(bytes -> response.status(200)
@@ -200,5 +198,16 @@ public class UserRoute extends CalendarRoute {
                 .header("Cache-Control", "max-age=60, public")
                 .sendByteArray(Mono.just(bytes))
                 .then());
+    }
+
+    private Mono<ResponseDTO> buildUserResponse(OpenPaaSUser user) {
+        return Mono.zip(domainDAO.retrieve(user.username().getDomainPart().get()),
+                settingsResolver.resolveOrDefault(user.username()))
+            .map(tuple -> {
+                OpenPaaSDomain domain = tuple.getT1();
+                SettingsBasedResolver.ResolvedSettings settings = tuple.getT2();
+                String timezone = settings.zoneId().toString();
+                return new ResponseDTO(user, domain.id(), timezone);
+            });
     }
 }
