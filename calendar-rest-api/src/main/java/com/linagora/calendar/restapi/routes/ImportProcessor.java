@@ -50,6 +50,7 @@ import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.ResolvedSettings;
 import com.linagora.calendar.storage.event.EventParseUtils;
+import com.linagora.calendar.storage.model.ImportId;
 import com.linagora.calendar.storage.model.UploadedFile;
 
 import ezvcard.Ezvcard;
@@ -84,8 +85,26 @@ public class ImportProcessor {
         }
     }
 
+    public record ImportCommand(ImportId importId,
+                                ImportType importType,
+                                byte[] uploadData,
+                                OpenPaaSId baseId,
+                                String resourceId) {
+
+        public static ImportCommand create(ImportType importType,
+                                           UploadedFile uploadedFile,
+                                           String baseId,
+                                           String resourceId) {
+            return new ImportCommand(ImportId.generate(),
+                importType,
+                uploadedFile.data(),
+                new OpenPaaSId(baseId),
+                resourceId);
+        }
+    }
+
     public interface ImportToDavHandler {
-        Mono<ImportResult> handle(UploadedFile uploadedFile, Username username, OpenPaaSId baseId, String resourceId);
+        Mono<ImportResult> handle(ImportCommand importCommand, Username username);
     }
 
     static class ImportICSToDavHandler implements ImportToDavHandler {
@@ -96,10 +115,10 @@ public class ImportProcessor {
         }
 
         @Override
-        public Mono<ImportResult> handle(UploadedFile uploadedFile, Username username, OpenPaaSId baseId, String resourceId) {
-            CalendarURL calendarURL = new CalendarURL(baseId, new OpenPaaSId(resourceId));
+        public Mono<ImportResult> handle(ImportCommand importCommand, Username username) {
+            CalendarURL calendarURL = new CalendarURL(importCommand.baseId(), new OpenPaaSId(importCommand.resourceId()));
 
-            return Mono.fromCallable(() -> CalendarUtil.parseIcs(uploadedFile.data()))
+            return Mono.fromCallable(() -> CalendarUtil.parseIcs(importCommand.uploadData()))
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMapMany(calendar -> Mono.fromCallable(() -> EventParseUtils.groupByUid(calendar))
                     .flatMapMany(map -> Flux.fromIterable(map.entrySet()))
@@ -141,8 +160,8 @@ public class ImportProcessor {
         }
 
         @Override
-        public Mono<ImportResult> handle(UploadedFile uploadedFile, Username username, OpenPaaSId baseId, String resourceId) {
-            return Mono.fromCallable(() -> Ezvcard.parse(new String(uploadedFile.data(), StandardCharsets.UTF_8)).all())
+        public Mono<ImportResult> handle(ImportCommand importCommand, Username username) {
+            return Mono.fromCallable(() -> Ezvcard.parse(new String(importCommand.uploadData(), StandardCharsets.UTF_8)).all())
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMapMany(Flux::fromIterable)
                 .flatMap(vcard -> {
@@ -153,8 +172,8 @@ public class ImportProcessor {
                         .prodId(false)
                         .go();
 
-                    return cardDavClient.createContact(
-                            username, baseId, resourceId, vcardUid, vcardString.getBytes(StandardCharsets.UTF_8))
+                    return cardDavClient.createContact(username, importCommand.baseId(), importCommand.resourceId(),
+                            vcardUid, vcardString.getBytes(StandardCharsets.UTF_8))
                         .thenReturn(ImportResult.succeed())
                         .onErrorResume(error -> {
                             LOGGER.error("Error importing contact with UID {}: {}", vcardUid, error.getMessage());
@@ -198,19 +217,20 @@ public class ImportProcessor {
         this.settingsResolver = settingsResolver;
     }
 
-    public Mono<Void> process(ImportType importType, UploadedFile uploadedFile,
-                              OpenPaaSId baseId, String resourceId, MailboxSession mailboxSession) {
+
+    public Mono<Void> process(ImportCommand importCommand, MailboxSession mailboxSession) {
         Username username = mailboxSession.getUser();
 
-        ImportToDavHandler importToDavHandler = switch (importType) {
+        LOGGER.debug("Starting import {} of type {} for user {}", importCommand.importId().value(), importCommand.importType().name(), username);
+        ImportToDavHandler importToDavHandler = switch (importCommand.importType()) {
             case ICS -> importICSHandler;
             case VCARD -> importVCardHandler;
         };
 
-        return importToDavHandler.handle(uploadedFile, username, baseId, resourceId)
+        return importToDavHandler.handle(importCommand, username)
             .flatMap(importResult -> settingsResolver.resolveOrDefault(mailboxSession)
                 .map(ResolvedSettings::locale)
-                .doOnSuccess(locale -> sendReportMail(importType, new Language(locale), importResult, username)))
+                .doOnSuccess(locale -> sendReportMail(importCommand.importType(), new Language(locale), importResult, username)))
             .then();
     }
 

@@ -25,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.awaitility.Durations.ONE_HUNDRED_MILLISECONDS;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.notNullValue;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -208,7 +209,8 @@ public class ImportRouteTest {
         .when()
             .post("/api/import")
         .then()
-            .statusCode(HttpStatus.SC_ACCEPTED);
+            .statusCode(HttpStatus.SC_ACCEPTED)
+            .body("importId", notNullValue());
 
         CALMLY_AWAIT
             .atMost(Duration.ofSeconds(10))
@@ -886,5 +888,98 @@ public class ImportRouteTest {
             .body("error.message", equalTo("Bad request"))
             .body("error.details", equalTo("target must be present"));
     }
-}
 
+    @Test
+    void shouldReturnImportIdWhenImportIsAccepted(TwakeCalendarGuiceServer server) {
+        byte[] ics = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:test
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250102T120000Z
+            DTEND:20250102T130000Z
+            SUMMARY:Test Event
+            END:VEVENT
+            END:VCALENDAR
+            """.getBytes(StandardCharsets.UTF_8);
+
+        OpenPaaSId fileId = server.getProbe(CalendarDataProbe.class).saveUploadedFile(
+            openPaaSUser.username(),
+            new Upload("abc.ics", UploadedMimeType.TEXT_CALENDAR, Instant.now(), (long) ics.length, ics));
+
+        String requestBody = """
+            {
+                "fileId": "%s",
+                "target": "/calendars/%s/%s.json"
+            }
+            """.formatted(fileId.value(), openPaaSUser.id().value(), openPaaSUser.id().value());
+
+        server.getProbe(CalendarDataProbe.class)
+            .exportCalendarFromCalDav(new CalendarURL(openPaaSUser.id(), openPaaSUser.id()),
+                MailboxSessionUtil.create(openPaaSUser.username()));
+
+        JsonPath response = given().log().all()
+            .body(requestBody)
+        .when()
+            .post("/api/import")
+        .then()
+            .statusCode(HttpStatus.SC_ACCEPTED)
+            .extract()
+            .jsonPath();
+
+        assertThat(response.getString("importId")).isNotBlank();
+    }
+
+    @Test
+    void shouldReturnDifferentImportIdForEachRequest(TwakeCalendarGuiceServer server) {
+        byte[] ics = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:test-unique
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250102T120000Z
+            DTEND:20250102T130000Z
+            SUMMARY:Test Event
+            END:VEVENT
+            END:VCALENDAR
+            """.getBytes(StandardCharsets.UTF_8);
+
+        OpenPaaSId fileId = server.getProbe(CalendarDataProbe.class)
+            .saveUploadedFile(openPaaSUser.username(), new Upload("abc.ics", UploadedMimeType.TEXT_CALENDAR, Instant.now(), (long) ics.length, ics));
+
+        String requestBody = """
+            {
+                "fileId": "%s",
+                "target": "/calendars/%s/%s.json"
+            }
+            """.formatted(fileId.value(), openPaaSUser.id().value(), openPaaSUser.id().value());
+
+        server.getProbe(CalendarDataProbe.class)
+            .exportCalendarFromCalDav(new CalendarURL(openPaaSUser.id(), openPaaSUser.id()),
+                MailboxSessionUtil.create(openPaaSUser.username()));
+
+        JsonPath firstResponse = given()
+            .body(requestBody)
+        .when()
+            .post("/api/import")
+        .then()
+            .statusCode(HttpStatus.SC_ACCEPTED)
+            .extract()
+            .jsonPath();
+
+        JsonPath secondResponse = given()
+            .body(requestBody)
+        .when()
+            .post("/api/import")
+        .then()
+            .statusCode(HttpStatus.SC_ACCEPTED)
+            .extract()
+            .jsonPath();
+
+        String firstImportId = firstResponse.getString("importId");
+        String secondImportId = secondResponse.getString("importId");
+
+        assertThat(firstImportId).isNotEqualTo(secondImportId);
+    }
+
+}
