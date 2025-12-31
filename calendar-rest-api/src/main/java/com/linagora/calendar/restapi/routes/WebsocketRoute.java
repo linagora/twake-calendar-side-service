@@ -33,6 +33,7 @@ import java.util.stream.StreamSupport;
 
 import jakarta.inject.Inject;
 
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.commons.lang3.Strings;
@@ -91,7 +92,7 @@ public class WebsocketRoute extends CalendarRoute {
     private final Duration websocketPingInterval;
     private final EventBus eventBus;
     private final CalDavClient calDavClient;
-    private final Set<ClientContext> connectedUsers = ConcurrentHashMap.newKeySet();
+    private final Set<ClientContext> connectedClients = ConcurrentHashMap.newKeySet();
 
     @Inject
     protected WebsocketRoute(TicketAuthenticationStrategy ticketAuthenticationStrategy,
@@ -120,18 +121,18 @@ public class WebsocketRoute extends CalendarRoute {
 
     @Override
     Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response, MailboxSession session) {
-        Sinks.Many<CalendarChangeMessage> outboundSink = Sinks.many().unicast().onBackpressureBuffer();
+        Sinks.Many<WebsocketMessage> outboundSink = Sinks.many().unicast().onBackpressureBuffer();
         ClientContext context = ClientContext.create(outboundSink, session);
 
         return response.sendWebsocket((in, out) -> {
-            connectedUsers.add(context);
+            connectedClients.add(context);
             Flux<WebSocketFrame> inboundFlux = in.aggregateFrames()
                 .receiveFrames()
                 .filter(frame -> frame instanceof TextWebSocketFrame)
                 .flatMap(message -> handleClientMessage(((TextWebSocketFrame) message).text(), context)
                     .map(TextWebSocketFrame::new));
 
-            Flux<WebSocketFrame> outboundFlux = outboundSink.asFlux().map(Throwing.function(CalendarChangeMessage::asWebSocketFrame));
+            Flux<WebSocketFrame> outboundFlux = outboundSink.asFlux().map(Throwing.function(WebsocketMessage::asWebSocketFrame));
 
             return out.sendObject(Flux.merge(outboundFlux, inboundFlux, pingInterval()))
                 .then()
@@ -167,7 +168,7 @@ public class WebsocketRoute extends CalendarRoute {
             .defaultIfEmpty(ClientSubscribeResult.empty());
 
         Mono<ClientSubscribeResult> unregistrationResult = Flux.fromIterable(subscribeRequest.unregister())
-            .flatMap(calendarUrl -> context.unregister(calendarUrl)
+            .flatMap(calendarUrl -> context.unregister(new CalendarSubscriptionKey(calendarUrl))
                 .thenReturn(ClientSubscribeResult.unregistered(calendarUrl))
                 .onErrorResume(error -> {
                     LOGGER.error("Error unRegistering {}", calendarUrl, error);
@@ -179,25 +180,34 @@ public class WebsocketRoute extends CalendarRoute {
         return Mono.zip(registrationResult, unregistrationResult, ClientSubscribeResult::merge);
     }
 
-    private Mono<Registration> registerCalendar(CalendarURL calendarUrl,
-                                                ClientContext context) {
+    private Mono<Void> registerCalendar(CalendarURL calendarUrl,
+                                        ClientContext context) {
         Username username = context.session().getUser();
-        return Mono.justOrEmpty(context.subscriptionMap().get(calendarUrl))
-            .switchIfEmpty(Mono.defer(() -> {
-                CalendarStateChangeListener listener = new CalendarStateChangeListener(context.outbound(), calDavClient, username);
-                RegistrationKey registrationKey = new CalendarURLRegistrationKey(calendarUrl);
+        CalendarSubscriptionKey key = new CalendarSubscriptionKey(calendarUrl);
 
-                return validateAccessRights(username, calendarUrl)
-                    .then(Mono.from(eventBus.register(listener, registrationKey)))
-                    .flatMap(registration -> {
-                        Registration old = context.subscriptionMap().putIfAbsent(calendarUrl, registration);
-                        if (old != null) {
-                            return Mono.from(registration.unregister())
-                                .thenReturn(old);
-                        }
-                        return Mono.just(registration);
-                    });
-            }));
+        if (context.hasSubscription(key)) {
+            return Mono.empty();
+        }
+
+        CalendarStateChangeListener calendarStateChangeListener = new CalendarStateChangeListener(context.outbound(), calDavClient, username);
+        ImportStateChangeListener importStateChangeListener = new ImportStateChangeListener(context.outbound(), username);
+        RegistrationKey registrationKey = new CalendarURLRegistrationKey(calendarUrl);
+
+        return validateAccessRights(username, calendarUrl)
+            .then(Mono.zip(
+                Mono.from(eventBus.register(calendarStateChangeListener, registrationKey)),
+                Mono.from(eventBus.register(importStateChangeListener, registrationKey))))
+            .flatMap(tuple -> {
+                List<Registration> newRegistrations = List.of(tuple.getT1(), tuple.getT2());
+                List<Registration> existing = context.activeSubscriptions().putIfAbsent(key, newRegistrations);
+                if (existing != null) {
+                    // Race: another thread registered first; unregister our duplicates
+                    return Flux.fromIterable(newRegistrations)
+                        .flatMap(Registration::unregister)
+                        .then();
+                }
+                return Mono.empty();
+            });
     }
 
     private Mono<Void> validateAccessRights(Username user, CalendarURL url) {
@@ -213,30 +223,39 @@ public class WebsocketRoute extends CalendarRoute {
 
     private void cleanupWebsocketSession(ClientContext context) {
         context.clean();
-        connectedUsers.remove(context);
+        connectedClients.remove(context);
     }
 
-    private record ClientContext(Sinks.Many<CalendarChangeMessage> outbound,
-                                 Map<CalendarURL, Registration> subscriptionMap,
+    interface SubscriptionKey {
+    }
+
+    record CalendarSubscriptionKey(CalendarURL calendarURL) implements SubscriptionKey {
+    }
+
+    private record ClientContext(Sinks.Many<WebsocketMessage> outbound,
+                                 Map<SubscriptionKey, List<Registration>> activeSubscriptions,
                                  MailboxSession session) {
 
-        static ClientContext create(Sinks.Many<CalendarChangeMessage> outbound, MailboxSession session) {
+        static ClientContext create(Sinks.Many<WebsocketMessage> outbound, MailboxSession session) {
             return new ClientContext(outbound, new ConcurrentHashMap<>(), session);
         }
 
-        Mono<Void> unregister(CalendarURL calendarUrl) {
-            Registration registration = subscriptionMap.remove(calendarUrl);
-            if (registration != null) {
-                return Mono.from(registration.unregister());
+        Mono<Void> unregister(SubscriptionKey subscriptionKey) {
+            List<Registration> registrations = activeSubscriptions.remove(subscriptionKey);
+            if (CollectionUtils.isEmpty(registrations)) {
+                return Mono.empty();
             }
-            return Mono.empty();
+            return Flux.fromIterable(registrations)
+                .flatMap(Registration::unregister)
+                .then();
         }
 
         void clean() {
-            Flux.fromIterable(subscriptionMap.values())
+            Flux.fromIterable(activeSubscriptions.values())
+                .flatMapIterable(list -> list)
                 .flatMap(Registration::unregister)
                 .doFinally(signal -> {
-                    subscriptionMap.clear();
+                    activeSubscriptions.clear();
                     outbound.emitComplete(EmitFailureHandler.FAIL_FAST);
                 })
                 .onErrorResume(error -> {
@@ -245,6 +264,10 @@ public class WebsocketRoute extends CalendarRoute {
                 })
                 .subscribeOn(Schedulers.boundedElastic())
                 .subscribe();
+        }
+
+        boolean hasSubscription(SubscriptionKey subscriptionKey) {
+            return activeSubscriptions.containsKey(subscriptionKey);
         }
     }
 
@@ -376,9 +399,10 @@ public class WebsocketRoute extends CalendarRoute {
         }
     }
 
-    public record CalendarChangeMessage(CalendarURL calendarURL, SyncToken syncToken) {
+    public record CalendarChangeMessage(CalendarURL calendarURL, SyncToken syncToken) implements WebsocketMessage {
         static final String SYNC_TOKEN_PROPERTY = "syncToken";
 
+        @Override
         public WebSocketFrame asWebSocketFrame() throws JsonProcessingException {
             return new TextWebSocketFrame(serialize());
         }
@@ -388,6 +412,10 @@ public class WebsocketRoute extends CalendarRoute {
                 MAPPER.createObjectNode().set(calendarURL.asUri().toASCIIString(),
                     MAPPER.createObjectNode().put(SYNC_TOKEN_PROPERTY, syncToken.value())));
         }
+    }
+
+    public interface WebsocketMessage {
+        WebSocketFrame asWebSocketFrame() throws Exception;
     }
 
 }

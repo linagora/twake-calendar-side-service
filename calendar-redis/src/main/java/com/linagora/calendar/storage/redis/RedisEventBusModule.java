@@ -24,6 +24,7 @@ import jakarta.inject.Singleton;
 
 import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.james.events.AddressBookURLRegistrationKeyFactory;
 import org.apache.james.events.CalendarEventSerializer;
 import org.apache.james.events.CalendarRedisEventBus;
 import org.apache.james.events.CalendarURLRegistrationKeyFactory;
@@ -51,7 +52,10 @@ public class RedisEventBusModule extends AbstractModule {
     protected void configure() {
         bind(RetryBackoffConfiguration.class).toInstance(RetryBackoffConfiguration.DEFAULT);
         bind(EventSerializer.class).to(CalendarEventSerializer.class);
-        bind(RoutingKeyConverter.class).toInstance(new RoutingKeyConverter(ImmutableSet.of(new CalendarURLRegistrationKeyFactory())));
+        bind(RoutingKeyConverter.class).toInstance(new RoutingKeyConverter(
+            ImmutableSet.of(
+                new CalendarURLRegistrationKeyFactory(),
+                new AddressBookURLRegistrationKeyFactory())));
         bind(EventBusId.class).toInstance(EventBusId.random());
         bind(CalendarRedisEventBus.class).in(Scopes.SINGLETON);
         bind(EventBus.class).to(CalendarRedisEventBus.class);
