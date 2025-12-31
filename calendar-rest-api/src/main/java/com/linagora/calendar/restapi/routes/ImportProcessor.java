@@ -221,6 +221,7 @@ public class ImportProcessor {
     public Mono<Void> process(ImportCommand importCommand, MailboxSession mailboxSession) {
         Username username = mailboxSession.getUser();
 
+        LOGGER.debug("Starting import {} of type {} for user {}", importCommand.importId().value(), importCommand.importType().name(), username);
         ImportToDavHandler importToDavHandler = switch (importCommand.importType()) {
             case ICS -> importICSHandler;
             case VCARD -> importVCardHandler;

@@ -27,7 +27,7 @@ import com.google.common.base.Preconditions;
 public record ImportId(String value) {
 
     public ImportId {
-        Preconditions.checkArgument(StringUtils.isNoneEmpty(value), "value must not be null");
+        Preconditions.checkArgument(StringUtils.isNoneEmpty(value), "value must not be null or empty");
     }
 
     public static ImportId generate() {

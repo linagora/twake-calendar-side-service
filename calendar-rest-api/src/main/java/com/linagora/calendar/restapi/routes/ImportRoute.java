@@ -20,6 +20,8 @@ package com.linagora.calendar.restapi.routes;
 
 import static com.linagora.calendar.restapi.RestApiConstants.JSON_HEADER;
 
+import java.util.Map;
+
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
@@ -31,6 +33,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
@@ -94,7 +97,7 @@ public class ImportRoute extends CalendarRoute {
             .flatMap(importRequest -> handleImport(importRequest, session))
             .flatMap(importId -> response.status(HttpResponseStatus.ACCEPTED)
                 .headers(JSON_HEADER)
-                .sendString(Mono.just(serializeImportResponse(importId)))
+                .sendByteArray(Mono.fromCallable(() -> serializeImportResponse(importId)))
                 .then());
     }
 
@@ -126,8 +129,8 @@ public class ImportRoute extends CalendarRoute {
         };
     }
 
-    private String serializeImportResponse(ImportId importId) {
-        return "{\"" + IMPORT_ID_PROPERTY + "\":\"" + importId.value() + "\"}";
+    private byte[] serializeImportResponse(ImportId importId) throws JsonProcessingException {
+        return OBJECT_MAPPER.writeValueAsBytes(Map.of(IMPORT_ID_PROPERTY, importId.value()));
     }
 
 }
