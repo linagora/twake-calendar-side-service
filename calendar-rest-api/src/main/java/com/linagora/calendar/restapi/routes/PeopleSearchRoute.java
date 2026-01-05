@@ -164,7 +164,7 @@ public class PeopleSearchRoute extends CalendarRoute {
             .filter(provider -> objectTypesFilter.isEmpty() || !Sets.intersection(
                 objectTypesFilter,
                 provider.supportedTypes()).isEmpty())
-            .flatMap(provder -> provder.search(session, query, objectTypesFilter, limit))
+            .flatMap(provider -> provider.search(session, query, objectTypesFilter, limit))
             .take(limit);
     }
 }
