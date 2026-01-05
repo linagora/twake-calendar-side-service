@@ -589,4 +589,173 @@ class PeopleSearchRouteTest {
             .hasSize(2);
     }
 
+    @Test
+    void shouldOnlyReturnUsersFromAuthenticatedUserDomain(TwakeCalendarGuiceServer server) {
+        // GIVEN: two distinct domains with users
+        CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
+        Domain ownedDomain = Domain.of("owned-domain.tld");
+        Domain foreignDomain = Domain.of("foreign-domain.tld");
+
+        calendarDataProbe.addDomain(ownedDomain)
+            .addDomain(foreignDomain);
+
+        Username ownedDomainUser1 = Username.fromLocalPartWithDomain("alice1", ownedDomain.asString());
+        Username ownedDomainUser2 = Username.fromLocalPartWithDomain("alice2", ownedDomain.asString());
+        Username foreignDomainUser = Username.fromLocalPartWithDomain("bob", foreignDomain.asString());
+
+        calendarDataProbe.addUser(ownedDomainUser1, PASSWORD);
+        calendarDataProbe.addUser(ownedDomainUser2, PASSWORD);
+        calendarDataProbe.addUser(foreignDomainUser, PASSWORD);
+
+        // WHEN: searching users as a caller-domain user
+        String response = given()
+            .auth().preemptive()
+            .basic(ownedDomainUser1.asString(), PASSWORD)
+            .body("""
+                {
+                  "q": "",
+                  "objectTypes": ["user"],
+                  "limit": 10
+                }
+                """)
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract()
+            .body()
+            .asString();
+
+        // THEN: only users belonging to the caller domain are returned
+        assertThatJson(response)
+            .isArray()
+            .anySatisfy(json ->
+                assertThatJson(json)
+                    .node("emailAddresses[0].value")
+                    .isEqualTo(ownedDomainUser1.asString()))
+            .anySatisfy(json ->
+                assertThatJson(json)
+                    .node("emailAddresses[0].value")
+                    .isEqualTo(ownedDomainUser2.asString()));
+
+        assertThatJson(response)
+            .isArray()
+            .noneSatisfy(json ->
+                assertThatJson(json)
+                    .node("emailAddresses[0].value")
+                    .isEqualTo(foreignDomainUser.asString()));
+    }
+
+    @Test
+    void shouldOnlyReturnContactsFromAuthenticatedUserDomain(TwakeCalendarGuiceServer server) {
+        // GIVEN: contacts belonging to two different domains
+        CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
+
+        Domain ownedDomain = Domain.of("owned-domain.tld");
+        Domain foreignDomain = Domain.of("foreign-domain.tld");
+        Username ownedDomainUser = Username.fromLocalPartWithDomain("alice", ownedDomain.asString());
+        Username foreignDomainUser = Username.fromLocalPartWithDomain("bob", foreignDomain.asString());
+
+        calendarDataProbe.addDomain(ownedDomain)
+            .addUser(ownedDomainUser, PASSWORD);
+        calendarDataProbe.addDomain(foreignDomain)
+            .addUser(foreignDomainUser, PASSWORD);
+
+        MemoryAutoCompleteModule.Probe contactProbe = server.getProbe(MemoryAutoCompleteModule.Probe.class);
+        contactProbe.add(ownedDomainUser.asString(), "contact1@" + ownedDomain.asString(), "contact", "owned");
+        contactProbe.add(foreignDomainUser.asString(), "contact2@" + foreignDomain.asString(), "contact", "foreign");
+
+        // WHEN: searching contacts as owned-domain user
+        String response = given()
+            .auth().preemptive()
+            .basic(ownedDomainUser.asString(), PASSWORD)
+            .body("""
+                {
+                  "q": "",
+                  "objectTypes": ["contact"],
+                  "limit": 10
+                }
+                """)
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract()
+            .body()
+            .asString();
+
+        // THEN: only contacts belonging to the authenticated user domain are returned
+        assertThatJson(response)
+            .isArray()
+            .anySatisfy(json ->
+                assertThatJson(json)
+                    .node("emailAddresses[0].value")
+                    .isEqualTo("contact1@" + ownedDomain.asString()));
+
+        assertThatJson(response)
+            .isArray()
+            .noneSatisfy(json ->
+                assertThatJson(json)
+                    .node("emailAddresses[0].value")
+                    .isEqualTo("contact2@" + foreignDomain.asString()));
+    }
+
+    @Test
+    void shouldOnlyReturnResourcesFromUserDomain(TwakeCalendarGuiceServer server) {
+        // GIVEN: resources in two different domains
+        CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
+
+        Domain ownedDomain = Domain.of("owned-domain.tld");
+        Domain foreignDomain = Domain.of("foreign-domain.tld");
+        Username ownedDomainUser = Username.fromLocalPartWithDomain("alice", ownedDomain.asString());
+        Username foreignDomainUser = Username.fromLocalPartWithDomain("bob", foreignDomain.asString());
+        calendarDataProbe.addDomain(ownedDomain)
+            .addUser(ownedDomainUser, PASSWORD);
+
+        calendarDataProbe.addDomain(foreignDomain)
+            .addUser(foreignDomainUser, PASSWORD);
+
+        ResourceProbe resourceProbe = server.getProbe(ResourceProbe.class);
+
+        OpenPaaSUser ownedOpenPaaSUser = calendarDataProbe.getUser(ownedDomainUser);
+        OpenPaaSUser foreignOpenPaaSUser = calendarDataProbe.getUser(foreignDomainUser);
+
+        resourceProbe.save(ownedOpenPaaSUser, "owned-room", "laptop");
+        resourceProbe.save(foreignOpenPaaSUser, "foreign-room", "laptop");
+
+        // WHEN: searching resources as owned-domain user
+        String response = given()
+            .auth().preemptive()
+            .basic(ownedDomainUser.asString(), PASSWORD)
+            .body("""
+                {
+                  "q": "room",
+                  "objectTypes": ["resource"],
+                  "limit": 10
+                }
+                """)
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract()
+            .body()
+            .asString();
+
+        // THEN: only resources belonging to the user domain are returned
+        assertThatJson(response)
+            .isArray()
+            .anySatisfy(json ->
+                assertThatJson(json)
+                    .node("names[0].displayName")
+                    .isEqualTo("owned-room"));
+
+        assertThatJson(response)
+            .isArray()
+            .noneSatisfy(json ->
+                assertThatJson(json)
+                    .node("names[0].displayName")
+                    .isEqualTo("foreign-room"));
+    }
+
 }

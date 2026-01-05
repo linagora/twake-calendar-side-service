@@ -20,7 +20,7 @@ package com.linagora.calendar.restapi.routes.people.search;
 
 import java.util.Set;
 
-import org.apache.james.core.Username;
+import org.apache.james.mailbox.MailboxSession;
 
 import com.linagora.calendar.restapi.routes.PeopleSearchRoute;
 
@@ -29,5 +29,5 @@ import reactor.core.publisher.Flux;
 public interface PeopleSearchProvider {
     Set<PeopleSearchRoute.ObjectType> supportedTypes();
 
-    Flux<PeopleSearchRoute.ResponseDTO> search(Username username, String query, Set<PeopleSearchRoute.ObjectType> objectTypesFilter, int limit);
+    Flux<PeopleSearchRoute.ResponseDTO> search(MailboxSession session, String query, Set<PeopleSearchRoute.ObjectType> objectTypesFilter, int limit);
 }

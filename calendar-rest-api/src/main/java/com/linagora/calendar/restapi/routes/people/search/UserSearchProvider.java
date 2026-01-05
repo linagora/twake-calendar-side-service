@@ -27,7 +27,7 @@ import jakarta.inject.Inject;
 import jakarta.inject.Named;
 
 import org.apache.commons.collections4.CollectionUtils;
-import org.apache.james.core.Username;
+import org.apache.james.mailbox.MailboxSession;
 
 import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.restapi.routes.PeopleSearchRoute;
@@ -59,12 +59,12 @@ public class UserSearchProvider implements PeopleSearchProvider {
     }
 
     @Override
-    public Flux<PeopleSearchRoute.ResponseDTO> search(Username username, String query, Set<ObjectType> objectTypesFilter, int limit) {
+    public Flux<PeopleSearchRoute.ResponseDTO> search(MailboxSession session, String query, Set<ObjectType> objectTypesFilter, int limit) {
         if (CollectionUtils.isEmpty(objectTypesFilter) || objectTypesFilter.contains(ObjectType.CONTACT)) {
             return Flux.empty(); // handled by ContactSearchProvider
         }
 
-        return Mono.justOrEmpty(username.getDomainPart())
+        return Mono.justOrEmpty(session.getUser().getDomainPart())
             .flatMapMany(domain -> userDAO.search(domain, query, limit))
             .map(this::toResponseDTO);
     }

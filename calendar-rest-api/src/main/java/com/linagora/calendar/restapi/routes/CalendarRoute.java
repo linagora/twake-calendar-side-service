@@ -20,6 +20,7 @@ package com.linagora.calendar.restapi.routes;
 
 import java.util.stream.Stream;
 
+import org.apache.james.core.Domain;
 import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.JMAPRoute;
 import org.apache.james.jmap.JMAPRoutes;
@@ -53,5 +54,10 @@ public abstract class CalendarRoute implements JMAPRoutes {
                 .action((req, res) -> authenticator.authenticate(req)
                     .flatMap(session -> Mono.from(metricFactory.decoratePublisherWithTimerMetric(this.getClass().getSimpleName(), handleRequest(req, res, session)))))
                 .corsHeaders());
+    }
+
+    protected boolean crossDomainAccess(MailboxSession session, Domain queriedDomain) {
+        Domain authenticatedDomain = session.getUser().getDomainPart().get();
+        return !authenticatedDomain.equals(queriedDomain);
     }
 }

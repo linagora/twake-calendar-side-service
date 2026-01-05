@@ -32,6 +32,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.apache.james.core.Domain;
+import org.apache.james.core.Username;
 import org.apache.james.utils.GuiceProbe;
 import org.assertj.core.api.SoftAssertions;
 import org.bson.types.ObjectId;
@@ -234,6 +236,21 @@ public class ResourceRouteTest {
             .contentType(JSON)
             .body("_id", equalTo(resource.id().value()))
             .body("name", equalTo(resource.name()));
+    }
+
+    @Test
+    void shouldReturn404WhenAccessingResourceFromAnotherDomain(TwakeCalendarGuiceServer server) {
+        Domain otherDomain = Domain.of("domain999.tld");
+        Username otherDomainUser = Username.fromLocalPartWithDomain(UUID.randomUUID().toString(), otherDomain);
+        server.getProbe(CalendarDataProbe.class)
+            .addDomain(otherDomain)
+            .addUserToRepository(otherDomainUser, DEFAULT_USER_PASSWORD);
+
+        given(buildRequestSpec(otherDomainUser.asString(), DEFAULT_USER_PASSWORD, restApiPort))
+            .when()
+            .get(String.format("/linagora.esn.resource/api/resources/%s", resource.id().value()))
+        .then()
+            .statusCode(404);
     }
 
     @Test

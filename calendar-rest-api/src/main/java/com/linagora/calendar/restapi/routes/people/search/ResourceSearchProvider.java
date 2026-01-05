@@ -26,7 +26,7 @@ import java.util.Set;
 import jakarta.inject.Inject;
 
 import org.apache.james.core.Domain;
-import org.apache.james.core.Username;
+import org.apache.james.mailbox.MailboxSession;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -94,8 +94,8 @@ public class ResourceSearchProvider implements PeopleSearchProvider {
     }
 
     @Override
-    public Flux<PeopleSearchRoute.ResponseDTO> search(Username username, String query, Set<PeopleSearchRoute.ObjectType> objectTypesFilter, int limit) {
-            return Mono.justOrEmpty(username.getDomainPart())
+    public Flux<PeopleSearchRoute.ResponseDTO> search(MailboxSession session, String query, Set<PeopleSearchRoute.ObjectType> objectTypesFilter, int limit) {
+            return Mono.justOrEmpty(session.getUser().getDomainPart())
                 .flatMap(domainDAO::retrieve)
                 .flatMapMany(openPaaSDomain -> resourceDAO.search(openPaaSDomain.id(), query, limit)
                     .map(resource -> resourceAsResponseDTO(resource, openPaaSDomain.domain())));
