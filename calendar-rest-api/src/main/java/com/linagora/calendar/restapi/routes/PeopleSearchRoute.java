@@ -26,7 +26,6 @@ import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
 
-import org.apache.james.core.Username;
 import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.http.Authenticator;
 import org.apache.james.mailbox.MailboxSession;
@@ -143,7 +142,7 @@ public class PeopleSearchRoute extends CalendarRoute {
         return req.receive().aggregate().asByteArray()
             .map(Throwing.function(bytes -> OBJECT_MAPPER.readValue(bytes, SearchRequestDTO.class)))
             .map(validateRequest())
-            .flatMapMany(requestDTO -> search(session.getUser(), requestDTO.query, requestDTO.parsedObjectTypes(), requestDTO.limit))
+            .flatMapMany(requestDTO -> search(session, requestDTO.query, requestDTO.parsedObjectTypes(), requestDTO.limit))
             .collectList()
             .map(Throwing.function(OBJECT_MAPPER::writeValueAsBytes))
             .flatMap(bytes -> res.status(200)
@@ -160,12 +159,12 @@ public class PeopleSearchRoute extends CalendarRoute {
         };
     }
 
-    private Flux<ResponseDTO> search(Username username, String query, Set<ObjectType> objectTypesFilter, int limit) {
+    private Flux<ResponseDTO> search(MailboxSession session, String query, Set<ObjectType> objectTypesFilter, int limit) {
         return Flux.fromIterable(searchProviders)
             .filter(provider -> objectTypesFilter.isEmpty() || !Sets.intersection(
                 objectTypesFilter,
                 provider.supportedTypes()).isEmpty())
-            .flatMap(provder -> provder.search(username, query, objectTypesFilter, limit))
+            .flatMap(provder -> provder.search(session, query, objectTypesFilter, limit))
             .take(limit);
     }
 }

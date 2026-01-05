@@ -29,6 +29,7 @@ import jakarta.inject.Named;
 import org.apache.commons.lang3.Strings;
 import org.apache.james.core.Username;
 import org.apache.james.jmap.api.model.AccountId;
+import org.apache.james.mailbox.MailboxSession;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -115,8 +116,8 @@ public class ContactSearchProvider implements PeopleSearchProvider {
     }
 
     @Override
-    public Flux<PeopleSearchRoute.ResponseDTO> search(Username username, String query, Set<ObjectType> objectTypesFilter, int limit) {
-        return Flux.from(contactSearchEngine.autoComplete(AccountId.fromString(username.asString()), query, limit))
+    public Flux<PeopleSearchRoute.ResponseDTO> search(MailboxSession session, String query, Set<ObjectType> objectTypesFilter, int limit) {
+        return Flux.from(contactSearchEngine.autoComplete(AccountId.fromString(session.getUser().asString()), query, limit))
             .flatMap(contact -> resolveUserOrContactType(contact, objectTypesFilter)
                 .map(lookupResult -> toResponseDTO(lookupResult, contact)));
     }
