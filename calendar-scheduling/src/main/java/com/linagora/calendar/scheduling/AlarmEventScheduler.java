@@ -128,7 +128,7 @@ public class AlarmEventScheduler implements Startable, Closeable {
     private Mono<Void> processOneAlarm(AlarmEvent alarmEvent) {
         return Mono.from(metricFactory.decoratePublisherWithTimerMetric("calendar.alarm.duration",
             alarmEventLeaseProvider.acquire(alarmEvent, LEASE_TTL)
-            .then(alarmTriggerService.sendMailAndCleanup(alarmEvent)
+            .then(alarmTriggerService.processAlarmAndCleanup(alarmEvent)
                 .doOnSuccess(any -> alarmMetric.increment())
                 .onErrorResume(error -> {
                     LOGGER.error("Error processing send mail and cleanup for event: {}", alarmEvent.toShortString(), error);

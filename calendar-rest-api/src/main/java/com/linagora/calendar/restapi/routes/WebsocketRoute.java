@@ -56,6 +56,7 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -73,6 +74,7 @@ import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.AddressBookURLRegistrationKey;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.CalendarURLRegistrationKey;
+import com.linagora.calendar.storage.UsernameRegistrationKey;
 import com.linagora.tmail.james.jmap.ticket.TicketAuthenticationStrategy;
 
 import io.netty.handler.codec.http.HttpMethod;
@@ -150,10 +152,11 @@ public class WebsocketRoute extends CalendarRoute {
 
     private Mono<String> handleClientMessage(String message,
                                              ClientContext context) {
-        return Mono.fromCallable(() -> ClientSubscribeRequest.deserialize(message))
-            .doOnNext(ClientSubscribeRequest::validate)
-            .flatMap(request -> handleSubscribeRequest(request, context)
-                .map(ClientSubscribeResult::serialize))
+        return tryHandleEnableDisplayNotification(message, context)
+            .switchIfEmpty(Mono.fromCallable(() -> ClientSubscribeRequest.deserialize(message))
+                .doOnNext(ClientSubscribeRequest::validate)
+                .flatMap(request -> handleSubscribeRequest(request, context)
+                    .map(ClientSubscribeResult::serialize)))
             .onErrorResume(error -> {
                 LOGGER.warn("Error when handle client message: {} ", message, error);
                 if (error instanceof CalendarSubscribeException) {
@@ -161,6 +164,30 @@ public class WebsocketRoute extends CalendarRoute {
                 }
                 return Mono.just("{\"error\":\"internal-error\"}");
             });
+    }
+
+    private Mono<String> tryHandleEnableDisplayNotification(String message,
+                                                            ClientContext context) {
+        try {
+            EnableDisplayNotificationRequest request = MAPPER.readValue(message, EnableDisplayNotificationRequest.class);
+            Username username = context.session().getUser();
+            AlarmSubscriptionKey alarmSubscriptionKey = new AlarmSubscriptionKey(username);
+
+            return Mono.justOrEmpty(context.subscriptionMap().get(alarmSubscriptionKey))
+                .map(existing -> "{\"displayNotificationEnabled\":true}")
+                .switchIfEmpty(Mono.defer(() -> {
+                    WebSocketNotificationListener listener = new WebSocketNotificationListener(context.outbound(), calDavClient, username);
+                    UsernameRegistrationKey registrationKey = new UsernameRegistrationKey(username);
+                    return Mono.from(eventBus.register(listener, registrationKey))
+                        .doOnNext(registration -> context.subscriptionMap().put(alarmSubscriptionKey, registration))
+                        .thenReturn("{\"displayNotificationEnabled\":true}");
+                }));
+        } catch (JsonProcessingException e) {
+            return Mono.empty();
+        }
+    }
+
+    record EnableDisplayNotificationRequest(boolean enableDisplayNotification) {
     }
 
     private Mono<ClientSubscribeResult> handleSubscribeRequest(ClientSubscribeRequest subscribeRequest,
@@ -193,6 +220,7 @@ public class WebsocketRoute extends CalendarRoute {
         return switch (subscriptionKey) {
             case CalendarSubscriptionKey calendarKey -> registerCalendar(calendarKey, context);
             case AddressBookSubscriptionKey addressBookKey -> registerAddressBook(addressBookKey, context);
+            default -> Mono.error(new CalendarSubscribeException("Unsupported subscription key type"));
         };
     }
 
@@ -267,7 +295,7 @@ public class WebsocketRoute extends CalendarRoute {
         connectedClients.remove(context);
     }
 
-    sealed interface SubscriptionKey permits CalendarSubscriptionKey, AddressBookSubscriptionKey {
+    sealed interface SubscriptionKey permits CalendarSubscriptionKey, AddressBookSubscriptionKey, AlarmSubscriptionKey {
 
         String asString();
     }
@@ -283,6 +311,13 @@ public class WebsocketRoute extends CalendarRoute {
         @Override
         public String asString() {
             return addressBookURL.asUri().toASCIIString();
+        }
+    }
+
+    record AlarmSubscriptionKey(Username username) implements SubscriptionKey {
+        @Override
+        public String asString() {
+            return "alarm:" + username.asString();
         }
     }
 

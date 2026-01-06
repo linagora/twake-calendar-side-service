@@ -39,6 +39,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.api.CalendarUtil;
+import com.linagora.calendar.storage.event.AlarmAction;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
 import com.linagora.calendar.storage.event.AlarmInstantFactory.AlarmInstant;
 
@@ -162,7 +163,8 @@ public class AlarmInstantFactoryTest {
             .contains(new AlarmInstant(Instant.parse("2025-08-29T09:45:00Z"),
                 Instant.parse("2025-08-29T10:00:00Z"),
                 Optional.empty(),
-                List.of(asMailAddress("jane@example.com"))));
+                List.of(asMailAddress("jane@example.com")),
+                AlarmAction.EMAIL));
     }
 
     @Test
@@ -679,17 +681,20 @@ public class AlarmInstantFactoryTest {
             AlarmInstant alarm1 = new AlarmInstant(
                 start1.minus(15, ChronoUnit.MINUTES), start1,
                 Optional.of(new RecurrenceId<>(start1)),
-                List.of(alarmRecipient));
+                List.of(alarmRecipient),
+                AlarmAction.EMAIL);
 
             AlarmInstant alarm2 = new AlarmInstant(
                 start2.minus(15, ChronoUnit.MINUTES), start2,
                 Optional.of(new RecurrenceId<>(start2)),
-                List.of(alarmRecipient));
+                List.of(alarmRecipient),
+                AlarmAction.EMAIL);
 
             AlarmInstant alarm3 = new AlarmInstant(
                 start3.minus(15, ChronoUnit.MINUTES), start3,
                 Optional.of(new RecurrenceId<>(start3)),
-                List.of(alarmRecipient));
+                List.of(alarmRecipient),
+                AlarmAction.EMAIL);
 
             Map<Instant, Optional<AlarmInstant>> testCases = Map.of(
                 Instant.parse("2025-08-28T12:00:00Z"), Optional.of(alarm1), // Before all → returns alarm 1
@@ -1602,6 +1607,40 @@ public class AlarmInstantFactoryTest {
         assertThat(resultAfter)
             .describedAs("Should return empty when sinceInstant after all-day alarm")
             .isEmpty();
+    }
+
+    @Test
+    void shouldReturnCorrectAlarmInstantWhenActionIsDisplay() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:display-action-event
+            DTSTART:20250829T100000Z
+            SUMMARY:Display Action Event
+            ATTENDEE;CN=Jane Doe;PARTSTAT=ACCEPTED:mailto:jane@example.com
+            BEGIN:VALARM
+            ACTION:DISPLAY
+            TRIGGER:-PT15M
+            DESCRIPTION:Pop-up reminder
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+        AlarmInstantFactory testee = testee(Instant.parse("2025-07-28T00:00:00Z"));
+
+        Optional<AlarmInstant> result = testee.computeNextAlarmInstant(calendar, Username.of("jane@example.com"));
+
+        assertThat(result)
+            .describedAs("Should schedule DISPLAY action alarms and set action to DISPLAY")
+            .isPresent()
+            .contains(new AlarmInstant(Instant.parse("2025-08-29T09:45:00Z"),
+                Instant.parse("2025-08-29T10:00:00Z"),
+                Optional.empty(),
+                List.of(),
+                AlarmAction.DISPLAY));
     }
 
     private MailAddress asMailAddress(String email) {

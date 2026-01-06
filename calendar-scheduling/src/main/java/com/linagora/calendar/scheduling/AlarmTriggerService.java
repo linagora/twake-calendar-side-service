@@ -39,6 +39,8 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
+import org.apache.james.events.Event;
+import org.apache.james.events.EventBus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -53,7 +55,10 @@ import com.linagora.calendar.smtp.template.content.model.AlarmContentModelBuilde
 import com.linagora.calendar.smtp.template.content.model.PersonModel;
 import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.AlarmEventDAO;
+import com.linagora.calendar.storage.EventBusAlarmEvent;
+import com.linagora.calendar.storage.UsernameRegistrationKey;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
+import com.linagora.calendar.storage.event.AlarmAction;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
 import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.event.EventParseUtils;
@@ -87,6 +92,7 @@ public class AlarmTriggerService {
     private final AlarmInstantFactory alarmInstantFactory;
     private final MaybeSender maybeSender;
     private final MailAddress senderAddress;
+    private final EventBus eventBus;
 
     @Inject
     @Singleton
@@ -96,7 +102,8 @@ public class AlarmTriggerService {
                                @Named("alarm") SettingsBasedResolver settingsResolver,
                                MessageGenerator.Factory messageGeneratorFactory,
                                AlarmInstantFactory alarmInstantFactory,
-                               MailTemplateConfiguration mailTemplateConfiguration) {
+                               MailTemplateConfiguration mailTemplateConfiguration,
+                               EventBus eventBus) {
         this.alarmEventDAO = alarmEventDAO;
         this.clock = clock;
         this.mailSenderFactory = mailSenderFactory;
@@ -106,14 +113,43 @@ public class AlarmTriggerService {
         this.maybeSender = mailTemplateConfiguration.sender();
         this.senderAddress = maybeSender.asOptional()
             .orElseThrow(() -> new IllegalArgumentException("Sender address must not be empty"));
+        this.eventBus = eventBus;
     }
 
-    public Mono<Void> sendMailAndCleanup(AlarmEvent alarmEvent) {
+    public Mono<Void> processAlarmAndCleanup(AlarmEvent alarmEvent) {
         Instant now = clock.instant().truncatedTo(ChronoUnit.MILLIS);
-        return sendMail(alarmEvent, now)
+        return processAlarm(alarmEvent, now)
             .then(cleanup(alarmEvent))
-            .doOnSuccess(unused -> LOGGER.info("Processed alarm for event: {}, recipient: {}, eventStartTime: {}",
-                alarmEvent.eventUid().value(), alarmEvent.recipient().asString(), alarmEvent.eventStartTime()));
+            .doOnSuccess(unused -> LOGGER.info("Processed alarm for event: {}, recipient: {}, action: {}, eventStartTime: {}",
+                alarmEvent.eventUid().value(), alarmEvent.recipient().asString(), alarmEvent.action(), alarmEvent.eventStartTime()));
+    }
+
+    private Mono<Void> processAlarm(AlarmEvent alarmEvent, Instant now) {
+        if (alarmEvent.action() == AlarmAction.DISPLAY) {
+            return sendDisplayNotification(alarmEvent, now);
+        }
+        return sendMail(alarmEvent, now);
+    }
+
+    private Mono<Void> sendDisplayNotification(AlarmEvent alarmEvent, Instant now) {
+        Username recipientUser = Username.fromMailAddress(alarmEvent.recipient());
+        if (alarmEvent.eventStartTime().isBefore(now)) {
+            return Mono.empty();
+        }
+        Calendar calendar = CalendarUtil.parseIcs(alarmEvent.ics());
+        VEvent vEvent = alarmEvent.recurrenceId().flatMap(recurrenceId -> getVEvent(calendar, recurrenceId))
+            .orElse(GET_FIRST_VEVENT_FUNCTION.apply(calendar));
+        String summary = EventParseUtils.getSummary(vEvent).orElse(StringUtils.EMPTY);
+
+        EventBusAlarmEvent eventBusAlarmEvent = new EventBusAlarmEvent(
+            Event.EventId.random(),
+            recipientUser,
+            summary,
+            alarmEvent.eventPath(),
+            alarmEvent.eventStartTime());
+
+        UsernameRegistrationKey registrationKey = new UsernameRegistrationKey(recipientUser);
+        return Mono.from(eventBus.dispatch(eventBusAlarmEvent, registrationKey));
     }
 
     private Mono<Void> cleanup(AlarmEvent alarmEvent) {

@@ -22,14 +22,17 @@ import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.net.URI;
+import java.time.Instant;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 
 import com.linagora.calendar.storage.CalendarChangeEvent;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.EventBusAlarmEvent;
 import com.linagora.calendar.storage.ImportEvent;
 import com.linagora.calendar.storage.model.ImportId;
+import org.apache.james.core.Username;
 
 public class CalendarEventSerializerTest {
     public static final String CALENDAR_CHANGE_JSON = """
@@ -66,6 +69,25 @@ public class CalendarEventSerializerTest {
         Optional.of(10),
         Optional.of(2));
 
+    public static final String ALARM_EVENT_JSON = """
+        {
+            "type": "CalendarEventSerializer$AlarmEventDTO",
+            "eventId": "22222222-3333-4444-5555-666666666666",
+            "username": "alarmuser",
+            "eventSummary": "Meeting",
+            "eventURL": "/calendars/baseId/calendarId/event.ics",
+            "eventStartTime": "2020-01-01T00:00:00Z"
+        }
+        """;
+
+    public static final EventBusAlarmEvent ALARM_EVENT = new EventBusAlarmEvent(
+        Event.EventId.of("22222222-3333-4444-5555-666666666666"),
+        Username.of("alarmuser"),
+        "Meeting",
+        "/calendars/baseId/calendarId/event.ics",
+        Instant.parse("2020-01-01T00:00:00Z")
+    );
+
     private final CalendarEventSerializer serializer = new CalendarEventSerializer();
 
     @Test
@@ -90,5 +112,17 @@ public class CalendarEventSerializerTest {
     void shouldDeserializeJsonToImportEvent() {
         Event event = serializer.asEvent(IMPORT_EVENT_JSON);
         assertThat(event).isEqualTo(IMPORT_EVENT);
+    }
+
+    @Test
+    void shouldSerializeAlarmEvent() {
+        String json = serializer.toJson(ALARM_EVENT);
+        assertThatJson(json).isEqualTo(ALARM_EVENT_JSON);
+    }
+
+    @Test
+    void shouldDeserializeJsonToAlarmEvent() {
+        Event event = serializer.asEvent(ALARM_EVENT_JSON);
+        assertThat(event).isEqualTo(ALARM_EVENT);
     }
 }

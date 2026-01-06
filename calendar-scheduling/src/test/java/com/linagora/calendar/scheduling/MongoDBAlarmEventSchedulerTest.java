@@ -31,6 +31,10 @@ import java.util.Optional;
 
 import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
+import org.apache.james.events.InVMEventBus;
+import org.apache.james.events.MemoryEventDeadLetters;
+import org.apache.james.events.RetryBackoffConfiguration;
+import org.apache.james.events.delivery.InVmEventDelivery;
 import org.apache.james.metrics.tests.RecordingMetricFactory;
 import org.apache.james.server.core.filesystem.FileSystemImpl;
 import org.apache.james.util.Port;
@@ -64,6 +68,12 @@ import io.restassured.specification.RequestSpecification;
 import reactor.core.publisher.Mono;
 
 public class MongoDBAlarmEventSchedulerTest implements AlarmEventSchedulerContract {
+
+    private static final RetryBackoffConfiguration RETRY_BACKOFF_CONFIGURATION = RetryBackoffConfiguration.builder()
+        .maxRetries(3)
+        .firstBackoff(Duration.ofMillis(5))
+        .jitterFactor(0.5)
+        .build();
 
     @RegisterExtension
     static final MockSmtpServerExtension mockSmtpExtension = new MockSmtpServerExtension();
@@ -109,7 +119,8 @@ public class MongoDBAlarmEventSchedulerTest implements AlarmEventSchedulerContra
             settingsResolver,
             messageGeneratorFactory,
             new AlarmInstantFactory.Default(clock),
-            mailTemplateConfig);
+            mailTemplateConfig,
+            new InVMEventBus(new InVmEventDelivery(new RecordingMetricFactory()), RETRY_BACKOFF_CONFIGURATION, new MemoryEventDeadLetters()));
 
         AlarmEventSchedulerConfiguration alarmEventSchedulerConfiguration = new AlarmEventSchedulerConfiguration(
             Duration.ofSeconds(1),
