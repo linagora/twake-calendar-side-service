@@ -178,7 +178,7 @@ public class ImportProcessor {
                         .prodId(false)
                         .go();
 
-                    return cardDavClient.createContact(username, importCommand.baseId(), importCommand.resourceId(),
+                    return cardDavClient.createContact(username, new AddressBookURL(importCommand.baseId(), importCommand.resourceId()),
                             vcardUid, vcardString.getBytes(StandardCharsets.UTF_8))
                         .thenReturn(ImportResult.succeed())
                         .onErrorResume(error -> {

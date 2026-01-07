@@ -40,6 +40,7 @@ import org.awaitility.core.ConditionFactory;
 
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CardDavClient;
+import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
@@ -167,7 +168,7 @@ public class CalendarDataProbe implements GuiceProbe {
     }
 
     public byte[] exportContactFromCardDav(Username username, OpenPaaSId userId, String addressBook) {
-        return cardDavClient.exportContact(username, userId, addressBook).block();
+        return cardDavClient.exportContact(username, new AddressBookURL(userId, addressBook)).block();
     }
 
     public void indexCalendar(Username username, CalendarEvents calendarEvents) {

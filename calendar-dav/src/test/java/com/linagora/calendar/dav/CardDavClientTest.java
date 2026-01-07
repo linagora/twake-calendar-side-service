@@ -85,10 +85,11 @@ public class CardDavClientTest {
             EMAIL;TYPE=Work:john.doe@example.com
             END:VCARD
             """.formatted(vcardUid);
+        AddressBookURL addressBookURL = new AddressBookURL(user.id(), addressBook);
 
-        testee.createContact(user.username(), user.id(), addressBook, vcardUid, vcard.getBytes(StandardCharsets.UTF_8)).block();
+        testee.createContact(user.username(), addressBookURL, vcardUid, vcard.getBytes(StandardCharsets.UTF_8)).block();
 
-        String actual = new String(testee.exportContact(user.username(), user.id(), addressBook).block(), StandardCharsets.UTF_8);
+        String actual = new String(testee.exportContact(user.username(), addressBookURL).block(), StandardCharsets.UTF_8);
 
         assertThat(actual).contains("EMAIL;TYPE=Work:john.doe@example.com");
     }
@@ -108,7 +109,7 @@ public class CardDavClientTest {
             """.formatted(vcardUid);
 
         assertThatThrownBy(() ->
-            testee.createContact(user.username(), user.id(), addressBook, vcardUid, vcard.getBytes(StandardCharsets.UTF_8)).block()
+            testee.createContact(user.username(), new AddressBookURL(user.id(), addressBook), vcardUid, vcard.getBytes(StandardCharsets.UTF_8)).block()
         ).isInstanceOf(DavClientException.class);
     }
 
@@ -136,10 +137,12 @@ public class CardDavClientTest {
             END:VCARD
             """.formatted(vcardUid2);
 
-        testee.createContact(user.username(), user.id(), addressBook, vcardUid, vcard.getBytes(StandardCharsets.UTF_8)).block();
-        testee.createContact(user.username(), user.id(), addressBook, vcardUid2, vcard2.getBytes(StandardCharsets.UTF_8)).block();
+        AddressBookURL addressBookURL = new AddressBookURL(user.id(), addressBook);
 
-        String actual = new String(testee.exportContact(user.username(), user.id(), addressBook).block(), StandardCharsets.UTF_8);
+        testee.createContact(user.username(), addressBookURL, vcardUid, vcard.getBytes(StandardCharsets.UTF_8)).block();
+        testee.createContact(user.username(), addressBookURL, vcardUid2, vcard2.getBytes(StandardCharsets.UTF_8)).block();
+
+        String actual = new String(testee.exportContact(user.username(), addressBookURL).block(), StandardCharsets.UTF_8);
 
         assertThat(actual).contains("EMAIL;TYPE=Work:john.doe@example.com");
         assertThat(actual).contains("EMAIL;TYPE=Work:john.doe2@example.com");
@@ -149,7 +152,7 @@ public class CardDavClientTest {
     void exportContactShouldReturnEmptyWhenNoContact() {
         String addressBook = "collected";
 
-        Optional<byte[]> actual = testee.exportContact(user.username(), user.id(), addressBook).blockOptional();
+        Optional<byte[]> actual = testee.exportContact(user.username(), new AddressBookURL(user.id(), addressBook)).blockOptional();
 
         assertThat(actual).isEmpty();
     }
@@ -159,7 +162,7 @@ public class CardDavClientTest {
         String addressBook = "notfound";
 
         assertThatThrownBy(() ->
-            testee.exportContact(user.username(), user.id(), addressBook).block()
+            testee.exportContact(user.username(), new AddressBookURL(user.id(), addressBook)).block()
         ).isInstanceOf(DavClientException.class);
     }
 
@@ -580,7 +583,7 @@ public class CardDavClientTest {
         String addressBookId = "todelete";
         String name = "To Delete";
         testee.createUserAddressBook(user.username(), user.id(), addressBookId, name).block();
-        testee.deleteUserAddressBook(user.username(), user.id(), addressBookId).block();
+        testee.deleteUserAddressBook(user.username(), new AddressBookURL(user.id(), addressBookId)).block();
 
         assertThat(testee.listUserAddressBookIds(user.username(), user.id()).collectList().block())
             .extracting(CardDavClient.AddressBook::value)
@@ -589,7 +592,7 @@ public class CardDavClientTest {
 
     @Test
     void deleteUserAddressBookShouldThrowOnError() {
-        assertThatThrownBy(() -> testee.deleteUserAddressBook(user.username(), user.id(), "doesnotexist").block())
+        assertThatThrownBy(() -> testee.deleteUserAddressBook(user.username(), new AddressBookURL(user.id(), "doesnotexist")).block())
             .isInstanceOf(DavClientException.class);
     }
 
@@ -614,11 +617,12 @@ public class CardDavClientTest {
             EMAIL:jane@example.com
             END:VCARD
             """.formatted(vcardUid2);
-        testee.createContact(user.username(), user.id(), addressBook, vcardUid, vcard.getBytes(StandardCharsets.UTF_8)).block();
-        testee.createContact(user.username(), user.id(), addressBook, vcardUid2, vcard2.getBytes(StandardCharsets.UTF_8)).block();
-        testee.deleteContact(user.username(), user.id(), addressBook, vcardUid).block();
+        AddressBookURL addressBookURL = new AddressBookURL(user.id(), addressBook);
+        testee.createContact(user.username(), addressBookURL, vcardUid, vcard.getBytes(StandardCharsets.UTF_8)).block();
+        testee.createContact(user.username(), addressBookURL, vcardUid2, vcard2.getBytes(StandardCharsets.UTF_8)).block();
+        testee.deleteContact(user.username(), addressBookURL, vcardUid).block();
 
-        String actual = new String(testee.exportContact(user.username(), user.id(), addressBook).block(), StandardCharsets.UTF_8);
+        String actual = new String(testee.exportContact(user.username(), addressBookURL).block(), StandardCharsets.UTF_8);
         assertThat(actual).doesNotContain("UID:" + vcardUid);
     }
 
@@ -643,10 +647,11 @@ public class CardDavClientTest {
             EMAIL:bob@example.com
             END:VCARD
             """.formatted(vcardUid2);
-        testee.createContact(user.username(), user.id(), addressBook, vcardUid1, vcard1.getBytes(StandardCharsets.UTF_8)).block();
-        testee.createContact(user.username(), user.id(), addressBook, vcardUid2, vcard2.getBytes(StandardCharsets.UTF_8)).block();
-        testee.deleteContact(user.username(), user.id(), addressBook, vcardUid1).block();
-        String actual = new String(testee.exportContact(user.username(), user.id(), addressBook).block(), StandardCharsets.UTF_8);
+        AddressBookURL addressBookURL = new AddressBookURL(user.id(), addressBook);
+        testee.createContact(user.username(), addressBookURL, vcardUid1, vcard1.getBytes(StandardCharsets.UTF_8)).block();
+        testee.createContact(user.username(), addressBookURL, vcardUid2, vcard2.getBytes(StandardCharsets.UTF_8)).block();
+        testee.deleteContact(user.username(), addressBookURL, vcardUid1).block();
+        String actual = new String(testee.exportContact(user.username(), addressBookURL).block(), StandardCharsets.UTF_8);
 
         assertThat(actual).contains("UID:" + vcardUid2);
     }
@@ -655,7 +660,7 @@ public class CardDavClientTest {
     void deleteContactShouldThrowWhenContactDoesNotExist() {
         String addressBook = "collected";
         String vcardUid = UUID.randomUUID().toString();
-        assertThatThrownBy(() -> testee.deleteContact(user.username(), user.id(), addressBook, vcardUid).block())
+        assertThatThrownBy(() -> testee.deleteContact(user.username(), new AddressBookURL(user.id(), addressBook), vcardUid).block())
             .isInstanceOf(DavClientException.class);
     }
 
@@ -663,7 +668,7 @@ public class CardDavClientTest {
     void deleteContactShouldThrowWhenAddressBookDoesNotExist() {
         String addressBook = "notfound";
         String vcardUid = UUID.randomUUID().toString();
-        assertThatThrownBy(() -> testee.deleteContact(user.username(), user.id(), addressBook, vcardUid).block())
+        assertThatThrownBy(() -> testee.deleteContact(user.username(), new AddressBookURL(user.id(), addressBook), vcardUid).block())
             .isInstanceOf(DavClientException.class);
     }
 
@@ -681,7 +686,7 @@ public class CardDavClientTest {
             END:VCARD
             """.formatted(vcardUid);
 
-        testee.createContact(user.username(), user.id(), addressBook, vcardUid,
+        testee.createContact(user.username(), new AddressBookURL(user.id(), addressBook), vcardUid,
             vcard.getBytes(StandardCharsets.UTF_8)).block();
 
         AddressBookURL url = new AddressBookURL(user.id(), addressBook);
@@ -727,7 +732,7 @@ public class CardDavClientTest {
             END:VCARD
             """.formatted(vcardUid);
 
-        testee.createContact(owner.username(), owner.id(), addressBook, vcardUid,
+        testee.createContact(owner.username(), new AddressBookURL(owner.id(), addressBook), vcardUid,
             vcard.getBytes(StandardCharsets.UTF_8)).block();
 
         AddressBookURL ownerAddressBookUrl = new AddressBookURL(owner.id(), addressBook);

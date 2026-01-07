@@ -29,6 +29,7 @@ import com.google.common.base.Splitter;
 public record AddressBookURL(OpenPaaSId baseId, String addressBookId) {
     public static final String ADDRESS_BOOKS_SEGMENT = "addressbooks";
     public static final String ADDRESS_BOOK_URL_PATH_PREFIX = "/" + ADDRESS_BOOKS_SEGMENT;
+    public static final String VCARD_EXTENSION = ".vcf";
 
     /**
      * <p>
@@ -64,5 +65,10 @@ public record AddressBookURL(OpenPaaSId baseId, String addressBookId) {
 
     public URI asUri() {
         return URI.create(ADDRESS_BOOK_URL_PATH_PREFIX + "/" + baseId.value() + "/" + addressBookId);
+    }
+
+    public URI vcardUri(String vcardUid) {
+        Preconditions.checkArgument(StringUtils.isNotBlank(vcardUid), "vcardUid must not be null or empty");
+        return URI.create(asUri().toASCIIString() + "/" + vcardUid + VCARD_EXTENSION);
     }
 }

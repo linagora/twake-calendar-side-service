@@ -30,6 +30,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
@@ -80,10 +81,11 @@ public class DavContactDeletionTaskStepTest {
             EMAIL:john.doe@example.com
             END:VCARD
             """.formatted(vcardUid);
-        cardDavClient.createContact(openPaaSUser.username(), openPaaSUser.id(), addressBookId, vcardUid, vcard.getBytes(StandardCharsets.UTF_8)).block();
+        AddressBookURL addressBookURL = new AddressBookURL(openPaaSUser.id(), addressBookId);
+        cardDavClient.createContact(openPaaSUser.username(), addressBookURL, vcardUid, vcard.getBytes(StandardCharsets.UTF_8)).block();
         testee.deleteUserData(openPaaSUser.username()).block();
 
-        assertThat(cardDavClient.exportContact(openPaaSUser.username(), openPaaSUser.id(), addressBookId).block())
+        assertThat(cardDavClient.exportContact(openPaaSUser.username(), addressBookURL).block())
             .isNull();
     }
 
@@ -110,9 +112,10 @@ public class DavContactDeletionTaskStepTest {
             EMAIL:john.doe@example.com
             END:VCARD
             """.formatted(vcardUid);
-        cardDavClient.createContact(openPaaSUser.username(), openPaaSUser.id(), addressBookId, vcardUid, vcard.getBytes(StandardCharsets.UTF_8)).block();
+        AddressBookURL addressBookURL = new AddressBookURL(openPaaSUser.id(), addressBookId);
+        cardDavClient.createContact(openPaaSUser.username(), addressBookURL, vcardUid, vcard.getBytes(StandardCharsets.UTF_8)).block();
         testee.deleteUserData(openPaaSUser2.username()).block();
-        String actual = new String(cardDavClient.exportContact(openPaaSUser.username(), openPaaSUser.id(), addressBookId).block(), StandardCharsets.UTF_8);
+        String actual = new String(cardDavClient.exportContact(openPaaSUser.username(), addressBookURL).block(), StandardCharsets.UTF_8);
 
         assertThat(actual).contains("UID:" + vcardUid);
     }
