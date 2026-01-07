@@ -88,16 +88,12 @@ public class CardDavClient extends DavClient {
     static class RetryableDavClientException extends RuntimeException {
     }
 
-
-
     public static final String LIMIT_PARAM = "limit";
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CardDavClient.class);
 
     private static final String CONTENT_TYPE_VCARD = "application/vcard";
     private static final String CONTENT_TYPE_VCARD_JSON = "application/vcard+json";
-    private static final String ADDRESS_BOOK_PATH = "/addressbooks/%s/%s/%s.vcf";
-
     private static final String DOMAIN_MEMBERS_ADDRESS_BOOK_ID = "domain-members";
     private static final byte[] CREATE_DOMAIN_MEMBERS_ADDRESS_BOOK_PAYLOAD = """
         {
@@ -114,59 +110,59 @@ public class CardDavClient extends DavClient {
         super(config, technicalTokenService);
     }
 
-    public Mono<Void> createContact(Username username, OpenPaaSId userId, String addressBook, String vcardUid, byte[] vcardPayload) {
+    public Mono<Void> createContact(Username username, AddressBookURL addressBookURL, String vcardUid, byte[] vcardPayload) {
         HttpClient authenticatedClient = httpClientWithImpersonation(username);
-        return upsertContact(authenticatedClient, userId, addressBook, vcardUid, vcardPayload);
+        return upsertContact(authenticatedClient, addressBookURL, vcardUid, vcardPayload);
     }
 
-    public Mono<Void> upsertContact(HttpClient authenticatedClient, OpenPaaSId homeBaseId, String addressBook, String vcardUid, byte[] vcardPayload) {
+    public Mono<Void> upsertContact(HttpClient authenticatedClient, AddressBookURL addressBookURL, String vcardUid, byte[] vcardPayload) {
         return authenticatedClient.headers(headers -> headers
                 .add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_VCARD)
                 .add(HttpHeaderNames.ACCEPT, HttpHeaderValues.TEXT_PLAIN))
             .put()
-            .uri(String.format(ADDRESS_BOOK_PATH, homeBaseId.value(), addressBook, vcardUid))
+            .uri(addressBookURL.vcardUri(vcardUid).toASCIIString())
             .send(Mono.just(Unpooled.wrappedBuffer(vcardPayload)))
-            .responseSingle((response, byteBufMono) -> handleContactUpsertResponse(response, byteBufMono, homeBaseId, addressBook, vcardUid));
+            .responseSingle((response, byteBufMono) -> handleContactUpsertResponse(response, byteBufMono, addressBookURL, vcardUid));
     }
 
-    public Mono<byte[]> exportContact(Username username, OpenPaaSId userId, String addressBook) {
+    public Mono<byte[]> exportContact(Username username, AddressBookURL addressBookURL) {
         HttpClient authenticatedClient = httpClientWithImpersonation(username);
-        return exportContactAsVcard(authenticatedClient, userId, addressBook);
+        return exportContactAsVcard(authenticatedClient, addressBookURL);
     }
 
-    private Mono<byte[]> exportContactAsVcard(HttpClient authenticatedClient, OpenPaaSId homeBaseId, String addressBook) {
+    private Mono<byte[]> exportContactAsVcard(HttpClient authenticatedClient, AddressBookURL addressBookURL) {
         return authenticatedClient
             .get()
-            .uri("/addressbooks/%s/%s?export".formatted(homeBaseId.value(), addressBook))
+            .uri(addressBookURL.asUri().toASCIIString() + "?export")
             .responseSingle((response, byteBufMono) -> {
-                if (response.status().code() == 200) {
+                if (response.status().code() == HttpStatus.SC_OK) {
                     return byteBufMono.asByteArray();
                 }
                 return responseBodyAsString(byteBufMono)
                     .flatMap(responseBody ->
                         Mono.error(new DavClientException("""
-                                Unexpected status code: %d when exporting contact for homeBaseId %s and addressBook %s
+                                Unexpected status code: %d when exporting contact for addressBookURL %s
                                 %s
-                                """.formatted(response.status().code(), homeBaseId.value(), addressBook, responseBody))));
+                                """.formatted(response.status().code(), addressBookURL, responseBody))));
             });
     }
 
-    private Mono<Void> handleContactUpsertResponse(HttpClientResponse response, ByteBufMono responseContent, OpenPaaSId homeBaseId, String addressBook, String vcardUid) {
+    private Mono<Void> handleContactUpsertResponse(HttpClientResponse response, ByteBufMono responseContent, AddressBookURL addressBookURL, String vcardUid) {
         return switch (response.status().code()) {
-            case 201 -> {
-                LOGGER.debug("Create successful for homeBaseId {} and addressBook {} and vcardUid {}", homeBaseId.value(), addressBook, vcardUid);
+            case HttpStatus.SC_CREATED -> {
+                LOGGER.debug("Create successful for contact {}", addressBookURL.vcardUri(vcardUid).toASCIIString());
                 yield Mono.empty();
             }
-            case 204 -> {
-                LOGGER.debug("Update successful for homeBaseId {} and addressBook {} and vcardUid {}", homeBaseId.value(), addressBook, vcardUid);
+            case HttpStatus.SC_NO_CONTENT -> {
+                LOGGER.debug("Update successful for contact {}", addressBookURL.vcardUri(vcardUid).toASCIIString());
                 yield Mono.empty();
             }
             default -> responseBodyAsString(responseContent)
                 .flatMap(responseBody ->
                     Mono.error(new DavClientException("""
-                                Unexpected status code: %d when creating contact for homeBaseId %s and addressBook %s and vcardUid: %s
-                                %s
-                                """.formatted(response.status().code(), homeBaseId.value(), addressBook, vcardUid, responseBody))));
+                        Unexpected status code: %d when creating contact %s
+                        %s
+                        """.formatted(response.status().code(), addressBookURL.vcardUri(vcardUid).toASCIIString(), responseBody))));
         };
     }
 
@@ -207,28 +203,29 @@ public class CardDavClient extends DavClient {
         Preconditions.checkArgument(StringUtils.isNotEmpty(vcardUid), "vcardUid must not be empty");
         Preconditions.checkArgument(vcardPayload != null && vcardPayload.length > 0, "vcardPayload must not be empty");
 
+        AddressBookURL addressBookURL = new AddressBookURL(domainId, DOMAIN_MEMBERS_ADDRESS_BOOK_ID);
         return httpClientWithTechnicalToken(domainId)
-            .flatMap(client
-                -> upsertContact(client, domainId, DOMAIN_MEMBERS_ADDRESS_BOOK_ID, vcardUid, vcardPayload));
+            .flatMap(client -> upsertContact(client, addressBookURL, vcardUid, vcardPayload));
     }
 
     public Mono<Void> deleteContactDomainMembers(OpenPaaSId domainId, String vcardUid) {
         Preconditions.checkArgument(StringUtils.isNotEmpty(vcardUid), "vcardUid must not be empty");
 
+        AddressBookURL addressBookURL = new AddressBookURL(domainId, DOMAIN_MEMBERS_ADDRESS_BOOK_ID);
         return httpClientWithTechnicalToken(domainId)
             .flatMap(client -> client.headers(headers
                     -> headers.add(HttpHeaderNames.ACCEPT, HttpHeaderValues.TEXT_PLAIN))
                 .delete()
-                .uri(String.format(ADDRESS_BOOK_PATH, domainId.value(), DOMAIN_MEMBERS_ADDRESS_BOOK_ID, vcardUid))
+                .uri(addressBookURL.vcardUri(vcardUid).toASCIIString())
                 .responseSingle((response, byteBufMono) -> {
                     int statusCode = response.status().code();
 
-                    if (statusCode == 204) {
+                    if (statusCode == HttpStatus.SC_NO_CONTENT) {
                         LOGGER.debug("Delete successful for domain {} and vcardUid {}", domainId.value(), vcardUid);
                         return Mono.empty();
                     }
                     return responseBodyAsString(byteBufMono)
-                        .filter(bodyStr -> !(bodyStr.contains("Card not found") && statusCode == 404))
+                        .filter(bodyStr -> !(bodyStr.contains("Card not found") && statusCode == HttpStatus.SC_NOT_FOUND))
                         .switchIfEmpty(Mono.empty())
                         .flatMap(bodyStr -> Mono.error(new DavClientException(String.format(
                             "Unexpected status code: %d when deleting contact for domain %s and vcardUid: %s\n%s",
@@ -256,8 +253,9 @@ public class CardDavClient extends DavClient {
     }
 
     private Mono<byte[]> tryListContactDomainMembers(OpenPaaSId domainId) {
+        AddressBookURL url = new AddressBookURL(domainId, DOMAIN_MEMBERS_ADDRESS_BOOK_ID);
         return httpClientWithTechnicalToken(domainId)
-            .flatMap(authenticatedClient -> exportContactAsVcard(authenticatedClient, domainId, DOMAIN_MEMBERS_ADDRESS_BOOK_ID));
+            .flatMap(authenticatedClient -> exportContactAsVcard(authenticatedClient, url));
     }
 
     public Flux<AddressBook> listUserAddressBookIds(Username username, OpenPaaSId userId) {
@@ -268,7 +266,7 @@ public class CardDavClient extends DavClient {
             .get()
             .uri(uri)
             .responseSingle((response, buf) -> {
-                if (response.status().code() == 200) {
+                if (response.status().code() == HttpStatus.SC_OK) {
                     return buf.asString(StandardCharsets.UTF_8).map(this::extractAddressBookIdsWithType)
                         .onErrorResume(e -> Mono.error(new DavClientException(
                             "Failed to parse address book list JSON for user %s".formatted(userId.value()), e)));
@@ -306,43 +304,43 @@ public class CardDavClient extends DavClient {
         throw new DavClientException("Invalid address book href: " + href);
     }
 
-    public Mono<Void> deleteUserAddressBook(Username username, OpenPaaSId userId, String addressBookId) {
-        String uri = String.format("/addressbooks/%s/%s.json", userId.value(), addressBookId);
+    public Mono<Void> deleteUserAddressBook(Username username, AddressBookURL addressBookURL) {
         return httpClientWithImpersonation(username).headers(headers -> headers
-                .add(HttpHeaderNames.ACCEPT, "application/vcard+json"))
+                .add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_VCARD_JSON))
             .delete()
-            .uri(uri)
+            .uri(addressBookURL.asUri().toASCIIString())
             .responseSingle((response, buf) -> {
                 if (response.status().code() == HttpStatus.SC_NO_CONTENT) {
                     return Mono.empty();
                 }
                 if (response.status().code() == HttpStatus.SC_NOT_IMPLEMENTED) {
-                    LOGGER.info("Could not delete address book {} of user {}", addressBookId, userId.value());
+                    LOGGER.info("Could not delete address book {}", addressBookURL.asUri().toASCIIString());
                     return Mono.empty();
                 }
                 return buf.asString(StandardCharsets.UTF_8)
                     .switchIfEmpty(Mono.just(StringUtils.EMPTY))
                     .flatMap(errorBody -> Mono.error(new DavClientException(
-                        "Unexpected status code: %d when deleting address book %s for user %s\n%s"
-                            .formatted(response.status().code(), addressBookId, userId.value(), errorBody))));
+                        "Unexpected status code: %d when deleting address book %s\n%s"
+                            .formatted(response.status().code(), addressBookURL.asUri().toASCIIString(), errorBody))));
             });
     }
 
-    public Mono<Void> deleteContact(Username username, OpenPaaSId userId, String addressBookId, String vcardUid) {
-        String uri = String.format("/addressbooks/%s/%s/%s.vcf", userId.value(), addressBookId, vcardUid);
+    public Mono<Void> deleteContact(Username username, AddressBookURL addressBookURL, String vcardUid) {
         return httpClientWithImpersonation(username).headers(headers -> headers
-                .add(HttpHeaderNames.ACCEPT, "application/vcard+json"))
+                .add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_VCARD_JSON))
             .delete()
-            .uri(uri)
+            .uri(addressBookURL.vcardUri(vcardUid).toASCIIString())
             .responseSingle((response, buf) -> {
-                if (response.status().code() == 204) {
+                if (response.status().code() == HttpStatus.SC_NO_CONTENT) {
                     return Mono.empty();
                 }
                 return buf.asString(StandardCharsets.UTF_8)
                     .switchIfEmpty(Mono.just(StringUtils.EMPTY))
                     .flatMap(errorBody -> Mono.error(new DavClientException(
-                        "Unexpected status code: %d when deleting contact %s in address book %s for user %s\n%s"
-                            .formatted(response.status().code(), vcardUid, addressBookId, userId.value(), errorBody))));
+                        "Unexpected status code: %d when deleting contact %s\n%s"
+                            .formatted(response.status().code(),
+                                addressBookURL.vcardUri(vcardUid).toASCIIString(),
+                                errorBody))));
             });
     }
 
@@ -364,7 +362,7 @@ public class CardDavClient extends DavClient {
             .uri("/addressbooks/%s.json".formatted(userId.value()))
             .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(payload)))
             .responseSingle((response, buf) -> {
-                if (response.status().code() == 201) {
+                if (response.status().code() == HttpStatus.SC_CREATED) {
                     return Mono.empty();
                 }
                 return buf.asString(StandardCharsets.UTF_8)

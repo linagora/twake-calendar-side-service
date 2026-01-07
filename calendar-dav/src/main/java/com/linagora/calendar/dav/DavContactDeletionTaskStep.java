@@ -25,7 +25,7 @@ import jakarta.inject.Inject;
 import org.apache.james.core.Username;
 import org.apache.james.user.api.DeleteUserDataTaskStep;
 
-import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 
 import ezvcard.Ezvcard;
@@ -58,21 +58,22 @@ public class DavContactDeletionTaskStep implements DeleteUserDataTaskStep {
         return openPaaSUserDAO.retrieve(username)
             .flatMapMany(user -> cardDavClient.listUserAddressBookIds(username, user.id())
                 .flatMap(addressBook -> {
+                    AddressBookURL addressBookURL = new AddressBookURL(user.id(), addressBook.value());
                     if (addressBook.type() == CardDavClient.AddressBookType.SYSTEM) {
-                        return deleteAllContactsInAddressBook(username, user.id(), addressBook.value());
+                        return deleteAllContactsInAddressBook(username, addressBookURL);
                     } else {
-                        return cardDavClient.deleteUserAddressBook(username, user.id(), addressBook.value()).then(Mono.empty());
+                        return cardDavClient.deleteUserAddressBook(username, addressBookURL).then(Mono.empty());
                     }
                 })
             ).then();
     }
 
-    private Mono<Void> deleteAllContactsInAddressBook(Username username, OpenPaaSId userId, String addressBookId) {
-        return cardDavClient.exportContact(username, userId, addressBookId)
+    private Mono<Void> deleteAllContactsInAddressBook(Username username, AddressBookURL addressBookURL) {
+        return cardDavClient.exportContact(username, addressBookURL)
             .flatMapMany(bytes -> Mono.fromCallable(() -> Ezvcard.parse(new String(bytes, java.nio.charset.StandardCharsets.UTF_8)).all())
                 .flatMapMany(Flux::fromIterable)
                 .map(vcard -> vcard.getUid().getValue())
-                .flatMap(uid -> cardDavClient.deleteContact(username, userId, addressBookId, uid), DEFAULT_CONCURRENCY))
+                .flatMap(uid -> cardDavClient.deleteContact(username, addressBookURL, uid), DEFAULT_CONCURRENCY))
             .then();
     }
 }
