@@ -24,6 +24,7 @@ import jakarta.inject.Singleton;
 
 import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.james.events.AddressBookURLRegistrationKeyFactory;
 import org.apache.james.events.CalendarEventSerializer;
 import org.apache.james.events.CalendarRedisEventBus;
 import org.apache.james.events.CalendarURLRegistrationKeyFactory;
@@ -31,17 +32,17 @@ import org.apache.james.events.EventBus;
 import org.apache.james.events.EventBusId;
 import org.apache.james.events.EventSerializer;
 import org.apache.james.events.RedisEventBusConfiguration;
+import org.apache.james.events.RegistrationKey;
 import org.apache.james.events.RetryBackoffConfiguration;
-import org.apache.james.events.RoutingKeyConverter;
 import org.apache.james.utils.InitializationOperation;
 import org.apache.james.utils.InitilizationOperationBuilder;
 import org.apache.james.utils.PropertiesProvider;
 import org.slf4j.Logger;
 
-import com.google.common.collect.ImmutableSet;
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.Scopes;
+import com.google.inject.multibindings.Multibinder;
 import com.google.inject.multibindings.ProvidesIntoSet;
 
 public class RedisEventBusModule extends AbstractModule {
@@ -51,7 +52,14 @@ public class RedisEventBusModule extends AbstractModule {
     protected void configure() {
         bind(RetryBackoffConfiguration.class).toInstance(RetryBackoffConfiguration.DEFAULT);
         bind(EventSerializer.class).to(CalendarEventSerializer.class);
-        bind(RoutingKeyConverter.class).toInstance(new RoutingKeyConverter(ImmutableSet.of(new CalendarURLRegistrationKeyFactory())));
+
+        bind(CalendarURLRegistrationKeyFactory.class).in(Scopes.SINGLETON);
+        bind(AddressBookURLRegistrationKeyFactory.class).in(Scopes.SINGLETON);
+
+        Multibinder<RegistrationKey.Factory> registrationKeyFactorMultibinder = Multibinder.newSetBinder(binder(), RegistrationKey.Factory.class);
+        registrationKeyFactorMultibinder.addBinding().to(CalendarURLRegistrationKeyFactory.class);
+        registrationKeyFactorMultibinder.addBinding().to(AddressBookURLRegistrationKeyFactory.class);
+
         bind(EventBusId.class).toInstance(EventBusId.random());
         bind(CalendarRedisEventBus.class).in(Scopes.SINGLETON);
         bind(EventBus.class).to(CalendarRedisEventBus.class);

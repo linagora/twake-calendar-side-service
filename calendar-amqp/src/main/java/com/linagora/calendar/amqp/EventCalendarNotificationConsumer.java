@@ -196,7 +196,7 @@ public class EventCalendarNotificationConsumer implements Closeable, Startable {
     }
 
     private Mono<Void> handle(String eventPath) {
-        CalendarURL calendarURL = CalendarURL.fromEventPath(eventPath);
+        CalendarURL calendarURL = CalendarURL.parse(eventPath);
         return eventBus.dispatch(new CalendarChangeEvent(Event.EventId.random(), calendarURL), new CalendarURLRegistrationKey(calendarURL));
     }
 }

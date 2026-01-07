@@ -1,6 +1,13 @@
 # WebSocket API
 
-The Side server exposes a WebSocket endpoint allowing clients to subscribe to calendar changes in real-time.  
+The Side server exposes a WebSocket endpoint allowing clients to subscribe to
+**Calendar and Address Book changes** in real time.
+
+This includes:
+
+- Calendar sync token updates
+- Calendar import events (ICS)
+- Address Book import events (vCard)
 
 ## 1. Endpoint 
 
@@ -25,19 +32,24 @@ All messages exchanged over WebSocket use JSON text frames.
 ### Client → Server
 
 #### Register
-The client can register one or multiple calendars to listen for updates.
+The client can register one or multiple **resources** to listen for updates.    
+Supported resource types:
+- Calendars
+- Address Books
+
 Format: 
 ```json
 {
   "register": [
     "/calendars/userA/12345",
-    "/calendars/userB/67890"
+    "/calendars/userB/67890",
+    "/addressbooks/userA/collected"
   ]
 }
 ```
 
 #### Unregister
-The client can remove subscriptions.
+The client can remove existing subscriptions.
 Format:
 ```json
 {
@@ -53,7 +65,8 @@ Format:
 ```json
 {
   "register": [
-    "/calendars/userA/12345"
+    "/calendars/userA/12345",
+    "/addressbooks/userA/collected"
   ],
   "unregister": [
     "/calendars/userC/99999"
@@ -78,10 +91,18 @@ Format:
     "/calendars/userA/12345"
   ],
   "notUnregistered": {
-    "/calendars/userC/99999" : "internal error"
+    "/calendars/userC/99999" : "NotFound"
   }
 }
 ```
+
+Possible error values:
+
+| Value          | Meaning |
+|---------------|--------|
+| Forbidden     | The user has no access rights to the resource |
+| NotFound      | The resource does not exist |
+| InternalError | An unexpected server-side error |
 
 #### Calendar Event push
 
@@ -94,3 +115,42 @@ pushes an event message to the client.
   }
 }
 ```
+
+#### Calendar import event (ICS)
+
+When a calendar import is triggered, the server notifies subscribed clients of the import result.
+```json
+{
+  "/calendars/userA/12345": {
+    "imports": {
+      "import-123": {
+        "status": "completed",
+        "succeedCount": 10,
+        "failedCount": 2
+      }
+    }
+  }
+}
+```
+
+#### Address Book import event (vCard)
+
+When an address book import is triggered, the server notifies subscribed clients of the import result.
+
+```json
+{
+  "/addressbooks/userA/collected": {
+    "imports": {
+      "import-456": {
+        "status": "completed",
+        "succeedCount": 5,
+        "failedCount": 0
+      }
+    }
+  }
+}
+```
+
+## Notes
+
+- A WebSocket client may subscribe to multiple calendars and address books simultaneously.

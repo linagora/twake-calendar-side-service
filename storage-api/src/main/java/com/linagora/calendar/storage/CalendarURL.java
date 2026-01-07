@@ -23,34 +23,46 @@ import java.util.List;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
+import com.google.common.base.Strings;
 
 public record CalendarURL(OpenPaaSId base, OpenPaaSId calendarId) {
-    public static final String CALENDAR_URL_PATH_PREFIX = "/calendars";
+    public static final String CALENDAR_SEGMENT = "calendars";
+    public static final String CALENDAR_URL_PATH_PREFIX = "/" + CALENDAR_SEGMENT;
 
     public static CalendarURL from(OpenPaaSId id) {
         return new CalendarURL(id, id);
     }
 
     public static CalendarURL deserialize(String rawValue) {
-        List<String> parts = Splitter.on('/')
-            .omitEmptyStrings().trimResults()
-            .splitToList(rawValue);
-        Preconditions.checkArgument(parts.size() == 2, "Invalid CalendarURL format: %s", rawValue);
-        OpenPaaSId base = new OpenPaaSId(parts.get(0));
-        OpenPaaSId calendarId = new OpenPaaSId(parts.get(1));
-        return new CalendarURL(base, calendarId);
+        return parse(rawValue);
     }
 
-    public static CalendarURL fromEventPath(String eventPath) {
+    /**
+     * Supported inputs:
+     * - base/calendar
+     * - /base/calendar
+     * - /calendars/base/calendar
+     * - /calendars/base/calendar/
+     * - /calendars/base/calendar/event.ics
+     */
+    public static CalendarURL parse(String rawValue) {
+        Preconditions.checkArgument(!Strings.isNullOrEmpty(rawValue),
+            "CalendarURL must not be null or empty");
+
         List<String> parts = Splitter.on('/')
-            .omitEmptyStrings().trimResults()
-            .splitToList(eventPath);
-        Preconditions.checkArgument(
-            parts.size() == 4 && "calendars".equals(parts.get(0)),
-            "Invalid eventPath format: %s", eventPath);
-        OpenPaaSId base = new OpenPaaSId(parts.get(1));
-        OpenPaaSId calendarId = new OpenPaaSId(parts.get(2));
-        return new CalendarURL(base, calendarId);
+            .omitEmptyStrings()
+            .trimResults()
+            .splitToList(rawValue);
+
+        Preconditions.checkArgument(!parts.isEmpty(), "Invalid CalendarURL format: %s", rawValue);
+
+        if (CALENDAR_SEGMENT.equals(parts.getFirst())) {
+            Preconditions.checkArgument(parts.size() >= 3, "Invalid CalendarURL format, expected /calendars/{base}/{calendar}: %s", rawValue);
+            return new CalendarURL(new OpenPaaSId(parts.get(1)), new OpenPaaSId(parts.get(2)));
+        }
+
+        Preconditions.checkArgument(parts.size() >= 2, "Invalid CalendarURL format, expected {base}/{calendar}: %s", rawValue);
+        return new CalendarURL(new OpenPaaSId(parts.get(0)), new OpenPaaSId(parts.get(1)));
     }
 
     public CalendarURL {

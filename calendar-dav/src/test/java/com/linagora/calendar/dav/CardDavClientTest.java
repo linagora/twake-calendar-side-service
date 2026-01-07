@@ -29,6 +29,7 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThatCode;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -40,6 +41,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
@@ -663,6 +665,77 @@ public class CardDavClientTest {
         String vcardUid = UUID.randomUUID().toString();
         assertThatThrownBy(() -> testee.deleteContact(user.username(), user.id(), addressBook, vcardUid).block())
             .isInstanceOf(DavClientException.class);
+    }
+
+    @Test
+    void exportAddressBookShouldReturnContactsWhenNoQueryParams() {
+        String addressBook = "collected";
+        String vcardUid = UUID.randomUUID().toString();
+
+        String vcard = """
+            BEGIN:VCARD
+            VERSION:3.0
+            UID:%s
+            FN:John Doe
+            EMAIL:john.doe@example.com
+            END:VCARD
+            """.formatted(vcardUid);
+
+        testee.createContact(user.username(), user.id(), addressBook, vcardUid,
+            vcard.getBytes(StandardCharsets.UTF_8)).block();
+
+        AddressBookURL url = new AddressBookURL(user.id(), addressBook);
+
+        byte[] result = testee.exportAddressBook(user.username(), url, Map.of()).block();
+
+        assertThat(new String(result, StandardCharsets.UTF_8))
+            .contains("john.doe@example.com");
+    }
+
+    @Test
+    void exportAddressBookShouldThrowWhenAddressBookNotFound() {
+        AddressBookURL url = new AddressBookURL(user.id(), "notfound");
+        assertThatThrownBy(() -> testee.exportAddressBook(user.username(), url, Map.of()).block())
+            .isInstanceOf(CardDavClient.CardDavExportException.class);
+    }
+
+    @Test
+    void exportAddressBookShouldNotThrowWhenNoContact() {
+        String addressBook = "collected";
+        AddressBookURL url = new AddressBookURL(user.id(), addressBook);
+        assertThatCode(() -> testee
+            .exportAddressBook(user.username(), url, Map.of()).block()).doesNotThrowAnyException();
+    }
+
+    @Test
+    void exportAddressBookShouldThrowWhenUserHasNoReadPermission() {
+        // User A (owner)
+        OpenPaaSUser owner = user;
+
+        // User B (unauthorized)
+        OpenPaaSUser unauthorizedUser = sabreDavExtension.newTestUser();
+
+        String addressBook = "collected";
+        String vcardUid = UUID.randomUUID().toString();
+
+        String vcard = """
+            BEGIN:VCARD
+            VERSION:3.0
+            UID:%s
+            FN:Secret Contact
+            EMAIL:secret@example.com
+            END:VCARD
+            """.formatted(vcardUid);
+
+        testee.createContact(owner.username(), owner.id(), addressBook, vcardUid,
+            vcard.getBytes(StandardCharsets.UTF_8)).block();
+
+        AddressBookURL ownerAddressBookUrl = new AddressBookURL(owner.id(), addressBook);
+
+        assertThatThrownBy(() ->
+            testee.exportAddressBook(unauthorizedUser.username(), ownerAddressBookUrl, Map.of()).block())
+            .isInstanceOf(CardDavClient.CardDavExportException.class)
+            .hasMessageContaining("User did not have the required privileges");
     }
 
     private OpenPaaSDomain createNewDomainMemberAddressBook() {
