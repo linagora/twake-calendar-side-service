@@ -16,25 +16,38 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package org.apache.james.events;
+package com.linagora.calendar.storage;
 
-import jakarta.inject.Inject;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.linagora.calendar.storage.CalendarURLRegistrationKey;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
-public class CalendarURLRegistrationKeyFactory implements RegistrationKey.Factory {
+class AddressBookURLTest {
 
-    @Inject
-    public CalendarURLRegistrationKeyFactory() {
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "base1/collected",
+        "/base1/collected",
+        "/addressbooks/base1/collected",
+        "/addressbooks/base1/collected/",
+    })
+    void parseShouldAcceptVariousFormats(String input) {
+        assertThat(AddressBookURL.parse(input))
+            .isEqualTo(new AddressBookURL(new OpenPaaSId("base1"), "collected"));
     }
 
-    @Override
-    public Class<? extends RegistrationKey> forClass() {
-        return CalendarURLRegistrationKey.class;
+    @Test
+    void parseShouldRejectInvalidFormat() {
+        assertThatThrownBy(() -> AddressBookURL.parse("baseOnly"))
+            .isInstanceOf(IllegalArgumentException.class);
     }
 
-    @Override
-    public RegistrationKey fromString(String asString) {
-        return CalendarURLRegistrationKey.fromString(asString);
+    @Test
+    void parseShouldRejectEmptyInput() {
+        assertThatThrownBy(() -> AddressBookURL.parse(""))
+            .isInstanceOf(IllegalArgumentException.class);
     }
 }

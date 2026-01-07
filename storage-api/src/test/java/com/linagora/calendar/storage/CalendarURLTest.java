@@ -16,25 +16,39 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package org.apache.james.events;
+package com.linagora.calendar.storage;
 
-import jakarta.inject.Inject;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.linagora.calendar.storage.CalendarURLRegistrationKey;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
-public class CalendarURLRegistrationKeyFactory implements RegistrationKey.Factory {
+class CalendarURLTest {
 
-    @Inject
-    public CalendarURLRegistrationKeyFactory() {
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "base1/calendar1",
+        "/base1/calendar1",
+        "/calendars/base1/calendar1",
+        "/calendars/base1/calendar1/",
+        "/calendars/base1/calendar1/3423434.ics"
+    })
+    void parseShouldAcceptVariousFormats(String input) {
+        assertThat(CalendarURL.parse(input))
+            .isEqualTo(new CalendarURL(new OpenPaaSId("base1"), new OpenPaaSId("calendar1")));
     }
 
-    @Override
-    public Class<? extends RegistrationKey> forClass() {
-        return CalendarURLRegistrationKey.class;
+    @Test
+    void parseShouldRejectInvalidFormat() {
+        assertThatThrownBy(() -> CalendarURL.parse("baseOnly"))
+            .isInstanceOf(IllegalArgumentException.class);
     }
 
-    @Override
-    public RegistrationKey fromString(String asString) {
-        return CalendarURLRegistrationKey.fromString(asString);
+    @Test
+    void parseShouldRejectEmptyInput() {
+        assertThatThrownBy(() -> CalendarURL.parse(""))
+            .isInstanceOf(IllegalArgumentException.class);
     }
 }

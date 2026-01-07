@@ -16,25 +16,19 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package org.apache.james.events;
+package com.linagora.calendar.dav;
 
-import jakarta.inject.Inject;
+import com.linagora.calendar.storage.AddressBookURL;
 
-import com.linagora.calendar.storage.CalendarURLRegistrationKey;
+public class AddressBookNotFoundException extends RuntimeException {
+    private final AddressBookURL addressBookURL;
 
-public class CalendarURLRegistrationKeyFactory implements RegistrationKey.Factory {
-
-    @Inject
-    public CalendarURLRegistrationKeyFactory() {
+    public AddressBookNotFoundException(AddressBookURL addressBookURL) {
+        super("AddressBookURL not found: " + addressBookURL.asUri().toASCIIString());
+        this.addressBookURL = addressBookURL;
     }
 
-    @Override
-    public Class<? extends RegistrationKey> forClass() {
-        return CalendarURLRegistrationKey.class;
-    }
-
-    @Override
-    public RegistrationKey fromString(String asString) {
-        return CalendarURLRegistrationKey.fromString(asString);
+    public AddressBookURL addressBookURL() {
+        return addressBookURL;
     }
 }

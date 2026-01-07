@@ -75,6 +75,9 @@ import com.linagora.calendar.restapi.routes.DownloadCalendarRoute;
 import com.linagora.calendar.restapi.routes.EventParticipationRoute;
 import com.linagora.calendar.restapi.routes.FileUploadRoute;
 import com.linagora.calendar.restapi.routes.ImportProxyRoute;
+import com.linagora.calendar.restapi.routes.ImportResultNotifier;
+import com.linagora.calendar.restapi.routes.ImportResultNotifier.ImportWebSocketNotifier;
+import com.linagora.calendar.restapi.routes.ImportResultNotifier.SendMailNotifier;
 import com.linagora.calendar.restapi.routes.ImportRoute;
 import com.linagora.calendar.restapi.routes.JwtRoutes;
 import com.linagora.calendar.restapi.routes.LogoRoute;
@@ -180,6 +183,13 @@ public class RestApiModule extends AbstractModule {
         peopleSearchProviderMultibinder.addBinding().to(ContactSearchProvider.class);
         peopleSearchProviderMultibinder.addBinding().to(ResourceSearchProvider.class);
         peopleSearchProviderMultibinder.addBinding().to(UserSearchProvider.class);
+
+        bind(ImportWebSocketNotifier.class).in(Scopes.SINGLETON);
+        bind(SendMailNotifier.class).in(Scopes.SINGLETON);
+
+        Multibinder<ImportResultNotifier> importResultNotifierMultibinder = Multibinder.newSetBinder(binder(), ImportResultNotifier.class);
+        importResultNotifierMultibinder.addBinding().to(ImportWebSocketNotifier.class);
+        importResultNotifierMultibinder.addBinding().to(SendMailNotifier.class);
     }
 
     @Provides

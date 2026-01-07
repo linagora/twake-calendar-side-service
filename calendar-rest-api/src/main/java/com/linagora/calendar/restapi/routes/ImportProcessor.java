@@ -19,16 +19,16 @@
 package com.linagora.calendar.restapi.routes;
 
 import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
-import static reactor.core.scheduler.Schedulers.DEFAULT_BOUNDED_ELASTIC_QUEUESIZE;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import jakarta.inject.Inject;
-import jakarta.inject.Named;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.Username;
@@ -42,13 +42,10 @@ import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CardDavClient;
-import com.linagora.calendar.smtp.MailSender;
-import com.linagora.calendar.smtp.template.Language;
 import com.linagora.calendar.smtp.template.TemplateType;
+import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
-import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
-import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.ResolvedSettings;
 import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.model.ImportId;
 import com.linagora.calendar.storage.model.UploadedFile;
@@ -60,10 +57,8 @@ import ezvcard.property.Uid;
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.component.VEvent;
-import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Scheduler;
 import reactor.core.scheduler.Schedulers;
 
 public class ImportProcessor {
@@ -83,6 +78,10 @@ public class ImportProcessor {
         public TemplateType getTemplateType() {
             return templateType;
         }
+
+        public String asString() {
+            return this.templateType.value();
+        }
     }
 
     public record ImportCommand(ImportId importId,
@@ -100,6 +99,13 @@ public class ImportProcessor {
                 uploadedFile.data(),
                 new OpenPaaSId(baseId),
                 resourceId);
+        }
+
+        public URI importURI() {
+            return switch (importType) {
+                case ICS -> new CalendarURL(baseId(), new OpenPaaSId(resourceId)).asUri();
+                case VCARD -> new AddressBookURL(baseId(), resourceId).asUri();
+            };
         }
     }
 
@@ -197,26 +203,16 @@ public class ImportProcessor {
 
     private final ImportICSToDavHandler importICSHandler;
     private final ImportVCardToDavHandler importVCardHandler;
-    private final Scheduler mailScheduler;
-    private final MailSender.Factory mailSenderFactory;
-    private final ImportMailReportRender mailReportRender;
-    private final SettingsBasedResolver settingsResolver;
+    private final Set<ImportResultNotifier> importResultNotifiers;
 
     @Inject
     public ImportProcessor(CardDavClient cardDavClient,
                            CalDavClient calDavClient,
-                           MailSender.Factory mailSenderFactory,
-                           ImportMailReportRender mailReportRender,
-                           @Named("language") SettingsBasedResolver settingsResolver) {
+                           Set<ImportResultNotifier> importResultNotifiers) {
         this.importICSHandler = new ImportICSToDavHandler(calDavClient);
         this.importVCardHandler = new ImportVCardToDavHandler(cardDavClient);
-        this.mailScheduler = Schedulers.newBoundedElastic(1, DEFAULT_BOUNDED_ELASTIC_QUEUESIZE,
-            "sendMailScheduler");
-        this.mailSenderFactory = mailSenderFactory;
-        this.mailReportRender = mailReportRender;
-        this.settingsResolver = settingsResolver;
+        this.importResultNotifiers = importResultNotifiers;
     }
-
 
     public Mono<Void> process(ImportCommand importCommand, MailboxSession mailboxSession) {
         Username username = mailboxSession.getUser();
@@ -228,19 +224,24 @@ public class ImportProcessor {
         };
 
         return importToDavHandler.handle(importCommand, username)
-            .flatMap(importResult -> settingsResolver.resolveOrDefault(mailboxSession)
-                .map(ResolvedSettings::locale)
-                .doOnSuccess(locale -> sendReportMail(importCommand.importType(), new Language(locale), importResult, username)))
-            .then();
+            .map(importResult -> (ImportExecutionResult) new ImportExecutionResult.Success(importResult))
+            .onErrorResume(error -> {
+                LOGGER.error("Import {} failed for user {}", importCommand.importId().value(), username, error);
+                return Mono.just(new ImportExecutionResult.Failed(error));
+            })
+            .flatMap(importExecutionResult -> sendNotifications(importCommand, importExecutionResult, username));
     }
 
-
-    private Disposable sendReportMail(ImportType importType, Language language, ImportResult importResult, Username receiver) {
-        return mailReportRender.generateMail(importType, language, importResult, receiver)
-            .flatMap(mail -> mailSenderFactory.create().flatMap(mailSender -> mailSender.send(mail)))
-            .doOnError(error -> LOGGER.error("Error sending import `{}` report mail to {}: {}", importType.name(), receiver, error.getMessage()))
-            .subscribeOn(mailScheduler)
-            .subscribe();
+    private Mono<Void> sendNotifications(ImportCommand command, ImportExecutionResult result, Username username) {
+        return Flux.fromIterable(importResultNotifiers)
+            .flatMap(notifier ->
+                notifier.notify(command, result, username)
+                    .onErrorResume(error -> {
+                        LOGGER.error("Import notification failed (notifier={}, importId={}, user={})",
+                            notifier.getClass().getSimpleName(), command.importId().value(), username.asString(), error);
+                        return Mono.empty();
+                    }))
+            .then();
     }
 
     public record ImportResult(int succeedCount, ImmutableList<FailedItem> failed) {
@@ -267,6 +268,14 @@ public class ImportProcessor {
                     .addAll(this.failed)
                     .addAll(other.failed)
                     .build());
+        }
+    }
+
+    public sealed interface ImportExecutionResult permits ImportExecutionResult.Success, ImportExecutionResult.Failed {
+        record Success(ImportResult result) implements ImportExecutionResult {
+        }
+
+        record Failed(Throwable error) implements ImportExecutionResult {
         }
     }
 }

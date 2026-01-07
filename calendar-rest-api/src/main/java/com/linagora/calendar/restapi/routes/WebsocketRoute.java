@@ -18,6 +18,10 @@
 
 package com.linagora.calendar.restapi.routes;
 
+import static com.linagora.calendar.dav.CardDavClient.LIMIT_PARAM;
+import static com.linagora.calendar.storage.AddressBookURL.ADDRESS_BOOK_URL_PATH_PREFIX;
+import static com.linagora.calendar.storage.CalendarURL.CALENDAR_URL_PATH_PREFIX;
+
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.time.Duration;
@@ -52,7 +56,6 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -62,9 +65,12 @@ import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Sets;
+import com.linagora.calendar.dav.AddressBookNotFoundException;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalendarNotFoundException;
-import com.linagora.calendar.dav.SyncToken;
+import com.linagora.calendar.dav.CardDavClient;
+import com.linagora.calendar.storage.AddressBookURL;
+import com.linagora.calendar.storage.AddressBookURLRegistrationKey;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.CalendarURLRegistrationKey;
 import com.linagora.tmail.james.jmap.ticket.TicketAuthenticationStrategy;
@@ -91,17 +97,20 @@ public class WebsocketRoute extends CalendarRoute {
     private final Duration websocketPingInterval;
     private final EventBus eventBus;
     private final CalDavClient calDavClient;
-    private final Set<ClientContext> connectedUsers = ConcurrentHashMap.newKeySet();
+    private final CardDavClient cardDavClient;
+    private final Set<ClientContext> connectedClients = ConcurrentHashMap.newKeySet();
 
     @Inject
     protected WebsocketRoute(TicketAuthenticationStrategy ticketAuthenticationStrategy,
                              MetricFactory metricFactory,
                              EventBus eventBus,
                              CalDavClient calDavClient,
+                             CardDavClient cardDavClient,
                              PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
         super(Authenticator.of(metricFactory, ticketAuthenticationStrategy), metricFactory);
         this.eventBus = eventBus;
         this.calDavClient = calDavClient;
+        this.cardDavClient = cardDavClient;
 
         Configuration configuration = propertiesProvider.getConfiguration("configuration");
         this.websocketPingInterval = Optional.ofNullable(configuration.getString(WEBSOCKET_PING_INTERVAL_PROPERTY))
@@ -120,18 +129,18 @@ public class WebsocketRoute extends CalendarRoute {
 
     @Override
     Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response, MailboxSession session) {
-        Sinks.Many<CalendarChangeMessage> outboundSink = Sinks.many().unicast().onBackpressureBuffer();
+        Sinks.Many<WebsocketMessage> outboundSink = Sinks.many().unicast().onBackpressureBuffer();
         ClientContext context = ClientContext.create(outboundSink, session);
 
         return response.sendWebsocket((in, out) -> {
-            connectedUsers.add(context);
+            connectedClients.add(context);
             Flux<WebSocketFrame> inboundFlux = in.aggregateFrames()
                 .receiveFrames()
                 .filter(frame -> frame instanceof TextWebSocketFrame)
                 .flatMap(message -> handleClientMessage(((TextWebSocketFrame) message).text(), context)
                     .map(TextWebSocketFrame::new));
 
-            Flux<WebSocketFrame> outboundFlux = outboundSink.asFlux().map(Throwing.function(CalendarChangeMessage::asWebSocketFrame));
+            Flux<WebSocketFrame> outboundFlux = outboundSink.asFlux().map(Throwing.function(WebsocketMessage::asWebSocketFrame));
 
             return out.sendObject(Flux.merge(outboundFlux, inboundFlux, pingInterval()))
                 .then()
@@ -157,21 +166,21 @@ public class WebsocketRoute extends CalendarRoute {
     private Mono<ClientSubscribeResult> handleSubscribeRequest(ClientSubscribeRequest subscribeRequest,
                                                                ClientContext context) {
         Mono<ClientSubscribeResult> registrationResult = Flux.fromIterable(subscribeRequest.register())
-            .flatMap(calendarUrl -> registerCalendar(calendarUrl, context)
-                .thenReturn(ClientSubscribeResult.registered(calendarUrl))
+            .flatMap(subscriptionKey -> registerSubscription(subscriptionKey, context)
+                .thenReturn(ClientSubscribeResult.registered(subscriptionKey))
                 .onErrorResume(error -> {
-                    LOGGER.error("Error registering {}", calendarUrl, error);
-                    return Mono.just(ClientSubscribeResult.notRegistered(calendarUrl, error));
+                    LOGGER.error("Error registering {}", subscriptionKey.asString(), error);
+                    return Mono.just(ClientSubscribeResult.notRegistered(subscriptionKey, error));
                 }))
             .reduce(ClientSubscribeResult::merge)
             .defaultIfEmpty(ClientSubscribeResult.empty());
 
         Mono<ClientSubscribeResult> unregistrationResult = Flux.fromIterable(subscribeRequest.unregister())
-            .flatMap(calendarUrl -> context.unregister(calendarUrl)
-                .thenReturn(ClientSubscribeResult.unregistered(calendarUrl))
+            .flatMap(subscriptionKey -> context.unregister(subscriptionKey)
+                .thenReturn(ClientSubscribeResult.unregistered(subscriptionKey))
                 .onErrorResume(error -> {
-                    LOGGER.error("Error unRegistering {}", calendarUrl, error);
-                    return Mono.just(ClientSubscribeResult.notUnregistered(calendarUrl, error));
+                    LOGGER.error("Error unRegistering {}", subscriptionKey.asString(), error);
+                    return Mono.just(ClientSubscribeResult.notUnregistered(subscriptionKey, error));
                 }))
             .reduce(ClientSubscribeResult::merge)
             .defaultIfEmpty(ClientSubscribeResult.empty());
@@ -179,31 +188,73 @@ public class WebsocketRoute extends CalendarRoute {
         return Mono.zip(registrationResult, unregistrationResult, ClientSubscribeResult::merge);
     }
 
-    private Mono<Registration> registerCalendar(CalendarURL calendarUrl,
+    private Mono<Registration> registerSubscription(SubscriptionKey subscriptionKey,
+                                                    ClientContext context) {
+        return switch (subscriptionKey) {
+            case CalendarSubscriptionKey calendarKey -> registerCalendar(calendarKey, context);
+            case AddressBookSubscriptionKey addressBookKey -> registerAddressBook(addressBookKey, context);
+        };
+    }
+
+    private Mono<Registration> registerAddressBook(AddressBookSubscriptionKey subscriptionKey,
+                                                   ClientContext context) {
+        Username username = context.session().getUser();
+        WebSocketNotificationListener listener = new WebSocketNotificationListener(context.outbound(), calDavClient, username);
+        AddressBookURL addressBookURL = subscriptionKey.addressBookURL();
+        RegistrationKey registrationKey = new AddressBookURLRegistrationKey(addressBookURL);
+        Mono<Void> accessValidation = validateAccessRights(username, addressBookURL);
+
+        return doRegisterSubscription(subscriptionKey, registrationKey, listener, accessValidation, context);
+    }
+
+    private Mono<Registration> registerCalendar(CalendarSubscriptionKey subscriptionKey,
                                                 ClientContext context) {
         Username username = context.session().getUser();
-        return Mono.justOrEmpty(context.subscriptionMap().get(calendarUrl))
-            .switchIfEmpty(Mono.defer(() -> {
-                CalendarStateChangeListener listener = new CalendarStateChangeListener(context.outbound(), calDavClient, username);
-                RegistrationKey registrationKey = new CalendarURLRegistrationKey(calendarUrl);
+        WebSocketNotificationListener listener = new WebSocketNotificationListener(context.outbound(), calDavClient, username);
+        CalendarURL calendarURL = subscriptionKey.calendarURL();
+        RegistrationKey registrationKey = new CalendarURLRegistrationKey(calendarURL);
+        Mono<Void> accessValidation = validateAccessRights(username, calendarURL);
 
-                return validateAccessRights(username, calendarUrl)
+        return doRegisterSubscription(subscriptionKey, registrationKey, listener, accessValidation, context);
+    }
+
+    private Mono<Registration> doRegisterSubscription(SubscriptionKey subscriptionKey,
+                                                      RegistrationKey registrationKey,
+                                                      WebSocketNotificationListener listener,
+                                                      Mono<Void> accessValidation,
+                                                      ClientContext context) {
+
+        return Mono.justOrEmpty(context.subscriptionMap().get(subscriptionKey))
+            .switchIfEmpty(Mono.defer(() ->
+                accessValidation
                     .then(Mono.from(eventBus.register(listener, registrationKey)))
                     .flatMap(registration -> {
-                        Registration old = context.subscriptionMap().putIfAbsent(calendarUrl, registration);
+                        Registration old = context.subscriptionMap().putIfAbsent(subscriptionKey, registration);
                         if (old != null) {
                             return Mono.from(registration.unregister())
                                 .thenReturn(old);
                         }
                         return Mono.just(registration);
-                    });
-            }));
+                    })
+            ));
     }
 
     private Mono<Void> validateAccessRights(Username user, CalendarURL url) {
         return calDavClient.retrieveSyncToken(user, url)
             .switchIfEmpty(Mono.error(ForbiddenSubscribeException::new))
             .then();
+    }
+
+    private Mono<Void> validateAccessRights(Username user, AddressBookURL addressBookURL) {
+        return cardDavClient
+            .exportAddressBook(user, addressBookURL, Map.of(LIMIT_PARAM, "1"))
+            .then()
+            .onErrorMap(CardDavClient.CardDavExportException.class, exportException ->
+                switch (exportException.statusCode()) {
+                    case 403 -> new ForbiddenSubscribeException();
+                    case 404 -> new AddressBookNotFoundException(addressBookURL);
+                    default -> exportException;
+                });
     }
 
     private Flux<WebSocketFrame> pingInterval() {
@@ -213,19 +264,38 @@ public class WebsocketRoute extends CalendarRoute {
 
     private void cleanupWebsocketSession(ClientContext context) {
         context.clean();
-        connectedUsers.remove(context);
+        connectedClients.remove(context);
     }
 
-    private record ClientContext(Sinks.Many<CalendarChangeMessage> outbound,
-                                 Map<CalendarURL, Registration> subscriptionMap,
+    sealed interface SubscriptionKey permits CalendarSubscriptionKey, AddressBookSubscriptionKey {
+
+        String asString();
+    }
+
+    record CalendarSubscriptionKey(CalendarURL calendarURL) implements SubscriptionKey {
+        @Override
+        public String asString() {
+            return calendarURL().asUri().toASCIIString();
+        }
+    }
+
+    record AddressBookSubscriptionKey(AddressBookURL addressBookURL) implements SubscriptionKey {
+        @Override
+        public String asString() {
+            return addressBookURL.asUri().toASCIIString();
+        }
+    }
+
+    private record ClientContext(Sinks.Many<WebsocketMessage> outbound,
+                                 Map<SubscriptionKey, Registration> subscriptionMap,
                                  MailboxSession session) {
 
-        static ClientContext create(Sinks.Many<CalendarChangeMessage> outbound, MailboxSession session) {
+        static ClientContext create(Sinks.Many<WebsocketMessage> outbound, MailboxSession session) {
             return new ClientContext(outbound, new ConcurrentHashMap<>(), session);
         }
 
-        Mono<Void> unregister(CalendarURL calendarUrl) {
-            Registration registration = subscriptionMap.remove(calendarUrl);
+        Mono<Void> unregister(SubscriptionKey subscriptionKey) {
+            Registration registration = subscriptionMap.remove(subscriptionKey);
             if (registration != null) {
                 return Mono.from(registration.unregister());
             }
@@ -262,8 +332,8 @@ public class WebsocketRoute extends CalendarRoute {
     public static class ForbiddenSubscribeException extends RuntimeException {
     }
 
-    record ClientSubscribeRequest(Set<CalendarURL> register,
-                                  Set<CalendarURL> unregister) {
+    record ClientSubscribeRequest(Set<SubscriptionKey> register,
+                                  Set<SubscriptionKey> unregister) {
 
         static final String REGISTER_PROPERTY = "register";
         static final String UNREGISTER_PROPERTY = "unregister";
@@ -271,82 +341,98 @@ public class WebsocketRoute extends CalendarRoute {
         static ClientSubscribeRequest deserialize(String message) {
             try {
                 JsonNode root = MAPPER.readTree(message);
-                Set<CalendarURL> registerList = parseCalendarURLArray(root.get(REGISTER_PROPERTY));
-                Set<CalendarURL> unregisterList = parseCalendarURLArray(root.get(UNREGISTER_PROPERTY));
-                return new ClientSubscribeRequest(registerList, unregisterList);
+                Set<SubscriptionKey> register = parseSubscriptionKeyArray(root.get(REGISTER_PROPERTY));
+                Set<SubscriptionKey> unregister = parseSubscriptionKeyArray(root.get(UNREGISTER_PROPERTY));
+                return new ClientSubscribeRequest(register, unregister);
             } catch (Exception exception) {
                 throw new CalendarSubscribeException("Invalid Request", exception);
             }
         }
 
-        static Set<CalendarURL> parseCalendarURLArray(JsonNode node) {
+        static Set<SubscriptionKey> parseSubscriptionKeyArray(JsonNode node) {
             if (node == null || !node.isArray()) {
                 return Set.of();
             }
+
             return StreamSupport.stream(node.spliterator(), false)
                 .filter(JsonNode::isTextual)
-                .map(jsonNode -> CalendarURL.deserialize(Strings.CS.remove(jsonNode.asText(), CalendarURL.CALENDAR_URL_PATH_PREFIX)))
+                .map(JsonNode::asText)
+                .map(ClientSubscribeRequest::toSubscriptionKey)
                 .collect(Collectors.toSet());
         }
 
+        static SubscriptionKey toSubscriptionKey(String raw) {
+            if (Strings.CS.startsWith(raw, CALENDAR_URL_PATH_PREFIX)) {
+                CalendarURL calendarURL = CalendarURL.parse(raw);
+                return new CalendarSubscriptionKey(calendarURL);
+            }
+
+            if (Strings.CS.startsWith(raw, ADDRESS_BOOK_URL_PATH_PREFIX)) {
+                AddressBookURL addressBookURL = AddressBookURL.parse(raw);
+                return new AddressBookSubscriptionKey(addressBookURL);
+            }
+
+            throw new CalendarSubscribeException("Unsupported subscription resource: " + raw);
+        }
+
         void validate() {
-            Set<CalendarURL> intersection = Sets.intersection(register, unregister);
+            Set<SubscriptionKey> intersection = Sets.intersection(register, unregister);
             if (!intersection.isEmpty()) {
-                throw new CalendarSubscribeException("register and unregister cannot contain duplicated entries: "
-                    + intersection.stream().map(url -> url.asUri().toASCIIString()).collect(Collectors.joining(", ")));
+                throw new CalendarSubscribeException("register and unregister cannot contain duplicated entries");
             }
         }
     }
 
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     record ClientSubscribeResult(@JsonProperty("registered")
-                                 @JsonSerialize(contentUsing = CalendarURLSerializer.class)
-                                 List<CalendarURL> registered,
+                                 @JsonSerialize(contentUsing = SubscriptionKeySerializer.class)
+                                 List<SubscriptionKey> registered,
                                  @JsonProperty("unregistered")
-                                 @JsonSerialize(contentUsing = CalendarURLSerializer.class)
-                                 List<CalendarURL> unregistered,
+                                 @JsonSerialize(contentUsing = SubscriptionKeySerializer.class)
+                                 List<SubscriptionKey> unregistered,
                                  @JsonProperty("notRegistered")
-                                 @JsonSerialize(keyUsing = CalendarURLKeySerializer.class)
-                                 Map<CalendarURL, String> notRegistered,
+                                 @JsonSerialize(keyUsing = SubscriptionKeyMapSerializer.class)
+                                 Map<SubscriptionKey, String> notRegistered,
                                  @JsonProperty("notUnregistered")
-                                 @JsonSerialize(keyUsing = CalendarURLKeySerializer.class)
-                                 Map<CalendarURL, String> notUnregistered) {
+                                 @JsonSerialize(keyUsing = SubscriptionKeyMapSerializer.class)
+                                 Map<SubscriptionKey, String> notUnregistered) {
 
-        static class CalendarURLSerializer extends JsonSerializer<CalendarURL> {
+        static class SubscriptionKeySerializer extends JsonSerializer<SubscriptionKey> {
             @Override
-            public void serialize(CalendarURL value, JsonGenerator gen, SerializerProvider serializers) throws IOException {
-                gen.writeString(value.asUri().toASCIIString());
+            public void serialize(SubscriptionKey value, JsonGenerator gen, SerializerProvider serializers) throws IOException {
+                gen.writeString(value.asString());
             }
         }
 
-        static class CalendarURLKeySerializer extends JsonSerializer<CalendarURL> {
+        static class SubscriptionKeyMapSerializer extends JsonSerializer<SubscriptionKey> {
             @Override
-            public void serialize(CalendarURL value, JsonGenerator gen, SerializerProvider serializers) throws IOException {
-                gen.writeFieldName(value.asUri().toASCIIString());
+            public void serialize(SubscriptionKey value, JsonGenerator gen, SerializerProvider serializers) throws IOException {
+                gen.writeFieldName(value.asString());
             }
         }
 
-        static ClientSubscribeResult registered(CalendarURL url) {
-            return new ClientSubscribeResult(List.of(url), List.of(), Map.of(), Map.of());
+        static ClientSubscribeResult registered(SubscriptionKey subscriptionKey) {
+            return new ClientSubscribeResult(List.of(subscriptionKey), List.of(), Map.of(), Map.of());
         }
 
-        static ClientSubscribeResult unregistered(CalendarURL url) {
-            return new ClientSubscribeResult(List.of(), List.of(url), Map.of(), Map.of());
+        static ClientSubscribeResult unregistered(SubscriptionKey subscriptionKey) {
+            return new ClientSubscribeResult(List.of(), List.of(subscriptionKey), Map.of(), Map.of());
         }
 
-        static ClientSubscribeResult notRegistered(CalendarURL url, Throwable reason) {
+        static ClientSubscribeResult notRegistered(SubscriptionKey subscriptionKey, Throwable reason) {
             String messageReason = switch (reason) {
                 case CalendarNotFoundException ignore -> "NotFound";
+                case AddressBookNotFoundException ignore -> "NotFound";
                 case ForbiddenSubscribeException ignore -> "Forbidden";
                 default -> "InternalError";
             };
-            return new ClientSubscribeResult(List.of(), List.of(), Map.of(url, messageReason), Map.of());
+            return new ClientSubscribeResult(List.of(), List.of(), Map.of(subscriptionKey, messageReason), Map.of());
         }
 
-        static ClientSubscribeResult notUnregistered(CalendarURL url, Throwable reason) {
+        static ClientSubscribeResult notUnregistered(SubscriptionKey subscriptionKey, Throwable reason) {
             String message = Optional.ofNullable(reason.getMessage())
                 .orElse(reason.getClass().getSimpleName());
-            return new ClientSubscribeResult(List.of(), List.of(), Map.of(), Map.of(url, message));
+            return new ClientSubscribeResult(List.of(), List.of(), Map.of(), Map.of(subscriptionKey, message));
         }
 
         static ClientSubscribeResult empty() {
@@ -357,11 +443,11 @@ public class WebsocketRoute extends CalendarRoute {
             return new ClientSubscribeResult(
                 Stream.concat(this.registered.stream(), other.registered.stream()).toList(),
                 Stream.concat(this.unregistered.stream(), other.unregistered.stream()).toList(),
-                ImmutableMap.<CalendarURL, String>builder()
+                ImmutableMap.<SubscriptionKey, String>builder()
                     .putAll(this.notRegistered)
                     .putAll(other.notRegistered)
                     .build(),
-                ImmutableMap.<CalendarURL, String>builder()
+                ImmutableMap.<SubscriptionKey, String>builder()
                     .putAll(this.notUnregistered)
                     .putAll(other.notUnregistered)
                     .build());
@@ -376,18 +462,8 @@ public class WebsocketRoute extends CalendarRoute {
         }
     }
 
-    public record CalendarChangeMessage(CalendarURL calendarURL, SyncToken syncToken) {
-        static final String SYNC_TOKEN_PROPERTY = "syncToken";
-
-        public WebSocketFrame asWebSocketFrame() throws JsonProcessingException {
-            return new TextWebSocketFrame(serialize());
-        }
-
-        public String serialize() throws JsonProcessingException {
-            return MAPPER.writeValueAsString(
-                MAPPER.createObjectNode().set(calendarURL.asUri().toASCIIString(),
-                    MAPPER.createObjectNode().put(SYNC_TOKEN_PROPERTY, syncToken.value())));
-        }
+    public interface WebsocketMessage {
+        WebSocketFrame asWebSocketFrame() throws Exception;
     }
 
 }

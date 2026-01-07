@@ -21,12 +21,15 @@ package com.linagora.calendar.dav;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 import javax.net.ssl.SSLException;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import org.apache.http.HttpStatus;
+import org.apache.http.client.utils.URIBuilder;
 import org.apache.james.core.Username;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,6 +41,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Streams;
+import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.TechnicalTokenService;
 
@@ -52,6 +56,19 @@ import reactor.netty.http.client.HttpClientResponse;
 import reactor.util.retry.Retry;
 
 public class CardDavClient extends DavClient {
+
+    public static class CardDavExportException extends DavClientException {
+        private final int statusCode;
+
+        public CardDavExportException(String message, int statusCode) {
+            super(message);
+            this.statusCode = statusCode;
+        }
+
+        public int statusCode() {
+            return statusCode;
+        }
+    }
 
     public enum AddressBookType {
         SYSTEM, USER;
@@ -71,10 +88,14 @@ public class CardDavClient extends DavClient {
     static class RetryableDavClientException extends RuntimeException {
     }
 
+
+
+    public static final String LIMIT_PARAM = "limit";
+
     private static final Logger LOGGER = LoggerFactory.getLogger(CardDavClient.class);
 
     private static final String CONTENT_TYPE_VCARD = "application/vcard";
-    private static final String ACCEPT_VCARD_JSON = "text/plain";
+    private static final String CONTENT_TYPE_VCARD_JSON = "application/vcard+json";
     private static final String ADDRESS_BOOK_PATH = "/addressbooks/%s/%s/%s.vcf";
 
     private static final String DOMAIN_MEMBERS_ADDRESS_BOOK_ID = "domain-members";
@@ -101,7 +122,7 @@ public class CardDavClient extends DavClient {
     public Mono<Void> upsertContact(HttpClient authenticatedClient, OpenPaaSId homeBaseId, String addressBook, String vcardUid, byte[] vcardPayload) {
         return authenticatedClient.headers(headers -> headers
                 .add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_VCARD)
-                .add(HttpHeaderNames.ACCEPT, ACCEPT_VCARD_JSON))
+                .add(HttpHeaderNames.ACCEPT, HttpHeaderValues.TEXT_PLAIN))
             .put()
             .uri(String.format(ADDRESS_BOOK_PATH, homeBaseId.value(), addressBook, vcardUid))
             .send(Mono.just(Unpooled.wrappedBuffer(vcardPayload)))
@@ -196,7 +217,7 @@ public class CardDavClient extends DavClient {
 
         return httpClientWithTechnicalToken(domainId)
             .flatMap(client -> client.headers(headers
-                    -> headers.add(HttpHeaderNames.ACCEPT, ACCEPT_VCARD_JSON))
+                    -> headers.add(HttpHeaderNames.ACCEPT, HttpHeaderValues.TEXT_PLAIN))
                 .delete()
                 .uri(String.format(ADDRESS_BOOK_PATH, domainId.value(), DOMAIN_MEMBERS_ADDRESS_BOOK_ID, vcardUid))
                 .responseSingle((response, byteBufMono) -> {
@@ -357,5 +378,28 @@ public class CardDavClient extends DavClient {
     private Mono<String> responseBodyAsString(ByteBufMono byteBufMono) {
         return byteBufMono.asString(StandardCharsets.UTF_8)
             .switchIfEmpty(Mono.just(StringUtils.EMPTY));
+    }
+
+    public Mono<byte[]> exportAddressBook(Username userRequest, AddressBookURL url, Map<String, String> queryParams) {
+        URIBuilder uriBuilder = new URIBuilder(url.asUri());
+        Optional.ofNullable(queryParams)
+            .orElse(Map.of())
+            .forEach(uriBuilder::addParameter);
+
+        String uriRequest = uriBuilder.toString();
+
+        return httpClientWithImpersonation(userRequest)
+            .headers(headers -> headers.add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_VCARD_JSON))
+            .get()
+            .uri(uriRequest)
+            .responseSingle((response, byteBufMono) -> {
+                if (response.status().code() == HttpStatus.SC_OK) {
+                    return byteBufMono.asByteArray();
+                }
+                return responseBodyAsString(byteBufMono)
+                    .flatMap(body -> Mono.error(new CardDavExportException(
+                        "Unexpected error when exporting address book from %s\n%s"
+                            .formatted(uriRequest, body), response.status().code())));
+            });
     }
 }

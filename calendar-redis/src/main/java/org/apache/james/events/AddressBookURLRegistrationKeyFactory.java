@@ -20,21 +20,21 @@ package org.apache.james.events;
 
 import jakarta.inject.Inject;
 
-import com.linagora.calendar.storage.CalendarURLRegistrationKey;
+import com.linagora.calendar.storage.AddressBookURLRegistrationKey;
 
-public class CalendarURLRegistrationKeyFactory implements RegistrationKey.Factory {
+public class AddressBookURLRegistrationKeyFactory implements RegistrationKey.Factory {
 
     @Inject
-    public CalendarURLRegistrationKeyFactory() {
+    public AddressBookURLRegistrationKeyFactory() {
     }
 
     @Override
     public Class<? extends RegistrationKey> forClass() {
-        return CalendarURLRegistrationKey.class;
+        return AddressBookURLRegistrationKey.class;
     }
 
     @Override
     public RegistrationKey fromString(String asString) {
-        return CalendarURLRegistrationKey.fromString(asString);
+        return AddressBookURLRegistrationKey.fromString(asString);
     }
 }
