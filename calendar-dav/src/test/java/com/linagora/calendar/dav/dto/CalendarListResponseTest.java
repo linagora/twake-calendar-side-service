@@ -111,4 +111,58 @@ public class CalendarListResponseTest {
                 }
                 """);
     }
+
+    @Test
+    void findCalendarByNameShouldReturnCalendarUrlWhenFound() {
+        CalendarListResponse response = CalendarListResponse.parse("""
+            {
+                 "_embedded": {
+                     "dav:calendar": [
+                         {
+                             "_links": {
+                                 "self": {
+                                     "href": "/calendars/user/default.json"
+                                 }
+                             },
+                             "dav:name": "Default"
+                         },
+                         {
+                             "_links": {
+                                 "self": {
+                                     "href": "/calendars/user/archival.json"
+                                 }
+                             },
+                             "dav:name": "Archival"
+                         }
+                     ]
+                 }
+            }
+            """.getBytes(StandardCharsets.UTF_8));
+
+        assertThat(response.findCalendarByName("Archival"))
+            .contains(CalendarURL.parse("/calendars/user/archival"));
+    }
+
+    @Test
+    void findCalendarByNameShouldReturnEmptyWhenNotFound() {
+        CalendarListResponse response = CalendarListResponse.parse("""
+            {
+                 "_embedded": {
+                     "dav:calendar": [
+                         {
+                             "_links": {
+                                 "self": {
+                                     "href": "/calendars/user/default.json"
+                                 }
+                             },
+                             "dav:name": "Default"
+                         }
+                     ]
+                 }
+            }
+            """.getBytes(StandardCharsets.UTF_8));
+
+        assertThat(response.findCalendarByName("Archival"))
+            .isEmpty();
+    }
 }
