@@ -86,7 +86,7 @@ import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.Fixture;
 import com.linagora.calendar.dav.SabreDavExtension;
-import com.linagora.calendar.dav.dto.CalendarEventReportResponse;
+import com.linagora.calendar.dav.dto.CalendarReportJsonResponse;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.smtp.MailSenderConfiguration;
 import com.linagora.calendar.smtp.MockSmtpServerExtension;
@@ -708,7 +708,7 @@ class EventParticipationRouteTest {
 
     private String getCalendarEventReportResponse(String eventUid) throws Exception {
         CalDavClient calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
-        CalendarEventReportResponse response = calDavClient.calendarReportByUid(
+        CalendarReportJsonResponse response = calDavClient.calendarReportByUid(
             attendee.username(),
             attendee.id(), eventUid).block();
 

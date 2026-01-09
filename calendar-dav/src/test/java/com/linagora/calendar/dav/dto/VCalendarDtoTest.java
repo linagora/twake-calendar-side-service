@@ -65,7 +65,7 @@ public class VCalendarDtoTest {
 
     @Test
     void shouldParseValidJsonSuccessfully() throws JsonProcessingException {
-        CalendarEventReportResponse response = CalendarEventReportResponse.from(VALID_JSON);
+        CalendarReportJsonResponse response = CalendarReportJsonResponse.from(VALID_JSON);
         VCalendarDto vCalendarDto = VCalendarDto.from(response);
         assertThatJson(new ObjectMapper().writeValueAsString(vCalendarDto.value()))
             .isEqualTo("""
@@ -98,7 +98,7 @@ public class VCalendarDtoTest {
                 "someOtherField": {}
             }
             """;
-        CalendarEventReportResponse response = CalendarEventReportResponse.from(missingEmbeddedJson);
+        CalendarReportJsonResponse response = CalendarReportJsonResponse.from(missingEmbeddedJson);
 
         assertThatThrownBy(() -> VCalendarDto.from(response))
             .isInstanceOf(IllegalStateException.class)
@@ -115,7 +115,7 @@ public class VCalendarDtoTest {
             }
             """;
 
-        CalendarEventReportResponse response = CalendarEventReportResponse.from(emptyDavItemJson);
+        CalendarReportJsonResponse response = CalendarReportJsonResponse.from(emptyDavItemJson);
         assertThatThrownBy(() -> VCalendarDto.from(response))
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("Expected non-empty 'dav:item' array in response");
@@ -134,7 +134,7 @@ public class VCalendarDtoTest {
                 }
             }
             """;
-        CalendarEventReportResponse response = CalendarEventReportResponse.from(missingDataJson);
+        CalendarReportJsonResponse response = CalendarReportJsonResponse.from(missingDataJson);
         assertThatThrownBy(() -> VCalendarDto.from(response))
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("Missing or invalid 'data' field in 'dav:item'");

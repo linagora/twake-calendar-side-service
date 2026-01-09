@@ -28,7 +28,7 @@ import jakarta.inject.Singleton;
 import org.apache.james.core.Username;
 
 import com.linagora.calendar.dav.CalendarEventUpdatePatch.AttendeePartStatusUpdatePatch;
-import com.linagora.calendar.dav.dto.CalendarEventReportResponse;
+import com.linagora.calendar.dav.dto.CalendarReportJsonResponse;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.eventsearch.EventUid;
@@ -72,12 +72,12 @@ public class CalDavEventRepository {
         return applyModifierByEventUid(username, calendarId, eventUid, modifier);
     }
 
-    public Mono<CalendarEventReportResponse> updatePartStat(Username username, OpenPaaSId calendarId, EventUid eventUid, PartStat partStat) {
+    public Mono<CalendarReportJsonResponse> updatePartStat(Username username, OpenPaaSId calendarId, EventUid eventUid, PartStat partStat) {
         AttendeePartStatusUpdatePatch attendeePartStatusUpdatePatch = new AttendeePartStatusUpdatePatch(username, partStat);
         return updatePartStat(username, calendarId, eventUid, attendeePartStatusUpdatePatch);
     }
 
-    public Mono<CalendarEventReportResponse> updatePartStat(Username username, OpenPaaSId calendarId, EventUid eventUid, AttendeePartStatusUpdatePatch patch) {
+    public Mono<CalendarReportJsonResponse> updatePartStat(Username username, OpenPaaSId calendarId, EventUid eventUid, AttendeePartStatusUpdatePatch patch) {
         CalendarEventModifier modifier = CalendarEventModifier.of(patch);
         return applyModifierByEventUid(username, calendarId, eventUid, modifier)
             .then(client.calendarReportByUid(username, calendarId, eventUid.value()));
@@ -96,7 +96,7 @@ public class CalDavEventRepository {
 
     private Mono<Void> applyModifierByEventUid(Username username, OpenPaaSId calendarId, EventUid eventUid, CalendarEventModifier modifier) {
         return client.calendarReportByUid(username, calendarId, eventUid.value())
-            .map(CalendarEventReportResponse::calendarHref)
+            .map(CalendarReportJsonResponse::calendarHref)
             .switchIfEmpty(Mono.error(new CalendarEventNotFoundException(username, calendarId, eventUid)))
             .flatMap(href -> applyModifierToEvent(Mono.just(client.httpClientWithImpersonation(username)), href, modifier));
     }
