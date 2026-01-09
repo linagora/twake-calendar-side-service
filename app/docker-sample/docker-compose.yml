@@ -129,7 +129,7 @@ services:
       RABBITMQ_DEFAULT_PASS: tcalendar
 
   sabre_dav:
-    image: linagora/esn-sabre:sabre-4_7_0-09-12-2025
+    image: linagora/esn-sabre:sabre-4_7_0-09-01-2026
     container_name: sabre_dav
     hostname: sabre-dav.linagora.local
     networks:
@@ -149,7 +149,7 @@ services:
       - AMQP_PASSWORD=tcalendar
       - SABRE_ADMIN_LOGIN=admin
       - SABRE_ADMIN_PASSWORD=secret123
-      - OPENPASS_BASIC_AUTH=YWRtaW5AbGluYWdvcmEubG9jYWw6c2VjcmV0
+      - SABRE_IMPERSONATION_ENABLED=true
     volumes:
       - ./conf-side-service/jwt_publickey:/var/www/config/esn.key.pub
     depends_on:
