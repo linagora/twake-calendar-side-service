@@ -312,7 +312,7 @@ public class CalDavClient extends DavClient {
             });
     }
 
-    public Mono<CalendarEventReportResponse> calendarReportByUid(Username username, OpenPaaSId calendarId, String eventUid) {
+    public Mono<CalendarReportJsonResponse> calendarReportByUid(Username username, OpenPaaSId calendarId, String eventUid) {
         Preconditions.checkArgument(StringUtils.isNotEmpty(eventUid), "eventUid must not be empty");
         Preconditions.checkArgument(calendarId != null, "calendarId must not be null");
         Preconditions.checkArgument(username != null, "username must not be null");
@@ -339,7 +339,7 @@ public class CalDavClient extends DavClient {
                                     username.asString(), calendarId.value(), eventUid);
                                 return Mono.empty();
                             }
-                            return Mono.fromCallable(() -> CalendarEventReportResponse.from(responseAsString));
+                            return Mono.fromCallable(() -> CalendarReportJsonResponse.from(responseAsString));
                         }
                         if (statusCode == HttpStatus.SC_NOT_FOUND) {
                             LOGGER.info("No calendar event found for user '{}' with calendarId '{}' and uid '{}'",

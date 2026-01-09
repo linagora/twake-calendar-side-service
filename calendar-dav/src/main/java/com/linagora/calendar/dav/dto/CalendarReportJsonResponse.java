@@ -25,15 +25,15 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Preconditions;
 
-public record CalendarEventReportResponse(JsonNode value) {
+public record CalendarReportJsonResponse(JsonNode value) {
 
     private static final ObjectMapper mapper = new ObjectMapper();
 
-    public static CalendarEventReportResponse from(String json) throws JsonProcessingException {
-        return new CalendarEventReportResponse(mapper.readTree(json));
+    public static CalendarReportJsonResponse from(String json) throws JsonProcessingException {
+        return new CalendarReportJsonResponse(mapper.readTree(json));
     }
 
-    public CalendarEventReportResponse {
+    public CalendarReportJsonResponse {
         Preconditions.checkNotNull(value, "value must not be null");
     }
 
