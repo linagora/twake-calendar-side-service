@@ -34,6 +34,7 @@ import org.bson.Document;
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.AlarmEventDAO;
+import com.linagora.calendar.storage.event.AlarmAction;
 import com.linagora.calendar.storage.eventsearch.EventUid;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.IndexOptions;
@@ -54,6 +55,8 @@ public class MongoDBAlarmEventDAO implements AlarmEventDAO {
     public static final String RECURRING_FIELD = "recurring";
     public static final String ICS_FIELD = "ics";
     public static final String RECURRENCE_ID_FIELD = "recurrenceId";
+    public static final String EVENT_PATH_FIELD = "eventPath";
+    public static final String ACTION_FIELD = "action";
 
     private final MongoCollection<Document> collection;
 
@@ -116,7 +119,9 @@ public class MongoDBAlarmEventDAO implements AlarmEventDAO {
             .append(EVENT_START_TIME_FIELD, Date.from(event.eventStartTime()))
             .append(RECURRING_FIELD, event.recurring())
             .append(RECIPIENT_FIELD, event.recipient().asString())
-            .append(ICS_FIELD, event.ics());
+            .append(ICS_FIELD, event.ics())
+            .append(EVENT_PATH_FIELD, event.eventPath())
+            .append(ACTION_FIELD, event.action().getValue());
         event.recurrenceId().ifPresent(id -> doc.append(RECURRENCE_ID_FIELD, id));
         return doc;
     }
@@ -129,7 +134,12 @@ public class MongoDBAlarmEventDAO implements AlarmEventDAO {
             doc.getBoolean(RECURRING_FIELD, false),
             Optional.ofNullable(doc.getString(RECURRENCE_ID_FIELD)),
             Throwing.supplier(() -> new MailAddress(doc.getString(RECIPIENT_FIELD))).get(),
-            doc.getString(ICS_FIELD)
+            doc.getString(ICS_FIELD),
+            Optional.ofNullable(doc.getString(EVENT_PATH_FIELD)).orElse(""),
+            Optional.ofNullable(doc.getString(ACTION_FIELD))
+                .map(alarmActionStr -> AlarmAction.fromString(alarmActionStr)
+                    .orElseThrow(() -> new IllegalArgumentException("Unexpected error parsing AlarmAction: " + alarmActionStr)))
+                .orElse(AlarmAction.EMAIL)
         );
     }
 }

@@ -34,6 +34,7 @@ import org.apache.james.events.EventSerializer;
 import org.apache.james.events.RedisEventBusConfiguration;
 import org.apache.james.events.RegistrationKey;
 import org.apache.james.events.RetryBackoffConfiguration;
+import org.apache.james.events.UsernameRegistrationKeyFactory;
 import org.apache.james.utils.InitializationOperation;
 import org.apache.james.utils.InitilizationOperationBuilder;
 import org.apache.james.utils.PropertiesProvider;
@@ -55,10 +56,12 @@ public class RedisEventBusModule extends AbstractModule {
 
         bind(CalendarURLRegistrationKeyFactory.class).in(Scopes.SINGLETON);
         bind(AddressBookURLRegistrationKeyFactory.class).in(Scopes.SINGLETON);
+        bind(UsernameRegistrationKeyFactory.class).in(Scopes.SINGLETON);
 
         Multibinder<RegistrationKey.Factory> registrationKeyFactorMultibinder = Multibinder.newSetBinder(binder(), RegistrationKey.Factory.class);
         registrationKeyFactorMultibinder.addBinding().to(CalendarURLRegistrationKeyFactory.class);
         registrationKeyFactorMultibinder.addBinding().to(AddressBookURLRegistrationKeyFactory.class);
+        registrationKeyFactorMultibinder.addBinding().to(UsernameRegistrationKeyFactory.class);
 
         bind(EventBusId.class).toInstance(EventBusId.random());
         bind(CalendarRedisEventBus.class).in(Scopes.SINGLETON);

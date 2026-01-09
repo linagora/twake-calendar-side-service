@@ -27,12 +27,15 @@ import java.util.Optional;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 import jakarta.inject.Singleton;
+import jakarta.mail.internet.AddressException;
 
+import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.github.fge.lambdas.Throwing;
+import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavCalendarObject;
@@ -40,6 +43,7 @@ import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.AlarmEventDAO;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
+import com.linagora.calendar.storage.event.AlarmAction;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
 import com.linagora.calendar.storage.event.AlarmInstantFactory.AlarmInstant;
 import com.linagora.calendar.storage.event.EventParseUtils;
@@ -109,7 +113,7 @@ public class EventAlarmHandler {
             .flatMap(maybeNextAlarmInstant -> {
                 if (maybeNextAlarmInstant.isPresent()) {
                     LOGGER.debug("Next alarm found for {} at {}", username.asString(), alarmMessageDTO.eventPath());
-                    return upsertUpcomingAlarmRequest(username, eventCalendar, maybeNextAlarmInstant.get());
+                    return upsertUpcomingAlarmRequest(username, eventCalendar, maybeNextAlarmInstant.get(), alarmMessageDTO.eventPath());
                 } else {
                     LOGGER.debug("No upcoming alarm found for {} at {}", username.asString(), alarmMessageDTO.eventPath());
                     return doDeleteAlarmEvent(username, extractEventUid(alarmMessageDTO));
@@ -117,8 +121,8 @@ public class EventAlarmHandler {
             });
     }
 
-    private Mono<Void> upsertUpcomingAlarmRequest(Username username, Calendar eventCalendar, AlarmInstant nextAlarmInstant) {
-        return buildAlarmEvent(eventCalendar, nextAlarmInstant)
+    private Mono<Void> upsertUpcomingAlarmRequest(Username username, Calendar eventCalendar, AlarmInstant nextAlarmInstant, String eventPath) {
+        return buildAlarmEvent(username, eventCalendar, nextAlarmInstant, eventPath)
             .flatMap(alarmEvent -> upsertAlarmEvent(username, alarmEvent))
             .then();
     }
@@ -135,13 +139,24 @@ public class EventAlarmHandler {
             }));
     }
 
-    private Flux<AlarmEvent> buildAlarmEvent(Calendar eventCalendar, AlarmInstant nextAlarmInstant) {
+    private Flux<AlarmEvent> buildAlarmEvent(Username username, Calendar eventCalendar, AlarmInstant nextAlarmInstant, String eventPath) {
         boolean recurringEvent = EventParseUtils.isRecurringEvent(eventCalendar);
         EventUid eventUid = new EventUid(EventParseUtils.extractEventUid(eventCalendar));
         Optional<String> recurrenceIdValue = nextAlarmInstant.recurrenceId().map(DateProperty::getValue);
         String eventCalendarString = eventCalendar.toString();
 
-        return Flux.fromIterable(nextAlarmInstant.recipients())
+        ImmutableList.Builder<MailAddress> recipientsBuilder = ImmutableList.builder();
+        if (AlarmAction.DISPLAY == nextAlarmInstant.action()) {
+            try {
+                recipientsBuilder.add(username.asMailAddress());
+            } catch (AddressException e) {
+                throw new RuntimeException(e);
+            }
+        } else {
+            recipientsBuilder.addAll(nextAlarmInstant.recipients());
+        }
+
+        return Flux.fromIterable(recipientsBuilder.build())
             .filter(eventEmailFilter::shouldProcess)
             .map(recipient -> new AlarmEvent(
                 eventUid,
@@ -149,7 +164,10 @@ public class EventAlarmHandler {
                 nextAlarmInstant.eventStartTime(),
                 recurringEvent,
                 recurrenceIdValue,
-                recipient, eventCalendarString));
+                recipient,
+                eventCalendarString,
+                eventPath,
+                nextAlarmInstant.action()));
     }
 
     public Mono<Void> handleDelete(CalendarAlarmMessageDTO alarmMessageDTO) {

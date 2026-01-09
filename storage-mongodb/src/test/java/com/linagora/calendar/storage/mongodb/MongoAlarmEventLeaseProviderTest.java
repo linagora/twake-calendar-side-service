@@ -38,6 +38,7 @@ import org.testcontainers.shaded.org.awaitility.Awaitility;
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.AlarmEventLeaseProvider;
+import com.linagora.calendar.storage.event.AlarmAction;
 import com.linagora.calendar.storage.eventsearch.EventUid;
 
 import reactor.core.publisher.Mono;
@@ -67,7 +68,9 @@ public class MongoAlarmEventLeaseProviderTest {
             false,
             Optional.empty(),
             Throwing.supplier(() -> new MailAddress("attendee@abc.com")).get(),
-            "");
+            "",
+            "/calendars/xxx/yyy/zzz.ics",
+            AlarmAction.EMAIL);
     }
 
     private long countDocuments() {

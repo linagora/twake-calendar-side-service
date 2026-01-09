@@ -45,7 +45,7 @@ import jakarta.mail.internet.AddressException;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
-import org.apache.commons.lang3.tuple.Pair;
+import org.apache.commons.lang3.tuple.Triple;
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;
 import org.slf4j.Logger;
@@ -75,10 +75,12 @@ public interface AlarmInstantFactory {
     record AlarmInstant(Instant alarmTime,
                         Instant eventStartTime,
                         Optional<RecurrenceId<Temporal>> recurrenceId,
-                        List<MailAddress> recipients) {
+                        List<MailAddress> recipients,
+                        AlarmAction action) {
         public AlarmInstant {
             Preconditions.checkArgument(alarmTime != null, "alarmTime must not be null");
             Preconditions.checkArgument(eventStartTime != null, "eventStartTime must not be null");
+            Preconditions.checkArgument(action != null, "action must not be null");
         }
     }
 
@@ -95,7 +97,7 @@ public interface AlarmInstantFactory {
             Comparator.comparing(AlarmInstant::alarmTime);
         private static final Comparator<VEvent> EARLIEST_FIRST_EVENT_COMPARATOR =
             Comparator.comparing(e -> EventParseUtils.getStartTime(e).toInstant());
-        private static final Set<String> VALID_ALARM_ACTIONS = Set.of("EMAIL");
+        private static final Set<String> VALID_ALARM_ACTIONS = Set.of("EMAIL", "DISPLAY");
 
         private final Clock clock;
 
@@ -122,14 +124,16 @@ public interface AlarmInstantFactory {
 
             return event.getAlarms().stream()
                 .map(vAlarm -> extractTriggerDurationIfValid(vAlarm)
-                    .map(triggerDuration -> Pair.of(triggerDuration, vAlarm)))
+                    .flatMap(triggerDuration -> extractAction(vAlarm)
+                        .map(action -> Triple.of(triggerDuration, action, vAlarm))))
                 .flatMap(Optional::stream)
-                .map(pair -> {
-                    ZonedDateTime alarmTime = eventStart.plus(pair.getLeft());
+                .map(triple -> {
+                    ZonedDateTime alarmTime = eventStart.plus(triple.getLeft());
                     return new AlarmInstant(alarmTime.toInstant(),
                         eventStart.toInstant(),
                         Optional.ofNullable(recurrenceId),
-                        extractRecipients(pair.getRight()));
+                        extractRecipients(triple.getRight()),
+                        triple.getMiddle());
                 })
                 .toList();
         }
@@ -170,6 +174,14 @@ public interface AlarmInstantFactory {
                 LOGGER.debug("Alarm is missing TRIGGER, skipping");
             }
             return duration;
+        }
+
+        private Optional<AlarmAction> extractAction(VAlarm alarm) {
+            return alarm.getProperty(ACTION)
+                .map(action -> StringUtils.upperCase(action.getValue(), Locale.US))
+                .filter(VALID_ALARM_ACTIONS::contains)
+                .map(alarmActionStr -> AlarmAction.fromString(alarmActionStr)
+                    .orElseThrow(() -> new IllegalArgumentException("Unexpected error parsing AlarmAction: " + alarmActionStr)));
         }
 
         private List<VEvent> listUpcomingAcceptedVEvents(Calendar calendar, Username username) {

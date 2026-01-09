@@ -21,6 +21,7 @@ package com.linagora.calendar.restapi.routes;
 import static com.linagora.calendar.restapi.routes.WebsocketRoute.MAPPER;
 
 import java.net.URI;
+import java.time.Instant;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -38,6 +39,7 @@ import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.SyncToken;
 import com.linagora.calendar.storage.CalendarChangeEvent;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.EventBusAlarmEvent;
 import com.linagora.calendar.storage.ImportEvent;
 import com.linagora.calendar.storage.model.ImportId;
 
@@ -56,7 +58,8 @@ public record WebSocketNotificationListener(Sinks.Many<WebsocketRoute.WebsocketM
     @Override
     public boolean isHandling(Event event) {
         return event instanceof CalendarChangeEvent
-            || event instanceof ImportEvent;
+            || event instanceof ImportEvent
+            || event instanceof EventBusAlarmEvent;
     }
 
     @Override
@@ -67,7 +70,15 @@ public record WebSocketNotificationListener(Sinks.Many<WebsocketRoute.WebsocketM
         if (event instanceof ImportEvent importEvent) {
             return handleImportChange(importEvent);
         }
+        if (event instanceof EventBusAlarmEvent alarmEvent) {
+            return handleAlarmEvent(alarmEvent);
+        }
         return Mono.empty();
+    }
+
+    private Mono<Void> handleAlarmEvent(EventBusAlarmEvent event) {
+        return Mono.fromRunnable(() -> emit(AlarmMessage.from(event)))
+            .then();
     }
 
     private Mono<Void> handleCalendarChange(CalendarChangeEvent event) {
@@ -150,6 +161,30 @@ public record WebSocketNotificationListener(Sinks.Many<WebsocketRoute.WebsocketM
             return MAPPER.writeValueAsString(
                 MAPPER.createObjectNode().set(calendarURL.asUri().toASCIIString(),
                     MAPPER.createObjectNode().put(SYNC_TOKEN_PROPERTY, syncToken.value())));
+        }
+    }
+
+    public record AlarmMessage(String eventSummary,
+                               String eventURL,
+                               Instant eventStartTime) implements WebsocketRoute.WebsocketMessage {
+
+        public static AlarmMessage from(EventBusAlarmEvent event) {
+            return new AlarmMessage(event.eventSummary(), event.eventURL(), event.eventStartTime());
+        }
+
+        @Override
+        public WebSocketFrame asWebSocketFrame() throws JsonProcessingException {
+            return new TextWebSocketFrame(serialize());
+        }
+
+        public String serialize() throws JsonProcessingException {
+            return MAPPER.writeValueAsString(
+                MAPPER.createObjectNode()
+                    .set("alarms", MAPPER.createArrayNode()
+                        .add(MAPPER.createObjectNode()
+                            .put("eventSummary", eventSummary)
+                            .put("eventURL", eventURL)
+                            .put("eventStartTime", eventStartTime.toString()))));
         }
     }
 

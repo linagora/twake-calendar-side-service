@@ -26,7 +26,9 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
 import jakarta.inject.Inject;
+import jakarta.mail.internet.AddressException;
 
+import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;
 import org.apache.james.task.Task;
 import org.apache.james.util.ReactorUtils;
@@ -35,6 +37,7 @@ import org.slf4j.LoggerFactory;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.common.base.MoreObjects;
+import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.storage.AlarmEvent;
@@ -42,6 +45,7 @@ import com.linagora.calendar.storage.AlarmEventDAO;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.event.AlarmAction;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
 import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.eventsearch.EventUid;
@@ -143,7 +147,7 @@ public class AlarmScheduleService {
 
     private Mono<Task.Result> schedule(Context context, ScheduledItem scheduledItem) {
         return Mono.justOrEmpty(alarmInstantFactory.computeNextAlarmInstant(scheduledItem.calendar(), scheduledItem.username()))
-            .flatMap(alarmInstant -> buildAlarmEvent(scheduledItem.calendar(), alarmInstant)
+            .flatMap(alarmInstant -> buildAlarmEvent(scheduledItem.username, scheduledItem.calendar(), alarmInstant)
                 .flatMap(alarmEvent -> insertAlarmEvent(scheduledItem.username(), alarmEvent))
                 .then())
             .then(Mono.fromCallable(() -> {
@@ -160,13 +164,24 @@ public class AlarmScheduleService {
             });
     }
 
-    private Flux<AlarmEvent> buildAlarmEvent(Calendar eventCalendar, AlarmInstantFactory.AlarmInstant nextAlarmInstant) {
+    private Flux<AlarmEvent> buildAlarmEvent(Username username, Calendar eventCalendar, AlarmInstantFactory.AlarmInstant nextAlarmInstant) {
         boolean recurringEvent = EventParseUtils.isRecurringEvent(eventCalendar);
         EventUid eventUid = new EventUid(EventParseUtils.extractEventUid(eventCalendar));
         Optional<String> recurrenceIdValue = nextAlarmInstant.recurrenceId().map(DateProperty::getValue);
         String eventCalendarString = eventCalendar.toString();
 
-        return Flux.fromIterable(nextAlarmInstant.recipients())
+        ImmutableList.Builder<MailAddress> recipientsBuilder = ImmutableList.builder();
+        if (AlarmAction.DISPLAY == nextAlarmInstant.action()) {
+            try {
+                recipientsBuilder.add(username.asMailAddress());
+            } catch (AddressException e) {
+                throw new RuntimeException(e);
+            }
+        } else {
+            recipientsBuilder.addAll(nextAlarmInstant.recipients());
+        }
+
+        return Flux.fromIterable(recipientsBuilder.build())
             .map(recipient -> new AlarmEvent(
                 eventUid,
                 nextAlarmInstant.alarmTime(),
@@ -174,7 +189,9 @@ public class AlarmScheduleService {
                 recurringEvent,
                 recurrenceIdValue,
                 recipient,
-                eventCalendarString));
+                eventCalendarString,
+                "",
+                nextAlarmInstant.action()));
     }
 
     private Mono<Void> insertAlarmEvent(Username username, AlarmEvent alarmEvent) {

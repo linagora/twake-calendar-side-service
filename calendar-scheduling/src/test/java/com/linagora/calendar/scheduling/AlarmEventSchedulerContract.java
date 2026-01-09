@@ -34,6 +34,7 @@ import org.junit.jupiter.api.Test;
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.AlarmEventDAO;
+import com.linagora.calendar.storage.event.AlarmAction;
 import com.linagora.calendar.storage.eventsearch.EventUid;
 
 import io.restassured.path.json.JsonPath;
@@ -75,7 +76,9 @@ public interface AlarmEventSchedulerContract {
                 ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:organizer@abc.com
                 END:VEVENT
                 END:VCALENDAR
-                """);
+                """,
+            "/calendars/xxx/yyy/zzz.ics",
+            AlarmAction.EMAIL);
 
         alarmEventDAO().create(event).block();
 
@@ -123,7 +126,9 @@ public interface AlarmEventSchedulerContract {
                 ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:organizer@abc.com
                 END:VEVENT
                 END:VCALENDAR
-                """);
+                """,
+            "/calendars/xxx/yyy/zzz.ics",
+            AlarmAction.EMAIL);
 
         alarmEventDAO().create(event).block();
 
@@ -157,7 +162,9 @@ public interface AlarmEventSchedulerContract {
                 ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:organizer@abc.com
                 END:VEVENT
                 END:VCALENDAR
-                """);
+                """,
+            "/calendars/xxx/yyy/zzz.ics",
+            AlarmAction.EMAIL);
         alarmEventDAO().create(event).block();
 
         Thread.sleep(1000);
