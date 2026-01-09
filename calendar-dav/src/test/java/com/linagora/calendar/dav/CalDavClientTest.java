@@ -25,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -39,19 +40,23 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linagora.calendar.api.CalendarUtil;
+import com.linagora.calendar.dav.CalDavClient.NewCalendar;
 import com.linagora.calendar.dav.dto.CalendarReportJsonResponse;
+import com.linagora.calendar.dav.dto.CalendarReportXmlResponse;
+import com.linagora.calendar.dav.dto.CalendarReportXmlResponse.CalendarObject;
 import com.linagora.calendar.dav.dto.VCalendarDto;
+import com.linagora.calendar.dav.model.CalendarQuery;
+import com.linagora.calendar.dav.model.CalendarQuery.TimeRangePropFilter;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.MailboxSessionUtil;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
+import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.component.VEvent;
-import com.linagora.calendar.dav.CalDavClient.NewCalendar;
-import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 
 public class CalDavClientTest {
 
@@ -573,6 +578,250 @@ public class CalDavClientTest {
 
         assertThat(testee.calendarReportByUid(user.username(), createOpenPaaSUser().id(), uid).blockOptional())
             .isEmpty();
+    }
+
+    @Test
+    void calendarQueryReportXmlShouldReturnCalendarObjectsFilteredByDtStart() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL calendarURL = CalendarURL.from(user.id());
+
+        String uid = UUID.randomUUID().toString();
+        String ics = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250110T120000Z
+            DTEND:20250110T130000Z
+            SUMMARY:Filtered Event
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uid);
+
+        String uid2 = UUID.randomUUID().toString();
+        String ics2 = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250201T120000Z
+            DTEND:20250201T130000Z
+            SUMMARY:Non Filtered Event
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uid2);
+
+        davTestHelper.upsertCalendar(user, ics, uid);
+        davTestHelper.upsertCalendar(user, ics2, uid2);
+
+        CalendarQuery query = CalendarQuery.ofFilters(TimeRangePropFilter.dtStartBefore(Instant.parse("2025-01-15T00:00:00Z")));
+        CalendarReportXmlResponse response = testee.calendarQueryReportXml(user.username(), calendarURL, query).block();
+
+        assertThat(response).isNotNull();
+
+        List<CalendarObject> objects = response.extractCalendarObjects();
+
+        // Assert that at least one CalendarObject matches the expected href and calendarData
+        // Assert that no CalendarObject contains data from the second ICS (uid2)
+        assertThat(objects)
+            .anySatisfy(obj -> {
+                assertThat(obj.href().toString())
+                    .endsWith("/calendars/" + user.id().value() + "/" + user.id().value() + "/" + uid + ".ics");
+                assertThat(obj.calendarData())
+                    .startsWith("BEGIN:VCALENDAR")
+                    .contains(uid);
+            })
+            .allSatisfy(obj -> assertThat(obj.calendarData()).doesNotContain(uid2));
+    }
+
+    @Test
+    void calendarQueryReportXmlShouldReturnCalendarObjectsFilteredByAttendeeDeclined() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL calendarURL = CalendarURL.from(user.id());
+
+        String uidAccepted = UUID.randomUUID().toString();
+        String icsAccepted = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250110T120000Z
+            DTEND:20250110T130000Z
+            SUMMARY:Accepted Event
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:%s
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uidAccepted, user.username().asString());
+
+        String uidDeclined = UUID.randomUUID().toString();
+        String icsDeclined = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250111T120000Z
+            DTEND:20250111T130000Z
+            SUMMARY:Declined Event
+            ATTENDEE;PARTSTAT=DECLINED:mailto:%s
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:someone-else@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uidDeclined, user.username().asString());
+
+        davTestHelper.upsertCalendar(user, icsAccepted, uidAccepted);
+        davTestHelper.upsertCalendar(user, icsDeclined, uidDeclined);
+
+        CalendarQuery query = CalendarQuery.ofFilters(CalendarQuery.AttendeePropFilter.declined(user.username()));
+
+        CalendarReportXmlResponse response = testee.calendarQueryReportXml(user.username(), calendarURL, query).block();
+
+        assertThat(response).isNotNull();
+
+        List<CalendarObject> objects = response.extractCalendarObjects();
+
+        // Must contain declined event
+        // Must not contain accepted event
+        assertThat(objects)
+            .anySatisfy(obj -> {
+                assertThat(obj.href().toString())
+                    .endsWith("/calendars/" + user.id().value() + "/" + user.id().value() + "/" + uidDeclined + ".ics");
+                assertThat(obj.calendarData())
+                    .startsWith("BEGIN:VCALENDAR")
+                    .contains(uidDeclined);
+            })
+            .allSatisfy(obj -> assertThat(obj.calendarData()).doesNotContain(uidAccepted));
+    }
+
+    @Test
+    void calendarQueryReportXmlShouldReturnCalendarObjectsFilteredByDtStamp() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL calendarURL = CalendarURL.from(user.id());
+
+        String uid1 = UUID.randomUUID().toString();
+        String ics1 = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250110T120000Z
+            DTEND:20250110T130000Z
+            SUMMARY:Filtered Event 1
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uid1);
+
+        String uid2 = UUID.randomUUID().toString();
+        String ics2 = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250105T100000Z
+            DTSTART:20250111T120000Z
+            DTEND:20250111T130000Z
+            SUMMARY:Filtered Event 2
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uid2);
+
+        String uid3 = UUID.randomUUID().toString();
+        String ics3 = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250201T100000Z
+            DTSTART:20250202T120000Z
+            DTEND:20250202T130000Z
+            SUMMARY:Non Filtered Event
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uid3);
+
+        davTestHelper.upsertCalendar(user, ics1, uid1);
+        davTestHelper.upsertCalendar(user, ics2, uid2);
+        davTestHelper.upsertCalendar(user, ics3, uid3);
+
+        CalendarQuery query = CalendarQuery.ofFilters(TimeRangePropFilter.dtStampBefore(Instant.parse("2025-01-10T00:00:00Z")));
+
+        CalendarReportXmlResponse response = testee.calendarQueryReportXml(user.username(), calendarURL, query).block();
+        assertThat(response).isNotNull();
+
+        List<CalendarObject> objects = response.extractCalendarObjects();
+
+        // Must contain the two filtered events
+        assertThat(objects)
+            .anySatisfy(obj -> assertThat(obj.calendarData()).contains(uid1))
+            .anySatisfy(obj -> assertThat(obj.calendarData()).contains(uid2))
+            .allSatisfy(obj -> assertThat(obj.calendarData()).doesNotContain(uid3));
+    }
+
+    @Test
+    void calendarQueryReportXmlShouldReturnCalendarObjectsFilteredByLastModified() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL calendarURL = CalendarURL.from(user.id());
+
+        String uidOld = UUID.randomUUID().toString();
+        String icsOld = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250101T100000Z
+            LAST-MODIFIED:20250101T100000Z
+            DTSTART:20250110T120000Z
+            DTEND:20250110T130000Z
+            SUMMARY:Old Event
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uidOld);
+
+        // Add a second ICS that does NOT match the last-modified filter
+        String uidNew = UUID.randomUUID().toString();
+        String icsNew = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250201T100000Z
+            LAST-MODIFIED:20250201T100000Z
+            DTSTART:20250202T120000Z
+            DTEND:20250202T130000Z
+            SUMMARY:New Event
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uidNew);
+
+        davTestHelper.upsertCalendar(user, icsOld, uidOld);
+        davTestHelper.upsertCalendar(user, icsNew, uidNew);
+
+        Instant beforeInstant = Instant.parse("2025-01-10T00:00:00Z");
+        CalendarQuery query = CalendarQuery.ofFilters(TimeRangePropFilter.lastModifiedBefore(beforeInstant));
+
+        CalendarReportXmlResponse response = testee.calendarQueryReportXml(user.username(), calendarURL, query).block();
+
+        assertThat(response).isNotNull();
+
+        List<CalendarObject> objects = response.extractCalendarObjects();
+
+        assertThat(objects)
+            .anySatisfy(obj -> {
+                assertThat(obj.href().toString())
+                    .endsWith("/calendars/" + user.id().value() + "/" + user.id().value() + "/" + uidOld + ".ics");
+
+                assertThat(obj.calendarData().trim())
+                    .isEqualToNormalizingNewlines("""
+                        BEGIN:VCALENDAR
+                        VERSION:2.0
+                        PRODID:-//Sabre//Sabre VObject 4.5.7//EN
+                        BEGIN:VEVENT
+                        UID:%s
+                        DTSTAMP:20250101T100000Z
+                        LAST-MODIFIED:20250101T100000Z
+                        DTSTART:20250110T120000Z
+                        DTEND:20250110T130000Z
+                        SUMMARY:Old Event
+                        END:VEVENT
+                        END:VCALENDAR
+                        """.formatted(uidOld).trim());
+            })
+            .allSatisfy(obj -> assertThat(obj.calendarData()).doesNotContain(uidNew));
     }
 
     @Test
