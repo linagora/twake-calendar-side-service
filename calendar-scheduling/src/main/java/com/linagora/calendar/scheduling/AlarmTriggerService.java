@@ -116,15 +116,19 @@ public class AlarmTriggerService {
         this.eventBus = eventBus;
     }
 
-    public Mono<Void> processAlarmAndCleanup(AlarmEvent alarmEvent) {
+    public Mono<Void> sendAlarmAndCleanup(AlarmEvent alarmEvent) {
         Instant now = clock.instant().truncatedTo(ChronoUnit.MILLIS);
-        return processAlarm(alarmEvent, now)
+        return sendAlarm(alarmEvent, now)
             .then(cleanup(alarmEvent))
             .doOnSuccess(unused -> LOGGER.info("Processed alarm for event: {}, recipient: {}, action: {}, eventStartTime: {}",
                 alarmEvent.eventUid().value(), alarmEvent.recipient().asString(), alarmEvent.action(), alarmEvent.eventStartTime()));
     }
 
-    private Mono<Void> processAlarm(AlarmEvent alarmEvent, Instant now) {
+    private Mono<Void> sendAlarm(AlarmEvent alarmEvent, Instant now) {
+        if (alarmEvent.eventStartTime().isBefore(now)) {
+            // If the event start time is before now, we do not send the alarm
+            return Mono.empty();
+        }
         if (alarmEvent.action() == AlarmAction.DISPLAY) {
             return sendDisplayNotification(alarmEvent, now);
         }
@@ -133,9 +137,6 @@ public class AlarmTriggerService {
 
     private Mono<Void> sendDisplayNotification(AlarmEvent alarmEvent, Instant now) {
         Username recipientUser = Username.fromMailAddress(alarmEvent.recipient());
-        if (alarmEvent.eventStartTime().isBefore(now)) {
-            return Mono.empty();
-        }
         Calendar calendar = CalendarUtil.parseIcs(alarmEvent.ics());
         VEvent vEvent = alarmEvent.recurrenceId().flatMap(recurrenceId -> getVEvent(calendar, recurrenceId))
             .orElse(GET_FIRST_VEVENT_FUNCTION.apply(calendar));
@@ -164,10 +165,6 @@ public class AlarmTriggerService {
 
     private Mono<Void> sendMail(AlarmEvent alarmEvent, Instant now) {
         Username recipientUser = Username.fromMailAddress(alarmEvent.recipient());
-        if (alarmEvent.eventStartTime().isBefore(now)) {
-            // If the event start time is before now, we do not send the alarm
-            return Mono.empty();
-        }
         return settingsResolver.resolveOrDefault(recipientUser)
             .filter(resolvedSettings -> resolvedSettings.get(ALARM_SETTING_IDENTIFIER, Boolean.class).orElse(ENABLE_ALARM))
             .flatMap(resolvedSettings -> {

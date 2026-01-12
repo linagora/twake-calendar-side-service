@@ -18,12 +18,6 @@
 
 package org.apache.james.events;
 
-import java.util.List;
-
-import org.apache.james.core.Username;
-
-import com.google.common.base.Preconditions;
-import com.google.common.base.Splitter;
 import com.linagora.calendar.storage.UsernameRegistrationKey;
 
 public class UsernameRegistrationKeyFactory implements RegistrationKey.Factory {
@@ -35,14 +29,6 @@ public class UsernameRegistrationKeyFactory implements RegistrationKey.Factory {
 
     @Override
     public RegistrationKey fromString(String asString) {
-        return new UsernameRegistrationKey(parse(asString));
-    }
-
-    private Username parse(String asString) {
-        List<String> parts = Splitter.on(':')
-            .omitEmptyStrings().trimResults()
-            .splitToList(asString);
-        Preconditions.checkArgument(parts.size() == 2, "Invalid UsernameRegistrationKey format: %s", asString);
-        return Username.of(parts.get(1));
+        return UsernameRegistrationKey.fromString(asString);
     }
 }

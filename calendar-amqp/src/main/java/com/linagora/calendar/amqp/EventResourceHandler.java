@@ -40,6 +40,7 @@ import org.slf4j.LoggerFactory;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableMap;
+import com.linagora.calendar.api.EventEmailFilter;
 import com.linagora.calendar.api.JwtSigner;
 import com.linagora.calendar.dav.CalDavEventRepository;
 import com.linagora.calendar.smtp.Mail;

@@ -19,15 +19,13 @@
 package com.linagora.calendar.amqp;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 import java.util.Set;
 
 import org.apache.james.core.MailAddress;
 import org.junit.jupiter.api.Test;
 
-import com.linagora.calendar.amqp.EventEmailFilter.WhitelistRecipientFilter;
+import com.linagora.calendar.api.EventEmailFilter.WhitelistRecipientFilter;
 
 public class WhitelistRecipientFilterTest {
 
@@ -36,10 +34,7 @@ public class WhitelistRecipientFilterTest {
         Set<MailAddress> whitelist = Set.of(new MailAddress("user1@example.com"), new MailAddress("user2@example.com"));
         WhitelistRecipientFilter filter = new WhitelistRecipientFilter(whitelist);
 
-        CalendarEventNotificationEmailDTO dto = mock(CalendarEventNotificationEmailDTO.class);
-        when(dto.recipientEmail()).thenReturn(new MailAddress("user1@example.com"));
-
-        assertThat(filter.shouldProcess(dto)).isTrue();
+        assertThat(filter.shouldProcess(new MailAddress("user1@example.com"))).isTrue();
     }
 
     @Test
@@ -47,19 +42,13 @@ public class WhitelistRecipientFilterTest {
         Set<MailAddress> whitelist = Set.of(new MailAddress("user1@example.com"), new MailAddress("user2@example.com"));
         WhitelistRecipientFilter filter = new WhitelistRecipientFilter(whitelist);
 
-        CalendarEventNotificationEmailDTO dto = mock(CalendarEventNotificationEmailDTO.class);
-        when(dto.recipientEmail()).thenReturn(new MailAddress("user3@example.com"));
-
-        assertThat(filter.shouldProcess(dto)).isFalse();
+        assertThat(filter.shouldProcess(new MailAddress("user3@example.com"))).isFalse();
     }
 
     @Test
     void shouldNotProcessWhenWhiteListIsEmpty() throws Exception {
         WhitelistRecipientFilter filter = new WhitelistRecipientFilter(Set.of());
 
-        CalendarEventNotificationEmailDTO dto = mock(CalendarEventNotificationEmailDTO.class);
-        when(dto.recipientEmail()).thenReturn(new MailAddress("user3@example.com"));
-
-        assertThat(filter.shouldProcess(dto)).isFalse();
+        assertThat(filter.shouldProcess(new MailAddress("user3@example.com"))).isFalse();
     }
 }

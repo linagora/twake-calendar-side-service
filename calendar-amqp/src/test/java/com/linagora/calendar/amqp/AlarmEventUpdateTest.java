@@ -61,6 +61,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.mockito.Mockito;
 
+import com.linagora.calendar.api.EventEmailFilter;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalDavEventRepository;
 import com.linagora.calendar.dav.CalendarEventModifier;
@@ -70,6 +71,7 @@ import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.AlarmEventDAO;
+import com.linagora.calendar.storage.AlarmEventFactory;
 import com.linagora.calendar.storage.MemoryAlarmEventDAO;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
@@ -176,7 +178,7 @@ public class AlarmEventUpdateTest {
             calDavClient,
             openPaaSUserDAO,
             settingsResolver,
-            EventEmailFilter.acceptAll());
+            new AlarmEventFactory.Default(EventEmailFilter.acceptAll()));
 
         EventAlarmConsumer consumer = new EventAlarmConsumer(channelPool,
             QueueArguments.Builder::new,

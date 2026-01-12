@@ -194,7 +194,7 @@ public class AlarmTriggerServiceTest {
             AlarmAction.EMAIL);
         alarmEventDAO.create(event).block();
 
-        testee.processAlarmAndCleanup(event).block();
+        testee.sendAlarmAndCleanup(event).block();
 
         // Wait for the mail to be received via mock SMTP
         awaitAtMost.atMost(Duration.ofSeconds(20))
@@ -267,7 +267,7 @@ public class AlarmTriggerServiceTest {
         alarmEventDAO.create(event).block();
 
         clock.setInstant(parse("30250801T083000Z"));
-        testee.processAlarmAndCleanup(event).block();
+        testee.sendAlarmAndCleanup(event).block();
 
         awaitAtMost.untilAsserted(() ->
             assertThat(smtpMailsResponse().getList("")).hasSize(1));
@@ -275,7 +275,7 @@ public class AlarmTriggerServiceTest {
         AlarmEvent persistedEvent = alarmEventDAO.find(eventUid, recipient).block();
         assertThat(persistedEvent).isNotNull();
         assertThat(persistedEvent.alarmTime()).isEqualTo(parse("30250801T095000Z"));
-        testee.processAlarmAndCleanup(persistedEvent).block();
+        testee.sendAlarmAndCleanup(persistedEvent).block();
 
         awaitAtMost.untilAsserted(() ->
             assertThat(smtpMailsResponse().getList("")).hasSize(2));
@@ -324,7 +324,7 @@ public class AlarmTriggerServiceTest {
         alarmEventDAO.create(event).block();
 
         clock.setInstant(parse("30250801T095500Z"));
-        testee.processAlarmAndCleanup(event).block();
+        testee.sendAlarmAndCleanup(event).block();
 
         awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponse().getList("")).hasSize(1));
 
@@ -387,7 +387,7 @@ public class AlarmTriggerServiceTest {
         // Current time is after both -45m and -30m → all alarms past
         clock.setInstant(parse("30250801T100100Z"));
 
-        testee.processAlarmAndCleanup(event).block();
+        testee.sendAlarmAndCleanup(event).block();
 
         awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponse().getList("")).isEmpty());
         assertThat(alarmEventDAO.find(eventUid, recipient).blockOptional()).isEmpty();
@@ -424,7 +424,7 @@ public class AlarmTriggerServiceTest {
             AlarmAction.EMAIL);
         alarmEventDAO.create(event).block();
 
-        testee.processAlarmAndCleanup(event).block();
+        testee.sendAlarmAndCleanup(event).block();
 
         assertThat(alarmEventDAO.find(eventUid, new MailAddress("attendee@abc.com")).blockOptional()).isEmpty();
     }
@@ -466,7 +466,7 @@ public class AlarmTriggerServiceTest {
             AlarmAction.EMAIL);
         alarmEventDAO.create(event).block();
 
-        testee.processAlarmAndCleanup(event).block();
+        testee.sendAlarmAndCleanup(event).block();
 
         // Wait for the mail to be received via mock SMTP
         awaitAtMost.atMost(Duration.ofSeconds(20))
@@ -514,7 +514,7 @@ public class AlarmTriggerServiceTest {
             AlarmAction.EMAIL);
         alarmEventDAO.create(event).block();
 
-        testee.processAlarmAndCleanup(event).block();
+        testee.sendAlarmAndCleanup(event).block();
 
         // Wait for the mail to be received via mock SMTP
         awaitAtMost.atMost(Duration.ofSeconds(20))
@@ -559,7 +559,7 @@ public class AlarmTriggerServiceTest {
         alarmEventDAO.create(event).block();
 
         clock.setInstant(parse("30250801T094500Z"));
-        testee.processAlarmAndCleanup(event).block();
+        testee.sendAlarmAndCleanup(event).block();
 
         // Wait for the mail to be received via mock SMTP
         awaitAtMost.atMost(Duration.ofSeconds(20))
@@ -644,7 +644,7 @@ public class AlarmTriggerServiceTest {
         alarmEventDAO.create(event).block();
 
         clock.setInstant(parse("30250801T094500Z"));
-        testee.processAlarmAndCleanup(event).block();
+        testee.sendAlarmAndCleanup(event).block();
 
         // Wait for the mail to be received via mock SMTP
         awaitAtMost.atMost(Duration.ofSeconds(20))
@@ -712,7 +712,7 @@ public class AlarmTriggerServiceTest {
         alarmEventDAO.create(event).block();
 
         clock.setInstant(parse("30250801T094500Z"));
-        testee.processAlarmAndCleanup(event).block();
+        testee.sendAlarmAndCleanup(event).block();
 
         AlarmEvent actual = alarmEventDAO.find(eventUid, recipient).block();
         assertThat(actual.alarmTime()).isEqualTo(parse("30250802T094500Z"));
@@ -757,7 +757,7 @@ public class AlarmTriggerServiceTest {
         alarmEventDAO.create(event).block();
 
         clock.setInstant(parse("30250803T094500Z"));
-        testee.processAlarmAndCleanup(event).block();
+        testee.sendAlarmAndCleanup(event).block();
 
         assertThat(alarmEventDAO.find(eventUid, recipient).blockOptional()).isEmpty();
     }
@@ -807,7 +807,7 @@ public class AlarmTriggerServiceTest {
 
         // First occurrence: trigger -30m alarm
         clock.setInstant(parse("30250801T093000Z"));
-        testee.processAlarmAndCleanup(event).block();
+        testee.sendAlarmAndCleanup(event).block();
         awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponse().getList("")).hasSize(1));
 
         AlarmEvent updatedEvent = alarmEventDAO.find(eventUid, recipient).block();
@@ -817,7 +817,7 @@ public class AlarmTriggerServiceTest {
             .isEqualTo(parse("30250801T095000Z"));
 
         // Trigger second alarm (-10m) of first occurrence
-        testee.processAlarmAndCleanup(updatedEvent).block();
+        testee.sendAlarmAndCleanup(updatedEvent).block();
         awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponse().getList("")).hasSize(2));
 
         // Move to next recurrence (day 2) -> should reset to -30m
@@ -829,7 +829,7 @@ public class AlarmTriggerServiceTest {
 
         // Trigger first alarm of second occurrence
         clock.setInstant(parse("30250802T093000Z"));
-        testee.processAlarmAndCleanup(nextEvent).block();
+        testee.sendAlarmAndCleanup(nextEvent).block();
         awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponse().getList("")).hasSize(3));
     }
 
@@ -888,7 +888,7 @@ public class AlarmTriggerServiceTest {
         clock.setInstant(parse("30250801T094000Z"));
 
         // Trigger service
-        testee.processAlarmAndCleanup(event).block();
+        testee.sendAlarmAndCleanup(event).block();
 
         // Verify that AlarmEvent is updated to the next alarm (Bob’s -10m)
         AlarmEvent persisted = alarmEventDAO.find(eventUid, bob).block();

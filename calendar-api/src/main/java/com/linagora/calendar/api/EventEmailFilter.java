@@ -16,7 +16,7 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.amqp;
+package com.linagora.calendar.api;
 
 import java.io.FileNotFoundException;
 import java.util.Set;
@@ -38,10 +38,6 @@ public interface EventEmailFilter {
     String ALLOWED_RECIPIENTS_PROPERTY = "mail.imip.recipient.whitelist";
 
     boolean shouldProcess(MailAddress mailAddress);
-
-    default boolean shouldProcess(CalendarEventNotificationEmailDTO dto) {
-         return shouldProcess(dto.recipientEmail());
-    }
 
     static EventEmailFilter from(PropertiesProvider propertiesProvider) throws ConfigurationException {
         try {

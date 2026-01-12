@@ -152,11 +152,16 @@ public class WebsocketRoute extends CalendarRoute {
 
     private Mono<String> handleClientMessage(String message,
                                              ClientContext context) {
-        return tryHandleEnableDisplayNotification(message, context)
-            .switchIfEmpty(Mono.fromCallable(() -> ClientSubscribeRequest.deserialize(message))
-                .doOnNext(ClientSubscribeRequest::validate)
-                .flatMap(request -> handleSubscribeRequest(request, context)
-                    .map(ClientSubscribeResult::serialize)))
+        return Mono.fromCallable(() -> deserializeClientRequest(message))
+            .flatMap(request -> switch (request) {
+                case EnableDisplayNotificationRequest enableRequest -> handleEnableDisplayNotificationRequest(enableRequest, context);
+                case ClientSubscribeRequest subscribeRequest -> {
+                    subscribeRequest.validate();
+                    yield handleSubscribeRequest(subscribeRequest, context)
+                        .map(ClientSubscribeResult::serialize);
+                }
+                default -> throw new IllegalArgumentException("Unexpected value: " + request);
+            })
             .onErrorResume(error -> {
                 LOGGER.warn("Error when handle client message: {} ", message, error);
                 if (error instanceof CalendarSubscribeException) {
@@ -166,28 +171,33 @@ public class WebsocketRoute extends CalendarRoute {
             });
     }
 
-    private Mono<String> tryHandleEnableDisplayNotification(String message,
-                                                            ClientContext context) {
-        try {
-            EnableDisplayNotificationRequest request = MAPPER.readValue(message, EnableDisplayNotificationRequest.class);
-            Username username = context.session().getUser();
-            AlarmSubscriptionKey alarmSubscriptionKey = new AlarmSubscriptionKey(username);
+    private ClientRequest deserializeClientRequest(String message) throws JsonProcessingException {
+        JsonNode jsonNode = MAPPER.readTree(message);
+        if (jsonNode.has(EnableDisplayNotificationRequest.ENABLE_DISPLAY_NOTIFICATION_PROPERTY)) {
+            return MAPPER.treeToValue(jsonNode, EnableDisplayNotificationRequest.class);
+        }
+        return ClientSubscribeRequest.deserialize(jsonNode);
+    }
 
+    private Mono<String> handleEnableDisplayNotificationRequest(EnableDisplayNotificationRequest request,
+                                                                ClientContext context) {
+        Username username = context.session().getUser();
+        AlarmSubscriptionKey alarmSubscriptionKey = new AlarmSubscriptionKey(username);
+
+        if (request.enableDisplayNotification()) {
             return Mono.justOrEmpty(context.subscriptionMap().get(alarmSubscriptionKey))
-                .map(existing -> "{\"displayNotificationEnabled\":true}")
+                .map(existing -> EnableDisplayNotificationResponse.ENABLED.serialize())
                 .switchIfEmpty(Mono.defer(() -> {
                     WebSocketNotificationListener listener = new WebSocketNotificationListener(context.outbound(), calDavClient, username);
                     UsernameRegistrationKey registrationKey = new UsernameRegistrationKey(username);
                     return Mono.from(eventBus.register(listener, registrationKey))
                         .doOnNext(registration -> context.subscriptionMap().put(alarmSubscriptionKey, registration))
-                        .thenReturn("{\"displayNotificationEnabled\":true}");
+                        .thenReturn(EnableDisplayNotificationResponse.ENABLED.serialize());
                 }));
-        } catch (JsonProcessingException e) {
-            return Mono.empty();
+        } else {
+            return context.unregister(alarmSubscriptionKey)
+                .thenReturn(EnableDisplayNotificationResponse.DISABLED.serialize());
         }
-    }
-
-    record EnableDisplayNotificationRequest(boolean enableDisplayNotification) {
     }
 
     private Mono<ClientSubscribeResult> handleSubscribeRequest(ClientSubscribeRequest subscribeRequest,
@@ -367,15 +377,34 @@ public class WebsocketRoute extends CalendarRoute {
     public static class ForbiddenSubscribeException extends RuntimeException {
     }
 
+    interface ClientRequest {
+    }
+
+    record EnableDisplayNotificationRequest(boolean enableDisplayNotification) implements ClientRequest {
+        static final String ENABLE_DISPLAY_NOTIFICATION_PROPERTY = "enableDisplayNotification";
+    }
+
+    record EnableDisplayNotificationResponse(boolean displayNotificationEnabled) {
+        static final EnableDisplayNotificationResponse ENABLED = new EnableDisplayNotificationResponse(true);
+        static final EnableDisplayNotificationResponse DISABLED = new EnableDisplayNotificationResponse(false);
+
+        String serialize() {
+            try {
+                return MAPPER.writeValueAsString(this);
+            } catch (JsonProcessingException e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
     record ClientSubscribeRequest(Set<SubscriptionKey> register,
-                                  Set<SubscriptionKey> unregister) {
+                                  Set<SubscriptionKey> unregister) implements ClientRequest {
 
         static final String REGISTER_PROPERTY = "register";
         static final String UNREGISTER_PROPERTY = "unregister";
 
-        static ClientSubscribeRequest deserialize(String message) {
+        static ClientSubscribeRequest deserialize(JsonNode root) {
             try {
-                JsonNode root = MAPPER.readTree(message);
                 Set<SubscriptionKey> register = parseSubscriptionKeyArray(root.get(REGISTER_PROPERTY));
                 Set<SubscriptionKey> unregister = parseSubscriptionKeyArray(root.get(UNREGISTER_PROPERTY));
                 return new ClientSubscribeRequest(register, unregister);

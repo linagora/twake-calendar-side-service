@@ -97,7 +97,6 @@ public interface AlarmInstantFactory {
             Comparator.comparing(AlarmInstant::alarmTime);
         private static final Comparator<VEvent> EARLIEST_FIRST_EVENT_COMPARATOR =
             Comparator.comparing(e -> EventParseUtils.getStartTime(e).toInstant());
-        private static final Set<String> VALID_ALARM_ACTIONS = Set.of("EMAIL", "DISPLAY");
 
         private final Clock clock;
 
@@ -124,8 +123,9 @@ public interface AlarmInstantFactory {
 
             return event.getAlarms().stream()
                 .map(vAlarm -> extractTriggerDurationIfValid(vAlarm)
-                    .flatMap(triggerDuration -> extractAction(vAlarm)
-                        .map(action -> Triple.of(triggerDuration, action, vAlarm))))
+                    .map(triggerDuration -> Triple.of(triggerDuration,
+                        extractAction(vAlarm).orElse(AlarmAction.DISPLAY),
+                        vAlarm)))
                 .flatMap(Optional::stream)
                 .map(triple -> {
                     ZonedDateTime alarmTime = eventStart.plus(triple.getLeft());
@@ -156,9 +156,9 @@ public interface AlarmInstantFactory {
             Optional<String> actionOpt = alarm.getProperty(ACTION)
                 .map(action -> StringUtils.upperCase(action.getValue(), Locale.US));
 
-            if (actionOpt.isEmpty() || !VALID_ALARM_ACTIONS.contains(actionOpt.get())) {
+            if (actionOpt.isEmpty() || !AlarmAction.SUPPORTED_VALUES.contains(actionOpt.get())) {
                 LOGGER.debug("Alarm is missing ACTION or has invalid value, allowed values are: {}. Skipping",
-                    VALID_ALARM_ACTIONS);
+                    AlarmAction.SUPPORTED_VALUES);
                 return Optional.empty();
             }
 
@@ -179,9 +179,7 @@ public interface AlarmInstantFactory {
         private Optional<AlarmAction> extractAction(VAlarm alarm) {
             return alarm.getProperty(ACTION)
                 .map(action -> StringUtils.upperCase(action.getValue(), Locale.US))
-                .filter(VALID_ALARM_ACTIONS::contains)
-                .map(alarmActionStr -> AlarmAction.fromString(alarmActionStr)
-                    .orElseThrow(() -> new IllegalArgumentException("Unexpected error parsing AlarmAction: " + alarmActionStr)));
+                .flatMap(AlarmAction::fromString);
         }
 
         private List<VEvent> listUpcomingAcceptedVEvents(Calendar calendar, Username username) {

@@ -180,12 +180,6 @@ public class CalendarAmqpModule extends AbstractModule {
 
     @Provides
     @Singleton
-    public EventEmailFilter provideEventEmailFilter(PropertiesProvider propertiesProvider) throws ConfigurationException {
-        return EventEmailFilter.from(propertiesProvider);
-    }
-
-    @Provides
-    @Singleton
     @Named("defaultCalendarPublicVisibilityEnabled")
     boolean provideDefaultCalendarPublicVisibilityEnabled(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
         Configuration config = propertiesProvider.getConfiguration("configuration");

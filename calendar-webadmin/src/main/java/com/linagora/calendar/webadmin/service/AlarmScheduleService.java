@@ -22,13 +22,10 @@ import static com.linagora.calendar.webadmin.CalendarRoutes.AlarmScheduleRequest
 import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.time.Duration;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
 import jakarta.inject.Inject;
-import jakarta.mail.internet.AddressException;
 
-import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;
 import org.apache.james.task.Task;
 import org.apache.james.util.ReactorUtils;
@@ -37,22 +34,19 @@ import org.slf4j.LoggerFactory;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.common.base.MoreObjects;
-import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.AlarmEventDAO;
+import com.linagora.calendar.storage.AlarmEventFactory;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
-import com.linagora.calendar.storage.event.AlarmAction;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
 import com.linagora.calendar.storage.event.EventParseUtils;
-import com.linagora.calendar.storage.eventsearch.EventUid;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.ComponentList;
-import net.fortuna.ical4j.model.property.DateProperty;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -114,13 +108,19 @@ public class AlarmScheduleService {
     private final CalDavClient calDavClient;
     private final AlarmEventDAO alarmEventDAO;
     private final AlarmInstantFactory alarmInstantFactory;
+    private final AlarmEventFactory alarmEventFactory;
 
     @Inject
-    public AlarmScheduleService(OpenPaaSUserDAO userDAO, CalDavClient calDavClient, AlarmEventDAO alarmEventDAO, AlarmInstantFactory alarmInstantFactory) {
+    public AlarmScheduleService(OpenPaaSUserDAO userDAO,
+                                CalDavClient calDavClient,
+                                AlarmEventDAO alarmEventDAO,
+                                AlarmInstantFactory alarmInstantFactory,
+                                AlarmEventFactory alarmEventFactory) {
         this.userDAO = userDAO;
         this.calDavClient = calDavClient;
         this.alarmEventDAO = alarmEventDAO;
         this.alarmInstantFactory = alarmInstantFactory;
+        this.alarmEventFactory = alarmEventFactory;
     }
 
     public Mono<Task.Result> schedule(Context context, int eventsPerSecond) {
@@ -147,7 +147,7 @@ public class AlarmScheduleService {
 
     private Mono<Task.Result> schedule(Context context, ScheduledItem scheduledItem) {
         return Mono.justOrEmpty(alarmInstantFactory.computeNextAlarmInstant(scheduledItem.calendar(), scheduledItem.username()))
-            .flatMap(alarmInstant -> buildAlarmEvent(scheduledItem.username, scheduledItem.calendar(), alarmInstant)
+            .flatMap(alarmInstant -> alarmEventFactory.buildAlarmEvent(scheduledItem.username, scheduledItem.calendar(), alarmInstant, "")
                 .flatMap(alarmEvent -> insertAlarmEvent(scheduledItem.username(), alarmEvent))
                 .then())
             .then(Mono.fromCallable(() -> {
@@ -162,36 +162,6 @@ public class AlarmScheduleService {
                 context.incrementFailedEvent();
                 return Mono.just(Task.Result.PARTIAL);
             });
-    }
-
-    private Flux<AlarmEvent> buildAlarmEvent(Username username, Calendar eventCalendar, AlarmInstantFactory.AlarmInstant nextAlarmInstant) {
-        boolean recurringEvent = EventParseUtils.isRecurringEvent(eventCalendar);
-        EventUid eventUid = new EventUid(EventParseUtils.extractEventUid(eventCalendar));
-        Optional<String> recurrenceIdValue = nextAlarmInstant.recurrenceId().map(DateProperty::getValue);
-        String eventCalendarString = eventCalendar.toString();
-
-        ImmutableList.Builder<MailAddress> recipientsBuilder = ImmutableList.builder();
-        if (AlarmAction.DISPLAY == nextAlarmInstant.action()) {
-            try {
-                recipientsBuilder.add(username.asMailAddress());
-            } catch (AddressException e) {
-                throw new RuntimeException(e);
-            }
-        } else {
-            recipientsBuilder.addAll(nextAlarmInstant.recipients());
-        }
-
-        return Flux.fromIterable(recipientsBuilder.build())
-            .map(recipient -> new AlarmEvent(
-                eventUid,
-                nextAlarmInstant.alarmTime(),
-                nextAlarmInstant.eventStartTime(),
-                recurringEvent,
-                recurrenceIdValue,
-                recipient,
-                eventCalendarString,
-                "",
-                nextAlarmInstant.action()));
     }
 
     private Mono<Void> insertAlarmEvent(Username username, AlarmEvent alarmEvent) {

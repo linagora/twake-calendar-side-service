@@ -149,16 +149,19 @@ class DisplayAlarmWebsocketFlowIntegrationTest {
 
     private DavTestHelper davTestHelper;
     private OpenPaaSUser bob;
+    private OpenPaaSUser alice;
     private int restApiPort;
     private WebSocket webSocket;
 
     @BeforeEach
     void setUp(TwakeCalendarGuiceServer server) throws Exception {
         this.bob = sabreDavExtension.newTestUser(Optional.of("bob"));
+        this.alice = sabreDavExtension.newTestUser(Optional.of("alice"));
 
         CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
         calendarDataProbe.addDomain(bob.username().getDomainPart().get());
         calendarDataProbe.addUserToRepository(bob.username(), PASSWORD);
+        calendarDataProbe.addUserToRepository(alice.username(), PASSWORD);
 
         restApiPort = server.getProbe(RestApiServerProbe.class).getPort().getValue();
         davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
@@ -234,38 +237,67 @@ class DisplayAlarmWebsocketFlowIntegrationTest {
     }
 
     @Test
-    void shouldNotReceiveDisplayAlarmWithoutEnablingDisplayNotification(TwakeCalendarGuiceServer server) throws Exception {
+    void shouldNotReceiveDisplayAlarmFromDifferentUser(TwakeCalendarGuiceServer server) throws Exception {
         AlarmEventStoreProbe alarmStore = server.getProbe(AlarmEventStoreProbe.class);
 
-        // GIVEN: Bob creates an event with a DISPLAY alarm
+        // GIVEN: Alice creates an event with a DISPLAY alarm
         String eventUid = UUID.randomUUID().toString();
-        String ics = buildEventICSWithDisplayAlarm(eventUid, bob.username().asString());
-        davTestHelper.upsertCalendar(bob, ics, eventUid);
+        String ics = buildEventICSWithDisplayAlarm(eventUid, alice.username().asString());
+        davTestHelper.upsertCalendar(alice, ics, eventUid);
 
-        // Wait for alarm event to be created
+        // Wait for Alice's alarm event to be created
         Fixture.awaitAtMost
             .untilAsserted(() -> {
-                Optional<AlarmEvent> alarmEventOpt = alarmStore.find(eventUid, bob.username().asString());
+                Optional<AlarmEvent> alarmEventOpt = alarmStore.find(eventUid, alice.username().asString());
                 assertThat(alarmEventOpt).isPresent();
                 assertThat(alarmEventOpt.get().action()).isEqualTo(AlarmAction.DISPLAY);
             });
 
-        // Bob opens WebSocket but does NOT enable display notifications
+        // Both Bob and Alice open WebSocket and enable display notifications
         String bobTicket = generateTicket(bob);
-        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
-        webSocket = connectWebSocket(restApiPort, bobTicket, messages);
+        BlockingQueue<String> bobMessages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, bobTicket, bobMessages);
 
-        // WHEN: Advance time to trigger window
-        Calendar calendar = CalendarUtil.parseIcs(ics);
-        ZonedDateTime start = EventParseUtils.getStartTime((VEvent) calendar.getComponents("VEVENT").getFirst());
-        clock.setInstant(start.minus(TRIGGER).plusSeconds(1).toInstant());
+        String aliceTicket = generateTicket(alice);
+        BlockingQueue<String> aliceMessages = new LinkedBlockingQueue<>();
+        WebSocket aliceWebSocket = connectWebSocket(restApiPort, aliceTicket, aliceMessages);
 
-        // Wait some time for the alarm scheduler to process
-        Thread.sleep(3000);
+        try {
+            // Bob enables display notifications
+            webSocket.send("{\"enableDisplayNotification\": true}");
+            String bobEnableResponse = bobMessages.poll(10, TimeUnit.SECONDS);
+            assertThatJson(bobEnableResponse)
+                .isEqualTo("{\"displayNotificationEnabled\":true}");
 
-        // THEN: Bob should NOT receive any alarm notification
-        String alarmMessage = messages.poll(2, TimeUnit.SECONDS);
-        assertThat(alarmMessage).isNull();
+            // Alice enables display notifications
+            aliceWebSocket.send("{\"enableDisplayNotification\": true}");
+            String aliceEnableResponse = aliceMessages.poll(10, TimeUnit.SECONDS);
+            assertThatJson(aliceEnableResponse)
+                .isEqualTo("{\"displayNotificationEnabled\":true}");
+
+            // WHEN: Advance time to trigger Alice's alarm
+            Calendar calendar = CalendarUtil.parseIcs(ics);
+            ZonedDateTime start = EventParseUtils.getStartTime((VEvent) calendar.getComponents("VEVENT").getFirst());
+            clock.setInstant(start.minus(TRIGGER).plusSeconds(1).toInstant());
+
+            // THEN: Alice should receive her alarm notification
+            Fixture.awaitAtMost.untilAsserted(() -> {
+                String aliceAlarmMessage = aliceMessages.poll(1, TimeUnit.SECONDS);
+                assertThat(aliceAlarmMessage)
+                    .isNotNull();
+                assertThatJson(aliceAlarmMessage)
+                    .node("alarms[0].eventSummary")
+                    .isStringEqualTo("Display Alarm Test");
+            });
+
+            // AND: Bob should NOT receive Alice's alarm notification
+            String bobAlarmMessage = bobMessages.poll(2, TimeUnit.SECONDS);
+            assertThat(bobAlarmMessage)
+                .as("Bob should NOT receive alarm notifications for Alice's events")
+                .isNull();
+        } finally {
+            aliceWebSocket.close(1000, "test finished");
+        }
     }
 
     private String generateTicket(OpenPaaSUser user) {
