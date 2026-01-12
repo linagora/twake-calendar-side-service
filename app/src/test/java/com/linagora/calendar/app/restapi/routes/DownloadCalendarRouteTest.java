@@ -303,12 +303,13 @@ class DownloadCalendarRouteTest {
 
     @Test
     void downloadShouldFailWhenDavServerFails(TwakeCalendarGuiceServer server) {
-        // New user setup does not correctly on the DAV server.
         Username newUser = Username.fromLocalPartWithDomain(UUID.randomUUID().toString(), openPaaSUser.username().getDomainPart().get());
+        server.getProbe(CalendarDataProbe.class).addUser(newUser, PASSWORD);
 
-        OpenPaaSId openPaaSId = server.getProbe(CalendarDataProbe.class).addUser(newUser, PASSWORD);
+        Username otherUser = Username.fromLocalPartWithDomain(UUID.randomUUID().toString(), openPaaSUser.username().getDomainPart().get());
+        OpenPaaSId openPaaSIdOfOtherUser = server.getProbe(CalendarDataProbe.class).addUser(otherUser, PASSWORD);
 
-        String secretLink = getSecretLink(newUser, CalendarURL.from(openPaaSId));
+        String secretLink = getSecretLink(newUser, CalendarURL.from(openPaaSIdOfOtherUser));
 
         String response = RestAssured
             .given()

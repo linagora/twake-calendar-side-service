@@ -30,7 +30,6 @@ import static com.linagora.calendar.dav.DockerSabreDavSetup.DockerService.MOCK_E
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static com.rabbitmq.client.BuiltinExchangeType.FANOUT;
 import static org.mockserver.model.HttpResponse.response;
-import static org.mockserver.model.Parameter.param;
 
 import java.util.List;
 import java.util.Optional;
@@ -46,7 +45,6 @@ import org.junit.jupiter.api.extension.ParameterContext;
 import org.junit.jupiter.api.extension.ParameterResolutionException;
 import org.junit.jupiter.api.extension.ParameterResolver;
 import org.mockserver.client.MockServerClient;
-import org.mockserver.model.Header;
 import org.mockserver.model.HttpRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -126,22 +124,7 @@ public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup) impleme
             .createUser(prefix)
             .block();
 
-        setupUserLookupByEmail(openPaasUser.username().asString(), openPaasUser.id().value());
         return openPaasUser;
-    }
-
-    private void setupUserLookupByEmail(String emailAddress, String id) {
-        mockServerClient
-            .when(HttpRequest.request()
-                .withMethod("GET")
-                .withPath("/api/users")
-                .withQueryStringParameter(param("email", emailAddress)))
-            .respond(response()
-                .withStatusCode(200)
-                .withHeader(new Header("Content-Type", "application/json"))
-                .withBody("[{\"_id\": \"" + id + "\"}]"));
-
-        LOGGER.debug("Mocked user by email: {} with id: {}", emailAddress, id);
     }
 
     private void setupMockAuthenticationTokenEndpoint() {
