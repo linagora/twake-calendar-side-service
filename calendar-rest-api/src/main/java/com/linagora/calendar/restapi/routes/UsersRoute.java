@@ -83,6 +83,9 @@ public class UsersRoute extends CalendarRoute {
     @Override
     Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response, MailboxSession session) {
         Username queryUsername = Username.of(extractEmail(request));
+        if (crossDomainAccess(session, queryUsername.getDomainPart().get())) {
+            return respondWithEmptyResult(response);
+        }
         return userDAO.retrieve(queryUsername)
             .switchIfEmpty(provisionUser(queryUsername))
             .flatMap(user -> Mono.zip(domainDAO.retrieve(user.username().getDomainPart().get()),
@@ -101,6 +104,12 @@ public class UsersRoute extends CalendarRoute {
                 .header("Cache-Control", "max-age=60, public")
                 .sendString(Mono.just(bytes))
                 .then());
+    }
+
+    private Mono<Void> respondWithEmptyResult(HttpServerResponse response) {
+        return response.status(HttpResponseStatus.OK)
+            .sendString(Mono.just(EMPTY_JSON_ARRAY))
+            .then();
     }
 
     private Mono<OpenPaaSUser> provisionUser(Username username) {
