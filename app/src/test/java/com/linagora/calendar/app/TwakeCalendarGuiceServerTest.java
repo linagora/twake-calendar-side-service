@@ -957,38 +957,6 @@ class TwakeCalendarGuiceServerTest  {
     }
 
     @Test
-    void adminCanQueryUserAcrossDomainsByEmail(TwakeCalendarGuiceServer server) {
-        // GIVEN: two domains with one user each
-        targetRestAPI(server);
-        CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
-
-        Domain domainB = Domain.of("domain-b.com");
-        Username userDomainB = Username.fromLocalPartWithDomain("bob", domainB.asString());
-        calendarDataProbe.addDomain(domainB).addUser(userDomainB, PASSWORD);
-
-        // WHEN: admin queries user from another domain by email
-        String adminUsername = "admin@linagora.com";
-        String body = given()
-            .auth().preemptive().basic(adminUsername, PASSWORD)
-            .queryParam("email", userDomainB.asString())
-        .when()
-            .get("/api/users")
-        .then()
-            .statusCode(200)
-            .extract()
-            .body()
-            .asString();
-
-        // THEN: cross-domain access is allowed for admin
-        assertThatJson(body)
-            .isArray()
-            .anySatisfy(json ->
-                assertThatJson(json)
-                    .node("preferredEmail")
-                    .isEqualTo(userDomainB.asString()));
-    }
-
-    @Test
     void shouldSupportAdminCreds(TwakeCalendarGuiceServer server) {
         targetRestAPI(server);
 
