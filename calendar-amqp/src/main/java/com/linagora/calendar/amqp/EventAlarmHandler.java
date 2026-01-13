@@ -58,7 +58,7 @@ public class EventAlarmHandler {
     private final OpenPaaSUserDAO openPaaSUserDAO;
     private final SettingsBasedResolver settingsResolver;
     private final AlarmEventFactory alarmEventFactory;
-    private EventEmailFilter eventEmailFilter;
+    private final EventEmailFilter eventEmailFilter;
 
     @Inject
     @Singleton

@@ -110,7 +110,7 @@ public class AlarmScheduleService {
     private final AlarmEventDAO alarmEventDAO;
     private final AlarmInstantFactory alarmInstantFactory;
     private final AlarmEventFactory alarmEventFactory;
-    private EventEmailFilter eventEmailFilter;
+    private final EventEmailFilter eventEmailFilter;
 
     @Inject
     public AlarmScheduleService(OpenPaaSUserDAO userDAO,

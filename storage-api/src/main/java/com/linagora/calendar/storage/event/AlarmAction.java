@@ -22,13 +22,14 @@ import java.util.Arrays;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Collectors;
+
+import com.google.common.collect.ImmutableSet;
 
 public enum AlarmAction {
     EMAIL,
     DISPLAY;
 
-    public static final Set<String> SUPPORTED_VALUES = Arrays.stream(AlarmAction.values()).map(AlarmAction::getValue).collect(Collectors.toSet());
+    public static final Set<String> SUPPORTED_VALUES = Arrays.stream(AlarmAction.values()).map(AlarmAction::getValue).collect(ImmutableSet.toImmutableSet());
 
     public static Optional<AlarmAction> fromString(String value) {
         return Arrays.stream(values())
