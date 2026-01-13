@@ -35,6 +35,7 @@ import org.slf4j.LoggerFactory;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.base.MoreObjects;
 import com.linagora.calendar.api.CalendarUtil;
+import com.linagora.calendar.api.EventEmailFilter;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.AlarmEventDAO;
@@ -109,18 +110,20 @@ public class AlarmScheduleService {
     private final AlarmEventDAO alarmEventDAO;
     private final AlarmInstantFactory alarmInstantFactory;
     private final AlarmEventFactory alarmEventFactory;
+    private EventEmailFilter eventEmailFilter;
 
     @Inject
     public AlarmScheduleService(OpenPaaSUserDAO userDAO,
                                 CalDavClient calDavClient,
                                 AlarmEventDAO alarmEventDAO,
                                 AlarmInstantFactory alarmInstantFactory,
-                                AlarmEventFactory alarmEventFactory) {
+                                AlarmEventFactory alarmEventFactory, EventEmailFilter eventEmailFilter) {
         this.userDAO = userDAO;
         this.calDavClient = calDavClient;
         this.alarmEventDAO = alarmEventDAO;
         this.alarmInstantFactory = alarmInstantFactory;
         this.alarmEventFactory = alarmEventFactory;
+        this.eventEmailFilter = eventEmailFilter;
     }
 
     public Mono<Task.Result> schedule(Context context, int eventsPerSecond) {
@@ -147,7 +150,11 @@ public class AlarmScheduleService {
 
     private Mono<Task.Result> schedule(Context context, ScheduledItem scheduledItem) {
         return Mono.justOrEmpty(alarmInstantFactory.computeNextAlarmInstant(scheduledItem.calendar(), scheduledItem.username()))
-            .flatMap(alarmInstant -> alarmEventFactory.buildAlarmEvent(scheduledItem.username, scheduledItem.calendar(), alarmInstant, "")
+            .flatMap(alarmInstant -> Flux.fromIterable(alarmEventFactory.buildAlarmEvent(scheduledItem.username,
+                    alarmInstant.recipients().stream().filter(eventEmailFilter::shouldProcess).toList(),
+                    scheduledItem.calendar(),
+                    alarmInstant,
+                    ""))
                 .flatMap(alarmEvent -> insertAlarmEvent(scheduledItem.username(), alarmEvent))
                 .then())
             .then(Mono.fromCallable(() -> {

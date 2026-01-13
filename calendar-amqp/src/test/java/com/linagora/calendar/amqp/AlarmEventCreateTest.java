@@ -186,7 +186,8 @@ public class AlarmEventCreateTest {
             calDavClient,
             openPaaSUserDAO,
             settingsResolver,
-            new AlarmEventFactory.Default(eventEmailFilter));
+            new AlarmEventFactory.Default(),
+            eventEmailFilter);
 
         EventAlarmConsumer consumer = new EventAlarmConsumer(channelPool,
             QueueArguments.Builder::new,

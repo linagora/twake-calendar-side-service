@@ -112,7 +112,7 @@ public class TwakeCalendarCommonServicesModule extends AbstractModule {
 
     @Provides
     @Singleton
-    AlarmEventFactory provideAlarmEventFactory(EventEmailFilter eventEmailFilter) {
-        return new AlarmEventFactory.Default(eventEmailFilter);
+    AlarmEventFactory provideAlarmEventFactory() {
+        return new AlarmEventFactory.Default();
     }
 }

@@ -173,7 +173,8 @@ public class AlarmEventCancellationTest {
             calDavClient,
             openPaaSUserDAO,
             settingsResolver,
-            new AlarmEventFactory.Default(EventEmailFilter.acceptAll()));
+            new AlarmEventFactory.Default(),
+            EventEmailFilter.acceptAll());
 
         EventAlarmConsumer consumer = new EventAlarmConsumer(channelPool,
             QueueArguments.Builder::new,

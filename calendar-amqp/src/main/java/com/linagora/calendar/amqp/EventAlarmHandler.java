@@ -33,6 +33,7 @@ import org.slf4j.LoggerFactory;
 
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.api.CalendarUtil;
+import com.linagora.calendar.api.EventEmailFilter;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavCalendarObject;
 import com.linagora.calendar.storage.AlarmEvent;
@@ -45,6 +46,7 @@ import com.linagora.calendar.storage.event.AlarmInstantFactory.AlarmInstant;
 import com.linagora.calendar.storage.eventsearch.EventUid;
 
 import net.fortuna.ical4j.model.Calendar;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 public class EventAlarmHandler {
@@ -56,6 +58,7 @@ public class EventAlarmHandler {
     private final OpenPaaSUserDAO openPaaSUserDAO;
     private final SettingsBasedResolver settingsResolver;
     private final AlarmEventFactory alarmEventFactory;
+    private EventEmailFilter eventEmailFilter;
 
     @Inject
     @Singleton
@@ -64,13 +67,15 @@ public class EventAlarmHandler {
                              CalDavClient calDavClient,
                              OpenPaaSUserDAO openPaaSUserDAO,
                              @Named("alarm") SettingsBasedResolver settingsResolver,
-                             AlarmEventFactory alarmEventFactory) {
+                             AlarmEventFactory alarmEventFactory,
+                             EventEmailFilter eventEmailFilter) {
         this.alarmInstantFactory = alarmInstantFactory;
         this.alarmEventDAO = alarmEventDAO;
         this.calDavClient = calDavClient;
         this.openPaaSUserDAO = openPaaSUserDAO;
         this.settingsResolver = settingsResolver;
         this.alarmEventFactory = alarmEventFactory;
+        this.eventEmailFilter = eventEmailFilter;
     }
 
     public Mono<Void> handleCreate(CalendarAlarmMessageDTO alarmMessageDTO) {
@@ -114,8 +119,12 @@ public class EventAlarmHandler {
             });
     }
 
-    private Mono<Void> upsertUpcomingAlarmRequest(Username username, Calendar eventCalendar, AlarmInstant nextAlarmInstant, String eventPath) {
-        return alarmEventFactory.buildAlarmEvent(username, eventCalendar, nextAlarmInstant, eventPath)
+    private Mono<Void> upsertUpcomingAlarmRequest(Username username, Calendar calendarEvent, AlarmInstant nextAlarmInstant, String eventPath) {
+        return Flux.fromIterable(alarmEventFactory.buildAlarmEvent(username,
+                nextAlarmInstant.recipients().stream().filter(eventEmailFilter::shouldProcess).toList(),
+                calendarEvent,
+                nextAlarmInstant,
+                eventPath))
             .flatMap(alarmEvent -> upsertAlarmEvent(username, alarmEvent))
             .then();
     }

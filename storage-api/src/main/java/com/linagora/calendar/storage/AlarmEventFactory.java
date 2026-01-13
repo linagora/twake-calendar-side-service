@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.storage;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.apache.james.core.MailAddress;
@@ -25,7 +26,6 @@ import org.apache.james.core.Username;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableList;
-import com.linagora.calendar.api.EventEmailFilter;
 import com.linagora.calendar.storage.event.AlarmAction;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
 import com.linagora.calendar.storage.event.EventParseUtils;
@@ -33,21 +33,19 @@ import com.linagora.calendar.storage.eventsearch.EventUid;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.property.DateProperty;
-import reactor.core.publisher.Flux;
 
 public interface AlarmEventFactory {
 
-    Flux<AlarmEvent> buildAlarmEvent(Username username, Calendar eventCalendar, AlarmInstantFactory.AlarmInstant nextAlarmInstant, String eventPath);
+    List<AlarmEvent> buildAlarmEvent(Username username, List<MailAddress> recipients, Calendar calendarEvent, AlarmInstantFactory.AlarmInstant nextAlarmInstant, String eventPath);
 
     class Default implements AlarmEventFactory {
-        private EventEmailFilter eventEmailFilter;
-
-        public Default(EventEmailFilter eventEmailFilter) {
-            this.eventEmailFilter = eventEmailFilter;
-        }
 
         @Override
-        public Flux<AlarmEvent> buildAlarmEvent(Username username, Calendar calendarEvent, AlarmInstantFactory.AlarmInstant nextAlarmInstant, String eventPath) {
+        public List<AlarmEvent> buildAlarmEvent(Username username,
+                                                List<MailAddress> recipients,
+                                                Calendar calendarEvent,
+                                                AlarmInstantFactory.AlarmInstant nextAlarmInstant,
+                                                String eventPath) {
             boolean recurringEvent = EventParseUtils.isRecurringEvent(calendarEvent);
             EventUid eventUid = new EventUid(EventParseUtils.extractEventUid(calendarEvent));
             Optional<String> recurrenceIdValue = nextAlarmInstant.recurrenceId().map(DateProperty::getValue);
@@ -57,10 +55,10 @@ public interface AlarmEventFactory {
             if (AlarmAction.DISPLAY == nextAlarmInstant.action()) {
                 Throwing.supplier(() -> recipientsBuilder.add(username.asMailAddress())).get();
             } else {
-                recipientsBuilder.addAll(nextAlarmInstant.recipients().stream().filter(eventEmailFilter::shouldProcess).toList());
+                recipientsBuilder.addAll(recipients);
             }
 
-            return Flux.fromIterable(recipientsBuilder.build())
+            return recipientsBuilder.build().stream()
                 .map(recipient -> new AlarmEvent(
                     eventUid,
                     nextAlarmInstant.alarmTime(),
@@ -70,7 +68,8 @@ public interface AlarmEventFactory {
                     recipient,
                     eventCalendarString,
                     eventPath,
-                    nextAlarmInstant.action()));
+                    nextAlarmInstant.action()))
+                .toList();
         }
     }
 }

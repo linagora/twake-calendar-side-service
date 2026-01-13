@@ -101,7 +101,8 @@ public class AlarmScheduleTest {
         calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         clock = new UpdatableTickingClock(Instant.now());
         alarmScheduleService = new AlarmScheduleService(userDAO, calDavClient, alarmEventDAO, new AlarmInstantFactory.Default(clock),
-            new AlarmEventFactory.Default((EventEmailFilter.acceptAll())));
+            new AlarmEventFactory.Default(),
+            EventEmailFilter.acceptAll());
 
         this.openPaaSUser = sabreDavExtension.newTestUser();
         this.openPaaSUser2 = sabreDavExtension.newTestUser();
