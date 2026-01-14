@@ -25,7 +25,7 @@ import java.util.Set;
 import org.apache.james.core.MailAddress;
 import org.junit.jupiter.api.Test;
 
-import com.linagora.calendar.api.EventEmailFilter.WhitelistRecipientFilter;
+import com.linagora.calendar.storage.EventEmailFilter.WhitelistRecipientFilter;
 
 public class WhitelistRecipientFilterTest {
 

@@ -153,15 +153,7 @@ public class WebsocketRoute extends CalendarRoute {
     private Mono<String> handleClientMessage(String message,
                                              ClientContext context) {
         return Mono.fromCallable(() -> deserializeClientRequest(message))
-            .flatMap(request -> switch (request) {
-                case EnableDisplayNotificationRequest enableRequest -> handleEnableDisplayNotificationRequest(enableRequest, context);
-                case ClientSubscribeRequest subscribeRequest -> {
-                    subscribeRequest.validate();
-                    yield handleSubscribeRequest(subscribeRequest, context)
-                        .map(ClientSubscribeResult::serialize);
-                }
-                default -> throw new IllegalArgumentException("Unexpected value: " + request);
-            })
+            .flatMap(request -> handleClientRequest(context, request))
             .onErrorResume(error -> {
                 LOGGER.warn("Error when handle client message: {} ", message, error);
                 if (error instanceof CalendarSubscribeException) {
@@ -169,6 +161,19 @@ public class WebsocketRoute extends CalendarRoute {
                 }
                 return Mono.just("{\"error\":\"internal-error\"}");
             });
+    }
+
+    private Mono<String> handleClientRequest(ClientContext context, ClientRequest request) {
+        return switch (request) {
+            case EnableDisplayNotificationRequest enableRequest ->
+                handleEnableDisplayNotificationRequest(enableRequest, context);
+            case ClientSubscribeRequest subscribeRequest -> {
+                subscribeRequest.validate();
+                yield handleSubscribeRequest(subscribeRequest, context)
+                    .map(ClientSubscribeResult::serialize);
+            }
+            default -> Mono.error(new IllegalArgumentException("Unexpected value: " + request));
+        };
     }
 
     private ClientRequest deserializeClientRequest(String message) throws JsonProcessingException {
@@ -186,17 +191,17 @@ public class WebsocketRoute extends CalendarRoute {
 
         if (request.enableDisplayNotification()) {
             return Mono.justOrEmpty(context.subscriptionMap().get(alarmSubscriptionKey))
-                .map(existing -> EnableDisplayNotificationResponse.ENABLED.serialize())
+                .map(existing -> EnableDisplayNotificationResponse.ENABLED_RESPONSE)
                 .switchIfEmpty(Mono.defer(() -> {
                     WebSocketNotificationListener listener = new WebSocketNotificationListener(context.outbound(), calDavClient, username);
                     UsernameRegistrationKey registrationKey = new UsernameRegistrationKey(username);
                     return Mono.from(eventBus.register(listener, registrationKey))
                         .doOnNext(registration -> context.subscriptionMap().put(alarmSubscriptionKey, registration))
-                        .thenReturn(EnableDisplayNotificationResponse.ENABLED.serialize());
+                        .thenReturn(EnableDisplayNotificationResponse.ENABLED_RESPONSE);
                 }));
         } else {
             return context.unregister(alarmSubscriptionKey)
-                .thenReturn(EnableDisplayNotificationResponse.DISABLED.serialize());
+                .thenReturn(EnableDisplayNotificationResponse.DISABLED_RESPONSE);
         }
     }
 
@@ -385,8 +390,8 @@ public class WebsocketRoute extends CalendarRoute {
     }
 
     record EnableDisplayNotificationResponse(boolean displayNotificationEnabled) {
-        static final EnableDisplayNotificationResponse ENABLED = new EnableDisplayNotificationResponse(true);
-        static final EnableDisplayNotificationResponse DISABLED = new EnableDisplayNotificationResponse(false);
+        static final String ENABLED_RESPONSE = new EnableDisplayNotificationResponse(true).serialize();
+        static final String DISABLED_RESPONSE = new EnableDisplayNotificationResponse(false).serialize();
 
         String serialize() {
             try {

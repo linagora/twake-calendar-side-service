@@ -40,7 +40,6 @@ import org.slf4j.LoggerFactory;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableMap;
-import com.linagora.calendar.api.EventEmailFilter;
 import com.linagora.calendar.api.JwtSigner;
 import com.linagora.calendar.dav.CalDavEventRepository;
 import com.linagora.calendar.smtp.Mail;
@@ -53,6 +52,7 @@ import com.linagora.calendar.smtp.template.TemplateType;
 import com.linagora.calendar.smtp.template.content.model.EventTimeModel;
 import com.linagora.calendar.smtp.template.content.model.LocationModel;
 import com.linagora.calendar.smtp.template.content.model.PersonModel;
+import com.linagora.calendar.storage.EventEmailFilter;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.ResourceDAO;

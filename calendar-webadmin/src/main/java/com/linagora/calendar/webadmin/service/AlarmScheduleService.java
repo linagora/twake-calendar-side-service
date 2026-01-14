@@ -35,12 +35,12 @@ import org.slf4j.LoggerFactory;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.base.MoreObjects;
 import com.linagora.calendar.api.CalendarUtil;
-import com.linagora.calendar.api.EventEmailFilter;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.AlarmEventDAO;
 import com.linagora.calendar.storage.AlarmEventFactory;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.EventEmailFilter;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
@@ -150,7 +150,7 @@ public class AlarmScheduleService {
 
     private Mono<Task.Result> schedule(Context context, ScheduledItem scheduledItem) {
         return Mono.justOrEmpty(alarmInstantFactory.computeNextAlarmInstant(scheduledItem.calendar(), scheduledItem.username()))
-            .flatMap(alarmInstant -> Flux.fromIterable(alarmEventFactory.buildAlarmEvent(scheduledItem.username,
+            .flatMap(alarmInstant -> Flux.fromIterable(alarmEventFactory.buildAlarmEvent(scheduledItem.username(),
                     alarmInstant.recipients().stream().filter(eventEmailFilter::shouldProcess).toList(),
                     scheduledItem.calendar(),
                     alarmInstant,

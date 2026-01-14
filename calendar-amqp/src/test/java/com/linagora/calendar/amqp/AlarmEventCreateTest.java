@@ -66,7 +66,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.mockito.Mockito;
 
 import com.linagora.calendar.api.CalendarUtil;
-import com.linagora.calendar.api.EventEmailFilter;
+import com.linagora.calendar.storage.EventEmailFilter;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalDavEventRepository;
 import com.linagora.calendar.dav.DavTestHelper;

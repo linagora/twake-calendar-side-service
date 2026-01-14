@@ -75,7 +75,7 @@ import org.testcontainers.shaded.org.awaitility.Awaitility;
 import org.testcontainers.shaded.org.awaitility.core.ConditionFactory;
 
 import com.github.fge.lambdas.Throwing;
-import com.linagora.calendar.api.EventEmailFilter;
+import com.linagora.calendar.storage.EventEmailFilter;
 import com.linagora.calendar.api.JwtSigner;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalDavEventRepository;

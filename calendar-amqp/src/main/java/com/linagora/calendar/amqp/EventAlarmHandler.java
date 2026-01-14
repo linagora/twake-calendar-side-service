@@ -33,12 +33,12 @@ import org.slf4j.LoggerFactory;
 
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.api.CalendarUtil;
-import com.linagora.calendar.api.EventEmailFilter;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavCalendarObject;
 import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.AlarmEventDAO;
 import com.linagora.calendar.storage.AlarmEventFactory;
+import com.linagora.calendar.storage.EventEmailFilter;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;

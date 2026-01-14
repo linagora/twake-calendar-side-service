@@ -16,7 +16,7 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.api;
+package com.linagora.calendar.storage;
 
 import java.io.FileNotFoundException;
 import java.util.Set;
