@@ -331,6 +331,53 @@ class TwakeCalendarGuiceServerTest  {
     }
 
     @Test
+    void shouldExposeWebAdminCalendarArchivalAllTask() {
+        String taskId = given()
+            .when()
+            .post("/calendars?task=archive")
+            .jsonPath()
+            .get("taskId");
+
+        given()
+            .basePath(TasksRoutes.BASE)
+        .when()
+            .get(taskId + "/await")
+        .then()
+            .body("taskId", is(taskId))
+            .body("type", is("calendar-archival"))
+            .body("status", is(notNullValue()))
+            .body("additionalInformation.timestamp", is(notNullValue()))
+            .body("additionalInformation.archivedEventCount", is(notNullValue()))
+            .body("additionalInformation.failedEventCount", is(notNullValue()))
+            .body("startedDate", is(notNullValue()))
+            .body("submitDate", is(notNullValue()));
+    }
+
+    @Test
+    void shouldExposeWebAdminCalendarArchivalSingleUserTask() {
+        String taskId = given()
+            .when()
+            .post("/calendars/btellier@linagora.com?task=archive")
+            .jsonPath()
+            .get("taskId");
+
+        given()
+            .basePath(TasksRoutes.BASE)
+        .when()
+            .get(taskId + "/await")
+        .then()
+            .body("taskId", is(taskId))
+            .body("type", is("calendar-archival"))
+            .body("status", is(notNullValue()))
+            .body("additionalInformation.timestamp", is(notNullValue()))
+            .body("additionalInformation.archivedEventCount", is(notNullValue()))
+            .body("additionalInformation.failedEventCount", is(notNullValue()))
+            .body("additionalInformation.targetUser", is("btellier@linagora.com"))
+            .body("startedDate", is(notNullValue()))
+            .body("submitDate", is(notNullValue()));
+    }
+
+    @Test
     void shouldExposeMetrics() {
         String body = given()
         .when()
