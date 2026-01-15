@@ -38,17 +38,19 @@ public record CalendarArchivalTaskAdditionalInformationDTO(String type,
     record CriteriaDetailDTO(Optional<Instant> createdBefore,
                              Optional<Instant> lastModifiedBefore,
                              Optional<Instant> masterDtStartBefore,
-
-                             boolean rejectedOnly) {
+                             boolean rejectedOnly,
+                             boolean isNotRecurring) {
         static CriteriaDetailDTO fromDomainObject(EventArchivalCriteria criteria) {
             return new CriteriaDetailDTO(criteria.createdBefore(),
                 criteria.lastModifiedBefore(),
                 criteria.masterDtStartBefore(),
-                criteria.rejectedOnly());
+                criteria.rejectedOnly(),
+                criteria.isNotRecurring());
         }
 
         public EventArchivalCriteria toDomainObject() {
-            return new EventArchivalCriteria(createdBefore, lastModifiedBefore, masterDtStartBefore, rejectedOnly);
+            return new EventArchivalCriteria(createdBefore, lastModifiedBefore, masterDtStartBefore,
+                rejectedOnly, isNotRecurring);
         }
     }
 

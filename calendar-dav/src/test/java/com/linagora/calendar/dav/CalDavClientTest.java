@@ -36,6 +36,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.testcontainers.shaded.com.google.common.collect.ImmutableList;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -752,6 +753,163 @@ public class CalDavClientTest {
             .anySatisfy(obj -> assertThat(obj.calendarData()).contains(uid1))
             .anySatisfy(obj -> assertThat(obj.calendarData()).contains(uid2))
             .allSatisfy(obj -> assertThat(obj.calendarData()).doesNotContain(uid3));
+    }
+
+    @Test
+    void calendarQueryReportXmlShouldReturnOnlySingleEventsWhenFilteredByNonRecurring() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL calendarURL = CalendarURL.from(user.id());
+
+        // Recurring event A
+        String uidRecurringA = UUID.randomUUID().toString();
+        String recurringA = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250105T090000Z
+            DTEND:20250105T100000Z
+            RRULE:FREQ=DAILY;COUNT=3
+            SUMMARY:Recurring Event A
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uidRecurringA);
+
+        // Recurring event B with one overridden occurrence
+        String uidRecurringB = UUID.randomUUID().toString();
+        String recurringB = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250106T090000Z
+            DTEND:20250106T100000Z
+            RRULE:FREQ=DAILY;COUNT=3
+            SUMMARY:Recurring Event B
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:%s
+            RECURRENCE-ID:20250107T090000Z
+            DTSTART:20250107T110000Z
+            DTEND:20250107T120000Z
+            SUMMARY:Recurring Event B - Override
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uidRecurringB, uidRecurringB);
+
+        // Single non-recurring event C
+        String uidSingle = UUID.randomUUID().toString();
+        String singleEvent = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250108T090000Z
+            DTEND:20250108T100000Z
+            SUMMARY:Single Event C
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uidSingle);
+
+        davTestHelper.upsertCalendar(user, recurringA, uidRecurringA);
+        davTestHelper.upsertCalendar(user, recurringB, uidRecurringB);
+        davTestHelper.upsertCalendar(user, singleEvent, uidSingle);
+
+        CalendarQuery query = CalendarQuery.ofFilters(CalendarQuery.IsNotDefinedPropFilter.isNotRecurring());
+
+        CalendarReportXmlResponse response = testee.calendarQueryReportXml(user.username(), calendarURL, query).block();
+
+        assertThat(response).isNotNull();
+
+        List<CalendarObject> objects = response.extractCalendarObjects();
+
+        // Only the single, non-recurring event should be returned
+        assertThat(objects)
+            .hasSize(1)
+            .allSatisfy(obj -> {
+                assertThat(obj.href().toString())
+                    .endsWith("/calendars/" + user.id().value() + "/" + user.id().value() + "/" + uidSingle + ".ics");
+                assertThat(obj.calendarData())
+                    .contains(uidSingle)
+                    .doesNotContain(uidRecurringA)
+                    .doesNotContain(uidRecurringB);
+            });
+    }
+
+    @Test
+    void calendarQueryReportXmlShouldReturnOnlySingleEventsWhenFilteredByNonRecurringAndDtStartBefore() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL calendarURL = CalendarURL.from(user.id());
+
+        // Recurring event A (must be excluded by nonRecurring)
+        String uidRecurring = UUID.randomUUID().toString();
+        String recurringEvent = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250105T090000Z
+            DTEND:20250105T100000Z
+            RRULE:FREQ=DAILY;COUNT=3
+            SUMMARY:Recurring Event
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uidRecurring);
+
+        // Single event B - DTSTART AFTER threshold (must be excluded by dtStartBefore)
+        String uidSingleLate = UUID.randomUUID().toString();
+        String singleLate = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250120T090000Z
+            DTEND:20250120T100000Z
+            SUMMARY:Single Event After Threshold
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uidSingleLate);
+
+        // Single event C - DTSTART BEFORE threshold (must be returned)
+        String uidSingleEarly = UUID.randomUUID().toString();
+        String singleEarly = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250108T090000Z
+            DTEND:20250108T100000Z
+            SUMMARY:Single Event Before Threshold
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uidSingleEarly);
+
+        davTestHelper.upsertCalendar(user, recurringEvent, uidRecurring);
+        davTestHelper.upsertCalendar(user, singleLate, uidSingleLate);
+        davTestHelper.upsertCalendar(user, singleEarly, uidSingleEarly);
+
+        CalendarQuery query = CalendarQuery.ofFilters(ImmutableList.<CalendarQuery.PropFilter>builder()
+                .addAll(CalendarQuery.IsNotDefinedPropFilter.isNotRecurring())
+                .add(TimeRangePropFilter.dtStartBefore(Instant.parse("2025-01-10T00:00:00Z")))
+                .build());
+
+        CalendarReportXmlResponse response = testee.calendarQueryReportXml(user.username(), calendarURL, query).block();
+
+        assertThat(response).isNotNull();
+
+        List<CalendarObject> objects = response.extractCalendarObjects();
+
+        // Only the single, non-recurring event before the DTSTART threshold should be returned
+        assertThat(objects)
+            .hasSize(1)
+            .allSatisfy(obj -> {
+                assertThat(obj.href().toString())
+                    .endsWith("/calendars/" + user.id().value() + "/" + user.id().value() + "/" + uidSingleEarly + ".ics");
+                assertThat(obj.calendarData())
+                    .contains(uidSingleEarly)
+                    .doesNotContain(uidRecurring)
+                    .doesNotContain(uidSingleLate);
+            });
     }
 
     @Test
