@@ -24,7 +24,7 @@ import org.junit.jupiter.api.Test;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 
-public class CalendarEventReportResponseTest {
+public class CalendarReportJsonResponseTest {
     private static final String VALID_JSON = """
         {
            "_links": {
@@ -102,7 +102,7 @@ public class CalendarEventReportResponseTest {
 
     @Test
     void extractCalendarHrefShouldSucceed() throws JsonProcessingException {
-        CalendarEventReportResponse response = CalendarEventReportResponse.from(VALID_JSON);
+        CalendarReportJsonResponse response = CalendarReportJsonResponse.from(VALID_JSON);
         assertThat(response.calendarHref().toString())
             .isEqualTo("""
                 /calendars/686f3edd543b4d0056c3f05d/686f3edd543b4d0056c3f05d/sabredav-5016701f-069f-4295-aceb-a506f36551d0.ics""".trim());

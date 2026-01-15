@@ -39,7 +39,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linagora.calendar.api.CalendarUtil;
-import com.linagora.calendar.dav.dto.CalendarEventReportResponse;
+import com.linagora.calendar.dav.dto.CalendarReportJsonResponse;
 import com.linagora.calendar.dav.dto.VCalendarDto;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.MailboxSessionUtil;
@@ -494,7 +494,7 @@ public class CalDavClientTest {
 
         davTestHelper.upsertCalendar(user, ics, uid);
 
-        CalendarEventReportResponse reportResponse = testee.calendarReportByUid(user.username(), user.id(), uid).block();
+        CalendarReportJsonResponse reportResponse = testee.calendarReportByUid(user.username(), user.id(), uid).block();
 
         assertThat(reportResponse).isNotNull();
         VCalendarDto vCalendarDto = VCalendarDto.from(reportResponse);
