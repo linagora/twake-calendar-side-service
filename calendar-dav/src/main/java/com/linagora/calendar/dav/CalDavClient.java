@@ -45,7 +45,9 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Streams;
 import com.linagora.calendar.api.CalendarUtil;
-import com.linagora.calendar.dav.dto.CalendarEventReportResponse;
+import com.linagora.calendar.dav.dto.CalendarReportJsonResponse;
+import com.linagora.calendar.dav.dto.CalendarReportXmlResponse;
+import com.linagora.calendar.dav.model.CalendarQuery;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -56,8 +58,10 @@ import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.util.AsciiString;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.netty.ByteBufMono;
 import reactor.netty.http.client.HttpClient;
 import reactor.util.retry.Retry;
 
@@ -110,6 +114,7 @@ public class CalDavClient extends DavClient {
     private static final String CONTENT_TYPE_XML = "application/xml";
     private static final String CONTENT_TYPE_JSON = "application/json";
     private static final HttpMethod REPORT_METHOD = HttpMethod.valueOf("REPORT");
+    private static final AsciiString HEADER_DEPTH = AsciiString.cached("Depth");
 
     private final Duration imipCallbackResponseTimeout;
 
@@ -609,6 +614,39 @@ public class CalDavClient extends DavClient {
             .filter(StringUtils::isNotEmpty)
             .map(SyncToken::new)
             .switchIfEmpty(Mono.error(() -> new DavClientException("Missing '%s' when retrieving sync token for: %s".formatted(SYNC_TOKEN_PROPERTY, uri))));
+    }
+
+    public Mono<CalendarReportXmlResponse> calendarQueryReportXml(Username username, CalendarURL calendarURL, CalendarQuery calendarQuery) {
+        Preconditions.checkArgument(username != null, "username must not be null");
+        Preconditions.checkArgument(calendarURL != null, "calendarURL must not be null");
+        Preconditions.checkArgument(calendarQuery != null, "calendarQuery must not be null");
+
+        return httpClientWithImpersonation(username)
+            .headers(headers -> {
+                headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_XML);
+                headers.add(HEADER_DEPTH, "1");
+            })
+            .request(REPORT_METHOD)
+            .uri(calendarURL.asUri().toASCIIString())
+            .send(ByteBufMono.fromString(Mono.fromCallable(calendarQuery::toCalendarQueryReport)))
+            .responseSingle((response, body) -> {
+                int statusCode = response.status().code();
+
+                if (statusCode == HttpStatus.SC_MULTI_STATUS) {
+                    return body.asByteArray()
+                        .map(CalendarReportXmlResponse::new);
+                }
+
+                return body.asString(StandardCharsets.UTF_8)
+                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .flatMap(errorBody -> Mono.error(new DavClientException("""
+                        Unexpected status code: %d when executing RFC 4791 calendar-query REPORT on '%s'
+                        %s
+                        """.formatted(
+                        statusCode,
+                        calendarURL.asUri().toASCIIString(),
+                        errorBody))));
+            });
     }
 
 }
