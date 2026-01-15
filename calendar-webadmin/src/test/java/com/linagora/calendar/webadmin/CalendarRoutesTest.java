@@ -34,6 +34,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import javax.net.ssl.SSLException;
@@ -109,7 +110,7 @@ public class CalendarRoutesTest {
 
         webAdminServer = WebAdminUtils.createWebAdminServer(new CalendarRoutes(new JsonTransformer(),
                 taskManager,
-                ImmutableSet.of(new CalendarRoutes.CalendarEventsReindexRequestToTask(reindexService))),
+                ImmutableSet.of(new CalendarRoutes.CalendarEventsReindexRequestToTask(reindexService)), Set.of()),
             new TasksRoutes(taskManager,
                 new JsonTransformer(),
                 new DTOConverter<>(ImmutableSet.<AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO>>builder()

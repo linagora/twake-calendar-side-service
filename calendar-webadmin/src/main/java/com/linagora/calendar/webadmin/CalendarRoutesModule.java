@@ -37,10 +37,13 @@ import com.google.inject.name.Named;
 import com.google.inject.name.Names;
 import com.linagora.calendar.webadmin.task.AddMissingFieldsTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.AlarmScheduleTaskAdditionalInformationDTO;
+import com.linagora.calendar.webadmin.task.CalendarArchivalTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.CalendarEventsReindexTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.RepositionResourceRightsTaskAdditionalInformationDTO;
 
 public class CalendarRoutesModule extends AbstractModule {
+    public static final String USER_CALENDAR_TASKS_KEY = "USER_CALENDAR";
+
     @Override
     protected void configure() {
         Multibinder<Routes> routesMultibinder = Multibinder.newSetBinder(binder(), Routes.class);
@@ -54,11 +57,20 @@ public class CalendarRoutesModule extends AbstractModule {
         bind(MemoryTaskManager.class).in(Scopes.SINGLETON);
         bind(TaskManager.class).to(MemoryTaskManager.class);
 
+        bind(CalendarRoutes.CalendarEventsReindexRequestToTask.class).in(Scopes.SINGLETON);
+        bind(CalendarRoutes.AlarmScheduleRequestToTask.class).in(Scopes.SINGLETON);
+        bind(CalendarRoutes.ArchiveRequestToTask.class).in(Scopes.SINGLETON);
+        bind(CalendarRoutes.UserArchiveRequestToTask.class).in(Scopes.SINGLETON);
+
         Multibinder<TaskFromRequestRegistry.TaskRegistration> taskRegistrationMultibinder = Multibinder.newSetBinder(binder(), TaskFromRequestRegistry.TaskRegistration.class);
         taskRegistrationMultibinder.addBinding().to(CalendarRoutes.CalendarEventsReindexRequestToTask.class);
         taskRegistrationMultibinder.addBinding().to(CalendarRoutes.AlarmScheduleRequestToTask.class);
+        taskRegistrationMultibinder.addBinding().to(CalendarRoutes.ArchiveRequestToTask.class);
 
         Multibinder.newSetBinder(binder(), TaskFromRequestRegistry.TaskRegistration.class, Names.named(USER_TASKS));
+
+        Multibinder<TaskFromRequestRegistry.TaskRegistration> userCalendarTaskRegistrationMultibinder = Multibinder.newSetBinder(binder(), TaskFromRequestRegistry.TaskRegistration.class, Names.named(USER_CALENDAR_TASKS_KEY));
+        userCalendarTaskRegistrationMultibinder.addBinding().to(CalendarRoutes.UserArchiveRequestToTask.class);
     }
 
     @Named(DTOModuleInjections.WEBADMIN_DTO)
@@ -83,5 +95,11 @@ public class CalendarRoutesModule extends AbstractModule {
     @ProvidesIntoSet
     public AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO> addMissingFieldsTaskAdditionalInformation() {
         return AddMissingFieldsTaskAdditionalInformationDTO.module();
+    }
+
+    @Named(DTOModuleInjections.WEBADMIN_DTO)
+    @ProvidesIntoSet
+    public AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO> calendarArchivalTaskAdditionalInformation() {
+        return CalendarArchivalTaskAdditionalInformationDTO.module();
     }
 }

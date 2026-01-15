@@ -31,6 +31,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Set;
 import java.util.UUID;
 
 import javax.net.ssl.SSLException;
@@ -107,7 +108,7 @@ public class AlarmScheduleTest {
 
         webAdminServer = WebAdminUtils.createWebAdminServer(new CalendarRoutes(new JsonTransformer(),
                 taskManager,
-                ImmutableSet.of(new CalendarRoutes.AlarmScheduleRequestToTask(alarmScheduleService))),
+                ImmutableSet.of(new CalendarRoutes.AlarmScheduleRequestToTask(alarmScheduleService)), Set.of()),
             new TasksRoutes(taskManager,
                 new JsonTransformer(),
                 new DTOConverter<>(ImmutableSet.<AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO>>builder()
