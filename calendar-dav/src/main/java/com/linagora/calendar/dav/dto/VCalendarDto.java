@@ -21,7 +21,7 @@ package com.linagora.calendar.dav.dto;
 import com.fasterxml.jackson.databind.JsonNode;
 
 public record VCalendarDto(JsonNode value) {
-    public static VCalendarDto from(CalendarEventReportResponse reportResponse) {
+    public static VCalendarDto from(CalendarReportJsonResponse reportResponse) {
         JsonNode davItem = reportResponse.firstDavItemNode();
         JsonNode data = davItem.path("data");
         if (data.isMissingNode() || !data.isArray()) {

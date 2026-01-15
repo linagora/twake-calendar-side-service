@@ -40,7 +40,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linagora.calendar.dav.dto.CalendarEventReportResponse;
+import com.linagora.calendar.dav.dto.CalendarReportJsonResponse;
 import com.linagora.calendar.dav.dto.VCalendarDto;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -97,7 +97,7 @@ public class CalDavEventRepositoryTest {
         String eventUid = UUID.randomUUID().toString();
         upsertCalendarForTest(eventUid, PartStat.NEEDS_ACTION);
 
-        CalendarEventReportResponse result = testee.updatePartStat(attendee.username(), attendee.id(),
+        CalendarReportJsonResponse result = testee.updatePartStat(attendee.username(), attendee.id(),
             new EventUid(eventUid), PartStat.ACCEPTED).block();
 
         assertThat(result).isNotNull();
@@ -161,7 +161,7 @@ public class CalDavEventRepositoryTest {
 
         testee.updatePartStat(attendee.username(), attendee.id(), new EventUid(eventUid), PartStat.ACCEPTED).block();
 
-        CalendarEventReportResponse response = calDavClient.calendarReportByUid(attendee.username(), attendee.id(), eventUid).block();
+        CalendarReportJsonResponse response = calDavClient.calendarReportByUid(attendee.username(), attendee.id(), eventUid).block();
 
         assertThat(response).isNotNull();
         assertThat(response.value().toPrettyString()).contains("\"partstat\" : \"ACCEPTED\"");
@@ -198,7 +198,7 @@ public class CalDavEventRepositoryTest {
 
         testee.updatePartStat(attendee.username(), attendee.id(), new EventUid(eventUid), PartStat.ACCEPTED).block();
 
-        CalendarEventReportResponse response = calDavClient
+        CalendarReportJsonResponse response = calDavClient
             .calendarReportByUid(attendee.username(), attendee.id(), eventUid)
             .block();
 
@@ -279,7 +279,7 @@ public class CalDavEventRepositoryTest {
         davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
         waitForEventCreation(attendee);
 
-        CalendarEventReportResponse result = testee.updatePartStat(
+        CalendarReportJsonResponse result = testee.updatePartStat(
             attendee.username(), attendee.id(), new EventUid(eventUid), PartStat.ACCEPTED).block();
 
         assertThat(result).isNotNull();
