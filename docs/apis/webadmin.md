@@ -177,6 +177,7 @@ This endpoint returns a webdmin task with the following additional information:
  - processedEventCount: integer
  - failedEventCount: integer
  
+
 ### Alarm rescheduling
 
 ```
@@ -191,6 +192,107 @@ This endpoint returns a webdmin task with the following additional information:
 
 - processedEventCount: integer
 - failedEventCount: integer
+
+### Calendar event archival
+
+Calendar events can be archived into a dedicated archival calendar using the Webadmin task framework.
+This operation is asynchronous and supports both **all users** and **single user** modes.
+
+#### Archive events of all users
+
+```
+POST /calendars?task=archive
+```
+
+This endpoint iterates over **all registered users** and archives their calendar events matching the provided criteria.
+
+##### Supported query parameters
+
+| Parameter               | Type     | Optional | Description                                                                 |
+|-------------------------|----------|----------|-----------------------------------------------------------------------------|
+| `createdBefore`         | duration | yes      | Archive events whose `DTSTAMP` is before now minus the given duration (e.g. `5d`, `12h`, `1y`) |
+| `lastModifiedBefore`    | duration | yes      | Archive events whose `LAST-MODIFIED` is before now minus the given duration (e.g. `5d`, `12h`, `1y`) |
+| `masterDtStartBefore`   | duration | yes      | Archive events whose master `DTSTART` is before now minus the given duration (e.g. `5d`, `12h`, `1y`) |
+| `isRejected`            | boolean  | yes      | When `true`, archive only events rejected by the user                         |
+| `eventsPerSecond`       | integer  | yes      | Throttling parameter controlling processing speed (default: `100`)          |
+
+- When **no criteria parameter is provided**, all events are archived.
+- All criteria are combined using **AND** logic.
+
+Example:
+
+```
+POST /calendars?task=archive&createdBefore=5d&isRejected=true
+```
+
+#### Archive events of a single user
+
+```
+POST /calendars/{username}?task=archive
+```
+
+Archives calendar events **only for the specified user**.
+
+The same query parameters are supported as for the all-users endpoint.
+
+- When **no criteria parameter is provided**, all events of the user are archived.
+- If the user does not exist, the request fails.
+
+Example:
+
+```
+POST /calendars/john.doe@linagora.com?task=archive&lastModifiedBefore=30d
+```
+
+#### Task response
+
+Both endpoints return a Webadmin task:
+
+```json
+{
+  "taskId": "b7c8c3b0-5c5b-4e89-9e56-1a9f0d2e3a42"
+}
+```
+
+Task details can be retrieved via:
+
+```
+GET /tasks/{taskId}
+GET /tasks/{taskId}/await
+```
+
+Example task result:
+
+```json
+{
+  "status": "completed",
+  "additionalInformation": {
+    "archivedEventCount": 12,
+    "failedEventCount": 0,
+    "criteria": {
+      "createdBefore": "2025-12-22T00:00:00Z",
+      "lastModifiedBefore": null,
+      "masterDtStartBefore": null,
+      "rejectedOnly": true
+    }
+  }
+}
+```
+
+Where:
+- `archivedEventCount`: Number of events successfully archived
+- `failedEventCount`: Number of events that failed to be archived
+- `criteria`: Effective archival criteria applied for the task
+
+**Note:** When using the single-user archival endpoint (`POST /calendars/{username}?task=archive`),
+the task `additionalInformation` also contains a `targetUser` property indicating the archived user.
+
+#### Validation and error cases
+
+| Scenario | Status |
+|--------|--------|
+| Unknown user (single-user endpoint) | `404 Not Found` |
+| Invalid query parameter | `400 Bad Request` |
 
 ## Resource routes
 
