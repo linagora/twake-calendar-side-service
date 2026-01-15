@@ -18,8 +18,11 @@
 
 package com.linagora.calendar.dav.dto;
 
+import static com.linagora.calendar.dav.CalDavClient.ICS_EXTENSION;
+
 import java.io.ByteArrayInputStream;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -28,6 +31,8 @@ import javax.xml.stream.XMLInputFactory;
 import javax.xml.stream.XMLStreamConstants;
 import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
+
+import org.apache.commons.lang3.StringUtils;
 
 import com.google.common.base.Preconditions;
 
@@ -49,6 +54,15 @@ public record CalendarReportXmlResponse(byte[] xml) {
         public CalendarObject {
             Preconditions.checkNotNull(href, "href must not be null");
             Preconditions.checkNotNull(calendarData, "calendarData must not be null");
+        }
+
+        public byte[] calendarDataAsBytes() {
+            return calendarData.getBytes(StandardCharsets.UTF_8);
+        }
+
+        public String eventPathId() {
+            return StringUtils.substringAfterLast(href.getPath(), "/")
+                .replace(ICS_EXTENSION,"");
         }
     }
 

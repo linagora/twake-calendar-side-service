@@ -43,7 +43,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.dto.CalendarListResponse;
@@ -84,6 +83,7 @@ public class CalDavClient extends DavClient {
         }
     }
 
+    public static final String ICS_EXTENSION = ".ics";
     public static final String JSON_CHARSET_UTF_8 = "application/json;charset=UTF-8";
     public static final String DEFAULT_JSON_ACCEPT = "application/json, text/plain, */*";
 
@@ -160,7 +160,7 @@ public class CalDavClient extends DavClient {
     }
 
     public Mono<Void> importCalendar(CalendarURL calendarURL, String eventId, Username username, byte[] calendarData) {
-        String uri = calendarURL.asUri() + "/" + eventId + ".ics" + "?import";
+        String uri = calendarURL.asUri() + "/" + eventId + ICS_EXTENSION + "?import";
         return httpClientWithImpersonation(username).headers(headers ->
                 headers.add(HttpHeaderNames.CONTENT_TYPE, "text/plain"))
             .request(HttpMethod.PUT)
@@ -250,7 +250,7 @@ public class CalDavClient extends DavClient {
     }
 
     public Mono<Void> deleteCalendarEvent(Username username, CalendarURL calendarURL, String eventId) {
-        String uri = calendarURL.asUri() + "/" + eventId + ".ics";
+        String uri = calendarURL.asUri() + "/" + eventId + ICS_EXTENSION;
         return httpClientWithImpersonation(username)
             .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, "text/plain"))
             .request(HttpMethod.DELETE)
@@ -292,8 +292,6 @@ public class CalDavClient extends DavClient {
             });
     }
 
-
-    @VisibleForTesting
     public Mono<Void> createNewCalendar(Username username, OpenPaaSId userId, NewCalendar newCalendar) {
         String uri = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/" + userId.value() + ".json";
         return httpClientWithImpersonation(username)

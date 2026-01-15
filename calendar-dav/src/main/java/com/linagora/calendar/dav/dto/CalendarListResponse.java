@@ -21,6 +21,7 @@ package com.linagora.calendar.dav.dto;
 
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
@@ -60,5 +61,13 @@ public record CalendarListResponse(Map<CalendarURL, JsonNode> calendars) {
         } catch (Exception e) {
             throw new DavClientException("Failed to parse calendar list response", e);
         }
+    }
+
+    public Optional<CalendarURL> findCalendarByName(String name) {
+        return calendars.entrySet()
+            .stream()
+            .filter(entry -> Strings.CS.equals(name, entry.getValue().path("dav:name").asText()))
+            .map(Map.Entry::getKey)
+            .findFirst();
     }
 }
