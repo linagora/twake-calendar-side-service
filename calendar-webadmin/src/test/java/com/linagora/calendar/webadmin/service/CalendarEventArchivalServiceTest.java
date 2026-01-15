@@ -168,6 +168,105 @@ class CalendarEventArchivalServiceTest {
     }
 
     @Test
+    void shouldHandleMixedRecurringAndNonRecurringEventsWithRejectedOnly() {
+        CalendarURL sourceCalendar = CalendarURL.from(user.id());
+
+        // 1. Recurring event: master declined, one accepted override -> MUST NOT be archived
+        String recurringWithAcceptedOverride = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:recurring-with-override
+            DTSTART:20230101T100000Z
+            RRULE:FREQ=DAILY;COUNT=3
+            ATTENDEE;CN=User;PARTSTAT=DECLINED:mailto:%s
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:recurring-with-override
+            RECURRENCE-ID:20230102T100000Z
+            DTSTART:20230102T100000Z
+            ATTENDEE;CN=User;PARTSTAT=ACCEPTED:mailto:%s
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(user.username().asString(), user.username().asString());
+
+        // 2. Recurring event: master declined, no overrides -> MUST be archived
+        String recurringFullyDeclined = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:recurring-fully-declined
+            DTSTART:20230101T100000Z
+            RRULE:FREQ=DAILY;COUNT=3
+            ATTENDEE;CN=User;PARTSTAT=DECLINED:mailto:%s
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(user.username().asString());
+
+        // 3. Non-recurring event: accepted -> Sabre handles it, MUST be archived by time criteria
+        String nonRecurringEventDeclined = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:single-event-declined
+            DTSTART:20230101T100000Z
+            ATTENDEE;CN=User;PARTSTAT=DECLINED:mailto:%s
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(user.username().asString());
+
+        String nonRecurringEventAccepted = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:single-event-accepted
+            DTSTART:20230101T100000Z
+            ATTENDEE;CN=User;PARTSTAT=ACCEPTED:mailto:%s
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(user.username().asString());
+
+        createEvent(sourceCalendar, recurringWithAcceptedOverride);
+        createEvent(sourceCalendar, recurringFullyDeclined);
+        createEvent(sourceCalendar, nonRecurringEventDeclined);
+        createEvent(sourceCalendar, nonRecurringEventAccepted);
+
+        EventArchivalCriteria criteria = EventArchivalCriteria.builder()
+            .masterDtStartBefore(Instant.parse("2024-01-01T00:00:00Z"))
+            .rejectedOnly(true)
+            .build();
+
+        CalendarEventArchivalService.Context context = new CalendarEventArchivalService.Context();
+        Task.Result result = testee.archiveUser(user, criteria, context, DEFAULT_EVENTS_PER_SECOND).block();
+
+        CalendarURL archivalCalendar = findArchivalCalendar(user);
+
+        assertSoftly(softly -> {
+            softly.assertThat(result).isEqualTo(Task.Result.COMPLETED);
+
+            softly.assertThat(context.totalSuccess().get())
+                .as("Only fully declined recurring and non-recurring events should be archived")
+                .isEqualTo(2);
+
+            softly.assertThat(context.totalFailure().get()).isEqualTo(0);
+
+            // Source calendar assertions
+            softly.assertThat(listEvents(sourceCalendar))
+                .contains("UID:recurring-with-override")
+                .contains("UID:single-event-accepted")
+                .doesNotContain("UID:recurring-fully-declined")
+                .doesNotContain("UID:single-event-declined");
+
+            // Archival calendar assertions
+            softly.assertThat(listEvents(archivalCalendar))
+                .contains("UID:recurring-fully-declined")
+                .contains("UID:single-event-declined")
+                .doesNotContain("UID:recurring-with-override")
+                .doesNotContain("UID:single-event-accepted");
+        });
+    }
+
+    @Test
     void shouldMoveOnlyEventsMatchingCriteria() {
         CalendarURL sourceCalendar = CalendarURL.from(user.id());
 

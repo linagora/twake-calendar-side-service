@@ -24,6 +24,7 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 import org.apache.james.core.Username;
@@ -33,6 +34,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.inject.Inject;
+import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalDavClient.NewCalendar;
 import com.linagora.calendar.dav.dto.CalendarReportXmlResponse;
@@ -43,6 +45,8 @@ import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.webadmin.model.EventArchivalCriteria;
 
+import net.fortuna.ical4j.model.Calendar;
+import net.fortuna.ical4j.model.parameter.PartStat;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -142,11 +146,34 @@ public class CalendarEventArchivalService {
                                                   int eventsPerSecond) {
         return calDavClient.calendarQueryReportXml(username, sourceCalendar, criteria.toCalendarQuery(username))
             .flatMapMany(response -> Flux.fromIterable(response.extractCalendarObjects()))
+            .filter(postCalendarQueryFilter(criteria, username))
             .transform(ReactorUtils.<CalendarObject, Task.Result>throttle()
                 .elements(eventsPerSecond)
                 .per(Duration.ofSeconds(1))
                 .forOperation(calendarObject -> archiveEvent(username, sourceCalendar, archivalCalendar, context, calendarObject)))
             .reduce(Task.Result.COMPLETED, Task::combine);
+    }
+
+
+    private Predicate<CalendarObject> postCalendarQueryFilter(EventArchivalCriteria criteria, Username username) {
+        Predicate<CalendarObject> filter = calendarObject -> true;
+
+        if (!criteria.isNotRecurring()) {
+            filter = filter.and(recurringRejectionSemanticFilter(criteria, username));
+        }
+
+        return filter;
+    }
+
+    private Predicate<CalendarObject> recurringRejectionSemanticFilter(EventArchivalCriteria criteria, Username username) {
+        return calendarObject -> {
+            if (!criteria.rejectedOnly()) {
+                return true;
+            }
+
+            Calendar calendar = CalendarUtil.parseIcs(calendarObject.calendarData());
+            return CalendarParticipationUtils.allVEventsInPartStatForUser(calendar, username, PartStat.DECLINED);
+        };
     }
 
     private Mono<Task.Result> archiveEvent(Username username,
