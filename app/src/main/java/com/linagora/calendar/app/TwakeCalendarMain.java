@@ -20,6 +20,8 @@ package com.linagora.calendar.app;
 
 import static com.linagora.calendar.saas.TWPCalendarSettingsModule.TWP_CALENDAR_SETTINGS_AGGREGATE_MODULE;
 
+import java.util.Optional;
+
 import org.apache.james.ExtraProperties;
 import org.apache.james.UserEntityValidator;
 import org.apache.james.data.LdapUsersRepositoryModule;
@@ -217,6 +219,7 @@ public class TwakeCalendarMain {
                 bind(CaffeineOIDCTokenCache.class).in(Scopes.SINGLETON);
                 bind(OIDCTokenCache.class).to(CaffeineOIDCTokenCache.class);
                 bind(RetryBackoffConfiguration.class).toInstance(RetryBackoffConfiguration.DEFAULT);
+                bind(EventBus.Configuration.class).toInstance(new EventBus.Configuration(EventBus.DEFAULT_MAX_CONCURRENCY, Optional.empty()));
                 bind(EventDelivery.class).to(InVmEventDelivery.class);
                 bind(EventDeadLetters.class).to(MemoryEventDeadLetters.class);
                 bind(EventBus.class).to(InVMEventBus.class);

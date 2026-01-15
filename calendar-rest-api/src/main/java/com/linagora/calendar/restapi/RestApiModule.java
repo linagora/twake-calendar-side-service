@@ -40,6 +40,7 @@ import org.apache.james.jmap.http.AuthenticationStrategy;
 import org.apache.james.jmap.http.Authenticator;
 import org.apache.james.jwt.JwtConfiguration;
 import org.apache.james.jwt.introspection.IntrospectionEndpoint;
+import org.apache.james.mailbox.Authorizator;
 import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.mailbox.SessionProvider;
 import org.apache.james.metrics.api.MetricFactory;
@@ -355,6 +356,11 @@ public class RestApiModule extends AbstractModule {
 
             @Override
             public AuthorizationStep authenticate(Username givenUserid) {
+                throw new UnsupportedOperationException("Not supported");
+            }
+
+            @Override
+            public SessionProvider withExtraAuthorizator(Authorizator authorizator) {
                 throw new UnsupportedOperationException("Not supported");
             }
         };
