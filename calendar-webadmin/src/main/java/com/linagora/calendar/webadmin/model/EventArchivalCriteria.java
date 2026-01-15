@@ -30,7 +30,8 @@ import com.linagora.calendar.dav.model.CalendarQuery.AttendeePropFilter;
 public record EventArchivalCriteria(Optional<Instant> createdBefore,
                                     Optional<Instant> lastModifiedBefore,
                                     Optional<Instant> masterDtStartBefore,
-                                    boolean rejectedOnly) {
+                                    boolean rejectedOnly,
+                                    boolean isNotRecurring) {
     public static EventArchivalCriteria.Builder builder() {
         return new EventArchivalCriteria.Builder();
     }
@@ -51,7 +52,11 @@ public record EventArchivalCriteria(Optional<Instant> createdBefore,
             filters.add(AttendeePropFilter.declined(targetUser));
         }
 
-        return CalendarQuery.ofFilters(filters.build().toArray(new CalendarQuery.PropFilter[0]));
+        if (isNotRecurring) {
+            filters.addAll(CalendarQuery.IsNotDefinedPropFilter.isNotRecurring());
+        }
+
+        return CalendarQuery.ofFilters(filters.build());
     }
 
     public static final class Builder {
@@ -59,6 +64,7 @@ public record EventArchivalCriteria(Optional<Instant> createdBefore,
         private Optional<Instant> lastModifiedBefore = Optional.empty();
         private Optional<Instant> masterDtStartBefore = Optional.empty();
         private boolean rejectedOnly = false;
+        private boolean nonRecurring = false;
 
         private Builder() {
         }
@@ -83,8 +89,18 @@ public record EventArchivalCriteria(Optional<Instant> createdBefore,
             return this;
         }
 
+        public EventArchivalCriteria.Builder nonRecurring(boolean nonRecurring) {
+            this.nonRecurring = nonRecurring;
+            return this;
+        }
+
         public EventArchivalCriteria build() {
-            return new EventArchivalCriteria(createdBefore, lastModifiedBefore, masterDtStartBefore, rejectedOnly);
+            return new EventArchivalCriteria(
+                createdBefore,
+                lastModifiedBefore,
+                masterDtStartBefore,
+                rejectedOnly,
+                nonRecurring);
         }
     }
 

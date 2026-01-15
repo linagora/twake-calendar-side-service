@@ -25,6 +25,8 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 import javax.xml.stream.XMLOutputFactory;
 import javax.xml.stream.XMLStreamWriter;
@@ -39,7 +41,11 @@ import net.fortuna.ical4j.model.parameter.PartStat;
 public record CalendarQuery(List<PropFilter> propFilters) {
 
     public static CalendarQuery ofFilters(PropFilter... propFilters) {
-        return new CalendarQuery(List.of(propFilters));
+        return ofFilters(List.of(propFilters));
+    }
+
+    public static CalendarQuery ofFilters(List<PropFilter> propFilters) {
+        return new CalendarQuery(propFilters);
     }
 
     private static final XMLOutputFactory XML_OUTPUT_FACTORY = XMLOutputFactory.newInstance();
@@ -76,6 +82,14 @@ public record CalendarQuery(List<PropFilter> propFilters) {
         }
     }
 
+    public record IsNotDefinedPropFilter(String name) implements PropFilter {
+        public static List<PropFilter> isNotRecurring() {
+            return List.of(new IsNotDefinedPropFilter(Property.RRULE),
+                new IsNotDefinedPropFilter(Property.RDATE),
+                new IsNotDefinedPropFilter(Property.RECURRENCE_ID));
+        }
+    }
+
     interface PropFilterXmlWriter<T extends PropFilter> {
         void write(T filter, XMLStreamWriter w) throws Exception;
     }
@@ -99,35 +113,42 @@ public record CalendarQuery(List<PropFilter> propFilters) {
         String DAV_NS = "DAV:";
     }
 
-    static final class TimeRangePropFilterXmlWriter implements PropFilterXmlWriter<TimeRangePropFilter> {
+    abstract static class AbstractPropFilterXmlWriter<T extends PropFilter> implements PropFilterXmlWriter<T> {
+
+        @Override
+        public final void write(T filter, XMLStreamWriter w) throws Exception {
+            w.writeStartElement(CalDavXml.PREFIX_CALDAV, CalDavXml.ELEMENT_PROP_FILTER, CalDavXml.CALDAV_NS);
+            w.writeAttribute(CalDavXml.ATTR_NAME, filter.name());
+
+            writeContent(filter, w);
+
+            w.writeEndElement(); // prop-filter
+        }
+
+        protected abstract void writeContent(T filter, XMLStreamWriter w) throws Exception;
+    }
+
+    static final class TimeRangePropFilterXmlWriter extends AbstractPropFilterXmlWriter<TimeRangePropFilter> {
         static final String ELEMENT_TIME_RANGE = "time-range";
         static final DateTimeFormatter CALDAV_UTC_FORMAT =
             DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
                 .withZone(ZoneOffset.UTC);
 
         @Override
-        public void write(TimeRangePropFilter timeRangeFilter, XMLStreamWriter w) throws Exception {
-            w.writeStartElement(CalDavXml.PREFIX_CALDAV, CalDavXml.ELEMENT_PROP_FILTER, CalDavXml.CALDAV_NS);
-            w.writeAttribute(CalDavXml.ATTR_NAME, timeRangeFilter.name());
-
+        protected void writeContent(TimeRangePropFilter timeRangeFilter, XMLStreamWriter w) throws Exception {
             w.writeEmptyElement(CalDavXml.PREFIX_CALDAV, ELEMENT_TIME_RANGE, CalDavXml.CALDAV_NS);
             w.writeAttribute(CalDavXml.ATTR_END, CALDAV_UTC_FORMAT.format(timeRangeFilter.end()));
-
-            w.writeEndElement();
         }
     }
 
-    static final class AttendeePropFilterXmlWriter implements PropFilterXmlWriter<AttendeePropFilter> {
+    static final class AttendeePropFilterXmlWriter extends AbstractPropFilterXmlWriter<AttendeePropFilter> {
         private static final String ELEMENT_TEXT_MATCH = "text-match";
         private static final String ATTR_COLLATION = "collation";
         private static final String VALUE_COLLATION_ASCII_CASEMAP = "i;ascii-casemap";
         private static final String MAIL_TO_PREFIX = "mailto:";
 
         @Override
-        public void write(AttendeePropFilter filter, XMLStreamWriter w) throws Exception {
-            w.writeStartElement(CalDavXml.PREFIX_CALDAV, CalDavXml.ELEMENT_PROP_FILTER, CalDavXml.CALDAV_NS);
-            w.writeAttribute(CalDavXml.ATTR_NAME, filter.name());
-
+        protected void writeContent(AttendeePropFilter filter, XMLStreamWriter w) throws Exception {
             w.writeStartElement(CalDavXml.PREFIX_CALDAV, ELEMENT_TEXT_MATCH, CalDavXml.CALDAV_NS);
             w.writeAttribute(ATTR_COLLATION, VALUE_COLLATION_ASCII_CASEMAP);
             w.writeCharacters(MAIL_TO_PREFIX + filter.attendee().asString());
@@ -142,9 +163,23 @@ public record CalendarQuery(List<PropFilter> propFilters) {
             w.writeEndElement();
 
             w.writeEndElement(); // param-filter
-            w.writeEndElement(); // prop-filter
         }
     }
+
+    static final class IsNotDefinedPropFilterXmlWriter extends AbstractPropFilterXmlWriter<IsNotDefinedPropFilter> {
+
+        private static final String ELEMENT_IS_NOT_DEFINED = "is-not-defined";
+
+        @Override
+        protected void writeContent(IsNotDefinedPropFilter filter, XMLStreamWriter w) throws Exception {
+            w.writeEmptyElement(CalDavXml.PREFIX_CALDAV, ELEMENT_IS_NOT_DEFINED, CalDavXml.CALDAV_NS);
+        }
+    }
+
+    private static final java.util.Map<Class<?>, PropFilterXmlWriter<?>> PROP_FILTER_WRITERS =
+        Map.of(TimeRangePropFilter.class, new TimeRangePropFilterXmlWriter(),
+            AttendeePropFilter.class, new AttendeePropFilterXmlWriter(),
+            IsNotDefinedPropFilter.class, new IsNotDefinedPropFilterXmlWriter());
 
     public String toCalendarQueryReport() throws Exception {
         StringWriter stringWriter = new StringWriter();
@@ -201,11 +236,9 @@ public record CalendarQuery(List<PropFilter> propFilters) {
         writer.writeAttribute(CalDavXml.ATTR_NAME, Component.VEVENT);
 
         for (PropFilter propFilter : propFilters) {
-            switch (propFilter) {
-                case TimeRangePropFilter timeRange -> new TimeRangePropFilterXmlWriter().write(timeRange, writer);
-                case AttendeePropFilter attendee -> new AttendeePropFilterXmlWriter().write(attendee, writer);
-                default -> throw new IllegalArgumentException("Unknown PropFilter type: " + propFilter.getClass());
-            }
+            PropFilterXmlWriter writerImpl = Objects.requireNonNull(PROP_FILTER_WRITERS.get(propFilter.getClass()),
+                () -> "Unknown PropFilter type: " + propFilter.getClass());
+            writerImpl.write(propFilter, writer);
         }
 
         writer.writeEndElement(); // VEVENT comp-filter

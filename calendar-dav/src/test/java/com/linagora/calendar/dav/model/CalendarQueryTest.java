@@ -24,6 +24,7 @@ import java.time.Instant;
 
 import org.apache.james.core.Username;
 import org.junit.jupiter.api.Test;
+import org.testcontainers.shaded.com.google.common.collect.ImmutableList;
 import org.xmlunit.builder.DiffBuilder;
 import org.xmlunit.diff.Diff;
 
@@ -115,8 +116,7 @@ public class CalendarQueryTest {
         CalendarQuery query = CalendarQuery.ofFilters(
             TimeRangePropFilter.dtStampBefore(dtStampEnd),
             TimeRangePropFilter.dtStartBefore(dtStartEnd),
-            AttendeePropFilter.declined(attendee)
-        );
+            AttendeePropFilter.declined(attendee));
 
         String xml = query.toCalendarQueryReport();
 
@@ -140,6 +140,80 @@ public class CalendarQueryTest {
                                 <C:param-filter name="PARTSTAT">
                                     <C:text-match collation="i;ascii-casemap">DECLINED</C:text-match>
                                 </C:param-filter>
+                            </C:prop-filter>
+                        </C:comp-filter>
+                    </C:comp-filter>
+                </C:filter>
+            </C:calendar-query>
+            """;
+
+        assertXmlSimilar(expected, xml);
+    }
+
+    @Test
+    void shouldGenerateCalendarQueryReportWithNonRecurringEventsOnly() throws Exception {
+        CalendarQuery query = CalendarQuery.ofFilters(CalendarQuery.IsNotDefinedPropFilter.isNotRecurring());
+
+        String xml = query.toCalendarQueryReport();
+
+        String expected = """
+            <?xml version="1.0" encoding="UTF-8" standalone="no"?>
+            <C:calendar-query xmlns:C="urn:ietf:params:xml:ns:caldav" xmlns:D="DAV:">
+                <D:prop>
+                    <C:calendar-data/>
+                </D:prop>
+                <C:filter>
+                    <C:comp-filter name="VCALENDAR">
+                        <C:comp-filter name="VEVENT">
+                            <C:prop-filter name="RRULE">
+                                <C:is-not-defined/>
+                            </C:prop-filter>
+                            <C:prop-filter name="RDATE">
+                                <C:is-not-defined/>
+                            </C:prop-filter>
+                            <C:prop-filter name="RECURRENCE-ID">
+                                <C:is-not-defined/>
+                            </C:prop-filter>
+                        </C:comp-filter>
+                    </C:comp-filter>
+                </C:filter>
+            </C:calendar-query>
+            """;
+
+        assertXmlSimilar(expected, xml);
+    }
+
+    @Test
+    void shouldGenerateCalendarQueryReportWithNonRecurringAndDtStartBefore() throws Exception {
+        Instant dtStartEnd = Instant.parse("2026-12-31T23:59:59Z");
+
+        CalendarQuery query = CalendarQuery.ofFilters(ImmutableList.<CalendarQuery.PropFilter>builder()
+            .addAll(CalendarQuery.IsNotDefinedPropFilter.isNotRecurring())
+            .add(TimeRangePropFilter.dtStartBefore(dtStartEnd))
+            .build());
+
+        String xml = query.toCalendarQueryReport();
+
+        String expected = """
+            <?xml version="1.0" encoding="UTF-8" standalone="no"?>
+            <C:calendar-query xmlns:C="urn:ietf:params:xml:ns:caldav" xmlns:D="DAV:">
+                <D:prop>
+                    <C:calendar-data/>
+                </D:prop>
+                <C:filter>
+                    <C:comp-filter name="VCALENDAR">
+                        <C:comp-filter name="VEVENT">
+                            <C:prop-filter name="RRULE">
+                                <C:is-not-defined/>
+                            </C:prop-filter>
+                            <C:prop-filter name="RDATE">
+                                <C:is-not-defined/>
+                            </C:prop-filter>
+                            <C:prop-filter name="RECURRENCE-ID">
+                                <C:is-not-defined/>
+                            </C:prop-filter>
+                            <C:prop-filter name="DTSTART">
+                                <C:time-range end="20261231T235959Z"/>
                             </C:prop-filter>
                         </C:comp-filter>
                     </C:comp-filter>

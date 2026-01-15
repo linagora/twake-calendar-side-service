@@ -36,6 +36,7 @@ public class EventArchivalCriteriaRequestParser {
     private static final String LAST_MODIFIED_BEFORE_PARAM = "lastModifiedBefore";
     private static final String MASTER_DTSTART_BEFORE_PARAM = "masterDtStartBefore";
     private static final String IS_REJECTED_PARAM = "isRejected";
+    private static final String NON_RECURRING_PARAM = "isNotRecurring";
 
     public static EventArchivalCriteria extractEventArchivalCriteria(Request request, Clock clock) {
         EventArchivalCriteria.Builder builder = EventArchivalCriteria.builder();
@@ -49,13 +50,11 @@ public class EventArchivalCriteriaRequestParser {
         extractInstantBefore(request, MASTER_DTSTART_BEFORE_PARAM, clock)
             .ifPresent(builder::masterDtStartBefore);
 
-        Optional.ofNullable(request.queryParams(IS_REJECTED_PARAM))
-            .map(value -> {
-                Boolean parsed = BooleanUtils.toBooleanObject(value);
-                Preconditions.checkArgument(parsed != null, "`" + IS_REJECTED_PARAM + "` must be a boolean");
-                return parsed;
-            })
+        extractBoolean(request, IS_REJECTED_PARAM)
             .ifPresent(builder::rejectedOnly);
+
+        extractBoolean(request, NON_RECURRING_PARAM)
+            .ifPresent(builder::nonRecurring);
 
         return builder.build();
     }
@@ -66,6 +65,15 @@ public class EventArchivalCriteriaRequestParser {
             .map(duration -> {
                 Preconditions.checkArgument(!duration.isZero() && !duration.isNegative(), "`" + paramName + "` must be positive");
                 return clock.instant().minus(duration);
+            });
+    }
+
+    private static Optional<Boolean> extractBoolean(Request request, String paramName) {
+        return Optional.ofNullable(request.queryParams(paramName))
+            .map(value -> {
+                Boolean parsed = BooleanUtils.toBooleanObject(value);
+                Preconditions.checkArgument(parsed != null, "`" + paramName + "` must be a boolean");
+                return parsed;
             });
     }
 }

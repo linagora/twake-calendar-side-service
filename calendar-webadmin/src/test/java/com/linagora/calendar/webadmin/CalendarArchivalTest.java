@@ -328,6 +328,77 @@ public class CalendarArchivalTest {
     }
 
     @Test
+    void calendarArchivalAllShouldSupportNonRecurringParameter() {
+        Instant fixedNow = Instant.parse("2026-01-01T00:00:00Z");
+        clock.setInstant(fixedNow);
+
+        // Recurring event (should be excluded)
+        String recurringUid = "recurring-event";
+        String recurringIcs = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:%s
+            DTSTART:%s
+            DTEND:%s
+            RRULE:FREQ=DAILY;COUNT=3
+            SUMMARY:Recurring Event
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(recurringUid,
+                formatInstant(fixedNow),
+                formatInstant(fixedNow.minus(10, ChronoUnit.DAYS)),
+                formatInstant(fixedNow.minus(10, ChronoUnit.DAYS).plus(1, ChronoUnit.HOURS)));
+
+        // Single non-recurring event (should be archived)
+        String singleUid = "single-event";
+        insertEvent(userA, singleUid, fixedNow.minus(20, ChronoUnit.DAYS));
+
+        calDavClient.importCalendar(
+            CalendarURL.from(userA.id()),
+            recurringUid,
+            userA.username(),
+            recurringIcs.getBytes(StandardCharsets.UTF_8))
+            .block();
+
+        String taskId = given()
+            .basePath(CalendarRoutes.BASE_PATH)
+            .queryParam("task", "archive")
+            .queryParam("isNotRecurring", "true")
+        .when()
+            .post()
+        .then()
+            .statusCode(201)
+            .extract()
+            .jsonPath()
+            .get("taskId");
+
+        given()
+            .basePath(TasksRoutes.BASE)
+        .when()
+            .get(taskId + "/await")
+        .then()
+            .body("status", is("completed"))
+            .body("additionalInformation.archivedEventCount", is(1))
+            .body("additionalInformation.failedEventCount", is(0))
+            .body("additionalInformation.criteria.isNotRecurring", is(true));
+
+        CalendarURL archival = findArchivalCalendar(userA);
+        CalendarURL defaultCalendar = CalendarURL.from(userA.id());
+
+        // Only the single, non-recurring event is archived
+        assertThat(listEvents(userA.username(), archival))
+            .contains("UID:" + singleUid)
+            .doesNotContain("UID:" + recurringUid);
+
+        // Recurring event remains in default calendar
+        assertThat(listEvents(userA.username(), defaultCalendar))
+            .contains("UID:" + recurringUid)
+            .doesNotContain("UID:" + singleUid);
+    }
+
+    @Test
     void calendarArchivalAllShouldSupportMultipleCriteriaCombination() {
         Instant fixedNow = Instant.parse("2026-01-01T00:00:00Z");
         clock.setInstant(fixedNow);
@@ -665,6 +736,7 @@ public class CalendarArchivalTest {
             .queryParam("lastModifiedBefore", "7d")
             .queryParam("masterDtStartBefore", "5d")
             .queryParam("isRejected", "true")
+            .queryParam("isNotRecurring", "true")
         .when()
             .post()
         .then()
@@ -683,7 +755,8 @@ public class CalendarArchivalTest {
             .body("additionalInformation.criteria.createdBefore", is("2025-12-22T00:00:00Z"))
             .body("additionalInformation.criteria.lastModifiedBefore", is("2025-12-25T00:00:00Z"))
             .body("additionalInformation.criteria.masterDtStartBefore", is("2025-12-27T00:00:00Z"))
-            .body("additionalInformation.criteria.rejectedOnly", is(true));
+            .body("additionalInformation.criteria.rejectedOnly", is(true))
+            .body("additionalInformation.criteria.isNotRecurring", is(true));
     }
 
     @Test

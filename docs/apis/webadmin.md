@@ -208,13 +208,14 @@ This endpoint iterates over **all registered users** and archives their calendar
 
 ##### Supported query parameters
 
-| Parameter               | Type     | Optional | Description                                                                 |
-|-------------------------|----------|----------|-----------------------------------------------------------------------------|
-| `createdBefore`         | duration | yes      | Archive events whose `DTSTAMP` is before now minus the given duration (e.g. `5d`, `12h`, `1y`) |
-| `lastModifiedBefore`    | duration | yes      | Archive events whose `LAST-MODIFIED` is before now minus the given duration (e.g. `5d`, `12h`, `1y`) |
-| `masterDtStartBefore`   | duration | yes      | Archive events whose master `DTSTART` is before now minus the given duration (e.g. `5d`, `12h`, `1y`) |
-| `isRejected`            | boolean  | yes      | When `true`, archive only events rejected by the user                         |
-| `eventsPerSecond`       | integer  | yes      | Throttling parameter controlling processing speed (default: `100`)          |
+| Parameter             | Type     | Optional | Description                                                                 |
+|-----------------------|----------|----------|-----------------------------------------------------------------------------|
+| `createdBefore`       | duration | yes      | Archive events whose `DTSTAMP` is before now minus the given duration (e.g. `5d`, `12h`, `1y`) |
+| `lastModifiedBefore`  | duration | yes      | Archive events whose `LAST-MODIFIED` is before now minus the given duration (e.g. `5d`, `12h`, `1y`) |
+| `masterDtStartBefore` | duration | yes      | Archive events whose master `DTSTART` is before now minus the given duration (e.g. `5d`, `12h`, `1y`) |
+| `isRejected`          | boolean  | yes      | When `true`, archive only events rejected by the user                         |
+| `isNotRecurring`      | boolean  | yes      | When `true`, archive only non-recurring events (events without RRULE, RDATE, or RECURRENCE-ID) |
+| `eventsPerSecond`     | integer  | yes      | Throttling parameter controlling processing speed (default: `100`)          |
 
 - When **no criteria parameter is provided**, all events are archived.
 - All criteria are combined using **AND** logic.
@@ -273,7 +274,8 @@ Example task result:
       "createdBefore": "2025-12-22T00:00:00Z",
       "lastModifiedBefore": null,
       "masterDtStartBefore": null,
-      "rejectedOnly": true
+      "rejectedOnly": true,
+      "isNotRecurring": true
     }
   }
 }
