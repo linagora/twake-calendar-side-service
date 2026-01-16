@@ -22,7 +22,7 @@ services:
     image: linagora/twake-calendar-side-service:branch-master
     container_name: tcalendar-side-service.linagora.local
     depends_on:
-      - mongo
+      - ferretdb
       - rabbitmq
       - sabre_dav
       - redis
@@ -89,28 +89,6 @@ services:
     networks:
       - tcalendar
 
-  mongo:
-    image: mongo:6
-    container_name: mongo
-    networks:
-      - tcalendar
-    ports:
-      - "27017:27017"
-    command: [ "mongod", "--bind_ip", "0.0.0.0" ]
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "mongosh",
-          "--quiet",
-          "--eval",
-          "'quit(db.runCommand({ ping: 1 }).ok ? 0 : 2)'",
-        ]
-      start_period: 40s
-      interval: 10s
-      timeout: 10s
-      retries: 10
-
   rabbitmq:
     image: rabbitmq:3.13.3-management
     container_name: rabbitmq
@@ -135,26 +113,16 @@ services:
     networks:
       - tcalendar
     environment:
-      - SABRE_ENV=dev
-      - SABRE_MONGO_HOST=mongo
-      - SABRE_MONGO_PORT=27017
-      - ESN_MONGO_HOST=mongo
-      - ESN_MONGO_PORT=27017
-      - ESN_MONGO_DBNAME=esn_docker
-      - ESN_HOST=tcalendar-side-service.linagora.local
       - ESN_PORT=80
-      - AMQP_HOST=rabbitmq
-      - AMQP_PORT=5672
-      - AMQP_LOGIN=tcalendar
-      - AMQP_PASSWORD=tcalendar
       - SABRE_ADMIN_LOGIN=admin
       - SABRE_ADMIN_PASSWORD=secret123
       - SABRE_IMPERSONATION_ENABLED=true
     volumes:
       - ./conf-side-service/jwt_publickey:/var/www/config/esn.key.pub
+      - ./sabre/config.json:/var/www/config.json:ro
     depends_on:
-      mongo:
-        condition: service_healthy
+      ferretdb:
+        condition: service_started
       rabbitmq:
         condition: service_healthy
     ports:
@@ -192,14 +160,44 @@ services:
       - tcalendar
 
   provision-data:
-    image: curlimages/curl:latest
+    image: postgres:17-alpine
     depends_on:
-      rabbitmq:
-        condition: service_healthy
+      postgres:
+        condition: service_started
       tcalendar-side-service:
         condition: service_started
     volumes:
-      - ./script:/provision:ro
-    entrypoint: ["sh", "/provision/provision_all.sh"]
+      - ./script:/script:ro
+    entrypoint: ["sh", "/script/provision_entrypoint.sh"]
+    environment:
+      PGPASSWORD: password
+    networks:
+      - tcalendar
+    restart: "no"
+
+  postgres:
+    image: ghcr.io/ferretdb/postgres-documentdb:17-0.107.0-ferretdb-2.7.0
+    restart: on-failure
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=username
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=postgres
+    networks:
+      - tcalendar
+
+  ferretdb:
+    image: ghcr.io/ferretdb/ferretdb:2.7.0
+    restart: on-failure
+    container_name: mongo
+    depends_on:
+      - postgres
+    ports:
+      - "27017:27017"
+    environment:
+      - FERRETDB_LOG_LEVEL=debug
+      - FERRETDB_POSTGRESQL_URL=postgres://username:password@postgres:5432/postgres?sslmode=disable
     networks:
       - tcalendar
