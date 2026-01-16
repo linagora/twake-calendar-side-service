@@ -42,6 +42,7 @@ import com.linagora.calendar.storage.model.UploadedMimeType;
 
 import org.apache.http.HttpStatus;
 
+import org.apache.james.core.Username;
 import org.apache.james.events.Event;
 import org.apache.james.events.EventBus;
 import org.apache.james.utils.GuiceProbe;
@@ -69,8 +70,10 @@ import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.CalendarChangeEvent;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.CalendarURLRegistrationKey;
+import com.linagora.calendar.storage.EventBusAlarmEvent;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
+import com.linagora.calendar.storage.UsernameRegistrationKey;
 
 import io.restassured.RestAssured;
 import io.restassured.authentication.PreemptiveBasicAuthScheme;
@@ -93,6 +96,11 @@ class WebsocketRouteTest {
 
         public void dispatch(CalendarChangeEvent event, CalendarURL calendarURL) {
             eventBus.dispatch(event, new CalendarURLRegistrationKey(calendarURL))
+                .block();
+        }
+
+        public void dispatchAlarmEvent(EventBusAlarmEvent event, Username username) {
+            eventBus.dispatch(event, new UsernameRegistrationKey(username))
                 .block();
         }
     }
@@ -957,6 +965,394 @@ class WebsocketRouteTest {
             ws1.close(1000, "done");
             ws2.close(1000, "done");
         }
+    }
+
+    @Test
+    void websocketShouldEnableDisplayNotification() throws Exception {
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        webSocket.send("{\"enableDisplayNotification\": true}");
+
+        String response = messages.poll(5, TimeUnit.SECONDS);
+        assertThat(response).isNotNull();
+        assertThatJson(response)
+            .isEqualTo("{\"displayNotificationEnabled\":true}");
+    }
+
+    @Test
+    void websocketShouldDisableDisplayNotification() throws Exception {
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        // First enable
+        webSocket.send("{\"enableDisplayNotification\": true}");
+        messages.poll(5, TimeUnit.SECONDS);
+
+        // Then disable
+        webSocket.send("{\"enableDisplayNotification\": false}");
+
+        String response = messages.poll(5, TimeUnit.SECONDS);
+        assertThat(response).isNotNull();
+        assertThatJson(response)
+            .isEqualTo("{\"displayNotificationEnabled\":false}");
+    }
+
+    @Test
+    void websocketShouldReceiveAlarmEventAfterEnablingDisplayNotification(TwakeCalendarGuiceServer guiceServer) throws Exception {
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        // Enable display notification
+        webSocket.send("{\"enableDisplayNotification\": true}");
+        String enableResponse = messages.poll(5, TimeUnit.SECONDS);
+        assertThatJson(enableResponse)
+            .isEqualTo("{\"displayNotificationEnabled\":true}");
+
+        // Dispatch alarm event
+        Instant eventStartTime = Instant.now().plusSeconds(900);
+        EventBusProbe eventBusProbe = guiceServer.getProbe(EventBusProbe.class);
+        EventBusAlarmEvent alarmEvent = new EventBusAlarmEvent(
+            Event.EventId.random(),
+            bob.username(),
+            "Test Meeting",
+            "calendars/user/calendar/event.ics",
+            eventStartTime);
+        eventBusProbe.dispatchAlarmEvent(alarmEvent, bob.username());
+
+        // Should receive alarm
+        String alarmMessage = messages.poll(5, TimeUnit.SECONDS);
+
+        String expected = """
+                {
+                    "alarms": [
+                        {
+                            "eventSummary": "Test Meeting",
+                            "eventURL": "calendars/user/calendar/event.ics",
+                            "eventStartTime": "{eventStartTime}"
+                        }
+                    ]
+                }
+                """.replace("{eventStartTime}", eventStartTime.toString());
+
+        assertThatJson(alarmMessage)
+            .isEqualTo(expected);
+    }
+
+    @Test
+    void websocketShouldNotReceiveAlarmEventWithoutEnablingDisplayNotification(TwakeCalendarGuiceServer guiceServer) throws Exception {
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        // DO NOT enable display notification
+
+        // Dispatch alarm event
+        EventBusProbe eventBusProbe = guiceServer.getProbe(EventBusProbe.class);
+        EventBusAlarmEvent alarmEvent = new EventBusAlarmEvent(
+            Event.EventId.random(),
+            bob.username(),
+            "Test Meeting",
+            "calendars/user/calendar/event.ics",
+            Instant.now().plusSeconds(900));
+        eventBusProbe.dispatchAlarmEvent(alarmEvent, bob.username());
+
+        // Should NOT receive alarm
+        String alarmMessage = messages.poll(3, TimeUnit.SECONDS);
+        assertThat(alarmMessage).isNull();
+    }
+
+    @Test
+    void websocketShouldNotReceiveAlarmEventAfterDisablingDisplayNotification(TwakeCalendarGuiceServer guiceServer) throws Exception {
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        // Enable display notification
+        webSocket.send("{\"enableDisplayNotification\": true}");
+        messages.poll(5, TimeUnit.SECONDS);
+
+        // Disable display notification
+        webSocket.send("{\"enableDisplayNotification\": false}");
+        messages.poll(5, TimeUnit.SECONDS);
+
+        // Dispatch alarm event
+        EventBusProbe eventBusProbe = guiceServer.getProbe(EventBusProbe.class);
+        EventBusAlarmEvent alarmEvent = new EventBusAlarmEvent(
+            Event.EventId.random(),
+            bob.username(),
+            "Test Meeting",
+            "calendars/user/calendar/event.ics",
+            Instant.now().plusSeconds(900));
+        eventBusProbe.dispatchAlarmEvent(alarmEvent, bob.username());
+
+        // Should NOT receive alarm after disabling
+        String alarmMessage = messages.poll(3, TimeUnit.SECONDS);
+        assertThat(alarmMessage).isNull();
+    }
+
+    @Test
+    void websocketShouldNotReceiveDuplicateAlarmsWhenEnablingTwice(TwakeCalendarGuiceServer guiceServer) throws Exception {
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        // Enable twice
+        webSocket.send("{\"enableDisplayNotification\": true}");
+        messages.poll(5, TimeUnit.SECONDS);
+
+        webSocket.send("{\"enableDisplayNotification\": true}");
+        messages.poll(5, TimeUnit.SECONDS);
+
+        // Dispatch alarm event
+        EventBusProbe eventBusProbe = guiceServer.getProbe(EventBusProbe.class);
+        EventBusAlarmEvent alarmEvent = new EventBusAlarmEvent(
+            Event.EventId.random(),
+            bob.username(),
+            "Test Meeting",
+            "calendars/user/calendar/event.ics",
+            Instant.now().plusSeconds(900));
+        eventBusProbe.dispatchAlarmEvent(alarmEvent, bob.username());
+
+        // Should receive exactly one alarm
+        String alarmMessage = messages.poll(5, TimeUnit.SECONDS);
+        assertThat(alarmMessage).isNotNull();
+        assertThatJson(alarmMessage)
+            .node("alarms[0].eventSummary")
+            .isStringEqualTo("Test Meeting");
+
+        // No duplicate
+        String duplicate = messages.poll(2, TimeUnit.SECONDS);
+        assertThat(duplicate).isNull();
+    }
+
+    @Test
+    void websocketShouldIsolateDisplayNotificationAcrossClients(TwakeCalendarGuiceServer guiceServer) throws Exception {
+        BlockingQueue<String> messages1 = new LinkedBlockingQueue<>();
+        BlockingQueue<String> messages2 = new LinkedBlockingQueue<>();
+
+        WebSocket ws1 = connectWebSocket(restApiPort, generateTicket(bob), messages1);
+        WebSocket ws2 = connectWebSocket(restApiPort, generateTicket(bob), messages2);
+
+        try {
+            // WS1 enables display notification
+            ws1.send("{\"enableDisplayNotification\": true}");
+            messages1.poll(5, TimeUnit.SECONDS);
+
+            // WS2 does NOT enable display notification
+
+            // Dispatch alarm event
+            EventBusProbe eventBusProbe = guiceServer.getProbe(EventBusProbe.class);
+            EventBusAlarmEvent alarmEvent = new EventBusAlarmEvent(
+                Event.EventId.random(),
+                bob.username(),
+                "Test Meeting",
+                "calendars/user/calendar/event.ics",
+                Instant.now().plusSeconds(900));
+            eventBusProbe.dispatchAlarmEvent(alarmEvent, bob.username());
+
+            // WS1 should receive alarm
+            String alarm1 = messages1.poll(5, TimeUnit.SECONDS);
+            assertThat(alarm1).isNotNull();
+            assertThatJson(alarm1)
+                .node("alarms[0].eventSummary")
+                .isStringEqualTo("Test Meeting");
+
+            // WS2 should NOT receive alarm
+            String alarm2 = messages2.poll(2, TimeUnit.SECONDS);
+            assertThat(alarm2).isNull();
+        } finally {
+            ws1.close(1000, "done");
+            ws2.close(1000, "done");
+        }
+    }
+
+    @Test
+    void websocketShouldBroadcastAlarmToAllClientsWithDisplayNotificationEnabled(TwakeCalendarGuiceServer guiceServer) throws Exception {
+        BlockingQueue<String> messages1 = new LinkedBlockingQueue<>();
+        BlockingQueue<String> messages2 = new LinkedBlockingQueue<>();
+
+        WebSocket ws1 = connectWebSocket(restApiPort, generateTicket(bob), messages1);
+        WebSocket ws2 = connectWebSocket(restApiPort, generateTicket(bob), messages2);
+
+        try {
+            // Both clients enable display notification
+            ws1.send("{\"enableDisplayNotification\": true}");
+            messages1.poll(5, TimeUnit.SECONDS);
+
+            ws2.send("{\"enableDisplayNotification\": true}");
+            messages2.poll(5, TimeUnit.SECONDS);
+
+            // Dispatch alarm event
+            EventBusProbe eventBusProbe = guiceServer.getProbe(EventBusProbe.class);
+            EventBusAlarmEvent alarmEvent = new EventBusAlarmEvent(
+                Event.EventId.random(),
+                bob.username(),
+                "Test Meeting",
+                "calendars/user/calendar/event.ics",
+                Instant.now().plusSeconds(900));
+            eventBusProbe.dispatchAlarmEvent(alarmEvent, bob.username());
+
+            // Both should receive alarm
+            String alarm1 = messages1.poll(5, TimeUnit.SECONDS);
+            String alarm2 = messages2.poll(5, TimeUnit.SECONDS);
+
+            assertThat(alarm1).isNotNull();
+            assertThat(alarm2).isNotNull();
+
+            assertThatJson(alarm1)
+                .node("alarms[0].eventSummary")
+                .isStringEqualTo("Test Meeting");
+            assertThatJson(alarm2)
+                .node("alarms[0].eventSummary")
+                .isStringEqualTo("Test Meeting");
+        } finally {
+            ws1.close(1000, "done");
+            ws2.close(1000, "done");
+        }
+    }
+
+    @Test
+    void websocketShouldNotReceiveAlarmForDifferentUser(TwakeCalendarGuiceServer guiceServer) throws Exception {
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        // Bob enables display notification
+        webSocket.send("{\"enableDisplayNotification\": true}");
+        messages.poll(5, TimeUnit.SECONDS);
+
+        // Dispatch alarm event for Alice (different user)
+        EventBusProbe eventBusProbe = guiceServer.getProbe(EventBusProbe.class);
+        EventBusAlarmEvent alarmEvent = new EventBusAlarmEvent(
+            Event.EventId.random(),
+            alice.username(),
+            "Alice Meeting",
+            "calendars/alice/calendar/event.ics",
+            Instant.now().plusSeconds(900));
+        eventBusProbe.dispatchAlarmEvent(alarmEvent, alice.username());
+
+        // Bob should NOT receive Alice's alarm
+        String alarmMessage = messages.poll(3, TimeUnit.SECONDS);
+        assertThat(alarmMessage).isNull();
+    }
+
+    @Test
+    void websocketShouldReceiveAlarmAfterSubscribingToCalendar(TwakeCalendarGuiceServer guiceServer) throws Exception {
+        // GIVEN: Bob opened a WS connection
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        // AND: Bob subscribes to display notification
+        webSocket.send("{\"enableDisplayNotification\": true}");
+        String displayAck = messages.poll(5, TimeUnit.SECONDS);
+        assertThatJson(displayAck)
+            .isEqualTo("{\"displayNotificationEnabled\":true}");
+
+        // WHEN: Bob subscribed to his calendar changes
+        String calendarUri = CalendarURL.from(bob.id()).asUri().toString();
+        webSocket.send("{\"register\": [\"%s\"]}".formatted(calendarUri));
+        String calendarAck = messages.poll(5, TimeUnit.SECONDS);
+        assertThatJson(calendarAck)
+            .isEqualTo("{\"registered\": [\"%s\"]}".formatted(calendarUri));
+
+        // THEN: Bob is notified of event alarms
+        EventBusProbe eventBusProbe = guiceServer.getProbe(EventBusProbe.class);
+        EventBusAlarmEvent alarmEvent = new EventBusAlarmEvent(
+            Event.EventId.random(),
+            bob.username(),
+            "Test Meeting",
+            "calendars/user/calendar/event.ics",
+            Instant.now().plusSeconds(900));
+        eventBusProbe.dispatchAlarmEvent(alarmEvent, bob.username());
+
+        String alarmMessage = messages.poll(5, TimeUnit.SECONDS);
+        assertThat(alarmMessage).isNotNull();
+        assertThatJson(alarmMessage)
+            .node("alarms[0].eventSummary")
+            .isStringEqualTo("Test Meeting");
+    }
+
+    @Test
+    void websocketShouldReceiveCalendarChangesAfterEnablingDisplayNotification(TwakeCalendarGuiceServer guiceServer) throws Exception {
+        // GIVEN: Bob opened a WS connection
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        // AND: Bob registers to his calendar changes
+        String calendarUri = CalendarURL.from(bob.id()).asUri().toString();
+        webSocket.send("{\"register\": [\"%s\"]}".formatted(calendarUri));
+        String calendarAck = messages.poll(5, TimeUnit.SECONDS);
+        assertThatJson(calendarAck)
+            .isEqualTo("{\"registered\": [\"%s\"]}".formatted(calendarUri));
+
+        // WHEN: Bob subscribed to display notification
+        webSocket.send("{\"enableDisplayNotification\": true}");
+        String displayAck = messages.poll(5, TimeUnit.SECONDS);
+        assertThatJson(displayAck)
+            .isEqualTo("{\"displayNotificationEnabled\":true}");
+
+        // THEN: Bob is notified when updating events
+        EventBusProbe eventBusProbe = guiceServer.getProbe(EventBusProbe.class);
+        CalendarURL calendar = CalendarURL.from(bob.id());
+        CalendarChangeEvent calendarEvent = new CalendarChangeEvent(Event.EventId.random(), calendar);
+        eventBusProbe.dispatch(calendarEvent, calendar);
+
+        String calendarMessage = messages.poll(5, TimeUnit.SECONDS);
+        assertThat(calendarMessage).isNotNull();
+        assertThatJson(calendarMessage)
+            .isEqualTo("{\"" + calendarUri + "\": {\"syncToken\": \"${json-unit.ignore}\"}}");
+    }
+
+    @Test
+    void websocketShouldReceiveBothCalendarChangesAndAlarms(TwakeCalendarGuiceServer guiceServer) throws Exception {
+        // GIVEN: Bob opened a WS connection with both subscriptions
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        // Subscribe to calendar
+        String calendarUri = CalendarURL.from(bob.id()).asUri().toString();
+        webSocket.send("{\"register\": [\"%s\"]}".formatted(calendarUri));
+        messages.poll(5, TimeUnit.SECONDS);
+
+        // Enable display notification
+        webSocket.send("{\"enableDisplayNotification\": true}");
+        messages.poll(5, TimeUnit.SECONDS);
+
+        EventBusProbe eventBusProbe = guiceServer.getProbe(EventBusProbe.class);
+
+        // WHEN: Both alarm and calendar change events are dispatched
+        EventBusAlarmEvent alarmEvent = new EventBusAlarmEvent(
+            Event.EventId.random(),
+            bob.username(),
+            "Alarm Meeting",
+            "calendars/user/calendar/event.ics",
+            Instant.now().plusSeconds(900));
+        eventBusProbe.dispatchAlarmEvent(alarmEvent, bob.username());
+
+        CalendarURL calendar = CalendarURL.from(bob.id());
+        CalendarChangeEvent calendarEvent = new CalendarChangeEvent(Event.EventId.random(), calendar);
+        eventBusProbe.dispatch(calendarEvent, calendar);
+
+        // THEN: Bob receives both notifications
+        String message1 = messages.poll(5, TimeUnit.SECONDS);
+        String message2 = messages.poll(5, TimeUnit.SECONDS);
+
+        assertThat(message1).isNotNull();
+        assertThat(message2).isNotNull();
+
+        // One should be alarm, one should be calendar change
+        boolean hasAlarm = message1.contains("alarms") || message2.contains("alarms");
+        boolean hasCalendarChange = message1.contains("syncToken") || message2.contains("syncToken");
+
+        assertThat(hasAlarm).as("Should receive alarm notification").isTrue();
+        assertThat(hasCalendarChange).as("Should receive calendar change notification").isTrue();
     }
 
     private String generateTicket(OpenPaaSUser user) {

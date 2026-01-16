@@ -24,6 +24,7 @@ import java.util.Optional;
 import org.apache.james.core.MailAddress;
 
 import com.google.common.base.MoreObjects;
+import com.linagora.calendar.storage.event.AlarmAction;
 import com.linagora.calendar.storage.event.AlarmInstantFactory.AlarmInstant;
 import com.linagora.calendar.storage.eventsearch.EventUid;
 
@@ -35,7 +36,9 @@ public record AlarmEvent(EventUid eventUid,
                          boolean recurring,
                          Optional<String> recurrenceId,
                          MailAddress recipient,
-                         String ics) {
+                         String ics,
+                         String eventPath,
+                         AlarmAction action) {
 
     public String toShortString() {
         return MoreObjects.toStringHelper(this)
@@ -53,6 +56,8 @@ public record AlarmEvent(EventUid eventUid,
             this.recurring,
             instant.recurrenceId().map(DateProperty::getValue),
             this.recipient,
-            this.ics);
+            this.ics,
+            this.eventPath,
+            instant.action());
     }
 }
