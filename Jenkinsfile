@@ -34,7 +34,7 @@ pipeline {
         }
         stage('Test') {
             steps {
-                sh 'mvn -B surefire:test'
+                sh 'mvn -B -Dapi.version=1.43 surefire:test'
             }
             post {
                 always {
