@@ -40,7 +40,6 @@ import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.AlarmEventDAO;
 import com.linagora.calendar.storage.AlarmEventFactory;
 import com.linagora.calendar.storage.CalendarURL;
-import com.linagora.calendar.storage.EventEmailFilter;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
@@ -110,20 +109,18 @@ public class AlarmScheduleService {
     private final AlarmEventDAO alarmEventDAO;
     private final AlarmInstantFactory alarmInstantFactory;
     private final AlarmEventFactory alarmEventFactory;
-    private final EventEmailFilter eventEmailFilter;
 
     @Inject
     public AlarmScheduleService(OpenPaaSUserDAO userDAO,
                                 CalDavClient calDavClient,
                                 AlarmEventDAO alarmEventDAO,
                                 AlarmInstantFactory alarmInstantFactory,
-                                AlarmEventFactory alarmEventFactory, EventEmailFilter eventEmailFilter) {
+                                AlarmEventFactory alarmEventFactory) {
         this.userDAO = userDAO;
         this.calDavClient = calDavClient;
         this.alarmEventDAO = alarmEventDAO;
         this.alarmInstantFactory = alarmInstantFactory;
         this.alarmEventFactory = alarmEventFactory;
-        this.eventEmailFilter = eventEmailFilter;
     }
 
     public Mono<Task.Result> schedule(Context context, int eventsPerSecond) {
@@ -151,7 +148,7 @@ public class AlarmScheduleService {
     private Mono<Task.Result> schedule(Context context, ScheduledItem scheduledItem) {
         return Mono.justOrEmpty(alarmInstantFactory.computeNextAlarmInstant(scheduledItem.calendar(), scheduledItem.username()))
             .flatMap(alarmInstant -> Flux.fromIterable(alarmEventFactory.buildAlarmEvent(scheduledItem.username(),
-                    alarmInstant.recipients().stream().filter(eventEmailFilter::shouldProcess).toList(),
+                    alarmInstant.recipients(),
                     scheduledItem.calendar(),
                     alarmInstant,
                     ""))

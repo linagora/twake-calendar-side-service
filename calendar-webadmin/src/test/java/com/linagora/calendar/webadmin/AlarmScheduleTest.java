@@ -55,7 +55,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.google.common.collect.ImmutableSet;
-import com.linagora.calendar.storage.EventEmailFilter;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
@@ -101,8 +100,7 @@ public class AlarmScheduleTest {
         calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         clock = new UpdatableTickingClock(Instant.now());
         alarmScheduleService = new AlarmScheduleService(userDAO, calDavClient, alarmEventDAO, new AlarmInstantFactory.Default(clock),
-            new AlarmEventFactory.Default(),
-            EventEmailFilter.acceptAll());
+            new AlarmEventFactory.Default());
 
         this.openPaaSUser = sabreDavExtension.newTestUser();
         this.openPaaSUser2 = sabreDavExtension.newTestUser();

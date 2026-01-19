@@ -43,4 +43,10 @@ public class SmtpModule extends AbstractModule {
     public MailSenderConfiguration provideDavConfiguration(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
         return MailSenderConfiguration.from(propertiesProvider.getConfiguration("configuration"));
     }
+
+    @Provides
+    @Singleton
+    public EventEmailFilter provideEventEmailFilter(PropertiesProvider propertiesProvider) throws ConfigurationException {
+        return EventEmailFilter.from(propertiesProvider);
+    }
 }

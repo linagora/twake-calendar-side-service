@@ -70,10 +70,12 @@ public interface MailSender {
             };
 
             private final MailSenderConfiguration configuration;
+            private final EventEmailFilter eventEmailFilter;
 
             @Inject
-            public Default(MailSenderConfiguration configuration) {
+            public Default(MailSenderConfiguration configuration, EventEmailFilter eventEmailFilter) {
                 this.configuration = configuration;
+                this.eventEmailFilter = eventEmailFilter;
             }
 
             public Mono<MailSender> create() {
@@ -104,7 +106,7 @@ public interface MailSender {
                             throw new SmtpSendingFailedException("'auth' failed: " + authClient.getReplyString());
                         }
                     }));
-                    return new MailSender.Default(authClient, configuration);
+                    return new MailSender.Default(authClient, configuration, eventEmailFilter);
                 });
             }
         }
@@ -113,17 +115,22 @@ public interface MailSender {
     class Default implements MailSender {
         private final SMTPClient client;
         private final MailSenderConfiguration configuration;
+        private final EventEmailFilter eventEmailFilter;
 
-        public Default(SMTPClient client, MailSenderConfiguration configuration) {
+        public Default(SMTPClient client, MailSenderConfiguration configuration, EventEmailFilter eventEmailFilter) {
             this.client = client;
             this.configuration = configuration;
+            this.eventEmailFilter = eventEmailFilter;
         }
 
         @Override
         public Mono<Void> send(Mail mail) {
             return Mono.fromRunnable(Throwing.runnable(() -> {
-                sendMailTransaction(mail);
-                disconnect();
+                try {
+                    eventEmailFilter.filterRecipients(mail).ifPresent(Throwing.consumer(this::sendMailTransaction));
+                } finally {
+                    disconnect();
+                }
             }));
         }
 
@@ -131,9 +138,9 @@ public interface MailSender {
         public Mono<Void> send(Collection<Mail> mails) {
             return Mono.fromRunnable(Throwing.runnable(() -> {
                 ImmutableList.Builder<Exception> exceptionBuilder = new ImmutableList.Builder<>();
-                mails.forEach(Throwing.consumer(mail -> {
+                mails.forEach(mail -> eventEmailFilter.filterRecipients(mail).ifPresent(Throwing.consumer(updatedMail -> {
                     try {
-                        sendMailTransaction(mail);
+                        sendMailTransaction(updatedMail);
                     } catch (Exception e) {
                         LOGGER.warn("Sending email failed", e);
                         exceptionBuilder.add(e);
@@ -142,7 +149,7 @@ public interface MailSender {
                     if (!reset) {
                         throw new SmtpSendingFailedException("Failure to reset SMTP client: " + client.getReplyString());
                     }
-                }));
+                })));
                 disconnect();
 
                 List<Exception> exceptions = exceptionBuilder.build();

@@ -63,7 +63,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mockito;
 
 import com.github.fge.lambdas.Throwing;
-import com.linagora.calendar.storage.EventEmailFilter;
+import com.linagora.calendar.smtp.EventEmailFilter;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalDavEventRepository;
 import com.linagora.calendar.dav.DavTestHelper;

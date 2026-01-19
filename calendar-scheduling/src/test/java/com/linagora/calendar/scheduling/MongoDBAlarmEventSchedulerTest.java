@@ -44,6 +44,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.mockito.Mockito;
 
+import com.linagora.calendar.smtp.EventEmailFilter;
 import com.linagora.calendar.smtp.MailSender;
 import com.linagora.calendar.smtp.MailSenderConfiguration;
 import com.linagora.calendar.smtp.MockSmtpServerExtension;
@@ -98,7 +99,7 @@ public class MongoDBAlarmEventSchedulerTest implements AlarmEventSchedulerContra
             false,
             false,
             false);
-        MailSender.Factory mailSenderFactory = new MailSender.Factory.Default(mailSenderConfiguration);
+        MailSender.Factory mailSenderFactory = new MailSender.Factory.Default(mailSenderConfiguration, EventEmailFilter.acceptAll());
         SettingsBasedResolver settingsResolver = Mockito.mock(SettingsBasedResolver.class);
         when(settingsResolver.resolveOrDefault(any(Username.class)))
             .thenReturn(Mono.just(SettingsBasedResolver.ResolvedSettings.DEFAULT));

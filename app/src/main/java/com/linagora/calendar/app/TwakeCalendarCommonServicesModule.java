@@ -22,7 +22,6 @@ import java.util.Set;
 
 import jakarta.inject.Singleton;
 
-import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.james.filesystem.api.FileSystem;
 import org.apache.james.filesystem.api.JamesDirectoriesProvider;
 import org.apache.james.modules.CleanupTaskModule;
@@ -44,7 +43,6 @@ import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.name.Named;
 import com.linagora.calendar.storage.AlarmEventFactory;
-import com.linagora.calendar.storage.EventEmailFilter;
 import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.resolver.ConfigurationResolver;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
@@ -102,12 +100,6 @@ public class TwakeCalendarCommonServicesModule extends AbstractModule {
     SettingsBasedResolver provideSettingsBasedResolver(SimpleSessionProvider sessionProvider,
                                                        ConfigurationResolver configurationResolver) {
         return SettingsBasedResolver.of(configurationResolver, sessionProvider, Set.of(SettingsBasedResolver.LanguageSettingReader.INSTANCE, SettingsBasedResolver.TimeZoneSettingReader.INSTANCE));
-    }
-
-    @Provides
-    @Singleton
-    public EventEmailFilter provideEventEmailFilter(PropertiesProvider propertiesProvider) throws ConfigurationException {
-        return EventEmailFilter.from(propertiesProvider);
     }
 
     @Provides

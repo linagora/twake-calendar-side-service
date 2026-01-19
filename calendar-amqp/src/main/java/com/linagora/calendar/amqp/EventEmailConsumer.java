@@ -46,7 +46,7 @@ import com.linagora.calendar.amqp.model.CalendarEventCounterNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventInviteNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventReplyNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventUpdateNotificationEmail;
-import com.linagora.calendar.storage.EventEmailFilter;
+import com.linagora.calendar.smtp.EventEmailFilter;
 import com.rabbitmq.client.BuiltinExchangeType;
 
 import net.fortuna.ical4j.model.property.Method;

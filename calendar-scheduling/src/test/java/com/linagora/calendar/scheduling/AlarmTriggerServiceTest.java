@@ -67,6 +67,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.mockito.Mockito;
 
 import com.github.fge.lambdas.Throwing;
+import com.linagora.calendar.smtp.EventEmailFilter;
 import com.linagora.calendar.smtp.MailSender;
 import com.linagora.calendar.smtp.MailSenderConfiguration;
 import com.linagora.calendar.smtp.MockSmtpServerExtension;
@@ -125,7 +126,7 @@ public class AlarmTriggerServiceTest {
             false,
             false,
             false);
-        MailSender.Factory mailSenderFactory = new MailSender.Factory.Default(mailSenderConfiguration);
+        MailSender.Factory mailSenderFactory = new MailSender.Factory.Default(mailSenderConfiguration, EventEmailFilter.acceptAll());
 
         FileSystemImpl fileSystem = FileSystemImpl.forTesting();
         Path templateDirectory = Paths.get(Paths.get("").toAbsolutePath().getParent().toString(),

@@ -16,9 +16,10 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage;
+package com.linagora.calendar.smtp;
 
 import java.io.FileNotFoundException;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -31,6 +32,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.github.fge.lambdas.Throwing;
+import com.google.common.collect.ImmutableSet;
 
 public interface EventEmailFilter {
 
@@ -39,12 +41,14 @@ public interface EventEmailFilter {
 
     boolean shouldProcess(MailAddress mailAddress);
 
+    Optional<Mail> filterRecipients(Mail mail);
+
     static EventEmailFilter from(PropertiesProvider propertiesProvider) throws ConfigurationException {
         try {
             Configuration configuration = propertiesProvider.getConfiguration("configuration");
             Set<MailAddress> whiteList = Stream.of(configuration.getStringArray(ALLOWED_RECIPIENTS_PROPERTY))
                 .map(Throwing.function(MailAddress::new))
-                .collect(Collectors.toSet());
+                .collect(ImmutableSet.toImmutableSet());
 
             if (!whiteList.isEmpty()) {
                 return new WhitelistRecipientFilter(whiteList);
@@ -82,12 +86,34 @@ public interface EventEmailFilter {
             LOGGER.debug("Processing email for recipient {}: {}", recipientEmail.asString(), result ? "allowed" : "not allowed");
             return result;
         }
+
+        @Override
+        public Optional<Mail> filterRecipients(Mail mail) {
+            Set<MailAddress> filteredRecipients = mail.recipients().stream()
+                .filter(this::shouldProcess)
+                .collect(ImmutableSet.toImmutableSet());
+
+            if (filteredRecipients.isEmpty()) {
+                LOGGER.debug("No recipients allowed for mail, skipping sending.");
+                return Optional.empty();
+            } else {
+                if (filteredRecipients.size() < mail.recipients().size()) {
+                    LOGGER.debug("Some recipients were filtered out, sending mail to allowed recipients only.");
+                }
+                return Optional.of(new Mail(mail.sender(), filteredRecipients, mail.message()));
+            }
+        }
     }
 
     class NoOpEventEmailFilter implements EventEmailFilter {
         @Override
         public boolean shouldProcess(MailAddress recipientEmail) {
             return true; // No filtering, process all emails
+        }
+
+        @Override
+        public Optional<Mail> filterRecipients(Mail mail) {
+            return Optional.of(mail); // No filtering, return the mail as is
         }
     }
 }
