@@ -213,6 +213,7 @@ public class AlarmScheduleTest {
             softly.assertThat(alarmEvent.eventStartTime()).isEqualTo(parse("30250801T100000Z"));
             softly.assertThat(alarmEvent.recurring()).isFalse();
             softly.assertThat(alarmEvent.recipient().asString()).isEqualTo(openPaaSUser.username().asString());
+            softly.assertThat(alarmEvent.eventPath()).isEqualTo("/calendars/" + openPaaSUser.id() + "/" + openPaaSUser.id() + "/" + eventId + ".ics");
         });
     }
 
@@ -324,12 +325,14 @@ public class AlarmScheduleTest {
             softly.assertThat(alarmEvent.recurring()).isTrue();
             softly.assertThat(alarmEvent.recurrenceId().get()).isEqualTo("30250801T100000Z");
             softly.assertThat(alarmEvent.recipient().asString()).isEqualTo(openPaaSUser.username().asString());
+            softly.assertThat(alarmEvent.eventPath()).isEqualTo("/calendars/" + openPaaSUser.id() + "/" + openPaaSUser.id() + "/" + uid1 + ".ics");
 
             softly.assertThat(alarmEvent2.eventUid().value()).isEqualTo(uid2);
             softly.assertThat(alarmEvent2.alarmTime()).isEqualTo(parse("30250801T093000Z"));
             softly.assertThat(alarmEvent2.eventStartTime()).isEqualTo(parse("30250801T100000Z"));
             softly.assertThat(alarmEvent2.recurring()).isFalse();
             softly.assertThat(alarmEvent2.recipient().asString()).isEqualTo(openPaaSUser.username().asString());
+            softly.assertThat(alarmEvent2.eventPath()).isEqualTo("/calendars/" + openPaaSUser.id() + "/" + openPaaSUser.id() + "/" + uid2 + ".ics");
         });
     }
 

@@ -36,6 +36,8 @@ import com.github.fge.lambdas.Throwing;
 import com.google.common.base.MoreObjects;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.dto.CalendarReportXmlResponse;
+import com.linagora.calendar.dav.model.CalendarQuery;
 import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.AlarmEventDAO;
 import com.linagora.calendar.storage.AlarmEventFactory;
@@ -46,14 +48,13 @@ import com.linagora.calendar.storage.event.AlarmInstantFactory;
 import com.linagora.calendar.storage.event.EventParseUtils;
 
 import net.fortuna.ical4j.model.Calendar;
-import net.fortuna.ical4j.model.ComponentList;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 public class AlarmScheduleService {
 
-    public record ScheduledItem(Calendar calendar, Username username, CalendarURL calendarURL) {
+    public record ScheduledItem(Calendar calendar, Username username, CalendarURL calendarURL, String eventPath) {
     }
 
     public static class Context {
@@ -151,7 +152,7 @@ public class AlarmScheduleService {
                     alarmInstant.recipients(),
                     scheduledItem.calendar(),
                     alarmInstant,
-                    ""))
+                    scheduledItem.eventPath()))
                 .flatMap(alarmEvent -> insertAlarmEvent(scheduledItem.username(), alarmEvent))
                 .then())
             .then(Mono.fromCallable(() -> {
@@ -185,27 +186,26 @@ public class AlarmScheduleService {
     }
 
     private Flux<ScheduledItem> collectEvents(Context context, OpenPaaSUser user, CalendarURL calendarURL) {
-        return calDavClient.export(calendarURL, user.username())
-            .flatMap(bytes -> Mono.fromCallable(() -> CalendarUtil.parseIcs(bytes))
+        return calDavClient.calendarQueryReportXml(user.username(), calendarURL, CalendarQuery.ofFilters())
+            .flatMapMany(response -> Flux.fromIterable(response.extractCalendarObjects())
                 .subscribeOn(Schedulers.boundedElastic()))
-            .flatMapMany(calendar -> collectEvents(context, user, calendarURL, calendar))
+            .flatMap(calendarObject -> collectEvents(context, user, calendarURL, calendarObject), DEFAULT_CONCURRENCY)
             .onErrorResume(e -> {
                 LOGGER.error("Error while doing task {} for user {} and calendar url {}", TASK_NAME.asString(), user.username().asString(), calendarURL.serialize(), e);
                 context.incrementFailedCalendar();
-                return Mono.empty();
+                return Flux.empty();
             });
     }
 
-    private Flux<ScheduledItem> collectEvents(Context context, OpenPaaSUser user, CalendarURL calendarURL, Calendar exportedCalendar) {
-        return Mono.fromCallable(() -> EventParseUtils.groupByUid(exportedCalendar))
-            .flatMapMany(map -> Flux.fromIterable(map.entrySet())
-                .map(entry -> new Calendar(new ComponentList<>(entry.getValue())))
-                .map(calendar -> new ScheduledItem(calendar, user.username(), calendarURL)))
+    private Mono<ScheduledItem> collectEvents(Context context, OpenPaaSUser user, CalendarURL calendarURL, CalendarReportXmlResponse.CalendarObject calendarObject) {
+        return Mono.fromCallable(() -> CalendarUtil.parseIcs(calendarObject.calendarData()))
+            .subscribeOn(Schedulers.boundedElastic())
+            .map(calendar -> new ScheduledItem(calendar, user.username(), calendarURL, calendarObject.href().toString()))
             .onErrorResume(e -> {
-                LOGGER.error("Error while doing task {} for user {} and calendar url {}",
-                    TASK_NAME.asString(), user.username().asString(), calendarURL.serialize(), e);
+                LOGGER.error("Error while doing task {} for user {} and calendar url {} and eventPath {}",
+                    TASK_NAME.asString(), user.username().asString(), calendarURL.serialize(), calendarObject.href().toString(), e);
                 context.incrementFailedEvent();
-                return Flux.empty();
+                return Mono.empty();
             });
     }
 }
