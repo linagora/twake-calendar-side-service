@@ -16,37 +16,19 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.smtp;
+package org.apache.james.events;
 
-import java.io.FileNotFoundException;
+import com.linagora.calendar.storage.UsernameRegistrationKey;
 
-import org.apache.commons.configuration2.ex.ConfigurationException;
-import org.apache.james.utils.PropertiesProvider;
+public class UsernameRegistrationKeyFactory implements RegistrationKey.Factory {
 
-import com.google.inject.AbstractModule;
-import com.google.inject.Provides;
-import com.google.inject.Scopes;
-import com.google.inject.Singleton;
-import com.linagora.calendar.smtp.template.MailTemplateModule;
-
-public class SmtpModule extends AbstractModule {
     @Override
-    protected void configure() {
-        bind(MailSender.Factory.Default.class).in(Scopes.SINGLETON);
-        bind(MailSender.Factory.class).to(MailSender.Factory.Default.class);
-
-        install(new MailTemplateModule());
+    public Class<? extends RegistrationKey> forClass() {
+        return UsernameRegistrationKey.class;
     }
 
-    @Provides
-    @Singleton
-    public MailSenderConfiguration provideDavConfiguration(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
-        return MailSenderConfiguration.from(propertiesProvider.getConfiguration("configuration"));
-    }
-
-    @Provides
-    @Singleton
-    public EventEmailFilter provideEventEmailFilter(PropertiesProvider propertiesProvider) throws ConfigurationException {
-        return EventEmailFilter.from(propertiesProvider);
+    @Override
+    public RegistrationKey fromString(String asString) {
+        return UsernameRegistrationKey.fromString(asString);
     }
 }

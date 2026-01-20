@@ -31,6 +31,10 @@ import java.util.Optional;
 
 import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
+import org.apache.james.events.InVMEventBus;
+import org.apache.james.events.MemoryEventDeadLetters;
+import org.apache.james.events.RetryBackoffConfiguration;
+import org.apache.james.events.delivery.InVmEventDelivery;
 import org.apache.james.metrics.tests.RecordingMetricFactory;
 import org.apache.james.server.core.filesystem.FileSystemImpl;
 import org.apache.james.util.Port;
@@ -40,6 +44,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.mockito.Mockito;
 
+import com.linagora.calendar.smtp.EventEmailFilter;
 import com.linagora.calendar.smtp.MailSender;
 import com.linagora.calendar.smtp.MailSenderConfiguration;
 import com.linagora.calendar.smtp.MockSmtpServerExtension;
@@ -65,6 +70,12 @@ import reactor.core.publisher.Mono;
 
 public class MongoDBAlarmEventSchedulerTest implements AlarmEventSchedulerContract {
 
+    private static final RetryBackoffConfiguration RETRY_BACKOFF_CONFIGURATION = RetryBackoffConfiguration.builder()
+        .maxRetries(3)
+        .firstBackoff(Duration.ofMillis(5))
+        .jitterFactor(0.5)
+        .build();
+
     @RegisterExtension
     static final MockSmtpServerExtension mockSmtpExtension = new MockSmtpServerExtension();
     @RegisterExtension
@@ -88,7 +99,7 @@ public class MongoDBAlarmEventSchedulerTest implements AlarmEventSchedulerContra
             false,
             false,
             false);
-        MailSender.Factory mailSenderFactory = new MailSender.Factory.Default(mailSenderConfiguration);
+        MailSender.Factory mailSenderFactory = new MailSender.Factory.Default(mailSenderConfiguration, EventEmailFilter.acceptAll());
         SettingsBasedResolver settingsResolver = Mockito.mock(SettingsBasedResolver.class);
         when(settingsResolver.resolveOrDefault(any(Username.class)))
             .thenReturn(Mono.just(SettingsBasedResolver.ResolvedSettings.DEFAULT));
@@ -109,7 +120,8 @@ public class MongoDBAlarmEventSchedulerTest implements AlarmEventSchedulerContra
             settingsResolver,
             messageGeneratorFactory,
             new AlarmInstantFactory.Default(clock),
-            mailTemplateConfig);
+            mailTemplateConfig,
+            new InVMEventBus(new InVmEventDelivery(new RecordingMetricFactory()), RETRY_BACKOFF_CONFIGURATION, new MemoryEventDeadLetters()));
 
         AlarmEventSchedulerConfiguration alarmEventSchedulerConfiguration = new AlarmEventSchedulerConfiguration(
             Duration.ofSeconds(1),

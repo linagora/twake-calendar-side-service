@@ -42,6 +42,7 @@ import org.apache.james.utils.PropertiesProvider;
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.name.Named;
+import com.linagora.calendar.storage.AlarmEventFactory;
 import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.resolver.ConfigurationResolver;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
@@ -99,5 +100,11 @@ public class TwakeCalendarCommonServicesModule extends AbstractModule {
     SettingsBasedResolver provideSettingsBasedResolver(SimpleSessionProvider sessionProvider,
                                                        ConfigurationResolver configurationResolver) {
         return SettingsBasedResolver.of(configurationResolver, sessionProvider, Set.of(SettingsBasedResolver.LanguageSettingReader.INSTANCE, SettingsBasedResolver.TimeZoneSettingReader.INSTANCE));
+    }
+
+    @Provides
+    @Singleton
+    AlarmEventFactory provideAlarmEventFactory() {
+        return new AlarmEventFactory.Default();
     }
 }

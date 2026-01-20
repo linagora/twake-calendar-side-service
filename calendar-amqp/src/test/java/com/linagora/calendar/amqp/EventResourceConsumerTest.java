@@ -75,6 +75,7 @@ import org.testcontainers.shaded.org.awaitility.Awaitility;
 import org.testcontainers.shaded.org.awaitility.core.ConditionFactory;
 
 import com.github.fge.lambdas.Throwing;
+import com.linagora.calendar.smtp.EventEmailFilter;
 import com.linagora.calendar.api.JwtSigner;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalDavEventRepository;
@@ -209,7 +210,7 @@ public class EventResourceConsumerTest {
             false,
             false);
 
-        MailSender.Factory mailSenderFactory = new MailSender.Factory.Default(mailSenderConfiguration);
+        MailSender.Factory mailSenderFactory = new MailSender.Factory.Default(mailSenderConfiguration, EventEmailFilter.acceptAll());
 
         FileSystemImpl fileSystem = FileSystemImpl.forTesting();
 

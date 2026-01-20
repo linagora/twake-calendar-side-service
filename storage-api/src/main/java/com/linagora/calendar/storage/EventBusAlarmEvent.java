@@ -16,37 +16,31 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.smtp;
+package com.linagora.calendar.storage;
 
-import java.io.FileNotFoundException;
+import java.time.Instant;
 
-import org.apache.commons.configuration2.ex.ConfigurationException;
-import org.apache.james.utils.PropertiesProvider;
+import org.apache.james.core.Username;
+import org.apache.james.events.Event;
 
-import com.google.inject.AbstractModule;
-import com.google.inject.Provides;
-import com.google.inject.Scopes;
-import com.google.inject.Singleton;
-import com.linagora.calendar.smtp.template.MailTemplateModule;
+public record EventBusAlarmEvent(Event.EventId eventId,
+                                  Username username,
+                                  String eventSummary,
+                                  String eventURL,
+                                  Instant eventStartTime) implements Event {
 
-public class SmtpModule extends AbstractModule {
     @Override
-    protected void configure() {
-        bind(MailSender.Factory.Default.class).in(Scopes.SINGLETON);
-        bind(MailSender.Factory.class).to(MailSender.Factory.Default.class);
-
-        install(new MailTemplateModule());
+    public Username getUsername() {
+        return username;
     }
 
-    @Provides
-    @Singleton
-    public MailSenderConfiguration provideDavConfiguration(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
-        return MailSenderConfiguration.from(propertiesProvider.getConfiguration("configuration"));
+    @Override
+    public boolean isNoop() {
+        return false;
     }
 
-    @Provides
-    @Singleton
-    public EventEmailFilter provideEventEmailFilter(PropertiesProvider propertiesProvider) throws ConfigurationException {
-        return EventEmailFilter.from(propertiesProvider);
+    @Override
+    public EventId getEventId() {
+        return eventId;
     }
 }

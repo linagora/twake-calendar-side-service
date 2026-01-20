@@ -72,6 +72,7 @@ import org.testcontainers.shaded.org.awaitility.Awaitility;
 import org.testcontainers.shaded.org.awaitility.core.ConditionFactory;
 
 import com.github.fge.lambdas.Throwing;
+import com.linagora.calendar.smtp.EventEmailFilter;
 import com.linagora.calendar.api.EventParticipationActionLinkFactory;
 import com.linagora.calendar.api.Participation;
 import com.linagora.calendar.api.ParticipationTokenSigner;
@@ -192,7 +193,7 @@ public class EventUpdateEmailConsumerTest {
             false,
             false);
 
-        MailSender.Factory mailSenderFactory = new MailSender.Factory.Default(mailSenderConfiguration);
+        MailSender.Factory mailSenderFactory = new MailSender.Factory.Default(mailSenderConfiguration, EventEmailFilter.acceptAll());
 
         FileSystemImpl fileSystem = FileSystemImpl.forTesting();
 

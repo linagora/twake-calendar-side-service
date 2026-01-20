@@ -61,6 +61,7 @@ import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.AlarmEventDAO;
+import com.linagora.calendar.storage.AlarmEventFactory;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.MemoryAlarmEventDAO;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -99,7 +100,8 @@ public class AlarmScheduleTest {
         alarmEventDAO = spy(new MemoryAlarmEventDAO());
         calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         clock = new UpdatableTickingClock(Instant.now());
-        alarmScheduleService = new AlarmScheduleService(userDAO, calDavClient, alarmEventDAO, new AlarmInstantFactory.Default(clock));
+        alarmScheduleService = new AlarmScheduleService(userDAO, calDavClient, alarmEventDAO, new AlarmInstantFactory.Default(clock),
+            new AlarmEventFactory.Default());
 
         this.openPaaSUser = sabreDavExtension.newTestUser();
         this.openPaaSUser2 = sabreDavExtension.newTestUser();

@@ -19,10 +19,13 @@
 package org.apache.james.events;
 
 import java.net.URI;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+
+import org.apache.james.core.Username;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
@@ -32,6 +35,7 @@ import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.storage.CalendarChangeEvent;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.EventBusAlarmEvent;
 import com.linagora.calendar.storage.ImportEvent;
 import com.linagora.calendar.storage.ImportEvent.ImportStatus;
 import com.linagora.calendar.storage.model.ImportId;
@@ -44,6 +48,7 @@ public class CalendarEventSerializer implements EventSerializer {
     @JsonSubTypes({
         @JsonSubTypes.Type(value = CalendarChangeDTO.class),
         @JsonSubTypes.Type(value = ImportEventDTO.class),
+        @JsonSubTypes.Type(value = AlarmEventDTO.class)
     })
     interface EventDTO {
     }
@@ -95,6 +100,26 @@ public class CalendarEventSerializer implements EventSerializer {
         this.objectMapper.registerModule(new Jdk8Module());
     }
 
+    record AlarmEventDTO(String eventId, String username, String eventSummary, String eventURL, String eventStartTime) implements EventDTO {
+        public static AlarmEventDTO from(EventBusAlarmEvent event) {
+            return new AlarmEventDTO(
+                event.getEventId().getId().toString(),
+                event.getUsername().asString(),
+                event.eventSummary(),
+                event.eventURL(),
+                event.eventStartTime().toString());
+        }
+
+        public EventBusAlarmEvent asEvent() {
+            return new EventBusAlarmEvent(
+                Event.EventId.of(this.eventId()),
+                Username.of(this.username()),
+                this.eventSummary(),
+                this.eventURL(),
+                Instant.parse(this.eventStartTime()));
+        }
+    }
+
     @Override
     public String toJson(Event event) {
         try {
@@ -132,6 +157,7 @@ public class CalendarEventSerializer implements EventSerializer {
         return switch (event) {
             case CalendarChangeEvent calendarChangeEvent -> CalendarChangeDTO.from(calendarChangeEvent);
             case ImportEvent importEvent -> ImportEventDTO.from(importEvent);
+            case EventBusAlarmEvent alarmEvent -> AlarmEventDTO.from(alarmEvent);
             default -> throw new IllegalArgumentException("Unsupported event type: " + event.getClass());
         };
     }
@@ -140,6 +166,7 @@ public class CalendarEventSerializer implements EventSerializer {
         return switch (eventDTO) {
             case CalendarChangeDTO calendarChangeDTO -> calendarChangeDTO.asEvent();
             case ImportEventDTO importEventDTO -> importEventDTO.asEvent();
+            case AlarmEventDTO alarmEventDTO -> alarmEventDTO.asEvent();
             default -> throw new IllegalArgumentException("Unsupported event DTO type: " + eventDTO.getClass());
         };
     }

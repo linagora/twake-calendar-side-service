@@ -16,37 +16,34 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.smtp;
+package com.linagora.calendar.storage;
 
-import java.io.FileNotFoundException;
+import java.util.List;
 
-import org.apache.commons.configuration2.ex.ConfigurationException;
-import org.apache.james.utils.PropertiesProvider;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.james.core.Username;
+import org.apache.james.events.RegistrationKey;
 
-import com.google.inject.AbstractModule;
-import com.google.inject.Provides;
-import com.google.inject.Scopes;
-import com.google.inject.Singleton;
-import com.linagora.calendar.smtp.template.MailTemplateModule;
+import com.google.common.base.Preconditions;
+import com.google.common.base.Splitter;
 
-public class SmtpModule extends AbstractModule {
+public record UsernameRegistrationKey(Username username) implements RegistrationKey {
+
+    public static final String KEY_PREFIX = "username";
+    private static final String DELIMITER = ":";
+
+    public static UsernameRegistrationKey fromString(String asString) {
+        Preconditions.checkArgument(StringUtils.isNoneEmpty(asString), "RegistrationKey string must not be null");
+        Preconditions.checkArgument(asString.startsWith(KEY_PREFIX + DELIMITER), "Invalid UsernameRegistrationKey: %s", asString);
+        List<String> parts = Splitter.on(DELIMITER)
+            .omitEmptyStrings().trimResults()
+            .splitToList(asString);
+        Preconditions.checkArgument(parts.size() == 2, "Invalid UsernameRegistrationKey format: %s", asString);
+        return new UsernameRegistrationKey(Username.of(parts.get(1)));
+    }
+
     @Override
-    protected void configure() {
-        bind(MailSender.Factory.Default.class).in(Scopes.SINGLETON);
-        bind(MailSender.Factory.class).to(MailSender.Factory.Default.class);
-
-        install(new MailTemplateModule());
-    }
-
-    @Provides
-    @Singleton
-    public MailSenderConfiguration provideDavConfiguration(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
-        return MailSenderConfiguration.from(propertiesProvider.getConfiguration("configuration"));
-    }
-
-    @Provides
-    @Singleton
-    public EventEmailFilter provideEventEmailFilter(PropertiesProvider propertiesProvider) throws ConfigurationException {
-        return EventEmailFilter.from(propertiesProvider);
+    public String asString() {
+        return KEY_PREFIX + DELIMITER + username.asString();
     }
 }

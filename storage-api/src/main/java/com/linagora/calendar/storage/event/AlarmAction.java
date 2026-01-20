@@ -16,37 +16,28 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.smtp;
+package com.linagora.calendar.storage.event;
 
-import java.io.FileNotFoundException;
+import java.util.Arrays;
+import java.util.Locale;
+import java.util.Optional;
+import java.util.Set;
 
-import org.apache.commons.configuration2.ex.ConfigurationException;
-import org.apache.james.utils.PropertiesProvider;
+import com.google.common.collect.ImmutableSet;
 
-import com.google.inject.AbstractModule;
-import com.google.inject.Provides;
-import com.google.inject.Scopes;
-import com.google.inject.Singleton;
-import com.linagora.calendar.smtp.template.MailTemplateModule;
+public enum AlarmAction {
+    EMAIL,
+    DISPLAY;
 
-public class SmtpModule extends AbstractModule {
-    @Override
-    protected void configure() {
-        bind(MailSender.Factory.Default.class).in(Scopes.SINGLETON);
-        bind(MailSender.Factory.class).to(MailSender.Factory.Default.class);
+    public static final Set<String> SUPPORTED_VALUES = Arrays.stream(AlarmAction.values()).map(AlarmAction::getValue).collect(ImmutableSet.toImmutableSet());
 
-        install(new MailTemplateModule());
+    public static Optional<AlarmAction> fromString(String value) {
+        return Arrays.stream(values())
+            .filter(action -> action.name().equalsIgnoreCase(value))
+            .findFirst();
     }
 
-    @Provides
-    @Singleton
-    public MailSenderConfiguration provideDavConfiguration(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
-        return MailSenderConfiguration.from(propertiesProvider.getConfiguration("configuration"));
-    }
-
-    @Provides
-    @Singleton
-    public EventEmailFilter provideEventEmailFilter(PropertiesProvider propertiesProvider) throws ConfigurationException {
-        return EventEmailFilter.from(propertiesProvider);
+    public String getValue() {
+        return name().toUpperCase(Locale.US);
     }
 }

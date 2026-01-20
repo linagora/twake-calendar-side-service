@@ -22,7 +22,6 @@ import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingR
 
 import java.net.URI;
 import java.util.List;
-import java.util.Optional;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
@@ -36,17 +35,17 @@ import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavCalendarObject;
+import com.linagora.calendar.smtp.EventEmailFilter;
 import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.AlarmEventDAO;
+import com.linagora.calendar.storage.AlarmEventFactory;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
 import com.linagora.calendar.storage.event.AlarmInstantFactory.AlarmInstant;
-import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.eventsearch.EventUid;
 
 import net.fortuna.ical4j.model.Calendar;
-import net.fortuna.ical4j.model.property.DateProperty;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -58,6 +57,7 @@ public class EventAlarmHandler {
     private final CalDavClient calDavClient;
     private final OpenPaaSUserDAO openPaaSUserDAO;
     private final SettingsBasedResolver settingsResolver;
+    private final AlarmEventFactory alarmEventFactory;
     private final EventEmailFilter eventEmailFilter;
 
     @Inject
@@ -67,12 +67,14 @@ public class EventAlarmHandler {
                              CalDavClient calDavClient,
                              OpenPaaSUserDAO openPaaSUserDAO,
                              @Named("alarm") SettingsBasedResolver settingsResolver,
+                             AlarmEventFactory alarmEventFactory,
                              EventEmailFilter eventEmailFilter) {
         this.alarmInstantFactory = alarmInstantFactory;
         this.alarmEventDAO = alarmEventDAO;
         this.calDavClient = calDavClient;
         this.openPaaSUserDAO = openPaaSUserDAO;
         this.settingsResolver = settingsResolver;
+        this.alarmEventFactory = alarmEventFactory;
         this.eventEmailFilter = eventEmailFilter;
     }
 
@@ -109,7 +111,7 @@ public class EventAlarmHandler {
             .flatMap(maybeNextAlarmInstant -> {
                 if (maybeNextAlarmInstant.isPresent()) {
                     LOGGER.debug("Next alarm found for {} at {}", username.asString(), alarmMessageDTO.eventPath());
-                    return upsertUpcomingAlarmRequest(username, eventCalendar, maybeNextAlarmInstant.get());
+                    return upsertUpcomingAlarmRequest(username, eventCalendar, maybeNextAlarmInstant.get(), alarmMessageDTO.eventPath());
                 } else {
                     LOGGER.debug("No upcoming alarm found for {} at {}", username.asString(), alarmMessageDTO.eventPath());
                     return doDeleteAlarmEvent(username, extractEventUid(alarmMessageDTO));
@@ -117,8 +119,12 @@ public class EventAlarmHandler {
             });
     }
 
-    private Mono<Void> upsertUpcomingAlarmRequest(Username username, Calendar eventCalendar, AlarmInstant nextAlarmInstant) {
-        return buildAlarmEvent(eventCalendar, nextAlarmInstant)
+    private Mono<Void> upsertUpcomingAlarmRequest(Username username, Calendar calendarEvent, AlarmInstant nextAlarmInstant, String eventPath) {
+        return Flux.fromIterable(alarmEventFactory.buildAlarmEvent(username,
+                nextAlarmInstant.recipients().stream().filter(eventEmailFilter::shouldProcess).toList(),
+                calendarEvent,
+                nextAlarmInstant,
+                eventPath))
             .flatMap(alarmEvent -> upsertAlarmEvent(username, alarmEvent))
             .then();
     }
@@ -133,23 +139,6 @@ public class EventAlarmHandler {
                 LOGGER.debug("Creating new alarm event: {}", alarmEvent.eventUid().value());
                 return alarmEventDAO.create(alarmEvent).thenReturn(alarmEvent);
             }));
-    }
-
-    private Flux<AlarmEvent> buildAlarmEvent(Calendar eventCalendar, AlarmInstant nextAlarmInstant) {
-        boolean recurringEvent = EventParseUtils.isRecurringEvent(eventCalendar);
-        EventUid eventUid = new EventUid(EventParseUtils.extractEventUid(eventCalendar));
-        Optional<String> recurrenceIdValue = nextAlarmInstant.recurrenceId().map(DateProperty::getValue);
-        String eventCalendarString = eventCalendar.toString();
-
-        return Flux.fromIterable(nextAlarmInstant.recipients())
-            .filter(eventEmailFilter::shouldProcess)
-            .map(recipient -> new AlarmEvent(
-                eventUid,
-                nextAlarmInstant.alarmTime(),
-                nextAlarmInstant.eventStartTime(),
-                recurringEvent,
-                recurrenceIdValue,
-                recipient, eventCalendarString));
     }
 
     public Mono<Void> handleDelete(CalendarAlarmMessageDTO alarmMessageDTO) {

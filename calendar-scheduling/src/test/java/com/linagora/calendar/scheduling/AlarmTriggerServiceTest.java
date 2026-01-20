@@ -51,6 +51,11 @@ import jakarta.mail.internet.AddressException;
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
+import org.apache.james.events.InVMEventBus;
+import org.apache.james.events.MemoryEventDeadLetters;
+import org.apache.james.events.RetryBackoffConfiguration;
+import org.apache.james.events.delivery.InVmEventDelivery;
+import org.apache.james.metrics.tests.RecordingMetricFactory;
 import org.apache.james.server.core.filesystem.FileSystemImpl;
 import org.apache.james.util.Port;
 import org.apache.james.utils.UpdatableTickingClock;
@@ -62,6 +67,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.mockito.Mockito;
 
 import com.github.fge.lambdas.Throwing;
+import com.linagora.calendar.smtp.EventEmailFilter;
 import com.linagora.calendar.smtp.MailSender;
 import com.linagora.calendar.smtp.MailSenderConfiguration;
 import com.linagora.calendar.smtp.MockSmtpServerExtension;
@@ -71,6 +77,7 @@ import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.MemoryAlarmEventDAO;
 import com.linagora.calendar.storage.MemoryOpenPaaSUserDAO;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
+import com.linagora.calendar.storage.event.AlarmAction;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
 import com.linagora.calendar.storage.eventsearch.EventUid;
 
@@ -80,6 +87,13 @@ import io.restassured.specification.RequestSpecification;
 import reactor.core.publisher.Mono;
 
 public class AlarmTriggerServiceTest {
+
+    private static final RetryBackoffConfiguration RETRY_BACKOFF_CONFIGURATION = RetryBackoffConfiguration.builder()
+        .maxRetries(3)
+        .firstBackoff(Duration.ofMillis(5))
+        .jitterFactor(0.5)
+        .build();
+
     static final ConditionFactory calmlyAwait = Awaitility.with()
         .pollInterval(Duration.ofMillis(500))
         .and()
@@ -112,7 +126,7 @@ public class AlarmTriggerServiceTest {
             false,
             false,
             false);
-        MailSender.Factory mailSenderFactory = new MailSender.Factory.Default(mailSenderConfiguration);
+        MailSender.Factory mailSenderFactory = new MailSender.Factory.Default(mailSenderConfiguration, EventEmailFilter.acceptAll());
 
         FileSystemImpl fileSystem = FileSystemImpl.forTesting();
         Path templateDirectory = Paths.get(Paths.get("").toAbsolutePath().getParent().toString(),
@@ -134,7 +148,8 @@ public class AlarmTriggerServiceTest {
             settingsResolver,
             messageGeneratorFactory,
             new AlarmInstantFactory.Default(clock),
-            mailTemplateConfig
+            mailTemplateConfig,
+            new InVMEventBus(new InVmEventDelivery(new RecordingMetricFactory()), RETRY_BACKOFF_CONFIGURATION, new MemoryEventDeadLetters())
         );
 
         requestSpecification = new RequestSpecBuilder()
@@ -175,10 +190,12 @@ public class AlarmTriggerServiceTest {
             ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:organizer@abc.com
             END:VEVENT
             END:VCALENDAR
-            """);
+            """,
+            "/calendars/xxx/yyy/zzz.ics",
+            AlarmAction.EMAIL);
         alarmEventDAO.create(event).block();
 
-        testee.sendMailAndCleanup(event).block();
+        testee.sendAlarmAndCleanup(event).block();
 
         // Wait for the mail to be received via mock SMTP
         awaitAtMost.atMost(Duration.ofSeconds(20))
@@ -245,11 +262,13 @@ public class AlarmTriggerServiceTest {
                 END:VALARM
                 END:VEVENT
                 END:VCALENDAR
-                """);
+                """,
+            "/calendars/xxx/yyy/zzz.ics",
+            AlarmAction.EMAIL);
         alarmEventDAO.create(event).block();
 
         clock.setInstant(parse("30250801T083000Z"));
-        testee.sendMailAndCleanup(event).block();
+        testee.sendAlarmAndCleanup(event).block();
 
         awaitAtMost.untilAsserted(() ->
             assertThat(smtpMailsResponse().getList("")).hasSize(1));
@@ -257,7 +276,7 @@ public class AlarmTriggerServiceTest {
         AlarmEvent persistedEvent = alarmEventDAO.find(eventUid, recipient).block();
         assertThat(persistedEvent).isNotNull();
         assertThat(persistedEvent.alarmTime()).isEqualTo(parse("30250801T095000Z"));
-        testee.sendMailAndCleanup(persistedEvent).block();
+        testee.sendAlarmAndCleanup(persistedEvent).block();
 
         awaitAtMost.untilAsserted(() ->
             assertThat(smtpMailsResponse().getList("")).hasSize(2));
@@ -300,11 +319,13 @@ public class AlarmTriggerServiceTest {
                 END:VALARM
                 END:VEVENT
                 END:VCALENDAR
-                """);
+                """,
+            "/calendars/xxx/yyy/zzz.ics",
+            AlarmAction.EMAIL);
         alarmEventDAO.create(event).block();
 
         clock.setInstant(parse("30250801T095500Z"));
-        testee.sendMailAndCleanup(event).block();
+        testee.sendAlarmAndCleanup(event).block();
 
         awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponse().getList("")).hasSize(1));
 
@@ -359,13 +380,15 @@ public class AlarmTriggerServiceTest {
                 END:VALARM
                 END:VEVENT
                 END:VCALENDAR
-                """);
+                """,
+            "/calendars/xxx/yyy/zzz.ics",
+            AlarmAction.EMAIL);
         alarmEventDAO.create(event).block();
 
         // Current time is after both -45m and -30m → all alarms past
         clock.setInstant(parse("30250801T100100Z"));
 
-        testee.sendMailAndCleanup(event).block();
+        testee.sendAlarmAndCleanup(event).block();
 
         awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponse().getList("")).isEmpty());
         assertThat(alarmEventDAO.find(eventUid, recipient).blockOptional()).isEmpty();
@@ -397,10 +420,12 @@ public class AlarmTriggerServiceTest {
             ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:organizer@abc.com
             END:VEVENT
             END:VCALENDAR
-            """.replace("{eventUid}", eventUid.value()));
+            """.replace("{eventUid}", eventUid.value()),
+            "/calendars/xxx/yyy/zzz.ics",
+            AlarmAction.EMAIL);
         alarmEventDAO.create(event).block();
 
-        testee.sendMailAndCleanup(event).block();
+        testee.sendAlarmAndCleanup(event).block();
 
         assertThat(alarmEventDAO.find(eventUid, new MailAddress("attendee@abc.com")).blockOptional()).isEmpty();
     }
@@ -437,10 +462,12 @@ public class AlarmTriggerServiceTest {
             END:VALARM
             END:VEVENT
             END:VCALENDAR
-            """);
+            """,
+            "/calendars/xxx/yyy/zzz.ics",
+            AlarmAction.EMAIL);
         alarmEventDAO.create(event).block();
 
-        testee.sendMailAndCleanup(event).block();
+        testee.sendAlarmAndCleanup(event).block();
 
         // Wait for the mail to be received via mock SMTP
         awaitAtMost.atMost(Duration.ofSeconds(20))
@@ -483,10 +510,12 @@ public class AlarmTriggerServiceTest {
             ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:organizer@abc.com
             END:VEVENT
             END:VCALENDAR
-            """);
+            """,
+            "/calendars/xxx/yyy/zzz.ics",
+            AlarmAction.EMAIL);
         alarmEventDAO.create(event).block();
 
-        testee.sendMailAndCleanup(event).block();
+        testee.sendAlarmAndCleanup(event).block();
 
         // Wait for the mail to be received via mock SMTP
         awaitAtMost.atMost(Duration.ofSeconds(20))
@@ -525,11 +554,13 @@ public class AlarmTriggerServiceTest {
             END:VALARM
             END:VEVENT
             END:VCALENDAR
-            """);
+            """,
+            "/calendars/xxx/yyy/zzz.ics",
+            AlarmAction.EMAIL);
         alarmEventDAO.create(event).block();
 
         clock.setInstant(parse("30250801T094500Z"));
-        testee.sendMailAndCleanup(event).block();
+        testee.sendAlarmAndCleanup(event).block();
 
         // Wait for the mail to be received via mock SMTP
         awaitAtMost.atMost(Duration.ofSeconds(20))
@@ -608,11 +639,13 @@ public class AlarmTriggerServiceTest {
             END:VALARM
             END:VEVENT
             END:VCALENDAR
-            """);
+            """,
+            "/calendars/xxx/yyy/zzz.ics",
+            AlarmAction.EMAIL);
         alarmEventDAO.create(event).block();
 
         clock.setInstant(parse("30250801T094500Z"));
-        testee.sendMailAndCleanup(event).block();
+        testee.sendAlarmAndCleanup(event).block();
 
         // Wait for the mail to be received via mock SMTP
         awaitAtMost.atMost(Duration.ofSeconds(20))
@@ -674,11 +707,13 @@ public class AlarmTriggerServiceTest {
             END:VALARM
             END:VEVENT
             END:VCALENDAR
-            """);
+            """,
+            "/calendars/xxx/yyy/zzz.ics",
+            AlarmAction.EMAIL);
         alarmEventDAO.create(event).block();
 
         clock.setInstant(parse("30250801T094500Z"));
-        testee.sendMailAndCleanup(event).block();
+        testee.sendAlarmAndCleanup(event).block();
 
         AlarmEvent actual = alarmEventDAO.find(eventUid, recipient).block();
         assertThat(actual.alarmTime()).isEqualTo(parse("30250802T094500Z"));
@@ -717,11 +752,13 @@ public class AlarmTriggerServiceTest {
             END:VALARM
             END:VEVENT
             END:VCALENDAR
-            """);
+            """,
+            "/calendars/xxx/yyy/zzz.ics",
+            AlarmAction.EMAIL);
         alarmEventDAO.create(event).block();
 
         clock.setInstant(parse("30250803T094500Z"));
-        testee.sendMailAndCleanup(event).block();
+        testee.sendAlarmAndCleanup(event).block();
 
         assertThat(alarmEventDAO.find(eventUid, recipient).blockOptional()).isEmpty();
     }
@@ -764,12 +801,14 @@ public class AlarmTriggerServiceTest {
                 END:VALARM
                 END:VEVENT
                 END:VCALENDAR
-                """);
+                """,
+            "/calendars/xxx/yyy/zzz.ics",
+            AlarmAction.EMAIL);
         alarmEventDAO.create(event).block();
 
         // First occurrence: trigger -30m alarm
         clock.setInstant(parse("30250801T093000Z"));
-        testee.sendMailAndCleanup(event).block();
+        testee.sendAlarmAndCleanup(event).block();
         awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponse().getList("")).hasSize(1));
 
         AlarmEvent updatedEvent = alarmEventDAO.find(eventUid, recipient).block();
@@ -779,7 +818,7 @@ public class AlarmTriggerServiceTest {
             .isEqualTo(parse("30250801T095000Z"));
 
         // Trigger second alarm (-10m) of first occurrence
-        testee.sendMailAndCleanup(updatedEvent).block();
+        testee.sendAlarmAndCleanup(updatedEvent).block();
         awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponse().getList("")).hasSize(2));
 
         // Move to next recurrence (day 2) -> should reset to -30m
@@ -791,7 +830,7 @@ public class AlarmTriggerServiceTest {
 
         // Trigger first alarm of second occurrence
         clock.setInstant(parse("30250802T093000Z"));
-        testee.sendMailAndCleanup(nextEvent).block();
+        testee.sendAlarmAndCleanup(nextEvent).block();
         awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponse().getList("")).hasSize(3));
     }
 
@@ -840,7 +879,9 @@ public class AlarmTriggerServiceTest {
                 END:VALARM
                 END:VEVENT
                 END:VCALENDAR
-                """);
+                """,
+            "/calendars/xxx/yyy/zzz.ics",
+            AlarmAction.EMAIL);
 
         alarmEventDAO.create(event).block();
 
@@ -848,7 +889,7 @@ public class AlarmTriggerServiceTest {
         clock.setInstant(parse("30250801T094000Z"));
 
         // Trigger service
-        testee.sendMailAndCleanup(event).block();
+        testee.sendAlarmAndCleanup(event).block();
 
         // Verify that AlarmEvent is updated to the next alarm (Bob’s -10m)
         AlarmEvent persisted = alarmEventDAO.find(eventUid, bob).block();

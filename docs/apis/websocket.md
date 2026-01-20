@@ -1,13 +1,14 @@
 # WebSocket API
 
 The Side server exposes a WebSocket endpoint allowing clients to subscribe to
-**Calendar and Address Book changes** in real time.
+**Calendar and Address Book changes** in real time, as well as receive **display alarm notifications**.
 
 This includes:
 
 - Calendar sync token updates
 - Calendar import events (ICS)
 - Address Book import events (vCard)
+- Display alarm notifications
 
 ## 1. Endpoint 
 
@@ -71,6 +72,23 @@ Format:
   "unregister": [
     "/calendars/userC/99999"
   ]
+}
+```
+
+#### Enable/Disable Display Notification
+The client can enable or disable display alarm notifications. When enabled, the client will receive alarm notifications for events with `ACTION=DISPLAY` alarms.
+
+Enable:
+```json
+{
+  "enableDisplayNotification": true
+}
+```
+
+Disable:
+```json
+{
+  "enableDisplayNotification": false
 }
 ```
 
@@ -150,6 +168,41 @@ When an address book import is triggered, the server notifies subscribed clients
   }
 }
 ```
+
+#### Display Notification response
+Response when enabling or disabling display notifications:
+```json
+{
+  "displayNotificationEnabled": true
+}
+```
+or
+```json
+{
+  "displayNotificationEnabled": false
+}
+```
+
+#### Display Alarm push
+When an alarm with `ACTION=DISPLAY` triggers for an event, the server pushes an alarm notification to all WebSocket clients that have enabled display notifications for that user.
+
+```json
+{
+  "alarms": [
+    {
+      "eventSummary": "Team Meeting",
+      "eventURL": "/calendars/baseId/calendarId/event-uid.ics",
+      "eventStartTime": "2025-01-15T10:00:00Z"
+    }
+  ]
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| eventSummary | The SUMMARY property of the calendar event |
+| eventURL | The path to the event ICS file |
+| eventStartTime | The start time of the event in ISO 8601 format |
 
 ## Notes
 

@@ -30,6 +30,7 @@ import jakarta.mail.internet.AddressException;
 import org.apache.james.core.MailAddress;
 import org.junit.jupiter.api.Test;
 
+import com.linagora.calendar.storage.event.AlarmAction;
 import com.linagora.calendar.storage.eventsearch.EventUid;
 
 public interface AlarmEventDAOContract {
@@ -47,7 +48,9 @@ public interface AlarmEventDAOContract {
             NO_RECURRING,
             Optional.empty(),
             new MailAddress("recipient@abc.com"),
-            "ics");
+            "ics",
+            "/calendars/xxx/yyy/zzz.ics",
+            AlarmAction.EMAIL);
         getDAO().create(event).block();
 
         AlarmEvent found = getDAO().find(new EventUid("1"), new MailAddress("recipient@abc.com")).block();
@@ -64,7 +67,9 @@ public interface AlarmEventDAOContract {
             NO_RECURRING,
             Optional.empty(),
             new MailAddress("recipient@abc.com"),
-            "ics");
+            "ics",
+            "/calendars/xxx/yyy/zzz.ics",
+            AlarmAction.EMAIL);
         AlarmEvent updated = new AlarmEvent(
             new EventUid("1"),
             Instant.now().truncatedTo(ChronoUnit.MILLIS),
@@ -72,7 +77,9 @@ public interface AlarmEventDAOContract {
             NO_RECURRING,
             Optional.empty(),
             new MailAddress("recipient@abc.com"),
-            "newIcs");
+            "newIcs",
+            "/calendars/xxx/yyy/zzz.ics",
+            AlarmAction.DISPLAY);
         getDAO().create(event).block();
         getDAO().update(updated).block();
 
@@ -90,7 +97,9 @@ public interface AlarmEventDAOContract {
             NO_RECURRING,
             Optional.empty(),
             new MailAddress("recipient@abc.com"),
-            "ics");
+            "ics",
+            "/calendars/xxx/yyy/zzz.ics",
+            AlarmAction.EMAIL);
         getDAO().create(event).block();
         getDAO().delete(new EventUid("1"), new MailAddress("recipient@abc.com")).block();
 
@@ -109,7 +118,9 @@ public interface AlarmEventDAOContract {
             NO_RECURRING,
             Optional.empty(),
             new MailAddress("r1@abc.com"),
-            "ics1");
+            "ics1",
+            "/calendars/xxx/yyy/zzz.ics",
+            AlarmAction.EMAIL);
         AlarmEvent e2 = new AlarmEvent(
             new EventUid("2"),
             now,
@@ -117,7 +128,9 @@ public interface AlarmEventDAOContract {
             NO_RECURRING,
             Optional.empty(),
             new MailAddress("r2@abc.com"),
-            "ics2");
+            "ics2",
+            "/calendars/xxx/yyy/zzz.ics",
+            AlarmAction.EMAIL);
         AlarmEvent e3 = new AlarmEvent(
             new EventUid("3"),
             now.plusSeconds(60),
@@ -125,7 +138,9 @@ public interface AlarmEventDAOContract {
             NO_RECURRING,
             Optional.empty(),
             new MailAddress("r3@abc.com"),
-            "ics2");
+            "ics2",
+            "/calendars/xxx/yyy/zzz.ics",
+            AlarmAction.EMAIL);
         AlarmEvent e4 = new AlarmEvent(
             new EventUid("4"),
             now.minusSeconds(60),
@@ -133,7 +148,9 @@ public interface AlarmEventDAOContract {
             NO_RECURRING,
             Optional.empty(),
             new MailAddress("r4@abc.com"),
-            "ics2");
+            "ics2",
+            "/calendars/xxx/yyy/zzz.ics",
+            AlarmAction.EMAIL);
         getDAO().create(e1).block();
         getDAO().create(e2).block();
         getDAO().create(e3).block();
@@ -144,4 +161,3 @@ public interface AlarmEventDAOContract {
         assertThat(events).containsExactlyInAnyOrder(e1, e2, e4);
     }
 }
-

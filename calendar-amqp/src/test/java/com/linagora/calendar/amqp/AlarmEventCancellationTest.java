@@ -63,12 +63,14 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mockito;
 
 import com.github.fge.lambdas.Throwing;
+import com.linagora.calendar.smtp.EventEmailFilter;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalDavEventRepository;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.AlarmEventDAO;
+import com.linagora.calendar.storage.AlarmEventFactory;
 import com.linagora.calendar.storage.MemoryAlarmEventDAO;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
@@ -171,6 +173,7 @@ public class AlarmEventCancellationTest {
             calDavClient,
             openPaaSUserDAO,
             settingsResolver,
+            new AlarmEventFactory.Default(),
             EventEmailFilter.acceptAll());
 
         EventAlarmConsumer consumer = new EventAlarmConsumer(channelPool,

@@ -46,6 +46,7 @@ import com.linagora.calendar.amqp.model.CalendarEventCounterNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventInviteNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventReplyNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventUpdateNotificationEmail;
+import com.linagora.calendar.smtp.EventEmailFilter;
 import com.rabbitmq.client.BuiltinExchangeType;
 
 import net.fortuna.ical4j.model.property.Method;
@@ -155,7 +156,7 @@ public class EventEmailConsumer implements Closeable, Startable {
     private Mono<Void> consumeMessage(AcknowledgableDelivery ackDelivery) {
         return Mono.from(metricFactory.decoratePublisherWithTimerMetric("calendar.imip",
             Mono.fromCallable(() -> OBJECT_MAPPER.readValue(ackDelivery.getBody(), CalendarEventNotificationEmailDTO.class))
-                .filter(eventEmailFilter::shouldProcess)
+                .filter(dto -> eventEmailFilter.shouldProcess(dto.recipientEmail()))
                 .flatMap(message -> handleMessage(message)
                     .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed calendar mail event message successfully {} '{}'", message.getClass().getSimpleName(), message.eventPath()))))
                 .doOnSuccess(result -> ackDelivery.ack())

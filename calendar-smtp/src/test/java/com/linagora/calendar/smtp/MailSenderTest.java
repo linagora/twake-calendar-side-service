@@ -18,8 +18,12 @@
 
 package com.linagora.calendar.smtp;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
+
+import org.junit.jupiter.api.AfterEach;
+import org.mockito.Mockito;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
@@ -40,6 +44,7 @@ import com.google.common.collect.ImmutableList;
 
 import io.restassured.RestAssured;
 import io.restassured.path.json.JsonPath;
+import java.util.List;
 
 class MailSenderTest {
 
@@ -47,6 +52,7 @@ class MailSenderTest {
     static final MockSmtpServerExtension mockSmtpExtension = new MockSmtpServerExtension();
 
     private MailSender mailSender;
+    private EventEmailFilter eventEmailFilter;
 
     @BeforeEach
     void setUp() {
@@ -60,7 +66,8 @@ class MailSenderTest {
             false,
             false
         );
-        mailSender = new MailSender.Factory.Default(config).create().block();
+        eventEmailFilter = Mockito.spy(EventEmailFilter.acceptAll());
+        mailSender = new MailSender.Factory.Default(config, eventEmailFilter).create().block();
 
         RestAssured.baseURI = "http://localhost";
         RestAssured.port = mockSmtpExtension.getMockSmtp().getRestApiPort(); // Mock SMTP server's REST API port
@@ -68,6 +75,11 @@ class MailSenderTest {
         // Clean up mails and mocks before test
         RestAssured.delete("/smtpMails");
         RestAssured.delete("/smtpBehaviors");
+    }
+
+    @AfterEach
+    void afterEach() {
+        Mockito.reset(eventEmailFilter);
     }
 
     @Test
@@ -256,5 +268,46 @@ class MailSenderTest {
         assertThatThrownBy(() -> mailSender.send(ImmutableList.of(mail1, mail2)).block())
             .isInstanceOf(SmtpSendingFailedException.class)
             .hasMessageContaining("All 'rcpt to' commands failed");
+    }
+
+    @Test
+    void shouldFilterRecipients() throws Exception {
+        String rawMessage = "From: sender@localhost\nTo: a@localhost, b@localhost\nSubject: Test\n\nHello!";
+        Message message = new DefaultMessageBuilder().parseMessage(new ByteArrayInputStream(rawMessage.getBytes(StandardCharsets.UTF_8)));
+        Mail mail = new Mail(
+            MaybeSender.of(new MailAddress("sender@localhost")),
+            ImmutableList.of(new MailAddress("a@localhost"), new MailAddress("b@localhost")),
+            message
+        );
+
+        Mail filteredMail = new Mail(mail.sender(), List.of(new MailAddress("a@localhost")), mail.message());
+        Mockito.doReturn(Optional.of(filteredMail)).when(eventEmailFilter).filterRecipients(mail);
+
+        mailSender.send(mail).block();
+        JsonPath response = RestAssured.get("/smtpMails").jsonPath();
+
+        assertSoftly(Throwing.consumer(softly -> {
+            softly.assertThat(response.getList("")).hasSize(1);
+            softly.assertThat(response.getList("[0].recipients.address")).containsExactly("a@localhost");
+        }));
+    }
+
+    @Test
+    void shouldNotSendMailWhenAllRecipientsAreRemovedAfterFiltering() throws Exception {
+        String rawMessage = "From: sender@localhost\nTo: a@localhost, b@localhost\nSubject: Test\n\nHello!";
+        Message message = new DefaultMessageBuilder().parseMessage(new ByteArrayInputStream(rawMessage.getBytes(StandardCharsets.UTF_8)));
+        Mail mail = new Mail(
+            MaybeSender.of(new MailAddress("sender@localhost")),
+            ImmutableList.of(new MailAddress("a@localhost"), new MailAddress("b@localhost")),
+            message
+        );
+
+        Mockito.doReturn(Optional.empty()).when(eventEmailFilter).filterRecipients(mail);
+
+        mailSender.send(mail).block();
+
+        Thread.sleep(1000);
+        JsonPath response = RestAssured.get("/smtpMails").jsonPath();
+        assertThat(response.getList("")).hasSize(0);
     }
 }
