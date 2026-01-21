@@ -54,7 +54,7 @@ import reactor.core.scheduler.Schedulers;
 
 public class AlarmScheduleService {
 
-    public record ScheduledItem(Calendar calendar, Username username, CalendarURL calendarURL, String eventPath) {
+    public record CalendarEvent(Calendar calendar, Username username, CalendarURL calendarURL, String eventPath) {
     }
 
     public static class Context {
@@ -127,10 +127,10 @@ public class AlarmScheduleService {
     public Mono<Task.Result> schedule(Context context, int eventsPerSecond) {
         return userDAO.list()
             .flatMap(user -> collectEvents(context, user), DEFAULT_CONCURRENCY)
-            .transform(ReactorUtils.<ScheduledItem, Task.Result>throttle()
+            .transform(ReactorUtils.<CalendarEvent, Task.Result>throttle()
                 .elements(eventsPerSecond)
                 .per(Duration.ofSeconds(1))
-                .forOperation(scheduledItem -> schedule(context, scheduledItem)))
+                .forOperation(calendarEvent -> schedule(context, calendarEvent)))
             .reduce(Task.Result.COMPLETED, Task::combine)
             .map(result -> {
                 if (context.failedUserCount.get() > 0 || context.failedCalendarCount.get() > 0 || context.failedEventCount.get() > 0) {
@@ -146,23 +146,23 @@ public class AlarmScheduleService {
             });
     }
 
-    private Mono<Task.Result> schedule(Context context, ScheduledItem scheduledItem) {
-        return Mono.justOrEmpty(alarmInstantFactory.computeNextAlarmInstant(scheduledItem.calendar(), scheduledItem.username()))
-            .flatMap(alarmInstant -> Flux.fromIterable(alarmEventFactory.buildAlarmEvent(scheduledItem.username(),
+    private Mono<Task.Result> schedule(Context context, CalendarEvent calendarEvent) {
+        return Mono.justOrEmpty(alarmInstantFactory.computeNextAlarmInstant(calendarEvent.calendar(), calendarEvent.username()))
+            .flatMap(alarmInstant -> Flux.fromIterable(alarmEventFactory.buildAlarmEvent(calendarEvent.username(),
                     alarmInstant.recipients(),
-                    scheduledItem.calendar(),
+                    calendarEvent.calendar(),
                     alarmInstant,
-                    scheduledItem.eventPath()))
-                .flatMap(alarmEvent -> insertAlarmEvent(scheduledItem.username(), alarmEvent))
+                    calendarEvent.eventPath()))
+                .flatMap(alarmEvent -> insertAlarmEvent(calendarEvent.username(), alarmEvent))
                 .then())
             .then(Mono.fromCallable(() -> {
                 context.incrementProcessedEvent();
                 return Task.Result.COMPLETED;
             })).onErrorResume(e -> {
                 LOGGER.error("Error while doing task {} for user {} and calendar url {} and eventId {}",
-                    TASK_NAME.asString(), scheduledItem.username().asString(),
-                    scheduledItem.calendarURL().serialize(),
-                    EventParseUtils.extractEventUid(scheduledItem.calendar()),
+                    TASK_NAME.asString(), calendarEvent.username().asString(),
+                    calendarEvent.calendarURL().serialize(),
+                    EventParseUtils.extractEventUid(calendarEvent.calendar()),
                     e);
                 context.incrementFailedEvent();
                 return Mono.just(Task.Result.PARTIAL);
@@ -175,7 +175,7 @@ public class AlarmScheduleService {
             .switchIfEmpty(Mono.defer(() -> alarmEventDAO.create(alarmEvent))).then();
     }
 
-    private Flux<ScheduledItem> collectEvents(Context context, OpenPaaSUser user) {
+    private Flux<CalendarEvent> collectEvents(Context context, OpenPaaSUser user) {
         return calDavClient.findUserCalendars(user.username(), user.id())
                 .flatMap(calendarURL -> collectEvents(context, user, calendarURL))
             .onErrorResume(e -> {
@@ -185,7 +185,7 @@ public class AlarmScheduleService {
             });
     }
 
-    private Flux<ScheduledItem> collectEvents(Context context, OpenPaaSUser user, CalendarURL calendarURL) {
+    private Flux<CalendarEvent> collectEvents(Context context, OpenPaaSUser user, CalendarURL calendarURL) {
         return calDavClient.calendarQueryReportXml(user.username(), calendarURL, CalendarQuery.ofFilters())
             .flatMapMany(response -> Flux.fromIterable(response.extractCalendarObjects())
                 .subscribeOn(Schedulers.boundedElastic()))
@@ -197,10 +197,10 @@ public class AlarmScheduleService {
             });
     }
 
-    private Mono<ScheduledItem> collectEvents(Context context, OpenPaaSUser user, CalendarURL calendarURL, CalendarReportXmlResponse.CalendarObject calendarObject) {
+    private Mono<CalendarEvent> collectEvents(Context context, OpenPaaSUser user, CalendarURL calendarURL, CalendarReportXmlResponse.CalendarObject calendarObject) {
         return Mono.fromCallable(() -> CalendarUtil.parseIcs(calendarObject.calendarData()))
-            .subscribeOn(Schedulers.boundedElastic())
-            .map(calendar -> new ScheduledItem(calendar, user.username(), calendarURL, calendarObject.href().toString()))
+            .subscribeOn(Schedulers.parallel())
+            .map(calendar -> new CalendarEvent(calendar, user.username(), calendarURL, calendarObject.href().toString()))
             .onErrorResume(e -> {
                 LOGGER.error("Error while doing task {} for user {} and calendar url {} and eventPath {}",
                     TASK_NAME.asString(), user.username().asString(), calendarURL.serialize(), calendarObject.href().toString(), e);
