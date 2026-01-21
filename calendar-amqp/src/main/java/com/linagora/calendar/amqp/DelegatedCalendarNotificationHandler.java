@@ -122,8 +122,7 @@ public class DelegatedCalendarNotificationHandler {
                 "content", ImmutableMap.of(
                     "delegatorName", delegatorUser.fullName(),
                     "calendarName", originalCalendarName,
-                    "calendarUrl", spaCalendarBaseUrl.toASCIIString(),
-                    "rightKey", rightKey),
+                    "calendarUrl", spaCalendarBaseUrl.toASCIIString()),
                 "delegatorName", delegatorUser.fullName(),
                 "calendarName", originalCalendarName);
         }

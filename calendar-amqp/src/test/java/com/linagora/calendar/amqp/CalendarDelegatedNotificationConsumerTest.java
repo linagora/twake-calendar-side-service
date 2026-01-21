@@ -30,10 +30,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
-import java.io.InputStream;
 import java.net.URI;
 import java.net.URL;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
@@ -44,7 +42,6 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;
 
-import org.apache.commons.io.IOUtils;
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
 import org.apache.james.backends.rabbitmq.RabbitMQConnectionFactory;
@@ -192,12 +189,7 @@ public class CalendarDelegatedNotificationConsumerTest {
         MessageGenerator.Factory messageFactory = MessageGenerator.factory(mailTemplateConfig, fileSystem, openPaaSUserDAO);
 
         URL spaCalendarURL = URI.create("https://localhost/").toURL();
-        Path logoPath = Paths.get("/Users/tungtv/workplace/twake-calendar-side-service/calendar-rest-api/src/main/resources/assets/calendar/logo.png");
-        byte[] calendarLogo;
-        try (InputStream is = Files.newInputStream(logoPath)) {
-            calendarLogo = IOUtils.toByteArray(is);
-        }
-
+        byte[] calendarLogo = new byte[0];
         DelegatedCalendarNotificationHandler notificationHandler = new DelegatedCalendarNotificationHandler(
             openPaaSUserDAO, calDavClient, settingsResolver, mailSenderFactory, mailTemplateConfig, messageFactory,
             eventEmailFilter, spaCalendarURL, calendarLogo);
@@ -277,11 +269,10 @@ public class CalendarDelegatedNotificationConsumerTest {
         }));
     }
 
-
     @Test
     void shouldNotCrashWhenReceivingInvalidAMQPMessage() throws Exception {
         // Step 1: Publish an invalid AMQP message payload directly to the queue
-        String queueName = "tcalendar:calendar:created";
+        String queueName = "tcalendar:calendar:delegated:created";
         byte[] invalidBody = "not a json".getBytes();
         channel.basicPublish("", queueName, null, invalidBody);
 

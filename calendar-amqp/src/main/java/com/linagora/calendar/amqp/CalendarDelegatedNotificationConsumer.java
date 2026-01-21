@@ -62,9 +62,9 @@ import reactor.rabbitmq.Sender;
 
 public class CalendarDelegatedNotificationConsumer implements Closeable, Startable {
 
-    public static final String QUEUE = "tcalendar:calendar:created";
+    public static final String QUEUE = "tcalendar:calendar:delegated:created";
     private static final String EXCHANGE = "calendar:calendar:created";
-    private static final String DEAD_LETTER = "tcalendar:calendar:created:dead-letter";
+    private static final String DEAD_LETTER = QUEUE + ":dead-letter";
     private static final boolean REQUEUE_ON_NACK = true;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final Logger LOGGER = LoggerFactory.getLogger(CalendarDelegatedNotificationConsumer.class);
@@ -89,6 +89,7 @@ public class CalendarDelegatedNotificationConsumer implements Closeable, Startab
 
     public void init() {
         declareExchangeAndQueue(channelPool.getSender(), queueArgumentSupplier);
+        start();
     }
 
     public void start() {
@@ -144,7 +145,7 @@ public class CalendarDelegatedNotificationConsumer implements Closeable, Startab
         return Mono.fromSupplier(Throwing.supplier(() -> CalendarDelegatedCreatedMessage.deserialize(acknowledgableDelivery.getBody())))
             .filter(hasDelegationRightKey())
             .flatMap(notificationHandler::handle)
-            .doOnSuccess(any -> acknowledgableDelivery.ack())
+            .doOnTerminate(acknowledgableDelivery::ack)
             .onErrorResume(error -> {
                 LOGGER.error("Error when consuming calendar delegated notification event", error);
                 acknowledgableDelivery.nack(!REQUEUE_ON_NACK);
@@ -164,7 +165,7 @@ public class CalendarDelegatedNotificationConsumer implements Closeable, Startab
             try {
                 return OBJECT_MAPPER.readValue(payload, CalendarDelegatedCreatedMessage.class);
             } catch (Exception e) {
-                throw new RuntimeException("Failed to deserialize calendar calendar created message: " + new String(payload, StandardCharsets.UTF_8), e);
+                throw new RuntimeException("Failed to deserialize calendar delegated created message: " + new String(payload, StandardCharsets.UTF_8), e);
             }
         }
 

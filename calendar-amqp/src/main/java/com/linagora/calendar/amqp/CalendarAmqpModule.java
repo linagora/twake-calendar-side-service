@@ -56,6 +56,7 @@ public class CalendarAmqpModule extends AbstractModule {
         bind(EventResourceConsumer.class).in(Scopes.SINGLETON);
         bind(EventCalendarConsumer.class).in(Scopes.SINGLETON);
         bind(EventCalendarNotificationConsumer.class).in(Scopes.SINGLETON);
+        bind(CalendarDelegatedNotificationConsumer.class).in(Scopes.SINGLETON);
 
         Multibinder<HealthCheck> healthCheckMultibinder = Multibinder.newSetBinder(binder(), HealthCheck.class);
         healthCheckMultibinder.addBinding().to(RabbitMQCalendarQueueConsumerHealthCheck.class);
