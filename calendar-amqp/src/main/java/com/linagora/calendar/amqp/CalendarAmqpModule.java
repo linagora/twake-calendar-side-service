@@ -143,6 +143,18 @@ public class CalendarAmqpModule extends AbstractModule {
     }
 
     @ProvidesIntoSet
+    SimpleConnectionPool.ReconnectionHandler provideCalendarDelegatedNotificationReconnectionHandler(CalendarDelegatedNotificationReconnectionHandler reconnectionHandler) {
+        return reconnectionHandler;
+    }
+
+    @ProvidesIntoSet
+    public InitializationOperation initializeCalendarDelegatedNotificationConsumer(CalendarDelegatedNotificationConsumer instance) {
+        return InitilizationOperationBuilder
+            .forClass(CalendarDelegatedNotificationConsumer.class)
+            .init(instance::init);
+    }
+
+    @ProvidesIntoSet
     SimpleConnectionPool.ReconnectionHandler provideEventCalendarReconnectionHandler(EventCalendarReconnectionHandler reconnectionHandler) {
         return reconnectionHandler;
     }
