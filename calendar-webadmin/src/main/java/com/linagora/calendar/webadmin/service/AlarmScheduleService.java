@@ -188,7 +188,7 @@ public class AlarmScheduleService {
     private Flux<CalendarEvent> collectEvents(Context context, OpenPaaSUser user, CalendarURL calendarURL) {
         return calDavClient.calendarQueryReportXml(user.username(), calendarURL, CalendarQuery.ofFilters())
             .flatMapMany(response -> Flux.fromIterable(response.extractCalendarObjects())
-                .subscribeOn(Schedulers.boundedElastic()))
+                .subscribeOn(Schedulers.parallel()))
             .flatMap(calendarObject -> collectEvents(context, user, calendarURL, calendarObject), DEFAULT_CONCURRENCY)
             .onErrorResume(e -> {
                 LOGGER.error("Error while doing task {} for user {} and calendar url {}", TASK_NAME.asString(), user.username().asString(), calendarURL.serialize(), e);
