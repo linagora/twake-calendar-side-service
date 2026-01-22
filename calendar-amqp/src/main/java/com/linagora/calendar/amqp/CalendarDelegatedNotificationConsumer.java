@@ -145,7 +145,7 @@ public class CalendarDelegatedNotificationConsumer implements Closeable, Startab
         return Mono.fromSupplier(Throwing.supplier(() -> CalendarDelegatedCreatedMessage.deserialize(acknowledgableDelivery.getBody())))
             .filter(hasDelegationRightKey())
             .flatMap(notificationHandler::handle)
-            .doOnTerminate(acknowledgableDelivery::ack)
+            .doOnSuccess(any -> acknowledgableDelivery.ack())
             .onErrorResume(error -> {
                 LOGGER.error("Error when consuming calendar delegated notification event", error);
                 acknowledgableDelivery.nack(!REQUEUE_ON_NACK);
