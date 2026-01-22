@@ -983,6 +983,61 @@ public class CalDavClientTest {
     }
 
     @Test
+    void calendarQueryReportXmlShouldReturnEmptyWhenNoEvents() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL calendarURL = CalendarURL.from(user.id());
+
+        // Trigger calendar directory activation
+        testee.export(calendarURL, MailboxSessionUtil.create(user.username())).block();
+
+        List<CalendarObject> items = testee.calendarQueryReportXml(user.username(), calendarURL, CalendarQuery.ofFilters()).block().extractCalendarObjects();
+
+        assertThat(items).isEmpty();
+    }
+
+    @Test
+    void calendarQueryReportXmlShouldReturnAllWhenNoFilter() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL calendarURL = CalendarURL.from(user.id());
+
+        String uid1 = UUID.randomUUID().toString();
+        String ics1 = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250102T120000Z
+            DTEND:20250102T130000Z
+            SUMMARY:Test Event 1
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uid1);
+
+        String uid2 = UUID.randomUUID().toString();
+        String ics2 = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250102T100000Z
+            DTSTART:20250103T120000Z
+            DTEND:20250103T130000Z
+            SUMMARY:Test Event 2
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uid2);
+
+        davTestHelper.upsertCalendar(user, ics1, uid1);
+        davTestHelper.upsertCalendar(user, ics2, uid2);
+
+        List<CalendarObject> items = testee.calendarQueryReportXml(user.username(), calendarURL, CalendarQuery.ofFilters()).block().extractCalendarObjects();
+
+        assertThat(items).hasSize(2);
+        assertThat(items).extracting(calendarObject -> calendarObject.href().toString())
+            .anyMatch(path -> path.equals("/calendars/" + user.id() + "/" + user.id() + "/" + uid1 + ".ics"))
+            .anyMatch(path -> path.equals("/calendars/" + user.id() + "/" + user.id() + "/" + uid2 + ".ics"));
+    }
+
+    @Test
     void updateCalendarAclShouldSucceed() {
         OpenPaaSUser user = createOpenPaaSUser();
         CalendarURL calendarURL = CalendarURL.from(user.id());
