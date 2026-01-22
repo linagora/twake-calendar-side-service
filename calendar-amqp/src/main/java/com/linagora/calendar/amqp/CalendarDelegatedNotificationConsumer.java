@@ -64,8 +64,8 @@ import reactor.rabbitmq.Sender;
 public class CalendarDelegatedNotificationConsumer implements Closeable, Startable {
 
     public static final String QUEUE = "tcalendar:calendar:delegated:created";
+    public static final String DEAD_LETTER_QUEUE = QUEUE + ":dead-letter";
     private static final String EXCHANGE = "calendar:calendar:created";
-    private static final String DEAD_LETTER = QUEUE + ":dead-letter";
     private static final boolean REQUEUE_ON_NACK = true;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -115,13 +115,13 @@ public class CalendarDelegatedNotificationConsumer implements Closeable, Startab
         Flux.concat(sender.declareExchange(ExchangeSpecification.exchange(EXCHANGE)
                     .durable(DURABLE)
                     .type(BuiltinExchangeType.FANOUT.getType())),
-                sender.declareQueue(QueueSpecification.queue(DEAD_LETTER)
+                sender.declareQueue(QueueSpecification.queue(DEAD_LETTER_QUEUE)
                     .durable(DURABLE)
                     .arguments(queueArguments.get().build())),
                 sender.declareQueue(QueueSpecification.queue(QUEUE)
                     .durable(DURABLE)
                     .arguments(queueArguments.get()
-                        .deadLetter(DEAD_LETTER)
+                        .deadLetter(DEAD_LETTER_QUEUE)
                         .build())),
                 sender.bind(BindingSpecification.binding()
                     .exchange(EXCHANGE)

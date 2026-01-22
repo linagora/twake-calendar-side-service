@@ -66,6 +66,7 @@ public class CalendarQueueUtil {
                 .collect(ImmutableList.toImmutableList()))
             .add(EventEmailConsumer.DEAD_LETTER_QUEUE)
             .add(EventITIPConsumer.DEAD_LETTER_QUEUE)
+            .add(CalendarDelegatedNotificationConsumer.DEAD_LETTER_QUEUE)
             .build();
     }
 }
