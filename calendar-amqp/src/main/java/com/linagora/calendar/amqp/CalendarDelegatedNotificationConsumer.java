@@ -41,6 +41,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.fge.lambdas.Throwing;
@@ -66,7 +67,9 @@ public class CalendarDelegatedNotificationConsumer implements Closeable, Startab
     private static final String EXCHANGE = "calendar:calendar:created";
     private static final String DEAD_LETTER = QUEUE + ":dead-letter";
     private static final boolean REQUEUE_ON_NACK = true;
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
+        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
     private static final Logger LOGGER = LoggerFactory.getLogger(CalendarDelegatedNotificationConsumer.class);
 
     private final ReceiverProvider receiverProvider;
