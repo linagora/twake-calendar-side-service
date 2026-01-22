@@ -22,6 +22,7 @@ import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_
 import static io.restassured.RestAssured.given;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+import static org.hamcrest.CoreMatchers.hasItem;
 import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -144,7 +145,7 @@ public class DomainMembersAddressBookRoutesTest {
                 {
                     "additionalInformation": {
                         "type": "sync-domain-members-contacts-ldap-to-dav",
-                        "domain": null,
+                        "ignoredDomains": [],
                         "timestamp": "${json-unit.any-string}",
                         "addedCount": 1,
                         "addFailureContacts": [],
@@ -274,6 +275,135 @@ public class DomainMembersAddressBookRoutesTest {
         assertThat(listContactDomainMembersAsVcard(openPaaSDomain2.id()))
             .contains("bob@example.org")
             .doesNotContain("alice@example.com");
+    }
+
+    @Test
+    void allDomainsSyncShouldIgnoreSpecifiedDomains() {
+        // Given
+        LdapUser ldap1 = ldapMember("uid001", "alice@example.com", "Alice", "Nguyen", "Alice Nguyen", "111");
+        LdapUser ldap2 = ldapMember("uid002", "bob@example.org", "Bob", "Tran", "Bob Tran", "222");
+
+        Domain domain1 = Domain.of("domain1" + UUID.randomUUID() + ".tld");
+        Domain domain2 = Domain.of("domain2" + UUID.randomUUID() + ".tld");
+
+        OpenPaaSDomain openPaaSDomain1 = domainDAO.add(domain1).block();
+        OpenPaaSDomain openPaaSDomain2 = domainDAO.add(domain2).block();
+
+        when(ldapDomainMemberProvider.domainMembers(any()))
+            .thenAnswer(inv -> {
+                Domain input = inv.getArgument(0);
+                if (input.equals(domain1)) {
+                    return Flux.just(ldap1);
+                } else if (input.equals(domain2)) {
+                    return Flux.just(ldap2);
+                }
+                return Flux.empty();
+            });
+
+        // When: sync all domains but ignore domain2
+        String taskId = given()
+            .queryParam("task", "sync")
+            .queryParam("ignoredDomains", domain2.asString())
+            .post(DomainMembersAddressBookRoutes.BASE_PATH)
+        .then()
+            .statusCode(201)
+            .extract()
+            .jsonPath()
+            .getString("taskId");
+
+        given()
+            .basePath(TasksRoutes.BASE)
+        .when()
+            .get(taskId + "/await")
+        .then()
+            .statusCode(200)
+            .body("status", is("completed"))
+            .body("additionalInformation.addedCount", is(1))
+            .body("additionalInformation.ignoredDomains", hasItem(domain2.asString()));
+
+        // Then: domain1 is synced, domain2 is ignored
+        assertThat(listContactDomainMembersAsVcard(openPaaSDomain1.id()))
+            .contains("alice@example.com");
+
+        assertThat(listContactDomainMembersAsVcard(openPaaSDomain2.id()))
+            .doesNotContain("bob@example.org");
+    }
+
+    @Test
+    void allDomainsSyncShouldSyncAllWhenIgnoredDomainsIsBlank() {
+        // Given
+        LdapUser ldap1 = ldapMember("uid001", "alice@example.com", "Alice", "Nguyen", "Alice Nguyen", "111");
+        LdapUser ldap2 = ldapMember("uid002", "bob@example.org", "Bob", "Tran", "Bob Tran", "222");
+
+        Domain domain1 = Domain.of("domain1" + UUID.randomUUID() + ".tld");
+        Domain domain2 = Domain.of("domain2" + UUID.randomUUID() + ".tld");
+
+        OpenPaaSDomain openPaaSDomain1 = domainDAO.add(domain1).block();
+        OpenPaaSDomain openPaaSDomain2 = domainDAO.add(domain2).block();
+
+        when(ldapDomainMemberProvider.domainMembers(any()))
+            .thenAnswer(inv -> {
+                Domain input = inv.getArgument(0);
+                if (input.equals(domain1)) {
+                    return Flux.just(ldap1);
+                } else if (input.equals(domain2)) {
+                    return Flux.just(ldap2);
+                }
+                return Flux.empty();
+            });
+
+        // When: sync all domains with blank ignoredDomains parameter
+        String taskId = given()
+            .queryParam("task", "sync")
+            .queryParam("ignoredDomains", "   ")
+            .post(DomainMembersAddressBookRoutes.BASE_PATH)
+        .then()
+            .statusCode(201)
+            .extract()
+            .jsonPath()
+            .getString("taskId");
+
+        // Then
+        given()
+            .basePath(TasksRoutes.BASE)
+        .when()
+            .get(taskId + "/await")
+        .then()
+            .statusCode(200)
+            .body("status", is("completed"))
+            .body("additionalInformation.addedCount", is(2));
+
+        // Both domains should be synced
+        assertThat(listContactDomainMembersAsVcard(openPaaSDomain1.id()))
+            .contains("alice@example.com");
+
+        assertThat(listContactDomainMembersAsVcard(openPaaSDomain2.id()))
+            .contains("bob@example.org");
+    }
+
+    @Test
+    void allDomainsSyncShouldReturnBadRequestWhenIgnoredDomainsIsInvalid() {
+        // When: ignoredDomains contains invalid domain
+        String response = given()
+            .queryParam("task", "sync")
+            .queryParam("ignoredDomains", "@1")
+            .post(DomainMembersAddressBookRoutes.BASE_PATH)
+        .then()
+            .statusCode(400)
+            .extract()
+            .body()
+            .asString();
+
+        // Then
+        assertThatJson(response)
+            .withOptions(Option.IGNORING_EXTRA_FIELDS)
+            .isEqualTo("""
+                {
+                  "statusCode": 400,
+                  "type": "InvalidArgument",
+                  "message": "${json-unit.any-string}"
+                }
+                """);
     }
 
     @Test

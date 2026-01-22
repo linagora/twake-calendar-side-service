@@ -20,15 +20,19 @@ package com.linagora.calendar.webadmin.task;
 
 import java.time.Instant;
 import java.util.Optional;
+import java.util.Set;
 
 import org.apache.james.server.task.json.dto.AdditionalInformationDTO;
 import org.apache.james.server.task.json.dto.AdditionalInformationDTOModule;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableList;
 
+@JsonInclude(JsonInclude.Include.NON_ABSENT)
 public record DomainMembersSyncTaskAdditionalInformationDTO(@JsonProperty("type") String type,
                                                             @JsonProperty("domain") Optional<String> domain,
+                                                            @JsonProperty("ignoredDomains") Optional<Set<String>> ignoredDomains,
                                                             @JsonProperty("timestamp") Instant timestamp,
                                                             @JsonProperty("addedCount") int addedCount,
                                                             @JsonProperty("addFailureContacts") ImmutableList<String> addFailureContacts,
@@ -50,6 +54,7 @@ public record DomainMembersSyncTaskAdditionalInformationDTO(@JsonProperty("type"
         return new DomainMembersSyncTaskAdditionalInformationDTO(
             type,
             details.domain(),
+            details.ignoredDomains(),
             details.timestamp(),
             details.addedCount(),
             details.addFailureContacts(),
@@ -63,6 +68,7 @@ public record DomainMembersSyncTaskAdditionalInformationDTO(@JsonProperty("type"
         return new LdapToDavDomainMembersSyncTask.Details(
             timestamp,
             domain,
+            ignoredDomains,
             addedCount,
             addFailureContacts,
             updatedCount,

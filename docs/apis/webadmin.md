@@ -140,16 +140,38 @@ Status codes:
 
 Only enabled if LDAP is configured.
 
+### 1. Synchronize all domains
 ```
 POST /addressbook/domain-members?task=sync
 ```
 
-Will return a webadmin task with the following additional information:
+Synchronizes LDAP members for **all existing domains**.
+
+Optional query parameters:
+- `ignoredDomains` : [String] Comma-separated list of domains to exclude from synchronization
+
+Example:
+
+```
+POST /addressbook/domain-members?task=sync&ignoredDomains=twake.app,example.org
+```
+
+### 2. Synchronize a single domain
+```
+POST /addressbook/domain-members/{domain}?task=sync
+```
+
+Synchronizes LDAP members only for the specified domain.
+
+### Task additional information
+
+Both endpoints will return a webadmin task with the following additional information:
 
 ```
 "additionalInformation": {
     "type": "sync-domain-members-contacts-ldap-to-dav",
     "domain": null,
+    "ignoredDomains": [ "twake.app" ],
     "timestamp": "${json-unit.any-string}",
     "addedCount": 1,
     "addFailureContacts": [],
