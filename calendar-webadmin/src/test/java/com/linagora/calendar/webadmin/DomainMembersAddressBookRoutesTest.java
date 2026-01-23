@@ -330,6 +330,70 @@ public class DomainMembersAddressBookRoutesTest {
     }
 
     @Test
+    void allDomainsSyncShouldIgnoreMultipleDomainsWhenIgnoredDomainsIsUrlEncoded() {
+        // Given
+        LdapUser ldap1 = ldapMember("uid001", "alice@example.com", "Alice", "Nguyen", "Alice Nguyen", "111");
+        LdapUser ldap2 = ldapMember("uid002", "bob@example.org", "Bob", "Tran", "Bob Tran", "222");
+        LdapUser ldap3 = ldapMember("uid003", "charlie@example.net", "Charlie", "Pham", "Charlie Pham", "333");
+
+        Domain domain1 = Domain.of("domain1" + UUID.randomUUID() + ".tld");
+        Domain domain2 = Domain.of("domain2" + UUID.randomUUID() + ".tld");
+        Domain domain3 = Domain.of("domain3" + UUID.randomUUID() + ".tld");
+
+        OpenPaaSDomain openPaaSDomain1 = domainDAO.add(domain1).block();
+        OpenPaaSDomain openPaaSDomain2 = domainDAO.add(domain2).block();
+        OpenPaaSDomain openPaaSDomain3 = domainDAO.add(domain3).block();
+
+        when(ldapDomainMemberProvider.domainMembers(any()))
+            .thenAnswer(inv -> {
+                Domain input = inv.getArgument(0);
+                if (input.equals(domain1)) {
+                    return Flux.just(ldap1);
+                } else if (input.equals(domain2)) {
+                    return Flux.just(ldap2);
+                } else if (input.equals(domain3)) {
+                    return Flux.just(ldap3);
+                }
+                return Flux.empty();
+            });
+
+        // When: sync all domains but ignore domain2 and domain3 (comma URL-encoded)
+        String ignoredDomainsParam = domain2.asString() + "%2C" + domain3.asString();
+
+        String taskId = given().log().all()
+            .urlEncodingEnabled(false)
+            .queryParam("task", "sync")
+            .queryParam("ignoredDomains", ignoredDomainsParam)
+            .post(DomainMembersAddressBookRoutes.BASE_PATH)
+        .then()
+            .statusCode(201)
+            .extract()
+            .jsonPath()
+            .getString("taskId");
+
+        given()
+            .basePath(TasksRoutes.BASE)
+        .when()
+            .get(taskId + "/await").prettyPeek()
+        .then()
+            .statusCode(200)
+            .body("status", is("completed"))
+            .body("additionalInformation.addedCount", is(1))
+            .body("additionalInformation.ignoredDomains", hasItem(domain2.asString()))
+            .body("additionalInformation.ignoredDomains", hasItem(domain3.asString()));
+
+        // Then: domain1 is synced, domain2 and domain3 are ignored
+        assertThat(listContactDomainMembersAsVcard(openPaaSDomain1.id()))
+            .contains("alice@example.com");
+
+        assertThat(listContactDomainMembersAsVcard(openPaaSDomain2.id()))
+            .doesNotContain("bob@example.org");
+
+        assertThat(listContactDomainMembersAsVcard(openPaaSDomain3.id()))
+            .doesNotContain("charlie@example.net");
+    }
+
+    @Test
     void allDomainsSyncShouldSyncAllWhenIgnoredDomainsIsBlank() {
         // Given
         LdapUser ldap1 = ldapMember("uid001", "alice@example.com", "Alice", "Nguyen", "Alice Nguyen", "111");
