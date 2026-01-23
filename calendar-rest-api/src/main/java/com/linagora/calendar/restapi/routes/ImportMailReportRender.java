@@ -88,6 +88,7 @@ public class ImportMailReportRender {
         MimeAttachment logoAttachment = MimeAttachment.builder()
             .contentType(ContentType.of("image/png"))
             .cid(Cid.from("logo"))
+            .inline()
             .content(logoBytes)
             .fileName("logo.png")
             .build();
