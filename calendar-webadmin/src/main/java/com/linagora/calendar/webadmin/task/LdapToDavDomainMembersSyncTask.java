@@ -22,6 +22,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 
 import org.apache.james.core.Domain;
@@ -33,6 +34,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.dav.AddressBookContact;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
@@ -45,6 +47,7 @@ public class LdapToDavDomainMembersSyncTask implements Task {
 
     public record Details(Instant timestamp,
                           Optional<String> domain,
+                          Optional<Set<String>> ignoredDomains,
                           int addedCount,
                           ImmutableList<String> addFailureContacts,
                           int updatedCount,
@@ -53,6 +56,7 @@ public class LdapToDavDomainMembersSyncTask implements Task {
                           ImmutableList<String> deleteFailureContacts) implements TaskExecutionDetails.AdditionalInformation {
 
         public static Details from(Optional<OpenPaaSDomain> domain,
+                                   Optional<Set<Domain>> ignoredDomains,
                                    DavDomainMemberUpdateApplier.UpdateResult updateResult,
                                    Instant instant) {
 
@@ -64,6 +68,9 @@ public class LdapToDavDomainMembersSyncTask implements Task {
 
             return new Details(instant,
                 domain.map(OpenPaaSDomain::domain).map(Domain::asString),
+                ignoredDomains.map(domains -> domains.stream()
+                    .map(Domain::asString)
+                    .collect(ImmutableSet.toImmutableSet())),
                 updateResult.addedCount(),
                 getEmails.apply(updateResult.addFailureContacts()),
                 updateResult.updatedCount(),
@@ -83,35 +90,51 @@ public class LdapToDavDomainMembersSyncTask implements Task {
 
     public static LdapToDavDomainMembersSyncTask singleDomain(OpenPaaSDomain domain, LdapToDavDomainMembersSyncService syncService,
                                                               OpenPaaSDomainDAO openPaaSDomainDAO) {
-        return new LdapToDavDomainMembersSyncTask(Optional.of(domain), syncService, openPaaSDomainDAO);
+        return new LdapToDavDomainMembersSyncTask(new SingleDomain(domain), syncService, openPaaSDomainDAO);
     }
 
     public static LdapToDavDomainMembersSyncTask allDomains(LdapToDavDomainMembersSyncService syncService,
-                                                            OpenPaaSDomainDAO openPaaSDomainDAO) {
-        return new LdapToDavDomainMembersSyncTask(Optional.empty(), syncService, openPaaSDomainDAO);
+                                                            OpenPaaSDomainDAO openPaaSDomainDAO, ImmutableSet<Domain> ignoredDomains) {
+        return new LdapToDavDomainMembersSyncTask(new AllDomain(ignoredDomains), syncService, openPaaSDomainDAO);
+    }
+
+    public sealed interface SyncTaskRequest permits SingleDomain, AllDomain {
+    }
+
+    record SingleDomain(OpenPaaSDomain domain) implements SyncTaskRequest {
+    }
+
+    record AllDomain(ImmutableSet<Domain> ignoredDomains) implements SyncTaskRequest {
     }
 
     private final LdapToDavDomainMembersSyncService syncService;
     private final DavDomainMemberUpdateApplier.ContactUpdateContext context;
-    private final Optional<OpenPaaSDomain> optionalDomain;
+    private final SyncTaskRequest syncTaskRequest;
     private final OpenPaaSDomainDAO openPaaSDomainDAO;
 
-    public LdapToDavDomainMembersSyncTask(Optional<OpenPaaSDomain> optionalDomain,
+    public LdapToDavDomainMembersSyncTask(SyncTaskRequest syncTaskRequest,
                                           LdapToDavDomainMembersSyncService syncService,
                                           OpenPaaSDomainDAO openPaaSDomainDAO) {
         this.syncService = syncService;
         this.openPaaSDomainDAO = openPaaSDomainDAO;
+        this.syncTaskRequest = syncTaskRequest;
         this.context = new DavDomainMemberUpdateApplier.ContactUpdateContext();
-        this.optionalDomain = optionalDomain;
     }
 
     @Override
     public Result run() {
-        SyncProcessor syncProcessor = optionalDomain
-            .map(this::singleDomainSyncProcessor)
-            .orElseGet(this::allDomainsSyncProcessor);
-
-        return syncProcessor.process().block();
+        return switch (syncTaskRequest) {
+            case SingleDomain singleDomain -> {
+                LOGGER.info("Starting domain members sync for single domain: {}",
+                    singleDomain.domain().domain().asString());
+                yield singleDomainSyncProcessor(singleDomain.domain()).process().block();
+            }
+            case AllDomain allDomains -> {
+                LOGGER.info("Starting domain members sync for all domains, ignoredDomains={}",
+                    allDomains.ignoredDomains().stream().map(Domain::asString).collect(ImmutableSet.toImmutableSet()));
+                yield allDomainsSyncProcessor(allDomains.ignoredDomains()).process().block();
+            }
+        };
     }
 
     @FunctionalInterface
@@ -123,8 +146,9 @@ public class LdapToDavDomainMembersSyncTask implements Task {
         return () -> syncDomainMembers(domain);
     }
 
-    private SyncProcessor allDomainsSyncProcessor() {
+    private SyncProcessor allDomainsSyncProcessor(ImmutableSet<Domain> ignoredDomains) {
         return () -> openPaaSDomainDAO.list()
+            .filter(openPaaSDomain -> !ignoredDomains.contains(openPaaSDomain.domain()))
             .concatMap(openPaaSDomain -> syncDomainMembers(openPaaSDomain)
                 .onErrorResume(error -> {
                     LOGGER.error("Failed to sync domain members for domain: {}", openPaaSDomain.domain(), error);
@@ -150,6 +174,16 @@ public class LdapToDavDomainMembersSyncTask implements Task {
 
     @Override
     public Optional<TaskExecutionDetails.AdditionalInformation> details() {
-        return Optional.of(Details.from(optionalDomain, context.toUpdateResult(), Clock.systemUTC().instant()));
+        Optional<OpenPaaSDomain> targetDomain = switch (syncTaskRequest) {
+            case SingleDomain singleDomain -> Optional.of(singleDomain.domain());
+            case AllDomain ignored -> Optional.empty();
+        };
+
+        Optional<Set<Domain>> ignoredDomains = switch (syncTaskRequest) {
+            case SingleDomain ignored -> Optional.empty();
+            case AllDomain allDomains -> Optional.of(allDomains.ignoredDomains());
+        };
+
+        return Optional.of(Details.from(targetDomain, ignoredDomains, context.toUpdateResult(), Clock.systemUTC().instant()));
     }
 }
