@@ -132,6 +132,8 @@ public class MessageGenerator {
 
     private static final String SUBJECT_KEY_NAME = "mail_subject";
     private static final String TRANSLATOR_FUNCTION_NAME = "translator";
+    private static final String MULTIPART_MIXED = "mixed";
+    private static final String MULTIPART_RELATED = "related";
 
     private final HtmlBodyRenderer htmlBodyRenderer;
     private final I18NTranslator i18nTranslator;
@@ -171,13 +173,12 @@ public class MessageGenerator {
 
             String htmlBodyText = htmlBodyRenderer.render(scopedVariableFinal);
 
-            BodyPartBuilder bodyPartBuilder = BodyPartBuilder.create()
+            BodyPartBuilder htmlBodyPart = BodyPartBuilder.create()
                 .setContentTransferEncoding("base64")
                 .setBody(htmlBodyText, "html", StandardCharsets.UTF_8);
-            bodyPartBuilder.addField(new RawField("Content-Language", i18nTranslator.associatedLocale().getLanguage()));
-            MultipartBuilder multipartBuilder = MultipartBuilder.create("mixed").addBodyPart(bodyPartBuilder);
+            htmlBodyPart.addField(new RawField("Content-Language", i18nTranslator.associatedLocale().getLanguage()));
 
-            mimeAttachments.forEach(Throwing.consumer(attachment -> multipartBuilder.addBodyPart(attachment.asBodyPart())));
+            MultipartBuilder multipartBuilder = buildMultipart(htmlBodyPart, mimeAttachments);
 
             MailAddress fromAsMailAddress = new MailAddress(fromAddress.getAddress());
 
@@ -189,6 +190,54 @@ public class MessageGenerator {
                 .setTo(recipient.toString())
                 .build();
         });
+    }
+
+    private MultipartBuilder buildMultipart(BodyPartBuilder htmlBodyPart, List<MimeAttachment> attachments) {
+        List<MimeAttachment> inlineAttachments = attachments.stream()
+            .filter(MimeAttachment::inline)
+            .toList();
+
+        List<MimeAttachment> nonInlineAttachments = attachments.stream()
+            .filter(attachment -> !attachment.inline())
+            .toList();
+
+        if (!inlineAttachments.isEmpty() && !nonInlineAttachments.isEmpty()) {
+            return buildMixedWithRelatedAndAttachments(htmlBodyPart, inlineAttachments, nonInlineAttachments);
+        }
+
+        if (!inlineAttachments.isEmpty()) {
+            return buildRelatedWithAttachments(htmlBodyPart, inlineAttachments);
+        }
+
+        if (!nonInlineAttachments.isEmpty()) {
+            return buildMixedWithAttachments(htmlBodyPart, nonInlineAttachments);
+        }
+
+        return MultipartBuilder.create(MULTIPART_MIXED)
+            .addBodyPart(htmlBodyPart.build());
+    }
+
+    private MultipartBuilder buildMixedWithAttachments(BodyPartBuilder htmlBodyPart, List<MimeAttachment> attachments) {
+        MultipartBuilder builder = MultipartBuilder.create(MULTIPART_MIXED)
+            .addBodyPart(htmlBodyPart.build());
+        attachments.forEach(Throwing.consumer(a -> builder.addBodyPart(a.asBodyPart())));
+        return builder;
+    }
+
+    private MultipartBuilder buildRelatedWithAttachments(BodyPartBuilder htmlBodyPart, List<MimeAttachment> inlineAttachments) {
+        MultipartBuilder builder = MultipartBuilder.create(MULTIPART_RELATED)
+            .addBodyPart(htmlBodyPart.build());
+        inlineAttachments.forEach(Throwing.consumer(a -> builder.addBodyPart(a.asBodyPart())));
+        return builder;
+    }
+
+    private MultipartBuilder buildMixedWithRelatedAndAttachments(BodyPartBuilder htmlBodyPart,
+                                                               List<MimeAttachment> inlineAttachments,
+                                                               List<MimeAttachment> nonInlineAttachments) {
+        MultipartBuilder mixed = MultipartBuilder.create(MULTIPART_MIXED)
+            .addBodyPart(BodyPartBuilder.create().setBody(buildRelatedWithAttachments(htmlBodyPart, inlineAttachments).build()));
+        nonInlineAttachments.forEach(Throwing.consumer(attachment -> mixed.addBodyPart(attachment.asBodyPart())));
+        return mixed;
     }
 
     private String subject(Map<String, Object> scopedVariable) throws IOException {

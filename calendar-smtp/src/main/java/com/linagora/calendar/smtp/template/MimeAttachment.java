@@ -34,6 +34,7 @@ public record MimeAttachment(ContentType contentType,
                              Optional<String> dispositionType) {
     public static final String INLINE_DISPOSITION_TYPE = "inline";
     public static final String ATTACHMENT_DISPOSITION_TYPE = "attachment";
+    public static final boolean INLINE = true;
 
     public static Builder builder() {
         return new Builder();
@@ -59,6 +60,11 @@ public record MimeAttachment(ContentType contentType,
         return partBuilder.build();
     }
 
+    public boolean inline() {
+        return dispositionType
+            .map(INLINE_DISPOSITION_TYPE::equals)
+            .orElse(!INLINE);
+    }
 
     public static class Builder {
         private ContentType contentType;
@@ -84,6 +90,11 @@ public record MimeAttachment(ContentType contentType,
 
         public Builder dispositionType(String dispositionType) {
             this.dispositionType = Optional.of(dispositionType);
+            return this;
+        }
+
+        public Builder inline() {
+            this.dispositionType = Optional.of(INLINE_DISPOSITION_TYPE);
             return this;
         }
 

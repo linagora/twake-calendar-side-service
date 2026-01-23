@@ -104,7 +104,8 @@ public class DelegatedCalendarNotificationHandler {
             .orElseThrow(() -> new IllegalArgumentException("Sender address must not be empty"));
         this.logoAttachment = MimeAttachment.builder()
             .contentType(ContentType.of("image/png"))
-            .cid(Cid.from("<logo>"))
+            .cid(Cid.from("logo"))
+            .inline()
             .content(calendarLogo)
             .fileName("logo.png")
             .build();
