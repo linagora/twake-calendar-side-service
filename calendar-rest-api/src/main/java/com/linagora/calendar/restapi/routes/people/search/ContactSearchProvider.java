@@ -27,6 +27,7 @@ import jakarta.inject.Inject;
 import jakarta.inject.Named;
 
 import org.apache.commons.lang3.Strings;
+import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
 import org.apache.james.jmap.api.model.AccountId;
 import org.apache.james.mailbox.MailboxSession;
@@ -100,14 +101,17 @@ public class ContactSearchProvider implements PeopleSearchProvider {
     private final EmailAddressContactSearchEngine contactSearchEngine;
     private final OpenPaaSUserDAO userDAO;
     private final URL baseAvatarUrl;
+    private final Set<Domain> userSearchDisabledDomains;
 
     @Inject
     public ContactSearchProvider(@Named("selfUrl") URL baseAvatarUrl,
                                  EmailAddressContactSearchEngine contactSearchEngine,
-                                 OpenPaaSUserDAO userDAO) {
+                                 OpenPaaSUserDAO userDAO,
+                                 @Named("userSearchDisabledDomains") Set<Domain> userSearchDisabledDomains) {
         this.contactSearchEngine = contactSearchEngine;
         this.userDAO = userDAO;
         this.baseAvatarUrl = baseAvatarUrl;
+        this.userSearchDisabledDomains = userSearchDisabledDomains;
     }
 
     @Override
@@ -118,13 +122,22 @@ public class ContactSearchProvider implements PeopleSearchProvider {
     @Override
     public Flux<PeopleSearchRoute.ResponseDTO> search(MailboxSession session, String query, Set<ObjectType> objectTypesFilter, int limit) {
         return Flux.from(contactSearchEngine.autoComplete(AccountId.fromString(session.getUser().asString()), query, limit))
-            .flatMap(contact -> resolveUserOrContactType(contact, objectTypesFilter)
+            .flatMap(contact -> resolveUserOrContactType(contact, userResolutionAllowed(session, objectTypesFilter))
                 .map(lookupResult -> toResponseDTO(lookupResult, contact)));
     }
 
-    private Mono<UserLookupResult> resolveUserOrContactType(EmailAddressContact contact, Set<ObjectType> filter) {
-        boolean allowUser = filter.isEmpty() || filter.contains(ObjectType.USER);
+    private boolean userResolutionAllowed(MailboxSession session,
+                                          Set<ObjectType> objectTypesFilter) {
+        boolean userTypeAllowedByClient = objectTypesFilter.isEmpty() || objectTypesFilter.contains(ObjectType.USER);
 
+        boolean domainAllowsUserResolution = session.getUser().getDomainPart()
+            .map(domain -> !userSearchDisabledDomains.contains(domain))
+            .orElse(true);
+
+        return userTypeAllowedByClient && domainAllowsUserResolution;
+    }
+
+    private Mono<UserLookupResult> resolveUserOrContactType(EmailAddressContact contact, boolean allowUser) {
         if (allowUser) {
             return tryResolveUser(contact)
                 .defaultIfEmpty(UserLookupResult.contact(contact.id().toString()));

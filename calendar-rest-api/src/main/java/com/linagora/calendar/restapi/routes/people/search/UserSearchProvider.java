@@ -27,6 +27,7 @@ import jakarta.inject.Inject;
 import jakarta.inject.Named;
 
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.james.core.Domain;
 import org.apache.james.mailbox.MailboxSession;
 
 import com.google.common.collect.ImmutableSet;
@@ -45,12 +46,15 @@ public class UserSearchProvider implements PeopleSearchProvider {
 
     private final OpenPaaSUserDAO userDAO;
     private final URL baseAvatarUrl;
+    private final Set<Domain> userSearchDisabledDomains;
 
     @Inject
     public UserSearchProvider(OpenPaaSUserDAO userDAO,
-                              @Named("selfUrl") URL baseAvatarUrl) {
+                              @Named("selfUrl") URL baseAvatarUrl,
+                              @Named("userSearchDisabledDomains") Set<Domain> userSearchDisabledDomains) {
         this.userDAO = userDAO;
         this.baseAvatarUrl = baseAvatarUrl;
+        this.userSearchDisabledDomains = userSearchDisabledDomains;
     }
 
     @Override
@@ -65,6 +69,7 @@ public class UserSearchProvider implements PeopleSearchProvider {
         }
 
         return Mono.justOrEmpty(session.getUser().getDomainPart())
+            .filter(domain -> !userSearchDisabledDomains.contains(domain))
             .flatMapMany(domain -> userDAO.search(domain, query, limit))
             .map(this::toResponseDTO);
     }

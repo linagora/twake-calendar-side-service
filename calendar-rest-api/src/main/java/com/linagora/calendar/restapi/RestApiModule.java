@@ -27,12 +27,14 @@ import java.time.Clock;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import jakarta.inject.Named;
 
 import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.commons.io.IOUtils;
+import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
 import org.apache.james.filesystem.api.FileSystem;
 import org.apache.james.jmap.JMAPRoutes;
@@ -48,6 +50,8 @@ import org.apache.james.utils.GuiceProbe;
 import org.apache.james.utils.InitializationOperation;
 import org.apache.james.utils.InitilizationOperationBuilder;
 import org.apache.james.utils.PropertiesProvider;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.inject.AbstractModule;
@@ -118,6 +122,7 @@ import com.linagora.tmail.james.jmap.ticket.TicketManager;
 import com.linagora.tmail.james.jmap.ticket.TicketStore;
 
 public class RestApiModule extends AbstractModule {
+    public static final Logger LOGGER = LoggerFactory.getLogger(RestApiModule.class);
 
     private static final boolean TICKET_IP_VALIDATION_DISABLED = false;
     private static final String TICKET_AUTHENTICATION_CHALLENGE_REALM = "ws";
@@ -307,6 +312,26 @@ public class RestApiModule extends AbstractModule {
     @Named("selfUrl")
     URL provideSelfUrl(RestApiConfiguration restApiConfiguration) {
         return restApiConfiguration.getSelfUrl();
+    }
+
+    @Provides
+    @Singleton
+    @Named("userSearchDisabledDomains")
+    Set<Domain> provideUserSearchDisabledDomains(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
+        Configuration config = propertiesProvider.getConfiguration("configuration");
+        List<String> rawValues = config.getList(String.class, "user.search.disabled.domains", List.of());
+
+        if (rawValues.isEmpty()) {
+            LOGGER.info("No user search disabled domains configured");
+            return Set.of();
+        }
+
+        Set<Domain> disabledDomains = rawValues.stream()
+            .map(Domain::of)
+            .collect(Collectors.toUnmodifiableSet());
+
+        LOGGER.info("User search is disabled for domains: {}", disabledDomains.stream().map(Domain::asString).collect(Collectors.joining(", ")));
+        return disabledDomains;
     }
 
     private URL getURLFromConfiguration(PropertiesProvider propertiesProvider, String propertyName) throws ConfigurationException, FileNotFoundException {
