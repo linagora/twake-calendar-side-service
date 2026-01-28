@@ -142,6 +142,6 @@ public class ScheduledReconnectionHandlerTest {
                 "tcalendar:event:request:notification",
                 "tcalendar:event:reply:notification",
                 "tcalendar:calendar:delegated:created",
-                "tcalendar.calendar-list.notifications");
+                "tcalendar:calendar:list:notification");
     }
 }

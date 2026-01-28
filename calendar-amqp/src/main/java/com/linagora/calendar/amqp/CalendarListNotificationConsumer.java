@@ -70,7 +70,7 @@ public class CalendarListNotificationConsumer implements Closeable, Startable {
     private static final Logger LOGGER = LoggerFactory.getLogger(CalendarListNotificationConsumer.class);
     private static final boolean REQUEUE_ON_NACK = true;
 
-    public static final String QUEUE_NAME = "tcalendar.calendar-list.notifications";
+    public static final String QUEUE_NAME = "tcalendar:calendar:list:notification";
     public static final String DEAD_LETTER_QUEUE = QUEUE_NAME + ":dead-letter";
 
     private static final List<String> EXCHANGES = List.of(
