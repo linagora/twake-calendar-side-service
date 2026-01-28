@@ -23,6 +23,9 @@ import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.apache.james.backends.rabbitmq.RabbitMQExtension.IsolationPolicy.WEAK;
+import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.not;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -40,6 +43,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.google.inject.multibindings.Multibinder;
 import com.linagora.calendar.app.AppTestHelper;
@@ -114,6 +119,8 @@ class PeopleSearchRouteTest {
     }
 
     private static final String DOMAIN = "open-paas.ltd";
+    private static final Domain DISABLED_DOMAIN_1 = Domain.of("twake.app");
+    private static final Domain DISABLED_DOMAIN_2 = Domain.of("xyz.com");
     private static final String PASSWORD = "secret";
     private static final Username USERNAME = Username.fromLocalPartWithDomain("bob", DOMAIN);
 
@@ -644,6 +651,152 @@ class PeopleSearchRouteTest {
                 assertThatJson(json)
                     .node("emailAddresses[0].value")
                     .isEqualTo(foreignDomainUser.asString()));
+    }
+
+    @Test
+    void shouldExcludeUserObjectTypeWhenUserSearchIsDisabledForDomain(TwakeCalendarGuiceServer server) {
+        CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
+        calendarDataProbe.addDomain(DISABLED_DOMAIN_1);
+
+        Username disabledDomainUser = Username.fromLocalPartWithDomain("bob", DISABLED_DOMAIN_1.asString());
+        Username targetUser = Username.fromLocalPartWithDomain("alice", DOMAIN);
+
+        calendarDataProbe.addUser(disabledDomainUser, PASSWORD);
+        calendarDataProbe.addUser(targetUser, PASSWORD);
+
+        MemoryAutoCompleteModule.Probe autoCompleteProbe = server.getProbe(MemoryAutoCompleteModule.Probe.class);
+        autoCompleteProbe.add(disabledDomainUser.asString(), targetUser.asString(), "alice", "twake");
+
+        given()
+            .auth().preemptive()
+            .basic(disabledDomainUser.asString(), PASSWORD)
+            .body("""
+                {
+                  "q": "alice",
+                  "objectTypes": ["user", "contact"],
+                  "limit": 10
+                }
+                """)
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .body("objectType", not(hasItem("user")));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "[\"user\"]",
+        "[\"contact\"]",
+        "[\"user\", \"contact\"]"
+    })
+    void shouldExcludeUserObjectTypeWhenUserSearchIsDisabledForDomainAndTargetIsOnlyUser(String objectTypes, TwakeCalendarGuiceServer server) {
+        // given
+        CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
+        calendarDataProbe.addDomain(DISABLED_DOMAIN_1);
+
+        Username disabledDomainUser = Username.fromLocalPartWithDomain("bob", DISABLED_DOMAIN_1.asString());
+        Username targetUser = Username.fromLocalPartWithDomain("alice", DISABLED_DOMAIN_1.asString());
+
+        calendarDataProbe.addUser(disabledDomainUser, PASSWORD);
+        calendarDataProbe.addUser(targetUser, PASSWORD);
+
+        // when / then
+        given()
+            .auth().preemptive()
+            .basic(disabledDomainUser.asString(), PASSWORD)
+            .body("""
+                {
+                  "q": "alice",
+                  "objectTypes": %s,
+                  "limit": 10
+                }
+                """.formatted(objectTypes))
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .body("", hasSize(0));
+    }
+
+    @Test
+    void shouldAllowDisabledDomainUserToSearchTheirOwnContacts(TwakeCalendarGuiceServer server) {
+        CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
+        calendarDataProbe.addDomain(DISABLED_DOMAIN_1);
+
+        Username disabledDomainUser = Username.fromLocalPartWithDomain("bob", DISABLED_DOMAIN_1.asString());
+        calendarDataProbe.addUser(disabledDomainUser, PASSWORD);
+
+        MemoryAutoCompleteModule.Probe autoCompleteProbe = server.getProbe(MemoryAutoCompleteModule.Probe.class);
+        autoCompleteProbe.add(disabledDomainUser.asString(), "contact1@domain.tld", "alice", "contact");
+        autoCompleteProbe.add(disabledDomainUser.asString(), "contact2@domain.tld", "alice", "other");
+
+        String response = given()
+            .auth().preemptive()
+            .basic(disabledDomainUser.asString(), PASSWORD)
+            .body("""
+                {
+                  "q": "alice",
+                  "objectTypes": ["contact"],
+                  "limit": 10
+                }
+                """)
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response)
+            .isArray()
+            .anySatisfy(json ->
+                assertThatJson(json)
+                    .node("objectType")
+                    .isEqualTo("contact"));
+
+        assertThatJson(response)
+            .isArray()
+            .anySatisfy(json ->
+                assertThatJson(json)
+                    .node("emailAddresses[0].value")
+                    .isEqualTo("contact1@domain.tld"))
+            .anySatisfy(json ->
+                assertThatJson(json)
+                    .node("emailAddresses[0].value")
+                    .isEqualTo("contact2@domain.tld"));
+    }
+
+    @Test
+    void shouldReturnEmptyWhenUserSearchDisabledAndOnlyUserRequested(TwakeCalendarGuiceServer server) {
+        CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
+        calendarDataProbe.addDomain(DISABLED_DOMAIN_2);
+
+        Username disabledDomainUser = Username.fromLocalPartWithDomain("bob", DISABLED_DOMAIN_2.asString());
+        Username targetUser = Username.fromLocalPartWithDomain("alice", DOMAIN);
+
+        calendarDataProbe.addUser(disabledDomainUser, PASSWORD);
+        calendarDataProbe.addUser(targetUser, PASSWORD);
+
+        MemoryAutoCompleteModule.Probe autoCompleteProbe = server.getProbe(MemoryAutoCompleteModule.Probe.class);
+        autoCompleteProbe.add(disabledDomainUser.asString(), targetUser.asString(), "alice", "twake");
+
+        given()
+            .auth().preemptive()
+            .basic(disabledDomainUser.asString(), PASSWORD)
+            .body("""
+                {
+                  "q": "alice",
+                  "objectTypes": ["user"],
+                  "limit": 10
+                }
+                """)
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .body("", hasSize(0));
     }
 
     @Test
