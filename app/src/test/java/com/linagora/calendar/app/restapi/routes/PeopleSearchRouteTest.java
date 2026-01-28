@@ -43,6 +43,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.google.inject.multibindings.Multibinder;
 import com.linagora.calendar.app.AppTestHelper;
@@ -680,6 +682,41 @@ class PeopleSearchRouteTest {
         .then()
             .statusCode(HttpStatus.SC_OK)
             .body("objectType", not(hasItem("user")));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "[\"user\"]",
+        "[\"contact\"]",
+        "[\"user\", \"contact\"]"
+    })
+    void shouldExcludeUserObjectTypeWhenUserSearchIsDisabledForDomainAndTargetIsOnlyUser(String objectTypes, TwakeCalendarGuiceServer server) {
+        // given
+        CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
+        calendarDataProbe.addDomain(DISABLED_DOMAIN_1);
+
+        Username disabledDomainUser = Username.fromLocalPartWithDomain("bob", DISABLED_DOMAIN_1.asString());
+        Username targetUser = Username.fromLocalPartWithDomain("alice", DISABLED_DOMAIN_1.asString());
+
+        calendarDataProbe.addUser(disabledDomainUser, PASSWORD);
+        calendarDataProbe.addUser(targetUser, PASSWORD);
+
+        // when / then
+        given()
+            .auth().preemptive()
+            .basic(disabledDomainUser.asString(), PASSWORD)
+            .body("""
+                {
+                  "q": "alice",
+                  "objectTypes": %s,
+                  "limit": 10
+                }
+                """.formatted(objectTypes))
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .body("", hasSize(0));
     }
 
     @Test
