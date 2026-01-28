@@ -543,4 +543,61 @@ Revokes administrator rights of user `user1@linagora.com` for domain `linagora.c
 **Status codes**:
 - `204` if successful, even if the user exists but was not an admin (idempotent).
 - `404` if the domain or user does not exist.
-- `400` if `domainName` or `username` has an invalid format.  
+- `400` if `domainName` or `username` has an invalid format.
+
+## User data deletion
+
+Allows deleting all data associated with a user. This is an asynchronous task that executes multiple deletion steps.
+
+### Deleting user data
+
+```
+POST /users/{username}?action=deleteData
+```
+
+Example:
+
+```
+POST /users/james@linagora.com?action=deleteData
+```
+
+Will delete all data associated with the user `james@linagora.com`.
+
+**Query parameters**:
+- `action=deleteData` (required): Triggers the deletion task
+- `fromStep={stepName}` (optional): Start execution from a specific step, skipping previous ones
+
+**Response**:
+
+Returns a task ID for async tracking:
+
+```json
+{
+  "taskId": "464269f0-9314-11ef-a339-d76792bfb514"
+}
+```
+
+**Status codes**:
+- `201`: Task successfully submitted
+- `400`: Invalid action or missing parameter
+
+### Deletion steps
+
+The deletion task executes the following steps in priority order:
+
+| Step Name | Priority | Description |
+|-----------|----------|-------------|
+| `DavCalendarDeletionTaskStep` | 1 | Deletes user's calendars and calendar events |
+| `DavContactDeletionTaskStep` | 2 | Deletes user's contacts and address books |
+| `CalendarSearchDeletionTaskStep` | 10 | Removes indexed calendar events from OpenSearch |
+| `OpenPaaSUserDeletionTaskStep` | 1000 | Deletes user from the OpenPaaS user database |
+
+### Running from a specific step
+
+To skip certain deletion steps, use the `fromStep` parameter:
+
+```
+POST /users/james@linagora.com?action=deleteData&fromStep=CalendarSearchDeletionTaskStep
+```
+
+This will skip `DavCalendarDeletionTaskStep` and `DavContactDeletionTaskStep`, starting directly from `CalendarSearchDeletionTaskStep`.
