@@ -42,6 +42,7 @@ import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.commons.lang3.Strings;
 import org.apache.james.core.Username;
 import org.apache.james.events.EventBus;
+import org.apache.james.events.EventListener.ReactiveEventListener;
 import org.apache.james.events.Registration;
 import org.apache.james.events.RegistrationKey;
 import org.apache.james.jmap.Endpoint;
@@ -144,8 +145,8 @@ public class WebsocketRoute extends CalendarRoute {
 
             Flux<WebSocketFrame> outboundFlux = outboundSink.asFlux().map(Throwing.function(WebsocketMessage::asWebSocketFrame));
 
-            return out.sendObject(Flux.merge(outboundFlux, inboundFlux, pingInterval()))
-                .then()
+            return registerDefaultSubscriptions(context)
+                .then(out.sendObject(Flux.merge(outboundFlux, inboundFlux, pingInterval())).then())
                 .doFinally(signal -> cleanupWebsocketSession(context));
         });
     }
@@ -261,9 +262,23 @@ public class WebsocketRoute extends CalendarRoute {
         return doRegisterSubscription(subscriptionKey, registrationKey, listener, accessValidation, context);
     }
 
+    private Mono<Void> registerDefaultSubscriptions(ClientContext context) {
+        return registerCalendarListSubscription(context)
+            .doOnError(error -> LOGGER.warn("Failed to register default subscriptions for {}", context.session().getUser(), error));
+    }
+
+    private Mono<Void> registerCalendarListSubscription(ClientContext context) {
+        Username username = context.session().getUser();
+        CalendarListSubscriptionKey subscriptionKey = new CalendarListSubscriptionKey(username);
+        RegistrationKey registrationKey = new UsernameRegistrationKey(username);
+        DefaultWebSocketNotificationListener listener = new DefaultWebSocketNotificationListener(context.outbound());
+        return doRegisterSubscription(subscriptionKey, registrationKey, listener, Mono.empty(), context)
+            .then();
+    }
+
     private Mono<Registration> doRegisterSubscription(SubscriptionKey subscriptionKey,
                                                       RegistrationKey registrationKey,
-                                                      WebSocketNotificationListener listener,
+                                                      ReactiveEventListener listener,
                                                       Mono<Void> accessValidation,
                                                       ClientContext context) {
 
@@ -310,7 +325,8 @@ public class WebsocketRoute extends CalendarRoute {
         connectedClients.remove(context);
     }
 
-    sealed interface SubscriptionKey permits CalendarSubscriptionKey, AddressBookSubscriptionKey, AlarmSubscriptionKey {
+    sealed interface SubscriptionKey permits CalendarSubscriptionKey, AddressBookSubscriptionKey,
+        AlarmSubscriptionKey, CalendarListSubscriptionKey {
 
         String asString();
     }
@@ -336,11 +352,19 @@ public class WebsocketRoute extends CalendarRoute {
         }
     }
 
+    record CalendarListSubscriptionKey(Username username) implements SubscriptionKey {
+        @Override
+        public String asString() {
+            return "calendarList:" + username.asString();
+        }
+    }
+
     private record ClientContext(Sinks.Many<WebsocketMessage> outbound,
                                  Map<SubscriptionKey, Registration> subscriptionMap,
                                  MailboxSession session) {
 
-        static ClientContext create(Sinks.Many<WebsocketMessage> outbound, MailboxSession session) {
+        static ClientContext create(Sinks.Many<WebsocketMessage> outbound,
+                                   MailboxSession session) {
             return new ClientContext(outbound, new ConcurrentHashMap<>(), session);
         }
 

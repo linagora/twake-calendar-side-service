@@ -19,12 +19,15 @@
 package com.linagora.calendar.app.restapi.routes;
 
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
+import static com.linagora.calendar.storage.eventsearch.CalendarSearchServiceContract.CALMLY_AWAIT;
 import static io.restassured.RestAssured.given;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -32,16 +35,8 @@ import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.time.Instant;
-import java.nio.charset.StandardCharsets;
-
-import com.linagora.calendar.storage.AddressBookURL;
-import com.linagora.calendar.storage.MailboxSessionUtil;
-import com.linagora.calendar.storage.model.Upload;
-import com.linagora.calendar.storage.model.UploadedMimeType;
 
 import org.apache.http.HttpStatus;
-
 import org.apache.james.core.Username;
 import org.apache.james.events.Event;
 import org.apache.james.events.EventBus;
@@ -62,18 +57,24 @@ import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.CalDavClient.NewCalendar;
 import com.linagora.calendar.dav.CalDavClient.PublicRight;
+import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiServerProbe;
+import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.CalendarChangeEvent;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.CalendarURLRegistrationKey;
 import com.linagora.calendar.storage.EventBusAlarmEvent;
+import com.linagora.calendar.storage.MailboxSessionUtil;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.UsernameRegistrationKey;
+import com.linagora.calendar.storage.model.Upload;
+import com.linagora.calendar.storage.model.UploadedMimeType;
 
 import io.restassured.RestAssured;
 import io.restassured.authentication.PreemptiveBasicAuthScheme;
@@ -103,6 +104,7 @@ class WebsocketRouteTest {
             eventBus.dispatch(event, new UsernameRegistrationKey(username))
                 .block();
         }
+
     }
 
     private static final String PASSWORD = "secret";
@@ -129,6 +131,7 @@ class WebsocketRouteTest {
     }
 
     private CalDavClient calDavClient;
+    private DavTestHelper davTestHelper;
 
     private OpenPaaSUser bob;
     private OpenPaaSUser alice;
@@ -152,6 +155,7 @@ class WebsocketRouteTest {
 
         restApiPort = server.getProbe(RestApiServerProbe.class).getPort().getValue();
         calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
+        davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
     }
 
     @AfterEach
@@ -1047,6 +1051,7 @@ class WebsocketRouteTest {
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         webSocket = connectWebSocket(restApiPort, ticket, messages);
+        Thread.sleep(1000); // for ensure registerDefaultSubscriptions (server-side) is already invoked
 
         // DO NOT enable display notification
 
@@ -1367,7 +1372,7 @@ class WebsocketRouteTest {
         return JsonPath.from(ticketResponse).getString("value");
     }
 
-    private WebSocket connectWebSocket(int port, String ticket, BlockingQueue<String> messages) {
+    private WebSocket connectWebSocket(int port, String ticket, BlockingQueue<String> messages) throws InterruptedException {
         OkHttpClient client = new OkHttpClient.Builder()
             .connectTimeout(5, TimeUnit.SECONDS)
             .readTimeout(10, TimeUnit.SECONDS)
@@ -1375,12 +1380,17 @@ class WebsocketRouteTest {
         Request wsRequest = new Request.Builder()
             .url("ws://localhost:" + port + "/ws?ticket=" + ticket)
             .build();
-        return client.newWebSocket(wsRequest, new WebSocketListener() {
+        WebSocket webSocket=  client.newWebSocket(wsRequest, new WebSocketListener() {
             @Override
             public void onMessage(WebSocket webSocket, String text) {
                 messages.offer(text);
             }
         });
+
+        // warm up
+        webSocket.send("{}");
+        messages.poll(3, TimeUnit.SECONDS);
+        return webSocket;
     }
 
     @Test
@@ -1688,15 +1698,13 @@ class WebsocketRouteTest {
             }
             """.formatted(addressBookUri));
 
-        String json = messages.poll(10, SECONDS);
-        assertThat(json).isNotNull();
-
-        assertThatJson(json)
-            .isEqualTo("""
-                {
-                    "notRegistered": { "%s" : "NotFound" }
-                }
-                """.formatted(addressBookUri));
+        CALMLY_AWAIT
+            .untilAsserted(() -> assertThatJson(messages.poll(5, SECONDS))
+                .isEqualTo("""
+                    {
+                        "notRegistered": { "%s" : "NotFound" }
+                    }
+                    """.formatted(addressBookUri)));
     }
 
     @Test
@@ -1817,6 +1825,106 @@ class WebsocketRouteTest {
                                 }
                                 """.formatted(addressBookUri, addressBookImportId))
                     );
+            });
+    }
+
+    @Test
+    void websocketShouldReceiveCalendarListCreatedEvent() throws Exception {
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        NewCalendar newCalendar = new NewCalendar(UUID.randomUUID().toString(),
+            "Calendar Created", "#00ff00", "created");
+        calDavClient.createNewCalendar(bob.username(), bob.id(), newCalendar).block();
+
+        String createdCalendarUrl = new CalendarURL(bob.id(), new OpenPaaSId(newCalendar.id()))
+            .asUri().toASCIIString();
+
+        CALMLY_AWAIT
+            .untilAsserted(() -> {
+                String pushed = messages.poll(5, TimeUnit.SECONDS);
+                assertThat(pushed).isNotNull();
+
+                assertThatJson(pushed)
+                    .isEqualTo("""
+                        {
+                          "calendarList": {
+                            "created": ["%s"]
+                          }
+                        }
+                        """.formatted(createdCalendarUrl));
+            });
+    }
+
+    @Test
+    void websocketShouldReceiveCalendarListUpdatedEvent() throws Exception {
+        NewCalendar newCalendar = new NewCalendar(UUID.randomUUID().toString(),
+            "Calendar Updated", "#00ff00", "updated");
+        calDavClient.createNewCalendar(bob.username(), bob.id(), newCalendar).block();
+
+        CalendarURL calendarURL = new CalendarURL(bob.id(), new OpenPaaSId(newCalendar.id()));
+        String calendarUri = calendarURL.asUri().toString();
+
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        String payload = """
+            <?xml version="1.0" encoding="utf-8" ?>
+            <D:propertyupdate xmlns:D="DAV:">
+              <D:set>
+                <D:prop>
+                  <D:displayname>Updated Calendar</D:displayname>
+                </D:prop>
+              </D:set>
+            </D:propertyupdate>
+            """;
+        davTestHelper.updateCalendar(bob, calendarURL, payload);
+
+        CALMLY_AWAIT
+            .untilAsserted(() -> {
+                String pushed = messages.poll(5, TimeUnit.SECONDS);
+                assertThat(pushed).isNotNull();
+
+                assertThatJson(pushed)
+                    .isEqualTo("""
+                        {
+                          "calendarList": {
+                            "updated": ["%s"]
+                          }
+                        }
+                        """.formatted(calendarUri));
+                });
+    }
+
+    @Test
+    void websocketShouldReceiveCalendarListDeletedEvent() throws Exception {
+        CalDavClient.NewCalendar newCalendar = new CalDavClient.NewCalendar(UUID.randomUUID().toString(),
+            "Calendar Deleted", "#00ff00", "deleted");
+        calDavClient.createNewCalendar(bob.username(), bob.id(), newCalendar).block();
+        CalendarURL calendarURL = new CalendarURL(bob.id(), new OpenPaaSId(newCalendar.id()));
+        String calendarUri = calendarURL.asUri().toString();
+
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        calDavClient.deleteCalendar(bob.username(), calendarURL).block();
+
+        CALMLY_AWAIT
+            .untilAsserted(() -> {
+                String pushed = messages.poll(5, TimeUnit.SECONDS);
+                assertThat(pushed).isNotNull();
+
+                assertThatJson(pushed)
+                    .isEqualTo("""
+                        {
+                          "calendarList": {
+                            "deleted": ["%s"]
+                          }
+                        }
+                        """.formatted(calendarUri));
             });
     }
 
