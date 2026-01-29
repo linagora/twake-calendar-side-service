@@ -68,7 +68,8 @@ public class CalendarListNotificationHandler {
             case CALENDAR_UPDATED -> ChangeType.UPDATED;
             case CALENDAR_DELETED -> ChangeType.DELETED;
             case SUBSCRIPTION_CREATED -> ChangeType.SUBSCRIBED;
-            case SUBSCRIPTION_UPDATED -> ChangeType.UPDATED; // TODO
+            // TODO https://github.com/linagora/esn-sabre/issues/261
+            case SUBSCRIPTION_UPDATED -> ChangeType.UPDATED;
             case SUBSCRIPTION_DELETED -> ChangeType.RIGHTS_REVOKED;
         };
     }

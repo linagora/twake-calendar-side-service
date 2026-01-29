@@ -24,8 +24,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.net.URI;
 import java.time.Duration;
 import java.util.List;
+import java.util.Queue;
 import java.util.UUID;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicReference;
 
 import javax.net.ssl.SSLException;
 
@@ -131,7 +133,7 @@ public class CalendarListNotificationConsumerTest {
     @Test
     void shouldDispatchCreatedWhenCalendarCreated() {
         OpenPaaSUser user = sabreDavExtension.newTestUser();
-        List<CalendarListChangedEvent> eventsReceived = new CopyOnWriteArrayList<>();
+        Queue<CalendarListChangedEvent> eventsReceived = new ConcurrentLinkedQueue<>();
         registerListener(user, eventsReceived);
 
         String calendarId = UUID.randomUUID().toString();
@@ -154,8 +156,9 @@ public class CalendarListNotificationConsumerTest {
     void shouldDispatchOnlyToRegisteredUserWhenOtherUserIsListening() {
         OpenPaaSUser user = sabreDavExtension.newTestUser();
         OpenPaaSUser otherUser = sabreDavExtension.newTestUser();
-        List<CalendarListChangedEvent> userEvents = new CopyOnWriteArrayList<>();
-        List<CalendarListChangedEvent> otherUserEvents = new CopyOnWriteArrayList<>();
+
+        Queue<CalendarListChangedEvent> userEvents = new ConcurrentLinkedQueue<>();
+        Queue<CalendarListChangedEvent> otherUserEvents = new ConcurrentLinkedQueue<>();
         registerListener(user, userEvents);
         registerListener(otherUser, otherUserEvents);
 
@@ -166,6 +169,7 @@ public class CalendarListNotificationConsumerTest {
         calDavClient.createNewCalendar(user.username(), user.id(), newCalendar).block();
 
         CalendarURL expectedCalendarURL = new CalendarURL(user.id(), new OpenPaaSId(calendarId));
+        CalendarURL otherUserDefaultCalendarURL = CalendarURL.from(otherUser.id());
 
         awaitAtMost.untilAsserted(() -> {
             assertThat(userEvents)
@@ -178,8 +182,8 @@ public class CalendarListNotificationConsumerTest {
             assertThat(otherUserEvents)
                 .noneSatisfy(event -> {
                     assertThat(event.username()).isEqualTo(otherUser.username());
-                    assertThat(event.calendarURL()).isEqualTo(expectedCalendarURL);
                     assertThat(event.changeType()).isEqualTo(ChangeType.CREATED);
+                    assertThat(event.calendarURL()).isNotEqualTo(otherUserDefaultCalendarURL);
                 });
         });
     }
@@ -187,7 +191,7 @@ public class CalendarListNotificationConsumerTest {
     @Test
     void shouldDispatchUpdatedWhenCalendarUpdated() {
         OpenPaaSUser user = sabreDavExtension.newTestUser();
-        List<CalendarListChangedEvent> eventsReceived = new CopyOnWriteArrayList<>();
+        Queue<CalendarListChangedEvent> eventsReceived = new ConcurrentLinkedQueue<>();
         registerListener(user, eventsReceived);
 
         String calendarId = UUID.randomUUID().toString();
@@ -207,7 +211,7 @@ public class CalendarListNotificationConsumerTest {
             </d:propertyupdate>
             """;
 
-        davTestHelper.updateCalendarDisplayName(user, calendarURL, payload);
+        davTestHelper.updateCalendar(user, calendarURL, payload);
 
         awaitAtMost.untilAsserted(() -> assertThat(eventsReceived)
             .anySatisfy(event -> {
@@ -220,7 +224,7 @@ public class CalendarListNotificationConsumerTest {
     @Test
     void shouldDispatchDeletedWhenCalendarDeleted() {
         OpenPaaSUser user = sabreDavExtension.newTestUser();
-        List<CalendarListChangedEvent> eventsReceived = new CopyOnWriteArrayList<>();
+        Queue<CalendarListChangedEvent> eventsReceived = new ConcurrentLinkedQueue<>();
         registerListener(user, eventsReceived);
 
         String calendarId = UUID.randomUUID().toString();
@@ -243,7 +247,7 @@ public class CalendarListNotificationConsumerTest {
     void shouldDispatchSubscribedWhenCalendarSubscribed() {
         OpenPaaSUser owner = sabreDavExtension.newTestUser();
         OpenPaaSUser subscriber = sabreDavExtension.newTestUser();
-        List<CalendarListChangedEvent> eventsReceived = new CopyOnWriteArrayList<>();
+        Queue<CalendarListChangedEvent> eventsReceived = new ConcurrentLinkedQueue<>();
         registerListener(subscriber, eventsReceived);
 
         URI ownerCalendarUri = CalendarURL.from(owner.id()).asUri();
@@ -270,10 +274,50 @@ public class CalendarListNotificationConsumerTest {
     }
 
     @Test
+    void shouldDispatchUpdatedWhenSubscribedCalendarDisplayNameUpdated() {
+        OpenPaaSUser owner = sabreDavExtension.newTestUser();
+        OpenPaaSUser subscriber = sabreDavExtension.newTestUser();
+        URI ownerCalendarUri = CalendarURL.from(owner.id()).asUri();
+        davTestHelper.updateCalendarAcl(owner, ownerCalendarUri, "{DAV:}read");
+
+        SubscribedCalendarRequest subscribedCalendarRequest = SubscribedCalendarRequest.builder()
+            .id(UUID.randomUUID().toString())
+            .sourceUserId(owner.id().value())
+            .name("Owner shared")
+            .color("#00FF00")
+            .readOnly(true)
+            .build();
+
+        davTestHelper.subscribeToSharedCalendar(subscriber, subscribedCalendarRequest);
+
+        CalendarURL subscribedCalendar = new CalendarURL(subscriber.id(), new OpenPaaSId(subscribedCalendarRequest.id()));
+        String payload = """
+            <d:propertyupdate xmlns:d="DAV:">
+              <d:set>
+                <d:prop>
+                  <d:displayname>Subscribed-update</d:displayname>
+                </d:prop>
+              </d:set>
+            </d:propertyupdate>
+            """;
+
+        Queue<CalendarListChangedEvent> eventsReceived = new ConcurrentLinkedQueue<>();
+        registerListener(subscriber, eventsReceived);
+        davTestHelper.updateCalendar(subscriber, subscribedCalendar, payload);
+
+        awaitAtMost.untilAsserted(() -> assertThat(eventsReceived)
+            .anySatisfy(event -> {
+                assertThat(event.username()).isEqualTo(subscriber.username());
+                assertThat(event.calendarURL()).isEqualTo(subscribedCalendar);
+                assertThat(event.changeType()).isEqualTo(ChangeType.UPDATED);
+            }));
+    }
+
+    @Test
     void shouldDispatchDelegatedWhenCalendarDelegated() {
         OpenPaaSUser owner = sabreDavExtension.newTestUser();
         OpenPaaSUser delegate = sabreDavExtension.newTestUser();
-        List<CalendarListChangedEvent> eventsReceived = new CopyOnWriteArrayList<>();
+        Queue<CalendarListChangedEvent> eventsReceived = new ConcurrentLinkedQueue<>();
         registerListener(delegate, eventsReceived);
 
         OpenPaaSDomain domain = new MongoDBOpenPaaSDomainDAO(sabreDavExtension.dockerSabreDavSetup().getMongoDB())
@@ -296,12 +340,53 @@ public class CalendarListNotificationConsumerTest {
             }));
     }
 
+    @Test
+    void shouldDispatchUpdatedWhenDelegatedCalendarDisplayNameUpdated() {
+        OpenPaaSUser owner = sabreDavExtension.newTestUser();
+        OpenPaaSUser delegate = sabreDavExtension.newTestUser();
+
+        MongoDatabase mongoDB = sabreDavExtension.dockerSabreDavSetup().getMongoDB();
+        OpenPaaSDomain domain = new MongoDBOpenPaaSDomainDAO(mongoDB)
+            .retrieve(owner.username().getDomainPart().get())
+            .block();
+
+        String calendarId = UUID.randomUUID().toString();
+        NewCalendar newCalendar = new NewCalendar(calendarId,
+            "Owner Calendar", "#00AAFF", "Calendar to delegate");
+        calDavClient.createNewCalendar(owner.username(), owner.id(), newCalendar).block();
+
+        CalendarURL ownerCalendarURL = new CalendarURL(owner.id(), new OpenPaaSId(calendarId));
+        calDavClient.patchReadWriteDelegations(domain.id(), ownerCalendarURL, List.of(delegate.username()), List.of()).block();
+
+        CalendarURL delegatedCalendarURL = getDelegatedCalendarURL(delegate);
+        String payload = """
+            <d:propertyupdate xmlns:d="DAV:">
+              <d:set>
+                <d:prop>
+                  <d:displayname>Delegated-update</d:displayname>
+                </d:prop>
+              </d:set>
+            </d:propertyupdate>
+            """;
+
+        Queue<CalendarListChangedEvent> eventsReceived = new ConcurrentLinkedQueue<>();
+        registerListener(delegate, eventsReceived);
+        davTestHelper.updateCalendar(delegate, delegatedCalendarURL, payload);
+
+        awaitAtMost.untilAsserted(() -> assertThat(eventsReceived)
+            .anySatisfy(event -> {
+                assertThat(event.username()).isEqualTo(delegate.username());
+                assertThat(event.calendarURL()).isEqualTo(delegatedCalendarURL);
+                assertThat(event.changeType()).isEqualTo(ChangeType.UPDATED);
+            }));
+    }
+
     @Disabled("Not yet implemented: https://github.com/linagora/esn-sabre/issues/261")
     @Test
     void shouldDispatchRightsRevokedWhenDelegationRemoved() {
         OpenPaaSUser owner = sabreDavExtension.newTestUser();
         OpenPaaSUser delegate = sabreDavExtension.newTestUser();
-        List<CalendarListChangedEvent> eventsReceived = new CopyOnWriteArrayList<>();
+        Queue<CalendarListChangedEvent> eventsReceived = new ConcurrentLinkedQueue<>();
         registerListener(delegate, eventsReceived);
 
         OpenPaaSDomain domain = new MongoDBOpenPaaSDomainDAO(sabreDavExtension.dockerSabreDavSetup().getMongoDB())
@@ -327,11 +412,32 @@ public class CalendarListNotificationConsumerTest {
             }));
     }
 
-    private void registerListener(OpenPaaSUser user, List<CalendarListChangedEvent> eventsReceived) {
+    private void registerListener(OpenPaaSUser user, Queue<CalendarListChangedEvent> eventsReceived) {
         Mono.from(eventBus.register(event -> {
             if (event instanceof CalendarListChangedEvent calendarListChangedEvent) {
                 eventsReceived.add(calendarListChangedEvent);
             }
         }, new UsernameRegistrationKey(user.username()))).block();
+    }
+
+    private CalendarURL getDelegatedCalendarURL(OpenPaaSUser delegate) {
+        CalendarURL delegateDefaultCalendarURL = CalendarURL.from(delegate.id());
+        AtomicReference<CalendarURL> delegatedCalendarURLRef = new AtomicReference<>();
+
+        awaitAtMost.untilAsserted(() -> {
+            List<CalendarURL> delegateCalendars = calDavClient.findUserCalendars(delegate.username(), delegate.id())
+                .collectList()
+                .block();
+
+            CalendarURL delegatedCalendarURL = delegateCalendars.stream()
+                .filter(url -> !url.equals(delegateDefaultCalendarURL))
+                .findFirst()
+                .orElse(null);
+
+            assertThat(delegatedCalendarURL).isNotNull();
+            delegatedCalendarURLRef.set(delegatedCalendarURL);
+        });
+
+        return delegatedCalendarURLRef.get();
     }
 }

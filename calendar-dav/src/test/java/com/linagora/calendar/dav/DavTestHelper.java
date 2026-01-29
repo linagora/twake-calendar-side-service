@@ -330,7 +330,7 @@ public class DavTestHelper extends DavClient {
             }).block();
     }
 
-    public void updateCalendarDisplayName(OpenPaaSUser user, CalendarURL calendarURL, String payload) {
+    public void updateCalendar(OpenPaaSUser user, CalendarURL calendarURL, String payload) {
         String uri = calendarURL.asUri().toASCIIString();
         httpClientWithImpersonation(user.username()).headers(headers ->
                 headers.add(HttpHeaderNames.CONTENT_TYPE, "application/xml"))
