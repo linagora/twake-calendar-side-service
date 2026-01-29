@@ -20,6 +20,8 @@ package com.linagora.calendar.app;
 
 import static com.linagora.calendar.saas.TWPCalendarSettingsModule.TWP_CALENDAR_SETTINGS_AGGREGATE_MODULE;
 
+import com.linagora.calendar.saas.TWPCalendarSubscriptionModule;
+
 import java.util.Optional;
 
 import org.apache.james.ExtraProperties;
@@ -140,6 +142,7 @@ public class TwakeCalendarMain {
                 chooseUsersModule(configuration.userChoice()),
                 chooseCacheAndPubSub(configuration.redisEnabled()),
                 chooseTWPCalendarSetting(configuration.twpSettingEnabled()),
+                chooseSaaSSubscription(configuration.saasSubscriptionEnabled()),
                 new FileUploadConfigurationModule(),
                 new RestApiModule(),
                 new TaskManagerModule(),
@@ -236,6 +239,13 @@ public class TwakeCalendarMain {
         }
 
         return ReadOnlyPropertyProviderModule.EMPTY;
+    }
+
+    public static Module chooseSaaSSubscription(boolean enabled) {
+        if (enabled) {
+            return new TWPCalendarSubscriptionModule();
+        }
+        return binder -> {};
     }
 
 }
