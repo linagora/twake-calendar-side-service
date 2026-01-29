@@ -28,6 +28,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 import com.linagora.calendar.storage.CalendarChangeEvent;
+import com.linagora.calendar.storage.CalendarListChangedEvent;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.EventBusAlarmEvent;
 import com.linagora.calendar.storage.ImportEvent;
@@ -88,6 +89,22 @@ public class CalendarEventSerializerTest {
         Instant.parse("2020-01-01T00:00:00Z")
     );
 
+    public static final String CALENDAR_LIST_CHANGED_JSON = """
+        {
+            "type": "CalendarEventSerializer$CalendarListChangedDTO",
+            "eventId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            "username": "listuser",
+            "calendarUrl": "baseId/calendarId",
+            "changeType": "UPDATED"
+        }
+        """;
+
+    public static final CalendarListChangedEvent CALENDAR_LIST_CHANGED_EVENT = new CalendarListChangedEvent(
+        Event.EventId.of("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
+        Username.of("listuser"),
+        CalendarURL.deserialize("baseId/calendarId"),
+        CalendarListChangedEvent.ChangeType.UPDATED);
+
     private final CalendarEventSerializer serializer = new CalendarEventSerializer();
 
     @Test
@@ -124,5 +141,17 @@ public class CalendarEventSerializerTest {
     void shouldDeserializeJsonToAlarmEvent() {
         Event event = serializer.asEvent(ALARM_EVENT_JSON);
         assertThat(event).isEqualTo(ALARM_EVENT);
+    }
+
+    @Test
+    void shouldSerializeCalendarListChangedEvent() {
+        String json = serializer.toJson(CALENDAR_LIST_CHANGED_EVENT);
+        assertThatJson(json).isEqualTo(CALENDAR_LIST_CHANGED_JSON);
+    }
+
+    @Test
+    void shouldDeserializeJsonToCalendarListChangedEvent() {
+        Event event = serializer.asEvent(CALENDAR_LIST_CHANGED_JSON);
+        assertThat(event).isEqualTo(CALENDAR_LIST_CHANGED_EVENT);
     }
 }

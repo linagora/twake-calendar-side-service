@@ -34,6 +34,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.storage.CalendarChangeEvent;
+import com.linagora.calendar.storage.CalendarListChangedEvent;
+import com.linagora.calendar.storage.CalendarListChangedEvent.ChangeType;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.EventBusAlarmEvent;
 import com.linagora.calendar.storage.ImportEvent;
@@ -47,6 +49,7 @@ public class CalendarEventSerializer implements EventSerializer {
         property = "type")
     @JsonSubTypes({
         @JsonSubTypes.Type(value = CalendarChangeDTO.class),
+        @JsonSubTypes.Type(value = CalendarListChangedDTO.class),
         @JsonSubTypes.Type(value = ImportEventDTO.class),
         @JsonSubTypes.Type(value = AlarmEventDTO.class)
     })
@@ -63,6 +66,22 @@ public class CalendarEventSerializer implements EventSerializer {
         public CalendarChangeEvent asEvent() {
             return new CalendarChangeEvent(Event.EventId.of(this.eventId()),
                 CalendarURL.deserialize(this.calendarUrl()));
+        }
+    }
+
+    record CalendarListChangedDTO(String eventId, String username, String calendarUrl, String changeType) implements EventDTO {
+        public static CalendarListChangedDTO from(CalendarListChangedEvent event) {
+            return new CalendarListChangedDTO(event.getEventId().getId().toString(),
+                event.getUsername().asString(),
+                event.calendarURL().serialize(),
+                event.changeType().name());
+        }
+
+        public CalendarListChangedEvent asEvent() {
+            return new CalendarListChangedEvent(Event.EventId.of(this.eventId()),
+                Username.of(this.username()),
+                CalendarURL.deserialize(this.calendarUrl()),
+                ChangeType.valueOf(this.changeType));
         }
     }
 
@@ -156,6 +175,7 @@ public class CalendarEventSerializer implements EventSerializer {
     private EventDTO toDTO(Event event) {
         return switch (event) {
             case CalendarChangeEvent calendarChangeEvent -> CalendarChangeDTO.from(calendarChangeEvent);
+            case CalendarListChangedEvent calendarListChangedEvent -> CalendarListChangedDTO.from(calendarListChangedEvent);
             case ImportEvent importEvent -> ImportEventDTO.from(importEvent);
             case EventBusAlarmEvent alarmEvent -> AlarmEventDTO.from(alarmEvent);
             default -> throw new IllegalArgumentException("Unsupported event type: " + event.getClass());
@@ -165,6 +185,7 @@ public class CalendarEventSerializer implements EventSerializer {
     private Event fromDTO(EventDTO eventDTO) {
         return switch (eventDTO) {
             case CalendarChangeDTO calendarChangeDTO -> calendarChangeDTO.asEvent();
+            case CalendarListChangedDTO calendarListChangedDTO -> calendarListChangedDTO.asEvent();
             case ImportEventDTO importEventDTO -> importEventDTO.asEvent();
             case AlarmEventDTO alarmEventDTO -> alarmEventDTO.asEvent();
             default -> throw new IllegalArgumentException("Unsupported event DTO type: " + eventDTO.getClass());

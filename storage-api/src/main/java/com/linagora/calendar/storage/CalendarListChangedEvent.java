@@ -18,8 +18,11 @@
 
 package com.linagora.calendar.storage;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.Username;
 import org.apache.james.events.Event;
+
+import com.google.common.base.Preconditions;
 
 public record CalendarListChangedEvent(Event.EventId eventId,
                                        Username username,
@@ -38,7 +41,17 @@ public record CalendarListChangedEvent(Event.EventId eventId,
         DELETED,
         DELEGATED,
         SUBSCRIBED,
-        RIGHTS_REVOKED
+        RIGHTS_REVOKED;
+
+        public static ChangeType parse(String rawString) {
+            Preconditions.checkArgument(StringUtils.isNotBlank(rawString), "ChangeType must not be blank");
+            for (ChangeType changeType : ChangeType.values()) {
+                if (changeType.name().equalsIgnoreCase(rawString)) {
+                    return changeType;
+                }
+            }
+            throw new IllegalArgumentException("Unknown ChangeType: " + rawString);
+        }
     }
 
     @Override
