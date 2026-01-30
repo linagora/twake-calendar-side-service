@@ -23,6 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.james.events.RetryBackoffConfiguration;
 import org.apache.james.mime4j.dom.Message;
 import org.apache.james.mime4j.message.DefaultMessageBuilder;
 import org.testcontainers.shaded.org.awaitility.Awaitility;
@@ -47,4 +48,10 @@ public interface TestFixture {
             return builder.parseMessage(is);
         }
     }
+
+    RetryBackoffConfiguration RETRY_BACKOFF_CONFIGURATION = RetryBackoffConfiguration.builder()
+        .maxRetries(3)
+        .firstBackoff(Duration.ofMillis(5))
+        .jitterFactor(0.5)
+        .build();
 }

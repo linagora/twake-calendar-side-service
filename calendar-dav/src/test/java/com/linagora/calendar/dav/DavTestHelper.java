@@ -330,6 +330,26 @@ public class DavTestHelper extends DavClient {
             }).block();
     }
 
+    public void updateCalendar(OpenPaaSUser user, CalendarURL calendarURL, String payload) {
+        String uri = calendarURL.asUri().toASCIIString();
+        httpClientWithImpersonation(user.username()).headers(headers ->
+                headers.add(HttpHeaderNames.CONTENT_TYPE, "application/xml"))
+            .request(HttpMethod.valueOf("PROPPATCH"))
+            .uri(uri)
+            .send(Mono.just(Unpooled.wrappedBuffer(payload.getBytes(StandardCharsets.UTF_8))))
+            .responseSingle((response, responseContent) -> {
+                if (response.status().code() == 207) {
+                    return Mono.empty();
+                }
+                return responseContent.asString(StandardCharsets.UTF_8)
+                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .flatMap(errorBody -> Mono.error(new RuntimeException("""
+                        Unexpected status code: %d when updating calendar displayname '%s'
+                        %s
+                        """.formatted(response.status().code(), uri, errorBody))));
+            }).block();
+    }
+
     public Mono<String> getCalendarMetadata(OpenPaaSUser openPaaSUser) {
         return getCalendarMetadata(openPaaSUser, openPaaSUser.id());
     }

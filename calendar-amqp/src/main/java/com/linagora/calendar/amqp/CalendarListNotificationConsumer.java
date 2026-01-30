@@ -27,15 +27,16 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
 
 import org.apache.james.backends.rabbitmq.QueueArguments;
-import org.apache.james.backends.rabbitmq.QueueArguments.Builder;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.ReceiverProvider;
-import org.apache.james.core.Username;
 import org.apache.james.lifecycle.api.Startable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,12 +44,11 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.inject.name.Named;
 import com.linagora.calendar.storage.CalendarURL;
-import com.linagora.calendar.storage.OpenPaaSUser;
-import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.rabbitmq.client.BuiltinExchangeType;
 
 import reactor.core.Disposable;
@@ -63,9 +63,6 @@ import reactor.rabbitmq.Receiver;
 import reactor.rabbitmq.Sender;
 
 public class CalendarListNotificationConsumer implements Closeable, Startable {
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
-        .registerModule(new Jdk8Module())
-        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CalendarListNotificationConsumer.class);
     private static final boolean REQUEUE_ON_NACK = true;
@@ -73,16 +70,35 @@ public class CalendarListNotificationConsumer implements Closeable, Startable {
     public static final String QUEUE_NAME = "tcalendar:calendar:list:notification";
     public static final String DEAD_LETTER_QUEUE = QUEUE_NAME + ":dead-letter";
 
-    private static final List<String> EXCHANGES = List.of(
-        "calendar:subscription:created",
-        "calendar:subscription:updated",
-        "calendar:subscription:deleted",
-        "calendar:calendar:created",
-        "calendar:calendar:updated",
-        "calendar:calendar:deleted");
+    public enum CalendarListExchange {
+        SUBSCRIPTION_CREATED("calendar:subscription:created"),
+        SUBSCRIPTION_UPDATED("calendar:subscription:updated"),
+        SUBSCRIPTION_DELETED("calendar:subscription:deleted"),
+        CALENDAR_CREATED("calendar:calendar:created"),
+        CALENDAR_UPDATED("calendar:calendar:updated"),
+        CALENDAR_DELETED("calendar:calendar:deleted");
+
+        private final String exchangeName;
+
+        CalendarListExchange(String exchangeName) {
+            this.exchangeName = exchangeName;
+        }
+
+        public String asString() {
+            return exchangeName;
+        }
+
+        public static Optional<CalendarListExchange> fromString(String exchangeName) {
+            return Stream.of(values())
+                .filter(exchange -> exchange.exchangeName.equals(exchangeName))
+                .findFirst();
+        }
+    }
+
+    private static final List<CalendarListExchange> EXCHANGES = List.of(CalendarListExchange.values());
 
     private final ReceiverProvider receiverProvider;
-    private final OpenPaaSUserDAO openPaaSUserDAO;
+    private final CalendarListNotificationHandler notificationHandler;
     private final ReactorRabbitMQChannelPool channelPool;
     private final Supplier<QueueArguments.Builder> queueArgumentSupplier;
 
@@ -91,16 +107,16 @@ public class CalendarListNotificationConsumer implements Closeable, Startable {
     @Inject
     public CalendarListNotificationConsumer(ReactorRabbitMQChannelPool channelPool,
                                             @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier,
-                                            OpenPaaSUserDAO openPaaSUserDAO) {
+                                            CalendarListNotificationHandler notificationHandler) {
         this.channelPool = channelPool;
         this.queueArgumentSupplier = queueArgumentSupplier;
         this.receiverProvider = channelPool::createReceiver;
-        this.openPaaSUserDAO = openPaaSUserDAO;
+        this.notificationHandler = notificationHandler;
     }
 
-    private static void declareExchangeAndQueue(Supplier<Builder> queueArgumentSupplier, Sender sender) {
+    private static void declareExchangeAndQueue(Supplier<QueueArguments.Builder> queueArgumentSupplier, Sender sender) {
         Flux.concat(Flux.fromIterable(EXCHANGES)
-                    .flatMap(exchange -> sender.declareExchange(ExchangeSpecification.exchange(exchange)
+                    .flatMap(exchange -> sender.declareExchange(ExchangeSpecification.exchange(exchange.asString())
                         .durable(DURABLE)
                         .type(BuiltinExchangeType.FANOUT.getType()))),
                 sender.declareQueue(QueueSpecification
@@ -116,7 +132,7 @@ public class CalendarListNotificationConsumer implements Closeable, Startable {
                         .build())),
                 Flux.fromIterable(EXCHANGES)
                     .flatMap(exchange -> sender.bind(BindingSpecification.binding()
-                        .exchange(exchange)
+                        .exchange(exchange.asString())
                         .queue(QUEUE_NAME)
                         .routingKey(EMPTY_ROUTING_KEY))))
             .then()
@@ -160,13 +176,11 @@ public class CalendarListNotificationConsumer implements Closeable, Startable {
 
     private Mono<Void> messageConsume(AcknowledgableDelivery ackDelivery) {
         String exchangeName = ackDelivery.getEnvelope().getExchange();
-        String rawPayload = new String(ackDelivery.getBody(), StandardCharsets.UTF_8);
+        CalendarListExchange exchange = CalendarListExchange.fromString(exchangeName)
+            .orElseThrow(() -> new IllegalArgumentException("Unsupported exchange name: " + exchangeName));
 
         return Mono.fromCallable(() -> CalendarListChangesMessage.deserialize(ackDelivery.getBody()))
-            .map(CalendarListChangesMessage::calendarURL)
-            .flatMap(calendarURL -> resolveUser(calendarURL)
-                .doOnNext(username -> LOGGER.debug("Consumed calendar list change exchangeName={} rawPayload={} calendarPath={} targetUser={}",
-                    exchangeName, rawPayload, calendarURL.asUri(), username.asString()))
+            .flatMap(message -> notificationHandler.handle(exchange, message)
                 .then())
             .doOnSuccess(result -> ackDelivery.ack())
             .onErrorResume(error -> {
@@ -176,15 +190,10 @@ public class CalendarListNotificationConsumer implements Closeable, Startable {
             });
     }
 
-    private Mono<Username> resolveUser(CalendarURL calendarURL) {
-        return openPaaSUserDAO.retrieve(calendarURL.base())
-            .map(OpenPaaSUser::username)
-            .switchIfEmpty(Mono.error(() -> new IllegalStateException("OpenPaaS user not found for id " + calendarURL.base().value())));
-    }
-
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record CalendarListChangesMessage(
-        @JsonProperty(value = "calendarPath", required = true) String calendarPath) {
+    public record CalendarListChangesMessage(@JsonProperty("calendarPath") String calendarPath,
+                                             @JsonProperty("calendarProps") Map<String, JsonNode> calendarProps) {
+
         public static CalendarListChangesMessage deserialize(byte[] json) {
             try {
                 return OBJECT_MAPPER.readValue(json, CalendarListChangesMessage.class);
@@ -193,8 +202,21 @@ public class CalendarListNotificationConsumer implements Closeable, Startable {
             }
         }
 
+        private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
+            .registerModule(new Jdk8Module())
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+        private static final String ACCESS_KEY = "access";
+
         public CalendarURL calendarURL() {
             return CalendarURL.parse(calendarPath);
+        }
+
+        public Optional<String> access() {
+            return Optional.ofNullable(calendarProps)
+                .map(props -> props.get(ACCESS_KEY))
+                .filter(JsonNode::isTextual)
+                .map(JsonNode::asText);
         }
     }
 }
