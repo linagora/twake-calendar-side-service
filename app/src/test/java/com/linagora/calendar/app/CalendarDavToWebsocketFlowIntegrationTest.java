@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.app;
 
+import static com.linagora.calendar.app.TestFixture.awaitMessage;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static io.restassured.RestAssured.given;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
