@@ -42,6 +42,7 @@ import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.commons.lang3.Strings;
 import org.apache.james.core.Username;
 import org.apache.james.events.EventBus;
+import org.apache.james.events.EventListener.ReactiveEventListener;
 import org.apache.james.events.Registration;
 import org.apache.james.events.RegistrationKey;
 import org.apache.james.jmap.Endpoint;
@@ -96,6 +97,20 @@ public class WebsocketRoute extends CalendarRoute {
     private static final String WEBSOCKET_PING_INTERVAL_PROPERTY = "websocket.ping.interval";
     private static final Duration WEBSOCKET_PING_INTERVAL_DEFAULT = Duration.ofSeconds(5);
 
+    private interface ResponseMessage {
+        String MESSAGE_CALENDAR_LIST_REGISTERED = "{\"calendarListRegistered\":true}";
+        String MESSAGE_DEFAULT_SUBSCRIPTIONS_FAILED = "{\"error\":\"default-subscriptions-failed\"}";
+
+        String ERROR_INTERNAL = "Internal Error";
+        String ERROR_NOT_FOUND = "NotFound";
+        String ERROR_FORBIDDEN = "Forbidden";
+        String ERROR_INVALID_REQUEST = "Invalid Request";
+        String ERROR_UNSUPPORTED_SUBSCRIPTION_RESOURCE_PREFIX = "Unsupported subscription resource: ";
+        String ERROR_DUPLICATED_ENTRIES = "register and unregister cannot contain duplicated entries";
+        String ERROR_UNSUPPORTED_SUBSCRIPTION_KEY_TYPE = "Unsupported subscription key type";
+        String ERROR_SERIALIZE_RESPONSE = "Failed to serialize response";
+    }
+
     private final Duration websocketPingInterval;
     private final EventBus eventBus;
     private final CalDavClient calDavClient;
@@ -144,8 +159,8 @@ public class WebsocketRoute extends CalendarRoute {
 
             Flux<WebSocketFrame> outboundFlux = outboundSink.asFlux().map(Throwing.function(WebsocketMessage::asWebSocketFrame));
 
-            return out.sendObject(Flux.merge(outboundFlux, inboundFlux, pingInterval()))
-                .then()
+            return registerDefaultSubscriptions(context)
+                .then(out.sendObject(Flux.merge(outboundFlux, inboundFlux, pingInterval())).then())
                 .doFinally(signal -> cleanupWebsocketSession(context));
         });
     }
@@ -158,7 +173,7 @@ public class WebsocketRoute extends CalendarRoute {
                 LOGGER.warn("Error when handle client message: {} ", message, error);
                 String errorMessage = switch (error) {
                     case CalendarSubscribeException calendarSubscribeException -> calendarSubscribeException.getMessage();
-                    default -> "internal-error";
+                    default -> ResponseMessage.ERROR_INTERNAL;
                 };
                 return Mono.fromCallable(() -> MAPPER.writeValueAsString(Map.of("error", errorMessage)));
             });
@@ -235,7 +250,7 @@ public class WebsocketRoute extends CalendarRoute {
         return switch (subscriptionKey) {
             case CalendarSubscriptionKey calendarKey -> registerCalendar(calendarKey, context);
             case AddressBookSubscriptionKey addressBookKey -> registerAddressBook(addressBookKey, context);
-            default -> Mono.error(new CalendarSubscribeException("Unsupported subscription key type"));
+            default -> Mono.error(new CalendarSubscribeException(ResponseMessage.ERROR_UNSUPPORTED_SUBSCRIPTION_KEY_TYPE));
         };
     }
 
@@ -261,9 +276,32 @@ public class WebsocketRoute extends CalendarRoute {
         return doRegisterSubscription(subscriptionKey, registrationKey, listener, accessValidation, context);
     }
 
+    private Mono<Void> registerDefaultSubscriptions(ClientContext context) {
+        return registerCalendarListSubscription(context)
+            .doOnError(error -> LOGGER.warn("Failed to register default subscriptions for {}", context.session().getUser(), error))
+            .onErrorResume(error -> pushMessageToClient(context, new TextMessage(ResponseMessage.MESSAGE_DEFAULT_SUBSCRIPTIONS_FAILED)));
+    }
+
+    private Mono<Void> registerCalendarListSubscription(ClientContext context) {
+        Username username = context.session().getUser();
+        CalendarListSubscriptionKey subscriptionKey = new CalendarListSubscriptionKey(username);
+        RegistrationKey registrationKey = new UsernameRegistrationKey(username);
+        DefaultWebSocketNotificationListener listener = new DefaultWebSocketNotificationListener(context.outbound());
+        return doRegisterSubscription(subscriptionKey, registrationKey, listener, Mono.empty(), context)
+            .then(pushMessageToClient(context, new TextMessage(ResponseMessage.MESSAGE_CALENDAR_LIST_REGISTERED)));
+    }
+
+    private Mono<Void> pushMessageToClient(ClientContext context, WebsocketMessage message) {
+        return Mono.fromRunnable(() -> {
+            synchronized (context.outbound()) {
+                context.outbound().emitNext(message, EmitFailureHandler.FAIL_FAST);
+            }
+        }).then();
+    }
+
     private Mono<Registration> doRegisterSubscription(SubscriptionKey subscriptionKey,
                                                       RegistrationKey registrationKey,
-                                                      WebSocketNotificationListener listener,
+                                                      ReactiveEventListener listener,
                                                       Mono<Void> accessValidation,
                                                       ClientContext context) {
 
@@ -310,7 +348,8 @@ public class WebsocketRoute extends CalendarRoute {
         connectedClients.remove(context);
     }
 
-    sealed interface SubscriptionKey permits CalendarSubscriptionKey, AddressBookSubscriptionKey, AlarmSubscriptionKey {
+    sealed interface SubscriptionKey permits CalendarSubscriptionKey, AddressBookSubscriptionKey,
+        AlarmSubscriptionKey, CalendarListSubscriptionKey {
 
         String asString();
     }
@@ -330,9 +369,20 @@ public class WebsocketRoute extends CalendarRoute {
     }
 
     record AlarmSubscriptionKey(Username username) implements SubscriptionKey {
+        private static final String ALARM_PREFIX = "alarm:";
+
         @Override
         public String asString() {
-            return "alarm:" + username.asString();
+            return ALARM_PREFIX + username.asString();
+        }
+    }
+
+    record CalendarListSubscriptionKey(Username username) implements SubscriptionKey {
+        private static final String CALENDAR_LIST_PREFIX = "calendarList:";
+
+        @Override
+        public String asString() {
+            return CALENDAR_LIST_PREFIX + username.asString();
         }
     }
 
@@ -340,7 +390,8 @@ public class WebsocketRoute extends CalendarRoute {
                                  Map<SubscriptionKey, Registration> subscriptionMap,
                                  MailboxSession session) {
 
-        static ClientContext create(Sinks.Many<WebsocketMessage> outbound, MailboxSession session) {
+        static ClientContext create(Sinks.Many<WebsocketMessage> outbound,
+                                   MailboxSession session) {
             return new ClientContext(outbound, new ConcurrentHashMap<>(), session);
         }
 
@@ -414,7 +465,7 @@ public class WebsocketRoute extends CalendarRoute {
                 Set<SubscriptionKey> unregister = parseSubscriptionKeyArray(root.get(UNREGISTER_PROPERTY));
                 return new ClientSubscribeRequest(register, unregister);
             } catch (Exception exception) {
-                throw new CalendarSubscribeException("Invalid Request", exception);
+                throw new CalendarSubscribeException(ResponseMessage.ERROR_INVALID_REQUEST, exception);
             }
         }
 
@@ -441,13 +492,13 @@ public class WebsocketRoute extends CalendarRoute {
                 return new AddressBookSubscriptionKey(addressBookURL);
             }
 
-            throw new CalendarSubscribeException("Unsupported subscription resource: " + raw);
+            throw new CalendarSubscribeException(ResponseMessage.ERROR_UNSUPPORTED_SUBSCRIPTION_RESOURCE_PREFIX + raw);
         }
 
         void validate() {
             Set<SubscriptionKey> intersection = Sets.intersection(register, unregister);
             if (!intersection.isEmpty()) {
-                throw new CalendarSubscribeException("register and unregister cannot contain duplicated entries");
+                throw new CalendarSubscribeException(ResponseMessage.ERROR_DUPLICATED_ENTRIES);
             }
         }
     }
@@ -490,10 +541,10 @@ public class WebsocketRoute extends CalendarRoute {
 
         static ClientSubscribeResult notRegistered(SubscriptionKey subscriptionKey, Throwable reason) {
             String messageReason = switch (reason) {
-                case CalendarNotFoundException ignore -> "NotFound";
-                case AddressBookNotFoundException ignore -> "NotFound";
-                case ForbiddenSubscribeException ignore -> "Forbidden";
-                default -> "InternalError";
+                case CalendarNotFoundException ignore -> ResponseMessage.ERROR_NOT_FOUND;
+                case AddressBookNotFoundException ignore -> ResponseMessage.ERROR_NOT_FOUND;
+                case ForbiddenSubscribeException ignore -> ResponseMessage.ERROR_FORBIDDEN;
+                default -> ResponseMessage.ERROR_INTERNAL;
             };
             return new ClientSubscribeResult(List.of(), List.of(), Map.of(subscriptionKey, messageReason), Map.of());
         }
@@ -526,13 +577,20 @@ public class WebsocketRoute extends CalendarRoute {
             try {
                 return MAPPER.writeValueAsString(this);
             } catch (Exception e) {
-                throw new CalendarSubscribeException("Failed to serialize response", e);
+                throw new CalendarSubscribeException(ResponseMessage.ERROR_SERIALIZE_RESPONSE, e);
             }
         }
     }
 
     public interface WebsocketMessage {
         WebSocketFrame asWebSocketFrame() throws Exception;
+    }
+
+    private record TextMessage(String payload) implements WebsocketMessage {
+        @Override
+        public WebSocketFrame asWebSocketFrame() {
+            return new TextWebSocketFrame(payload);
+        }
     }
 
 }
