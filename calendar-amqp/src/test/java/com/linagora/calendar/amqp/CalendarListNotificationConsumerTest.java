@@ -46,7 +46,6 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
@@ -381,9 +380,8 @@ public class CalendarListNotificationConsumerTest {
             }));
     }
 
-    @Disabled("Not yet implemented: https://github.com/linagora/esn-sabre/issues/261")
     @Test
-    void shouldDispatchRightsRevokedWhenDelegationRemoved() {
+    void shouldDispatchDeletedToDelegatedUserWhenDelegationRemoved() {
         OpenPaaSUser owner = sabreDavExtension.newTestUser();
         OpenPaaSUser delegate = sabreDavExtension.newTestUser();
         Queue<CalendarListChangedEvent> eventsReceived = new ConcurrentLinkedQueue<>();
@@ -408,7 +406,7 @@ public class CalendarListNotificationConsumerTest {
             .anySatisfy(event -> {
                 assertThat(event.username()).isEqualTo(delegate.username());
                 assertThat(event.calendarURL().base()).isEqualTo(delegate.id());
-                assertThat(event.changeType()).isEqualTo(ChangeType.RIGHTS_REVOKED); // ChangeType.DELETED is ok?
+                assertThat(event.changeType()).isEqualTo(ChangeType.DELETED);
             }));
     }
 
