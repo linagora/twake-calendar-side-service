@@ -1079,7 +1079,6 @@ class WebsocketRouteTest {
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         webSocket = connectWebSocket(restApiPort, ticket, messages);
-        Thread.sleep(1000); // for ensure registerDefaultSubscriptions (server-side) is already invoked
 
         // DO NOT enable display notification
 
@@ -1428,7 +1427,7 @@ class WebsocketRouteTest {
         return JsonPath.from(ticketResponse).getString("value");
     }
 
-    private WebSocket connectWebSocket(int port, String ticket, BlockingQueue<String> messages) throws InterruptedException {
+    private WebSocket connectWebSocket(int port, String ticket, BlockingQueue<String> messages) {
         OkHttpClient client = new OkHttpClient.Builder()
             .connectTimeout(5, TimeUnit.SECONDS)
             .readTimeout(10, TimeUnit.SECONDS)
@@ -1444,8 +1443,7 @@ class WebsocketRouteTest {
         });
 
         // warm up
-        webSocket.send("{}");
-        messages.poll(3, TimeUnit.SECONDS);
+        awaitMessage(messages, msg -> msg.contains("\"calendarListRegistered\""));
         return webSocket;
     }
 

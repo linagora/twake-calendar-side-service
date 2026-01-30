@@ -97,6 +97,20 @@ public class WebsocketRoute extends CalendarRoute {
     private static final String WEBSOCKET_PING_INTERVAL_PROPERTY = "websocket.ping.interval";
     private static final Duration WEBSOCKET_PING_INTERVAL_DEFAULT = Duration.ofSeconds(5);
 
+    private interface ResponseMessage {
+        String MESSAGE_CALENDAR_LIST_REGISTERED = "{\"calendarListRegistered\":true}";
+        String MESSAGE_DEFAULT_SUBSCRIPTIONS_FAILED = "{\"error\":\"default-subscriptions-failed\"}";
+
+        String ERROR_INTERNAL = "Internal Error";
+        String ERROR_NOT_FOUND = "NotFound";
+        String ERROR_FORBIDDEN = "Forbidden";
+        String ERROR_INVALID_REQUEST = "Invalid Request";
+        String ERROR_UNSUPPORTED_SUBSCRIPTION_RESOURCE_PREFIX = "Unsupported subscription resource: ";
+        String ERROR_DUPLICATED_ENTRIES = "register and unregister cannot contain duplicated entries";
+        String ERROR_UNSUPPORTED_SUBSCRIPTION_KEY_TYPE = "Unsupported subscription key type";
+        String ERROR_SERIALIZE_RESPONSE = "Failed to serialize response";
+    }
+
     private final Duration websocketPingInterval;
     private final EventBus eventBus;
     private final CalDavClient calDavClient;
@@ -159,7 +173,7 @@ public class WebsocketRoute extends CalendarRoute {
                 LOGGER.warn("Error when handle client message: {} ", message, error);
                 String errorMessage = switch (error) {
                     case CalendarSubscribeException calendarSubscribeException -> calendarSubscribeException.getMessage();
-                    default -> "internal-error";
+                    default -> ResponseMessage.ERROR_INTERNAL;
                 };
                 return Mono.fromCallable(() -> MAPPER.writeValueAsString(Map.of("error", errorMessage)));
             });
@@ -236,7 +250,7 @@ public class WebsocketRoute extends CalendarRoute {
         return switch (subscriptionKey) {
             case CalendarSubscriptionKey calendarKey -> registerCalendar(calendarKey, context);
             case AddressBookSubscriptionKey addressBookKey -> registerAddressBook(addressBookKey, context);
-            default -> Mono.error(new CalendarSubscribeException("Unsupported subscription key type"));
+            default -> Mono.error(new CalendarSubscribeException(ResponseMessage.ERROR_UNSUPPORTED_SUBSCRIPTION_KEY_TYPE));
         };
     }
 
@@ -264,7 +278,8 @@ public class WebsocketRoute extends CalendarRoute {
 
     private Mono<Void> registerDefaultSubscriptions(ClientContext context) {
         return registerCalendarListSubscription(context)
-            .doOnError(error -> LOGGER.warn("Failed to register default subscriptions for {}", context.session().getUser(), error));
+            .doOnError(error -> LOGGER.warn("Failed to register default subscriptions for {}", context.session().getUser(), error))
+            .onErrorResume(error -> pushMessageToClient(context, new TextMessage(ResponseMessage.MESSAGE_DEFAULT_SUBSCRIPTIONS_FAILED)));
     }
 
     private Mono<Void> registerCalendarListSubscription(ClientContext context) {
@@ -273,7 +288,15 @@ public class WebsocketRoute extends CalendarRoute {
         RegistrationKey registrationKey = new UsernameRegistrationKey(username);
         DefaultWebSocketNotificationListener listener = new DefaultWebSocketNotificationListener(context.outbound());
         return doRegisterSubscription(subscriptionKey, registrationKey, listener, Mono.empty(), context)
-            .then();
+            .then(pushMessageToClient(context, new TextMessage(ResponseMessage.MESSAGE_CALENDAR_LIST_REGISTERED)));
+    }
+
+    private Mono<Void> pushMessageToClient(ClientContext context, WebsocketMessage message) {
+        return Mono.fromRunnable(() -> {
+            synchronized (context.outbound()) {
+                context.outbound().emitNext(message, EmitFailureHandler.FAIL_FAST);
+            }
+        }).then();
     }
 
     private Mono<Registration> doRegisterSubscription(SubscriptionKey subscriptionKey,
@@ -346,16 +369,20 @@ public class WebsocketRoute extends CalendarRoute {
     }
 
     record AlarmSubscriptionKey(Username username) implements SubscriptionKey {
+        private static final String ALARM_PREFIX = "alarm:";
+
         @Override
         public String asString() {
-            return "alarm:" + username.asString();
+            return ALARM_PREFIX + username.asString();
         }
     }
 
     record CalendarListSubscriptionKey(Username username) implements SubscriptionKey {
+        private static final String CALENDAR_LIST_PREFIX = "calendarList:";
+
         @Override
         public String asString() {
-            return "calendarList:" + username.asString();
+            return CALENDAR_LIST_PREFIX + username.asString();
         }
     }
 
@@ -438,7 +465,7 @@ public class WebsocketRoute extends CalendarRoute {
                 Set<SubscriptionKey> unregister = parseSubscriptionKeyArray(root.get(UNREGISTER_PROPERTY));
                 return new ClientSubscribeRequest(register, unregister);
             } catch (Exception exception) {
-                throw new CalendarSubscribeException("Invalid Request", exception);
+                throw new CalendarSubscribeException(ResponseMessage.ERROR_INVALID_REQUEST, exception);
             }
         }
 
@@ -465,13 +492,13 @@ public class WebsocketRoute extends CalendarRoute {
                 return new AddressBookSubscriptionKey(addressBookURL);
             }
 
-            throw new CalendarSubscribeException("Unsupported subscription resource: " + raw);
+            throw new CalendarSubscribeException(ResponseMessage.ERROR_UNSUPPORTED_SUBSCRIPTION_RESOURCE_PREFIX + raw);
         }
 
         void validate() {
             Set<SubscriptionKey> intersection = Sets.intersection(register, unregister);
             if (!intersection.isEmpty()) {
-                throw new CalendarSubscribeException("register and unregister cannot contain duplicated entries");
+                throw new CalendarSubscribeException(ResponseMessage.ERROR_DUPLICATED_ENTRIES);
             }
         }
     }
@@ -514,10 +541,10 @@ public class WebsocketRoute extends CalendarRoute {
 
         static ClientSubscribeResult notRegistered(SubscriptionKey subscriptionKey, Throwable reason) {
             String messageReason = switch (reason) {
-                case CalendarNotFoundException ignore -> "NotFound";
-                case AddressBookNotFoundException ignore -> "NotFound";
-                case ForbiddenSubscribeException ignore -> "Forbidden";
-                default -> "InternalError";
+                case CalendarNotFoundException ignore -> ResponseMessage.ERROR_NOT_FOUND;
+                case AddressBookNotFoundException ignore -> ResponseMessage.ERROR_NOT_FOUND;
+                case ForbiddenSubscribeException ignore -> ResponseMessage.ERROR_FORBIDDEN;
+                default -> ResponseMessage.ERROR_INTERNAL;
             };
             return new ClientSubscribeResult(List.of(), List.of(), Map.of(subscriptionKey, messageReason), Map.of());
         }
@@ -550,13 +577,20 @@ public class WebsocketRoute extends CalendarRoute {
             try {
                 return MAPPER.writeValueAsString(this);
             } catch (Exception e) {
-                throw new CalendarSubscribeException("Failed to serialize response", e);
+                throw new CalendarSubscribeException(ResponseMessage.ERROR_SERIALIZE_RESPONSE, e);
             }
         }
     }
 
     public interface WebsocketMessage {
         WebSocketFrame asWebSocketFrame() throws Exception;
+    }
+
+    private record TextMessage(String payload) implements WebsocketMessage {
+        @Override
+        public WebSocketFrame asWebSocketFrame() {
+            return new TextWebSocketFrame(payload);
+        }
     }
 
 }

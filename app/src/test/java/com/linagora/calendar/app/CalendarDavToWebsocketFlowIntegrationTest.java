@@ -151,9 +151,7 @@ class CalendarDavToWebsocketFlowIntegrationTest {
             }
             """.formatted(bobCalendarUrl));
 
-        // Validate registration response
-        String registerResponse = messages.poll(10, TimeUnit.SECONDS);
-        assertThat(registerResponse).isNotNull();
+        String registerResponse = awaitMessage(messages, msg -> msg.contains("\"registered\""));
         assertThatJson(registerResponse)
             .node("registered")
             .isArray()
@@ -165,9 +163,7 @@ class CalendarDavToWebsocketFlowIntegrationTest {
 
         davTestHelper.upsertCalendar(alice, ics, eventUid);
 
-        // THEN: Bob receives WebSocket notification
-        String pushMessage = messages.poll(20, TimeUnit.SECONDS);
-        assertThat(pushMessage).isNotNull();
+        String pushMessage = awaitMessage(messages, msg -> msg.contains("syncToken") && msg.contains(bobCalendarUrl));
 
         assertThatJson(pushMessage)
             .isEqualTo("""
@@ -193,19 +189,13 @@ class CalendarDavToWebsocketFlowIntegrationTest {
             }
             """.formatted(bobCalendarUrl));
 
-        String registerResponse = messages.poll(10, TimeUnit.SECONDS);
-        assertThat(registerResponse).isNotNull();
-
         // WHEN: Alice creates an event
         String eventUid = "event-" + System.currentTimeMillis();
         String ics = buildEventICS(eventUid, alice.username().asString(), bob.username().asString());
         davTestHelper.upsertCalendar(alice, ics, eventUid);
 
-        // Bob receives websocket notification
-        String pushMessage = messages.poll(20, TimeUnit.SECONDS);
-        assertThat(pushMessage).isNotNull();
-
-        // Extract syncToken
+        // Bob receives websocket notification (skip unrelated messages)
+        String pushMessage = awaitMessage(messages, msg -> msg.contains("syncToken"));
         Pair<CalendarURL, String> pair = extractCalendarUrlAndSyncToken(pushMessage);
         String syncToken = pair.getRight();
         assertThat(syncToken).isNotBlank();
@@ -244,12 +234,16 @@ class CalendarDavToWebsocketFlowIntegrationTest {
         Request wsRequest = new Request.Builder()
             .url("ws://localhost:" + port + "/ws?ticket=" + ticket)
             .build();
-        return client.newWebSocket(wsRequest, new WebSocketListener() {
+        WebSocket webSocket = client.newWebSocket(wsRequest, new WebSocketListener() {
             @Override
             public void onMessage(WebSocket webSocket, String text) {
                 messages.offer(text);
             }
         });
+
+        // warm up
+        awaitMessage(messages, msg -> msg.contains("calendarListRegistered"));
+        return webSocket;
     }
 
     private Pair<CalendarURL, String> extractCalendarUrlAndSyncToken(String pushMessage) {
