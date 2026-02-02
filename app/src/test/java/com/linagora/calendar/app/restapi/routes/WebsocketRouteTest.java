@@ -190,7 +190,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldAllowSubscriptionForOwnerWithValidTicket() throws Exception {
+    void websocketShouldAllowSubscriptionForOwnerWithValidTicket() {
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         webSocket = connectWebSocket(restApiPort, ticket, messages);
@@ -233,7 +233,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldReturnNotRegisteredWhenNoRights() throws Exception {
+    void websocketShouldReturnNotRegisteredWhenNoRights() {
         CalDavClient.NewCalendar newCalendar = new CalDavClient.NewCalendar(UUID.randomUUID().toString(),
             "My Calendar", "#00ff00", "Test");
         calDavClient.createNewCalendar(alice.username(), alice.id(), newCalendar).block();
@@ -260,7 +260,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldReturnNotRegisteredWhenCalendarDoesNotExist() throws Exception {
+    void websocketShouldReturnNotRegisteredWhenCalendarDoesNotExist() {
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         webSocket = connectWebSocket(restApiPort, ticket, messages);
@@ -282,7 +282,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldRejectRequestWhenRegisterAndUnregisterSameCalendar() throws Exception {
+    void websocketShouldRejectRequestWhenRegisterAndUnregisterSameCalendar() {
         // Given: Bob & calendar
         String calendarUri = CalendarURL.from(bob.id()).asUri().toString();
 
@@ -307,7 +307,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldNoopWhenRegisterAndUnregisterAreBothEmpty() throws Exception {
+    void websocketShouldNoopWhenRegisterAndUnregisterAreBothEmpty() {
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         webSocket = connectWebSocket(restApiPort, ticket, messages);
@@ -325,7 +325,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldAllowRegisterWhenUserHasRights() throws Exception {
+    void websocketShouldAllowRegisterWhenUserHasRights() {
         String sharedCalendarId = UUID.randomUUID().toString();
         CalDavClient.NewCalendar publicCalendar = new CalDavClient.NewCalendar(sharedCalendarId,
             "Public Calendar", "#123456", "Public calendar for testing");
@@ -359,7 +359,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldUnregisterSuccessfully() throws Exception {
+    void websocketShouldUnregisterSuccessfully() {
         String calendarUri = CalendarURL.from(bob.id()).asUri().toString();
 
         String ticket = generateTicket(bob);
@@ -382,7 +382,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldHandleMixedRegisterAndUnregister() throws Exception {
+    void websocketShouldHandleMixedRegisterAndUnregister() {
         // Given: A & C belong to bob (valid)
         String calendarA = CalendarURL.from(bob.id()).asUri().toString();
         CalDavClient.NewCalendar publicCalendar = new CalDavClient.NewCalendar(UUID.randomUUID().toString(),
@@ -419,7 +419,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldReceiveEventPushedFromEventBus(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldReceiveEventPushedFromEventBus(TwakeCalendarGuiceServer guiceServer) {
         // Given: Bob & calendar
         String calendarUri = CalendarURL.from(bob.id()).asUri().toString();
 
@@ -462,7 +462,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldReturnUnregisteredWhenUnregisteringIdempotently() throws Exception {
+    void websocketShouldReturnUnregisteredWhenUnregisteringIdempotently() {
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         webSocket = connectWebSocket(restApiPort, ticket, messages);
@@ -485,7 +485,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void registeringSameCalendarTwiceShouldStillReturnRegistered() throws Exception {
+    void registeringSameCalendarTwiceShouldStillReturnRegistered() {
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         webSocket = connectWebSocket(restApiPort, ticket, messages);
@@ -512,7 +512,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldStopReceivingEventsAfterUnregister(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldStopReceivingEventsAfterUnregister(TwakeCalendarGuiceServer guiceServer) {
         // Given: bob & calendar A
         String calendarUri = CalendarURL.from(bob.id()).asUri().toString();
         CalendarURL calendar = CalendarURL.from(bob.id());
@@ -575,7 +575,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldNotReceiveDuplicateEventsWhenRegisteredTwice(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldNotReceiveDuplicateEventsWhenRegisteredTwice(TwakeCalendarGuiceServer guiceServer) {
         // Given: bob & a calendar A
         String calendarUri = CalendarURL.from(bob.id()).asUri().toString();
         CalendarURL calendar = CalendarURL.from(bob.id());
@@ -632,7 +632,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldNotReceiveEventsFromUnregisteredCalendar(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldNotReceiveEventsFromUnregisteredCalendar(TwakeCalendarGuiceServer guiceServer) {
         // Given: Bob has calendar A (default) and a newly created calendar B
         String calendarA = CalendarURL.from(bob.id()).asUri().toString();
 
@@ -680,7 +680,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldReceiveEventsFromRemainingCalendarAfterUnregister(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldReceiveEventsFromRemainingCalendarAfterUnregister(TwakeCalendarGuiceServer guiceServer) {
         // Given: Bob has calendar A and newly created calendar B
         String calendarA = CalendarURL.from(bob.id()).asUri().toString();
 
@@ -741,7 +741,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldReceiveEventsForAllRegisteredCalendars(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldReceiveEventsForAllRegisteredCalendars(TwakeCalendarGuiceServer guiceServer) {
         // Given: A and newly created calendar B
         String calendarA = CalendarURL.from(bob.id()).asUri().toString();
 
@@ -797,7 +797,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldStopReceivingEventsWhenCalendarStopsBeingPublic(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldStopReceivingEventsWhenCalendarStopsBeingPublic(TwakeCalendarGuiceServer guiceServer) {
         // Given: Alice creates calendar B and shares it publicly
         CalDavClient.NewCalendar aliceCalendarB = new CalDavClient.NewCalendar(
             UUID.randomUUID().toString(),
@@ -862,7 +862,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldBroadcastEventsToAllSubscribedClients(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldBroadcastEventsToAllSubscribedClients(TwakeCalendarGuiceServer guiceServer) {
         // Given: Bob & a calendar
         CalendarURL calendar = CalendarURL.from(bob.id());
         String calendarUri = CalendarURL.from(bob.id()).asUri().toString();
@@ -902,8 +902,8 @@ class WebsocketRouteTest {
             eventBusProbe.dispatch(event, calendar);
 
             // Then: BOTH WS clients must receive the event
-            String pushed1 = awaitMessage(messages1, msg -> msg.contains(calendarUri));
-            String pushed2 = awaitMessage(messages2, msg -> msg.contains(calendarUri));
+            String pushed1 = awaitMessage(messages1, msg -> msg.contains(calendarUri) && msg.contains("syncToken"));
+            String pushed2 = awaitMessage(messages2, msg -> msg.contains(calendarUri) && msg.contains("syncToken"));
 
             assertThat(pushed1)
                 .as("WS1 should receive broadcast event")
@@ -929,7 +929,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldIsolateUnregisterAcrossMultipleClients(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldIsolateUnregisterAcrossMultipleClients(TwakeCalendarGuiceServer guiceServer) {
         // Given: Bob & a calendar
         CalendarURL calendar = CalendarURL.from(bob.id());
         String calendarUri = calendar.asUri().toString();
@@ -1003,7 +1003,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldEnableDisplayNotification() throws Exception {
+    void websocketShouldEnableDisplayNotification() {
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         webSocket = connectWebSocket(restApiPort, ticket, messages);
@@ -1016,7 +1016,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldDisableDisplayNotification() throws Exception {
+    void websocketShouldDisableDisplayNotification() {
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         webSocket = connectWebSocket(restApiPort, ticket, messages);
@@ -1034,7 +1034,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldReceiveAlarmEventAfterEnablingDisplayNotification(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldReceiveAlarmEventAfterEnablingDisplayNotification(TwakeCalendarGuiceServer guiceServer) {
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         webSocket = connectWebSocket(restApiPort, ticket, messages);
@@ -1075,7 +1075,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldNotReceiveAlarmEventWithoutEnablingDisplayNotification(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldNotReceiveAlarmEventWithoutEnablingDisplayNotification(TwakeCalendarGuiceServer guiceServer) {
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         webSocket = connectWebSocket(restApiPort, ticket, messages);
@@ -1104,7 +1104,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldNotReceiveAlarmEventAfterDisablingDisplayNotification(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldNotReceiveAlarmEventAfterDisablingDisplayNotification(TwakeCalendarGuiceServer guiceServer) {
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         webSocket = connectWebSocket(restApiPort, ticket, messages);
@@ -1173,7 +1173,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldIsolateDisplayNotificationAcrossClients(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldIsolateDisplayNotificationAcrossClients(TwakeCalendarGuiceServer guiceServer) {
         BlockingQueue<String> messages1 = new LinkedBlockingQueue<>();
         BlockingQueue<String> messages2 = new LinkedBlockingQueue<>();
 
@@ -1219,7 +1219,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldBroadcastAlarmToAllClientsWithDisplayNotificationEnabled(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldBroadcastAlarmToAllClientsWithDisplayNotificationEnabled(TwakeCalendarGuiceServer guiceServer) {
         BlockingQueue<String> messages1 = new LinkedBlockingQueue<>();
         BlockingQueue<String> messages2 = new LinkedBlockingQueue<>();
 
@@ -1263,7 +1263,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldNotReceiveAlarmForDifferentUser(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldNotReceiveAlarmForDifferentUser(TwakeCalendarGuiceServer guiceServer) {
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         webSocket = connectWebSocket(restApiPort, ticket, messages);
@@ -1294,7 +1294,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldReceiveAlarmAfterSubscribingToCalendar(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldReceiveAlarmAfterSubscribingToCalendar(TwakeCalendarGuiceServer guiceServer) {
         // GIVEN: Bob opened a WS connection
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
@@ -1330,7 +1330,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldReceiveCalendarChangesAfterEnablingDisplayNotification(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldReceiveCalendarChangesAfterEnablingDisplayNotification(TwakeCalendarGuiceServer guiceServer) {
         // GIVEN: Bob opened a WS connection
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
@@ -1361,7 +1361,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldReceiveBothCalendarChangesAndAlarms(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldReceiveBothCalendarChangesAndAlarms(TwakeCalendarGuiceServer guiceServer) {
         // GIVEN: Bob opened a WS connection with both subscriptions
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
@@ -1398,9 +1398,7 @@ class WebsocketRouteTest {
         eventBusProbe.dispatch(calendarEvent, calendar);
 
         // THEN: Bob receives both notifications (order-independent, ignore unrelated messages)
-        await()
-            .atMost(5, SECONDS)
-            .pollInterval(200, MILLISECONDS)
+        CALMLY_AWAIT
             .untilAsserted(() -> {
                 List<String> received = new ArrayList<>();
                 messages.drainTo(received);
@@ -1448,7 +1446,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldReceiveEventWhenImportingIntoRegisteredCalendar(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldReceiveEventWhenImportingIntoRegisteredCalendar(TwakeCalendarGuiceServer guiceServer) {
         // Given: Bob owns a calendar and subscribes to it via WebSocket
         CalendarURL calendarABC = CalendarURL.from(bob.id());
         String calendarUri = calendarABC.asUri().toString();
@@ -1495,7 +1493,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldReceiveFailedImportEventWhenImportFails(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldReceiveFailedImportEventWhenImportFails(TwakeCalendarGuiceServer guiceServer) {
         // Given: Bob owns a calendar and subscribes via WebSocket
         CalendarURL calendar = CalendarURL.from(bob.id());
         String calendarUri = calendar.asUri().toString();
@@ -1537,7 +1535,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldReceiveImportEventAndCalendarSyncEvent(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldReceiveImportEventAndCalendarSyncEvent(TwakeCalendarGuiceServer guiceServer) {
         // Given: Bob owns a calendar and subscribes to it via WebSocket
         CalendarURL calendar = CalendarURL.from(bob.id());
         String calendarUri = calendar.asUri().toString();
@@ -1594,7 +1592,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldNotReceiveImportEventWhenCalendarNotRegistered(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldNotReceiveImportEventWhenCalendarNotRegistered(TwakeCalendarGuiceServer guiceServer) {
         CalendarURL calendar = CalendarURL.from(bob.id());
         String calendarUri = CalendarURL.from(bob.id()).asUri().toString();
 
@@ -1658,7 +1656,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldReceiveEventWhenImportingIntoRegisteredAddressBook(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldReceiveEventWhenImportingIntoRegisteredAddressBook(TwakeCalendarGuiceServer guiceServer) {
         String addressBookId = "collected";
         AddressBookURL addressBook = new AddressBookURL(bob.id(), addressBookId);
         String addressBookUri = addressBook.asUri().toString();
@@ -1704,7 +1702,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldReturnNotRegisteredWhenNoRightsOnAddressBook() throws Exception {
+    void websocketShouldReturnNotRegisteredWhenNoRightsOnAddressBook() {
         // Given: Alice owns an address book (default "collected")
         AddressBookURL aliceAddressBook = new AddressBookURL(alice.id(), "collected");
         String aliceAddressBookUri = aliceAddressBook.asUri().toString();
@@ -1732,7 +1730,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldReturnNotRegisteredWhenAddressBookDoesNotExist() throws Exception {
+    void websocketShouldReturnNotRegisteredWhenAddressBookDoesNotExist() {
         AddressBookURL nonExistentAddressBook =
             new AddressBookURL(bob.id(), UUID.randomUUID().toString());
         String addressBookUri = nonExistentAddressBook.asUri().toString();
@@ -1757,7 +1755,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldNotReceiveAddressBookEventsAfterUnregister(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldNotReceiveAddressBookEventsAfterUnregister(TwakeCalendarGuiceServer guiceServer) {
         AddressBookURL addressBook = new AddressBookURL(bob.id(), "collected");
         String addressBookUri = addressBook.asUri().toString();
 
@@ -1854,9 +1852,7 @@ class WebsocketRouteTest {
         String addressBookImportId = importVCardIntoAddressBook(guiceServer, addressBook, bob);
 
         // Then: WebSocket receives address book import event
-        await()
-            .atMost(10, SECONDS)
-            .pollInterval(200, MILLISECONDS)
+        CALMLY_AWAIT
             .untilAsserted(() -> {
                 List<String> receivedMessages = new ArrayList<>();
                 messages.drainTo(receivedMessages);
@@ -1883,7 +1879,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldReceiveCalendarListCreatedEvent() throws Exception {
+    void websocketShouldReceiveCalendarListCreatedEvent() {
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         webSocket = connectWebSocket(restApiPort, ticket, messages);
@@ -1909,7 +1905,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldReceiveCalendarListUpdatedEvent() throws Exception {
+    void websocketShouldReceiveCalendarListUpdatedEvent() {
         NewCalendar newCalendar = new NewCalendar(UUID.randomUUID().toString(),
             "Calendar Updated", "#00ff00", "updated");
         calDavClient.createNewCalendar(bob.username(), bob.id(), newCalendar).block();
@@ -1948,7 +1944,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldReceiveCalendarListDeletedEvent() throws Exception {
+    void websocketShouldReceiveCalendarListDeletedEvent() {
         CalDavClient.NewCalendar newCalendar = new CalDavClient.NewCalendar(UUID.randomUUID().toString(),
             "Calendar Deleted", "#00ff00", "deleted");
         calDavClient.createNewCalendar(bob.username(), bob.id(), newCalendar).block();

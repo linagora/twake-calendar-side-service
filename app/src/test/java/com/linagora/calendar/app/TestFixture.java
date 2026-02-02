@@ -23,8 +23,14 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
+
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.WebSocket;
+import okhttp3.WebSocketListener;
 
 public interface TestFixture {
 
@@ -44,5 +50,25 @@ public interface TestFixture {
             });
 
         return matched.get();
+    }
+
+    static WebSocket connectWebSocket(int socketPort, String ticket, BlockingQueue<String> messages) {
+        OkHttpClient client = new OkHttpClient.Builder()
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+            .build();
+        Request wsRequest = new Request.Builder()
+            .url("ws://localhost:" + socketPort + "/ws?ticket=" + ticket)
+            .build();
+        WebSocket webSocket = client.newWebSocket(wsRequest, new WebSocketListener() {
+            @Override
+            public void onMessage(WebSocket webSocket, String text) {
+                messages.offer(text);
+            }
+        });
+
+        // warm up
+        awaitMessage(messages, msg -> msg.contains("calendarListRegistered"));
+        return webSocket;
     }
 }
