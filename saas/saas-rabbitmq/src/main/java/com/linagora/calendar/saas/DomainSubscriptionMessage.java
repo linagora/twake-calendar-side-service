@@ -18,28 +18,23 @@
 
 package com.linagora.calendar.saas;
 
+import java.util.Optional;
+
 import org.apache.james.core.Domain;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Preconditions;
 
-@JsonIgnoreProperties(ignoreUnknown = true)
 public record DomainSubscriptionMessage(
     @JsonProperty("domain") String domain,
-    @JsonProperty("mailDnsConfigurationValidated") Boolean mailDnsConfigurationValidated,
-    @JsonProperty("features") CalendarSaasFeatures features) {
+    @JsonProperty("mailDnsConfigurationValidated") Optional<Boolean> mailDnsConfigurationValidated,
+    @JsonProperty("features") SaasFeatures features) {
 
     @JsonCreator
-    public DomainSubscriptionMessage(
-        @JsonProperty("domain") String domain,
-        @JsonProperty("mailDnsConfigurationValidated") Boolean mailDnsConfigurationValidated,
-        @JsonProperty("features") CalendarSaasFeatures features) {
+    public DomainSubscriptionMessage {
         Preconditions.checkNotNull(domain, "domain cannot be null");
-        this.domain = domain;
-        this.mailDnsConfigurationValidated = mailDnsConfigurationValidated != null ? mailDnsConfigurationValidated : false;
-        this.features = features;
+        Preconditions.checkNotNull(features, "features cannot be null");
     }
 
     public Domain domainObject() {
@@ -47,6 +42,6 @@ public record DomainSubscriptionMessage(
     }
 
     public boolean hasCalendarFeature() {
-        return features != null && features.hasCalendarFeature();
+        return features.hasCalendarFeature();
     }
 }

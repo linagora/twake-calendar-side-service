@@ -174,6 +174,10 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                 return configuration.getBoolean("saas.subscription.enabled", !ENABLED);
             }));
 
+            if (!twpSettingEnabledValue && saasSubscriptionEnabledValue) {
+                throw new IllegalArgumentException("TWP Setting must be enabled when SaaS Subscription is enabled");
+            }
+
             CalendarEventSearchChoice calendarEventSearchChoice = this.calendarEventSearchChoice.orElseGet(Throwing.supplier(() -> {
                 try {
                     propertiesProvider.getConfiguration("opensearch");

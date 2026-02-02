@@ -21,28 +21,19 @@ package com.linagora.calendar.saas;
 import org.apache.james.core.Username;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Preconditions;
 
-@JsonIgnoreProperties(ignoreUnknown = true)
 public record UserSubscriptionMessage(
     @JsonProperty("internalEmail") String internalEmail,
     @JsonProperty("isPaying") Boolean isPaying,
     @JsonProperty("canUpgrade") Boolean canUpgrade,
-    @JsonProperty("features") CalendarSaasFeatures features) {
+    @JsonProperty("features") SaasFeatures features) {
 
     @JsonCreator
-    public UserSubscriptionMessage(
-        @JsonProperty("internalEmail") String internalEmail,
-        @JsonProperty("isPaying") Boolean isPaying,
-        @JsonProperty("canUpgrade") Boolean canUpgrade,
-        @JsonProperty("features") CalendarSaasFeatures features) {
+    public UserSubscriptionMessage {
         Preconditions.checkNotNull(internalEmail, "internalEmail cannot be null");
-        this.internalEmail = internalEmail;
-        this.isPaying = isPaying;
-        this.canUpgrade = canUpgrade;
-        this.features = features;
+        Preconditions.checkNotNull(features, "features cannot be null");
     }
 
     public Username username() {
@@ -50,6 +41,6 @@ public record UserSubscriptionMessage(
     }
 
     public boolean hasCalendarFeature() {
-        return features != null && features.hasCalendarFeature();
+        return features.hasCalendarFeature();
     }
 }

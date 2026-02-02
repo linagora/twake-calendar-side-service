@@ -28,6 +28,8 @@ import com.linagora.tmail.saas.rabbitmq.subscription.SaaSMessageHandler;
 import reactor.core.publisher.Mono;
 
 public class SaaSDomainSubscriptionHandler implements SaaSMessageHandler {
+    public static final boolean MAIL_DNS_CONFIGURAION_NOT_VALIDATED = false;
+
     private static final Logger LOGGER = LoggerFactory.getLogger(SaaSDomainSubscriptionHandler.class);
 
     private final OpenPaaSDomainDAO domainDAO;
@@ -40,7 +42,7 @@ public class SaaSDomainSubscriptionHandler implements SaaSMessageHandler {
     public Mono<Void> handleMessage(byte[] message) {
         return Mono.fromCallable(() -> SaaSCalendarSubscriptionDeserializer.parseDomainMessage(message))
             .filter(DomainSubscriptionMessage::hasCalendarFeature)
-            .filter(DomainSubscriptionMessage::mailDnsConfigurationValidated)
+            .filter(domainSubscriptionMessage -> domainSubscriptionMessage.mailDnsConfigurationValidated().orElse(MAIL_DNS_CONFIGURAION_NOT_VALIDATED))
             .flatMap(domainMessage -> createDomainIfNotExists(domainMessage.domainObject()))
             .then();
     }

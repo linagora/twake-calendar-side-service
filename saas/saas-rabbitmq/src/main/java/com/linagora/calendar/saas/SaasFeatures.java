@@ -18,23 +18,16 @@
 
 package com.linagora.calendar.saas;
 
-import java.util.Objects;
+import java.util.Optional;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-@JsonIgnoreProperties(ignoreUnknown = true)
-public record CalendarSaasFeatures(@JsonProperty("calendar") Calendar calendar) {
+public record SaasFeatures(@JsonProperty("calendar") Optional<CalendarFeature> calendar) {
 
-    public record Calendar() {}
-
-    @JsonCreator
-    public CalendarSaasFeatures(@JsonProperty("calendar") Calendar calendar) {
-        this.calendar = calendar;
+    public record CalendarFeature() {
     }
 
     public boolean hasCalendarFeature() {
-        return !Objects.isNull(calendar);
+        return calendar.isPresent();
     }
 }

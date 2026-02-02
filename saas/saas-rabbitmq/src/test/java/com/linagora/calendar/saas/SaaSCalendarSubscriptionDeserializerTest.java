@@ -52,7 +52,7 @@ class SaaSCalendarSubscriptionDeserializerTest {
             DomainSubscriptionMessage message = SaaSCalendarSubscriptionDeserializer.parseDomainMessage(json);
 
             assertThat(message.domainObject()).isEqualTo(Domain.of("toto.tld"));
-            assertThat(message.mailDnsConfigurationValidated()).isTrue();
+            assertThat(message.mailDnsConfigurationValidated().get()).isTrue();
             assertThat(message.hasCalendarFeature()).isTrue();
         }
 
@@ -87,7 +87,7 @@ class SaaSCalendarSubscriptionDeserializerTest {
             DomainSubscriptionMessage message = SaaSCalendarSubscriptionDeserializer.parseDomainMessage(json);
 
             assertThat(message.domainObject()).isEqualTo(Domain.of("toto.tld"));
-            assertThat(message.mailDnsConfigurationValidated()).isFalse();
+            assertThat(message.mailDnsConfigurationValidated().get()).isFalse();
             assertThat(message.hasCalendarFeature()).isFalse();
         }
 
@@ -148,22 +148,6 @@ class SaaSCalendarSubscriptionDeserializerTest {
 
             assertThatThrownBy(() -> SaaSCalendarSubscriptionDeserializer.parseDomainMessage(json))
                 .isInstanceOf(SaaSCalendarSubscriptionMessageParseException.class);
-        }
-
-        @Test
-        void shouldDefaultMailDnsConfigurationValidatedToFalse() {
-            String json = """
-                {
-                    "domain": "toto.tld",
-                    "features": {
-                        "calendar": {}
-                    }
-                }
-                """;
-
-            DomainSubscriptionMessage message = SaaSCalendarSubscriptionDeserializer.parseDomainMessage(json);
-
-            assertThat(message.mailDnsConfigurationValidated()).isFalse();
         }
     }
 

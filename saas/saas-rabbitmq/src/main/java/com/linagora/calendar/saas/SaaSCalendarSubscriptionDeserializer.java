@@ -22,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 
 public class SaaSCalendarSubscriptionDeserializer {
 
@@ -32,6 +33,7 @@ public class SaaSCalendarSubscriptionDeserializer {
     }
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
+        .registerModule(new Jdk8Module())
         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     public static DomainSubscriptionMessage parseDomainMessage(byte[] message) {

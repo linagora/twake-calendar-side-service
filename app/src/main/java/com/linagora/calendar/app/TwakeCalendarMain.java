@@ -20,8 +20,6 @@ package com.linagora.calendar.app;
 
 import static com.linagora.calendar.saas.TWPCalendarSettingsModule.TWP_CALENDAR_SETTINGS_AGGREGATE_MODULE;
 
-import com.linagora.calendar.saas.TWPCalendarSubscriptionModule;
-
 import java.util.Optional;
 
 import org.apache.james.ExtraProperties;
@@ -72,6 +70,7 @@ import com.linagora.calendar.app.modules.OpenSearchClientModule;
 import com.linagora.calendar.app.modules.TwakeCalendarRabbitMQModule;
 import com.linagora.calendar.dav.DavModule;
 import com.linagora.calendar.restapi.RestApiModule;
+import com.linagora.calendar.saas.TWPCalendarSubscriptionModule;
 import com.linagora.calendar.smtp.SmtpModule;
 import com.linagora.calendar.storage.CaffeineOIDCTokenCache;
 import com.linagora.calendar.storage.FileUploadConfigurationModule;
@@ -245,7 +244,7 @@ public class TwakeCalendarMain {
         if (enabled) {
             return new TWPCalendarSubscriptionModule();
         }
-        return binder -> {};
+        return Modules.EMPTY_MODULE;
     }
 
 }
