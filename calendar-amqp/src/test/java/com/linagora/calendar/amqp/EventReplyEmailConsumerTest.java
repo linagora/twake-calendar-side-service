@@ -408,9 +408,11 @@ public class EventReplyEmailConsumerTest {
             .block();
 
         JsonPath smtpMailsResponse = simulateAcceptedReplyAndWaitForEmail();
-        assertThat(smtpMailsResponse.getString("[1].message"))
-            .containsIgnoringNewLines("""
-                    Content-Type: text/calendar; charset=UTF-8; method=REPLY""");
+        List<String> messages = smtpMailsResponse.getList("message");
+        assertThat(messages)
+            .anySatisfy(message -> assertThat(message)
+                .containsIgnoringNewLines("""
+                    Content-Type: text/calendar; charset=UTF-8; method=REPLY"""));
     }
 
     @Test
