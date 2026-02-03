@@ -24,19 +24,26 @@ import static io.restassured.config.RestAssuredConfig.newConfig;
 import static io.restassured.http.ContentType.JSON;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
-import static org.apache.james.backends.rabbitmq.RabbitMQExtension.IsolationPolicy.WEAK;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.UUID;
 
-import org.apache.james.backends.rabbitmq.RabbitMQExtension;
+import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
+import org.apache.james.backends.rabbitmq.RabbitMQConnectionFactory;
+import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
+import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
+import org.apache.james.metrics.api.NoopGaugeRegistry;
+import org.apache.james.metrics.tests.RecordingMetricFactory;
 import org.apache.james.utils.GuiceProbe;
 import org.apache.james.utils.WebAdminGuiceProbe;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
@@ -46,7 +53,9 @@ import com.google.inject.Inject;
 import com.google.inject.multibindings.Multibinder;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.DavModuleTestHelper;
+import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.Fixture;
+import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.tmail.saas.rabbitmq.subscription.SaaSDomainSubscriptionConsumer;
 import com.linagora.tmail.saas.rabbitmq.subscription.SaaSSubscriptionConsumer;
@@ -55,6 +64,7 @@ import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.specification.RequestSpecification;
 import reactor.core.publisher.Mono;
 import reactor.rabbitmq.OutboundMessage;
+import reactor.rabbitmq.Sender;
 
 class SaaSSubscriptionIntegrationTest {
     private static final String SUBSCRIPTION_EXCHANGE = "saas.subscription";
@@ -76,8 +86,7 @@ class SaaSSubscriptionIntegrationTest {
 
     @RegisterExtension
     @Order(1)
-    static RabbitMQExtension rabbitMQExtension = RabbitMQExtension.singletonRabbitMQ()
-        .isolationPolicy(WEAK);
+    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
 
     @RegisterExtension
     @Order(2)
@@ -85,19 +94,48 @@ class SaaSSubscriptionIntegrationTest {
         TwakeCalendarConfiguration.builder()
             .configurationFromClasspath()
             .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
-            .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY)
+            .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB)
             .enableTwpSetting()
             .enableSaasSubscription(),
-        DavModuleTestHelper.RABBITMQ_MODULE.apply(rabbitMQExtension),
-        DavModuleTestHelper.BY_PASS_MODULE,
+        DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
         AppTestHelper.OIDC_BY_PASS_MODULE,
         binder -> Multibinder.newSetBinder(binder, GuiceProbe.class)
             .addBinding().to(SaaSSubscriptionProbe.class));
 
+    private static SimpleConnectionPool connectionPool;
+    private static ReactorRabbitMQChannelPool channelPool;
+
+    @BeforeAll
+    static void beforeAll(DockerSabreDavSetup dockerSabreDavSetup) {
+        RabbitMQConfiguration rabbitMQConfiguration = dockerSabreDavSetup.rabbitMQConfiguration();
+        RabbitMQConnectionFactory connectionFactory = new RabbitMQConnectionFactory(rabbitMQConfiguration);
+        connectionPool = new SimpleConnectionPool(connectionFactory,
+            SimpleConnectionPool.Configuration.builder()
+                .retries(2)
+                .initialDelay(Duration.ofMillis(5)));
+        channelPool = new ReactorRabbitMQChannelPool(connectionPool.getResilientConnection(),
+            ReactorRabbitMQChannelPool.Configuration.builder()
+                .retries(2)
+                .maxBorrowDelay(Duration.ofMillis(250))
+                .maxChannel(10),
+            new RecordingMetricFactory(),
+            new NoopGaugeRegistry());
+        channelPool.start();
+    }
+
     private RequestSpecification webadminRequestSpecification;
+    private Sender sender;
+
+    @AfterAll
+    static void afterAll() {
+        channelPool.close();
+        connectionPool.close();
+    }
 
     @BeforeEach
     void setUp(TwakeCalendarGuiceServer server) {
+        sender = channelPool.getSender();
+
         webadminRequestSpecification = new RequestSpecBuilder()
             .setContentType(JSON)
             .setAccept(JSON)
@@ -123,7 +161,7 @@ class SaaSSubscriptionIntegrationTest {
     void shouldCreateDomainWhenReceivingDomainSubscriptionWithCalendarFeature(TwakeCalendarGuiceServer server) {
         String domainName = "test-domain-" + UUID.randomUUID() + ".tld";
 
-        String message = createDomainSubscriptionMessage(domainName, true);
+        String message = createDomainSubscriptionMessage(domainName);
         publishDomainSubscriptionMessage(message);
 
         Fixture.awaitAtMost.untilAsserted(() -> {
@@ -133,16 +171,16 @@ class SaaSSubscriptionIntegrationTest {
 
     @Test
     void shouldRegisterUserWhenReceivingUserSubscriptionWithCalendarFeature(TwakeCalendarGuiceServer server) {
-        String domainName = "user-test-" + UUID.randomUUID() + ".tld";
+        String domainName = "domain-" + UUID.randomUUID() + ".tld";
         String userEmail = "bob@" + domainName;
 
         // First create the domain
-        publishDomainSubscriptionMessage(createDomainSubscriptionMessage(domainName, true));
+        publishDomainSubscriptionMessage(createDomainSubscriptionMessage(domainName));
         Fixture.awaitAtMost.untilAsserted(() ->
             assertThat(server.getProbe(CalendarDataProbe.class).domainId(Domain.of(domainName))).isNotNull());
 
         // Then create the user
-        String userMessage = createUserSubscriptionMessage(userEmail, true, true);
+        String userMessage = createUserSubscriptionMessage(userEmail);
         publishUserSubscriptionMessage(userMessage);
 
         Fixture.awaitAtMost.untilAsserted(() -> {
@@ -160,8 +198,8 @@ class SaaSSubscriptionIntegrationTest {
         String user2 = "user2@" + domain2;
 
         // Create domains
-        publishDomainSubscriptionMessage(createDomainSubscriptionMessage(domain1, true));
-        publishDomainSubscriptionMessage(createDomainSubscriptionMessage(domain2, true));
+        publishDomainSubscriptionMessage(createDomainSubscriptionMessage(domain1));
+        publishDomainSubscriptionMessage(createDomainSubscriptionMessage(domain2));
 
         Fixture.awaitAtMost.untilAsserted(() -> {
             assertThat(server.getProbe(CalendarDataProbe.class).domainId(Domain.of(domain1))).isNotNull();
@@ -169,8 +207,8 @@ class SaaSSubscriptionIntegrationTest {
         });
 
         // Create users
-        publishUserSubscriptionMessage(createUserSubscriptionMessage(user1, true, true));
-        publishUserSubscriptionMessage(createUserSubscriptionMessage(user2, false, true));
+        publishUserSubscriptionMessage(createUserSubscriptionMessage(user1));
+        publishUserSubscriptionMessage(createUserSubscriptionMessage(user2));
 
         Fixture.awaitAtMost.untilAsserted(() -> {
             assertThat(server.getProbe(CalendarDataProbe.class).getUser(Username.of(user1))).isNotNull();
@@ -185,7 +223,7 @@ class SaaSSubscriptionIntegrationTest {
 
         // Then send valid message
         String domainName = "after-invalid-" + UUID.randomUUID() + ".tld";
-        publishDomainSubscriptionMessage(createDomainSubscriptionMessage(domainName, true));
+        publishDomainSubscriptionMessage(createDomainSubscriptionMessage(domainName));
 
         Fixture.awaitAtMost.untilAsserted(() ->
             assertThat(server.getProbe(CalendarDataProbe.class).domainId(Domain.of(domainName))).isNotNull());
@@ -227,39 +265,37 @@ class SaaSSubscriptionIntegrationTest {
     }
 
     private void publishDomainSubscriptionMessage(String message) {
-        rabbitMQExtension.getSender()
-            .send(Mono.just(new OutboundMessage(SUBSCRIPTION_EXCHANGE, DOMAIN_ROUTING_KEY, message.getBytes(UTF_8))))
+        sender.send(Mono.just(new OutboundMessage(SUBSCRIPTION_EXCHANGE, DOMAIN_ROUTING_KEY, message.getBytes(UTF_8))))
             .block();
     }
 
     private void publishUserSubscriptionMessage(String message) {
-        rabbitMQExtension.getSender()
-            .send(Mono.just(new OutboundMessage(SUBSCRIPTION_EXCHANGE, USER_ROUTING_KEY, message.getBytes(UTF_8))))
+        sender.send(Mono.just(new OutboundMessage(SUBSCRIPTION_EXCHANGE, USER_ROUTING_KEY, message.getBytes(UTF_8))))
             .block();
     }
 
-    private String createDomainSubscriptionMessage(String domain, boolean dnsValidated) {
+    private String createDomainSubscriptionMessage(String domain) {
         return """
             {
                 "domain": "%s",
-                "mailDnsConfigurationValidated": %s,
+                "mailDnsConfigurationValidated": true,
                 "features": {
                     "calendar": {}
                 }
             }
-            """.formatted(domain, dnsValidated);
+            """.formatted(domain);
     }
 
-    private String createUserSubscriptionMessage(String email, boolean isPaying, boolean canUpgrade) {
+    private String createUserSubscriptionMessage(String email) {
         return """
             {
                 "internalEmail": "%s",
-                "isPaying": %s,
-                "canUpgrade": %s,
+                "isPaying": false,
+                "canUpgrade": false,
                 "features": {
                     "calendar": {}
                 }
             }
-            """.formatted(email, isPaying, canUpgrade);
+            """.formatted(email);
     }
 }

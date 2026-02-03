@@ -21,6 +21,7 @@ package com.linagora.calendar.saas;
 import static com.linagora.tmail.saas.rabbitmq.TWPConstants.TWP_INJECTION_KEY;
 
 import java.io.FileNotFoundException;
+import java.util.Set;
 
 import jakarta.inject.Named;
 import jakarta.inject.Singleton;
@@ -28,6 +29,7 @@ import jakarta.inject.Singleton;
 import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
+import org.apache.james.core.Domain;
 import org.apache.james.core.healthcheck.HealthCheck;
 import org.apache.james.utils.InitializationOperation;
 import org.apache.james.utils.InitilizationOperationBuilder;
@@ -65,10 +67,11 @@ public class TWPCalendarSubscriptionModule extends AbstractModule {
                                                              SaaSSubscriptionRabbitMQConfiguration saaSSubscriptionRabbitMQConfiguration,
                                                              OpenPaaSUserDAO userDAO,
                                                              OpenPaaSDomainDAO domainDAO,
-                                                             CardDavClient cardDavClient) {
+                                                             CardDavClient cardDavClient,
+                                                             @Named("userSearchDisabledDomains") Set<Domain> userSearchDisabledDomains) {
         return new SaaSSubscriptionConsumer(channelPool, rabbitMQConfiguration, twpCommonRabbitMQConfiguration,
             saaSSubscriptionRabbitMQConfiguration,
-            new SaaSUserSubscriptionHandler(userDAO, domainDAO, cardDavClient));
+            new SaaSUserSubscriptionHandler(userDAO, domainDAO, cardDavClient, userSearchDisabledDomains));
     }
 
     @Provides

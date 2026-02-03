@@ -29,12 +29,13 @@ import com.google.common.base.Preconditions;
 public record DomainSubscriptionMessage(
     @JsonProperty("domain") String domain,
     @JsonProperty("mailDnsConfigurationValidated") Optional<Boolean> mailDnsConfigurationValidated,
-    @JsonProperty("features") SaasFeatures features) {
+    @JsonProperty("features") Optional<SaasFeatures> features) {
+
+    public static final boolean NO_CALENDAR_FEATURE = false;
 
     @JsonCreator
     public DomainSubscriptionMessage {
         Preconditions.checkNotNull(domain, "domain cannot be null");
-        Preconditions.checkNotNull(features, "features cannot be null");
     }
 
     public Domain domainObject() {
@@ -42,6 +43,6 @@ public record DomainSubscriptionMessage(
     }
 
     public boolean hasCalendarFeature() {
-        return features.hasCalendarFeature();
+        return features.map(SaasFeatures::hasCalendarFeature).orElse(NO_CALENDAR_FEATURE);
     }
 }

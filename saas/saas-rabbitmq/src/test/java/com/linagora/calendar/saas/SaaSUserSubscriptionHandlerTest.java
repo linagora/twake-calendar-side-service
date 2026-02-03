@@ -29,6 +29,7 @@ import org.apache.james.core.Username;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.testcontainers.shaded.com.google.common.collect.ImmutableSet;
 
 import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
@@ -56,14 +57,12 @@ class SaaSUserSubscriptionHandlerTest {
         domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
         userDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
         cardDavClient = new CardDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
-        testee = new SaaSUserSubscriptionHandler(userDAO, domainDAO, cardDavClient);
+        testee = new SaaSUserSubscriptionHandler(userDAO, domainDAO, cardDavClient, ImmutableSet.of(Domain.of("nonshared.tld")));
         testDomain = createNewDomainWithAddressBook();
     }
 
     private OpenPaaSDomain createNewDomainWithAddressBook() {
-        OpenPaaSDomain newDomain = domainDAO.add(Domain.of("test-domain-" + UUID.randomUUID() + ".tld")).block();
-        cardDavClient.createDomainMembersAddressBook(newDomain.id()).block();
-        return newDomain;
+        return domainDAO.add(Domain.of("test-domain-" + UUID.randomUUID() + ".tld")).block();
     }
 
     @Test
@@ -170,6 +169,33 @@ class SaaSUserSubscriptionHandlerTest {
 
         String vcardContent = listContactDomainMembersAsVcard(testDomain);
         assertThat(vcardContent).contains(aliceEmail).contains(bobEmail);
+    }
+
+    @Test
+    void shouldNotAddContactToAddressBookWhenNotSupportSharingForDomain() {
+        OpenPaaSDomain nonSharedDomain = domainDAO.add(Domain.of("nonshared.tld")).block();
+        cardDavClient.createDomainMembersAddressBook(nonSharedDomain.id()).block();
+
+        String userEmail = "bob@" + nonSharedDomain.domain().asString();
+        String json = """
+            {
+                "internalEmail": "%s",
+                "isPaying": true,
+                "canUpgrade": true,
+                "features": {
+                    "calendar": {}
+                }
+            }
+            """.formatted(userEmail);
+
+        testee.handleMessage(json.getBytes(StandardCharsets.UTF_8)).block();
+
+        OpenPaaSUser user = userDAO.retrieve(Username.of(userEmail)).block();
+        assertThat(user).isNotNull();
+        assertThat(user.username()).isEqualTo(Username.of(userEmail));
+
+        String vcardContent = listContactDomainMembersAsVcard(nonSharedDomain);
+        assertThat(vcardContent).doesNotContain(userEmail);
     }
 
     private String listContactDomainMembersAsVcard(OpenPaaSDomain domain) {
