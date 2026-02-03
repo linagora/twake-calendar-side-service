@@ -44,6 +44,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
@@ -247,11 +248,12 @@ public class EventCounterEmailConsumerTest {
         assertThat(davTestHelper.findFirstEventId(attendee)).isEmpty();
 
         JsonPath smtpMailsResponse = simulateProposeCounterAndWaitForEmail();
+        int counterIndex = findCounterMailIndex(smtpMailsResponse);
 
         assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[1].from")).isEqualTo(attendee.username().asString());
-            softly.assertThat(smtpMailsResponse.getString("[1].recipients[0].address")).isEqualTo(organizer.username().asString());
-            softly.assertThat(smtpMailsResponse.getString("[1].message"))
+            softly.assertThat(smtpMailsResponse.getString("[" + counterIndex + "].from")).isEqualTo(attendee.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[" + counterIndex + "].recipients[0].address")).isEqualTo(organizer.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[" + counterIndex + "].message"))
                 .contains("Subject: New changes proposed to event Twake Calendar - Sprint planning #04")
                 .contains("Content-Type: multipart/mixed;")
                 .containsIgnoringNewLines("""
@@ -275,10 +277,14 @@ public class EventCounterEmailConsumerTest {
 
         JsonPath smtpMailsResponse = simulateProposeCounterAndWaitForEmail();
 
+        int counterIndex = findCounterMailIndex(smtpMailsResponse);
+
         assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[1].from")).isEqualTo(attendee.username().asString());
-            softly.assertThat(smtpMailsResponse.getString("[1].recipients[0].address")).isEqualTo(organizer.username().asString());
-            softly.assertThat(smtpMailsResponse.getString("[1].message"))
+            softly.assertThat(smtpMailsResponse.getString("[" + counterIndex + "].from"))
+                .isEqualTo(attendee.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[" + counterIndex + "].recipients[0].address"))
+                .isEqualTo(organizer.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[" + counterIndex + "].message"))
                 .contains("Subject: =?ISO-8859-1?Q?Nouvelles_modifications_propos")
                 .containsIgnoringNewLines("""
                     Content-Type: text/calendar; charset=UTF-8; method=COUNTER""");
@@ -389,4 +395,15 @@ public class EventCounterEmailConsumerTest {
         }
         return prepare;
     }
+
+    private int findCounterMailIndex(JsonPath smtpMailsResponse) {
+        return IntStream.range(0, smtpMailsResponse.getList("").size())
+            .filter(i -> {
+                String message = smtpMailsResponse.getString("[" + i + "].message");
+                return message != null && message.contains("Content-Type: text/calendar; charset=UTF-8; method=COUNTER");
+            })
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("No counter mail found in SMTP response"));
+    }
+
 }

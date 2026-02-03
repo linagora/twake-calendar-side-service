@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.app;
 
+import static com.linagora.calendar.app.TestFixture.awaitMessage;
+import static com.linagora.calendar.app.TestFixture.connectWebSocket;
 import static com.linagora.calendar.scheduling.AlarmEventSchedulerConfiguration.BATCH_SIZE_DEFAULT;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static io.restassured.RestAssured.given;
@@ -76,10 +78,7 @@ import io.restassured.RestAssured;
 import io.restassured.path.json.JsonPath;
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.component.VEvent;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
 import okhttp3.WebSocket;
-import okhttp3.WebSocketListener;
 
 class DisplayAlarmWebsocketFlowIntegrationTest {
 
@@ -178,7 +177,7 @@ class DisplayAlarmWebsocketFlowIntegrationTest {
     }
 
     @Test
-    void shouldReceiveDisplayAlarmViaWebsocket(TwakeCalendarGuiceServer server) throws Exception {
+    void shouldReceiveDisplayAlarmViaWebsocket(TwakeCalendarGuiceServer server) {
         AlarmEventStoreProbe alarmStore = server.getProbe(AlarmEventStoreProbe.class);
 
         // GIVEN: Bob creates an event with a DISPLAY alarm
@@ -203,8 +202,7 @@ class DisplayAlarmWebsocketFlowIntegrationTest {
         webSocket.send("{\"enableDisplayNotification\": true}");
 
         // Validate enableDisplayNotification response
-        String enableResponse = messages.poll(10, TimeUnit.SECONDS);
-        assertThat(enableResponse).isNotNull();
+        String enableResponse = awaitMessage(messages, msg -> msg.contains("displayNotificationEnabled"));
         assertThatJson(enableResponse)
             .isEqualTo("{\"displayNotificationEnabled\":true}");
 
@@ -215,9 +213,7 @@ class DisplayAlarmWebsocketFlowIntegrationTest {
 
         // THEN: Bob receives the alarm notification via WebSocket
         Fixture.awaitAtMost.untilAsserted(() -> {
-            String alarmMessage = messages.poll(1, TimeUnit.SECONDS);
-            assertThat(alarmMessage).isNotNull();
-
+            String alarmMessage = awaitMessage(messages, msg -> msg.contains("eventSummary"));
             String expected = """
                 {
                     "alarms": [
@@ -265,13 +261,13 @@ class DisplayAlarmWebsocketFlowIntegrationTest {
         try {
             // Bob enables display notifications
             webSocket.send("{\"enableDisplayNotification\": true}");
-            String bobEnableResponse = bobMessages.poll(10, TimeUnit.SECONDS);
+            String bobEnableResponse = awaitMessage(bobMessages, msg -> msg.contains("displayNotificationEnabled"));
             assertThatJson(bobEnableResponse)
                 .isEqualTo("{\"displayNotificationEnabled\":true}");
 
             // Alice enables display notifications
             aliceWebSocket.send("{\"enableDisplayNotification\": true}");
-            String aliceEnableResponse = aliceMessages.poll(10, TimeUnit.SECONDS);
+            String aliceEnableResponse = awaitMessage(aliceMessages, msg -> msg.contains("displayNotificationEnabled"));
             assertThatJson(aliceEnableResponse)
                 .isEqualTo("{\"displayNotificationEnabled\":true}");
 
@@ -282,9 +278,7 @@ class DisplayAlarmWebsocketFlowIntegrationTest {
 
             // THEN: Alice should receive her alarm notification
             Fixture.awaitAtMost.untilAsserted(() -> {
-                String aliceAlarmMessage = aliceMessages.poll(1, TimeUnit.SECONDS);
-                assertThat(aliceAlarmMessage)
-                    .isNotNull();
+                String aliceAlarmMessage = awaitMessage(aliceMessages, msg -> msg.contains("eventSummary"));
                 assertThatJson(aliceAlarmMessage)
                     .node("alarms[0].eventSummary")
                     .isStringEqualTo("Display Alarm Test");
@@ -310,22 +304,6 @@ class DisplayAlarmWebsocketFlowIntegrationTest {
             .extract()
             .asString();
         return JsonPath.from(ticketResponse).getString("value");
-    }
-
-    private WebSocket connectWebSocket(int port, String ticket, BlockingQueue<String> messages) {
-        OkHttpClient client = new OkHttpClient.Builder()
-            .connectTimeout(5, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .build();
-        Request wsRequest = new Request.Builder()
-            .url("ws://localhost:" + port + "/ws?ticket=" + ticket)
-            .build();
-        return client.newWebSocket(wsRequest, new WebSocketListener() {
-            @Override
-            public void onMessage(WebSocket webSocket, String text) {
-                messages.offer(text);
-            }
-        });
     }
 
     private String buildEventICSWithDisplayAlarm(String eventUid, String organizer) {

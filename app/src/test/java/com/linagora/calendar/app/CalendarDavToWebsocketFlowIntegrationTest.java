@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.app;
 
+import static com.linagora.calendar.app.TestFixture.awaitMessage;
+import static com.linagora.calendar.app.TestFixture.connectWebSocket;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static io.restassured.RestAssured.given;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
@@ -29,7 +31,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.lang3.Strings;
 import org.apache.commons.lang3.tuple.Pair;
@@ -60,10 +61,7 @@ import com.linagora.calendar.storage.redis.DockerRedisExtension;
 import io.restassured.RestAssured;
 import io.restassured.authentication.PreemptiveBasicAuthScheme;
 import io.restassured.path.json.JsonPath;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
 import okhttp3.WebSocket;
-import okhttp3.WebSocketListener;
 
 class CalendarDavToWebsocketFlowIntegrationTest {
 
@@ -136,7 +134,7 @@ class CalendarDavToWebsocketFlowIntegrationTest {
     }
 
     @Test
-    void bobShouldReceiveWebsocketPushWhenAliceInvitesHim() throws Exception {
+    void bobShouldReceiveWebsocketPushWhenAliceInvitesHim() {
         // GIVEN: Bob opens WebSocket
         String bobTicket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
@@ -150,9 +148,7 @@ class CalendarDavToWebsocketFlowIntegrationTest {
             }
             """.formatted(bobCalendarUrl));
 
-        // Validate registration response
-        String registerResponse = messages.poll(10, TimeUnit.SECONDS);
-        assertThat(registerResponse).isNotNull();
+        String registerResponse = awaitMessage(messages, msg -> msg.contains("\"registered\""));
         assertThatJson(registerResponse)
             .node("registered")
             .isArray()
@@ -164,9 +160,7 @@ class CalendarDavToWebsocketFlowIntegrationTest {
 
         davTestHelper.upsertCalendar(alice, ics, eventUid);
 
-        // THEN: Bob receives WebSocket notification
-        String pushMessage = messages.poll(20, TimeUnit.SECONDS);
-        assertThat(pushMessage).isNotNull();
+        String pushMessage = awaitMessage(messages, msg -> msg.contains("syncToken") && msg.contains(bobCalendarUrl));
 
         assertThatJson(pushMessage)
             .isEqualTo("""
@@ -179,7 +173,7 @@ class CalendarDavToWebsocketFlowIntegrationTest {
     }
 
     @Test
-    void bobShouldFetchEventsFromDavUsingReceivedSyncToken() throws Exception {
+    void bobShouldFetchEventsFromDavUsingReceivedSyncToken() {
         // GIVEN: Bob opens WebSocket
         String bobTicket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
@@ -192,19 +186,13 @@ class CalendarDavToWebsocketFlowIntegrationTest {
             }
             """.formatted(bobCalendarUrl));
 
-        String registerResponse = messages.poll(10, TimeUnit.SECONDS);
-        assertThat(registerResponse).isNotNull();
-
         // WHEN: Alice creates an event
         String eventUid = "event-" + System.currentTimeMillis();
         String ics = buildEventICS(eventUid, alice.username().asString(), bob.username().asString());
         davTestHelper.upsertCalendar(alice, ics, eventUid);
 
-        // Bob receives websocket notification
-        String pushMessage = messages.poll(20, TimeUnit.SECONDS);
-        assertThat(pushMessage).isNotNull();
-
-        // Extract syncToken
+        // Bob receives websocket notification (skip unrelated messages)
+        String pushMessage = awaitMessage(messages, msg -> msg.contains("syncToken"));
         Pair<CalendarURL, String> pair = extractCalendarUrlAndSyncToken(pushMessage);
         String syncToken = pair.getRight();
         assertThat(syncToken).isNotBlank();
@@ -233,22 +221,6 @@ class CalendarDavToWebsocketFlowIntegrationTest {
             .extract()
             .asString();
         return JsonPath.from(ticketResponse).getString("value");
-    }
-
-    private WebSocket connectWebSocket(int port, String ticket, BlockingQueue<String> messages) {
-        OkHttpClient client = new OkHttpClient.Builder()
-            .connectTimeout(5, TimeUnit.SECONDS)
-            .readTimeout(10, TimeUnit.SECONDS)
-            .build();
-        Request wsRequest = new Request.Builder()
-            .url("ws://localhost:" + port + "/ws?ticket=" + ticket)
-            .build();
-        return client.newWebSocket(wsRequest, new WebSocketListener() {
-            @Override
-            public void onMessage(WebSocket webSocket, String text) {
-                messages.offer(text);
-            }
-        });
     }
 
     private Pair<CalendarURL, String> extractCalendarUrlAndSyncToken(String pushMessage) {

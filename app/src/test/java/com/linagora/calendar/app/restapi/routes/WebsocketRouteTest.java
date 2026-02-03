@@ -18,13 +18,18 @@
 
 package com.linagora.calendar.app.restapi.routes;
 
+import static com.linagora.calendar.app.TestFixture.awaitMessage;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
+import static com.linagora.calendar.storage.eventsearch.CalendarSearchServiceContract.CALMLY_AWAIT;
 import static io.restassured.RestAssured.given;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -32,20 +37,15 @@ import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.time.Instant;
-import java.nio.charset.StandardCharsets;
-
-import com.linagora.calendar.storage.AddressBookURL;
-import com.linagora.calendar.storage.MailboxSessionUtil;
-import com.linagora.calendar.storage.model.Upload;
-import com.linagora.calendar.storage.model.UploadedMimeType;
 
 import org.apache.http.HttpStatus;
-
+import org.apache.james.backends.redis.RedisConfiguration;
+import org.apache.james.backends.redis.StandaloneRedisConfiguration;
 import org.apache.james.core.Username;
 import org.apache.james.events.Event;
 import org.apache.james.events.EventBus;
 import org.apache.james.utils.GuiceProbe;
+import org.awaitility.core.ConditionFactory;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -54,7 +54,10 @@ import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import com.google.inject.AbstractModule;
 import com.google.inject.Inject;
+import com.google.inject.Provides;
+import com.google.inject.Singleton;
 import com.google.inject.multibindings.Multibinder;
 import com.linagora.calendar.app.AppTestHelper;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
@@ -62,18 +65,25 @@ import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.CalDavClient.NewCalendar;
 import com.linagora.calendar.dav.CalDavClient.PublicRight;
 import com.linagora.calendar.dav.DavModuleTestHelper;
+import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiServerProbe;
+import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.CalendarChangeEvent;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.CalendarURLRegistrationKey;
 import com.linagora.calendar.storage.EventBusAlarmEvent;
+import com.linagora.calendar.storage.MailboxSessionUtil;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.UsernameRegistrationKey;
+import com.linagora.calendar.storage.model.Upload;
+import com.linagora.calendar.storage.model.UploadedMimeType;
+import com.linagora.calendar.storage.redis.DockerRedisExtension;
 
 import io.restassured.RestAssured;
 import io.restassured.authentication.PreemptiveBasicAuthScheme;
@@ -86,6 +96,10 @@ import okhttp3.WebSocket;
 import okhttp3.WebSocketListener;
 
 class WebsocketRouteTest {
+    private static final ConditionFactory NEGATIVE_AWAIT = await()
+        .during(1, SECONDS)
+        .pollInterval(200, MILLISECONDS);
+
     static class EventBusProbe implements GuiceProbe {
         private final EventBus eventBus;
 
@@ -111,17 +125,29 @@ class WebsocketRouteTest {
     @Order(1)
     static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
 
-    @RegisterExtension
     @Order(2)
+    @RegisterExtension
+    static DockerRedisExtension redisExtension = new DockerRedisExtension();
+
+    @RegisterExtension
+    @Order(3)
     static TwakeCalendarExtension twakeCalendarExtension = new TwakeCalendarExtension(
         TwakeCalendarConfiguration.builder()
             .configurationFromClasspath()
             .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
-            .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB),
+            .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB)
+            .enableRedis(),
         AppTestHelper.OIDC_BY_PASS_MODULE,
         DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
         binder -> Multibinder.newSetBinder(binder, GuiceProbe.class)
-            .addBinding().to(EventBusProbe.class));
+            .addBinding().to(EventBusProbe.class),
+        new AbstractModule() {
+            @Provides
+            @Singleton
+            public RedisConfiguration redisConfiguration() {
+                return StandaloneRedisConfiguration.from(redisExtension.redisURI().toString());
+            }
+        });
 
     @AfterAll
     static void afterAll() {
@@ -129,6 +155,7 @@ class WebsocketRouteTest {
     }
 
     private CalDavClient calDavClient;
+    private DavTestHelper davTestHelper;
 
     private OpenPaaSUser bob;
     private OpenPaaSUser alice;
@@ -152,6 +179,7 @@ class WebsocketRouteTest {
 
         restApiPort = server.getProbe(RestApiServerProbe.class).getPort().getValue();
         calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
+        davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
     }
 
     @AfterEach
@@ -162,7 +190,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldAllowSubscriptionForOwnerWithValidTicket() throws Exception {
+    void websocketShouldAllowSubscriptionForOwnerWithValidTicket() {
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         webSocket = connectWebSocket(restApiPort, ticket, messages);
@@ -174,9 +202,7 @@ class WebsocketRouteTest {
             }
             """, registerCalendarURL));
 
-        String json = messages.poll(5, TimeUnit.SECONDS);
-        assertThat(json).isNotNull();
-
+        String json = awaitMessage(messages, msg -> msg.contains("registered"));
         assertThatJson(json)
             .isEqualTo("""
                 {
@@ -207,7 +233,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldReturnNotRegisteredWhenNoRights() throws Exception {
+    void websocketShouldReturnNotRegisteredWhenNoRights() {
         CalDavClient.NewCalendar newCalendar = new CalDavClient.NewCalendar(UUID.randomUUID().toString(),
             "My Calendar", "#00ff00", "Test");
         calDavClient.createNewCalendar(alice.username(), alice.id(), newCalendar).block();
@@ -225,8 +251,7 @@ class WebsocketRouteTest {
             }
             """.formatted(foreignCalendarUrl));
 
-        String json = messages.poll(5, TimeUnit.SECONDS);
-        assertThat(json).isNotNull();
+        String json = awaitMessage(messages, msg -> msg.contains("notRegistered"));
         assertThatJson(json)
             .isEqualTo("""
                 {
@@ -235,7 +260,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldReturnNotRegisteredWhenCalendarDoesNotExist() throws Exception {
+    void websocketShouldReturnNotRegisteredWhenCalendarDoesNotExist() {
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         webSocket = connectWebSocket(restApiPort, ticket, messages);
@@ -248,9 +273,7 @@ class WebsocketRouteTest {
             }
             """.formatted(nonExistentCalendar));
 
-        String json = messages.poll(5, TimeUnit.SECONDS);
-        assertThat(json).isNotNull();
-
+        String json = awaitMessage(messages, msg -> msg.contains("notRegistered"));
         assertThatJson(json)
             .isEqualTo("""
                 {
@@ -259,7 +282,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldRejectRequestWhenRegisterAndUnregisterSameCalendar() throws Exception {
+    void websocketShouldRejectRequestWhenRegisterAndUnregisterSameCalendar() {
         // Given: Bob & calendar
         String calendarUri = CalendarURL.from(bob.id()).asUri().toString();
 
@@ -276,9 +299,7 @@ class WebsocketRouteTest {
             """.formatted(calendarUri, calendarUri));
 
         // Then: server must reject as invalid request
-        String json = messages.poll(5, TimeUnit.SECONDS);
-        assertThat(json).isNotNull();
-
+        String json = awaitMessage(messages, msg -> msg.contains("error"));
         assertThatJson(json)
             .node("error")
             .asString()
@@ -286,7 +307,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldNoopWhenRegisterAndUnregisterAreBothEmpty() throws Exception {
+    void websocketShouldNoopWhenRegisterAndUnregisterAreBothEmpty() {
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         webSocket = connectWebSocket(restApiPort, ticket, messages);
@@ -298,15 +319,13 @@ class WebsocketRouteTest {
             }
             """);
 
-        String json = messages.poll(5, TimeUnit.SECONDS);
-        assertThat(json).isNotNull();
-
+        String json = awaitMessage(messages, msg -> msg.equals("{}"));
         assertThatJson(json)
             .isEqualTo("{}");
     }
 
     @Test
-    void websocketShouldAllowRegisterWhenUserHasRights() throws Exception {
+    void websocketShouldAllowRegisterWhenUserHasRights() {
         String sharedCalendarId = UUID.randomUUID().toString();
         CalDavClient.NewCalendar publicCalendar = new CalDavClient.NewCalendar(sharedCalendarId,
             "Public Calendar", "#123456", "Public calendar for testing");
@@ -330,9 +349,7 @@ class WebsocketRouteTest {
             }
             """.formatted(registerCalendarURL));
 
-        String json = messages.poll(5, TimeUnit.SECONDS);
-        assertThat(json).isNotNull();
-
+        String json = awaitMessage(messages, msg -> msg.contains("registered"));
         assertThatJson(json)
             .isEqualTo("""
                 {
@@ -342,7 +359,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldUnregisterSuccessfully() throws Exception {
+    void websocketShouldUnregisterSuccessfully() {
         String calendarUri = CalendarURL.from(bob.id()).asUri().toString();
 
         String ticket = generateTicket(bob);
@@ -355,8 +372,7 @@ class WebsocketRouteTest {
             }
             """.formatted(calendarUri));
 
-        String unregJson = messages.poll(5, TimeUnit.SECONDS);
-        assertThat(unregJson).isNotNull();
+        String unregJson = awaitMessage(messages, msg -> msg.contains("unregistered"));
         assertThatJson(unregJson)
             .isEqualTo("""
                 {
@@ -366,7 +382,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldHandleMixedRegisterAndUnregister() throws Exception {
+    void websocketShouldHandleMixedRegisterAndUnregister() {
         // Given: A & C belong to bob (valid)
         String calendarA = CalendarURL.from(bob.id()).asUri().toString();
         CalDavClient.NewCalendar publicCalendar = new CalDavClient.NewCalendar(UUID.randomUUID().toString(),
@@ -390,9 +406,7 @@ class WebsocketRouteTest {
             }
             """.formatted(calendarA, calendarB, calendarC));
 
-        String json = messages.poll(5, TimeUnit.SECONDS);
-        assertThat(json).isNotNull();
-
+        String json = awaitMessage(messages, msg -> msg.contains("notRegistered"));
         // Then: A registered, B notRegistered, C unregistered
         assertThatJson(json)
             .isEqualTo("""
@@ -405,7 +419,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldReceiveEventPushedFromEventBus(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldReceiveEventPushedFromEventBus(TwakeCalendarGuiceServer guiceServer) {
         // Given: Bob & calendar
         String calendarUri = CalendarURL.from(bob.id()).asUri().toString();
 
@@ -421,8 +435,7 @@ class WebsocketRouteTest {
             """.formatted(calendarUri));
 
         // Consume subscription ACK
-        String ack = messages.poll(5, TimeUnit.SECONDS);
-        assertThat(ack).isNotNull();
+        String ack = awaitMessage(messages, msg -> msg.contains("registered"));
         assertThatJson(ack).isEqualTo("""
             {
                 "registered": ["%s"]
@@ -437,11 +450,7 @@ class WebsocketRouteTest {
         eventBusProbe.dispatch(event, url);
 
         // Then: WebSocket must receive event push
-        String pushed = messages.poll(10, TimeUnit.SECONDS);
-        assertThat(pushed)
-            .as("WebSocket should receive pushed calendar change event")
-            .isNotNull();
-
+        String pushed = awaitMessage(messages, msg -> msg.contains("syncToken"));
         assertThatJson(pushed)
             .isEqualTo("""
             {
@@ -453,7 +462,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldReturnUnregisteredWhenUnregisteringIdempotently() throws Exception {
+    void websocketShouldReturnUnregisteredWhenUnregisteringIdempotently() {
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         webSocket = connectWebSocket(restApiPort, ticket, messages);
@@ -466,9 +475,7 @@ class WebsocketRouteTest {
             }
             """.formatted(calendarUri));
 
-        String json = messages.poll(5, TimeUnit.SECONDS);
-        assertThat(json).isNotNull();
-
+        String json = awaitMessage(messages, msg -> msg.contains("unregistered"));
         assertThatJson(json)
             .isEqualTo("""
                 {
@@ -478,7 +485,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void registeringSameCalendarTwiceShouldStillReturnRegistered() throws Exception {
+    void registeringSameCalendarTwiceShouldStillReturnRegistered() {
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         webSocket = connectWebSocket(restApiPort, ticket, messages);
@@ -489,7 +496,7 @@ class WebsocketRouteTest {
             { "register": ["%s"] }
             """.formatted(calendarUri));
 
-        String first = messages.poll(5, TimeUnit.SECONDS);
+        String first = awaitMessage(messages, msg -> msg.contains("registered"));
         assertThatJson(first).isEqualTo("""
             { "registered": ["%s"] }
             """.formatted(calendarUri));
@@ -498,14 +505,14 @@ class WebsocketRouteTest {
             { "register": ["%s"] }
             """.formatted(calendarUri));
 
-        String second = messages.poll(5, TimeUnit.SECONDS);
+        String second = awaitMessage(messages, msg -> msg.contains("registered"));
         assertThatJson(second).isEqualTo("""
             { "registered": ["%s"] }
             """.formatted(calendarUri));
     }
 
     @Test
-    void websocketShouldStopReceivingEventsAfterUnregister(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldStopReceivingEventsAfterUnregister(TwakeCalendarGuiceServer guiceServer) {
         // Given: bob & calendar A
         String calendarUri = CalendarURL.from(bob.id()).asUri().toString();
         CalendarURL calendar = CalendarURL.from(bob.id());
@@ -520,7 +527,7 @@ class WebsocketRouteTest {
             """.formatted(calendarUri));
 
         // Ack for register
-        String ack = messages.poll(5, TimeUnit.SECONDS);
+        String ack = awaitMessage(messages, msg -> msg.contains("registered"));
         assertThatJson(ack).isEqualTo("""
             { "registered": ["%s"] }
             """.formatted(calendarUri));
@@ -531,7 +538,7 @@ class WebsocketRouteTest {
         CalendarChangeEvent event1 = new CalendarChangeEvent(Event.EventId.random(), calendar);
         eventBusProbe.dispatch(event1, calendar);
 
-        String pushed1 = messages.poll(5, TimeUnit.SECONDS);
+        String pushed1 = awaitMessage(messages, msg -> msg.contains("syncToken"));
         assertThat(pushed1).as("WebSocket should receive event after register").isNotNull();
 
         assertThatJson(pushed1)
@@ -544,7 +551,7 @@ class WebsocketRouteTest {
             { "unregister": ["%s"] }
             """.formatted(calendarUri));
 
-        String unregAck = messages.poll(5, TimeUnit.SECONDS);
+        String unregAck = awaitMessage(messages, msg -> msg.contains("unregistered"));
         assertThatJson(unregAck)
             .isEqualTo("""
                 { "unregistered": ["%s"] }
@@ -554,15 +561,21 @@ class WebsocketRouteTest {
         CalendarChangeEvent event2 = new CalendarChangeEvent(Event.EventId.random(), calendar);
         eventBusProbe.dispatch(event2, calendar);
 
-        // Try to read event, expect timeout → null
-        String pushed2 = messages.poll(3, TimeUnit.SECONDS);
-        assertThat(pushed2)
-            .as("WebSocket should NOT receive events after unregister")
-            .isNull();
+        // MUST NOT receive syncToken event for this calendar anymore (ignore unrelated messages)
+        NEGATIVE_AWAIT.untilAsserted(() -> {
+                List<String> received = new ArrayList<>();
+                messages.drainTo(received);
+
+                assertThat(received)
+                    .as("WebSocket should NOT receive syncToken events after unregister (%s)", calendarUri)
+                    .noneSatisfy(msg -> assertThat(msg)
+                        .contains("\"syncToken\"")
+                        .contains(calendarUri));
+            });
     }
 
     @Test
-    void websocketShouldNotReceiveDuplicateEventsWhenRegisteredTwice(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldNotReceiveDuplicateEventsWhenRegisteredTwice(TwakeCalendarGuiceServer guiceServer) {
         // Given: bob & a calendar A
         String calendarUri = CalendarURL.from(bob.id()).asUri().toString();
         CalendarURL calendar = CalendarURL.from(bob.id());
@@ -575,7 +588,7 @@ class WebsocketRouteTest {
         webSocket.send("""
             { "register": ["%s"] }
             """.formatted(calendarUri));
-        String ack1 = messages.poll(5, TimeUnit.SECONDS);
+        String ack1 = awaitMessage(messages, msg -> msg.contains("registered"));
         assertThatJson(ack1)
             .isEqualTo("""
                 { "registered": ["%s"] }
@@ -584,7 +597,7 @@ class WebsocketRouteTest {
         webSocket.send("""
             { "register": ["%s"] }
             """.formatted(calendarUri));
-        String ack2 = messages.poll(5, TimeUnit.SECONDS);
+        String ack2 = awaitMessage(messages, msg -> msg.contains("registered"));
         assertThatJson(ack2)
             .isEqualTo("""
                 { "registered": ["%s"] }
@@ -596,7 +609,7 @@ class WebsocketRouteTest {
         eventBusProbe.dispatch(event, calendar);
 
         // Then: websocket receives exactly one event
-        String pushed = messages.poll(5, TimeUnit.SECONDS);
+        String pushed = awaitMessage(messages, msg -> msg.contains("syncToken"));
         assertThat(pushed)
             .as("WebSocket should receive ONE event even after double registration")
             .isNotNull();
@@ -605,15 +618,21 @@ class WebsocketRouteTest {
             { "%s" : { "syncToken": "${json-unit.ignore}" } }
             """.formatted(calendarUri));
 
-        // And: no duplicate event arrives later
-        String duplicate = messages.poll(2, TimeUnit.SECONDS);
-        assertThat(duplicate)
-            .as("WebSocket should NOT receive duplicate event after multiple register calls")
-            .isNull();
+        // And: no duplicate syncToken event arrives later (ignore unrelated messages)
+        NEGATIVE_AWAIT.untilAsserted(() -> {
+                List<String> received = new ArrayList<>();
+                messages.drainTo(received);
+
+                assertThat(received)
+                    .as("WebSocket should NOT receive duplicate syncToken event after multiple register calls (%s)", calendarUri)
+                    .noneSatisfy(msg -> assertThat(msg)
+                        .contains("\"syncToken\"")
+                        .contains(calendarUri));
+            });
     }
 
     @Test
-    void websocketShouldNotReceiveEventsFromUnregisteredCalendar(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldNotReceiveEventsFromUnregisteredCalendar(TwakeCalendarGuiceServer guiceServer) {
         // Given: Bob has calendar A (default) and a newly created calendar B
         String calendarA = CalendarURL.from(bob.id()).asUri().toString();
 
@@ -631,8 +650,8 @@ class WebsocketRouteTest {
             { "register": ["%s"] }
             """.formatted(calendarA));
 
-        String ack = messages.poll(5, TimeUnit.SECONDS);
-        assertThatJson(ack)
+        String message = awaitMessage(messages, msg -> msg.contains("registered"));
+        assertThatJson(message)
             .isEqualTo("""
                 { "registered": ["%s"] }
                 """.formatted(calendarA));
@@ -644,15 +663,24 @@ class WebsocketRouteTest {
         CalendarChangeEvent eventB = new CalendarChangeEvent(Event.EventId.random(), urlB);
         eventBusProbe.dispatch(eventB, urlB);
 
-        // Then: websocket should NOT receive any event for B
-        String pushedB = messages.poll(2, TimeUnit.SECONDS);
-        assertThat(pushedB)
-            .as("WebSocket must NOT receive events for unregistered calendar B")
-            .isNull();
+        String calendarB = urlB.asUri().toString();
+
+        // Then: websocket must NOT receive any syncToken event for unregistered calendar B (ignore unrelated messages)
+        NEGATIVE_AWAIT
+            .untilAsserted(() -> {
+                List<String> received = new ArrayList<>();
+                messages.drainTo(received);
+
+                assertThat(received)
+                    .as("Should not receive syncToken events for unregistered calendar B (%s)", calendarB)
+                    .noneSatisfy(msg -> assertThat(msg)
+                        .contains("\"syncToken\"")
+                        .contains(calendarB));
+            });
     }
 
     @Test
-    void websocketShouldReceiveEventsFromRemainingCalendarAfterUnregister(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldReceiveEventsFromRemainingCalendarAfterUnregister(TwakeCalendarGuiceServer guiceServer) {
         // Given: Bob has calendar A and newly created calendar B
         String calendarA = CalendarURL.from(bob.id()).asUri().toString();
 
@@ -672,7 +700,7 @@ class WebsocketRouteTest {
             """.formatted(calendarA, calendarB));
 
         // Acknowledge both
-        String ack = messages.poll(5, TimeUnit.SECONDS);
+        String ack = awaitMessage(messages, msg -> msg.contains("registered"));
         assertThatJson(ack)
             .withOptions(Option.IGNORING_ARRAY_ORDER)
             .isEqualTo("""
@@ -686,7 +714,7 @@ class WebsocketRouteTest {
             { "unregister": ["%s"] }
             """.formatted(calendarA));
 
-        String unregAck = messages.poll(5, TimeUnit.SECONDS);
+        String unregAck = awaitMessage(messages, msg -> msg.contains("unregistered"));
         assertThatJson(unregAck).isEqualTo("""
             {
               "unregistered": ["%s"]
@@ -701,7 +729,7 @@ class WebsocketRouteTest {
         eventBusProbe.dispatch(eventB, urlB);
 
         // Then: WebSocket must receive event only for B
-        String pushedB = messages.poll(5, TimeUnit.SECONDS);
+        String pushedB = awaitMessage(messages, msg -> msg.contains("syncToken"));
         assertThat(pushedB)
             .as("WebSocket must receive event for B")
             .isNotNull();
@@ -713,7 +741,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldReceiveEventsForAllRegisteredCalendars(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldReceiveEventsForAllRegisteredCalendars(TwakeCalendarGuiceServer guiceServer) {
         // Given: A and newly created calendar B
         String calendarA = CalendarURL.from(bob.id()).asUri().toString();
 
@@ -732,7 +760,7 @@ class WebsocketRouteTest {
             { "register": ["%s", "%s"] }
             """.formatted(calendarA, calendarB));
 
-        String ack = messages.poll(5, TimeUnit.SECONDS);
+        String ack = awaitMessage(messages, msg -> msg.contains("registered"));
         assertThatJson(ack)
             .withOptions(Option.IGNORING_ARRAY_ORDER)
             .isEqualTo("""
@@ -747,7 +775,7 @@ class WebsocketRouteTest {
         eventBusProbe.dispatch(eventA, urlA);
 
         // Then: websocket receives A
-        String pushedA = messages.poll(5, TimeUnit.SECONDS);
+        String pushedA = awaitMessage(messages, msg -> msg.contains("syncToken"));
         assertThat(pushedA).isNotNull();
         assertThatJson(pushedA)
             .isEqualTo("""
@@ -760,7 +788,7 @@ class WebsocketRouteTest {
         eventBusProbe.dispatch(eventB, urlB);
 
         // Then: websocket receives B as well
-        String pushedB = messages.poll(5, TimeUnit.SECONDS);
+        String pushedB = awaitMessage(messages, msg -> msg.contains("syncToken"));
         assertThat(pushedB).isNotNull();
         assertThatJson(pushedB)
             .isEqualTo("""
@@ -769,7 +797,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldStopReceivingEventsWhenCalendarStopsBeingPublic(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldStopReceivingEventsWhenCalendarStopsBeingPublic(TwakeCalendarGuiceServer guiceServer) {
         // Given: Alice creates calendar B and shares it publicly
         CalDavClient.NewCalendar aliceCalendarB = new CalDavClient.NewCalendar(
             UUID.randomUUID().toString(),
@@ -794,7 +822,7 @@ class WebsocketRouteTest {
             { "register": ["%s"] }
             """.formatted(calendarBUri));
 
-        String ack = messages.poll(5, TimeUnit.SECONDS);
+        String ack = awaitMessage(messages, msg -> msg.contains("registered"));
         assertThatJson(ack)
             .isEqualTo("""
                 { "registered": ["%s"] }
@@ -807,8 +835,7 @@ class WebsocketRouteTest {
         eventBusProbe.dispatch(event1, calendarB);
 
         // Then: Bob MUST receive the event
-        String pushed1 = messages.poll(5, TimeUnit.SECONDS);
-        assertThat(pushed1).isNotNull();
+        String pushed1 = awaitMessage(messages, msg -> msg.contains("syncToken"));
         assertThatJson(pushed1)
             .isEqualTo("""
                 { "%s" : { "syncToken" : "${json-unit.ignore}" } }
@@ -821,15 +848,21 @@ class WebsocketRouteTest {
         CalendarChangeEvent event2 = new CalendarChangeEvent(Event.EventId.random(), calendarB);
         eventBusProbe.dispatch(event2, calendarB);
 
-        // Then: Bob MUST NOT receive this event anymore
-        String pushed2 = messages.poll(2, TimeUnit.SECONDS);
-        assertThat(pushed2)
-            .as("Bob must not receive events after calendar is no longer publicly shared")
-            .isNull();
+        // Then: Bob MUST NOT receive this event anymore (ignore unrelated messages)
+        NEGATIVE_AWAIT.untilAsserted(() -> {
+                List<String> received = new ArrayList<>();
+                messages.drainTo(received);
+
+                assertThat(received)
+                    .as("Bob must not receive syncToken events after calendar is no longer publicly shared (%s)", calendarBUri)
+                    .noneSatisfy(msg -> assertThat(msg)
+                        .contains("\"syncToken\"")
+                        .contains(calendarBUri));
+            });
     }
 
     @Test
-    void websocketShouldBroadcastEventsToAllSubscribedClients(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldBroadcastEventsToAllSubscribedClients(TwakeCalendarGuiceServer guiceServer) {
         // Given: Bob & a calendar
         CalendarURL calendar = CalendarURL.from(bob.id());
         String calendarUri = CalendarURL.from(bob.id()).asUri().toString();
@@ -846,7 +879,7 @@ class WebsocketRouteTest {
             ws1.send("""
                 { "register": ["%s"] }
                 """.formatted(calendarUri));
-            String ack1 = messages1.poll(5, TimeUnit.SECONDS);
+            String ack1 = awaitMessage(messages1, msg -> msg.contains("registered"));
             assertThatJson(ack1)
                 .isEqualTo("""
                     { "registered": ["%s"] }
@@ -856,7 +889,7 @@ class WebsocketRouteTest {
                 { "register": ["%s"] }
                 """.formatted(calendarUri));
 
-            String ack2 = messages2.poll(5, TimeUnit.SECONDS);
+            String ack2 = awaitMessage(messages2, msg -> msg.contains("registered"));
             assertThatJson(ack2)
                 .isEqualTo("""
                     { "registered": ["%s"] }
@@ -869,8 +902,8 @@ class WebsocketRouteTest {
             eventBusProbe.dispatch(event, calendar);
 
             // Then: BOTH WS clients must receive the event
-            String pushed1 = messages1.poll(5, TimeUnit.SECONDS);
-            String pushed2 = messages2.poll(5, TimeUnit.SECONDS);
+            String pushed1 = awaitMessage(messages1, msg -> msg.contains(calendarUri) && msg.contains("syncToken"));
+            String pushed2 = awaitMessage(messages2, msg -> msg.contains(calendarUri) && msg.contains("syncToken"));
 
             assertThat(pushed1)
                 .as("WS1 should receive broadcast event")
@@ -896,7 +929,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldIsolateUnregisterAcrossMultipleClients(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldIsolateUnregisterAcrossMultipleClients(TwakeCalendarGuiceServer guiceServer) {
         // Given: Bob & a calendar
         CalendarURL calendar = CalendarURL.from(bob.id());
         String calendarUri = calendar.asUri().toString();
@@ -913,7 +946,7 @@ class WebsocketRouteTest {
             ws1.send("""
                 { "register": ["%s"] }
                 """.formatted(calendarUri));
-            String ack1 = messages1.poll(5, TimeUnit.SECONDS);
+            String ack1 = awaitMessage(messages1, msg -> msg.contains("registered"));
             assertThatJson(ack1)
                 .isEqualTo("""
                     { "registered": ["%s"] }
@@ -923,7 +956,7 @@ class WebsocketRouteTest {
             ws2.send("""
                 { "register": ["%s"] }
                 """.formatted(calendarUri));
-            String ack2 = messages2.poll(5, TimeUnit.SECONDS);
+            String ack2 = awaitMessage(messages2, msg -> msg.contains("registered"));
             assertThatJson(ack2)
                 .isEqualTo("""
                     { "registered": ["%s"] }
@@ -933,7 +966,7 @@ class WebsocketRouteTest {
             ws1.send("""
                 { "unregister": ["%s"] }
                 """.formatted(calendarUri));
-            String unregAck = messages1.poll(5, TimeUnit.SECONDS);
+            String unregAck = awaitMessage(messages1, msg -> msg.contains("unregistered"));
             assertThatJson(unregAck)
                 .isEqualTo("""
                     { "unregistered": ["%s"] }
@@ -945,18 +978,20 @@ class WebsocketRouteTest {
             CalendarChangeEvent event = new CalendarChangeEvent(Event.EventId.random(), calendar);
             eventBusProbe.dispatch(event, calendar);
 
-            // Then: WS1 MUST NOT receive any event
-            String pushed1 = messages1.poll(2, TimeUnit.SECONDS);
-            assertThat(pushed1)
-                .as("WS1 should NOT receive event after unregister")
-                .isNull();
+            // Then: WS1 MUST NOT receive any syncToken event (ignore unrelated messages)
+            NEGATIVE_AWAIT.untilAsserted(() -> {
+                    List<String> received = new ArrayList<>();
+                    messages1.drainTo(received);
+
+                    assertThat(received)
+                        .as("WS1 should NOT receive syncToken event after unregister (%s)", calendarUri)
+                        .noneSatisfy(msg -> assertThat(msg)
+                            .contains("\"syncToken\"")
+                            .contains(calendarUri));
+                });
 
             // And: WS2 MUST receive the event
-            String pushed2 = messages2.poll(5, TimeUnit.SECONDS);
-            assertThat(pushed2)
-                .as("WS2 should still receive event")
-                .isNotNull();
-
+            String pushed2 = awaitMessage(messages2, msg -> msg.contains("syncToken"));
             assertThatJson(pushed2)
                 .isEqualTo("""
                     { "%s" : { "syncToken" : "${json-unit.ignore}" } }
@@ -968,47 +1003,45 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldEnableDisplayNotification() throws Exception {
+    void websocketShouldEnableDisplayNotification() {
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         webSocket = connectWebSocket(restApiPort, ticket, messages);
 
         webSocket.send("{\"enableDisplayNotification\": true}");
 
-        String response = messages.poll(5, TimeUnit.SECONDS);
-        assertThat(response).isNotNull();
+        String response = awaitMessage(messages, msg -> msg.contains("displayNotificationEnabled"));
         assertThatJson(response)
             .isEqualTo("{\"displayNotificationEnabled\":true}");
     }
 
     @Test
-    void websocketShouldDisableDisplayNotification() throws Exception {
+    void websocketShouldDisableDisplayNotification() {
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         webSocket = connectWebSocket(restApiPort, ticket, messages);
 
         // First enable
         webSocket.send("{\"enableDisplayNotification\": true}");
-        messages.poll(5, TimeUnit.SECONDS);
+        awaitMessage(messages, msg -> msg.contains("displayNotificationEnabled"));
 
         // Then disable
         webSocket.send("{\"enableDisplayNotification\": false}");
 
-        String response = messages.poll(5, TimeUnit.SECONDS);
-        assertThat(response).isNotNull();
+        String response = awaitMessage(messages, msg -> msg.contains("displayNotificationEnabled"));
         assertThatJson(response)
             .isEqualTo("{\"displayNotificationEnabled\":false}");
     }
 
     @Test
-    void websocketShouldReceiveAlarmEventAfterEnablingDisplayNotification(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldReceiveAlarmEventAfterEnablingDisplayNotification(TwakeCalendarGuiceServer guiceServer) {
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         webSocket = connectWebSocket(restApiPort, ticket, messages);
 
         // Enable display notification
         webSocket.send("{\"enableDisplayNotification\": true}");
-        String enableResponse = messages.poll(5, TimeUnit.SECONDS);
+        String enableResponse = awaitMessage(messages, msg -> msg.contains("displayNotificationEnabled"));
         assertThatJson(enableResponse)
             .isEqualTo("{\"displayNotificationEnabled\":true}");
 
@@ -1024,8 +1057,7 @@ class WebsocketRouteTest {
         eventBusProbe.dispatchAlarmEvent(alarmEvent, bob.username());
 
         // Should receive alarm
-        String alarmMessage = messages.poll(5, TimeUnit.SECONDS);
-
+        String alarmMessage = awaitMessage(messages, msg -> msg.contains("alarms"));
         String expected = """
                 {
                     "alarms": [
@@ -1043,7 +1075,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldNotReceiveAlarmEventWithoutEnablingDisplayNotification(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldNotReceiveAlarmEventWithoutEnablingDisplayNotification(TwakeCalendarGuiceServer guiceServer) {
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         webSocket = connectWebSocket(restApiPort, ticket, messages);
@@ -1061,23 +1093,29 @@ class WebsocketRouteTest {
         eventBusProbe.dispatchAlarmEvent(alarmEvent, bob.username());
 
         // Should NOT receive alarm
-        String alarmMessage = messages.poll(3, TimeUnit.SECONDS);
-        assertThat(alarmMessage).isNull();
+        NEGATIVE_AWAIT.untilAsserted(() -> {
+                List<String> received = new ArrayList<>();
+                messages.drainTo(received);
+
+                assertThat(received)
+                    .as("Should NOT receive alarm event without enabling display notification")
+                    .noneSatisfy(msg -> assertThat(msg).contains("\"alarms\""));
+            });
     }
 
     @Test
-    void websocketShouldNotReceiveAlarmEventAfterDisablingDisplayNotification(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldNotReceiveAlarmEventAfterDisablingDisplayNotification(TwakeCalendarGuiceServer guiceServer) {
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         webSocket = connectWebSocket(restApiPort, ticket, messages);
 
         // Enable display notification
         webSocket.send("{\"enableDisplayNotification\": true}");
-        messages.poll(5, TimeUnit.SECONDS);
+        awaitMessage(messages, msg -> msg.contains("displayNotificationEnabled"));
 
         // Disable display notification
         webSocket.send("{\"enableDisplayNotification\": false}");
-        messages.poll(5, TimeUnit.SECONDS);
+        awaitMessage(messages, msg -> msg.contains("displayNotificationEnabled"));
 
         // Dispatch alarm event
         EventBusProbe eventBusProbe = guiceServer.getProbe(EventBusProbe.class);
@@ -1090,8 +1128,14 @@ class WebsocketRouteTest {
         eventBusProbe.dispatchAlarmEvent(alarmEvent, bob.username());
 
         // Should NOT receive alarm after disabling
-        String alarmMessage = messages.poll(3, TimeUnit.SECONDS);
-        assertThat(alarmMessage).isNull();
+        NEGATIVE_AWAIT.untilAsserted(() -> {
+                List<String> received = new ArrayList<>();
+                messages.drainTo(received);
+
+                assertThat(received)
+                    .as("Should NOT receive alarm event after disabling display notification")
+                    .noneSatisfy(msg -> assertThat(msg).contains("\"alarms\""));
+            });
     }
 
     @Test
@@ -1118,8 +1162,7 @@ class WebsocketRouteTest {
         eventBusProbe.dispatchAlarmEvent(alarmEvent, bob.username());
 
         // Should receive exactly one alarm
-        String alarmMessage = messages.poll(5, TimeUnit.SECONDS);
-        assertThat(alarmMessage).isNotNull();
+        String alarmMessage = awaitMessage(messages, msg -> msg.contains("alarms"));
         assertThatJson(alarmMessage)
             .node("alarms[0].eventSummary")
             .isStringEqualTo("Test Meeting");
@@ -1130,7 +1173,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldIsolateDisplayNotificationAcrossClients(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldIsolateDisplayNotificationAcrossClients(TwakeCalendarGuiceServer guiceServer) {
         BlockingQueue<String> messages1 = new LinkedBlockingQueue<>();
         BlockingQueue<String> messages2 = new LinkedBlockingQueue<>();
 
@@ -1140,7 +1183,7 @@ class WebsocketRouteTest {
         try {
             // WS1 enables display notification
             ws1.send("{\"enableDisplayNotification\": true}");
-            messages1.poll(5, TimeUnit.SECONDS);
+            awaitMessage(messages1, msg -> msg.contains("displayNotificationEnabled"));
 
             // WS2 does NOT enable display notification
 
@@ -1155,15 +1198,20 @@ class WebsocketRouteTest {
             eventBusProbe.dispatchAlarmEvent(alarmEvent, bob.username());
 
             // WS1 should receive alarm
-            String alarm1 = messages1.poll(5, TimeUnit.SECONDS);
-            assertThat(alarm1).isNotNull();
+            String alarm1 = awaitMessage(messages1, msg -> msg.contains("alarms"));
             assertThatJson(alarm1)
                 .node("alarms[0].eventSummary")
                 .isStringEqualTo("Test Meeting");
 
             // WS2 should NOT receive alarm
-            String alarm2 = messages2.poll(2, TimeUnit.SECONDS);
-            assertThat(alarm2).isNull();
+            NEGATIVE_AWAIT.untilAsserted(() -> {
+                    List<String> received = new ArrayList<>();
+                    messages2.drainTo(received);
+
+                    assertThat(received)
+                        .as("WS2 should NOT receive alarm event when display notification is not enabled")
+                        .noneSatisfy(msg -> assertThat(msg).contains("\"alarms\""));
+                });
         } finally {
             ws1.close(1000, "done");
             ws2.close(1000, "done");
@@ -1171,7 +1219,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldBroadcastAlarmToAllClientsWithDisplayNotificationEnabled(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldBroadcastAlarmToAllClientsWithDisplayNotificationEnabled(TwakeCalendarGuiceServer guiceServer) {
         BlockingQueue<String> messages1 = new LinkedBlockingQueue<>();
         BlockingQueue<String> messages2 = new LinkedBlockingQueue<>();
 
@@ -1181,10 +1229,12 @@ class WebsocketRouteTest {
         try {
             // Both clients enable display notification
             ws1.send("{\"enableDisplayNotification\": true}");
-            messages1.poll(5, TimeUnit.SECONDS);
+            String ack1 = awaitMessage(messages1, msg -> msg.contains("displayNotificationEnabled"));
+            assertThatJson(ack1).isEqualTo("{\"displayNotificationEnabled\":true}");
 
             ws2.send("{\"enableDisplayNotification\": true}");
-            messages2.poll(5, TimeUnit.SECONDS);
+            String ack2 = awaitMessage(messages2, msg -> msg.contains("displayNotificationEnabled"));
+            assertThatJson(ack2).isEqualTo("{\"displayNotificationEnabled\":true}");
 
             // Dispatch alarm event
             EventBusProbe eventBusProbe = guiceServer.getProbe(EventBusProbe.class);
@@ -1196,12 +1246,9 @@ class WebsocketRouteTest {
                 Instant.now().plusSeconds(900));
             eventBusProbe.dispatchAlarmEvent(alarmEvent, bob.username());
 
-            // Both should receive alarm
-            String alarm1 = messages1.poll(5, TimeUnit.SECONDS);
-            String alarm2 = messages2.poll(5, TimeUnit.SECONDS);
-
-            assertThat(alarm1).isNotNull();
-            assertThat(alarm2).isNotNull();
+            // Both should receive alarm (order/noise tolerant)
+            String alarm1 = awaitMessage(messages1, msg -> msg.contains("\"alarms\""));
+            String alarm2 = awaitMessage(messages2, msg -> msg.contains("\"alarms\""));
 
             assertThatJson(alarm1)
                 .node("alarms[0].eventSummary")
@@ -1216,14 +1263,14 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldNotReceiveAlarmForDifferentUser(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldNotReceiveAlarmForDifferentUser(TwakeCalendarGuiceServer guiceServer) {
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         webSocket = connectWebSocket(restApiPort, ticket, messages);
 
         // Bob enables display notification
         webSocket.send("{\"enableDisplayNotification\": true}");
-        messages.poll(5, TimeUnit.SECONDS);
+        awaitMessage(messages, msg -> msg.contains("displayNotificationEnabled"));
 
         // Dispatch alarm event for Alice (different user)
         EventBusProbe eventBusProbe = guiceServer.getProbe(EventBusProbe.class);
@@ -1236,12 +1283,18 @@ class WebsocketRouteTest {
         eventBusProbe.dispatchAlarmEvent(alarmEvent, alice.username());
 
         // Bob should NOT receive Alice's alarm
-        String alarmMessage = messages.poll(3, TimeUnit.SECONDS);
-        assertThat(alarmMessage).isNull();
+        NEGATIVE_AWAIT.untilAsserted(() -> {
+                List<String> received = new ArrayList<>();
+                messages.drainTo(received);
+
+                assertThat(received)
+                    .as("Bob should NOT receive alarm for different user")
+                    .noneSatisfy(msg -> assertThat(msg).contains("\"alarms\""));
+            });
     }
 
     @Test
-    void websocketShouldReceiveAlarmAfterSubscribingToCalendar(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldReceiveAlarmAfterSubscribingToCalendar(TwakeCalendarGuiceServer guiceServer) {
         // GIVEN: Bob opened a WS connection
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
@@ -1249,14 +1302,14 @@ class WebsocketRouteTest {
 
         // AND: Bob subscribes to display notification
         webSocket.send("{\"enableDisplayNotification\": true}");
-        String displayAck = messages.poll(5, TimeUnit.SECONDS);
+        String displayAck = awaitMessage(messages, msg -> msg.contains("displayNotificationEnabled"));
         assertThatJson(displayAck)
             .isEqualTo("{\"displayNotificationEnabled\":true}");
 
         // WHEN: Bob subscribed to his calendar changes
         String calendarUri = CalendarURL.from(bob.id()).asUri().toString();
         webSocket.send("{\"register\": [\"%s\"]}".formatted(calendarUri));
-        String calendarAck = messages.poll(5, TimeUnit.SECONDS);
+        String calendarAck = awaitMessage(messages, msg -> msg.contains("registered"));
         assertThatJson(calendarAck)
             .isEqualTo("{\"registered\": [\"%s\"]}".formatted(calendarUri));
 
@@ -1270,15 +1323,14 @@ class WebsocketRouteTest {
             Instant.now().plusSeconds(900));
         eventBusProbe.dispatchAlarmEvent(alarmEvent, bob.username());
 
-        String alarmMessage = messages.poll(5, TimeUnit.SECONDS);
-        assertThat(alarmMessage).isNotNull();
+        String alarmMessage = awaitMessage(messages, msg -> msg.contains("\"alarms\""));
         assertThatJson(alarmMessage)
             .node("alarms[0].eventSummary")
             .isStringEqualTo("Test Meeting");
     }
 
     @Test
-    void websocketShouldReceiveCalendarChangesAfterEnablingDisplayNotification(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldReceiveCalendarChangesAfterEnablingDisplayNotification(TwakeCalendarGuiceServer guiceServer) {
         // GIVEN: Bob opened a WS connection
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
@@ -1287,13 +1339,13 @@ class WebsocketRouteTest {
         // AND: Bob registers to his calendar changes
         String calendarUri = CalendarURL.from(bob.id()).asUri().toString();
         webSocket.send("{\"register\": [\"%s\"]}".formatted(calendarUri));
-        String calendarAck = messages.poll(5, TimeUnit.SECONDS);
+        String calendarAck = awaitMessage(messages, msg -> msg.contains("registered"));
         assertThatJson(calendarAck)
             .isEqualTo("{\"registered\": [\"%s\"]}".formatted(calendarUri));
 
         // WHEN: Bob subscribed to display notification
         webSocket.send("{\"enableDisplayNotification\": true}");
-        String displayAck = messages.poll(5, TimeUnit.SECONDS);
+        String displayAck = awaitMessage(messages, msg -> msg.contains("displayNotificationEnabled"));
         assertThatJson(displayAck)
             .isEqualTo("{\"displayNotificationEnabled\":true}");
 
@@ -1303,27 +1355,32 @@ class WebsocketRouteTest {
         CalendarChangeEvent calendarEvent = new CalendarChangeEvent(Event.EventId.random(), calendar);
         eventBusProbe.dispatch(calendarEvent, calendar);
 
-        String calendarMessage = messages.poll(5, TimeUnit.SECONDS);
-        assertThat(calendarMessage).isNotNull();
+        String calendarMessage = awaitMessage(messages, msg -> msg.contains("syncToken"));
         assertThatJson(calendarMessage)
             .isEqualTo("{\"" + calendarUri + "\": {\"syncToken\": \"${json-unit.ignore}\"}}");
     }
 
     @Test
-    void websocketShouldReceiveBothCalendarChangesAndAlarms(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldReceiveBothCalendarChangesAndAlarms(TwakeCalendarGuiceServer guiceServer) {
         // GIVEN: Bob opened a WS connection with both subscriptions
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         webSocket = connectWebSocket(restApiPort, ticket, messages);
 
-        // Subscribe to calendar
+        // Subscribe to calendar changes
         String calendarUri = CalendarURL.from(bob.id()).asUri().toString();
         webSocket.send("{\"register\": [\"%s\"]}".formatted(calendarUri));
-        messages.poll(5, TimeUnit.SECONDS);
+        String registerAck = awaitMessage(messages, msg -> msg.contains("\"registered\""));
+        assertThatJson(registerAck)
+            .isEqualTo("""
+                { "registered": ["%s"] }
+                """.formatted(calendarUri));
 
-        // Enable display notification
+        // Enable display notification (alarms)
         webSocket.send("{\"enableDisplayNotification\": true}");
-        messages.poll(5, TimeUnit.SECONDS);
+        String displayAck = awaitMessage(messages, msg -> msg.contains("displayNotificationEnabled"));
+        assertThatJson(displayAck)
+            .isEqualTo("{\"displayNotificationEnabled\":true}");
 
         EventBusProbe eventBusProbe = guiceServer.getProbe(EventBusProbe.class);
 
@@ -1340,19 +1397,20 @@ class WebsocketRouteTest {
         CalendarChangeEvent calendarEvent = new CalendarChangeEvent(Event.EventId.random(), calendar);
         eventBusProbe.dispatch(calendarEvent, calendar);
 
-        // THEN: Bob receives both notifications
-        String message1 = messages.poll(5, TimeUnit.SECONDS);
-        String message2 = messages.poll(5, TimeUnit.SECONDS);
+        // THEN: Bob receives both notifications (order-independent, ignore unrelated messages)
+        CALMLY_AWAIT
+            .untilAsserted(() -> {
+                List<String> received = new ArrayList<>();
+                messages.drainTo(received);
 
-        assertThat(message1).isNotNull();
-        assertThat(message2).isNotNull();
+                assertThat(received)
+                    .as("Expected both an alarm and a syncToken notification but got: %s", received)
+                    .anySatisfy(msg -> assertThat(msg).contains("\"alarms\""));
 
-        // One should be alarm, one should be calendar change
-        boolean hasAlarm = message1.contains("alarms") || message2.contains("alarms");
-        boolean hasCalendarChange = message1.contains("syncToken") || message2.contains("syncToken");
-
-        assertThat(hasAlarm).as("Should receive alarm notification").isTrue();
-        assertThat(hasCalendarChange).as("Should receive calendar change notification").isTrue();
+                assertThat(received)
+                    .as("Expected both an alarm and a syncToken notification but got: %s", received)
+                    .anySatisfy(msg -> assertThat(msg).contains("\"syncToken\""));
+            });
     }
 
     private String generateTicket(OpenPaaSUser user) {
@@ -1375,16 +1433,20 @@ class WebsocketRouteTest {
         Request wsRequest = new Request.Builder()
             .url("ws://localhost:" + port + "/ws?ticket=" + ticket)
             .build();
-        return client.newWebSocket(wsRequest, new WebSocketListener() {
+        WebSocket webSocket=  client.newWebSocket(wsRequest, new WebSocketListener() {
             @Override
             public void onMessage(WebSocket webSocket, String text) {
                 messages.offer(text);
             }
         });
+
+        // warm up
+        awaitMessage(messages, msg -> msg.contains("\"calendarListRegistered\""));
+        return webSocket;
     }
 
     @Test
-    void websocketShouldReceiveEventWhenImportingIntoRegisteredCalendar(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldReceiveEventWhenImportingIntoRegisteredCalendar(TwakeCalendarGuiceServer guiceServer) {
         // Given: Bob owns a calendar and subscribes to it via WebSocket
         CalendarURL calendarABC = CalendarURL.from(bob.id());
         String calendarUri = calendarABC.asUri().toString();
@@ -1399,8 +1461,7 @@ class WebsocketRouteTest {
             """.formatted(calendarUri));
 
         // Wait for and validate the WebSocket registration acknowledgment
-        String ack = messages.poll(5, TimeUnit.SECONDS);
-        assertThat(ack).isNotNull();
+        String ack = awaitMessage(messages, msg -> msg.contains("registered"));
         assertThatJson(ack)
             .isEqualTo("""
                 { "registered": ["%s"] }
@@ -1410,7 +1471,7 @@ class WebsocketRouteTest {
         String importId = importIcsIntoCalendar(guiceServer, calendarABC, calendarUri, bob);
 
         // Then: the WebSocket client should receive an import-completed notification
-        String pushed = messages.poll(10, TimeUnit.SECONDS);
+        String pushed = awaitMessage(messages, msg -> msg.contains("imports"));
         assertThat(pushed)
             .as("WebSocket should receive event pushed after import")
             .isNotNull();
@@ -1432,7 +1493,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldReceiveFailedImportEventWhenImportFails(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldReceiveFailedImportEventWhenImportFails(TwakeCalendarGuiceServer guiceServer) {
         // Given: Bob owns a calendar and subscribes via WebSocket
         CalendarURL calendar = CalendarURL.from(bob.id());
         String calendarUri = calendar.asUri().toString();
@@ -1445,7 +1506,7 @@ class WebsocketRouteTest {
             { "register": ["%s"] }
             """.formatted(calendarUri));
 
-        String ack = messages.poll(5, TimeUnit.SECONDS);
+        String ack = awaitMessage(messages, msg -> msg.contains("registered"));
         assertThatJson(ack)
             .isEqualTo("""
                 { "registered": ["%s"] }
@@ -1454,7 +1515,7 @@ class WebsocketRouteTest {
         // When: import an INVALID ICS file
         String importId = importIcsBytesIntoCalendar(guiceServer, calendar, calendarUri, bob, "NOT_A_VALID_ICS".getBytes(StandardCharsets.UTF_8));
         // Then: WebSocket receives FAILED import event
-        String pushed = messages.poll(10, TimeUnit.SECONDS);
+        String pushed = awaitMessage(messages, msg -> msg.contains("imports"));
         assertThat(pushed)
             .as("WebSocket should receive failed import notification")
             .isNotNull();
@@ -1474,7 +1535,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldReceiveImportEventAndCalendarSyncEvent(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldReceiveImportEventAndCalendarSyncEvent(TwakeCalendarGuiceServer guiceServer) {
         // Given: Bob owns a calendar and subscribes to it via WebSocket
         CalendarURL calendar = CalendarURL.from(bob.id());
         String calendarUri = calendar.asUri().toString();
@@ -1487,7 +1548,7 @@ class WebsocketRouteTest {
             { "register": ["%s"] }
             """.formatted(calendarUri));
 
-        String ack = messages.poll(5, TimeUnit.SECONDS);
+        String ack = awaitMessage(messages, msg -> msg.contains("registered"));
         assertThatJson(ack)
             .isEqualTo("""
                 { "registered": ["%s"] }
@@ -1497,11 +1558,7 @@ class WebsocketRouteTest {
         String importId = importIcsIntoCalendar(guiceServer, calendar, calendarUri, bob);
 
         // Then: WebSocket receives the import-completed notification
-        String importMessage = messages.poll(10, TimeUnit.SECONDS);
-        assertThat(importMessage)
-            .as("WebSocket should receive import-completed notification")
-            .isNotNull();
-
+        String importMessage = awaitMessage(messages, msg -> msg.contains("imports"));
         assertThatJson(importMessage)
             .isEqualTo("""
                 {
@@ -1523,11 +1580,7 @@ class WebsocketRouteTest {
         eventBusProbe.dispatch(event, calendar);
 
         // Then: WebSocket also receives a syncToken notification
-        String syncMessage = messages.poll(5, TimeUnit.SECONDS);
-        assertThat(syncMessage)
-            .as("WebSocket should receive calendar syncToken notification")
-            .isNotNull();
-
+        String syncMessage = awaitMessage(messages, msg -> msg.contains("syncToken"));
         assertThatJson(syncMessage)
             .isEqualTo("""
                 {
@@ -1539,7 +1592,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldNotReceiveImportEventWhenCalendarNotRegistered(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldNotReceiveImportEventWhenCalendarNotRegistered(TwakeCalendarGuiceServer guiceServer) {
         CalendarURL calendar = CalendarURL.from(bob.id());
         String calendarUri = CalendarURL.from(bob.id()).asUri().toString();
 
@@ -1550,10 +1603,16 @@ class WebsocketRouteTest {
         // Import without registering the calendar
         importIcsIntoCalendar(guiceServer, calendar, calendarUri, bob);
 
-        String pushed = messages.poll(3, TimeUnit.SECONDS);
-        assertThat(pushed)
-            .as("WebSocket should NOT receive import event when calendar is not registered")
-            .isNull();
+        // must NOT receive any calendar import event
+        NEGATIVE_AWAIT
+            .untilAsserted(() -> {
+                List<String> received = new ArrayList<>();
+                messages.drainTo(received);
+
+                assertThat(received)
+                    .as("Should not receive calendar import events when calendar is not registered")
+                    .noneSatisfy(msg -> assertThat(msg).contains("\"imports\""));
+            });
     }
 
     @Test
@@ -1570,7 +1629,7 @@ class WebsocketRouteTest {
             { "register": ["%s"] }
             """.formatted(calendarUri));
 
-        String ack = messages.poll(5, TimeUnit.SECONDS);
+        String ack = awaitMessage(messages, msg -> msg.contains("registered"));
         assertThatJson(ack)
             .isEqualTo("""
                 { "registered": ["%s"] }
@@ -1581,7 +1640,7 @@ class WebsocketRouteTest {
             { "unregister": ["%s"] }
             """.formatted(calendarUri));
 
-        String unregAck = messages.poll(5, TimeUnit.SECONDS);
+        String unregAck = awaitMessage(messages, msg -> msg.contains("unregistered"));
         assertThatJson(unregAck)
             .isEqualTo("""
                 { "unregistered": ["%s"] }
@@ -1597,7 +1656,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldReceiveEventWhenImportingIntoRegisteredAddressBook(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldReceiveEventWhenImportingIntoRegisteredAddressBook(TwakeCalendarGuiceServer guiceServer) {
         String addressBookId = "collected";
         AddressBookURL addressBook = new AddressBookURL(bob.id(), addressBookId);
         String addressBookUri = addressBook.asUri().toString();
@@ -1610,7 +1669,7 @@ class WebsocketRouteTest {
             { "register": ["%s"] }
             """.formatted(addressBookUri));
 
-        String ack = messages.poll(10, TimeUnit.SECONDS);
+        String ack = awaitMessage(messages, msg -> msg.contains("registered"));
         assertThat(ack).isNotNull();
 
         assertThatJson(ack)
@@ -1621,7 +1680,7 @@ class WebsocketRouteTest {
         String importId = importVCardIntoAddressBook(guiceServer, addressBook, bob);
 
         // Then: WebSocket receives import-completed notification
-        String pushed = messages.poll(10, TimeUnit.SECONDS);
+        String pushed = awaitMessage(messages, msg -> msg.contains("imports"));
         assertThat(pushed)
             .as("WebSocket should receive addressbook import event")
             .isNotNull();
@@ -1643,7 +1702,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldReturnNotRegisteredWhenNoRightsOnAddressBook() throws Exception {
+    void websocketShouldReturnNotRegisteredWhenNoRightsOnAddressBook() {
         // Given: Alice owns an address book (default "collected")
         AddressBookURL aliceAddressBook = new AddressBookURL(alice.id(), "collected");
         String aliceAddressBookUri = aliceAddressBook.asUri().toString();
@@ -1661,9 +1720,7 @@ class WebsocketRouteTest {
             """.formatted(aliceAddressBookUri));
 
         // Then: Bob must NOT be registered due to missing rights
-        String json = messages.poll(10, SECONDS);
-        assertThat(json).isNotNull();
-
+        String json = awaitMessage(messages, msg -> msg.contains("notRegistered"));
         assertThatJson(json)
             .isEqualTo("""
                 {
@@ -1673,7 +1730,7 @@ class WebsocketRouteTest {
     }
 
     @Test
-    void websocketShouldReturnNotRegisteredWhenAddressBookDoesNotExist() throws Exception {
+    void websocketShouldReturnNotRegisteredWhenAddressBookDoesNotExist() {
         AddressBookURL nonExistentAddressBook =
             new AddressBookURL(bob.id(), UUID.randomUUID().toString());
         String addressBookUri = nonExistentAddressBook.asUri().toString();
@@ -1688,19 +1745,17 @@ class WebsocketRouteTest {
             }
             """.formatted(addressBookUri));
 
-        String json = messages.poll(10, SECONDS);
-        assertThat(json).isNotNull();
-
-        assertThatJson(json)
-            .isEqualTo("""
-                {
-                    "notRegistered": { "%s" : "NotFound" }
-                }
-                """.formatted(addressBookUri));
+        CALMLY_AWAIT
+            .untilAsserted(() -> assertThatJson(awaitMessage(messages, msg -> msg.contains("notRegistered")))
+                .isEqualTo("""
+                    {
+                        "notRegistered": { "%s" : "NotFound" }
+                    }
+                    """.formatted(addressBookUri)));
     }
 
     @Test
-    void websocketShouldNotReceiveAddressBookEventsAfterUnregister(TwakeCalendarGuiceServer guiceServer) throws Exception {
+    void websocketShouldNotReceiveAddressBookEventsAfterUnregister(TwakeCalendarGuiceServer guiceServer) {
         AddressBookURL addressBook = new AddressBookURL(bob.id(), "collected");
         String addressBookUri = addressBook.asUri().toString();
 
@@ -1712,20 +1767,27 @@ class WebsocketRouteTest {
         webSocket.send("""
             { "register": ["%s"] }
             """.formatted(addressBookUri));
-        messages.poll(10, SECONDS);
+        awaitMessage(messages, msg -> msg.contains("registered"));
 
         // unregister
         webSocket.send("""
             { "unregister": ["%s"] }
             """.formatted(addressBookUri));
-        messages.poll(10, SECONDS);
+        awaitMessage(messages, msg -> msg.contains("unregister"));
 
         // import vcard
         importVCardIntoAddressBook(guiceServer, addressBook, bob);
 
         // must NOT receive anything
-        String pushed = messages.poll(3, SECONDS);
-        assertThat(pushed).isNull();
+        NEGATIVE_AWAIT
+            .untilAsserted(() -> {
+                List<String> received = new ArrayList<>();
+                messages.drainTo(received);
+
+                assertThat(received)
+                    .as("Should not receive address book import events after unregister")
+                    .noneSatisfy(msg -> assertThat(msg).contains("\"imports\""));
+            });
     }
 
     @Test
@@ -1753,9 +1815,7 @@ class WebsocketRouteTest {
             """.formatted(calendarUri, addressBookUri));
 
         // Then: registration ACK contains both
-        String ack = messages.poll(10, SECONDS);
-        assertThat(ack).isNotNull();
-
+        String ack = awaitMessage(messages, msg -> msg.contains("registered"));
         assertThatJson(ack)
             .withOptions(Option.IGNORING_ARRAY_ORDER)
             .isEqualTo("""
@@ -1768,7 +1828,7 @@ class WebsocketRouteTest {
         String calendarImportId = importIcsIntoCalendar(guiceServer, calendar, calendarUri, bob);
 
         // Then: WebSocket receives calendar import event
-        String calendarImportEvent = messages.poll(10, SECONDS);
+        String calendarImportEvent = awaitMessage(messages, msg -> msg.contains("imports"));
         assertThat(calendarImportEvent)
             .as("WebSocket should receive calendar import event")
             .isNotNull();
@@ -1792,9 +1852,7 @@ class WebsocketRouteTest {
         String addressBookImportId = importVCardIntoAddressBook(guiceServer, addressBook, bob);
 
         // Then: WebSocket receives address book import event
-        await()
-            .atMost(10, SECONDS)
-            .pollInterval(200, TimeUnit.MILLISECONDS)
+        CALMLY_AWAIT
             .untilAsserted(() -> {
                 List<String> receivedMessages = new ArrayList<>();
                 messages.drainTo(receivedMessages);
@@ -1818,6 +1876,99 @@ class WebsocketRouteTest {
                                 """.formatted(addressBookUri, addressBookImportId))
                     );
             });
+    }
+
+    @Test
+    void websocketShouldReceiveCalendarListCreatedEvent() {
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+        NewCalendar newCalendar = new NewCalendar(UUID.randomUUID().toString(),
+            "Calendar Created", "#00ff00", "created");
+        calDavClient.createNewCalendar(bob.username(), bob.id(), newCalendar).block();
+
+        String createdCalendarUrl = new CalendarURL(bob.id(), new OpenPaaSId(newCalendar.id()))
+            .asUri().toASCIIString();
+
+        String pushed = awaitMessage(messages, message -> message.contains("\"calendarList\"")
+            && message.contains("\"created\"")
+            && message.contains(createdCalendarUrl));
+
+        assertThatJson(pushed)
+            .isEqualTo("""
+                {
+                  "calendarList": {
+                    "created": ["%s"]
+                  }
+                }
+                """.formatted(createdCalendarUrl));
+    }
+
+    @Test
+    void websocketShouldReceiveCalendarListUpdatedEvent() {
+        NewCalendar newCalendar = new NewCalendar(UUID.randomUUID().toString(),
+            "Calendar Updated", "#00ff00", "updated");
+        calDavClient.createNewCalendar(bob.username(), bob.id(), newCalendar).block();
+
+        CalendarURL calendarURL = new CalendarURL(bob.id(), new OpenPaaSId(newCalendar.id()));
+        String calendarUri = calendarURL.asUri().toString();
+
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        String payload = """
+            <?xml version="1.0" encoding="utf-8" ?>
+            <D:propertyupdate xmlns:D="DAV:">
+              <D:set>
+                <D:prop>
+                  <D:displayname>Updated Calendar</D:displayname>
+                </D:prop>
+              </D:set>
+            </D:propertyupdate>
+            """;
+        davTestHelper.updateCalendar(bob, calendarURL, payload);
+
+        String pushed = awaitMessage(messages, message -> message.contains("\"calendarList\"")
+            && message.contains("\"updated\"")
+            && message.contains(calendarUri));
+
+        assertThatJson(pushed)
+            .isEqualTo("""
+                {
+                  "calendarList": {
+                    "updated": ["%s"]
+                  }
+                }
+                """.formatted(calendarUri));
+    }
+
+    @Test
+    void websocketShouldReceiveCalendarListDeletedEvent() {
+        CalDavClient.NewCalendar newCalendar = new CalDavClient.NewCalendar(UUID.randomUUID().toString(),
+            "Calendar Deleted", "#00ff00", "deleted");
+        calDavClient.createNewCalendar(bob.username(), bob.id(), newCalendar).block();
+        CalendarURL calendarURL = new CalendarURL(bob.id(), new OpenPaaSId(newCalendar.id()));
+        String calendarUri = calendarURL.asUri().toString();
+
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        calDavClient.deleteCalendar(bob.username(), calendarURL).block();
+
+        String pushed = awaitMessage(messages, message -> message.contains("\"calendarList\"")
+            && message.contains("\"deleted\"")
+            && message.contains(calendarUri));
+
+        assertThatJson(pushed)
+            .isEqualTo("""
+                {
+                  "calendarList": {
+                    "deleted": ["%s"]
+                  }
+                }
+                """.formatted(calendarUri));
     }
 
     private String importVCardIntoAddressBook(TwakeCalendarGuiceServer server,
