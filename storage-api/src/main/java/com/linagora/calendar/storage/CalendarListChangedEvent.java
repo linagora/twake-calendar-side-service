@@ -40,8 +40,7 @@ public record CalendarListChangedEvent(Event.EventId eventId,
         UPDATED,
         DELETED,
         DELEGATED,
-        SUBSCRIBED,
-        RIGHTS_REVOKED;
+        SUBSCRIBED;
 
         public static ChangeType parse(String rawString) {
             Preconditions.checkArgument(StringUtils.isNotBlank(rawString), "ChangeType must not be blank");

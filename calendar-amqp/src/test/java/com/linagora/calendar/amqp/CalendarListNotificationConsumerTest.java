@@ -313,6 +313,208 @@ public class CalendarListNotificationConsumerTest {
     }
 
     @Test
+    void shouldDispatchSubscribedWhenSubscriberSubscribesToPublicCalendar() {
+        OpenPaaSUser owner = sabreDavExtension.newTestUser();
+        OpenPaaSUser subscriber = sabreDavExtension.newTestUser();
+        Queue<CalendarListChangedEvent> eventsReceived = new ConcurrentLinkedQueue<>();
+        registerListener(subscriber, eventsReceived);
+
+        String calendarId = UUID.randomUUID().toString();
+        NewCalendar newCalendar = new NewCalendar(calendarId,
+            "Public Calendar", "#97c3c1", "Public calendar for subscription");
+        calDavClient.createNewCalendar(owner.username(), owner.id(), newCalendar).block();
+
+        CalendarURL ownerCalendarURL = new CalendarURL(owner.id(), new OpenPaaSId(calendarId));
+        davTestHelper.updateCalendarAcl(owner, ownerCalendarURL.asUri(), "{DAV:}read");
+
+        SubscribedCalendarRequest subscribedCalendarRequest = SubscribedCalendarRequest.builder()
+            .id(UUID.randomUUID().toString())
+            .sourceUserId(owner.id().value())
+            .sourceCalendarId(calendarId)
+            .name("Owner public")
+            .color("#00FF00")
+            .readOnly(true)
+            .build();
+
+        davTestHelper.subscribeToSharedCalendar(subscriber, subscribedCalendarRequest);
+
+        CalendarURL subscribedCalendar = new CalendarURL(subscriber.id(), new OpenPaaSId(subscribedCalendarRequest.id()));
+
+        awaitAtMost.untilAsserted(() -> assertThat(eventsReceived)
+            .anySatisfy(event -> {
+                assertThat(event.username()).isEqualTo(subscriber.username());
+                assertThat(event.calendarURL()).isEqualTo(subscribedCalendar);
+                assertThat(event.changeType()).isEqualTo(ChangeType.SUBSCRIBED);
+            }));
+    }
+
+    @Test
+    void shouldDispatchUpdatedWhenSubscriberRenamesSubscribedCalendar() {
+        OpenPaaSUser owner = sabreDavExtension.newTestUser();
+        OpenPaaSUser subscriber = sabreDavExtension.newTestUser();
+        URI ownerCalendarUri = CalendarURL.from(owner.id()).asUri();
+        davTestHelper.updateCalendarAcl(owner, ownerCalendarUri, "{DAV:}read");
+
+        SubscribedCalendarRequest subscribedCalendarRequest = SubscribedCalendarRequest.builder()
+            .id(UUID.randomUUID().toString())
+            .sourceUserId(owner.id().value())
+            .name("Owner shared")
+            .color("#00FF00")
+            .readOnly(true)
+            .build();
+
+        Queue<CalendarListChangedEvent> eventsReceived = new ConcurrentLinkedQueue<>();
+        registerListener(subscriber, eventsReceived);
+
+        davTestHelper.subscribeToSharedCalendar(subscriber, subscribedCalendarRequest);
+
+        CalendarURL subscribedCalendar = new CalendarURL(subscriber.id(), new OpenPaaSId(subscribedCalendarRequest.id()));
+        String payload = """
+            <d:propertyupdate xmlns:d="DAV:">
+              <d:set>
+                <d:prop>
+                  <d:displayname>Subscribed-update</d:displayname>
+                </d:prop>
+              </d:set>
+            </d:propertyupdate>
+            """;
+        davTestHelper.updateCalendar(subscriber, subscribedCalendar, payload);
+
+        awaitAtMost.untilAsserted(() -> {
+            assertThat(eventsReceived)
+                .anySatisfy(event -> {
+                    assertThat(event.username()).isEqualTo(subscriber.username());
+                    assertThat(event.calendarURL()).isEqualTo(subscribedCalendar);
+                    assertThat(event.changeType()).isEqualTo(ChangeType.SUBSCRIBED);
+                });
+
+            assertThat(eventsReceived)
+                .anySatisfy(event -> {
+                    assertThat(event.username()).isEqualTo(subscriber.username());
+                    assertThat(event.calendarURL()).isEqualTo(subscribedCalendar);
+                    assertThat(event.changeType()).isEqualTo(ChangeType.UPDATED);
+                });
+        });
+    }
+
+    @Test
+    void shouldDispatchDeletedWhenSubscriberDeletesSubscription() {
+        OpenPaaSUser owner = sabreDavExtension.newTestUser();
+        OpenPaaSUser subscriber = sabreDavExtension.newTestUser();
+        URI ownerCalendarUri = CalendarURL.from(owner.id()).asUri();
+        davTestHelper.updateCalendarAcl(owner, ownerCalendarUri, "{DAV:}read");
+
+        SubscribedCalendarRequest subscribedCalendarRequest = SubscribedCalendarRequest.builder()
+            .id(UUID.randomUUID().toString())
+            .sourceUserId(owner.id().value())
+            .name("Owner shared")
+            .color("#00FF00")
+            .readOnly(true)
+            .build();
+
+        Queue<CalendarListChangedEvent> eventsReceived = new ConcurrentLinkedQueue<>();
+        registerListener(subscriber, eventsReceived);
+
+        davTestHelper.subscribeToSharedCalendar(subscriber, subscribedCalendarRequest);
+
+        CalendarURL subscribedCalendar = new CalendarURL(subscriber.id(), new OpenPaaSId(subscribedCalendarRequest.id()));
+        calDavClient.deleteCalendar(subscriber.username(), subscribedCalendar).block();
+
+        awaitAtMost.untilAsserted(() -> assertThat(eventsReceived)
+            .anySatisfy(event -> {
+                assertThat(event.username()).isEqualTo(subscriber.username());
+                assertThat(event.calendarURL()).isEqualTo(subscribedCalendar);
+                assertThat(event.changeType()).isEqualTo(ChangeType.DELETED);
+            }));
+    }
+
+    @Test
+    void shouldDispatchDeletedWhenOwnerHidesCalendarAfterSubscription() {
+        OpenPaaSUser owner = sabreDavExtension.newTestUser();
+        OpenPaaSUser subscriber = sabreDavExtension.newTestUser();
+        CalendarURL ownerCalendarURL = CalendarURL.from(owner.id());
+        davTestHelper.updateCalendarAcl(owner, ownerCalendarURL.asUri(), "{DAV:}read");
+
+        SubscribedCalendarRequest subscribedCalendarRequest = SubscribedCalendarRequest.builder()
+            .id(UUID.randomUUID().toString())
+            .sourceUserId(owner.id().value())
+            .name("Owner public")
+            .color("#00FF00")
+            .readOnly(true)
+            .build();
+
+        Queue<CalendarListChangedEvent> eventsReceived = new ConcurrentLinkedQueue<>();
+        registerListener(subscriber, eventsReceived);
+
+        davTestHelper.subscribeToSharedCalendar(subscriber, subscribedCalendarRequest);
+
+        CalendarURL subscribedCalendar = new CalendarURL(subscriber.id(), new OpenPaaSId(subscribedCalendarRequest.id()));
+        davTestHelper.updateCalendarAcl(owner, ownerCalendarURL.asUri(), "");
+
+        awaitAtMost.untilAsserted(() -> assertThat(eventsReceived)
+            .anySatisfy(event -> {
+                assertThat(event.username()).isEqualTo(subscriber.username());
+                assertThat(event.calendarURL()).isEqualTo(subscribedCalendar);
+                assertThat(event.changeType()).isEqualTo(ChangeType.DELETED);
+            }));
+    }
+
+    @Test
+    void shouldDispatchUpdatedToOwnerWhenOwnerGrantsDelegation() {
+        OpenPaaSUser owner = sabreDavExtension.newTestUser();
+        OpenPaaSUser delegate = sabreDavExtension.newTestUser();
+        Queue<CalendarListChangedEvent> eventsReceived = new ConcurrentLinkedQueue<>();
+        registerListener(owner, eventsReceived);
+
+        OpenPaaSDomain domain = new MongoDBOpenPaaSDomainDAO(sabreDavExtension.dockerSabreDavSetup().getMongoDB())
+            .retrieve(owner.username().getDomainPart().get())
+            .block();
+
+        String calendarId = UUID.randomUUID().toString();
+        NewCalendar newCalendar = new NewCalendar(calendarId,
+            "Owner Calendar", "#00AAFF", "Calendar to delegate");
+        calDavClient.createNewCalendar(owner.username(), owner.id(), newCalendar).block();
+
+        CalendarURL ownerCalendarURL = new CalendarURL(owner.id(), new OpenPaaSId(calendarId));
+        calDavClient.patchReadWriteDelegations(domain.id(), ownerCalendarURL, List.of(delegate.username()), List.of()).block();
+
+        awaitAtMost.untilAsserted(() -> assertThat(eventsReceived)
+            .anySatisfy(event -> {
+                assertThat(event.username()).isEqualTo(owner.username());
+                assertThat(event.calendarURL()).isEqualTo(ownerCalendarURL);
+                assertThat(event.changeType()).isEqualTo(ChangeType.UPDATED);
+            }));
+    }
+
+    @Test
+    void shouldDispatchUpdatedToOwnerWhenOwnerRevokesDelegation() {
+        OpenPaaSUser owner = sabreDavExtension.newTestUser();
+        OpenPaaSUser delegate = sabreDavExtension.newTestUser();
+        Queue<CalendarListChangedEvent> eventsReceived = new ConcurrentLinkedQueue<>();
+        registerListener(owner, eventsReceived);
+
+        OpenPaaSDomain domain = new MongoDBOpenPaaSDomainDAO(sabreDavExtension.dockerSabreDavSetup().getMongoDB())
+            .retrieve(owner.username().getDomainPart().get())
+            .block();
+
+        String calendarId = UUID.randomUUID().toString();
+        NewCalendar newCalendar = new NewCalendar(calendarId,
+            "Owner Calendar", "#00AAFF", "Calendar to delegate");
+        calDavClient.createNewCalendar(owner.username(), owner.id(), newCalendar).block();
+
+        CalendarURL ownerCalendarURL = new CalendarURL(owner.id(), new OpenPaaSId(calendarId));
+        calDavClient.patchReadWriteDelegations(domain.id(), ownerCalendarURL, List.of(delegate.username()), List.of()).block();
+        calDavClient.patchReadWriteDelegations(domain.id(), ownerCalendarURL, List.of(), List.of(delegate.username())).block();
+
+        awaitAtMost.untilAsserted(() -> assertThat(eventsReceived)
+            .anySatisfy(event -> {
+                assertThat(event.username()).isEqualTo(owner.username());
+                assertThat(event.calendarURL()).isEqualTo(ownerCalendarURL);
+                assertThat(event.changeType()).isEqualTo(ChangeType.UPDATED);
+            }));
+    }
+
+    @Test
     void shouldDispatchDelegatedWhenCalendarDelegated() {
         OpenPaaSUser owner = sabreDavExtension.newTestUser();
         OpenPaaSUser delegate = sabreDavExtension.newTestUser();
@@ -377,6 +579,38 @@ public class CalendarListNotificationConsumerTest {
                 assertThat(event.username()).isEqualTo(delegate.username());
                 assertThat(event.calendarURL()).isEqualTo(delegatedCalendarURL);
                 assertThat(event.changeType()).isEqualTo(ChangeType.UPDATED);
+            }));
+    }
+
+    @Test
+    void shouldDispatchDeletedWhenDelegateDeletesDelegatedCalendar() {
+        OpenPaaSUser owner = sabreDavExtension.newTestUser();
+        OpenPaaSUser delegate = sabreDavExtension.newTestUser();
+
+        MongoDatabase mongoDB = sabreDavExtension.dockerSabreDavSetup().getMongoDB();
+        OpenPaaSDomain domain = new MongoDBOpenPaaSDomainDAO(mongoDB)
+            .retrieve(owner.username().getDomainPart().get())
+            .block();
+
+        String calendarId = UUID.randomUUID().toString();
+        NewCalendar newCalendar = new NewCalendar(calendarId,
+            "Owner Calendar", "#00AAFF", "Calendar to delegate");
+        calDavClient.createNewCalendar(owner.username(), owner.id(), newCalendar).block();
+
+        CalendarURL ownerCalendarURL = new CalendarURL(owner.id(), new OpenPaaSId(calendarId));
+        calDavClient.patchReadWriteDelegations(domain.id(), ownerCalendarURL, List.of(delegate.username()), List.of()).block();
+
+        CalendarURL delegatedCalendarURL = getDelegatedCalendarURL(delegate);
+        Queue<CalendarListChangedEvent> eventsReceived = new ConcurrentLinkedQueue<>();
+        registerListener(delegate, eventsReceived);
+
+        calDavClient.deleteCalendar(delegate.username(), delegatedCalendarURL).block();
+
+        awaitAtMost.untilAsserted(() -> assertThat(eventsReceived)
+            .anySatisfy(event -> {
+                assertThat(event.username()).isEqualTo(delegate.username());
+                assertThat(event.calendarURL()).isEqualTo(delegatedCalendarURL);
+                assertThat(event.changeType()).isEqualTo(ChangeType.DELETED);
             }));
     }
 
