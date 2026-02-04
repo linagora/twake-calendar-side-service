@@ -65,12 +65,9 @@ public class CalendarListNotificationHandler {
     private ChangeType resolveChangeType(CalendarListExchange exchange, CalendarListChangesMessage message) {
         return switch (exchange) {
             case CALENDAR_CREATED -> resolveCalendarCreatedChangeType(message);
-            case CALENDAR_UPDATED -> ChangeType.UPDATED;
-            case CALENDAR_DELETED -> ChangeType.DELETED;
+            case CALENDAR_UPDATED, SUBSCRIPTION_UPDATED -> ChangeType.UPDATED;
+            case CALENDAR_DELETED, SUBSCRIPTION_DELETED -> ChangeType.DELETED;
             case SUBSCRIPTION_CREATED -> ChangeType.SUBSCRIBED;
-            // TODO https://github.com/linagora/esn-sabre/issues/261
-            case SUBSCRIPTION_UPDATED -> ChangeType.UPDATED;
-            case SUBSCRIPTION_DELETED -> ChangeType.RIGHTS_REVOKED;
         };
     }
 

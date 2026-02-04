@@ -37,6 +37,7 @@ import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.http.HttpStatus;
 import org.apache.james.backends.redis.RedisConfiguration;
@@ -71,6 +72,7 @@ import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
+import com.linagora.calendar.dav.dto.SubscribedCalendarRequest;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.CalendarChangeEvent;
@@ -1969,6 +1971,355 @@ class WebsocketRouteTest {
                   }
                 }
                 """.formatted(calendarUri));
+    }
+
+    @Test
+    void subscriberShouldReceiveCalendarListSubscribedEventWhenSubscribingToPublicCalendar() {
+        CalendarURL aliceCalendar = CalendarURL.from(alice.id());
+        calDavClient.updateCalendarAcl(alice.username(), aliceCalendar, PublicRight.READ).block();
+
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        SubscribedCalendarRequest request = SubscribedCalendarRequest.builder()
+            .id(UUID.randomUUID().toString())
+            .sourceUserId(alice.id().value())
+            .name("Alice public")
+            .color("#00FF00")
+            .readOnly(true)
+            .build();
+
+        davTestHelper.subscribeToSharedCalendar(bob, request);
+        String subscribedCalendarUri = new CalendarURL(bob.id(), new OpenPaaSId(request.id())).asUri().toASCIIString();
+
+        String pushed = awaitMessage(messages, message -> message.contains("\"calendarList\"")
+            && message.contains("\"subscribed\"")
+            && message.contains(subscribedCalendarUri));
+
+        assertThatJson(pushed)
+            .isEqualTo("""
+                {
+                  "calendarList": {
+                    "subscribed": ["%s"]
+                  }
+                }
+                """.formatted(subscribedCalendarUri));
+    }
+
+    @Test
+    void subscriberShouldReceiveCalendarListDeletedEventWhenSubscriberDeletesSubscribedCalendar() {
+        CalendarURL aliceCalendar = CalendarURL.from(alice.id());
+        calDavClient.updateCalendarAcl(alice.username(), aliceCalendar, PublicRight.READ).block();
+
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        SubscribedCalendarRequest request = SubscribedCalendarRequest.builder()
+            .id(UUID.randomUUID().toString())
+            .sourceUserId(alice.id().value())
+            .name("Alice public")
+            .color("#00FF00")
+            .readOnly(true)
+            .build();
+
+        davTestHelper.subscribeToSharedCalendar(bob, request);
+        CalendarURL subscribedCalendar = new CalendarURL(bob.id(), new OpenPaaSId(request.id()));
+        String subscribedCalendarUri = subscribedCalendar.asUri().toASCIIString();
+
+        awaitMessage(messages, message -> message.contains("\"calendarList\"")
+            && message.contains("\"subscribed\"")
+            && message.contains(subscribedCalendarUri));
+
+        calDavClient.deleteCalendar(bob.username(), subscribedCalendar).block();
+
+        String pushed = awaitMessage(messages, message -> message.contains("\"calendarList\"")
+            && message.contains("\"deleted\"")
+            && message.contains(subscribedCalendarUri));
+
+        assertThatJson(pushed)
+            .isEqualTo("""
+                {
+                  "calendarList": {
+                    "deleted": ["%s"]
+                  }
+                }
+                """.formatted(subscribedCalendarUri));
+    }
+
+    @Test
+    void subscriberShouldReceiveCalendarListUpdatedEventWhenSubscriberRenamesSubscribedCalendar() {
+        CalendarURL aliceCalendar = CalendarURL.from(alice.id());
+        calDavClient.updateCalendarAcl(alice.username(), aliceCalendar, PublicRight.READ).block();
+
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        SubscribedCalendarRequest request = SubscribedCalendarRequest.builder()
+            .id(UUID.randomUUID().toString())
+            .sourceUserId(alice.id().value())
+            .name("Alice public")
+            .color("#00FF00")
+            .readOnly(true)
+            .build();
+
+        davTestHelper.subscribeToSharedCalendar(bob, request);
+        CalendarURL subscribedCalendar = new CalendarURL(bob.id(), new OpenPaaSId(request.id()));
+        String subscribedCalendarUri = subscribedCalendar.asUri().toASCIIString();
+        awaitMessage(messages, message -> message.contains("\"calendarList\"")
+            && message.contains("\"subscribed\"")
+            && message.contains(subscribedCalendarUri));
+
+        String payload = """
+            <?xml version="1.0" encoding="utf-8" ?>
+            <D:propertyupdate xmlns:D="DAV:">
+              <D:set>
+                <D:prop>
+                  <D:displayname>Renamed subscribed</D:displayname>
+                </D:prop>
+              </D:set>
+            </D:propertyupdate>
+            """;
+        davTestHelper.updateCalendar(bob, subscribedCalendar, payload);
+
+        String pushed = awaitMessage(messages, message -> message.contains("\"calendarList\"")
+            && message.contains("\"updated\"")
+            && message.contains(subscribedCalendarUri));
+
+        assertThatJson(pushed)
+            .isEqualTo("""
+                {
+                  "calendarList": {
+                    "updated": ["%s"]
+                  }
+                }
+                """.formatted(subscribedCalendarUri));
+    }
+
+    @Test
+    void subscriberShouldReceiveCalendarListDeletedEventWhenOwnerHidesSubscribedCalendar() {
+        String aliceCalendarId = UUID.randomUUID().toString();
+        NewCalendar newCalendar = new NewCalendar(aliceCalendarId,
+            "Alice Shared Calendar", "#22AA55", "shared");
+        calDavClient.createNewCalendar(alice.username(), alice.id(), newCalendar).block();
+
+        CalendarURL aliceCalendar = new CalendarURL(alice.id(), new OpenPaaSId(aliceCalendarId));
+        calDavClient.updateCalendarAcl(alice.username(), aliceCalendar, PublicRight.READ).block();
+
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        SubscribedCalendarRequest request = SubscribedCalendarRequest.builder()
+            .id(UUID.randomUUID().toString())
+            .sourceUserId(alice.id().value())
+            .sourceCalendarId(aliceCalendarId)
+            .name("Alice shared")
+            .color("#00FF00")
+            .readOnly(true)
+            .build();
+
+        davTestHelper.subscribeToSharedCalendar(bob, request);
+        String subscribedCalendarUri = new CalendarURL(bob.id(), new OpenPaaSId(request.id())).asUri().toASCIIString();
+        awaitMessage(messages, message -> message.contains("\"calendarList\"")
+            && message.contains("\"subscribed\"")
+            && message.contains(subscribedCalendarUri));
+
+        calDavClient.updateCalendarAcl(alice.username(), aliceCalendar, PublicRight.HIDE_ALL_EVENT).block();
+
+        String pushed = awaitMessage(messages, message -> message.contains("\"calendarList\"")
+            && message.contains("\"deleted\"")
+            && message.contains(subscribedCalendarUri));
+
+        assertThatJson(pushed)
+            .isEqualTo("""
+                {
+                  "calendarList": {
+                    "deleted": ["%s"]
+                  }
+                }
+                """.formatted(subscribedCalendarUri));
+    }
+
+    @Test
+    void ownerShouldReceiveCalendarListUpdatedEventWhenOwnerGrantsDelegation() {
+        NewCalendar newCalendar = new NewCalendar(UUID.randomUUID().toString(),
+            "Bob Shared", "#0055AA", "delegation update");
+        calDavClient.createNewCalendar(bob.username(), bob.id(), newCalendar).block();
+        CalendarURL bobCalendar = new CalendarURL(bob.id(), new OpenPaaSId(newCalendar.id()));
+        String bobCalendarUri = bobCalendar.asUri().toASCIIString();
+
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        davTestHelper.grantDelegation(bob, bobCalendar, alice, "dav:read-write");
+
+        String pushed = awaitMessage(messages, message -> message.contains("\"calendarList\"")
+            && message.contains("\"updated\"")
+            && message.contains(bobCalendarUri));
+
+        assertThatJson(pushed)
+            .isEqualTo("""
+                {
+                  "calendarList": {
+                    "updated": ["%s"]
+                  }
+                }
+                """.formatted(bobCalendarUri));
+    }
+
+    @Test
+    void delegateShouldReceiveCalendarListDelegatedEventWhenDelegationGranted() {
+        NewCalendar newCalendar = new NewCalendar(UUID.randomUUID().toString(),
+            "Bob Delegated", "#0055AA", "delegated");
+        calDavClient.createNewCalendar(bob.username(), bob.id(), newCalendar).block();
+        CalendarURL bobCalendar = new CalendarURL(bob.id(), new OpenPaaSId(newCalendar.id()));
+
+        String ticket = generateTicket(alice);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        davTestHelper.grantDelegation(bob, bobCalendar, alice, "dav:read-write");
+        CalendarURL delegatedCalendar = findDelegatedCalendarURL(alice);
+        String delegatedCalendarUri = delegatedCalendar.asUri().toASCIIString();
+
+        String pushed = awaitMessage(messages, message -> message.contains("\"calendarList\"")
+            && message.contains("\"delegated\"")
+            && message.contains(delegatedCalendarUri));
+
+        assertThatJson(pushed)
+            .isEqualTo("""
+                {
+                  "calendarList": {
+                    "delegated": ["%s"]
+                  }
+                }
+                """.formatted(delegatedCalendarUri));
+    }
+
+    @Test
+    void ownerShouldReceiveCalendarListUpdatedEventWhenOwnerRevokesDelegation() {
+        NewCalendar newCalendar = new NewCalendar(UUID.randomUUID().toString(),
+            "Bob Shared", "#0055AA", "delegation update");
+        calDavClient.createNewCalendar(bob.username(), bob.id(), newCalendar).block();
+        CalendarURL bobCalendar = new CalendarURL(bob.id(), new OpenPaaSId(newCalendar.id()));
+        String bobCalendarUri = bobCalendar.asUri().toASCIIString();
+
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        davTestHelper.grantDelegation(bob, bobCalendar, alice, "dav:read-write");
+        awaitMessage(messages, message -> message.contains("\"calendarList\"")
+            && message.contains("\"updated\"")
+            && message.contains(bobCalendarUri));
+
+        davTestHelper.revokeDelegation(bob, bobCalendar, alice);
+
+        String pushed = awaitMessage(messages, message -> message.contains("\"calendarList\"")
+            && message.contains("\"updated\"")
+            && message.contains(bobCalendarUri));
+
+        assertThatJson(pushed)
+            .isEqualTo("""
+                {
+                  "calendarList": {
+                    "updated": ["%s"]
+                  }
+                }
+                """.formatted(bobCalendarUri));
+    }
+
+    @Test
+    void delegateShouldReceiveCalendarListDeletedEventWhenDelegationRevoked() {
+        NewCalendar newCalendar = new NewCalendar(UUID.randomUUID().toString(),
+            "Bob Delegated", "#0055AA", "delegated");
+        calDavClient.createNewCalendar(bob.username(), bob.id(), newCalendar).block();
+        CalendarURL bobCalendar = new CalendarURL(bob.id(), new OpenPaaSId(newCalendar.id()));
+
+        String ticket = generateTicket(alice);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        davTestHelper.grantDelegation(bob, bobCalendar, alice, "dav:read-write");
+        CalendarURL delegatedCalendar = findDelegatedCalendarURL(alice);
+        String delegatedCalendarUri = delegatedCalendar.asUri().toASCIIString();
+        awaitMessage(messages, message -> message.contains("\"calendarList\"")
+            && message.contains("\"delegated\"")
+            && message.contains(delegatedCalendarUri));
+
+        davTestHelper.revokeDelegation(bob, bobCalendar, alice);
+
+        String pushed = awaitMessage(messages, message -> message.contains("\"calendarList\"")
+            && message.contains("\"deleted\"")
+            && message.contains(delegatedCalendarUri));
+
+        assertThatJson(pushed)
+            .isEqualTo("""
+                {
+                  "calendarList": {
+                    "deleted": ["%s"]
+                  }
+                }
+                """.formatted(delegatedCalendarUri));
+    }
+
+    @Test
+    void delegateShouldReceiveCalendarListDeletedEventWhenDelegateDeletesDelegatedCalendar() {
+        NewCalendar newCalendar = new NewCalendar(UUID.randomUUID().toString(),
+            "Bob Delegated", "#0055AA", "delegated");
+        calDavClient.createNewCalendar(bob.username(), bob.id(), newCalendar).block();
+        CalendarURL bobCalendar = new CalendarURL(bob.id(), new OpenPaaSId(newCalendar.id()));
+
+        String ticket = generateTicket(alice);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        davTestHelper.grantDelegation(bob, bobCalendar, alice, "dav:read-write");
+        CalendarURL delegatedCalendar = findDelegatedCalendarURL(alice);
+        String delegatedCalendarUri = delegatedCalendar.asUri().toASCIIString();
+        awaitMessage(messages, message -> message.contains("\"calendarList\"")
+            && message.contains("\"delegated\"")
+            && message.contains(delegatedCalendarUri));
+
+        calDavClient.deleteCalendar(alice.username(), delegatedCalendar).block();
+
+        String pushed = awaitMessage(messages, message -> message.contains("\"calendarList\"")
+            && message.contains("\"deleted\"")
+            && message.contains(delegatedCalendarUri));
+
+        assertThatJson(pushed)
+            .isEqualTo("""
+                {
+                  "calendarList": {
+                    "deleted": ["%s"]
+                  }
+                }
+                """.formatted(delegatedCalendarUri));
+    }
+
+    private CalendarURL findDelegatedCalendarURL(OpenPaaSUser delegate) {
+        CalendarURL delegateDefaultCalendarURL = CalendarURL.from(delegate.id());
+        AtomicReference<CalendarURL> delegatedCalendarURLRef = new AtomicReference<>();
+
+        CALMLY_AWAIT.untilAsserted(() -> {
+            List<CalendarURL> delegateCalendars = calDavClient.findUserCalendars(delegate.username(), delegate.id())
+                .collectList()
+                .block();
+
+            CalendarURL delegatedCalendarURL = delegateCalendars.stream()
+                .filter(url -> !url.equals(delegateDefaultCalendarURL))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("No delegated calendar found"));
+
+            assertThat(delegatedCalendarURL).isNotNull();
+            delegatedCalendarURLRef.set(delegatedCalendarURL);
+        });
+
+        return delegatedCalendarURLRef.get();
     }
 
     private String importVCardIntoAddressBook(TwakeCalendarGuiceServer server,
