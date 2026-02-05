@@ -38,7 +38,8 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                                          UserChoice userChoice, DbChoice dbChoice, AutoCompleteChoice autoCompleteChoice,
                                          CalendarEventSearchChoice calendarEventSearchChoice,
                                          boolean redisEnabled,
-                                         boolean twpSettingEnabled) implements Configuration {
+                                         boolean twpSettingEnabled,
+                                         boolean saasSubscriptionEnabled) implements Configuration {
 
     public static final boolean ENABLED = true;
 
@@ -50,6 +51,7 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
         private Optional<AutoCompleteChoice> autoCompleteChoice;
         private Optional<Boolean> redisEnabled;
         private Optional<Boolean> twpSettingEnabled;
+        private Optional<Boolean> saasSubscriptionEnabled;
         private Optional<CalendarEventSearchChoice> calendarEventSearchChoice;
 
         private Builder() {
@@ -60,6 +62,7 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
             autoCompleteChoice = Optional.empty();
             redisEnabled = Optional.empty();
             twpSettingEnabled = Optional.empty();
+            saasSubscriptionEnabled = Optional.empty();
             calendarEventSearchChoice = Optional.empty();
         }
 
@@ -95,6 +98,11 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
 
         public Builder enableTwpSetting() {
             twpSettingEnabled = Optional.of(true);
+            return this;
+        }
+
+        public Builder enableSaasSubscription() {
+            saasSubscriptionEnabled = Optional.of(true);
             return this;
         }
 
@@ -161,6 +169,15 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                 return configuration.getBoolean("twp.settings.enabled", !ENABLED);
             }));
 
+            boolean saasSubscriptionEnabledValue = this.saasSubscriptionEnabled.orElseGet(Throwing.supplier(() -> {
+                var configuration = propertiesProvider.getConfiguration("configuration");
+                return configuration.getBoolean("saas.subscription.enabled", !ENABLED);
+            }));
+
+            if (!twpSettingEnabledValue && saasSubscriptionEnabledValue) {
+                throw new IllegalArgumentException("TWP Setting must be enabled when SaaS Subscription is enabled");
+            }
+
             CalendarEventSearchChoice calendarEventSearchChoice = this.calendarEventSearchChoice.orElseGet(Throwing.supplier(() -> {
                 try {
                     propertiesProvider.getConfiguration("opensearch");
@@ -178,7 +195,8 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                 autoCompleteChoice,
                 calendarEventSearchChoice,
                 redisEnabledValue,
-                twpSettingEnabledValue);
+                twpSettingEnabledValue,
+                saasSubscriptionEnabledValue);
         }
 
         private boolean redisConfigurationFileExists(PropertiesProvider propertiesProvider) throws ConfigurationException {

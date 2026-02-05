@@ -18,10 +18,15 @@
 
 package com.linagora.calendar.app;
 
+import java.io.FileNotFoundException;
+import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import jakarta.inject.Singleton;
 
+import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.james.core.Domain;
 import org.apache.james.filesystem.api.FileSystem;
 import org.apache.james.filesystem.api.JamesDirectoriesProvider;
 import org.apache.james.modules.CleanupTaskModule;
@@ -38,6 +43,8 @@ import org.apache.james.server.core.configuration.FileConfigurationProvider;
 import org.apache.james.server.core.filesystem.FileSystemImpl;
 import org.apache.james.utils.ExtensionModule;
 import org.apache.james.utils.PropertiesProvider;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
@@ -48,6 +55,8 @@ import com.linagora.calendar.storage.configuration.resolver.ConfigurationResolve
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 
 public class TwakeCalendarCommonServicesModule extends AbstractModule {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(TwakeCalendarCommonServicesModule.class);
 
     private final Configuration configuration;
     private final FileSystemImpl fileSystem;
@@ -106,5 +115,25 @@ public class TwakeCalendarCommonServicesModule extends AbstractModule {
     @Singleton
     AlarmEventFactory provideAlarmEventFactory() {
         return new AlarmEventFactory.Default();
+    }
+
+    @Provides
+    @Singleton
+    @Named("userSearchDisabledDomains")
+    Set<Domain> provideUserSearchDisabledDomains(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
+        org.apache.commons.configuration2.Configuration config = propertiesProvider.getConfiguration("configuration");
+        List<String> rawValues = config.getList(String.class, "user.search.disabled.domains", List.of());
+
+        if (rawValues.isEmpty()) {
+            LOGGER.info("No user search disabled domains configured");
+            return Set.of();
+        }
+
+        Set<Domain> disabledDomains = rawValues.stream()
+            .map(Domain::of)
+            .collect(Collectors.toUnmodifiableSet());
+
+        LOGGER.info("User search is disabled for domains: {}", disabledDomains.stream().map(Domain::asString).collect(Collectors.joining(", ")));
+        return disabledDomains;
     }
 }

@@ -205,7 +205,16 @@ public class CardDavClient extends DavClient {
 
         AddressBookURL addressBookURL = new AddressBookURL(domainId, DOMAIN_MEMBERS_ADDRESS_BOOK_ID);
         return httpClientWithTechnicalToken(domainId)
-            .flatMap(client -> upsertContact(client, addressBookURL, vcardUid, vcardPayload));
+            .flatMap(client -> upsertContact(client, addressBookURL, vcardUid, vcardPayload)
+                .onErrorResume(DavClientException.class, exception -> {
+                    if (isNotFoundPathResourceError(exception)) {
+                        return createDomainMembersAddressBook(domainId)
+                            .then(upsertContact(client, addressBookURL, vcardUid, vcardPayload))
+                            .doOnSubscribe(s
+                                -> LOGGER.info("Creating domain members address book for domain {} and retrying to upsert contact", domainId.value()));
+                    }
+                    return Mono.error(exception);
+                }));
     }
 
     public Mono<Void> deleteContactDomainMembers(OpenPaaSId domainId, String vcardUid) {

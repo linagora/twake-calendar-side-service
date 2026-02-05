@@ -447,6 +447,30 @@ public class CardDavClientTest {
     }
 
     @Test
+    void upsertContactDomainMembersShouldCreateContactWhenDomainMemberAddressBookHasNotExistedYet() {
+        OpenPaaSDomain domain = mongoDBOpenPaaSDomainDAO.add(Domain.of("new-domain" + UUID.randomUUID() + ".tld")).block();
+        String vcardUid = UUID.randomUUID().toString();
+        String vcard = """
+            BEGIN:VCARD
+            VERSION:3.0
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
+            UID:%s
+            FN:John Doe
+            EMAIL;TYPE=Work:john.doe@example.com
+            END:VCARD
+            """.formatted(vcardUid);
+
+        testee.upsertContactDomainMembers(domain.id(), vcardUid, vcard.getBytes(StandardCharsets.UTF_8)).block();
+
+        // The address book should be created automatically and the contact added
+        assertThat(listContactDomainMembersAsVcard(domain))
+            .containsIgnoringNewLines("""
+                UID:%s
+                FN:John Doe
+                EMAIL;TYPE=Work:john.doe@example.com""".trim().formatted(vcardUid));
+    }
+
+    @Test
     void listContactDomainMembersShouldReturnEmptyVcardWhenNoContactsExist() {
         OpenPaaSDomain domain = createNewDomainMemberAddressBook();
         assertThat(testee.listContactDomainMembers(domain.id()).blockOptional()).isEmpty();
