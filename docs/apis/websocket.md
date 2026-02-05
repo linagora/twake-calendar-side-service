@@ -96,6 +96,16 @@ Disable:
 
 ### Server → Client
 
+#### Calendar list default subscription
+When a WebSocket connection is established, the server automatically subscribes the user to `calendarList` notifications.
+
+Ack message:
+```json
+{
+  "calendarListRegistered": true
+}
+```
+
 #### Register / Unregister response
 ```json
 {
@@ -121,6 +131,38 @@ Possible error values:
 | Forbidden     | The user has no access rights to the resource |
 | NotFound      | The resource does not exist |
 | InternalError | An unexpected server-side error |
+
+#### Calendar list push
+`calendarList` events notify clients about changes in the user-visible calendar list.
+
+Payload shape:
+```json
+{
+  "calendarList": {
+    "updated": ["/calendars/userA/12345"]
+  }
+}
+```
+
+Supported change keys:
+- `created`: a calendar is created by owner
+- `updated`: calendar metadata/rights changed
+- `deleted`: calendar is deleted/removed from the list
+- `delegated`: delegated calendar appears for delegate user
+- `subscribed`: subscribed calendar appears for subscriber user
+
+Delegation behavior:
+- Owner grants delegation (`dav:read-write`, `dav:read`, `dav:administration`) → owner receives `updated`
+- Owner revokes delegation → owner receives `updated`
+- Owner changes delegation right (example: `dav:read-write` to `dav:read`) → owner receives `updated`
+- Delegate receives `delegated` when delegated calendar is added
+- Delegate receives `deleted` when delegation is revoked
+
+Subscription behavior:
+- Subscriber subscribes to a shared/public calendar → subscriber receives `subscribed`
+- Subscriber renames subscribed calendar metadata (for example display name) → subscriber receives `updated`
+- Subscriber deletes subscribed calendar from their list → subscriber receives `deleted`
+- Owner hides/restricts source shared calendar so subscriber loses visibility → subscriber receives `deleted`
 
 #### Calendar Event push
 
