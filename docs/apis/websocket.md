@@ -145,11 +145,11 @@ Payload shape:
 ```
 
 Supported change keys:
-- `created`: a calendar is created by owner
+- `created`: a calendar is created by the owner
 - `updated`: calendar metadata/rights changed
 - `deleted`: calendar is deleted/removed from the list
-- `delegated`: delegated calendar appears for delegate user
-- `subscribed`: subscribed calendar appears for subscriber user
+- `delegated`: delegated calendar appears for the delegate user
+- `subscribed`: subscribed calendar appears for the subscriber user
 
 Delegation behavior:
 - Owner grants delegation (`dav:read-write`, `dav:read`, `dav:administration`) → owner receives `updated`
