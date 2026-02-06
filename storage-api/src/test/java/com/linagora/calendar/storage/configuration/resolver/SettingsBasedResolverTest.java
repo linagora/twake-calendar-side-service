@@ -24,9 +24,12 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
 import java.time.ZoneId;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
+import org.apache.james.core.Domain;
+import org.apache.james.core.Username;
 import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.mailbox.store.RandomMailboxSessionIdGenerator;
 import org.junit.jupiter.api.Test;
@@ -40,6 +43,7 @@ import com.google.common.collect.Table;
 import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.ConfigurationKey;
 import com.linagora.calendar.storage.configuration.ModuleName;
+import com.linagora.calendar.storage.exception.DomainNotFoundException;
 
 import reactor.core.publisher.Mono;
 
@@ -119,6 +123,98 @@ public class SettingsBasedResolverTest {
 
         Optional<ZoneId> result = SettingsBasedResolver.TimeZoneSettingReader.INSTANCE.parse(invalidZone);
         assertThat(result).isEmpty();
+    }
+
+    @Test
+    void twoUsersShouldFallbackToSecondUserSettingsWhenFirstUserErrors() {
+        Username externalUser = Username.of("external@remote.com");
+        Username senderUser = Username.of("sender@local.com");
+
+        Table<ModuleName, ConfigurationKey, JsonNode> senderTable = HashBasedTable.create();
+        senderTable.put(LANGUAGE_IDENTIFIER.moduleName(), LANGUAGE_IDENTIFIER.configurationKey(), JsonNodeFactory.instance.textNode("fr"));
+        ObjectNode timezoneNode = JsonNodeFactory.instance.objectNode();
+        timezoneNode.put("timeZone", "Europe/Paris");
+        senderTable.put(TIMEZONE_IDENTIFIER.moduleName(), TIMEZONE_IDENTIFIER.configurationKey(), timezoneNode);
+
+        ConfigurationResolver configurationResolver = Mockito.mock(ConfigurationResolver.class);
+        Mockito.when(configurationResolver.resolve(Mockito.anySet(),
+                Mockito.argThat(s -> s != null && s.getUser().equals(externalUser))))
+            .thenReturn(Mono.error(new DomainNotFoundException(Domain.of("remote.com"))));
+        Mockito.when(configurationResolver.resolve(Mockito.anySet(),
+                Mockito.argThat(s -> s != null && s.getUser().equals(senderUser))))
+            .thenReturn(Mono.just(new ConfigurationDocument(senderTable)));
+
+        SettingsBasedResolver resolver = getSettingsBasedResolver(configurationResolver);
+
+        SettingsBasedResolver.ResolvedSettings result = resolver.resolveOrDefault(externalUser, senderUser).block();
+        assertThat(result.locale()).isEqualTo(Locale.of("fr"));
+        assertThat(result.zoneId()).isEqualTo(ZoneId.of("Europe/Paris"));
+    }
+
+    @Test
+    void twoUsersShouldUseFirstUserSettingsWhenAvailable() {
+        Username recipientUser = Username.of("recipient@local.com");
+        Username senderUser = Username.of("sender@local.com");
+
+        Table<ModuleName, ConfigurationKey, JsonNode> recipientTable = HashBasedTable.create();
+        recipientTable.put(LANGUAGE_IDENTIFIER.moduleName(), LANGUAGE_IDENTIFIER.configurationKey(), JsonNodeFactory.instance.textNode("vi"));
+        ObjectNode timezoneNode = JsonNodeFactory.instance.objectNode();
+        timezoneNode.put("timeZone", "Asia/Ho_Chi_Minh");
+        recipientTable.put(TIMEZONE_IDENTIFIER.moduleName(), TIMEZONE_IDENTIFIER.configurationKey(), timezoneNode);
+
+        ConfigurationResolver configurationResolver = Mockito.mock(ConfigurationResolver.class);
+        Mockito.when(configurationResolver.resolve(Mockito.anySet(),
+                Mockito.argThat(s -> s != null && s.getUser().equals(recipientUser))))
+            .thenReturn(Mono.just(new ConfigurationDocument(recipientTable)));
+
+        SettingsBasedResolver resolver = getSettingsBasedResolver(configurationResolver);
+
+        SettingsBasedResolver.ResolvedSettings result = resolver.resolveOrDefault(recipientUser, senderUser).block();
+        assertThat(result.locale()).isEqualTo(Locale.of("vi"));
+        assertThat(result.zoneId()).isEqualTo(ZoneId.of("Asia/Ho_Chi_Minh"));
+    }
+
+    @Test
+    void twoUsersShouldReturnDefaultWhenBothUsersError() {
+        Username externalUser = Username.of("external@remote.com");
+        Username unknownSender = Username.of("unknown@other.com");
+
+        ConfigurationResolver configurationResolver = Mockito.mock(ConfigurationResolver.class);
+        Mockito.when(configurationResolver.resolve(Mockito.anySet(), Mockito.any(MailboxSession.class)))
+            .thenReturn(Mono.error(new DomainNotFoundException(Domain.of("notfound"))));
+
+        SettingsBasedResolver resolver = getSettingsBasedResolver(configurationResolver);
+
+        SettingsBasedResolver.ResolvedSettings result = resolver.resolveOrDefault(externalUser, unknownSender).block();
+        assertThat(result).isEqualTo(SettingsBasedResolver.ResolvedSettings.DEFAULT);
+    }
+
+    @Test
+    void twoUsersShouldFallbackToSecondUserWhenFirstUserReturnsEmpty() {
+        Username recipientUser = Username.of("recipient@local.com");
+        Username senderUser = Username.of("sender@local.com");
+
+        Table<ModuleName, ConfigurationKey, JsonNode> emptyTable = HashBasedTable.create();
+
+        Table<ModuleName, ConfigurationKey, JsonNode> senderTable = HashBasedTable.create();
+        senderTable.put(LANGUAGE_IDENTIFIER.moduleName(), LANGUAGE_IDENTIFIER.configurationKey(), JsonNodeFactory.instance.textNode("de"));
+        ObjectNode timezoneNode = JsonNodeFactory.instance.objectNode();
+        timezoneNode.put("timeZone", "Europe/Berlin");
+        senderTable.put(TIMEZONE_IDENTIFIER.moduleName(), TIMEZONE_IDENTIFIER.configurationKey(), timezoneNode);
+
+        ConfigurationResolver configurationResolver = Mockito.mock(ConfigurationResolver.class);
+        Mockito.when(configurationResolver.resolve(Mockito.anySet(),
+                Mockito.argThat(s -> s != null && s.getUser().equals(recipientUser))))
+            .thenReturn(Mono.just(new ConfigurationDocument(emptyTable)));
+        Mockito.when(configurationResolver.resolve(Mockito.anySet(),
+                Mockito.argThat(s -> s != null && s.getUser().equals(senderUser))))
+            .thenReturn(Mono.just(new ConfigurationDocument(senderTable)));
+
+        SettingsBasedResolver resolver = getSettingsBasedResolver(configurationResolver);
+
+        SettingsBasedResolver.ResolvedSettings result = resolver.resolveOrDefault(recipientUser, senderUser).block();
+        assertThat(result.locale()).isEqualTo(Locale.of("de"));
+        assertThat(result.zoneId()).isEqualTo(ZoneId.of("Europe/Berlin"));
     }
 
     private SettingsBasedResolver getSettingsBasedResolver(ConfigurationResolver configurationResolver) {
