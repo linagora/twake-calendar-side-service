@@ -170,9 +170,13 @@ public interface SettingsBasedResolver {
         @Override
         public Mono<ResolvedSettings> resolveOrDefault(Username user, Username secondUser) {
             return readSavedSettings(sessionProvider.createSession(user))
-                .switchIfEmpty(readSavedSettings(sessionProvider.createSession(secondUser)))
                 .onErrorResume(error -> {
                     logError(user, error);
+                    return Mono.empty();
+                })
+                .switchIfEmpty(Mono.defer(() -> readSavedSettings(sessionProvider.createSession(secondUser))))
+                .onErrorResume(error -> {
+                    logError(secondUser, error);
                     return Mono.just(ResolvedSettings.DEFAULT);
                 })
                 .switchIfEmpty(Mono.just(ResolvedSettings.DEFAULT));
