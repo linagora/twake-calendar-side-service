@@ -1,0 +1,54 @@
+networks:
+  tcalendar:
+    external: true
+    name: docker-sample_tcalendar
+
+services:
+  mailet-collection:
+    image: linagora/tmail-backend:postgres-branch-master
+    container_name: mailet-collection
+    hostname: mailet-collection.linagora.local
+    depends_on:
+      - postgres
+    networks:
+      - tcalendar
+    ports:
+      - "25:25"
+    command:
+      - --generate-keystore
+    volumes:
+      - ./conf/domainlist.xml:/root/conf/domainlist.xml
+      - ./conf/imapserver.xml:/root/conf/imapserver.xml
+      - ./conf/smtpserver.xml:/root/conf/smtpserver.xml
+      - ./conf/jmap.properties:/root/conf/jmap.properties
+      - ./conf/mailetcontainer.xml:/root/conf/mailetcontainer.xml
+      - ./conf/openpaas.properties:/root/conf/openpaas.properties
+      - ./conf/postgres.properties:/root/conf/postgres.properties
+      - ./conf/search.properties:/root/conf/search.properties
+      - ./conf/webadmin.properties:/root/conf/webadmin.properties
+    environment:
+      POSTGRES_DB: tmail
+      POSTGRES_USER: tmail
+      POSTGRES_PASSWORD: secret1
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      OPENPAAS_API_URI: http://tcalendar-side-service.linagora.local/api
+      OPENPAAS_ADMIN_USER: admin@linagora.local
+      OPENPAAS_ADMIN_PASSWORD: secret
+      OPENPAAS_TRUST_ALL_SSL_CERTS: "true"
+      DAV_API_URI: http://sabre-dav.linagora.local
+      DAV_ADMIN_USER: admin
+      DAV_ADMIN_PASSWORD: secret123
+      DAV_TRUST_ALL_SSL_CERTS: "true"
+
+  postgres:
+    image: postgres:16.9
+    container_name: james-postgres
+    networks:
+      - tcalendar
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: tmail
+      POSTGRES_USER: tmail
+      POSTGRES_PASSWORD: secret1
