@@ -25,7 +25,7 @@ docker compose up -d
 2. Start mailet collector
 
 ```bash
-cd examples/without-tmail
+cd examples/standalone-email
 docker compose up -d
 ```
 
