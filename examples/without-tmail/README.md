@@ -4,7 +4,7 @@ This setup allows running Twake Calendar **without [Twake Mail](https://github.c
 calendar invitations and collected contacts from any external mail server.
 This is achieved by running a minimal version of Twake mail embedding
 the [OpenPaaS connector](https://github.com/linagora/tmail-backend/blob/master/docs/modules/ROOT/pages/tmail-backend/features/openpaas-integration.adoc)
-alongside the calendar side service. We expect the user to run **any** third part email server. This third party email server is expected to mirror its email traffic (incoming, outgoing and internal).
+alongside the calendar side service. We expect the user to run **any** third party email server. This third party email server is expected to mirror its email traffic (incoming, outgoing and internal).
 
 James runs as a standalone PG server to process incoming emails with:
 - `CalDavCollect` for iCalendar (ICS) ingestion
