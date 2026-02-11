@@ -4,10 +4,10 @@ networks:
     name: docker-sample_tcalendar
 
 services:
-  mailet-collection:
+  standalone-email:
     image: linagora/tmail-backend:postgres-branch-master
-    container_name: mailet-collection
-    hostname: mailet-collection.linagora.local
+    container_name: standalone-email
+    hostname: standalone-email.linagora.local
     depends_on:
       - postgres
     networks:

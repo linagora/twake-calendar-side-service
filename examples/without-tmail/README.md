@@ -1,7 +1,10 @@
 # Twake Calendar side service Standalone mode
 
-This setup allows running Twake Calendar **without Twake Mail** while still ingesting
+This setup allows running Twake Calendar **without [Twake Mail](https://github.com/linagora/tmail-backend)** while still ingesting
 calendar invitations and collected contacts from any external mail server.
+This is achieved by running a minimal version of Twake mail embedding
+the [OpenPaaS connector](https://github.com/linagora/tmail-backend/blob/master/docs/modules/ROOT/pages/tmail-backend/features/openpaas-integration.adoc)
+alongside the calendar side service. We expect the user to run **any** third part email server. This third party email server is expected to mirror its email traffic (incoming, outgoing and internal).
 
 James runs as a standalone PG server to process incoming emails with:
 - `CalDavCollect` for iCalendar (ICS) ingestion
@@ -50,7 +53,7 @@ In this example, it allows ingress SMTP for collection only (no relay).
 
 ## Environment variables in `docker-compose.yml`
 
-The `mailet-collection` service passes these env vars into `openpaas.properties`.
+The `standalone-email` service passes these env vars into `openpaas.properties`.
 They control where mailets call OpenPaaS API and DAV APIs:
 
 - `OPENPAAS_API_URI`: OpenPaaS-compatible API endpoint (side service). Example: `http://tcalendar-side-service.linagora.local/api`
@@ -64,4 +67,3 @@ They control where mailets call OpenPaaS API and DAV APIs:
 
 Detailed reference:
 [OpenPaas configuration doc](https://github.com/linagora/tmail-backend/blob/master/docs/modules/ROOT/pages/tmail-backend/configure/openpaas.adoc)
-

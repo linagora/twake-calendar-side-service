@@ -29,7 +29,10 @@
             <mailet match="All" class="MetricsMailet">
                 <metricName>mailetContainerErrors</metricName>
             </mailet>
-            <mailet match="All" class="Null"/>
+            <mailet match="All" class="ToRepository">
+                <repositoryPath>postgres://var/mail/error/</repositoryPath>
+                <onMailetException>propagate</onMailetException>
+            </mailet>
         </processor>
 
         <processor state="transport" enableJmx="true">
@@ -68,10 +71,13 @@
             </mailet>
             <!-- End of ICAL pipeline -->
 
-            <!-- Collected contacts -->
-            <mailet match="All" class="com.linagora.tmail.mailet.CardDavCollectedContact"/>
+            <mailet match="All" class="ToProcessor">
+                <processor>contacts-collection</processor>
+            </mailet>
+        </processor>
 
-            <!-- Discard everything (no store, no relay) -->
+        <processor state="contacts-collection" enableJmx="true">
+            <mailet match="All" class="com.linagora.tmail.mailet.CardDavCollectedContact"/>
             <mailet match="All" class="Null"/>
         </processor>
     </processors>
