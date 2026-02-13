@@ -42,6 +42,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.CalDavClient.NewCalendar;
+import com.linagora.calendar.dav.FreeBusyQueryResponseObject.BusyInterval;
 import com.linagora.calendar.dav.dto.CalendarReportJsonResponse;
 import com.linagora.calendar.dav.dto.CalendarReportXmlResponse;
 import com.linagora.calendar.dav.dto.CalendarReportXmlResponse.CalendarObject;
@@ -1035,6 +1036,134 @@ public class CalDavClientTest {
         assertThat(items).extracting(calendarObject -> calendarObject.href().toString())
             .anyMatch(path -> path.equals("/calendars/" + user.id() + "/" + user.id() + "/" + uid1 + ".ics"))
             .anyMatch(path -> path.equals("/calendars/" + user.id() + "/" + user.id() + "/" + uid2 + ".ics"));
+    }
+
+    @Test
+    void findBusyIntervalsShouldReturnOnlyOpaqueEventsOverlappingRange() {
+        // GIVEN: A calendar containing one OPAQUE event and one TRANSPARENT event
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL calendarURL = CalendarURL.from(user.id());
+
+        String opaqueUid = UUID.randomUUID().toString();
+        String opaqueEvent = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250110T100000Z
+            DTEND:20250110T103000Z
+            TRANSP:OPAQUE
+            SUMMARY:Opaque busy event
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(opaqueUid);
+
+        String transparentUid = UUID.randomUUID().toString();
+        String transparentEvent = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250110T104500Z
+            DTEND:20250110T111500Z
+            TRANSP:TRANSPARENT
+            SUMMARY:Transparent free event
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(transparentUid);
+
+        davTestHelper.upsertCalendar(user, opaqueEvent, opaqueUid);
+        davTestHelper.upsertCalendar(user, transparentEvent, transparentUid);
+
+        // WHEN: Querying busy intervals on a range overlapping both events
+        List<BusyInterval> busyIntervals = testee.findBusyIntervals(user.username(), calendarURL,
+                Instant.parse("2025-01-10T09:00:00Z"), Instant.parse("2025-01-10T11:00:00Z"))
+            .collectList()
+            .block();
+
+        // THEN: Only the OPAQUE interval is returned as busy
+        assertThat(busyIntervals)
+            .containsExactly(new BusyInterval(Instant.parse("2025-01-10T10:00:00Z"), Instant.parse("2025-01-10T10:30:00Z")));
+    }
+
+    @Test
+    void findBusyIntervalsShouldClipIntervalsToRequestedRange() {
+        // GIVEN: A busy event partially overlapping the requested range
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL calendarURL = CalendarURL.from(user.id());
+
+        String uid = UUID.randomUUID().toString();
+        String event = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250110T093000Z
+            DTEND:20250110T103000Z
+            TRANSP:OPAQUE
+            SUMMARY:Partially overlapping busy event
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uid);
+
+        davTestHelper.upsertCalendar(user, event, uid);
+
+        // WHEN: Querying busy intervals inside a narrower time window
+        List<BusyInterval> busyIntervals = testee.findBusyIntervals(user.username(), calendarURL,
+                Instant.parse("2025-01-10T10:00:00Z"), Instant.parse("2025-01-10T11:00:00Z"))
+            .collectList()
+            .block();
+
+        // THEN: The busy interval is clipped to the requested range
+        assertThat(busyIntervals)
+            .containsExactly(new BusyInterval(Instant.parse("2025-01-10T10:00:00Z"), Instant.parse("2025-01-10T10:30:00Z")));
+    }
+
+    @Test
+    void findBusyIntervalsShouldRejectInvalidRange() {
+        // GIVEN: A range where start is after end
+        OpenPaaSUser user = createOpenPaaSUser();
+
+        // WHEN / THEN: The query fails fast with IllegalArgumentException
+        assertThatThrownBy(() -> testee.findBusyIntervals(
+                user.username(), CalendarURL.from(user.id()),
+                Instant.parse("2025-01-10T11:00:00Z"), Instant.parse("2025-01-10T10:00:00Z"))
+            .collectList()
+            .block())
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("from must be before to");
+    }
+
+    @Test
+    void findBusyIntervalsShouldReturnEmptyWhenOpaqueEventOutsideRequestedRange() {
+        // GIVEN: An OPAQUE event fully outside the requested time range
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL calendarURL = CalendarURL.from(user.id());
+
+        String uid = UUID.randomUUID().toString();
+        String event = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250110T120000Z
+            DTEND:20250110T123000Z
+            TRANSP:OPAQUE
+            SUMMARY:Opaque event outside range
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uid);
+
+        davTestHelper.upsertCalendar(user, event, uid);
+
+        // WHEN: Querying a non-overlapping time window
+        List<BusyInterval> busyIntervals = testee.findBusyIntervals(user.username(), calendarURL,
+                Instant.parse("2025-01-10T09:00:00Z"), Instant.parse("2025-01-10T11:00:00Z"))
+            .collectList()
+            .block();
+
+        // THEN: No busy interval is returned
+        assertThat(busyIntervals).isEmpty();
     }
 
     @Test
