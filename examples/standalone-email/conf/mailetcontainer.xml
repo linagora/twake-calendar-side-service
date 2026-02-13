@@ -1,0 +1,85 @@
+<?xml version="1.0"?>
+
+<!--
+  Minimal mailet pipeline for calendar/contact collection only.
+  - No relay
+  - No mailbox delivery
+  - Discard all messages after collection
+-->
+<mailetcontainer enableJmx="true">
+
+    <context>
+        <postmaster>postmaster</postmaster>
+    </context>
+
+    <spooler>
+        <threads>20</threads>
+        <errorRepository>postgres://var/mail/error/</errorRepository>
+    </spooler>
+
+    <processors>
+        <processor state="root" enableJmx="true">
+            <mailet match="All" class="PostmasterAlias"/>
+            <mailet match="All" class="ToProcessor">
+                <processor>transport</processor>
+            </mailet>
+        </processor>
+
+        <processor state="error" enableJmx="true">
+            <mailet match="All" class="MetricsMailet">
+                <metricName>mailetContainerErrors</metricName>
+            </mailet>
+            <mailet match="All" class="ToRepository">
+                <repositoryPath>postgres://var/mail/error/</repositoryPath>
+                <onMailetException>propagate</onMailetException>
+            </mailet>
+        </processor>
+
+        <processor state="transport" enableJmx="true">
+            <mailet match="All" class="RemoveMimeHeader">
+                <name>bcc</name>
+                <onMailetException>ignore</onMailetException>
+            </mailet>
+
+            <!-- ICAL pipeline for CalDAV collect -->
+            <mailet match="All" class="StripAttachment">
+                <mimeType>text/calendar</mimeType>
+                <attribute>rawIcalendar2</attribute>
+                <onMailetException>ignore</onMailetException>
+            </mailet>
+            <mailet match="All" class="MimeDecodingMailet">
+                <attribute>rawIcalendar2</attribute>
+                <onMailetException>ignore</onMailetException>
+            </mailet>
+            <mailet match="All" class="ICalendarParser">
+                <sourceAttribute>rawIcalendar2</sourceAttribute>
+                <destinationAttribute>icalendar2</destinationAttribute>
+                <onMailetException>ignore</onMailetException>
+            </mailet>
+            <mailet match="All" class="ICALToHeader">
+                <attribute>icalendar2</attribute>
+                <onMailetException>ignore</onMailetException>
+            </mailet>
+            <mailet match="All" class="org.apache.james.transport.mailets.ICALToJsonAttribute">
+                <source>icalendar2</source>
+                <destination>icalendarAsJson2</destination>
+                <rawSource>rawIcalendar2</rawSource>
+                <onMailetException>ignore</onMailetException>
+            </mailet>
+            <mailet match="All" class="com.linagora.tmail.mailet.CalDavCollect">
+                <source>icalendarAsJson2</source>
+            </mailet>
+            <!-- End of ICAL pipeline -->
+
+            <mailet match="All" class="ToProcessor">
+                <processor>contacts-collection</processor>
+            </mailet>
+        </processor>
+
+        <processor state="contacts-collection" enableJmx="true">
+            <mailet match="All" class="com.linagora.tmail.mailet.CardDavCollectedContact"/>
+            <mailet match="All" class="Null"/>
+        </processor>
+    </processors>
+
+</mailetcontainer>
