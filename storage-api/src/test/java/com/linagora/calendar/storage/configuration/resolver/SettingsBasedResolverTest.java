@@ -126,6 +126,15 @@ public class SettingsBasedResolverTest {
     }
 
     @Test
+    void timezoneReaderShouldReturnEmptyWhenTimeZoneIsJsonNull() {
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.putNull("timeZone");
+
+        Optional<ZoneId> result = SettingsBasedResolver.TimeZoneSettingReader.INSTANCE.parse(node);
+        assertThat(result).isEmpty();
+    }
+
+    @Test
     void twoUsersShouldFallbackToSecondUserSettingsWhenFirstUserErrors() {
         Username externalUser = Username.of("external@remote.com");
         Username senderUser = Username.of("sender@local.com");
