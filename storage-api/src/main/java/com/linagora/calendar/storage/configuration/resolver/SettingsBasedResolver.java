@@ -89,6 +89,7 @@ public interface SettingsBasedResolver {
         public Optional<ZoneId> parse(JsonNode jsonNode) {
             try {
                 return Optional.ofNullable(jsonNode.get(TIMEZONE_KEY))
+                    .filter(node -> !node.isNull())
                     .map(JsonNode::asText)
                     .map(ZoneId::of);
             } catch (Exception e) {
