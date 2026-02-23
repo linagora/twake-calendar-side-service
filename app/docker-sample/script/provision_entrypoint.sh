@@ -1,5 +1,11 @@
 #!/bin/sh
 
+echo "[provision] Installing curl..."
+apk add --no-cache curl
+
+echo "[provision] Patching PostgreSQL authentication..."
+sh /script/patch_postgres_auth.sh
+
 # Wait for Twake Calendar service to be up
 echo "Waiting for twake-calendar-side-service to be available..."
 
@@ -15,6 +21,6 @@ done
 
 # Run user provisioning
 echo "Provisioning users..."
-sh /provision/provision_users.sh
+sh /script/provision_users.sh
 echo "Provisioning resources..."
-sh /provision/provision_resources.sh
+sh /script/provision_resources.sh

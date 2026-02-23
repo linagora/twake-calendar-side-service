@@ -36,6 +36,7 @@ import org.apache.james.metrics.tests.RecordingMetricFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.ComposeContainer;
+import org.testcontainers.containers.Container;
 import org.testcontainers.containers.ContainerState;
 import org.testcontainers.containers.wait.strategy.Wait;
 
@@ -45,19 +46,21 @@ import com.linagora.calendar.storage.mongodb.MongoDBConfiguration;
 import com.linagora.calendar.storage.mongodb.MongoDBConnectionFactory;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
-import reactor.netty.http.client.HttpClient;
-
 public class DockerSabreDavSetup {
     public static final DockerSabreDavSetup SINGLETON = new DockerSabreDavSetup();
 
     private static final Logger LOGGER = LoggerFactory.getLogger(DockerSabreDavSetup.class);
+    private static final String POSTGRES_USERNAME = "username";
+    private static final String POSTGRES_PASSWORD = "password";
+    private static final String POSTGRES_DATABASE = "postgres";
 
     public enum DockerService {
         MOCK_ESN("esn", 1080),
         RABBITMQ("rabbitmq", 5672),
         RABBITMQ_ADMIN("rabbitmq", 15672),
         SABRE_DAV("sabre_dav", 80),
-        MONGO("mongo", 27017);
+        MONGO("mongo", 27017),
+        POSTGRES("postgres", 5432),;
 
         private final String serviceName;
         private final Integer port;
@@ -95,6 +98,8 @@ public class DockerSabreDavSetup {
                 .withExposedService(DockerService.RABBITMQ_ADMIN.serviceName(), DockerService.RABBITMQ_ADMIN.port())
                 .withExposedService(DockerService.SABRE_DAV.serviceName(), DockerService.SABRE_DAV.port())
                 .withExposedService(DockerService.MONGO.serviceName(), DockerService.MONGO.port())
+                .withExposedService(DockerService.POSTGRES.serviceName(), DockerService.POSTGRES.port(),
+                    Wait.forListeningPort().withStartupTimeout(Duration.ofMinutes(3)))
                 .withLogConsumer(DockerService.RABBITMQ.serviceName(), frame -> LOGGER.info("[SABRE_DAV] " + frame.getUtf8String()))
                 .waitingFor(DockerService.SABRE_DAV.serviceName(), Wait.forLogMessage(".*ready to handle connections.*", 1)
                     .withStartupTimeout(Duration.ofMinutes(5)));
@@ -105,6 +110,7 @@ public class DockerSabreDavSetup {
 
     public void start() {
         environment.start();
+        patchPostgresAuth();
         for (DockerService dockerService : DockerService.values()) {
             LOGGER.debug("Started service: {} with mapping port: {}", dockerService.serviceName(), getPort(dockerService));
         }
@@ -156,6 +162,7 @@ public class DockerSabreDavSetup {
             .setScheme("mongodb")
             .setHost(getHost(DockerService.MONGO))
             .setPort(getPort(DockerService.MONGO))
+            .setUserInfo(POSTGRES_USERNAME, POSTGRES_PASSWORD)
             .build()).get();
     }
 
@@ -210,12 +217,34 @@ public class DockerSabreDavSetup {
             .build();
     }
 
-    public HttpClient rabbitmqAdminHttpclient() {
-        return HttpClient.create()
-            .baseUrl(rabbitMqManagementUri().toString())
-            .headers(headers -> {
-                headers.add("Authorization", "Basic Y2FsZW5kYXI6Y2FsZW5kYXI="); // "calendar:calendar"
-                headers.add("Content-Type", "application/json");
-            });
+    /**
+     * Patch PostgreSQL SCRAM authentication to be compatible with MongoDB clients.
+     * <p>
+     * mongo-c-driver uses a 28-byte salt for SCRAM-SHA-256, while PostgreSQL uses 16 bytes.
+     * We update `pg_authid.rolpassword` with a MongoDB-compatible hash to avoid
+     * authentication issues during integration tests.
+     */
+    private void patchPostgresAuth() {
+        ContainerState postgres = environment
+            .getContainerByServiceName(DockerService.POSTGRES.serviceName())
+            .orElseThrow();
+
+        try {
+            Container.ExecResult execResult = postgres.execInContainer(
+                "psql",
+                "-U", POSTGRES_USERNAME,
+                "-d", POSTGRES_DATABASE,
+                "-c",
+                "UPDATE pg_authid " +
+                    "SET rolpassword = 'SCRAM-SHA-256$4096:dm4MIMl6+sUG6p/eeOGsYEYFs1y7UcbrLnbBOg==$cRTjw3T3qpNaLceUY9UVoUC87LJhcIf/mLaNS0sI/qo=:8Fc3Chlq4vXgDzG2xnBA4ds0gnAt6KLBKd8yFeHRLBE=' " +
+                    "WHERE rolname = '" + POSTGRES_USERNAME + "';");
+            if (execResult.getExitCode() == 0) {
+                LOGGER.info("PostgreSQL pg_authid patched successfully");
+            } else {
+                throw new RuntimeException("PostgreSQL pg_authid failed with exit code " + execResult.getExitCode() + " " + execResult.getStderr());
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to patch PostgreSQL pg_authid", e);
+        }
     }
 }
