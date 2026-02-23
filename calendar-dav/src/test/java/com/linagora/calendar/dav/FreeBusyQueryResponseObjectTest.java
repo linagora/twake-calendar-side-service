@@ -20,10 +20,10 @@ package com.linagora.calendar.dav;
 
 import static com.linagora.calendar.dav.FreeBusyQueryResponseObject.BusyInterval;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
@@ -39,7 +39,7 @@ class FreeBusyQueryResponseObjectTest {
             END:VCALENDAR
             """.getBytes(StandardCharsets.UTF_8));
 
-        assertThat(testee.busyIntervals(Instant.parse("2025-01-10T09:00:00Z"), Instant.parse("2025-01-10T11:00:00Z")))
+        assertThat(testee.busyIntervals())
             .containsExactly(new BusyInterval(Instant.parse("2025-01-10T10:00:00Z"), Instant.parse("2025-01-10T10:30:00Z")));
     }
 
@@ -53,7 +53,7 @@ class FreeBusyQueryResponseObjectTest {
             END:VCALENDAR
             """.getBytes(StandardCharsets.UTF_8));
 
-        assertThat(testee.busyIntervals(Instant.parse("2025-01-10T09:00:00Z"), Instant.parse("2025-01-10T11:00:00Z")))
+        assertThat(testee.busyIntervals())
             .containsExactly(new BusyInterval(Instant.parse("2025-01-10T10:00:00Z"), Instant.parse("2025-01-10T10:30:00Z")));
     }
 
@@ -67,7 +67,7 @@ class FreeBusyQueryResponseObjectTest {
             END:VCALENDAR
             """.getBytes(StandardCharsets.UTF_8));
 
-        assertThat(testee.busyIntervals(Instant.parse("2025-01-10T09:00:00Z"), Instant.parse("2025-01-10T12:00:00Z")))
+        assertThat(testee.busyIntervals())
             .containsExactly(new BusyInterval(Instant.parse("2025-01-10T10:00:00Z"), Instant.parse("2025-01-10T10:30:00Z")),
                 new BusyInterval(Instant.parse("2025-01-10T11:00:00Z"), Instant.parse("2025-01-10T11:15:00Z")));
     }
@@ -83,7 +83,7 @@ class FreeBusyQueryResponseObjectTest {
             END:VCALENDAR
             """.getBytes(StandardCharsets.UTF_8));
 
-        assertThat(testee.busyIntervals(Instant.parse("2025-01-10T09:00:00Z"), Instant.parse("2025-01-10T12:00:00Z")))
+        assertThat(testee.busyIntervals())
             .containsExactly(new BusyInterval(
                     Instant.parse("2025-01-10T10:00:00Z"),
                     Instant.parse("2025-01-10T10:30:00Z")),
@@ -93,7 +93,7 @@ class FreeBusyQueryResponseObjectTest {
     }
 
     @Test
-    void busyIntervalsShouldClipIntervalsToGivenRange() {
+    void busyIntervalsShouldReturnIntervalsAsReturnedByFreeBusy() {
         FreeBusyQueryResponseObject testee = new FreeBusyQueryResponseObject("""
             BEGIN:VCALENDAR
             BEGIN:VFREEBUSY
@@ -102,12 +102,12 @@ class FreeBusyQueryResponseObjectTest {
             END:VCALENDAR
             """.getBytes(StandardCharsets.UTF_8));
 
-        assertThat(testee.busyIntervals(Instant.parse("2025-01-10T10:00:00Z"), Instant.parse("2025-01-10T11:00:00Z")))
-            .containsExactly(new BusyInterval(Instant.parse("2025-01-10T10:00:00Z"), Instant.parse("2025-01-10T10:30:00Z")));
+        assertThat(testee.busyIntervals())
+            .containsExactly(new BusyInterval(Instant.parse("2025-01-10T09:30:00Z"), Instant.parse("2025-01-10T10:30:00Z")));
     }
 
     @Test
-    void busyIntervalsShouldIgnoreInvalidPeriods() {
+    void busyIntervalsShouldThrowWhenFreeBusyPeriodIsInvalid() {
         FreeBusyQueryResponseObject testee = new FreeBusyQueryResponseObject("""
             BEGIN:VCALENDAR
             BEGIN:VFREEBUSY
@@ -116,9 +116,27 @@ class FreeBusyQueryResponseObjectTest {
             END:VCALENDAR
             """.getBytes(StandardCharsets.UTF_8));
 
-        List<BusyInterval> result = testee.busyIntervals(Instant.parse("2025-01-10T09:00:00Z"), Instant.parse("2025-01-10T11:00:00Z"));
+        assertThatThrownBy(testee::busyIntervals)
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("Invalid FREEBUSY value: invalid-period");
+    }
 
-        assertThat(result).isEmpty();
+
+    @Test
+    void busyIntervalsShouldParseMultipleFreeBusyProperties() {
+        FreeBusyQueryResponseObject testee = new FreeBusyQueryResponseObject("""
+            BEGIN:VCALENDAR
+            BEGIN:VFREEBUSY
+            FREEBUSY:20250110T100000Z/20250110T103000Z
+            FREEBUSY:20250110T110000Z/20250110T113000Z
+            END:VFREEBUSY
+            END:VCALENDAR
+            """.getBytes(StandardCharsets.UTF_8));
+
+        assertThat(testee.busyIntervals())
+            .containsExactly(
+                new BusyInterval(Instant.parse("2025-01-10T10:00:00Z"), Instant.parse("2025-01-10T10:30:00Z")),
+                new BusyInterval(Instant.parse("2025-01-10T11:00:00Z"), Instant.parse("2025-01-10T11:30:00Z")));
     }
 
     @Test
@@ -131,7 +149,7 @@ class FreeBusyQueryResponseObjectTest {
             END:VCALENDAR
             """.getBytes(StandardCharsets.UTF_8));
 
-        assertThat(testee.busyIntervals(Instant.parse("2025-01-10T09:00:00Z"), Instant.parse("2025-01-10T11:00:00Z")))
+        assertThat(testee.busyIntervals())
             .isEmpty();
     }
 }

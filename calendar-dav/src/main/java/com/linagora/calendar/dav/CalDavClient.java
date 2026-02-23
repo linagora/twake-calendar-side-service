@@ -25,7 +25,6 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 
@@ -49,7 +48,6 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.api.CalendarUtil;
-import com.linagora.calendar.dav.FreeBusyQueryResponseObject.BusyInterval;
 import com.linagora.calendar.dav.dto.CalendarListResponse;
 import com.linagora.calendar.dav.dto.CalendarReportJsonResponse;
 import com.linagora.calendar.dav.dto.CalendarReportXmlResponse;
@@ -661,10 +659,7 @@ public class CalDavClient extends DavClient {
         Preconditions.checkArgument(from.isBefore(to), "from must be before to");
 
         return freeBusyQuery(username, calendarURL, from, to)
-            .flatMapIterable(response -> response.busyIntervals(from, to))
-            .distinct()
-            .sort(Comparator.comparing(BusyInterval::start)
-                .thenComparing(BusyInterval::end));
+            .flatMapIterable(FreeBusyQueryResponseObject::busyIntervals);
     }
 
     private Mono<FreeBusyQueryResponseObject> freeBusyQuery(Username username, CalendarURL calendarURL, Instant from, Instant to) {

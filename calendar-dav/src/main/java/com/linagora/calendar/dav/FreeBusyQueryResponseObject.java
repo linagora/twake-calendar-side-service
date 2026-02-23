@@ -18,121 +18,99 @@
 
 package com.linagora.calendar.dav;
 
+import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.time.temporal.Temporal;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
 
+import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.threeten.extra.Interval;
 
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.storage.event.EventParseUtils;
 
-import net.fortuna.ical4j.model.TemporalAdapter;
+import net.fortuna.ical4j.data.UnfoldingReader;
+import net.fortuna.ical4j.model.CalendarDateFormat;
+import net.fortuna.ical4j.model.Period;
+import net.fortuna.ical4j.model.PeriodList;
 
 public record FreeBusyQueryResponseObject(byte[] icsBody) {
-    private static final Logger LOGGER = LoggerFactory.getLogger(FreeBusyQueryResponseObject.class);
-    private static final String FREE_BUSY_PREFIX = "FREEBUSY";
+    private static final String FREE_BUSY_PREFIX = "FREEBUSY:";
 
     public record BusyInterval(Instant start, Instant end) {
+        public static BusyInterval from(Period<? extends Temporal> period) {
+            return new BusyInterval(temporalToInstant(period.getStart()), temporalToInstant(period.getEnd()));
+        }
+
+        private static Instant temporalToInstant(Temporal temporal) {
+            return Optional.of(temporal)
+                .flatMap(EventParseUtils::temporalToZonedDateTime)
+                .map(ZonedDateTime::toInstant)
+                .orElseThrow();
+        }
     }
 
     public FreeBusyQueryResponseObject {
         Preconditions.checkArgument(icsBody != null, "icsBody must not be null");
     }
 
-    public List<BusyInterval> busyIntervals(Instant from, Instant to) {
-        Preconditions.checkArgument(from != null, "from must not be null");
-        Preconditions.checkArgument(to != null, "to must not be null");
-        Preconditions.checkArgument(from.isBefore(to), "from must be before to");
-
-        Interval queryRange = Interval.of(from, to);
-
-        return unfoldedLines()
-            .map(String::trim)
-            .filter(line -> Strings.CI.startsWith(line, FREE_BUSY_PREFIX))
-            .map(line -> StringUtils.substringAfter(line, ":"))
-            .filter(StringUtils::isNotBlank)
-            .flatMap(this::toIntervals)
-            .flatMap(interval -> clipToRange(interval, queryRange).stream())
-            .map(interval -> new BusyInterval(interval.getStart(), interval.getEnd()))
+    public List<BusyInterval> busyIntervals() {
+        return extractFreeBusyValues()
+            .flatMap(this::toPeriods)
+            .map(BusyInterval::from)
             .toList();
     }
 
-    private Stream<String> unfoldedLines() {
-        String unfoldedIcs = new String(icsBody, StandardCharsets.UTF_8)
-            .replaceAll("\\r?\\n[ \\t]", "");
-        return Arrays.stream(unfoldedIcs.split("\\R"));
-    }
-
-    private Stream<Interval> toIntervals(String freeBusyValue) {
-        return Arrays.stream(StringUtils.split(freeBusyValue, ','))
+    private Stream<String> extractFreeBusyValues() {
+        // Do not parse FREEBUSY via ical4j FreeBusy#getValue()/getIntervals() here:
+        // Bug reported: https://github.com/ical4j/ical4j/issues/845
+        // Current ical4j behavior may shift UTC values depending on default timezone.
+        return unfoldedLines()
             .map(String::trim)
-            .filter(StringUtils::isNotBlank)
-            .map(this::toInterval)
-            .flatMap(Optional::stream);
+            .filter(this::isFreeBusyLine)
+            .map(this::toFreeBusyValue)
+            .filter(StringUtils::isNotBlank);
     }
 
-    private Optional<Interval> toInterval(String period) {
-        String[] boundaries = StringUtils.split(period, '/');
-        if (boundaries == null || boundaries.length != 2) {
-            LOGGER.warn("Invalid FREEBUSY period '{}'", period);
-            return Optional.empty();
+    private Stream<String> unfoldedLines() {
+        try (BufferedReader reader = new BufferedReader(new UnfoldingReader(utf8Reader(), IOUtils.DEFAULT_BUFFER_SIZE, true),
+            IOUtils.DEFAULT_BUFFER_SIZE)) {
+            return reader.lines().toList().stream();
+        } catch (IOException e) {
+            throw new UncheckedIOException("Unable to unfold ICS body", e);
         }
-
-        return parseDateTime(boundaries[0])
-            .flatMap(start -> parsePeriodEnd(boundaries[1], start)
-                .filter(start::isBefore)
-                .map(end -> Interval.of(start, end)))
-            .or(() -> {
-                LOGGER.warn("Invalid FREEBUSY period boundaries '{}'", period);
-                return Optional.empty();
-            });
     }
 
-    private Optional<Instant> parsePeriodEnd(String value, Instant start) {
-        return Strings.CS.startsWith(value, "P")
-            ? parseDuration(value).map(start::plus)
-            : parseDateTime(value);
+    private Reader utf8Reader() {
+        return new InputStreamReader(new ByteArrayInputStream(icsBody), StandardCharsets.UTF_8);
     }
 
-    private Optional<Duration> parseDuration(String value) {
+    private boolean isFreeBusyLine(String line) {
+        return Strings.CS.startsWith(line, FREE_BUSY_PREFIX);
+    }
+
+    private String toFreeBusyValue(String line) {
+        return StringUtils.substringAfter(line, ":");
+    }
+
+    private Stream<Period<Temporal>> toPeriods(String freeBusyValue) {
         try {
-            return Optional.of(Duration.parse(value));
+            return PeriodList.parse(freeBusyValue, CalendarDateFormat.UTC_DATE_TIME_FORMAT)
+                .getPeriods()
+                .stream();
         } catch (RuntimeException e) {
-            LOGGER.warn("Invalid FREEBUSY duration '{}': {}", value, e.getMessage());
-            return Optional.empty();
+            throw new IllegalArgumentException("Invalid FREEBUSY value: " + freeBusyValue, e);
         }
     }
 
-    private Optional<Instant> parseDateTime(String value) {
-        try {
-            Temporal temporal = (Temporal) TemporalAdapter.parse(value).getTemporal();
-            return EventParseUtils.temporalToZonedDateTime(temporal)
-                .map(ZonedDateTime::toInstant);
-        } catch (RuntimeException e) {
-            LOGGER.warn("Cannot parse FREEBUSY datetime '{}': {}", value, e.getMessage());
-            return Optional.empty();
-        }
-    }
-
-    private Optional<Interval> clipToRange(Interval candidate, Interval queryRange) {
-        if (!candidate.overlaps(queryRange)) {
-            return Optional.empty();
-        }
-        Interval clipped = candidate.intersection(queryRange);
-        if (clipped.isEmpty()) {
-            return Optional.empty();
-        }
-        return Optional.of(clipped);
-    }
 }
