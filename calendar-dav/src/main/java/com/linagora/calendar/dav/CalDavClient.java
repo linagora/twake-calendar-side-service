@@ -21,6 +21,9 @@ package com.linagora.calendar.dav;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -123,6 +126,8 @@ public class CalDavClient extends DavClient {
     private static final String CONTENT_TYPE_JSON = "application/json";
     private static final HttpMethod REPORT_METHOD = HttpMethod.valueOf("REPORT");
     private static final AsciiString HEADER_DEPTH = AsciiString.cached("Depth");
+    private static final DateTimeFormatter CALDAV_UTC_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
+        .withZone(ZoneOffset.UTC);
 
     private final Duration imipCallbackResponseTimeout;
 
@@ -643,6 +648,49 @@ public class CalDavClient extends DavClient {
                         statusCode,
                         calendarURL.asUri().toASCIIString(),
                         errorBody))));
+            });
+    }
+
+    public Flux<FreeBusyQueryResponseObject.BusyInterval> findBusyIntervals(Username username, CalendarURL calendarURL, Instant from, Instant to) {
+        Preconditions.checkArgument(username != null, "username must not be null");
+        Preconditions.checkArgument(calendarURL != null, "calendarURL must not be null");
+        Preconditions.checkArgument(from != null, "from must not be null");
+        Preconditions.checkArgument(to != null, "to must not be null");
+        Preconditions.checkArgument(from.isBefore(to), "from must be before to");
+
+        return freeBusyQuery(username, calendarURL, from, to)
+            .flatMapIterable(FreeBusyQueryResponseObject::busyIntervals);
+    }
+
+    private Mono<FreeBusyQueryResponseObject> freeBusyQuery(Username username, CalendarURL calendarURL, Instant from, Instant to) {
+        String requestBody = """
+            <C:free-busy-query xmlns:C="urn:ietf:params:xml:ns:caldav">
+              <C:time-range start="%s" end="%s"/>
+            </C:free-busy-query>
+            """.formatted(CALDAV_UTC_FORMAT.format(from), CALDAV_UTC_FORMAT.format(to));
+
+        return httpClientWithImpersonation(username)
+            .headers(headers -> {
+                headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_XML);
+                headers.add(HttpHeaderNames.ACCEPT, "text/calendar");
+                headers.add(HEADER_DEPTH, "1");
+            })
+            .request(REPORT_METHOD)
+            .uri(calendarURL.asUri().toASCIIString())
+            .send(ByteBufMono.fromString(Mono.just(requestBody)))
+            .responseSingle((response, body) -> {
+                int statusCode = response.status().code();
+
+                if (statusCode == HttpStatus.SC_OK) {
+                    return body.asByteArray().map(FreeBusyQueryResponseObject::new);
+                }
+
+                return body.asString(StandardCharsets.UTF_8)
+                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .flatMap(errorBody -> Mono.error(new DavClientException("""
+                        Unexpected status code: %d when executing RFC 4791 free-busy-query REPORT on '%s'
+                        %s
+                        """.formatted(statusCode, calendarURL.asUri().toASCIIString(), errorBody))));
             });
     }
 
