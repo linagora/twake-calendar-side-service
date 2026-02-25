@@ -21,19 +21,25 @@ package com.linagora.calendar.amqp;
 import static com.linagora.calendar.amqp.EventFieldConverter.extractCalendarURL;
 import static com.linagora.calendar.smtp.template.MimeAttachment.ATTACHMENT_DISPOSITION_TYPE;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.Domain;
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
 import org.apache.james.mailbox.model.ContentType;
 import org.apache.james.mime4j.dom.Message;
+import org.apache.james.mime4j.message.BodyPartBuilder;
+import org.apache.james.mime4j.message.MultipartBuilder;
 import org.apache.james.user.api.UsersRepository;
 import org.apache.james.util.AuditTrail;
 import org.slf4j.Logger;
@@ -63,6 +69,7 @@ import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.ResourceDAO;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.ResolvedSettings;
+import com.linagora.calendar.storage.event.EventFields.Person;
 import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.model.ResourceId;
 
@@ -306,6 +313,43 @@ public class EventMailHandler {
         }
     }
 
+    static class PublicAgendaEventMessageGenerator implements EventMessageGenerator {
+        private final CalendarEventNotificationEmail event;
+
+        public PublicAgendaEventMessageGenerator(CalendarEventNotificationEmail event) {
+            this.event = event;
+        }
+
+        // TODO https://github.com/linagora/twake-calendar-side-service/issues/605
+        @Override
+        public Mono<Message> generate(ResolvedSettings resolvedSettings) {
+            return Mono.fromCallable(() -> {
+                String organizerDisplayName = Optional.ofNullable(EventParseUtils.getOrganizer(event.getFirstVEvent()))
+                    .map(Person::cn)
+                    .filter(StringUtils::isNotBlank)
+                    .orElse(event.senderEmail().asString());
+                String subject = organizerDisplayName + " has accepted your event proposal";
+                String body = "Public agenda event notification.";
+
+                BodyPartBuilder bodyPart = BodyPartBuilder.create()
+                    .setContentTransferEncoding("base64")
+                    .setBody(body, "plain", StandardCharsets.UTF_8);
+
+                MultipartBuilder multipartBuilder = MultipartBuilder.create("mixed")
+                    .addBodyPart(bodyPart.build());
+
+                MailAddress fromAsMailAddress = event.senderEmail();
+                return Message.Builder.of()
+                    .setMessageId("<" + UUID.randomUUID() + "@" + Optional.of(fromAsMailAddress).map(MailAddress::getDomain).map(Domain::asString).orElse("") + ">")
+                    .setSubject(subject)
+                    .setBody(multipartBuilder.build())
+                    .setFrom(event.senderEmail().asString())
+                    .setTo(event.recipientEmail().asString())
+                    .build();
+            });
+        }
+    }
+
     public Mono<Void> handInviteEvent(CalendarEventInviteNotificationEmail event) {
         MailAddress recipientEmail = event.base().recipientEmail();
         Username recipientUser = Username.fromMailAddress(recipientEmail);
@@ -354,6 +398,12 @@ public class EventMailHandler {
         MailAddress recipientEmail = event.base().recipientEmail();
         Username recipientUser = Username.fromMailAddress(recipientEmail);
         return handleEvent(new CounterEventMessageGenerator(event, recipientUser), recipientUser, event.base().senderEmail());
+    }
+
+    public Mono<Void> handlePublicAgendaEvent(CalendarEventNotificationEmail event) {
+        MailAddress recipientEmail = event.recipientEmail();
+        Username recipientUser = Username.fromMailAddress(recipientEmail);
+        return handleEvent(new PublicAgendaEventMessageGenerator(event), recipientUser, event.senderEmail());
     }
 
     private Mono<Void> handleEvent(EventMessageGenerator eventMessageGenerator, Username recipientUser, MailAddress senderEmail) {
