@@ -19,6 +19,7 @@
 package com.linagora.calendar.amqp;
 
 import static com.linagora.calendar.amqp.CalendarAmqpModule.INJECT_KEY_DAV;
+import static com.linagora.calendar.amqp.model.CalendarEventNotificationEmail.GET_FIRST_VEVENT_FUNCTION;
 import static org.apache.james.backends.rabbitmq.Constants.DURABLE;
 import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
 import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
@@ -28,6 +29,7 @@ import java.util.function.Supplier;
 
 import jakarta.inject.Inject;
 
+import org.apache.commons.lang3.BooleanUtils;
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.ReceiverProvider;
@@ -44,11 +46,14 @@ import com.google.inject.name.Named;
 import com.linagora.calendar.amqp.model.CalendarEventCancelNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventCounterNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventInviteNotificationEmail;
+import com.linagora.calendar.amqp.model.CalendarEventNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventReplyNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventUpdateNotificationEmail;
 import com.linagora.calendar.smtp.EventEmailFilter;
+import com.linagora.calendar.storage.event.EventParseUtils;
 import com.rabbitmq.client.BuiltinExchangeType;
 
+import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.property.Method;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
@@ -67,6 +72,8 @@ public class EventEmailConsumer implements Closeable, Startable {
     public static final String QUEUE_NAME = "tcalendar:event:notificationEmail:send";
     public static final String DEAD_LETTER_QUEUE = "tcalendar:event:notificationEmail:send:dead-letter";
 
+    private static final String X_PUBLICLY_CREATED_HEADER = "X-PUBLICLY-CREATED";
+    private static final boolean PUBLIC_AGENDA_EVENT = true;
     private static final Logger LOGGER = LoggerFactory.getLogger(EventEmailConsumer.class);
     private static final boolean REQUEUE_ON_NACK = true;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module());
@@ -79,6 +86,7 @@ public class EventEmailConsumer implements Closeable, Startable {
     private final Metric replySentMetric;
     private final Metric cancelSentMetric;
     private final Metric counterSentMetric;
+    private final Metric publicAgendaSentMetric;
     private final MetricFactory metricFactory;
 
     private Disposable consumeDisposable;
@@ -118,6 +126,7 @@ public class EventEmailConsumer implements Closeable, Startable {
         cancelSentMetric = metricFactory.generate("calendar.imip.cancel");
         updateSentMetric = metricFactory.generate("calendar.imip.update");
         counterSentMetric = metricFactory.generate("calendar.imip.counter");
+        publicAgendaSentMetric = metricFactory.generate("calendar.imip.public-agenda");
     }
 
     public void init() {
@@ -170,6 +179,13 @@ public class EventEmailConsumer implements Closeable, Startable {
     private Mono<Void> handleMessage(CalendarEventNotificationEmailDTO calendarEventMessage) {
         return switch (calendarEventMessage.method().getValue()) {
             case Method.VALUE_REQUEST -> {
+                if (publicAgendaEvent(calendarEventMessage.event())) {
+                    LOGGER.info("Received public agenda calendar event message with method REQUEST and eventPath {}",
+                        calendarEventMessage.eventPath());
+                    yield eventMailHandler.handlePublicAgendaEvent(CalendarEventNotificationEmail.from(calendarEventMessage))
+                        .doOnSuccess(any -> publicAgendaSentMetric.increment());
+                }
+
                 boolean isNewEvent = calendarEventMessage.isNewEvent().orElse(false);
                 if (isNewEvent) {
                     LOGGER.info("Received new calendar event message with method REQUEST and eventPath {}", calendarEventMessage.eventPath());
@@ -204,5 +220,11 @@ public class EventEmailConsumer implements Closeable, Startable {
             default -> throw new IllegalArgumentException("Unknown method: " + calendarEventMessage.method());
         };
     }
-}
 
+    private boolean publicAgendaEvent(Calendar calendar) {
+        return EventParseUtils.getPropertyValueIgnoreCase(GET_FIRST_VEVENT_FUNCTION.apply(calendar),
+                X_PUBLICLY_CREATED_HEADER)
+            .map(BooleanUtils::toBoolean)
+            .orElse(!PUBLIC_AGENDA_EVENT);
+    }
+}
