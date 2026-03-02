@@ -20,6 +20,7 @@ package com.linagora.calendar.storage.booking;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Map;
 import java.util.Optional;
 
 import jakarta.inject.Inject;
@@ -75,39 +76,37 @@ public class MemoryBookingLinkDAO implements BookingLinkDAO {
 
     @Override
     public Mono<BookingLink> update(Username username, BookingLinkPublicId publicId, BookingLinkPatchRequest request) {
-        return findByPublicId(username, publicId)
-            .switchIfEmpty(Mono.error(new BookingLinkNotFoundException(publicId)))
-            .map(existing -> {
+        return Mono.fromCallable(() -> {
+            Instant now = clock.instant();
+            BookingLink updated = store.row(username).computeIfPresent(publicId, (ignored, existing) -> {
                 BookingLink.Builder builder = existing.toBuilder();
                 request.calendarUrl().ifPresent(builder::calendarUrl);
                 request.duration().ifPresent(builder::duration);
                 request.active().ifPresent(builder::active);
                 request.availabilityRules().ifPresent(rules -> builder.availabilityRules(Optional.of(rules)));
-
-                BookingLink updated = builder
-                    .updatedAt(clock.instant())
-                    .build();
-
-                store.put(username, publicId, updated);
-                return updated;
+                return builder.updatedAt(now).build();
             });
+
+            if (updated == null) {
+                throw new BookingLinkNotFoundException(publicId);
+            }
+            return updated;
+        });
     }
 
     @Override
     public Mono<BookingLinkPublicId> resetPublicId(Username username, BookingLinkPublicId publicId) {
-        return findByPublicId(username, publicId)
-            .switchIfEmpty(Mono.error(new BookingLinkNotFoundException(publicId)))
-            .map(existing -> {
-                BookingLinkPublicId newPublicId = BookingLinkPublicId.generate();
-                BookingLink updated = existing.toBuilder()
-                    .publicId(newPublicId)
-                    .updatedAt(clock.instant())
-                    .build();
-
-                store.row(username).remove(publicId);
-                store.put(username, newPublicId, updated);
-                return newPublicId;
-            });
+        return Mono.fromCallable(() -> {
+            Map<BookingLinkPublicId, BookingLink> userStore = store.row(username);
+            BookingLink existing = Optional.ofNullable(userStore.remove(publicId))
+                .orElseThrow(() -> new BookingLinkNotFoundException(publicId));
+            BookingLinkPublicId newPublicId = BookingLinkPublicId.generate();
+            userStore.put(newPublicId, existing.toBuilder()
+                .publicId(newPublicId)
+                .updatedAt(clock.instant())
+                .build());
+            return newPublicId;
+        });
     }
 
     @Override
