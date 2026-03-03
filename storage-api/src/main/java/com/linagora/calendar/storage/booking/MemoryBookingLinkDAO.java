@@ -70,6 +70,11 @@ public class MemoryBookingLinkDAO implements BookingLinkDAO {
     }
 
     @Override
+    public Mono<BookingLink> findByPublicId(BookingLinkPublicId publicId) {
+        return Mono.justOrEmpty(store.column(publicId).values().stream().findFirst());
+    }
+
+    @Override
     public Flux<BookingLink> findByUsername(Username username) {
         return Flux.fromIterable(store.row(username).values());
     }

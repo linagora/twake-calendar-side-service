@@ -44,6 +44,8 @@ import com.linagora.calendar.storage.OpenPaaSDomainList;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.ResourceDAO;
 import com.linagora.calendar.storage.UploadedFileDAO;
+import com.linagora.calendar.storage.booking.BookingLinkDAO;
+import com.linagora.calendar.storage.booking.MemoryBookingLinkDAO;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
 import com.linagora.calendar.storage.secretlink.SecretLinkStore;
 import com.linagora.tmail.james.jmap.ticket.TicketStore;
@@ -80,6 +82,10 @@ public class MongoDBStorageModule extends AbstractModule {
 
         bind(MongoDBTicketDAO.class).in(Scopes.SINGLETON);
         bind(TicketStore.class).to(MongoDBTicketDAO.class);
+
+        // TODO: https://github.com/linagora/twake-calendar-side-service/issues/600
+        bind(MemoryBookingLinkDAO.class).in(Scopes.SINGLETON);
+        bind(BookingLinkDAO.class).to(MemoryBookingLinkDAO.class);
 
         Multibinder.newSetBinder(binder(), HealthCheck.class)
             .addBinding()
