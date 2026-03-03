@@ -30,6 +30,7 @@ import java.util.Optional;
 
 import org.apache.james.core.Username;
 import org.apache.james.utils.UpdatableTickingClock;
+import org.apache.james.util.ValuePatch;
 import org.junit.jupiter.api.Test;
 
 import com.linagora.calendar.api.booking.AvailabilityRule.WeeklyAvailabilityRule;
@@ -146,7 +147,7 @@ public interface BookingLinkDAOContract {
             Optional.of(UPDATED_CALENDAR_URL),
             Optional.empty(),
             Optional.empty(),
-            Optional.empty());
+            ValuePatch.keep());
 
         assertThatThrownBy(() -> testee().update(USER_1, new BookingLinkPublicId("missing-public-id"), patchRequest).block())
             .isInstanceOf(BookingLinkNotFoundException.class);
@@ -159,7 +160,7 @@ public interface BookingLinkDAOContract {
             Optional.of(UPDATED_CALENDAR_URL),
             Optional.empty(),
             Optional.empty(),
-            Optional.empty());
+            ValuePatch.keep());
 
         assertThatThrownBy(() -> testee().update(USER_2, inserted.publicId(), patchRequest).block())
             .isInstanceOf(BookingLinkNotFoundException.class);
@@ -172,7 +173,7 @@ public interface BookingLinkDAOContract {
             Optional.of(UPDATED_CALENDAR_URL),
             Optional.empty(),
             Optional.empty(),
-            Optional.empty());
+            ValuePatch.keep());
 
         assertThatThrownBy(() -> testee().update(USER_2, inserted.publicId(), patchRequest).block())
             .isInstanceOf(BookingLinkNotFoundException.class);
@@ -188,7 +189,7 @@ public interface BookingLinkDAOContract {
             Optional.of(UPDATED_CALENDAR_URL),
             Optional.of(UPDATED_DURATION),
             Optional.of(!ACTIVE),
-            Optional.of(UPDATED_AVAILABILITY_RULES));
+            ValuePatch.modifyTo(UPDATED_AVAILABILITY_RULES));
         clock().setInstant(inserted.updatedAt().plusSeconds(1));
 
         BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
@@ -214,7 +215,7 @@ public interface BookingLinkDAOContract {
             Optional.empty(),
             Optional.of(UPDATED_DURATION),
             Optional.empty(),
-            Optional.empty());
+            ValuePatch.keep());
 
         assertThat(testee().findByUsername(USER_1).collectList().block())
             .hasSize(1);
@@ -231,6 +232,20 @@ public interface BookingLinkDAOContract {
             .isEqualTo(inserted);
         assertThat(updated.duration())
             .isEqualTo(UPDATED_DURATION);
+    }
+
+    @Test
+    default void updateShouldAllowResetAvailabilityRules() {
+        BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
+        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            ValuePatch.remove());
+
+        BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
+
+        assertThat(updated.availabilityRules()).isEmpty();
     }
 
     @Test

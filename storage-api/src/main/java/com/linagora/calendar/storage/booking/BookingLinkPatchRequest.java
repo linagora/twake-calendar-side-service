@@ -21,6 +21,8 @@ package com.linagora.calendar.storage.booking;
 import java.time.Duration;
 import java.util.Optional;
 
+import org.apache.james.util.ValuePatch;
+
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.storage.CalendarURL;
@@ -28,7 +30,7 @@ import com.linagora.calendar.storage.CalendarURL;
 public record BookingLinkPatchRequest(Optional<CalendarURL> calendarUrl,
                                       Optional<Duration> duration,
                                       Optional<Boolean> active,
-                                      Optional<AvailabilityRules> availabilityRules) {
+                                      ValuePatch<AvailabilityRules> availabilityRules) {
     public BookingLinkPatchRequest {
         Preconditions.checkNotNull(calendarUrl, "'calendarUrl' must not be null");
         Preconditions.checkNotNull(duration, "'eventDuration' must not be null");
@@ -39,6 +41,6 @@ public record BookingLinkPatchRequest(Optional<CalendarURL> calendarUrl,
         Preconditions.checkArgument(calendarUrl.isPresent()
             || duration.isPresent()
             || active.isPresent()
-            || availabilityRules.isPresent(), "At least one updatable field is required");
+            || !availabilityRules.isKept(), "At least one updatable field is required");
     }
 }
