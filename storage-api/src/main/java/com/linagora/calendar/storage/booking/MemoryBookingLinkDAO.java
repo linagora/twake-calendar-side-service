@@ -80,9 +80,9 @@ public class MemoryBookingLinkDAO implements BookingLinkDAO {
             Instant now = clock.instant();
             BookingLink updated = store.row(username).computeIfPresent(publicId, (ignored, existing) -> {
                 BookingLink.Builder builder = existing.toBuilder();
-                request.calendarUrl().ifPresent(builder::calendarUrl);
-                request.duration().ifPresent(builder::duration);
-                request.active().ifPresent(builder::active);
+                builder.calendarUrl(request.calendarUrl().getOrElse(existing.calendarUrl()));
+                builder.duration(request.duration().getOrElse(existing.duration()));
+                builder.active(request.active().getOrElse(existing.active()));
                 builder.availabilityRules(request.availabilityRules().notKeptOrElse(existing.availabilityRules()));
                 return builder.updatedAt(now).build();
             });

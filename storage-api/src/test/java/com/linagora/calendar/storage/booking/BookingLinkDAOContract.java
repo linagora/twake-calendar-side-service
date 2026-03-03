@@ -144,9 +144,9 @@ public interface BookingLinkDAOContract {
     @Test
     default void updateShouldFailWhenPublicIdDoesNotExist() {
         BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            Optional.of(UPDATED_CALENDAR_URL),
-            Optional.empty(),
-            Optional.empty(),
+            ValuePatch.modifyTo(UPDATED_CALENDAR_URL),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
             ValuePatch.keep());
 
         assertThatThrownBy(() -> testee().update(USER_1, new BookingLinkPublicId("missing-public-id"), patchRequest).block())
@@ -157,9 +157,9 @@ public interface BookingLinkDAOContract {
     default void updateShouldFailWhenPublicIdBelongsToAnotherUsername() {
         BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
         BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            Optional.of(UPDATED_CALENDAR_URL),
-            Optional.empty(),
-            Optional.empty(),
+            ValuePatch.modifyTo(UPDATED_CALENDAR_URL),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
             ValuePatch.keep());
 
         assertThatThrownBy(() -> testee().update(USER_2, inserted.publicId(), patchRequest).block())
@@ -170,9 +170,9 @@ public interface BookingLinkDAOContract {
     default void updateFailureShouldNotChangeExistingData() {
         BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
         BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            Optional.of(UPDATED_CALENDAR_URL),
-            Optional.empty(),
-            Optional.empty(),
+            ValuePatch.modifyTo(UPDATED_CALENDAR_URL),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
             ValuePatch.keep());
 
         assertThatThrownBy(() -> testee().update(USER_2, inserted.publicId(), patchRequest).block())
@@ -186,9 +186,9 @@ public interface BookingLinkDAOContract {
     default void updateShouldApplyNewValues() {
         BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
         BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            Optional.of(UPDATED_CALENDAR_URL),
-            Optional.of(UPDATED_DURATION),
-            Optional.of(!ACTIVE),
+            ValuePatch.modifyTo(UPDATED_CALENDAR_URL),
+            ValuePatch.modifyTo(UPDATED_DURATION),
+            ValuePatch.modifyTo(!ACTIVE),
             ValuePatch.modifyTo(UPDATED_AVAILABILITY_RULES));
         clock().setInstant(inserted.updatedAt().plusSeconds(1));
 
@@ -212,9 +212,9 @@ public interface BookingLinkDAOContract {
     default void updateShouldUpdateExistingRecordWithoutCreatingNewOne() {
         BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
         BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            Optional.empty(),
-            Optional.of(UPDATED_DURATION),
-            Optional.empty(),
+            ValuePatch.keep(),
+            ValuePatch.modifyTo(UPDATED_DURATION),
+            ValuePatch.keep(),
             ValuePatch.keep());
 
         assertThat(testee().findByUsername(USER_1).collectList().block())
@@ -238,9 +238,9 @@ public interface BookingLinkDAOContract {
     default void updateShouldAllowResetAvailabilityRules() {
         BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
         BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
             ValuePatch.remove());
 
         BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
