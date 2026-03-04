@@ -20,6 +20,6 @@ package com.linagora.calendar.storage.booking;
 
 public class BookingLinkNotFoundException extends RuntimeException {
     public BookingLinkNotFoundException(BookingLinkPublicId publicId) {
-        super("Cannot find booking link with publicId " + publicId);
+        super("Cannot find booking link with publicId " + publicId.value());
     }
 }

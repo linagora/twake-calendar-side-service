@@ -21,7 +21,6 @@ package com.linagora.calendar.restapi.routes;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
-import java.util.Optional;
 import java.util.Set;
 
 import jakarta.inject.Inject;
@@ -64,11 +63,20 @@ public class BookingLinkSlotsService {
 
     private Mono<Set<AvailabilitySlot>> computeSlots(BookingLink bookingLink, Instant from, Instant to) {
         return retrieveUnavailableTimeRanges(bookingLink, from, to)
-            .map(unavailableTimeRanges -> new ComputeSlotsRequest(
-                bookingLink.duration(), from, to,
-                resolveAvailabilityRules(bookingLink.availabilityRules(), from, to),
-                unavailableTimeRanges))
+            .map(unavailableTimeRanges -> toComputeSlotsRequest(bookingLink, from, to, unavailableTimeRanges))
             .map(availableSlotsCalculator::computeSlots);
+    }
+
+    private ComputeSlotsRequest toComputeSlotsRequest(BookingLink bookingLink,
+                                                      Instant from,
+                                                      Instant to,
+                                                      UnavailableTimeRanges unavailableTimeRanges) {
+        AvailabilityRules availabilityRules = bookingLink.availabilityRules()
+            .orElseGet(() -> AvailabilityRules.of(
+                new FixedAvailabilityRule(ZonedDateTime.ofInstant(from, ZoneOffset.UTC),
+                    ZonedDateTime.ofInstant(to, ZoneOffset.UTC))));
+
+        return new ComputeSlotsRequest(bookingLink.duration(), from, to, availabilityRules, unavailableTimeRanges);
     }
 
     private Mono<UnavailableTimeRanges> retrieveUnavailableTimeRanges(BookingLink bookingLink, Instant from, Instant to) {
@@ -84,9 +92,4 @@ public class BookingLinkSlotsService {
             .switchIfEmpty(Mono.error(() -> new BookingLinkNotFoundException(publicId)));
     }
 
-    private AvailabilityRules resolveAvailabilityRules(Optional<AvailabilityRules> availabilityRules, Instant fromRequest, Instant toRequest) {
-        return availabilityRules.orElseGet(() -> AvailabilityRules.of(
-            new FixedAvailabilityRule(ZonedDateTime.ofInstant(fromRequest, ZoneOffset.UTC),
-                ZonedDateTime.ofInstant(toRequest, ZoneOffset.UTC))));
-    }
 }

@@ -75,13 +75,13 @@ public class BookingLinkSlotsRoute extends CalendarRoute {
     Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response, MailboxSession session) {
         return Mono.fromCallable(() -> new QueryStringDecoder(request.uri()))
             .flatMap(queryStringDecoder -> {
-                Instant from = parseRequiredInstant(queryStringDecoder, FROM_QUERY_PARAM);
-                Instant to = parseRequiredInstant(queryStringDecoder, TO_QUERY_PARAM);
-                validateRange(from, to);
+                Instant queryStart = parseRequiredInstant(queryStringDecoder, FROM_QUERY_PARAM);
+                Instant queryEnd = parseRequiredInstant(queryStringDecoder, TO_QUERY_PARAM);
+                validateRange(queryStart, queryEnd);
                 BookingLinkPublicId bookingLinkPublicId = new BookingLinkPublicId(request.param(BOOKING_LINK_PUBLIC_ID_PARAM));
 
-                return bookingLinkSlotsService.computeSlots(session.getUser(), bookingLinkPublicId, from, to)
-                    .flatMap(result -> doResponse(response, from, to, result.getLeft(), result.getRight()));
+                return bookingLinkSlotsService.computeSlots(session.getUser(), bookingLinkPublicId, queryStart, queryEnd)
+                    .flatMap(result -> doResponse(response, queryStart, queryEnd, result.getLeft(), result.getRight()));
             })
             .onErrorResume(Exception.class, exception -> switch (exception) {
                 case BookingLinkNotFoundException notFound -> {
@@ -116,16 +116,17 @@ public class BookingLinkSlotsRoute extends CalendarRoute {
                 .map(Instant::parse)
                 .orElseThrow();
         } catch (RuntimeException e) {
-            throw new IllegalArgumentException("Missing or invalid query parameter: " + parameterName, e);
+            throw new IllegalArgumentException("Missing or invalid query parameter '%s'. Expected ISO-8601 instant format, e.g. 2007-12-03T10:15:30.00Z"
+                    .formatted(parameterName), e);
         }
     }
 
     private Mono<Void> doResponse(HttpServerResponse response,
-                                  Instant from,
-                                  Instant to,
+                                  Instant queryStart,
+                                  Instant queryEnd,
                                   BookingLink bookingLink,
                                   Set<AvailabilitySlot> slots) {
-        return Mono.fromCallable(() -> BookingLinkSlotsResponse.of(bookingLink, from, to, slots).jsonAsBytes())
+        return Mono.fromCallable(() -> BookingLinkSlotsResponse.of(bookingLink, queryStart, queryEnd, slots).jsonAsBytes())
             .flatMap(bytes -> response.status(HttpResponseStatus.OK)
                 .headers(JSON_HEADER)
                 .sendByteArray(Mono.just(bytes))

@@ -22,22 +22,18 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.fasterxml.jackson.datatype.jsr310.ser.InstantSerializer;
 import com.linagora.calendar.api.booking.AvailableSlotsCalculator.AvailabilitySlot;
 import com.linagora.calendar.storage.booking.BookingLink;
 
 public record BookingLinkSlotsResponse(long durationMinutes,
                                        RangeDTO range,
-                                       @JsonFormat(shape = JsonFormat.Shape.ARRAY)
-                                       @JsonSerialize(contentUsing = InstantSerializer.class)
-                                       List<Instant> slots) {
+                                       List<SlotDTO> slots) {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
         .registerModule(new JavaTimeModule())
         .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -47,6 +43,7 @@ public record BookingLinkSlotsResponse(long durationMinutes,
             slots.stream()
                 .map(AvailabilitySlot::start)
                 .sorted()
+                .map(SlotDTO::new)
                 .toList());
     }
 
@@ -54,6 +51,10 @@ public record BookingLinkSlotsResponse(long durationMinutes,
                            @JsonFormat(shape = JsonFormat.Shape.STRING) Instant from,
                            @JsonProperty("to")
                            @JsonFormat(shape = JsonFormat.Shape.STRING) Instant to) {
+    }
+
+    public record SlotDTO(@JsonProperty("start")
+                          @JsonFormat(shape = JsonFormat.Shape.STRING) Instant start) {
     }
 
     public byte[] jsonAsBytes() throws JsonProcessingException {
