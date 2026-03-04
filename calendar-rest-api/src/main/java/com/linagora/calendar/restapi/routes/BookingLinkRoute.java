@@ -21,11 +21,13 @@ package com.linagora.calendar.restapi.routes;
 import static com.linagora.calendar.restapi.RestApiConstants.JSON_HEADER;
 import static com.linagora.calendar.restapi.RestApiConstants.OBJECT_MAPPER_DEFAULT;
 
+import java.time.DateTimeException;
 import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -81,7 +83,7 @@ public class BookingLinkRoute extends CalendarRoute {
                     DayOfWeek dayOfWeekObject = getDayOfWeek();
                     try {
                         yield new WeeklyAvailabilityRule(dayOfWeekObject, LocalTime.parse(start), LocalTime.parse(end), timeZone);
-                    } catch (Exception e) {
+                    } catch (DateTimeParseException e) {
                         throw new IllegalArgumentException("Invalid 'start' or 'end' time format for weekly rule, expected HH:mm", e);
                     }
                 }
@@ -89,7 +91,7 @@ public class BookingLinkRoute extends CalendarRoute {
                     try {
                         yield new FixedAvailabilityRule(LocalDateTime.parse(start).atZone(timeZone),
                             LocalDateTime.parse(end).atZone(timeZone));
-                    } catch (Exception e) {
+                    } catch (DateTimeParseException e) {
                         throw new IllegalArgumentException("Invalid 'start' or 'end' date-time format for fixed rule, expected yyyy-MM-ddTHH:mm", e);
                     }
                 }
@@ -100,7 +102,7 @@ public class BookingLinkRoute extends CalendarRoute {
         private DayOfWeek getDayOfWeek() {
             try {
                 return DayOfWeek.of(dayOfWeek);
-            } catch (Exception e) {
+            } catch (DateTimeException e) {
                 throw new IllegalArgumentException("'dayOfWeek' must be an integer between 1 (Monday) and 7 (Sunday)", e);
             }
         }
