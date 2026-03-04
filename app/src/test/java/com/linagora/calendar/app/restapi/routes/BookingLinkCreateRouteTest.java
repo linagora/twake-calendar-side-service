@@ -64,7 +64,7 @@ import io.restassured.authentication.PreemptiveBasicAuthScheme;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.http.ContentType;
 
-class BookingLinkRouteTest {
+class BookingLinkCreateRouteTest {
 
     private static final String DOMAIN = "open-paas.ltd";
     private static final String PASSWORD = "secret";

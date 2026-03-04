@@ -58,7 +58,7 @@ import reactor.core.publisher.Mono;
 import reactor.netty.http.server.HttpServerRequest;
 import reactor.netty.http.server.HttpServerResponse;
 
-public class BookingLinkRoute extends CalendarRoute {
+public class BookingLinkCreateRoute extends CalendarRoute {
 
     public static class AvailabilityRuleDTO {
         @JsonProperty("type")
@@ -127,15 +127,15 @@ public class BookingLinkRoute extends CalendarRoute {
 
     public static final ZoneId UTC = ZoneId.of("UTC");
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(BookingLinkRoute.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(BookingLinkCreateRoute.class);
     private static final String BOOKING_LINK_PUBLIC_ID = "bookingLinkPublicId";
 
     private final BookingLinkDAO bookingLinkDAO;
 
     @Inject
-    public BookingLinkRoute(Authenticator authenticator,
-                            MetricFactory metricFactory,
-                            BookingLinkDAO bookingLinkDAO) {
+    public BookingLinkCreateRoute(Authenticator authenticator,
+                                  MetricFactory metricFactory,
+                                  BookingLinkDAO bookingLinkDAO) {
         super(authenticator, metricFactory);
         this.bookingLinkDAO = bookingLinkDAO;
     }
