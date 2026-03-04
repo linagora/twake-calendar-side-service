@@ -125,6 +125,8 @@ public class BookingLinkRoute extends CalendarRoute {
         public List<AvailabilityRuleDTO> availabilityRules;
     }
 
+    public static final ZoneId UTC = ZoneId.of("UTC");
+
     private static final Logger LOGGER = LoggerFactory.getLogger(BookingLinkRoute.class);
     private static final String BOOKING_LINK_PUBLIC_ID = "bookingLinkPublicId";
 
@@ -174,20 +176,32 @@ public class BookingLinkRoute extends CalendarRoute {
 
             CalendarURL calendarURL = CalendarURL.parse(request.calendarUrl);
             Duration duration = Duration.ofMinutes(request.durationMinutes);
-            ZoneId timeZone = Optional.ofNullable(request.timeZone)
-                .filter(tz -> !tz.isEmpty())
-                .map(ZoneId::of)
-                .orElse(ZoneId.of("UTC"));
+            ZoneId timeZone = getTimeZone(request);
 
-            Optional<AvailabilityRules> availabilityRules = Optional.empty();
-            if (request.availabilityRules != null && !request.availabilityRules.isEmpty()) {
-                List<AvailabilityRule> rules = request.availabilityRules.stream()
-                    .map(dto -> dto.toAvailabilityRule(timeZone))
-                    .toList();
-                availabilityRules = Optional.of(new AvailabilityRules(rules));
-            }
+            Optional<AvailabilityRules> availabilityRules = getAvailabilityRules(request, timeZone);
 
             return new BookingLinkInsertRequest(calendarURL, duration, request.active, availabilityRules);
         });
+    }
+
+    private ZoneId getTimeZone(CreateBookingLinkRequest request) {
+        try {
+            return Optional.ofNullable(request.timeZone)
+                .filter(tz -> !tz.isEmpty())
+                .map(ZoneId::of)
+                .orElse(UTC);
+        } catch (DateTimeException e) {
+            throw new IllegalArgumentException("Invalid 'timeZone' format", e);
+        }
+    }
+
+    private Optional<AvailabilityRules> getAvailabilityRules(CreateBookingLinkRequest request, ZoneId timeZone) {
+        if (request.availabilityRules != null && !request.availabilityRules.isEmpty()) {
+            List<AvailabilityRule> rules = request.availabilityRules.stream()
+                .map(dto -> dto.toAvailabilityRule(timeZone))
+                .toList();
+            return Optional.of(new AvailabilityRules(rules));
+        }
+        return Optional.empty();
     }
 }

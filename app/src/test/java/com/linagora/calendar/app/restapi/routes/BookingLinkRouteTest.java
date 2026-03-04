@@ -385,6 +385,26 @@ class BookingLinkRouteTest {
     }
 
     @Test
+    void shouldReturn400WhenTimezoneIsInvalid() {
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "timeZone": "Invalid/Timezone"
+                }
+                """.formatted(CALENDAR_URL))
+            .when()
+            .post("/booking-links")
+            .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.code", equalTo(400))
+            .body("error.message", equalTo("Bad request"))
+            .body("error.details", equalTo("Invalid 'timeZone' format"));
+    }
+
+    @Test
     void shouldReturn400WhenBodyIsEmpty() {
         given()
             .body("")
