@@ -32,6 +32,8 @@ import com.google.inject.Provides;
 import com.google.inject.Scopes;
 import com.google.inject.Singleton;
 import com.google.inject.multibindings.ProvidesIntoSet;
+import com.linagora.calendar.storage.booking.BookingLinkDAO;
+import com.linagora.calendar.storage.booking.MemoryBookingLinkDAO;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
 import com.linagora.calendar.storage.eventsearch.MemoryCalendarSearchService;
@@ -73,6 +75,9 @@ public class MemoryStorageModule extends AbstractModule {
 
         bind(MemoryResourceDAO.class).in(Scopes.SINGLETON);
         bind(ResourceDAO.class).to(MemoryResourceDAO.class);
+
+        bind(MemoryBookingLinkDAO.class).in(Scopes.SINGLETON);
+        bind(BookingLinkDAO.class).to(MemoryBookingLinkDAO.class);
 
         bind(MemoryTicketStore.class).in(Scopes.SINGLETON);
         bind(TicketStore.class).to(MemoryTicketStore.class);
