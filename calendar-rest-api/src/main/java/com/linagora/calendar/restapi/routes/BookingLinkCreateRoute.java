@@ -30,6 +30,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 import jakarta.inject.Inject;
@@ -99,11 +100,46 @@ public class BookingLinkCreateRoute extends CalendarRoute {
         }
     }
 
-    public record CreateBookingLinkRequest(@JsonProperty("calendarUrl") String calendarUrl,
-                                           @JsonProperty("durationMinutes") Integer durationMinutes,
-                                           @JsonProperty("active") Boolean active,
-                                           @JsonProperty("timeZone") Optional<String> timeZone,
-                                           @JsonProperty("availabilityRules") Optional<List<AvailabilityRuleDTO>> availabilityRules) {
+    public record CreateBookingLinkRequestDTO(@JsonProperty("calendarUrl") String calendarUrl,
+                                              @JsonProperty("durationMinutes") Integer durationMinutes,
+                                              @JsonProperty("active") Boolean active,
+                                              @JsonProperty("timeZone") Optional<String> timeZone,
+                                              @JsonProperty("availabilityRules") Optional<List<AvailabilityRuleDTO>> availabilityRules) {
+
+        public static BookingLinkInsertRequest toBookingLinkInsertRequest(CreateBookingLinkRequestDTO request) {
+            Preconditions.checkArgument(!Strings.isNullOrEmpty(request.calendarUrl), "'calendarUrl' is required");
+            Preconditions.checkArgument(!Objects.isNull(request.durationMinutes), "'durationMinutes' is required");
+            Preconditions.checkArgument(request.durationMinutes > 0, "'durationMinutes' must be positive");
+            Preconditions.checkArgument(!Objects.isNull(request.active), "'active' is required");
+
+            CalendarURL calendarURL = CalendarURL.parse(request.calendarUrl);
+            Duration duration = Duration.ofMinutes(request.durationMinutes);
+            ZoneId timeZone = getTimeZone(request);
+
+            Optional<AvailabilityRules> availabilityRules = getAvailabilityRules(request, timeZone);
+
+            return new BookingLinkInsertRequest(calendarURL, duration, request.active, availabilityRules);
+        }
+
+        private static ZoneId getTimeZone(CreateBookingLinkRequestDTO request) {
+            try {
+                return request.timeZone()
+                    .filter(tz -> !tz.isEmpty())
+                    .map(ZoneId::of)
+                    .orElse(UTC);
+            } catch (DateTimeException e) {
+                throw new IllegalArgumentException("Invalid 'timeZone' format", e);
+            }
+        }
+
+        private static Optional<AvailabilityRules> getAvailabilityRules(CreateBookingLinkRequestDTO request, ZoneId timeZone) {
+            return request.availabilityRules()
+                .filter(rules -> !rules.isEmpty())
+                .map(rules -> rules.stream()
+                    .map(dto -> dto.toAvailabilityRule(timeZone))
+                    .toList())
+                .map(AvailabilityRules::new);
+        }
     }
 
     public static final ZoneId UTC = ZoneId.of("UTC");
@@ -131,7 +167,7 @@ public class BookingLinkCreateRoute extends CalendarRoute {
         return request.receive().aggregate().asByteArray()
             .switchIfEmpty(Mono.error(new IllegalArgumentException("Request body must not be empty")))
             .map(this::parseRequest)
-            .map(this::buildInsertRequest)
+            .map(CreateBookingLinkRequestDTO::toBookingLinkInsertRequest)
             .flatMap(insertRequest -> bookingLinkDAO.insert(session.getUser(), insertRequest))
             .flatMap(bookingLink -> response.status(HttpResponseStatus.CREATED)
                 .headers(JSON_HEADER)
@@ -140,46 +176,11 @@ public class BookingLinkCreateRoute extends CalendarRoute {
                 .then());
     }
 
-    private CreateBookingLinkRequest parseRequest(byte[] body) {
+    private CreateBookingLinkRequestDTO parseRequest(byte[] body) {
         try {
-            return OBJECT_MAPPER_DEFAULT.readValue(body, CreateBookingLinkRequest.class);
+            return OBJECT_MAPPER_DEFAULT.readValue(body, CreateBookingLinkRequestDTO.class);
         } catch (Exception e) {
             throw new IllegalArgumentException("Invalid request body", e);
         }
-    }
-
-    private BookingLinkInsertRequest buildInsertRequest(CreateBookingLinkRequest request) {
-        Preconditions.checkArgument(!Strings.isNullOrEmpty(request.calendarUrl), "'calendarUrl' is required");
-        Preconditions.checkArgument(request.durationMinutes != null, "'durationMinutes' is required");
-        Preconditions.checkArgument(request.durationMinutes > 0, "'durationMinutes' must be positive");
-        Preconditions.checkArgument(request.active != null, "'active' is required");
-
-        CalendarURL calendarURL = CalendarURL.parse(request.calendarUrl);
-        Duration duration = Duration.ofMinutes(request.durationMinutes);
-        ZoneId timeZone = getTimeZone(request);
-
-        Optional<AvailabilityRules> availabilityRules = getAvailabilityRules(request, timeZone);
-
-        return new BookingLinkInsertRequest(calendarURL, duration, request.active, availabilityRules);
-    }
-
-    private ZoneId getTimeZone(CreateBookingLinkRequest request) {
-        try {
-            return request.timeZone
-                .filter(tz -> !tz.isEmpty())
-                .map(ZoneId::of)
-                .orElse(UTC);
-        } catch (DateTimeException e) {
-            throw new IllegalArgumentException("Invalid 'timeZone' format", e);
-        }
-    }
-
-    private Optional<AvailabilityRules> getAvailabilityRules(CreateBookingLinkRequest request, ZoneId timeZone) {
-        return request.availabilityRules
-            .filter(rules -> !rules.isEmpty())
-            .map(rules -> rules.stream()
-                .map(dto -> dto.toAvailabilityRule(timeZone))
-                .toList())
-            .map(AvailabilityRules::new);
     }
 }
