@@ -16,30 +16,28 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage.booking;
+package com.linagora.calendar.restapi.routes;
 
-import org.apache.james.core.Username;
+import java.net.URL;
 
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
+import jakarta.inject.Inject;
 
-public interface BookingLinkDAO {
-    Mono<BookingLink> insert(Username username, BookingLinkInsertRequest request);
+import com.linagora.calendar.restapi.RestApiConfiguration;
 
-    Mono<BookingLink> findByPublicId(BookingLinkPublicId publicId);
+public interface MeetingConferenceLinkResolver {
+    URL resolve();
 
-    default Mono<BookingLink> findActiveByPublicId(BookingLinkPublicId publicId) {
-        return findByPublicId(publicId)
-            .filter(BookingLink::active);
+    class Default implements MeetingConferenceLinkResolver {
+        private final RestApiConfiguration configuration;
+
+        @Inject
+        public Default(RestApiConfiguration configuration) {
+            this.configuration = configuration;
+        }
+
+        @Override
+        public URL resolve() {
+            return configuration.getVisioURL();
+        }
     }
-
-    Mono<BookingLink> findByPublicId(Username username, BookingLinkPublicId publicId);
-
-    Flux<BookingLink> findByUsername(Username username);
-
-    Mono<BookingLink> update(Username username, BookingLinkPublicId publicId, BookingLinkPatchRequest request);
-
-    Mono<BookingLinkPublicId> resetPublicId(Username username, BookingLinkPublicId publicId);
-
-    Mono<Void> delete(Username username, BookingLinkPublicId publicId);
 }
