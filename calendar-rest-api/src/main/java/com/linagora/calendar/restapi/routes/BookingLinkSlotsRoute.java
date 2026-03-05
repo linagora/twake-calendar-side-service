@@ -24,12 +24,13 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
 
 import org.apache.james.jmap.Endpoint;
-import org.apache.james.jmap.http.Authenticator;
-import org.apache.james.mailbox.MailboxSession;
+import org.apache.james.jmap.JMAPRoute;
+import org.apache.james.jmap.JMAPRoutes;
 import org.apache.james.metrics.api.MetricFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,7 +48,7 @@ import reactor.core.publisher.Mono;
 import reactor.netty.http.server.HttpServerRequest;
 import reactor.netty.http.server.HttpServerResponse;
 
-public class BookingLinkSlotsRoute extends CalendarRoute {
+public class BookingLinkSlotsRoute implements JMAPRoutes {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BookingLinkSlotsRoute.class);
 
@@ -56,23 +57,29 @@ public class BookingLinkSlotsRoute extends CalendarRoute {
     private static final String TO_QUERY_PARAM = "to";
     private static final Duration MAX_QUERY_RANGE = Duration.ofDays(60);
 
+    private final MetricFactory metricFactory;
     private final BookingLinkSlotsService bookingLinkSlotsService;
 
     @Inject
-    public BookingLinkSlotsRoute(Authenticator authenticator,
-                                 MetricFactory metricFactory,
+    public BookingLinkSlotsRoute(MetricFactory metricFactory,
                                  BookingLinkSlotsService bookingLinkSlotsService) {
-        super(authenticator, metricFactory);
+        this.metricFactory = metricFactory;
         this.bookingLinkSlotsService = bookingLinkSlotsService;
     }
 
-    @Override
     Endpoint endpoint() {
-        return new Endpoint(HttpMethod.GET, "/calendar/api/booking-links/{%s}/slots".formatted(BOOKING_LINK_PUBLIC_ID_PARAM));
+        return new Endpoint(HttpMethod.GET, "/api/booking-links/{%s}/slots".formatted(BOOKING_LINK_PUBLIC_ID_PARAM));
     }
 
     @Override
-    Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response, MailboxSession session) {
+    public Stream<JMAPRoute> routes() {
+        return Stream.of(JMAPRoute.builder()
+            .endpoint(endpoint())
+            .action((req, res) -> Mono.from(metricFactory.decoratePublisherWithTimerMetric(this.getClass().getSimpleName(), handleRequest(req, res))))
+            .corsHeaders());
+    }
+
+    Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response) {
         return Mono.fromCallable(() -> new QueryStringDecoder(request.uri()))
             .flatMap(queryStringDecoder -> {
                 Instant queryStart = parseRequiredInstant(queryStringDecoder, FROM_QUERY_PARAM);
@@ -80,7 +87,7 @@ public class BookingLinkSlotsRoute extends CalendarRoute {
                 validateRange(queryStart, queryEnd);
                 BookingLinkPublicId bookingLinkPublicId = new BookingLinkPublicId(request.param(BOOKING_LINK_PUBLIC_ID_PARAM));
 
-                return bookingLinkSlotsService.computeSlots(session.getUser(), bookingLinkPublicId, queryStart, queryEnd)
+                return bookingLinkSlotsService.computeSlots(bookingLinkPublicId, queryStart, queryEnd)
                     .flatMap(result -> doResponse(response, queryStart, queryEnd, result.getLeft(), result.getRight()));
             })
             .onErrorResume(Exception.class, exception -> switch (exception) {
@@ -117,7 +124,7 @@ public class BookingLinkSlotsRoute extends CalendarRoute {
                 .orElseThrow();
         } catch (RuntimeException e) {
             throw new IllegalArgumentException("Missing or invalid query parameter '%s'. Expected ISO-8601 instant format, e.g. 2007-12-03T10:15:30.00Z"
-                    .formatted(parameterName), e);
+                .formatted(parameterName), e);
         }
     }
 

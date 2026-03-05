@@ -26,7 +26,6 @@ import java.util.Set;
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.tuple.Pair;
-import org.apache.james.core.Username;
 
 import com.linagora.calendar.api.booking.AvailabilityRule.FixedAvailabilityRule;
 import com.linagora.calendar.api.booking.AvailabilityRules;
@@ -55,8 +54,8 @@ public class BookingLinkSlotsService {
         this.availableSlotsCalculator = new AvailableSlotsCalculator.Default();
     }
 
-    public Mono<Pair<BookingLink, Set<AvailabilitySlot>>> computeSlots(Username username, BookingLinkPublicId publicId, Instant from, Instant to) {
-        return findActiveBookingLink(username, publicId)
+    public Mono<Pair<BookingLink, Set<AvailabilitySlot>>> computeSlots(BookingLinkPublicId publicId, Instant from, Instant to) {
+        return findActiveBookingLink(publicId)
             .flatMap(bookingLink -> computeSlots(bookingLink, from, to)
                 .map(set -> Pair.of(bookingLink, set)));
     }
@@ -86,8 +85,8 @@ public class BookingLinkSlotsService {
             .map(UnavailableTimeRanges::new);
     }
 
-    private Mono<BookingLink> findActiveBookingLink(Username username, BookingLinkPublicId publicId) {
-        return bookingLinkDAO.findByPublicId(username, publicId)
+    private Mono<BookingLink> findActiveBookingLink(BookingLinkPublicId publicId) {
+        return bookingLinkDAO.findByPublicId(publicId)
             .filter(BookingLink::active)
             .switchIfEmpty(Mono.error(() -> new BookingLinkNotFoundException(publicId)));
     }

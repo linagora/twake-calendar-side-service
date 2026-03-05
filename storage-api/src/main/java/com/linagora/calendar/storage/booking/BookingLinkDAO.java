@@ -26,6 +26,8 @@ import reactor.core.publisher.Mono;
 public interface BookingLinkDAO {
     Mono<BookingLink> insert(Username username, BookingLinkInsertRequest request);
 
+    Mono<BookingLink> findByPublicId(BookingLinkPublicId publicId);
+
     Mono<BookingLink> findByPublicId(Username username, BookingLinkPublicId publicId);
 
     Flux<BookingLink> findByUsername(Username username);

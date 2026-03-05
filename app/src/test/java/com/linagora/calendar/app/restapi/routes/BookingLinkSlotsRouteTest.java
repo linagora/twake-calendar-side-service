@@ -64,7 +64,6 @@ import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.booking.MemoryBookingLinkDAO;
 
 import io.restassured.RestAssured;
-import io.restassured.authentication.PreemptiveBasicAuthScheme;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.http.ContentType;
 
@@ -128,10 +127,6 @@ class BookingLinkSlotsRouteTest {
         calendarDataProbe.addDomain(openPaaSUser.username().getDomainPart().get());
         calendarDataProbe.addUserToRepository(openPaaSUser.username(), PASSWORD);
 
-        PreemptiveBasicAuthScheme basicAuthScheme = new PreemptiveBasicAuthScheme();
-        basicAuthScheme.setUserName(openPaaSUser.username().asString());
-        basicAuthScheme.setPassword(PASSWORD);
-
         int restApiPort = server.getProbe(RestApiServerProbe.class).getPort().getValue();
         RestAssured.requestSpecification = new RequestSpecBuilder()
             .setContentType(ContentType.JSON)
@@ -139,7 +134,6 @@ class BookingLinkSlotsRouteTest {
             .setConfig(newConfig().encoderConfig(encoderConfig().defaultContentCharset(StandardCharsets.UTF_8)))
             .setPort(restApiPort)
             .setBasePath("")
-            .setAuth(basicAuthScheme)
             .build();
 
         davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
@@ -155,7 +149,7 @@ class BookingLinkSlotsRouteTest {
             .queryParam("from", FROM_20360126)
             .queryParam("to", TO_20360127)
         .when()
-            .get("/calendar/api/booking-links/{bookingLinkPublicId}/slots")
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
         .then()
             .statusCode(HttpStatus.SC_OK)
             .contentType(JSON)
@@ -182,6 +176,23 @@ class BookingLinkSlotsRouteTest {
                   ]
                 }
                 """);
+    }
+
+    @Test
+    void shouldReturnSlotsWithoutAuthentication(TwakeCalendarGuiceServer server) {
+        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES, AVAILABILITY_RULE);
+        BookingLink inserted = server.getProbe(BookingLinkSlotsProbe.class).insert(openPaaSUser.username(), insertRequest);
+
+        given()
+            .auth().none()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .queryParam("from", FROM_20360126)
+            .queryParam("to", TO_20360127)
+        .when()
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(JSON);
     }
 
     @Test
@@ -231,7 +242,7 @@ class BookingLinkSlotsRouteTest {
             .queryParam("from", FROM_20360126)
             .queryParam("to", TO_20360127)
         .when()
-            .get("/calendar/api/booking-links/{bookingLinkPublicId}/slots")
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
         .then()
             .statusCode(HttpStatus.SC_OK)
             .contentType(JSON)
@@ -300,7 +311,7 @@ class BookingLinkSlotsRouteTest {
             .queryParam("from", FROM_20360126)
             .queryParam("to", TO_20360127)
         .when()
-            .get("/calendar/api/booking-links/{bookingLinkPublicId}/slots")
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
         .then()
             .statusCode(HttpStatus.SC_OK)
             .contentType(JSON)
@@ -338,7 +349,7 @@ class BookingLinkSlotsRouteTest {
             .queryParam("from", from)
             .queryParam("to", to)
         .when()
-            .get("/calendar/api/booking-links/{bookingLinkPublicId}/slots")
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
         .then()
             .statusCode(HttpStatus.SC_OK)
             .contentType(JSON)
@@ -401,7 +412,7 @@ class BookingLinkSlotsRouteTest {
             .queryParam("from", FROM_20360126)
             .queryParam("to", TO_20360127)
             .when()
-            .get("/calendar/api/booking-links/{bookingLinkPublicId}/slots")
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
             .then()
             .statusCode(HttpStatus.SC_OK)
             .contentType(JSON)
@@ -431,7 +442,7 @@ class BookingLinkSlotsRouteTest {
             .queryParam("from", "2036-01-01T00:00:00Z")
             .queryParam("to", "2036-03-05T00:00:00Z")
         .when()
-            .get("/calendar/api/booking-links/{bookingLinkPublicId}/slots")
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .contentType(JSON)
@@ -464,7 +475,7 @@ class BookingLinkSlotsRouteTest {
             .queryParam("from", FROM_20360126)
             .queryParam("to", TO_20360127)
         .when()
-            .get("/calendar/api/booking-links/{bookingLinkPublicId}/slots")
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
         .then()
             .statusCode(HttpStatus.SC_OK)
             .contentType(JSON)
@@ -488,7 +499,7 @@ class BookingLinkSlotsRouteTest {
             .queryParam("from", "2036-01-26T00:00:00Z")
             .queryParam("to", "2036-01-26T02:00:00Z")
         .when()
-            .get("/calendar/api/booking-links/{bookingLinkPublicId}/slots")
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
         .then()
             .statusCode(HttpStatus.SC_OK)
             .contentType(JSON)
@@ -518,7 +529,7 @@ class BookingLinkSlotsRouteTest {
             .pathParam("bookingLinkPublicId", inserted.publicId().value())
             .queryParam("to", TO_20360127)
         .when()
-            .get("/calendar/api/booking-links/{bookingLinkPublicId}/slots")
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .contentType(JSON)
@@ -547,7 +558,7 @@ class BookingLinkSlotsRouteTest {
             .pathParam("bookingLinkPublicId", inserted.publicId().value())
             .queryParam("from", FROM_20360126)
         .when()
-            .get("/calendar/api/booking-links/{bookingLinkPublicId}/slots")
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .contentType(JSON)
@@ -577,7 +588,7 @@ class BookingLinkSlotsRouteTest {
             .queryParam("from", "invalid")
             .queryParam("to", TO_20360127)
         .when()
-            .get("/calendar/api/booking-links/{bookingLinkPublicId}/slots")
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .contentType(JSON)
@@ -607,7 +618,7 @@ class BookingLinkSlotsRouteTest {
             .queryParam("from", FROM_20360126)
             .queryParam("to", "invalid")
         .when()
-            .get("/calendar/api/booking-links/{bookingLinkPublicId}/slots")
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .contentType(JSON)
@@ -637,7 +648,7 @@ class BookingLinkSlotsRouteTest {
             .queryParam("from", FROM_20360126)
             .queryParam("to", FROM_20360126)
         .when()
-            .get("/calendar/api/booking-links/{bookingLinkPublicId}/slots")
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .contentType(JSON)
@@ -664,7 +675,7 @@ class BookingLinkSlotsRouteTest {
             .queryParam("from", FROM_20360126)
             .queryParam("to", TO_20360127)
         .when()
-            .get("/calendar/api/booking-links/{bookingLinkPublicId}/slots")
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
         .then()
             .statusCode(HttpStatus.SC_NOT_FOUND)
             .contentType(JSON)
@@ -685,37 +696,6 @@ class BookingLinkSlotsRouteTest {
     }
 
     @Test
-    void shouldReturnNotFoundWhenBookingLinkBelongsToAnotherUser(TwakeCalendarGuiceServer server) {
-        OpenPaaSUser otherUser = createTestUser(server, "other");
-        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(CalendarURL.from(otherUser.id()), DURATION_30_MINUTES, AVAILABILITY_RULE);
-        BookingLink inserted = server.getProbe(BookingLinkSlotsProbe.class).insert(otherUser.username(), insertRequest);
-
-        String response = given()
-            .pathParam("bookingLinkPublicId", inserted.publicId().value())
-            .queryParam("from", FROM_20360126)
-            .queryParam("to", TO_20360127)
-        .when()
-            .get("/calendar/api/booking-links/{bookingLinkPublicId}/slots")
-        .then()
-            .statusCode(HttpStatus.SC_NOT_FOUND)
-            .contentType(JSON)
-            .extract()
-            .body()
-            .asString();
-
-        assertThatJson(response)
-            .describedAs("should return not found when booking link belongs to another user")
-            .isEqualTo("""
-                {
-                    "error": {
-                        "code": 404,
-                        "message": "Not Found",
-                        "details": "Cannot find booking link with publicId %s"
-                    }
-                }""".formatted(inserted.publicId().value()));
-    }
-
-    @Test
     void shouldReturnNotFoundWhenBookingLinkIsInactive(TwakeCalendarGuiceServer server) {
         boolean inactive = false;
         BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES, inactive, Optional.of(AVAILABILITY_RULE));
@@ -726,7 +706,7 @@ class BookingLinkSlotsRouteTest {
             .queryParam("from", FROM_20360126)
             .queryParam("to", TO_20360127)
         .when()
-            .get("/calendar/api/booking-links/{bookingLinkPublicId}/slots")
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
         .then()
             .statusCode(HttpStatus.SC_NOT_FOUND)
             .contentType(JSON)
