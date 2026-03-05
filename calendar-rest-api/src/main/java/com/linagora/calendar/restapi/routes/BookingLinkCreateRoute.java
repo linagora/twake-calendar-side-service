@@ -149,8 +149,8 @@ public class BookingLinkCreateRoute extends CalendarRoute {
     Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response, MailboxSession session) {
         return request.receive().aggregate().asByteArray()
             .switchIfEmpty(Mono.error(new IllegalArgumentException("Request body must not be empty")))
-            .flatMap(body -> Mono.fromCallable(() -> parseRequest(body)))
-            .flatMap(this::buildInsertRequest)
+            .map(this::parseRequest)
+            .map(this::buildInsertRequest)
             .flatMap(insertRequest -> bookingLinkDAO.insert(session.getUser(), insertRequest))
             .flatMap(bookingLink -> response.status(HttpResponseStatus.CREATED)
                 .headers(JSON_HEADER)
@@ -167,21 +167,19 @@ public class BookingLinkCreateRoute extends CalendarRoute {
         }
     }
 
-    private Mono<BookingLinkInsertRequest> buildInsertRequest(CreateBookingLinkRequest request) {
-        return Mono.fromCallable(() -> {
-            Preconditions.checkArgument(!Strings.isNullOrEmpty(request.calendarUrl), "'calendarUrl' is required");
-            Preconditions.checkArgument(request.durationMinutes != null, "'durationMinutes' is required");
-            Preconditions.checkArgument(request.durationMinutes > 0, "'durationMinutes' must be positive");
-            Preconditions.checkArgument(request.active != null, "'active' is required");
+    private BookingLinkInsertRequest buildInsertRequest(CreateBookingLinkRequest request) {
+        Preconditions.checkArgument(!Strings.isNullOrEmpty(request.calendarUrl), "'calendarUrl' is required");
+        Preconditions.checkArgument(request.durationMinutes != null, "'durationMinutes' is required");
+        Preconditions.checkArgument(request.durationMinutes > 0, "'durationMinutes' must be positive");
+        Preconditions.checkArgument(request.active != null, "'active' is required");
 
-            CalendarURL calendarURL = CalendarURL.parse(request.calendarUrl);
-            Duration duration = Duration.ofMinutes(request.durationMinutes);
-            ZoneId timeZone = getTimeZone(request);
+        CalendarURL calendarURL = CalendarURL.parse(request.calendarUrl);
+        Duration duration = Duration.ofMinutes(request.durationMinutes);
+        ZoneId timeZone = getTimeZone(request);
 
-            Optional<AvailabilityRules> availabilityRules = getAvailabilityRules(request, timeZone);
+        Optional<AvailabilityRules> availabilityRules = getAvailabilityRules(request, timeZone);
 
-            return new BookingLinkInsertRequest(calendarURL, duration, request.active, availabilityRules);
-        });
+        return new BookingLinkInsertRequest(calendarURL, duration, request.active, availabilityRules);
     }
 
     private ZoneId getTimeZone(CreateBookingLinkRequest request) {
