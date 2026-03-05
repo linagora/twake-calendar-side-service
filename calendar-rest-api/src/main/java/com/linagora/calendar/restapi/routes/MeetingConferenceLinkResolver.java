@@ -16,16 +16,28 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage.booking;
+package com.linagora.calendar.restapi.routes;
 
-import java.util.UUID;
+import java.net.URL;
 
-public record BookingLinkPublicId(UUID value) {
-    public static BookingLinkPublicId generate() {
-        return new BookingLinkPublicId(UUID.randomUUID());
-    }
+import jakarta.inject.Inject;
 
-    public static BookingLinkPublicId from(String value) {
-        return new BookingLinkPublicId(UUID.fromString(value));
+import com.linagora.calendar.restapi.RestApiConfiguration;
+
+public interface MeetingConferenceLinkResolver {
+    URL resolve();
+
+    class Default implements MeetingConferenceLinkResolver {
+        private final RestApiConfiguration configuration;
+
+        @Inject
+        public Default(RestApiConfiguration configuration) {
+            this.configuration = configuration;
+        }
+
+        @Override
+        public URL resolve() {
+            return configuration.getVisioURL();
+        }
     }
 }
