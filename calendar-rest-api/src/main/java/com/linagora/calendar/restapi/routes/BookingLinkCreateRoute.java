@@ -60,18 +60,10 @@ import reactor.netty.http.server.HttpServerResponse;
 
 public class BookingLinkCreateRoute extends CalendarRoute {
 
-    public static class AvailabilityRuleDTO {
-        @JsonProperty("type")
-        public String type;
-
-        @JsonProperty("dayOfWeek")
-        public Integer dayOfWeek;
-
-        @JsonProperty("start")
-        public String start;
-
-        @JsonProperty("end")
-        public String end;
+    public record AvailabilityRuleDTO(@JsonProperty("type") String type,
+                                      @JsonProperty("dayOfWeek") Optional<Integer> dayOfWeek,
+                                      @JsonProperty("start") String start,
+                                      @JsonProperty("end") String end) {
 
         public AvailabilityRule toAvailabilityRule(ZoneId timeZone) {
             Preconditions.checkArgument(!Strings.isNullOrEmpty(type), "'type' is required in availability rule");
@@ -79,7 +71,6 @@ public class BookingLinkCreateRoute extends CalendarRoute {
             Preconditions.checkArgument(!Strings.isNullOrEmpty(end), "'end' is required in availability rule");
             return switch (type) {
                 case "weekly" -> {
-                    Preconditions.checkArgument(dayOfWeek != null, "'dayOfWeek' is required for weekly rule");
                     DayOfWeek dayOfWeekObject = getDayOfWeek();
                     try {
                         yield new WeeklyAvailabilityRule(dayOfWeekObject, LocalTime.parse(start), LocalTime.parse(end), timeZone);
@@ -101,28 +92,18 @@ public class BookingLinkCreateRoute extends CalendarRoute {
 
         private DayOfWeek getDayOfWeek() {
             try {
-                return DayOfWeek.of(dayOfWeek);
+                return DayOfWeek.of(dayOfWeek.orElseThrow(() -> new IllegalArgumentException("'dayOfWeek' must be provided for weekly rule")));
             } catch (DateTimeException e) {
                 throw new IllegalArgumentException("'dayOfWeek' must be an integer between 1 (Monday) and 7 (Sunday)", e);
             }
         }
     }
 
-    public static class CreateBookingLinkRequest {
-        @JsonProperty("calendarUrl")
-        public String calendarUrl;
-
-        @JsonProperty("durationMinutes")
-        public Integer durationMinutes;
-
-        @JsonProperty("active")
-        public Boolean active;
-
-        @JsonProperty("timeZone")
-        public String timeZone;
-
-        @JsonProperty("availabilityRules")
-        public List<AvailabilityRuleDTO> availabilityRules;
+    public record CreateBookingLinkRequest(@JsonProperty("calendarUrl") String calendarUrl,
+                                           @JsonProperty("durationMinutes") Integer durationMinutes,
+                                           @JsonProperty("active") Boolean active,
+                                           @JsonProperty("timeZone") Optional<String> timeZone,
+                                           @JsonProperty("availabilityRules") Optional<List<AvailabilityRuleDTO>> availabilityRules) {
     }
 
     public static final ZoneId UTC = ZoneId.of("UTC");
@@ -184,7 +165,7 @@ public class BookingLinkCreateRoute extends CalendarRoute {
 
     private ZoneId getTimeZone(CreateBookingLinkRequest request) {
         try {
-            return Optional.ofNullable(request.timeZone)
+            return request.timeZone
                 .filter(tz -> !tz.isEmpty())
                 .map(ZoneId::of)
                 .orElse(UTC);
@@ -194,12 +175,11 @@ public class BookingLinkCreateRoute extends CalendarRoute {
     }
 
     private Optional<AvailabilityRules> getAvailabilityRules(CreateBookingLinkRequest request, ZoneId timeZone) {
-        if (request.availabilityRules != null && !request.availabilityRules.isEmpty()) {
-            List<AvailabilityRule> rules = request.availabilityRules.stream()
+        return request.availabilityRules
+            .filter(rules -> !rules.isEmpty())
+            .map(rules -> rules.stream()
                 .map(dto -> dto.toAvailabilityRule(timeZone))
-                .toList();
-            return Optional.of(new AvailabilityRules(rules));
-        }
-        return Optional.empty();
+                .toList())
+            .map(AvailabilityRules::new);
     }
 }
