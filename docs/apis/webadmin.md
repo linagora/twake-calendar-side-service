@@ -424,13 +424,26 @@ POST /resources
 }
 ```
 
+The `administrators` field is optional. Omitting it (or providing an empty list) creates a resource with no administrator:
+
+```
+POST /resources
+{
+  "name": "Resource name",
+  "description": "Descripting",
+  "creator":"user1@linagora.com",
+  "icon": "laptop",
+  "domain": "linagora.com"
+}
+```
+
 Will create the following resource.
 
 Status codes:
  - 201 if created. Location includes the URL allowing to read resource details
- - 400 if invalid: the creator/domain/administrator do not exceed or extra fields / invalid JSON
+ - 400 if invalid: the creator/domain/administrator do not exist or extra fields / invalid JSON
 
-A resource without administrator is not subject to the validation flow: any event request with this resource is 
+A resource without administrator is not subject to the validation flow: any event request with this resource is
 automatically accepted.
 
 Please note that resource administrators:
