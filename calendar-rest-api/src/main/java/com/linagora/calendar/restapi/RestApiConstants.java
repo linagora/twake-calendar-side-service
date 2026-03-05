@@ -21,6 +21,7 @@ package com.linagora.calendar.restapi;
 import org.apache.http.entity.ContentType;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
 import io.netty.handler.codec.http.DefaultHttpHeaders;
@@ -33,5 +34,6 @@ public class RestApiConstants {
         .set(HttpHeaderNames.CONTENT_TYPE, ContentType.APPLICATION_JSON.toString());
 
     public static final ObjectMapper OBJECT_MAPPER_DEFAULT = new ObjectMapper()
-        .registerModule(new JavaTimeModule());
+        .registerModule(new JavaTimeModule())
+        .registerModule(new Jdk8Module());
 }

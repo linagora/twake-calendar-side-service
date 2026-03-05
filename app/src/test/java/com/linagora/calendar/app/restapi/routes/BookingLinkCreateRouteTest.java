@@ -449,7 +449,7 @@ class BookingLinkCreateRouteTest {
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.code", equalTo(400))
             .body("error.message", equalTo("Bad request"))
-            .body("error.details", equalTo("'dayOfWeek' is required for weekly rule"));
+            .body("error.details", equalTo("'dayOfWeek' must be provided for weekly rule"));
     }
 
     @Test
