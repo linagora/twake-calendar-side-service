@@ -115,7 +115,7 @@ public class BookingLinkReservationRequestDTOTest {
             """);
 
         assertThatThrownBy(request::toBookingRequest)
-            .isInstanceOf(NullPointerException.class)
+            .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("'startUtc' must not be null");
     }
 
@@ -149,7 +149,7 @@ public class BookingLinkReservationRequestDTOTest {
             """);
 
         assertThatThrownBy(request::toBookingRequest)
-            .isInstanceOf(NullPointerException.class)
+            .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("'creator' must not be null");
     }
 
