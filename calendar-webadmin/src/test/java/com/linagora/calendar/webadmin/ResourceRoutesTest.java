@@ -839,6 +839,41 @@ class ResourceRoutesTest {
     }
 
     @Test
+    void createResourceShouldAllowAdministratorsFieldToBeOmitted() {
+        OpenPaaSUser creator = sabreDavExtension.newTestUser();
+
+        String location = given()
+            .body("""
+                {
+                    "name": "Meeting Room Without Admins",
+                    "description": "Room created without administrators field",
+                    "creator": "%s",
+                    "icon": "door",
+                    "domain": "%s"
+                }
+                """.formatted(creator.username().asString(), DOMAIN))
+            .post()
+        .then()
+            .statusCode(201)
+            .extract()
+            .header("Location");
+
+        String resourceId = location.substring(location.lastIndexOf('/') + 1);
+
+        String resource = when()
+            .get(resourceId)
+        .then()
+            .statusCode(200)
+            .extract()
+            .asString();
+
+        assertThatJson(resource)
+            .inPath("$.administrators")
+            .isArray()
+            .isEmpty();
+    }
+
+    @Test
     void createResourceShouldGrantDelegationRightsToMultipleAdmins() {
         // Given
         OpenPaaSUser creator = sabreDavExtension.newTestUser();

@@ -266,7 +266,7 @@ public class ResourceRoutes implements Routes {
     }
 
     private Mono<Map<Username, ResourceAdministrator>> resolveAdministratorsFromDTO(List<AdministratorDTO> dtos) {
-        return Flux.fromIterable(dtos)
+        return Flux.fromIterable(dtos == null ? List.of() : dtos)
             .map(dto -> Username.of(dto.email()))
             .flatMap(this::retrieveExistingUser)
             .collectMap(OpenPaaSUser::username, user -> new ResourceAdministrator(user.id(), "user"));
