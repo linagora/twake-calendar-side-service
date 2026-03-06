@@ -69,6 +69,9 @@ import com.linagora.calendar.restapi.auth.OidcAuthenticationStrategy;
 import com.linagora.calendar.restapi.auth.OidcEndpointsInfoResolver;
 import com.linagora.calendar.restapi.auth.OidcFallbackCookieAuthenticationStrategy;
 import com.linagora.calendar.restapi.routes.AvatarRoute;
+import com.linagora.calendar.restapi.routes.BookingLinkReservationRoute;
+import com.linagora.calendar.restapi.routes.BookingLinkSlotsRoute;
+import com.linagora.calendar.restapi.routes.BookingLinkSlotsService;
 import com.linagora.calendar.restapi.routes.CalendarSearchRoute;
 import com.linagora.calendar.restapi.routes.CalendarTicketRoutes;
 import com.linagora.calendar.restapi.routes.CheckTechnicalUserTokenRoute;
@@ -138,6 +141,8 @@ public class RestApiModule extends AbstractModule {
 
         Multibinder<JMAPRoutes> routes = Multibinder.newSetBinder(binder(), JMAPRoutes.class);
         routes.addBinding().to(AvatarRoute.class);
+        routes.addBinding().to(BookingLinkSlotsRoute.class);
+        routes.addBinding().to(BookingLinkReservationRoute.class);
         routes.addBinding().to(DomainRoute.class);
         routes.addBinding().to(ThemeRoute.class);
         routes.addBinding().to(LogoRoute.class);
@@ -190,6 +195,7 @@ public class RestApiModule extends AbstractModule {
 
         bind(ImportWebSocketNotifier.class).in(Scopes.SINGLETON);
         bind(SendMailNotifier.class).in(Scopes.SINGLETON);
+        bind(BookingLinkSlotsService.class).in(Scopes.SINGLETON);
 
         Multibinder<ImportResultNotifier> importResultNotifierMultibinder = Multibinder.newSetBinder(binder(), ImportResultNotifier.class);
         importResultNotifierMultibinder.addBinding().to(ImportWebSocketNotifier.class);
