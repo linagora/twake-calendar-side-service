@@ -37,4 +37,11 @@ public record BookingLinkInsertRequest(CalendarURL calendarUrl,
         Preconditions.checkArgument(!eventDuration.isNegative() && !eventDuration.isZero(), "'eventDuration' must be positive");
         Preconditions.checkNotNull(availabilityRules, "'availabilityRules' must not be null");
     }
+
+    public BookingLinkInsertRequest(CalendarURL calendarUrl,
+                                    Duration eventDuration,
+                                    AvailabilityRules availabilityRules) {
+        this(calendarUrl, eventDuration, ACTIVE, Optional.of(availabilityRules));
+    }
+
 }
