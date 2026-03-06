@@ -1,0 +1,41 @@
+{
+  "webserver": {
+    "baseUri": "/",
+    "allowOrigin": "*",
+    "realm": "ESN"
+  },
+  "amqp": {
+    "host": "rabbitmq",
+    "port": "5672",
+    "login": "tcalendar",
+    "password": "tcalendar",
+    "vhost": "/",
+    "sslEnabled": false,
+    "sslTrustAllCerts": false
+  },
+  "database": {
+    "esn": {
+      "connectionString": "mongodb://username:password@mongo:27017/esn_docker?authMechanism=SCRAM-SHA-256",
+      "connectionOptions": {
+        "w": 1,
+        "fsync": true,
+        "connectTimeoutMS": 10000
+      }
+    },
+    "sabre": {
+      "connectionString": "mongodb://username:password@mongo:27017/sabre?authMechanism=SCRAM-SHA-256",
+      "connectionOptions": {
+        "w": 1,
+        "fsync": true,
+        "connectTimeoutMS": 10000
+      }
+    }
+  },
+  "esn": {
+    "apiRoot": "http://tcalendar-side-service.linagora.local:80",
+    "calendarRoot": "http://tcalendar-side-service.linagora.local:80/calendar/api"
+  },
+  "environment": {
+    "SABRE_ENV": "dev"
+  }
+}
