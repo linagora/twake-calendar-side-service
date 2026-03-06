@@ -409,6 +409,41 @@ GET /api/calendars/{userId}/{calendarId}/calendar.ics?token=xyz
 
 Will return calendar data in an ICS format
 
+### GET /linagora.esn.resource/api/resources/{resourceId}
+
+```
+GET /linagora.esn.resource/api/resources/{resourceId}
+```
+
+Allows retrieving the details of a resource by its id. Cross-domain access is denied (returns 404).
+
+Example response:
+
+```json
+{
+  "_id": "abc123",
+  "name": "Meeting Room A",
+  "description": "Ground floor meeting room",
+  "type": "room",
+  "icon": "laptop",
+  "deleted": false,
+  "creator": "userId123",
+  "administrators": [
+    {
+      "_id": "adminId",
+      "id": "adminId",
+      "objectType": "user"
+    }
+  ],
+  "timestamps": {
+    "creation": "2024-01-01T00:00:00.000Z",
+    "updatedAt": "2024-06-01T00:00:00.000Z"
+  },
+  "domain": { ... },
+  "__v": 0
+}
+```
+
 ### GET /linagora.esn.resource/images/icon/{icon}.svg
 
 Serves binary content corresponding to the SVG of the icon
