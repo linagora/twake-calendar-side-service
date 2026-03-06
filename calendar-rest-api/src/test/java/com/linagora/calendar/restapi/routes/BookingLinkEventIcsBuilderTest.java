@@ -72,9 +72,9 @@ public class BookingLinkEventIcsBuilderTest {
             DTSTAMP:20360101T000000Z
             DTSTART:20360126T093000Z
             DURATION:PT30M
-            ORGANIZER;CN=BOB;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION:mailto:creator@example.com
-            ATTENDEE;CN=BOB;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION:mailto:creator@example.com
-            ATTENDEE;CN=Nguyen Van A;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION:mailto:vana@example.com
+            ORGANIZER;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=BOB:mailto:creator@example.com
+            ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=BOB:mailto:creator@example.com
+            ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=Nguyen Van A:mailto:vana@example.com
             DESCRIPTION:Please call via Zoom.
             CLASS:PUBLIC
             X-PUBLICLY-CREATED:true
@@ -117,9 +117,9 @@ public class BookingLinkEventIcsBuilderTest {
             DTSTAMP:20360101T000000Z
             DTSTART:20360126T093000Z
             DURATION:PT30M
-            ORGANIZER;CN=BOB;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION:mailto:creator@example.com
-            ATTENDEE;CN=BOB;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION:mailto:creator@example.com
-            ATTENDEE;CN=Nguyen Van A;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION:mailto:vana@example.com
+            ORGANIZER;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=BOB:mailto:creator@example.com
+            ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=BOB:mailto:creator@example.com
+            ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=Nguyen Van A:mailto:vana@example.com
             CLASS:PUBLIC
             X-PUBLICLY-CREATED:true
             X-PUBLICLY-CREATOR:creator@example.com
@@ -160,8 +160,8 @@ public class BookingLinkEventIcsBuilderTest {
             DTSTAMP:20360101T000000Z
             DTSTART:20360126T093000Z
             DURATION:PT30M
-            ORGANIZER;CN;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION:mailto:creator@example.com
-            ATTENDEE;CN;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION:mailto:creator@example.com
+            ORGANIZER;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION:mailto:creator@example.com
+            ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION:mailto:creator@example.com
             CLASS:PUBLIC
             X-PUBLICLY-CREATED:true
             X-PUBLICLY-CREATOR:creator@example.com
@@ -190,7 +190,7 @@ public class BookingLinkEventIcsBuilderTest {
         String ics = new String(testee.build(request, Duration.ofMinutes(30)).icsBytes(), StandardCharsets.UTF_8);
 
         assertThat(ics)
-            .contains("ORGANIZER;CN=BOB;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION:mailto:creator@example.com");
+            .contains("ORGANIZER;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=BOB:mailto:creator@example.com");
     }
 
 }

@@ -218,7 +218,7 @@ public class BookingLinkReservationRequestDTOTest {
 
         assertThatThrownBy(request::toBookingRequest)
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("'eventNote' must not exceed " + MAX_NOTES_LENGTH + " characters");
+            .hasMessageContaining("'notes' must not exceed " + MAX_NOTES_LENGTH + " characters");
     }
 
     @Test

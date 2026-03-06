@@ -154,14 +154,15 @@ public class BookingLinkReservationRoute implements JMAPRoutes {
         }
 
         void validate() {
-            Preconditions.checkNotNull(startUtc, "'startUtc' must not be null");
-            Preconditions.checkNotNull(creator, "'creator' must not be null");
+            Preconditions.checkArgument(startUtc != null, "'startUtc' must not be null");
+            Preconditions.checkArgument(creator != null, "'creator' must not be null");
+            Preconditions.checkArgument(StringUtils.isNotBlank(creator.email()), "'creator.email' must not be blank");
             Preconditions.checkArgument(StringUtils.isNotBlank(title), "'eventTitle' must not be blank");
             Preconditions.checkArgument(title.length() <= MAX_TITLE_LENGTH, "'eventTitle' must not exceed " + MAX_TITLE_LENGTH + " characters");
             Preconditions.checkArgument(additionalAttendees == null || additionalAttendees.size() <= MAX_ADDITIONAL_ATTENDEES,
                 "'additional_attendees' must not exceed " + MAX_ADDITIONAL_ATTENDEES + " items");
             Preconditions.checkArgument(notes == null || notes.length() <= MAX_NOTES_LENGTH,
-                "'eventNote' must not exceed " + MAX_NOTES_LENGTH + " characters");
+                "'notes' must not exceed " + MAX_NOTES_LENGTH + " characters");
             validateAdditionalAttendees();
         }
 

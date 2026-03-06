@@ -225,9 +225,9 @@ class BookingLinkReservationRouteTest {
                 "SUMMARY:30-min intro call",
                 "DTSTART:20360126T093000Z",
                 "DURATION:PT30M",
-                "ORGANIZER;CN=BOB;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION:mailto:creator@example.com",
-                "ATTENDEE;CN=BOB;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION:mailto:creator@example.com",
-                "ATTENDEE;CN=Nguyen Van A;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION:mailto:vana@example.com",
+                "ORGANIZER;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=BOB:mailto:creator@example.com",
+                "ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=BOB:mailto:creator@example.com",
+                "ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=Nguyen Van A:mailto:vana@example.com",
                 "DESCRIPTION:Please call via Zoom.",
                 "X-PUBLICLY-CREATED:true",
                 "X-PUBLICLY-CREATOR:creator@example.com",
@@ -427,8 +427,8 @@ class BookingLinkReservationRouteTest {
         assertThat(unfoldedCalendar)
             .describedAs("when optional fields are omitted, ICS should keep defaults and avoid optional properties")
             .contains("SUMMARY:optional fields omitted")
-            .contains("ORGANIZER;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=:mailto:creator@example.com")
-            .contains("ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=:mailto:creator@example.com")
+            .contains("ORGANIZER;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION:mailto:creator@example.com")
+            .contains("ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION:mailto:creator@example.com")
             .doesNotContain("X-OPENPAAS-VIDEOCONFERENCE")
             .doesNotContain("DESCRIPTION:");
     }
@@ -813,7 +813,7 @@ class BookingLinkReservationRouteTest {
                 {
                   "code": 400,
                   "message": "Bad Request",
-                  "details": "'eventNote' must not exceed 2000 characters"
+                  "details": "'notes' must not exceed 2000 characters"
                 }
                 """));
     }

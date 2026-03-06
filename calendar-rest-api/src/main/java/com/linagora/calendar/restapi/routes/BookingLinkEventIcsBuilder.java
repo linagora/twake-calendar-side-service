@@ -132,23 +132,31 @@ public class BookingLinkEventIcsBuilder {
     }
 
     private Attendee buildAttendee(BookingAttendee attendee) {
-        return (Attendee) new Attendee(URI.create(MAIL_TO_PREFIX + attendee.email().asString()))
-            .withParameter(new Cn(attendee.name()))
+        Attendee builtAttendee = (Attendee) new Attendee(URI.create(MAIL_TO_PREFIX + attendee.email().asString()))
             .withParameter(Rsvp.TRUE)
             .withParameter(Role.REQ_PARTICIPANT)
             .withParameter(CuType.INDIVIDUAL)
             .withParameter(PartStat.NEEDS_ACTION)
             .getFluentTarget();
+
+        if (StringUtils.isNotBlank(attendee.name())) {
+            builtAttendee.withParameter(new Cn(attendee.name()));
+        }
+        return builtAttendee;
     }
 
     private Organizer buildOrganizer(BookingAttendee attendee) {
-        return (Organizer) new Organizer(URI.create(MAIL_TO_PREFIX + attendee.email().asString()))
-            .withParameter(new Cn(attendee.name()))
+        Organizer organizer = (Organizer) new Organizer(URI.create(MAIL_TO_PREFIX + attendee.email().asString()))
             .withParameter(Rsvp.FALSE)
             .withParameter(Role.CHAIR)
             .withParameter(CuType.INDIVIDUAL)
             .withParameter(PartStat.NEEDS_ACTION)
             .getFluentTarget();
+
+        if (StringUtils.isNotBlank(attendee.name())) {
+            organizer.withParameter(new Cn(attendee.name()));
+        }
+        return organizer;
     }
 
     public record BuildResult(Uid eventId, Calendar calendar,
