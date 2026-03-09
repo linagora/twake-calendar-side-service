@@ -37,6 +37,7 @@ public class MongoDBCollectionFactory {
     public static final String SECRETLINKS = MongoDBSecretLinkStore.COLLECTION;
     public static final String ALARM_EVENT_LEDGE = MongoDBAlarmEventLedgerDAO.COLLECTION;
     public static final String AUTH_TICKETS = MongoDBTicketDAO.COLLECTION;
+    public static final String BOOKING_LINKS = MongoDBBookingLinkDAO.COLLECTION;
 
     public static void initialize(MongoDatabase database) {
         createUsersCollection(database);
@@ -44,6 +45,7 @@ public class MongoDBCollectionFactory {
         createSecretLinksCollection(database);
         createAlarmEventLedgeCollection(database);
         createAuthTicketsCollection(database);
+        createBookingLinksCollection(database);
     }
 
     private static void createUsersCollection(MongoDatabase database) {
@@ -123,6 +125,13 @@ public class MongoDBCollectionFactory {
             Mono.from(database.createCollection(AUTH_TICKETS)).block();
         }
         MongoDBTicketDAO.declareIndex(database.getCollection(AUTH_TICKETS)).block();
+    }
+
+    private static void createBookingLinksCollection(MongoDatabase database) {
+        if (!collectionExists(database, BOOKING_LINKS)) {
+            Mono.from(database.createCollection(BOOKING_LINKS)).block();
+        }
+        MongoDBBookingLinkDAO.declareIndex(database.getCollection(BOOKING_LINKS)).block();
     }
 
     private static boolean collectionExists(MongoDatabase database, String collectionName) {
