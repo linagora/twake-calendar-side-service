@@ -117,6 +117,24 @@ public interface BookingLinkDAOContract {
     }
 
     @Test
+    default void findByPublicIdShouldReturnInsertedBookingLink() {
+        BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
+
+        BookingLink found = testee().findByPublicId(inserted.publicId()).block();
+
+        assertThat(found)
+            .isEqualTo(inserted);
+    }
+
+    @Test
+    default void findByPublicIdWithoutUsernameShouldReturnEmptyWhenPublicIdDoesNotExist() {
+        BookingLinkPublicId missingPublicId = new BookingLinkPublicId("missing-public-id");
+
+        assertThat(testee().findByPublicId(missingPublicId).blockOptional())
+            .isEmpty();
+    }
+
+    @Test
     default void findByUsernameShouldReturnEmptyByDefault() {
         assertThat(testee().findByUsername(USER_1).collectList().block())
             .isEmpty();
