@@ -28,6 +28,7 @@ import java.time.ZonedDateTime;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import jakarta.inject.Inject;
 
@@ -91,7 +92,8 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
 
     public static Mono<String> declareIndex(MongoCollection<Document> collection) {
         return Mono.from(collection.createIndex(Indexes.ascending(FIELD_USERNAME, FIELD_PUBLIC_ID), new IndexOptions().unique(true)))
-            .then(Mono.from(collection.createIndex(Indexes.ascending(FIELD_USERNAME))));
+            .then(Mono.from(collection.createIndex(Indexes.ascending(FIELD_USERNAME))))
+            .then(Mono.from(collection.createIndex(Indexes.ascending(FIELD_PUBLIC_ID))));
     }
 
     @Override
@@ -112,6 +114,14 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
         }).flatMap(bookingLink ->
             Mono.from(database.getCollection(COLLECTION).insertOne(toDocument(bookingLink)))
                 .thenReturn(bookingLink));
+    }
+
+    @Override
+    public Mono<BookingLink> findByPublicId(BookingLinkPublicId publicId) {
+        return Mono.from(database.getCollection(COLLECTION)
+                .find(Filters.eq(FIELD_PUBLIC_ID, publicId.value()))
+                .first())
+            .map(this::fromDocument);
     }
 
     @Override
@@ -240,7 +250,7 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
 
     private BookingLink fromDocument(Document doc) {
         Username username = Username.of(doc.getString(FIELD_USERNAME));
-        BookingLinkPublicId publicId = new BookingLinkPublicId(doc.getString(FIELD_PUBLIC_ID));
+        BookingLinkPublicId publicId = new BookingLinkPublicId(doc.get(FIELD_PUBLIC_ID, UUID.class));
         CalendarURL calendarURL = new CalendarURL(new OpenPaaSId(doc.getString(FIELD_PRINCIPAL_ID)), new OpenPaaSId(doc.getString(FIELD_CALENDAR_ID)));
         Duration duration = Duration.ofSeconds(doc.getLong(FIELD_DURATION_SECONDS));
         boolean active = doc.getBoolean(FIELD_ACTIVE);

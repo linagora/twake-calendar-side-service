@@ -19,6 +19,7 @@
 package com.linagora.calendar.storage.mongodb;
 
 import org.apache.james.metrics.api.MetricFactory;
+import org.bson.UuidRepresentation;
 
 import com.mongodb.ConnectionString;
 import com.mongodb.MongoClientSettings;
@@ -31,6 +32,7 @@ public class MongoDBConnectionFactory {
         MongoClientSettings settings = MongoClientSettings.builder()
             .applyConnectionString(new ConnectionString(configuration.mongoURL()))
             .addCommandListener(new MongoCommandMetricsListener(metricFactory))
+            .uuidRepresentation(UuidRepresentation.STANDARD)
             .build();
 
         return MongoClients.create(settings).getDatabase(configuration.database());
