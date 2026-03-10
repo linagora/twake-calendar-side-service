@@ -93,6 +93,7 @@ import com.linagora.calendar.restapi.routes.LogoRoute;
 import com.linagora.calendar.restapi.routes.PeopleSearchRoute;
 import com.linagora.calendar.restapi.routes.ProfileAvatarRoute;
 import com.linagora.calendar.restapi.routes.ProfileUpdateRoute;
+import com.linagora.calendar.restapi.routes.PublicAgendaProposalNotifier;
 import com.linagora.calendar.restapi.routes.ResourceIconRoute;
 import com.linagora.calendar.restapi.routes.ResourceParticipationRoute;
 import com.linagora.calendar.restapi.routes.ResourceRoute;
@@ -202,6 +203,7 @@ public class RestApiModule extends AbstractModule {
         bind(ImportWebSocketNotifier.class).in(Scopes.SINGLETON);
         bind(SendMailNotifier.class).in(Scopes.SINGLETON);
         bind(BookingLinkSlotsService.class).in(Scopes.SINGLETON);
+        bind(PublicAgendaProposalNotifier.class).in(Scopes.SINGLETON);
 
         Multibinder<ImportResultNotifier> importResultNotifierMultibinder = Multibinder.newSetBinder(binder(), ImportResultNotifier.class);
         importResultNotifierMultibinder.addBinding().to(ImportWebSocketNotifier.class);
