@@ -18,32 +18,45 @@
 
 package com.linagora.calendar.app.restapi.routes;
 
+import static com.linagora.calendar.app.restapi.routes.ImportRouteTest.mailSenderConfigurationFunction;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static io.restassured.RestAssured.given;
 import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
 import static io.restassured.http.ContentType.JSON;
 import static net.javacrumbs.jsonunit.JsonMatchers.jsonEquals;
+import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
+import static org.awaitility.Durations.ONE_HUNDRED_MILLISECONDS;
 
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.IntStream;
 
 import jakarta.inject.Inject;
 
 import org.apache.http.HttpStatus;
 import org.apache.james.core.Domain;
+import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
 import org.apache.james.utils.GuiceProbe;
 import org.assertj.core.groups.Tuple;
+import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionFactory;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Order;
@@ -66,6 +79,9 @@ import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiServerProbe;
+import com.linagora.calendar.smtp.MailSenderConfiguration;
+import com.linagora.calendar.smtp.MockSmtpServerExtension;
+import com.linagora.calendar.smtp.template.MailTemplateConfiguration;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
@@ -79,6 +95,8 @@ import com.linagora.calendar.storage.event.EventParseUtils;
 import io.restassured.RestAssured;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.http.ContentType;
+import io.restassured.path.json.JsonPath;
+import io.restassured.specification.RequestSpecification;
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.Property;
@@ -91,6 +109,10 @@ class BookingLinkReservationRouteTest {
     private static final AvailabilityRules AVAILABILITY_RULE = AvailabilityRules.of(new FixedAvailabilityRule(
         ZonedDateTime.parse("2036-01-26T09:00:00Z"),
         ZonedDateTime.parse("2036-01-26T12:00:00Z")));
+    private static final ConditionFactory CALMLY_AWAIT = Awaitility
+        .with().pollInterval(ONE_HUNDRED_MILLISECONDS)
+        .and().pollDelay(ONE_HUNDRED_MILLISECONDS)
+        .await();
 
     static class BookingLinkReservationProbe implements GuiceProbe {
         private final BookingLinkDAO bookingLinkDAO;
@@ -111,6 +133,10 @@ class BookingLinkReservationRouteTest {
 
     @RegisterExtension
     @Order(2)
+    static final MockSmtpServerExtension mockSmtpExtension = new MockSmtpServerExtension();
+
+    @RegisterExtension
+    @Order(3)
     static TwakeCalendarExtension twakeCalendarExtension = new TwakeCalendarExtension(
         TwakeCalendarConfiguration.builder()
             .configurationFromClasspath()
@@ -118,6 +144,11 @@ class BookingLinkReservationRouteTest {
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB),
         AppTestHelper.OIDC_BY_PASS_MODULE,
         DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
+        binder -> binder.bind(MailTemplateConfiguration.class)
+            .toInstance(new MailTemplateConfiguration("classpath://templates/",
+                MaybeSender.getMailSender("no-reply@openpaas.org"))),
+        binder -> binder.bind(MailSenderConfiguration.class)
+            .toInstance(mailSenderConfigurationFunction.apply(mockSmtpExtension)),
         binder -> {
             Multibinder.newSetBinder(binder, GuiceProbe.class)
                 .addBinding()
@@ -135,6 +166,14 @@ class BookingLinkReservationRouteTest {
     private OpenPaaSUser openPaaSUser;
     private CalDavClient calDavClient;
     private DavTestHelper davTestHelper;
+    private int restApiPort;
+
+    static RequestSpecification mockSMTPRequestSpecification() {
+        return new RequestSpecBuilder()
+            .setPort(mockSmtpExtension.getMockSmtp().getRestApiPort())
+            .setBasePath("")
+            .build();
+    }
 
     @BeforeEach
     void setUp(TwakeCalendarGuiceServer server) throws Exception {
@@ -144,7 +183,7 @@ class BookingLinkReservationRouteTest {
         calendarDataProbe.addUser(ownerUsername, PASSWORD, "Owner", "User");
         openPaaSUser = calendarDataProbe.getUser(ownerUsername);
 
-        int restApiPort = server.getProbe(RestApiServerProbe.class).getPort().getValue();
+        restApiPort = server.getProbe(RestApiServerProbe.class).getPort().getValue();
         RestAssured.requestSpecification = new RequestSpecBuilder()
             .setContentType(ContentType.JSON)
             .setAccept(ContentType.JSON)
@@ -155,6 +194,14 @@ class BookingLinkReservationRouteTest {
 
         calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
+
+        given(mockSMTPRequestSpecification())
+            .delete("/smtpMails")
+            .then();
+
+        given(mockSMTPRequestSpecification())
+            .delete("/smtpBehaviors")
+            .then();
     }
 
     @Test
@@ -262,6 +309,139 @@ class BookingLinkReservationRouteTest {
             softly.assertThat(getPropertyValue.apply("X-PUBLICLY-CREATOR"))
                 .isEqualTo("creator@example.com");
         });
+    }
+
+    @Test
+    void shouldSendProposalEmailToOrganizerWhenBookingCreated(TwakeCalendarGuiceServer server) {
+        BookingLink inserted = insertActiveBookingLink(server);
+        String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();
+
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body("""
+                {
+                  "startUtc": "%s",
+                  "creator": {
+                    "name": "BOB",
+                    "email": "creator@example.com"
+                  },
+                  "eventTitle": "30-min intro call"
+                }
+                """.formatted(slotStartUtc))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED);
+
+        JsonPath smtpMailsResponse = awaitProposalEmail();
+
+        assertSoftly(softly -> {
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(openPaaSUser.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[0].message")).contains("Subject: New event proposition from BOB: 30-min intro call");
+        });
+    }
+
+    @Test
+    void shouldIncludeThreeParticipationActionLinksInProposalEmail(TwakeCalendarGuiceServer server) {
+        BookingLink inserted = insertActiveBookingLink(server);
+        String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();
+
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body("""
+                {
+                  "startUtc": "%s",
+                  "creator": {
+                    "name": "BOB",
+                    "email": "creator@example.com"
+                  },
+                  "eventTitle": "30-min intro call"
+                }
+                """.formatted(slotStartUtc))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED);
+
+        String rawMessage = awaitProposalEmail().getString("[0].message");
+        List<String> actionLinks = extractParticipationActionLinks(getHtml(rawMessage));
+
+        assertSoftly(softly -> {
+            softly.assertThat(actionLinks).hasSize(3).doesNotHaveDuplicates();
+            softly.assertThat(actionLinks).allMatch(link -> link.startsWith("https://excal.linagora.com/excal/?jwt="));
+        });
+
+        String actualResponse = given()
+            .when()
+            .get(toParticipationEndpoint(actionLinks.getFirst()))
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(JSON)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(actualResponse).isEqualTo("""
+            {
+              "eventJSON": "${json-unit.ignore}",
+              "attendeeEmail": "%s",
+              "locale": "en",
+              "links": {
+                "yes": "${json-unit.ignore}",
+                "no": "${json-unit.ignore}",
+                "maybe": "${json-unit.ignore}"
+              }
+            }
+            """.formatted(openPaaSUser.username().asString()));
+    }
+
+    @Test
+    void shouldUpdateOrganizerPartStatWhenProposalActionLinksAreAccessed(TwakeCalendarGuiceServer server) {
+        BookingLink inserted = insertActiveBookingLink(server);
+        String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();
+
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body("""
+                {
+                  "startUtc": "%s",
+                  "creator": {
+                    "name": "BOB",
+                    "email": "creator@example.com"
+                  },
+                  "eventTitle": "30-min intro call"
+                }
+                """.formatted(slotStartUtc))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED);
+
+        List<String> actionLinks = extractParticipationActionLinks(getHtml(awaitProposalEmail().getString("[0].message")));
+        Map<String, String> linksByLabel = Map.of(
+            "yes", actionLinks.get(0),
+            "maybe", actionLinks.get(1),
+            "no", actionLinks.get(2));
+        Consumer<String> awaitOrganizerPartStat = expectedPartStat ->
+            CALMLY_AWAIT
+                .atMost(Duration.ofSeconds(5))
+                .untilAsserted(() -> assertThat(exportCalendar(openPaaSUser)
+                    .replace("\r\n ", ""))
+                    .contains("ATTENDEE;RSVP=TRUE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;CN=%s;PARTSTAT=%s:mailto:%s"
+                        .formatted(openPaaSUser.fullName(), expectedPartStat, openPaaSUser.username().asString())));
+
+        given().when().get(toParticipationEndpoint(linksByLabel.get("yes")))
+            .then().statusCode(HttpStatus.SC_OK).contentType(JSON);
+        awaitOrganizerPartStat.accept("ACCEPTED");
+
+        given().when().get(toParticipationEndpoint(linksByLabel.get("maybe")))
+            .then().statusCode(HttpStatus.SC_OK).contentType(JSON);
+        awaitOrganizerPartStat.accept("TENTATIVE");
+
+        given().when().get(toParticipationEndpoint(linksByLabel.get("no")))
+            .then().statusCode(HttpStatus.SC_OK).contentType(JSON);
+        awaitOrganizerPartStat.accept("DECLINED");
     }
 
     @Test
@@ -949,6 +1129,51 @@ class BookingLinkReservationRouteTest {
               "notes": ""
             }
             """.formatted(slotStartUtc);
+    }
+
+    private JsonPath awaitProposalEmail() {
+        java.util.function.Supplier<JsonPath> smtpMailsResponseSupplier = () -> given(mockSMTPRequestSpecification())
+            .get("/smtpMails")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract()
+            .jsonPath();
+
+        CALMLY_AWAIT
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        return smtpMailsResponseSupplier.get();
+    }
+
+    private String getHtml(String message) {
+        Pattern htmlPattern = Pattern.compile(
+            "Content-Transfer-Encoding: base64\\r?\\nContent-Type: text/html; charset=UTF-8\\r?\\nContent-Language: [^\\r\\n]+\\r?\\n\\r?\\n([A-Za-z0-9+/=\\r\\n]+)\\r?\\n---=Part",
+            Pattern.DOTALL);
+        Matcher matcher = htmlPattern.matcher(message);
+        assertThat(matcher.find()).isTrue();
+        String base64Html = matcher.group(1).replaceAll("\\s+", "");
+        return new String(Base64.getDecoder().decode(base64Html), StandardCharsets.UTF_8);
+    }
+
+    private List<String> extractParticipationActionLinks(String html) {
+        List<String> links = new ArrayList<>();
+        Pattern pattern = Pattern.compile("href\\s*=\\s*['\"]([^'\"]+)['\"]", Pattern.CASE_INSENSITIVE);
+        Matcher matcher = pattern.matcher(html);
+
+        while (matcher.find()) {
+            String link = matcher.group(1);
+            if (link.startsWith("https://excal.linagora.com/excal/?jwt=")) {
+                links.add(link);
+            }
+        }
+        return links;
+    }
+
+    private String toParticipationEndpoint(String excalLink) {
+        String jwt = excalLink.substring("https://excal.linagora.com/excal/?jwt=".length());
+        return String.format("http://localhost:%d/calendar/api/calendars/event/participation?jwt=%s",
+            restApiPort, URLEncoder.encode(jwt, StandardCharsets.UTF_8));
     }
 
 }
