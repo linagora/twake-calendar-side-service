@@ -177,6 +177,7 @@ class BookingLinkReservationRouteTest {
         .then()
             .statusCode(HttpStatus.SC_CREATED);
     }
+    
     @Test
     void shouldCreateBookingAndPersistEventToSabre(TwakeCalendarGuiceServer server) {
         // Given: an active public booking link owned by the test user.
