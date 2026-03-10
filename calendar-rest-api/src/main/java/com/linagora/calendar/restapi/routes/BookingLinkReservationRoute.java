@@ -82,11 +82,9 @@ public class BookingLinkReservationRoute implements JMAPRoutes {
     }
 
     Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response) {
-        BookingLinkPublicId publicId = BookingLinkPublicId.from(request.param(BOOKING_LINK_PUBLIC_ID_PARAM));
-
         return request.receive().aggregate().asByteArray()
             .flatMap(bytes -> Mono.fromCallable(() -> ReservationRequestDTO.parse(bytes).toBookingRequest()))
-            .flatMap(bookingRequest -> bookingLinkReservationService.book(publicId, bookingRequest))
+            .flatMap(bookingRequest -> bookingLinkReservationService.book(BookingLinkPublicId.from(request.param(BOOKING_LINK_PUBLIC_ID_PARAM)), bookingRequest))
             .then(response.status(HttpResponseStatus.CREATED).send())
             .onErrorResume(Exception.class, exception -> handleError(request, response, exception));
     }
