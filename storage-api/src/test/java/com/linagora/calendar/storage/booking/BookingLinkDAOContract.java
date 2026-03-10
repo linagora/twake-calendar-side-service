@@ -27,6 +27,7 @@ import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.LocalTime;
 import java.util.Optional;
+import java.util.UUID;
 
 import org.apache.james.core.Username;
 import org.apache.james.utils.UpdatableTickingClock;
@@ -59,7 +60,7 @@ public interface BookingLinkDAOContract {
 
         BookingLink expected = BookingLink.builder()
             .username(USER_1)
-            .publicId(new BookingLinkPublicId("ignore"))
+            .publicId(new BookingLinkPublicId(UUID.randomUUID()))
             .calendarUrl(CALENDAR_URL)
             .duration(EVENT_DURATION)
             .active(ACTIVE)
@@ -102,7 +103,7 @@ public interface BookingLinkDAOContract {
 
     @Test
     default void findByPublicIdShouldReturnEmptyWhenPublicIdDoesNotExist() {
-        BookingLinkPublicId missingPublicId = new BookingLinkPublicId("missing-public-id");
+        BookingLinkPublicId missingPublicId = new BookingLinkPublicId(UUID.randomUUID());
 
         assertThat(testee().findByPublicId(USER_1, missingPublicId).blockOptional())
             .isEmpty();
@@ -128,7 +129,7 @@ public interface BookingLinkDAOContract {
 
     @Test
     default void findByPublicIdWithoutUsernameShouldReturnEmptyWhenPublicIdDoesNotExist() {
-        BookingLinkPublicId missingPublicId = new BookingLinkPublicId("missing-public-id");
+        BookingLinkPublicId missingPublicId = new BookingLinkPublicId(UUID.randomUUID());
 
         assertThat(testee().findByPublicId(missingPublicId).blockOptional())
             .isEmpty();
@@ -167,7 +168,7 @@ public interface BookingLinkDAOContract {
             ValuePatch.keep(),
             ValuePatch.keep());
 
-        assertThatThrownBy(() -> testee().update(USER_1, new BookingLinkPublicId("missing-public-id"), patchRequest).block())
+        assertThatThrownBy(() -> testee().update(USER_1, new BookingLinkPublicId(UUID.randomUUID()), patchRequest).block())
             .isInstanceOf(BookingLinkNotFoundException.class);
     }
 
@@ -268,7 +269,7 @@ public interface BookingLinkDAOContract {
 
     @Test
     default void resetPublicIdShouldFailWhenPublicIdDoesNotExist() {
-        assertThatThrownBy(() -> testee().resetPublicId(USER_1, new BookingLinkPublicId("missing-public-id")).block())
+        assertThatThrownBy(() -> testee().resetPublicId(USER_1, new BookingLinkPublicId(UUID.randomUUID())).block())
             .isInstanceOf(BookingLinkNotFoundException.class);
     }
 

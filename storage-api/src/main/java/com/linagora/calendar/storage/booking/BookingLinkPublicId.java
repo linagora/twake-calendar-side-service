@@ -20,16 +20,8 @@ package com.linagora.calendar.storage.booking;
 
 import java.util.UUID;
 
-import org.apache.commons.lang3.StringUtils;
-
-import com.google.common.base.Preconditions;
-
-public record BookingLinkPublicId(String value) {
+public record BookingLinkPublicId(UUID value) {
     public static BookingLinkPublicId generate() {
-        return new BookingLinkPublicId(UUID.randomUUID().toString());
-    }
-
-    public BookingLinkPublicId {
-        Preconditions.checkArgument(StringUtils.isNotBlank(value), "BookingLinkPublicId must not be empty");
+        return new BookingLinkPublicId(UUID.randomUUID());
     }
 }

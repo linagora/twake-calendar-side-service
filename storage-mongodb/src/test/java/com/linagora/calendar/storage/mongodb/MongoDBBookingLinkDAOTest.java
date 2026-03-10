@@ -18,23 +18,38 @@
 
 package com.linagora.calendar.storage.mongodb;
 
-import org.apache.james.metrics.api.MetricFactory;
-import org.bson.UuidRepresentation;
+import java.time.Instant;
+import java.util.List;
 
-import com.mongodb.ConnectionString;
-import com.mongodb.MongoClientSettings;
-import com.mongodb.reactivestreams.client.MongoClients;
-import com.mongodb.reactivestreams.client.MongoDatabase;
+import org.apache.james.utils.UpdatableTickingClock;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
-public class MongoDBConnectionFactory {
-    public static MongoDatabase instantiateDB(MongoDBConfiguration configuration,
-                                              MetricFactory metricFactory) {
-        MongoClientSettings settings = MongoClientSettings.builder()
-            .applyConnectionString(new ConnectionString(configuration.mongoURL()))
-            .addCommandListener(new MongoCommandMetricsListener(metricFactory))
-            .uuidRepresentation(UuidRepresentation.STANDARD)
-            .build();
+import com.linagora.calendar.storage.booking.BookingLinkDAO;
+import com.linagora.calendar.storage.booking.BookingLinkDAOContract;
 
-        return MongoClients.create(settings).getDatabase(configuration.database());
+public class MongoDBBookingLinkDAOTest implements BookingLinkDAOContract {
+
+    @RegisterExtension
+    static DockerMongoDBExtension mongo = new DockerMongoDBExtension(
+        List.of(MongoDBBookingLinkDAO.COLLECTION));
+
+    private MongoDBBookingLinkDAO bookingLinkDAO;
+    private UpdatableTickingClock clock;
+
+    @BeforeEach
+    void setUp() {
+        clock = new UpdatableTickingClock(Instant.parse("2026-01-01T00:00:00Z"));
+        bookingLinkDAO = new MongoDBBookingLinkDAO(mongo.getDb(), clock);
+    }
+
+    @Override
+    public BookingLinkDAO testee() {
+        return bookingLinkDAO;
+    }
+
+    @Override
+    public UpdatableTickingClock clock() {
+        return clock;
     }
 }

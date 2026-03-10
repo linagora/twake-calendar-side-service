@@ -24,6 +24,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
@@ -85,7 +86,7 @@ public class BookingLinkSlotsRoute implements JMAPRoutes {
                 Instant queryStart = parseRequiredInstant(queryStringDecoder, FROM_QUERY_PARAM);
                 Instant queryEnd = parseRequiredInstant(queryStringDecoder, TO_QUERY_PARAM);
                 validateRange(queryStart, queryEnd);
-                BookingLinkPublicId bookingLinkPublicId = new BookingLinkPublicId(request.param(BOOKING_LINK_PUBLIC_ID_PARAM));
+                BookingLinkPublicId bookingLinkPublicId = new BookingLinkPublicId(UUID.fromString(request.param(BOOKING_LINK_PUBLIC_ID_PARAM)));
 
                 return bookingLinkSlotsService.computeSlots(bookingLinkPublicId, queryStart, queryEnd)
                     .flatMap(result -> doResponse(response, queryStart, queryEnd, result.getLeft(), result.getRight()));

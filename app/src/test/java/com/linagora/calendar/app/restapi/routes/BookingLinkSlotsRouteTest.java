@@ -670,8 +670,9 @@ class BookingLinkSlotsRouteTest {
 
     @Test
     void shouldReturnNotFoundWhenBookingLinkPublicIdDoesNotExist() {
+        UUID nonExistingPublicId = UUID.randomUUID();
         String response = given()
-            .pathParam("bookingLinkPublicId", "missing-public-id")
+            .pathParam("bookingLinkPublicId", nonExistingPublicId.toString())
             .queryParam("from", FROM_20360126)
             .queryParam("to", TO_20360127)
         .when()
@@ -690,9 +691,9 @@ class BookingLinkSlotsRouteTest {
                     "error": {
                         "code": 404,
                         "message": "Not Found",
-                        "details": "Cannot find booking link with publicId missing-public-id"
+                        "details": "Cannot find booking link with publicId %s"
                     }
-                }""");
+                }""".formatted(nonExistingPublicId.toString()));
     }
 
     @Test
