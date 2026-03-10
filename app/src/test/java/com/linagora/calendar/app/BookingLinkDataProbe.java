@@ -16,24 +16,32 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.restapi;
+package com.linagora.calendar.app;
 
-import org.apache.http.entity.ContentType;
+import java.util.List;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import jakarta.inject.Inject;
 
-import io.netty.handler.codec.http.DefaultHttpHeaders;
-import io.netty.handler.codec.http.HttpHeaderNames;
-import io.netty.handler.codec.http.HttpHeaders;
+import org.apache.james.core.Username;
+import org.apache.james.utils.GuiceProbe;
 
-public class RestApiConstants {
+import com.linagora.calendar.storage.booking.BookingLink;
+import com.linagora.calendar.storage.booking.BookingLinkDAO;
+import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 
-    public static final HttpHeaders JSON_HEADER = new DefaultHttpHeaders()
-        .set(HttpHeaderNames.CONTENT_TYPE, ContentType.APPLICATION_JSON.toString());
+public class BookingLinkDataProbe implements GuiceProbe {
+    private final BookingLinkDAO bookingLinkDAO;
 
-    public static final ObjectMapper OBJECT_MAPPER_DEFAULT = new ObjectMapper()
-        .registerModule(new JavaTimeModule())
-        .registerModule(new Jdk8Module());
+    @Inject
+    public BookingLinkDataProbe(BookingLinkDAO bookingLinkDAO) {
+        this.bookingLinkDAO = bookingLinkDAO;
+    }
+
+    public BookingLink findBookingLink(Username username, BookingLinkPublicId publicId) {
+        return bookingLinkDAO.findByPublicId(username, publicId).block();
+    }
+
+    public List<BookingLink> listBookingLinks(Username username) {
+        return bookingLinkDAO.findByUsername(username).collectList().block();
+    }
 }
