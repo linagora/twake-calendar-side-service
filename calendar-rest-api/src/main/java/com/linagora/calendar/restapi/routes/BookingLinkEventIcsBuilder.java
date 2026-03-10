@@ -23,6 +23,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.List;
 import java.util.Optional;
 
 import jakarta.inject.Inject;
@@ -108,7 +109,7 @@ public class BookingLinkEventIcsBuilder {
             .add(new DtStamp(clock.instant()))
             .add(new DtStart<>(request.slotStartUtc()))
             .add(new net.fortuna.ical4j.model.property.Duration(eventDuration))
-            .add(buildOrganizer(organizer))
+            .addAll(buildOrganizer(organizer))
             .add(buildAttendee(request.creator()))
             .addAll(request.additionalAttendees().stream()
                 .map(this::buildAttendee)
@@ -146,9 +147,11 @@ public class BookingLinkEventIcsBuilder {
         return builtAttendee;
     }
 
-    private Organizer buildOrganizer(BookingAttendee attendee) {
-        Organizer organizer = (Organizer) new Organizer(URI.create(MAIL_TO_PREFIX + attendee.email().asString()))
-            .withParameter(Rsvp.FALSE)
+    private List<Property> buildOrganizer(BookingAttendee attendee) {
+        Organizer organizer = new Organizer(URI.create(MAIL_TO_PREFIX + attendee.email().asString()));
+
+        Attendee builtAttendee = (Attendee) new Attendee(URI.create(MAIL_TO_PREFIX + attendee.email().asString()))
+            .withParameter(Rsvp.TRUE)
             .withParameter(Role.CHAIR)
             .withParameter(CuType.INDIVIDUAL)
             .withParameter(PartStat.NEEDS_ACTION)
@@ -156,8 +159,9 @@ public class BookingLinkEventIcsBuilder {
 
         if (StringUtils.isNotBlank(attendee.name())) {
             organizer.withParameter(new Cn(attendee.name()));
+            builtAttendee.withParameter(new Cn(attendee.name()));
         }
-        return organizer;
+        return List.of(organizer, builtAttendee);
     }
 
     public record BuildResult(Uid eventId, Calendar calendar,

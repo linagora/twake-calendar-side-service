@@ -228,10 +228,12 @@ class BookingLinkReservationRouteTest {
                 "SUMMARY:30-min intro call",
                 "DTSTART:20360126T093000Z",
                 "DURATION:PT30M",
-                "ORGANIZER;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=%s:mailto:%s"
+                "ORGANIZER;CN=%s:mailto:%s"
                     .formatted(openPaaSUser.fullName(), openPaaSUser.username().asString()),
-                "ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=BOB;SCHEDULE-STATUS=5.2:mailto:creator@example.com",
-                "ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=Nguyen Van A;SCHEDULE-STATUS=5.2:mailto:vana@example.com",
+                "ATTENDEE;RSVP=TRUE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=%s:mailto:%s"
+                    .formatted(openPaaSUser.fullName(), openPaaSUser.username().asString()),
+                "ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=BOB:mailto:creator@example.com",
+                "ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=Nguyen Van A:mailto:vana@example.com",
                 "DESCRIPTION:Please call via Zoom.",
                 "X-PUBLICLY-CREATED:true",
                 "X-PUBLICLY-CREATOR:creator@example.com",
@@ -432,9 +434,11 @@ class BookingLinkReservationRouteTest {
             .describedAs("when optional fields are omitted, ICS should keep defaults and avoid optional properties")
             .containsSubsequence(
                 "SUMMARY:optional fields omitted",
-                "ORGANIZER;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=%s:mailto:%s"
+                "ORGANIZER;CN=%s:mailto:%s"
                     .formatted(openPaaSUser.fullName(), openPaaSUser.username().asString()),
-                "ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;SCHEDULE-STATUS=5.2:mailto:creator@example.com")
+                "ATTENDEE;RSVP=TRUE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=%s:mailto:%s"
+                    .formatted(openPaaSUser.fullName(), openPaaSUser.username().asString()),
+                "ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION:mailto:creator@example.com")
             .doesNotContain("X-OPENPAAS-VIDEOCONFERENCE")
             .doesNotContain("DESCRIPTION:");
     }
