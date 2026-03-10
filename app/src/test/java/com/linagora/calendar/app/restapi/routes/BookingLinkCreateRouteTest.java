@@ -24,7 +24,6 @@ import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.apache.james.backends.rabbitmq.RabbitMQExtension.IsolationPolicy.WEAK;
 import static org.hamcrest.Matchers.equalTo;
 
 import java.nio.charset.StandardCharsets;
@@ -34,28 +33,32 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.Optional;
+import java.util.UUID;
 
 import org.apache.http.HttpStatus;
-import org.apache.james.backends.rabbitmq.RabbitMQExtension;
-import org.apache.james.core.Domain;
-import org.apache.james.core.Username;
+import org.apache.james.utils.GuiceProbe;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
-import com.linagora.calendar.api.booking.AvailabilityRule.WeeklyAvailabilityRule;
+import com.google.inject.multibindings.Multibinder;
 import com.linagora.calendar.api.booking.AvailabilityRule.FixedAvailabilityRule;
+import com.linagora.calendar.api.booking.AvailabilityRule.WeeklyAvailabilityRule;
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.app.AppTestHelper;
+import com.linagora.calendar.app.BookingLinkDataProbe;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
+import com.linagora.calendar.dav.DavModuleTestHelper;
+import com.linagora.calendar.dav.DockerSabreDavSetup;
+import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.CalendarURL;
-import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 
@@ -66,18 +69,11 @@ import io.restassured.http.ContentType;
 
 class BookingLinkCreateRouteTest {
 
-    private static final String DOMAIN = "open-paas.ltd";
     private static final String PASSWORD = "secret";
-    private static final Username USERNAME = Username.fromLocalPartWithDomain("bob", DOMAIN);
-    private static final String BASE_ID = "659387b9d486dc0046aeff91";
-    private static final String CALENDAR_ID = "659387b9d486dc0046aeff92";
-    private static final String CALENDAR_URL = "/calendars/" + BASE_ID + "/" + CALENDAR_ID;
-    private static final CalendarURL EXPECTED_CALENDAR_URL = new CalendarURL(new OpenPaaSId(BASE_ID), new OpenPaaSId(CALENDAR_ID));
 
     @RegisterExtension
     @Order(1)
-    private static RabbitMQExtension rabbitMQExtension = RabbitMQExtension.singletonRabbitMQ()
-        .isolationPolicy(WEAK);
+    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
 
     @RegisterExtension
     @Order(2)
@@ -85,24 +81,34 @@ class BookingLinkCreateRouteTest {
         TwakeCalendarConfiguration.builder()
             .configurationFromClasspath()
             .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
-            .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY),
-        AppTestHelper.BY_PASS_MODULE.apply(rabbitMQExtension));
+            .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB),
+        AppTestHelper.OIDC_BY_PASS_MODULE,
+        DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
+        binder -> {
+            Multibinder.newSetBinder(binder, GuiceProbe.class)
+                .addBinding()
+                .to(BookingLinkDataProbe.class);
+        });
 
     @AfterAll
     static void afterAll() {
         RestAssured.reset();
     }
 
-    private CalendarDataProbe dataProbe;
+    private BookingLinkDataProbe dataProbe;
+    private OpenPaaSUser openPaaSUser;
 
     @BeforeEach
     void setUp(TwakeCalendarGuiceServer server) {
-        dataProbe = server.getProbe(CalendarDataProbe.class);
-        dataProbe.addDomain(Domain.of(DOMAIN));
-        dataProbe.addUser(USERNAME, PASSWORD);
+        openPaaSUser = sabreDavExtension.newTestUser();
+        CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
+        calendarDataProbe.addDomain(openPaaSUser.username().getDomainPart().get());
+        calendarDataProbe.addUserToRepository(openPaaSUser.username(), PASSWORD);
+
+        dataProbe = server.getProbe(BookingLinkDataProbe.class);
 
         PreemptiveBasicAuthScheme basicAuthScheme = new PreemptiveBasicAuthScheme();
-        basicAuthScheme.setUserName(USERNAME.asString());
+        basicAuthScheme.setUserName(openPaaSUser.username().asString());
         basicAuthScheme.setPassword(PASSWORD);
 
         RestAssured.requestSpecification = new RequestSpecBuilder()
@@ -124,7 +130,7 @@ class BookingLinkCreateRouteTest {
                     "durationMinutes": 30,
                     "active": true
                 }
-                """.formatted(CALENDAR_URL))
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
         .when()
             .post("/booking-links")
         .then()
@@ -146,17 +152,17 @@ class BookingLinkCreateRouteTest {
                     "durationMinutes": 30,
                     "active": true
                 }
-                """.formatted(CALENDAR_URL))
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
         .when()
             .post("/booking-links")
         .then()
             .statusCode(HttpStatus.SC_CREATED)
             .extract().jsonPath().getString("bookingLinkPublicId");
 
-        BookingLink stored = dataProbe.findBookingLink(USERNAME, new BookingLinkPublicId(publicId)).orElseThrow();
+        BookingLink stored = dataProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
 
-        assertThat(stored.username()).isEqualTo(USERNAME);
-        assertThat(stored.calendarUrl()).isEqualTo(EXPECTED_CALENDAR_URL);
+        assertThat(stored.username()).isEqualTo(openPaaSUser.username());
+        assertThat(stored.calendarUrl()).isEqualTo(CalendarURL.from(openPaaSUser.id()));
         assertThat(stored.duration()).isEqualTo(Duration.ofMinutes(30));
         assertThat(stored.active()).isTrue();
         assertThat(stored.availabilityRules()).isEmpty();
@@ -172,21 +178,21 @@ class BookingLinkCreateRouteTest {
                     "active": true,
                     "timeZone": "Asia/Ho_Chi_Minh",
                     "availabilityRules": [
-                        { "dayOfWeek": 1, "start": "09:00", "end": "12:00", "type": "weekly" },
-                        { "dayOfWeek": 1, "start": "13:00", "end": "17:00", "type": "weekly" }
+                        { "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "type": "weekly" },
+                        { "dayOfWeek": "MON", "start": "13:00", "end": "17:00", "type": "weekly" }
                     ]
                 }
-                """.formatted(CALENDAR_URL))
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
         .when()
             .post("/booking-links")
         .then()
             .statusCode(HttpStatus.SC_CREATED)
             .extract().jsonPath().getString("bookingLinkPublicId");
 
-        BookingLink stored = dataProbe.findBookingLink(USERNAME, new BookingLinkPublicId(publicId)).orElseThrow();
+        BookingLink stored = dataProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
 
-        assertThat(stored.username()).isEqualTo(USERNAME);
-        assertThat(stored.calendarUrl()).isEqualTo(EXPECTED_CALENDAR_URL);
+        assertThat(stored.username()).isEqualTo(openPaaSUser.username());
+        assertThat(stored.calendarUrl()).isEqualTo(CalendarURL.from(openPaaSUser.id()));
         assertThat(stored.duration()).isEqualTo(Duration.ofMinutes(30));
         assertThat(stored.active()).isTrue();
         assertThat(stored.availabilityRules()).isEqualTo(Optional.of(AvailabilityRules.of(
@@ -208,14 +214,14 @@ class BookingLinkCreateRouteTest {
                         { "start": "2026-01-26T02:00:00", "end": "2026-01-30T02:00:00", "type": "fixed" }
                     ]
                 }
-                """.formatted(CALENDAR_URL))
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
         .when()
             .post("/booking-links")
         .then()
             .statusCode(HttpStatus.SC_CREATED)
             .extract().jsonPath().getString("bookingLinkPublicId");
 
-        BookingLink stored = dataProbe.findBookingLink(USERNAME, new BookingLinkPublicId(publicId)).orElseThrow();
+        BookingLink stored = dataProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
 
         assertThat(stored.duration()).isEqualTo(Duration.ofMinutes(60));
         assertThat(stored.active()).isFalse();
@@ -233,18 +239,18 @@ class BookingLinkCreateRouteTest {
                     "durationMinutes": 30,
                     "active": true,
                     "availabilityRules": [
-                        { "dayOfWeek": 2, "start": "09:00", "end": "17:00", "type": "weekly" },
+                        { "dayOfWeek": "TUE", "start": "09:00", "end": "17:00", "type": "weekly" },
                         { "start": "2026-01-26T00:00:00", "end": "2026-01-30T00:00:00", "type": "fixed" }
                     ]
                 }
-                """.formatted(CALENDAR_URL))
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
         .when()
             .post("/booking-links")
         .then()
             .statusCode(HttpStatus.SC_CREATED)
             .extract().jsonPath().getString("bookingLinkPublicId");
 
-        BookingLink stored = dataProbe.findBookingLink(USERNAME, new BookingLinkPublicId(publicId)).orElseThrow();
+        BookingLink stored = dataProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
 
         assertThat(stored.availabilityRules().orElseThrow().values()).hasSize(2);
         assertThat(stored.availabilityRules()).isEqualTo(Optional.of(AvailabilityRules.of(
@@ -261,7 +267,7 @@ class BookingLinkCreateRouteTest {
                 "durationMinutes": 30,
                 "active": true
             }
-            """.formatted(CALENDAR_URL);
+            """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString());
 
         String firstPublicId = given().body(body).when().post("/booking-links")
             .then().statusCode(HttpStatus.SC_CREATED).extract().jsonPath().getString("bookingLinkPublicId");
@@ -270,7 +276,7 @@ class BookingLinkCreateRouteTest {
             .then().statusCode(HttpStatus.SC_CREATED).extract().jsonPath().getString("bookingLinkPublicId");
 
         assertThat(firstPublicId).isNotEqualTo(secondPublicId);
-        assertThat(dataProbe.listBookingLinks(USERNAME)).hasSize(2);
+        assertThat(dataProbe.listBookingLinks(openPaaSUser.username())).hasSize(2);
     }
 
     @Test
@@ -318,7 +324,7 @@ class BookingLinkCreateRouteTest {
                     "calendarUrl": "%s",
                     "active": true
                 }
-                """.formatted(CALENDAR_URL))
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
         .when()
             .post("/booking-links")
         .then()
@@ -337,7 +343,7 @@ class BookingLinkCreateRouteTest {
                     "durationMinutes": 0,
                     "active": true
                 }
-                """.formatted(CALENDAR_URL))
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
         .when()
             .post("/booking-links")
         .then()
@@ -356,7 +362,7 @@ class BookingLinkCreateRouteTest {
                     "durationMinutes": -10,
                     "active": true
                 }
-                """.formatted(CALENDAR_URL))
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
         .when()
             .post("/booking-links")
         .then()
@@ -374,7 +380,7 @@ class BookingLinkCreateRouteTest {
                     "calendarUrl": "%s",
                     "durationMinutes": 30
                 }
-                """.formatted(CALENDAR_URL))
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
         .when()
             .post("/booking-links")
         .then()
@@ -394,7 +400,7 @@ class BookingLinkCreateRouteTest {
                     "active": true,
                     "timeZone": "Invalid/Timezone"
                 }
-                """.formatted(CALENDAR_URL))
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
             .when()
             .post("/booking-links")
             .then()
@@ -442,7 +448,7 @@ class BookingLinkCreateRouteTest {
                         { "start": "09:00", "end": "12:00", "type": "weekly" }
                     ]
                 }
-                """.formatted(CALENDAR_URL))
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
         .when()
             .post("/booking-links")
         .then()
@@ -461,17 +467,17 @@ class BookingLinkCreateRouteTest {
                     "durationMinutes": 30,
                     "active": true,
                     "availabilityRules": [
-                        { "dayOfWeek": 10, "start": "09:00", "end": "12:00", "type": "weekly" }
+                        { "dayOfWeek": "ABC", "start": "09:00", "end": "12:00", "type": "weekly" }
                     ]
                 }
-                """.formatted(CALENDAR_URL))
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
             .when()
             .post("/booking-links")
             .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.code", equalTo(400))
             .body("error.message", equalTo("Bad request"))
-            .body("error.details", equalTo("'dayOfWeek' must be an integer between 1 (Monday) and 7 (Sunday)"));
+            .body("error.details", equalTo("Unknown day of week abbreviation: ABC"));
     }
 
     @Test
@@ -483,10 +489,10 @@ class BookingLinkCreateRouteTest {
                     "durationMinutes": 30,
                     "active": true,
                     "availabilityRules": [
-                        { "dayOfWeek": 1, "start": "34545", "end": "12:00", "type": "weekly" }
+                        { "dayOfWeek": "MON", "start": "34545", "end": "12:00", "type": "weekly" }
                     ]
                 }
-                """.formatted(CALENDAR_URL))
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
             .when()
             .post("/booking-links")
             .then()
@@ -508,7 +514,7 @@ class BookingLinkCreateRouteTest {
                         { "start": "2026-0100:00", "end": "2026-01-30T00:00:00", "type": "fixed" }
                     ]
                 }
-                """.formatted(CALENDAR_URL))
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
             .when()
             .post("/booking-links")
             .then()
@@ -527,10 +533,10 @@ class BookingLinkCreateRouteTest {
                     "durationMinutes": 30,
                     "active": true,
                     "availabilityRules": [
-                        { "dayOfWeek": 1, "start": "09:00", "end": "12:00", "type": "unknown" }
+                        { "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "type": "unknown" }
                     ]
                 }
-                """.formatted(CALENDAR_URL))
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
         .when()
             .post("/booking-links")
         .then()
@@ -551,10 +557,29 @@ class BookingLinkCreateRouteTest {
                     "durationMinutes": 30,
                     "active": true
                 }
-                """.formatted(CALENDAR_URL))
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
         .when()
             .post("/booking-links")
         .then()
             .statusCode(HttpStatus.SC_UNAUTHORIZED);
+    }
+
+    @Test
+    void shouldReturn400WhenCalendarDoesNotExist() {
+        given()
+            .body("""
+                {
+                    "calendarUrl": "/calendars/nonexistentBase/nonexistentCalendar",
+                    "durationMinutes": 30,
+                    "active": true
+                }
+                """)
+        .when()
+            .post("/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.code", equalTo(400))
+            .body("error.message", equalTo("Bad request"))
+            .body("error.details", equalTo("Calendar not found or access denied: /calendars/nonexistentBase/nonexistentCalendar"));
     }
 }

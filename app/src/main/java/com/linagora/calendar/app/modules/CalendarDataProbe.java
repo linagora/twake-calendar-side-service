@@ -48,9 +48,7 @@ import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.UploadedFileDAO;
-import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
-import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 import com.linagora.calendar.storage.configuration.ConfigurationEntry;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
 import com.linagora.calendar.storage.event.EventFields;
@@ -198,13 +196,5 @@ public class CalendarDataProbe implements GuiceProbe {
         return new EventSearchQuery(query, Optional.empty(),
             Optional.empty(), Optional.empty(),
             MAX_LIMIT, 0);
-    }
-
-    public Optional<BookingLink> findBookingLink(Username username, BookingLinkPublicId publicId) {
-        return bookingLinkDAO.findByPublicId(username, publicId).blockOptional();
-    }
-
-    public List<BookingLink> listBookingLinks(Username username) {
-        return bookingLinkDAO.findByUsername(username).collectList().block();
     }
 }

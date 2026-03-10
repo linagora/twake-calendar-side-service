@@ -610,6 +610,33 @@ public class CalDavClient extends DavClient {
             });
     }
 
+    public Mono<Boolean> calendarExists(Username user, CalendarURL calendarUrl) {
+        String uri = calendarUrl.asUri() + ".json";
+
+        return httpClientWithImpersonation(user)
+            .headers(headers -> headers.add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_JSON))
+            .request(HttpMethod.GET)
+            .uri(uri)
+            .responseSingle((response, content) -> {
+                int status = response.status().code();
+                return content.asString(StandardCharsets.UTF_8)
+                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .flatMap(body -> switch (status) {
+                        case HttpStatus.SC_OK -> Mono.fromCallable(() -> {
+                            JsonNode jsonNode = OBJECT_MAPPER.readTree(body);
+                            String href = jsonNode.path("_links").path("self").path("href").asText("");
+                            return href.equals(uri);
+                        });
+                        case HttpStatus.SC_UNAUTHORIZED, HttpStatus.SC_FORBIDDEN, HttpStatus.SC_NOT_FOUND -> Mono.just(false);
+                        default -> Mono.error(new DavClientException("""
+                            Unexpected response when checking calendar existence for '%s'
+                            Status: %d
+                            Body: %s
+                            """.formatted(uri, status, body)));
+                    });
+            });
+    }
+
     private Mono<SyncToken> parseSyncToken(String body, String uri) {
         return Mono.fromCallable(() -> OBJECT_MAPPER.readTree(body))
             .flatMap(jsonNode -> Mono.justOrEmpty(jsonNode.path(SYNC_TOKEN_PROPERTY).asText(null)))

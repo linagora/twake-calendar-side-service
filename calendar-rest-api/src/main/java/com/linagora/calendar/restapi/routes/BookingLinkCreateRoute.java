@@ -49,6 +49,8 @@ import com.linagora.calendar.api.booking.AvailabilityRule;
 import com.linagora.calendar.api.booking.AvailabilityRule.FixedAvailabilityRule;
 import com.linagora.calendar.api.booking.AvailabilityRule.WeeklyAvailabilityRule;
 import com.linagora.calendar.api.booking.AvailabilityRules;
+import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.restapi.DayOfWeekUtil;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
@@ -62,7 +64,7 @@ import reactor.netty.http.server.HttpServerResponse;
 public class BookingLinkCreateRoute extends CalendarRoute {
 
     public record AvailabilityRuleDTO(@JsonProperty("type") String type,
-                                      @JsonProperty("dayOfWeek") Optional<Integer> dayOfWeek,
+                                      @JsonProperty("dayOfWeek") Optional<String> dayOfWeek,
                                       @JsonProperty("start") String start,
                                       @JsonProperty("end") String end) {
 
@@ -92,11 +94,7 @@ public class BookingLinkCreateRoute extends CalendarRoute {
         }
 
         private DayOfWeek getDayOfWeek() {
-            try {
-                return DayOfWeek.of(dayOfWeek.orElseThrow(() -> new IllegalArgumentException("'dayOfWeek' must be provided for weekly rule")));
-            } catch (DateTimeException e) {
-                throw new IllegalArgumentException("'dayOfWeek' must be an integer between 1 (Monday) and 7 (Sunday)", e);
-            }
+            return DayOfWeekUtil.fromAbbreviation(dayOfWeek.orElseThrow(() -> new IllegalArgumentException("'dayOfWeek' must be provided for weekly rule")));
         }
     }
 
@@ -143,18 +141,19 @@ public class BookingLinkCreateRoute extends CalendarRoute {
     }
 
     public static final ZoneId UTC = ZoneId.of("UTC");
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(BookingLinkCreateRoute.class);
     private static final String BOOKING_LINK_PUBLIC_ID = "bookingLinkPublicId";
 
     private final BookingLinkDAO bookingLinkDAO;
+    private final CalDavClient calDavClient;
 
     @Inject
     public BookingLinkCreateRoute(Authenticator authenticator,
                                   MetricFactory metricFactory,
-                                  BookingLinkDAO bookingLinkDAO) {
+                                  BookingLinkDAO bookingLinkDAO,
+                                  CalDavClient calDavClient) {
         super(authenticator, metricFactory);
         this.bookingLinkDAO = bookingLinkDAO;
+        this.calDavClient = calDavClient;
     }
 
     @Override
@@ -168,12 +167,25 @@ public class BookingLinkCreateRoute extends CalendarRoute {
             .switchIfEmpty(Mono.error(new IllegalArgumentException("Request body must not be empty")))
             .map(this::parseRequest)
             .map(CreateBookingLinkRequestDTO::toBookingLinkInsertRequest)
+            .flatMap(insertRequest ->
+                validateCalendarAccess(insertRequest.calendarUrl(), session)
+                    .thenReturn(insertRequest))
             .flatMap(insertRequest -> bookingLinkDAO.insert(session.getUser(), insertRequest))
             .flatMap(bookingLink -> response.status(HttpResponseStatus.CREATED)
                 .headers(JSON_HEADER)
                 .sendByteArray(Mono.fromCallable(() -> OBJECT_MAPPER_DEFAULT.writeValueAsBytes(
                     Map.of(BOOKING_LINK_PUBLIC_ID, bookingLink.publicId().value()))))
                 .then());
+    }
+
+    private Mono<Void> validateCalendarAccess(CalendarURL calendarURL, MailboxSession session) {
+        return calDavClient.calendarExists(session.getUser(), calendarURL)
+            .flatMap(exists -> {
+                if (exists) {
+                    return Mono.empty();
+                }
+                return Mono.error(new IllegalArgumentException("Calendar not found or access denied: " + calendarURL.asUri()));
+            });
     }
 
     private CreateBookingLinkRequestDTO parseRequest(byte[] body) {

@@ -1374,4 +1374,45 @@ public class CalDavClientTest {
             .isInstanceOf(CalendarNotFoundException.class);
 
     }
+
+    @Test
+    void calendarExistsShouldReturnTrueWhenCalendarExists() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL calendarURL = CalendarURL.from(user.id());
+
+        assertThat(testee.calendarExists(user.username(), calendarURL).block()).isTrue();
+    }
+
+    @Test
+    void calendarExistsShouldReturnTrueWhenCreatedCalendarExists() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        String newCalendarId = UUID.randomUUID().toString();
+        CalendarURL newCalendarURL = new CalendarURL(user.id(), new OpenPaaSId(newCalendarId));
+        CalDavClient.NewCalendar newCalendar = new CalDavClient.NewCalendar(
+            newCalendarId,
+            "Test Calendar",
+            "#97c3c1",
+            "A test calendar"
+        );
+
+        testee.createNewCalendar(user.username(), user.id(), newCalendar).block();
+
+        assertThat(testee.calendarExists(user.username(), newCalendarURL).block()).isTrue();
+    }
+
+    @Test
+    void calendarExistsShouldReturnFalseWhenCalendarNotFound() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL notFoundCalendarURL = new CalendarURL(user.id(), new OpenPaaSId(UUID.randomUUID().toString()));
+
+        assertThat(testee.calendarExists(user.username(), notFoundCalendarURL).block()).isFalse();
+    }
+
+    @Test
+    void calendarExistsShouldReturnFalseWhenUserIsUnauthorized() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        OpenPaaSUser otherUser = createOpenPaaSUser();
+
+        assertThat(testee.calendarExists(otherUser.username(), CalendarURL.from(user.id())).block()).isFalse();
+    }
 }
