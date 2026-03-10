@@ -27,6 +27,7 @@ import org.apache.james.utils.GuiceProbe;
 
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
+import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 
 public class BookingLinkDataProbe implements GuiceProbe {
@@ -43,5 +44,9 @@ public class BookingLinkDataProbe implements GuiceProbe {
 
     public List<BookingLink> listBookingLinks(Username username) {
         return bookingLinkDAO.findByUsername(username).collectList().block();
+    }
+
+    public BookingLink insertBookingLink(Username username, BookingLinkInsertRequest request) {
+        return bookingLinkDAO.insert(username, request).block();
     }
 }
