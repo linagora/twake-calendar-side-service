@@ -81,7 +81,7 @@ public class BookingLinkEventIcsBuilder {
         this.uidGenerator = uidGenerator;
     }
 
-    public BuildResult build(BookingRequest request, Duration eventDuration) {
+    public BuildResult build(BookingRequest request, BookingAttendee organizer, Duration eventDuration) {
         Uid eventUid = uidGenerator.generateUid();
         Optional<URL> maybeMeetingLink = Optional.of(request.visioLink())
             .filter(FunctionalUtils.identityPredicate())
@@ -90,13 +90,14 @@ public class BookingLinkEventIcsBuilder {
         Calendar calendar = new Calendar()
             .withDefaults()
             .withProdId(PROD_ID)
-            .withComponent(buildEvent(request, eventUid, eventDuration, maybeMeetingLink))
+            .withComponent(buildEvent(request, organizer, eventUid, eventDuration, maybeMeetingLink))
             .getFluentTarget();
 
         return new BuildResult(eventUid, calendar, maybeMeetingLink);
     }
 
     private VEvent buildEvent(BookingRequest request,
+                              BookingAttendee organizer,
                               Uid eventUid,
                               Duration eventDuration,
                               Optional<URL> maybeMeetingLink) {
@@ -107,7 +108,7 @@ public class BookingLinkEventIcsBuilder {
             .add(new DtStamp(clock.instant()))
             .add(new DtStart<>(request.slotStartUtc()))
             .add(new net.fortuna.ical4j.model.property.Duration(eventDuration))
-            .add(buildOrganizer(request.creator()))
+            .add(buildOrganizer(organizer))
             .add(buildAttendee(request.creator()))
             .addAll(request.additionalAttendees().stream()
                 .map(this::buildAttendee)

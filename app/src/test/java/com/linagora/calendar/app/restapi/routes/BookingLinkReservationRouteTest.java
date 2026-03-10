@@ -38,6 +38,7 @@ import java.util.stream.IntStream;
 import jakarta.inject.Inject;
 
 import org.apache.http.HttpStatus;
+import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
 import org.apache.james.utils.GuiceProbe;
 import org.junit.jupiter.api.AfterAll;
@@ -126,10 +127,11 @@ class BookingLinkReservationRouteTest {
 
     @BeforeEach
     void setUp(TwakeCalendarGuiceServer server) throws Exception {
-        openPaaSUser = sabreDavExtension.newTestUser(Optional.of("owner"));
         CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
-        calendarDataProbe.addDomain(openPaaSUser.username().getDomainPart().get());
-        calendarDataProbe.addUserToRepository(openPaaSUser.username(), PASSWORD);
+        Username ownerUsername = Username.fromLocalPartWithDomain("owner-" + UUID.randomUUID(), Domain.of("open-paas.org"));
+        calendarDataProbe.addDomain(ownerUsername.getDomainPart().orElseThrow());
+        calendarDataProbe.addUser(ownerUsername, PASSWORD, "Owner", "User");
+        openPaaSUser = calendarDataProbe.getUser(ownerUsername);
 
         int restApiPort = server.getProbe(RestApiServerProbe.class).getPort().getValue();
         RestAssured.requestSpecification = new RequestSpecBuilder()
@@ -225,9 +227,10 @@ class BookingLinkReservationRouteTest {
                 "SUMMARY:30-min intro call",
                 "DTSTART:20360126T093000Z",
                 "DURATION:PT30M",
-                "ORGANIZER;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=BOB:mailto:creator@example.com",
-                "ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=BOB:mailto:creator@example.com",
-                "ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=Nguyen Van A:mailto:vana@example.com",
+                "ORGANIZER;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=%s:mailto:%s"
+                    .formatted(openPaaSUser.fullName(), openPaaSUser.username().asString()),
+                "ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=BOB;SCHEDULE-STATUS=5.2:mailto:creator@example.com",
+                "ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=Nguyen Van A;SCHEDULE-STATUS=5.2:mailto:vana@example.com",
                 "DESCRIPTION:Please call via Zoom.",
                 "X-PUBLICLY-CREATED:true",
                 "X-PUBLICLY-CREATOR:creator@example.com",
@@ -426,9 +429,11 @@ class BookingLinkReservationRouteTest {
             .replace("\r\n ", "");
         assertThat(unfoldedCalendar)
             .describedAs("when optional fields are omitted, ICS should keep defaults and avoid optional properties")
-            .contains("SUMMARY:optional fields omitted")
-            .contains("ORGANIZER;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION:mailto:creator@example.com")
-            .contains("ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION:mailto:creator@example.com")
+            .containsSubsequence(
+                "SUMMARY:optional fields omitted",
+                "ORGANIZER;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=%s:mailto:%s"
+                    .formatted(openPaaSUser.fullName(), openPaaSUser.username().asString()),
+                "ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;SCHEDULE-STATUS=5.2:mailto:creator@example.com")
             .doesNotContain("X-OPENPAAS-VIDEOCONFERENCE")
             .doesNotContain("DESCRIPTION:");
     }

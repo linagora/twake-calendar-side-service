@@ -44,6 +44,7 @@ public class BookingLinkEventIcsBuilderTest {
     private static final Clock FIXED_CLOCK = Clock.fixed(Instant.parse("2036-01-01T00:00:00Z"), ZoneOffset.UTC);
     private static final URL VISIO_URL = Throwing.supplier(() -> URI.create("https://jitsi.example.com").toURL()).get();
     private static final UidGenerator FIXED_UID_GENERATOR = () -> new Uid("event-123");
+    private static final BookingAttendee OWNER = BookingAttendee.from("Alice Owner", "owner@example.com");
 
     @Test
     void buildShouldIncludeRequiredPublicBookingProperties() {
@@ -57,7 +58,7 @@ public class BookingLinkEventIcsBuilderTest {
             true,
             "Please call via Zoom.");
 
-        BuildResult result = testee.build(request, Duration.ofMinutes(30));
+        BuildResult result = testee.build(request, OWNER, Duration.ofMinutes(30));
         String ics = new String(result.icsBytes(), StandardCharsets.UTF_8);
 
         String expected = """
@@ -72,7 +73,7 @@ public class BookingLinkEventIcsBuilderTest {
             DTSTAMP:20360101T000000Z
             DTSTART:20360126T093000Z
             DURATION:PT30M
-            ORGANIZER;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=BOB:mailto:creator@example.com
+            ORGANIZER;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=Alice Owner:mailto:owner@example.com
             ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=BOB:mailto:creator@example.com
             ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=Nguyen Van A:mailto:vana@example.com
             DESCRIPTION:Please call via Zoom.
@@ -102,7 +103,7 @@ public class BookingLinkEventIcsBuilderTest {
             false,
             "");
 
-        BuildResult result = testee.build(request, Duration.ofMinutes(30));
+        BuildResult result = testee.build(request, OWNER, Duration.ofMinutes(30));
         String ics = new String(result.icsBytes(), StandardCharsets.UTF_8);
 
         String expected = """
@@ -117,7 +118,7 @@ public class BookingLinkEventIcsBuilderTest {
             DTSTAMP:20360101T000000Z
             DTSTART:20360126T093000Z
             DURATION:PT30M
-            ORGANIZER;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=BOB:mailto:creator@example.com
+            ORGANIZER;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=Alice Owner:mailto:owner@example.com
             ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=BOB:mailto:creator@example.com
             ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=Nguyen Van A:mailto:vana@example.com
             CLASS:PUBLIC
@@ -145,7 +146,7 @@ public class BookingLinkEventIcsBuilderTest {
             false,
             null);
 
-        BuildResult result = testee.build(request, Duration.ofMinutes(30));
+        BuildResult result = testee.build(request, BookingAttendee.from(null, "owner@example.com"), Duration.ofMinutes(30));
         String ics = new String(result.icsBytes(), StandardCharsets.UTF_8);
 
         String expected = """
@@ -160,7 +161,7 @@ public class BookingLinkEventIcsBuilderTest {
             DTSTAMP:20360101T000000Z
             DTSTART:20360126T093000Z
             DURATION:PT30M
-            ORGANIZER;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION:mailto:creator@example.com
+            ORGANIZER;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION:mailto:owner@example.com
             ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION:mailto:creator@example.com
             CLASS:PUBLIC
             X-PUBLICLY-CREATED:true
@@ -187,10 +188,10 @@ public class BookingLinkEventIcsBuilderTest {
             false,
             null);
 
-        String ics = new String(testee.build(request, Duration.ofMinutes(30)).icsBytes(), StandardCharsets.UTF_8);
+        String ics = new String(testee.build(request, OWNER, Duration.ofMinutes(30)).icsBytes(), StandardCharsets.UTF_8);
 
         assertThat(ics)
-            .contains("ORGANIZER;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=BOB:mailto:creator@example.com");
+            .contains("ORGANIZER;RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=Alice Owner:mailto:owner@example.com");
     }
 
 }

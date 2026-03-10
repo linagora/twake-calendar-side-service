@@ -32,6 +32,8 @@ import com.google.common.base.Preconditions;
 import com.linagora.calendar.api.booking.AvailableSlotsCalculator.AvailabilitySlot;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.restapi.RestApiConfiguration;
+import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingRequest.BookingAttendee;
+import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.booking.BookingLinkNotFoundException;
@@ -45,16 +47,19 @@ public class BookingLinkReservationService {
     private final BookingLinkSlotsService bookingLinkSlotsService;
     private final BookingLinkEventIcsBuilder bookingLinkEventIcsBuilder;
     private final CalDavClient calDavClient;
+    private final OpenPaaSUserDAO openPaaSUserDAO;
 
     @Inject
     public BookingLinkReservationService(BookingLinkDAO bookingLinkDAO,
                                          Clock clock,
                                          BookingLinkSlotsService bookingLinkSlotsService,
                                          RestApiConfiguration restApiConfiguration,
-                                         CalDavClient calDavClient) {
+                                         CalDavClient calDavClient,
+                                         OpenPaaSUserDAO openPaaSUserDAO) {
         this.bookingLinkDAO = bookingLinkDAO;
         this.calDavClient = calDavClient;
         this.bookingLinkSlotsService = bookingLinkSlotsService;
+        this.openPaaSUserDAO = openPaaSUserDAO;
         this.bookingLinkEventIcsBuilder = new BookingLinkEventIcsBuilder(clock, new MeetingConferenceLinkResolver.Default(restApiConfiguration));
 
     }
@@ -78,7 +83,9 @@ public class BookingLinkReservationService {
     }
 
     private Mono<Void> createBooking(BookingLink bookingLink, BookingRequest request) {
-        return Mono.fromCallable(() -> bookingLinkEventIcsBuilder.build(request, bookingLink.duration()))
+        return openPaaSUserDAO.retrieve(bookingLink.username())
+            .map(owner -> BookingAttendee.from(owner.fullName(), owner.username().asString()))
+            .map(organizer -> bookingLinkEventIcsBuilder.build(request, organizer, bookingLink.duration()))
             .flatMap(eventIcsResult -> calDavClient.importCalendar(bookingLink.calendarUrl(), eventIcsResult.eventIdAsString(), bookingLink.username(), eventIcsResult.icsBytes())
                 .onErrorMap(throwable -> BookingLinkReservationException.createEventFailed(bookingLink.publicId(), eventIcsResult.eventIdAsString(), throwable)).then());
     }
