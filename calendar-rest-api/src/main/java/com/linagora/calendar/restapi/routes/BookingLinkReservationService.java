@@ -60,7 +60,7 @@ public class BookingLinkReservationService {
         this.calDavClient = calDavClient;
         this.bookingLinkSlotsService = bookingLinkSlotsService;
         this.openPaaSUserDAO = openPaaSUserDAO;
-        this.bookingLinkEventIcsBuilder = new BookingLinkEventIcsBuilder(clock, new MeetingConferenceLinkResolver.Default(restApiConfiguration));
+        this.bookingLinkEventIcsBuilder = new BookingLinkEventIcsBuilder(clock, new MeetingConferenceLinkResolver.Visio(restApiConfiguration));
 
     }
 

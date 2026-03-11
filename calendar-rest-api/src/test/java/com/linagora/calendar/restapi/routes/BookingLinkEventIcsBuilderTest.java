@@ -77,7 +77,7 @@ public class BookingLinkEventIcsBuilderTest {
             ATTENDEE;RSVP=TRUE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=Alice Owner:mailto:owner@example.com
             ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=BOB:mailto:creator@example.com
             ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=Nguyen Van A:mailto:vana@example.com
-            DESCRIPTION:Please call via Zoom.
+            DESCRIPTION:Please call via Zoom.\\nVisio: https://jitsi.example.com
             CLASS:PUBLIC
             X-PUBLICLY-CREATED:true
             X-PUBLICLY-CREATOR:creator@example.com
@@ -134,6 +134,26 @@ public class BookingLinkEventIcsBuilderTest {
             .isEqualTo("event-123");
         assertThat(ics)
             .isEqualToNormalizingNewlines(expected);
+    }
+
+    @Test
+    void buildShouldAppendVisioLinkAsDescriptionWhenEnabledWithoutNotes() {
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+
+        BookingRequest request = new BookingRequest(
+            Instant.parse("2036-01-26T09:30:00Z"),
+            BookingAttendee.from("BOB", "creator@example.com"),
+            List.of(),
+            "eventTitle",
+            true,
+            null);
+
+        String ics = new String(testee.build(request, OWNER, Duration.ofMinutes(30)).icsBytes(), StandardCharsets.UTF_8);
+
+        assertThat(ics)
+            .contains("DESCRIPTION:Visio: https://jitsi.example.com");
+        assertThat(ics)
+            .contains("X-OPENPAAS-VIDEOCONFERENCE:https://jitsi.example.com");
     }
 
     @Test

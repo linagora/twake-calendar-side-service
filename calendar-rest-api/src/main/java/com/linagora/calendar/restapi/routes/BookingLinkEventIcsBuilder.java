@@ -31,6 +31,7 @@ import jakarta.inject.Inject;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.james.util.FunctionalUtils;
 
+import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingRequest;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingRequest.BookingAttendee;
@@ -63,6 +64,7 @@ public class BookingLinkEventIcsBuilder {
     private static final String PROD_ID = "-//Twake Calendar//Public Booking//EN";
     private static final String X_PUBLICLY_CREATOR = "X-PUBLICLY-CREATOR";
     private static final String X_OPENPAAS_VIDEOCONFERENCE = "X-OPENPAAS-VIDEOCONFERENCE";
+    private static final String VISIO_DESCRIPTION_PREFIX = "Visio: ";
     private static final Transp TRANSP_OPAQUE = new Transp(Transp.VALUE_OPAQUE);
     private static final XProperty X_PROPERTY_PUBLIC = new XProperty("X-PUBLICLY-CREATED", "true");
     private static final String MAIL_TO_PREFIX = "mailto:";
@@ -115,9 +117,9 @@ public class BookingLinkEventIcsBuilder {
                 .map(this::buildAttendee)
                 .toList());
 
-        if (StringUtils.isNotBlank(request.notes())) {
-            properties.add(new Description(request.notes()));
-        }
+        buildDescription(request.notes(), maybeMeetingLink)
+            .map(Description::new)
+            .ifPresent(properties::add);
 
         properties
             .add(new Clazz(Clazz.VALUE_PUBLIC))
@@ -131,6 +133,15 @@ public class BookingLinkEventIcsBuilder {
             throw new IllegalStateException("Generated booking ICS is invalid for eventId " + eventUid.getValue() + ": " + validationResult);
         }
         return event;
+    }
+
+    private Optional<String> buildDescription(String notes, Optional<URL> maybeMeetingLink) {
+        return Optional.ofNullable(StringUtils.trimToNull(Joiner.on('\n')
+            .skipNulls()
+            .join(StringUtils.trimToNull(notes), maybeMeetingLink
+                .map(URL::toString)
+                .map(VISIO_DESCRIPTION_PREFIX::concat)
+                .orElse(null))));
     }
 
     private Attendee buildAttendee(BookingAttendee attendee) {
