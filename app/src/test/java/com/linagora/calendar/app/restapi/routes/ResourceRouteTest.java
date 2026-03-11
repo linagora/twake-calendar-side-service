@@ -138,7 +138,7 @@ public class ResourceRouteTest {
 
         String actualResponse = given()
             .when()
-            .get(String.format("/linagora.esn.resource/api/resources/%s", resourceId.value()))
+            .get(String.format("/api/resources/%s", resourceId.value()))
         .then()
             .statusCode(200)
             .contentType(JSON)
@@ -217,7 +217,7 @@ public class ResourceRouteTest {
 
         given()
             .when()
-            .get(String.format("/linagora.esn.resource/api/resources/%s", resourceId.value()))
+            .get(String.format("/api/resources/%s", resourceId.value()))
         .then()
             .statusCode(200)
             .contentType(JSON)
@@ -230,7 +230,7 @@ public class ResourceRouteTest {
     void shouldAllowAnyAuthenticatedUserToGetResource(TwakeCalendarGuiceServer server) throws Exception {
         given(buildRequestSpec(openPaaSUser2.username().asString(), DEFAULT_USER_PASSWORD, restApiPort))
             .when()
-            .get(String.format("/linagora.esn.resource/api/resources/%s", resource.id().value()))
+            .get(String.format("/api/resources/%s", resource.id().value()))
         .then()
             .statusCode(200)
             .contentType(JSON)
@@ -248,7 +248,7 @@ public class ResourceRouteTest {
 
         given(buildRequestSpec(otherDomainUser.asString(), DEFAULT_USER_PASSWORD, restApiPort))
             .when()
-            .get(String.format("/linagora.esn.resource/api/resources/%s", resource.id().value()))
+            .get(String.format("/api/resources/%s", resource.id().value()))
         .then()
             .statusCode(404);
     }
@@ -258,7 +258,7 @@ public class ResourceRouteTest {
         // When: GET resource 1
         String response1 = given()
             .when()
-            .get(String.format("/linagora.esn.resource/api/resources/%s", resource.id().value()))
+            .get(String.format("/api/resources/%s", resource.id().value()))
         .then()
             .statusCode(200)
             .extract()
@@ -267,7 +267,7 @@ public class ResourceRouteTest {
         // And: GET resource 2
         String response2 = given()
             .when()
-            .get(String.format("/linagora.esn.resource/api/resources/%s", resource2.id().value()))
+            .get(String.format("/api/resources/%s", resource2.id().value()))
         .then()
             .statusCode(200)
             .extract()
@@ -291,7 +291,7 @@ public class ResourceRouteTest {
 
         given()
             .when()
-            .get(String.format("/linagora.esn.resource/api/resources/%s", fakeResourceId.value()))
+            .get(String.format("/api/resources/%s", fakeResourceId.value()))
         .then()
             .statusCode(404);
     }
@@ -304,7 +304,7 @@ public class ResourceRouteTest {
 
         given(buildRequestSpec(openPaaSUser.username().asString(), fakePassword, restApiPort))
         .when()
-            .get(String.format("/linagora.esn.resource/api/resources/%s", resourceId.value()))
+            .get(String.format("/api/resources/%s", resourceId.value()))
         .then()
             .statusCode(401);
     }

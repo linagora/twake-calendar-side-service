@@ -48,7 +48,7 @@ public class ResourcePhotoUrlFactory {
 
     public ResourcePhotoUrlFactory(URL baseUrl) {
         this.buildURLFunction = resourceIconName
-            -> URI.create(Strings.CI.removeEnd(baseUrl.toString(), "/") + "/linagora.esn.resource/images/icon/" + resourceIconName + ".svg");
+            -> URI.create(Strings.CI.removeEnd(baseUrl.toString(), "/") + "/images/icon/" + resourceIconName + ".svg");
     }
 
     public URI resolveURL(String iconName) {

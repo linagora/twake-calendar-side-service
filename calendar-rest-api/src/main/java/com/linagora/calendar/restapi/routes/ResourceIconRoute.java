@@ -64,7 +64,7 @@ public class ResourceIconRoute implements JMAPRoutes {
     }
 
     Endpoint endpoint() {
-        return new Endpoint(HttpMethod.GET, "/linagora.esn.resource/images/icon/{" + ICON_PARAM + "}.svg");
+        return new Endpoint(HttpMethod.GET, "/images/icon/{" + ICON_PARAM + "}.svg");
     }
 
     @Override

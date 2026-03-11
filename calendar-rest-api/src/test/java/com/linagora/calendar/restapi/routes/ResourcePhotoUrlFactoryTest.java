@@ -42,14 +42,14 @@ public class ResourcePhotoUrlFactoryTest {
     void resolveURLShouldBuildValidUri() {
         URI uri = factory.resolveURL("laptop");
         assertThat(uri.toString())
-            .isEqualTo("https://calendar.linagora.com/linagora.esn.resource/images/icon/laptop.svg");
+            .isEqualTo("https://calendar.linagora.com/images/icon/laptop.svg");
     }
 
     @Test
     void resolveURLShouldSupportHyphenAndUnderscore() {
         URI uri = factory.resolveURL("user_1-name");
         assertThat(uri.toString())
-            .isEqualTo("https://calendar.linagora.com/linagora.esn.resource/images/icon/user_1-name.svg");
+            .isEqualTo("https://calendar.linagora.com/images/icon/user_1-name.svg");
     }
 
     @Test

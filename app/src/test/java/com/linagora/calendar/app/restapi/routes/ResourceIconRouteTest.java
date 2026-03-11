@@ -84,7 +84,7 @@ class ResourceIconRouteTest {
     void shouldReturnSvgIconWhenExists() {
         Response response = given()
             .when()
-            .get("/linagora.esn.resource/images/icon/laptop.svg")
+            .get("/images/icon/laptop.svg")
         .then()
             .statusCode(HttpStatus.SC_OK)
             .extract()
@@ -106,7 +106,7 @@ class ResourceIconRouteTest {
     void shouldReturnNotFoundWhenIconDoesNotExist() {
         given()
             .when()
-            .get("/linagora.esn.resource/images/icon/unknown.svg")
+            .get("/images/icon/unknown.svg")
         .then()
             .statusCode(HttpStatus.SC_NOT_FOUND);
     }
@@ -115,7 +115,7 @@ class ResourceIconRouteTest {
     void shouldReturnNotModifiedWhenEtagMatches() {
         Response firstResponse = given()
             .when()
-            .get("/linagora.esn.resource/images/icon/laptop.svg")
+            .get("/images/icon/laptop.svg")
         .then()
             .statusCode(HttpStatus.SC_OK)
             .extract()
@@ -126,7 +126,7 @@ class ResourceIconRouteTest {
         given()
             .header("If-None-Match", etag)
         .when()
-            .get("/linagora.esn.resource/images/icon/laptop.svg")
+            .get("/images/icon/laptop.svg")
         .then()
             .statusCode(HttpStatus.SC_NOT_MODIFIED);
     }
@@ -135,7 +135,7 @@ class ResourceIconRouteTest {
     void shouldReturnOkWhenEtagDoesNotMatch() {
         Response firstResponse = given()
             .when()
-            .get("/linagora.esn.resource/images/icon/laptop.svg")
+            .get("/images/icon/laptop.svg")
         .then()
             .statusCode(HttpStatus.SC_OK)
             .extract()
@@ -147,7 +147,7 @@ class ResourceIconRouteTest {
         given()
             .header("If-None-Match", "\"some-random-etag\"")
         .when()
-            .get("/linagora.esn.resource/images/icon/laptop.svg")
+            .get("/images/icon/laptop.svg")
         .then()
             .statusCode(HttpStatus.SC_OK)
             .body(equalTo(new String(expectedBody, StandardCharsets.UTF_8)));
@@ -158,7 +158,7 @@ class ResourceIconRouteTest {
         given()
             .header("If-None-Match", "*")
         .when()
-            .get("/linagora.esn.resource/images/icon/laptop.svg")
+            .get("/images/icon/laptop.svg")
         .then()
             .statusCode(HttpStatus.SC_NOT_MODIFIED);
     }
@@ -167,7 +167,7 @@ class ResourceIconRouteTest {
     void shouldReturnBadRequestWhenIconParamMissing() {
         given()
             .when()
-            .get("/linagora.esn.resource/images/icon/.svg")
+            .get("/images/icon/.svg")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST);
     }
