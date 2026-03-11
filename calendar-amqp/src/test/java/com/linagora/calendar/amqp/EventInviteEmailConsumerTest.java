@@ -160,6 +160,7 @@ public class EventInviteEmailConsumerTest {
     private OpenPaaSUser attendee;
     private Sender sender;
     private UsersRepository usersRepository;
+    private EventEmailConsumer consumer;
 
     @BeforeEach
     public void setUp() throws Exception {
@@ -177,6 +178,10 @@ public class EventInviteEmailConsumerTest {
 
     @AfterEach
     void afterEach() {
+        if (consumer != null) {
+            consumer.close();
+        }
+
         Arrays.stream(EventIndexerConsumer.Queue
                 .values())
             .map(EventIndexerConsumer.Queue::queueName)
@@ -236,7 +241,7 @@ public class EventInviteEmailConsumerTest {
             usersRepository,  resourceDAO, domainDAO,
             settingsResolver, actionLinkFactory);
 
-        EventEmailConsumer consumer = new EventEmailConsumer(channelPool, QueueArguments.Builder::new, mailHandler,
+        consumer = new EventEmailConsumer(channelPool, QueueArguments.Builder::new, mailHandler,
             eventEmailFilter, new RecordingMetricFactory());
         consumer.init();
 
@@ -364,6 +369,59 @@ public class EventInviteEmailConsumerTest {
         }));
     }
 
+    @Test
+    void shouldSendInviteEmailWhenCalendarEventContainsDuplicatedAttendee() {
+        String eventUid = UUID.randomUUID().toString();
+        String initialCalendarData = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
+            CALSCALE:GREGORIAN
+            BEGIN:VTIMEZONE
+            TZID:Asia/Ho_Chi_Minh
+            BEGIN:STANDARD
+            TZOFFSETFROM:+0700
+            TZOFFSETTO:+0700
+            TZNAME:ICT
+            DTSTART:19700101T000000
+            END:STANDARD
+            END:VTIMEZONE
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:30250411T022032Z
+            SEQUENCE:1
+            DTSTART;TZID=Asia/Ho_Chi_Minh:30250411T100000
+            DTEND;TZID=Asia/Ho_Chi_Minh:30250411T110000
+            SUMMARY:Twake Calendar - Sprint planning #04
+            LOCATION:Twake Meeting Room
+            DESCRIPTION:This is a meeting to discuss the sprint planning for the next week.
+            ORGANIZER;CN=Van Tung TRAN:mailto:%s
+            ATTENDEE;PARTSTAT=NEEDS-ACTION;CN=Benoît TELLIER:mailto:%s
+            ATTENDEE;PARTSTAT=NEEDS-ACTION;CN=Benoît TELLIER:mailto:%s
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(eventUid,
+            organizer.username().asString(),
+            attendee.username().asString(),
+            attendee.username().asString());
+        davTestHelper.upsertCalendar(organizer, initialCalendarData, eventUid);
+
+        awaitAtMost.atMost(Duration.ofSeconds(20))
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
+
+        assertSoftly(Throwing.consumer(softly -> {
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo(organizer.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(attendee.username().asString());
+
+            String html = getHtml(smtpMailsResponse);
+            softly.assertThat(html)
+                .contains("Van Tung TRAN")
+                .contains(attendee.username().asString());
+        }));
+    }
+
     private String getHtml(JsonPath smtpMailsResponse) {
         String rawMessage = smtpMailsResponse.getString("[0].message");
         Pattern htmlPattern = Pattern.compile(
@@ -414,4 +472,3 @@ public class EventInviteEmailConsumerTest {
             .replace("{partStat}", partStat.getValue());
     }
 }
-

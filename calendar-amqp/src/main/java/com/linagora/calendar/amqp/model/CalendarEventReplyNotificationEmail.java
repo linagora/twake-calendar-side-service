@@ -18,8 +18,9 @@
 
 package com.linagora.calendar.amqp.model;
 
+import static com.linagora.calendar.storage.event.EventParseUtils.DuplicateAttendeePolicy.KEEP_FIRST;
+
 import java.util.List;
-import java.util.function.Function;
 
 import org.apache.commons.lang3.StringUtils;
 
@@ -34,9 +35,6 @@ import net.fortuna.ical4j.model.parameter.PartStat;
 
 public record CalendarEventReplyNotificationEmail(CalendarEventNotificationEmail base) {
 
-    public static final Function<Person, PersonModel> PERSON_TO_MODEL =
-        person -> new PersonModel(person.cn(), person.email().asString());
-
     public static CalendarEventReplyNotificationEmail from(CalendarEventNotificationEmailDTO dto) {
         return new CalendarEventReplyNotificationEmail(CalendarEventNotificationEmail.from(dto));
     }
@@ -45,14 +43,11 @@ public record CalendarEventReplyNotificationEmail(CalendarEventNotificationEmail
         VEvent vEvent = base.getFirstVEvent();
 
         Person attendee = EventParseUtils.getAttendees(vEvent).getFirst();
-        PersonModel attendeeModel = PERSON_TO_MODEL.apply(attendee);
+        PersonModel attendeeModel = PersonModel.from(attendee);
         PartStat attendeePartStat = attendee.partStat()
             .orElseThrow(() -> new IllegalStateException("Attendee partStat is missing"));
 
-        List<PersonModel> resourceModel = EventParseUtils.getResources(vEvent)
-            .stream()
-            .map(PERSON_TO_MODEL)
-            .toList();
+        List<PersonModel> resourceModel = PersonModel.fromList(EventParseUtils.getResources(vEvent, KEEP_FIRST));
 
         return ReplyContentModelBuilder.builder()
             .eventSummary(EventParseUtils.getSummary(vEvent).orElse(StringUtils.EMPTY))
@@ -61,7 +56,7 @@ public record CalendarEventReplyNotificationEmail(CalendarEventNotificationEmail
             .eventEnd(EventParseUtils.getEndTime(vEvent))
             .eventLocation(EventParseUtils.getLocation(vEvent))
             .eventAttendee(attendeeModel, attendeePartStat)
-            .eventOrganizer(PERSON_TO_MODEL.apply(EventParseUtils.getOrganizer(vEvent)))
+            .eventOrganizer(PersonModel.from(EventParseUtils.getOrganizer(vEvent)))
             .eventResources(resourceModel)
             .eventDescription(EventParseUtils.getDescription(vEvent));
     }

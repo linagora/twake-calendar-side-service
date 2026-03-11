@@ -19,7 +19,7 @@
 package com.linagora.calendar.amqp.model;
 
 import static com.linagora.calendar.amqp.model.CalendarEventNotificationEmail.GET_FIRST_VEVENT_FUNCTION;
-import static com.linagora.calendar.amqp.model.CalendarEventReplyNotificationEmail.PERSON_TO_MODEL;
+import static com.linagora.calendar.storage.event.EventParseUtils.DuplicateAttendeePolicy.KEEP_FIRST;
 
 import java.util.List;
 import java.util.function.Function;
@@ -58,14 +58,8 @@ public record CalendarEventCounterNotificationEmail(CalendarEventNotificationEma
             .build();
 
         Function<VEvent, OldEventModel> oldEventModelFunction = vEvent -> {
-            List<PersonModel> attendeeModel = EventParseUtils.getAttendees(vEvent)
-                .stream()
-                .map(PERSON_TO_MODEL)
-                .toList();
-            List<PersonModel> resourceModel = EventParseUtils.getResources(vEvent)
-                .stream()
-                .map(PERSON_TO_MODEL)
-                .toList();
+            List<PersonModel> attendeeModel = PersonModel.fromList(EventParseUtils.getAttendees(vEvent, KEEP_FIRST));
+            List<PersonModel> resourceModel = PersonModel.fromList(EventParseUtils.getResources(vEvent, KEEP_FIRST));
 
             return OldEventModel
                 .builder()
@@ -76,7 +70,7 @@ public record CalendarEventCounterNotificationEmail(CalendarEventNotificationEma
                 .location(EventParseUtils.getLocation(vEvent))
                 .description(EventParseUtils.getDescription(vEvent))
                 .attendee(attendeeModel)
-                .organizer(PERSON_TO_MODEL.apply(EventParseUtils.getOrganizer(vEvent)))
+                .organizer(PersonModel.from(EventParseUtils.getOrganizer(vEvent)))
                 .resources(resourceModel)
                 .build();
         };
