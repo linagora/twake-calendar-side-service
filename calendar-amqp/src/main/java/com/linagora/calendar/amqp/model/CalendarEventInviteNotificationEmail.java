@@ -18,8 +18,6 @@
 
 package com.linagora.calendar.amqp.model;
 
-import static com.linagora.calendar.amqp.model.CalendarEventNotificationEmail.PERSON_TO_MODEL;
-
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.Locale;
@@ -48,7 +46,7 @@ public record CalendarEventInviteNotificationEmail(CalendarEventNotificationEmai
                                           boolean isInternalUser,
                                           ActionLinks actionLinks) {
         VEvent vEvent = base.getFirstVEvent();
-        PersonModel organizer = PERSON_TO_MODEL.apply(EventParseUtils.getOrganizer(vEvent));
+        PersonModel organizer = PersonModel.from(EventParseUtils.getOrganizer(vEvent));
         String summary = EventParseUtils.getSummary(vEvent).orElse(StringUtils.EMPTY);
         ZonedDateTime startDate = EventParseUtils.getStartTime(vEvent);
 

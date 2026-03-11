@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.amqp.model;
 
+import static com.linagora.calendar.storage.event.EventParseUtils.DuplicateAttendeePolicy.KEEP_FIRST;
+
 import java.nio.charset.StandardCharsets;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -50,9 +52,6 @@ public record CalendarEventNotificationEmail(MailAddress senderEmail,
                                              String calendarURI,
                                              String eventPath) {
 
-    public static final Function<EventFields.Person, PersonModel> PERSON_TO_MODEL =
-        person -> new PersonModel(person.cn(), person.email().asString());
-
     public static final Function<Calendar, VEvent> GET_FIRST_VEVENT_FUNCTION =
         calendar -> calendar.getComponent(Component.VEVENT)
             .map(VEvent.class::cast)
@@ -72,23 +71,19 @@ public record CalendarEventNotificationEmail(MailAddress senderEmail,
 
     public Map<String, Object> toPugModel(Locale locale, ZoneId zoneToDisplay) {
         VEvent vEvent = getFirstVEvent();
-        PersonModel organizer = PERSON_TO_MODEL.apply(EventParseUtils.getOrganizer(vEvent));
         String summary = EventParseUtils.getSummary(vEvent).orElse(StringUtils.EMPTY);
         ZonedDateTime startDate = EventParseUtils.getStartTime(vEvent);
-        List<EventFields.Person> resourceList = EventParseUtils.getResources(vEvent);
+        List<EventFields.Person> attendees = EventParseUtils.getAttendees(vEvent, KEEP_FIRST);
+        List<EventFields.Person> resourceList = EventParseUtils.getResources(vEvent, KEEP_FIRST);
 
         ImmutableMap.Builder<String, Object> eventBuilder = ImmutableMap.builder();
-        eventBuilder.put("organizer", organizer.toPugModel())
-            .put("attendees", EventParseUtils.getAttendees(vEvent).stream()
-                .collect(ImmutableMap.toImmutableMap(attendee -> attendee.email().asString(),
-                    attendee -> PERSON_TO_MODEL.apply(attendee).toPugModel())))
+        eventBuilder.put("organizer", toPugModel(EventParseUtils.getOrganizer(vEvent)))
+            .put("attendees", toPeoplePugModel(attendees))
             .put("summary", summary)
             .put("allDay", EventParseUtils.isAllDay(vEvent))
             .put("start", new EventTimeModel(startDate).toPugModel(locale, zoneToDisplay))
             .put("hasResources", !resourceList.isEmpty())
-            .put("resources", resourceList.stream()
-                .collect(ImmutableMap.toImmutableMap(resource -> resource.email().asString(),
-                    resource -> PERSON_TO_MODEL.apply(resource).toPugModel())));
+            .put("resources", toPeoplePugModel(resourceList));
         EventParseUtils.getEndTime(vEvent).map(endDate -> new EventTimeModel(endDate).toPugModel(locale, zoneToDisplay))
             .ifPresent(model -> eventBuilder.put("end", model));
         EventParseUtils.getLocation(vEvent).ifPresent(location -> eventBuilder.put("location", new LocationModel(location).toPugModel()));
@@ -97,6 +92,16 @@ public record CalendarEventNotificationEmail(MailAddress senderEmail,
             .ifPresent(value -> eventBuilder.put("videoConferenceLink", value));
 
         return eventBuilder.build();
+    }
+
+    private Map<String, Object> toPugModel(EventFields.Person person) {
+        return PersonModel.from(person).toPugModel();
+    }
+
+    private Map<String, Map<String, Object>> toPeoplePugModel(List<EventFields.Person> people) {
+        return people.stream()
+            .collect(ImmutableMap.toImmutableMap(person -> person.email().asString(),
+                this::toPugModel));
     }
 
     public byte[] eventAsBytes() {

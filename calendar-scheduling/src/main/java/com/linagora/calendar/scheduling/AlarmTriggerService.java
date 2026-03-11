@@ -20,6 +20,7 @@ package com.linagora.calendar.scheduling;
 
 import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader.ALARM_SETTING_IDENTIFIER;
 import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingReader.ENABLE_ALARM;
+import static com.linagora.calendar.storage.event.EventParseUtils.DuplicateAttendeePolicy.KEEP_FIRST;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -60,7 +61,6 @@ import com.linagora.calendar.storage.UsernameRegistrationKey;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.event.AlarmAction;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
-import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.event.EventParseUtils;
 
 import net.fortuna.ical4j.model.Calendar;
@@ -71,9 +71,6 @@ import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 public class AlarmTriggerService {
-
-    public static final Function<EventFields.Person, PersonModel> PERSON_TO_MODEL =
-        person -> new PersonModel(person.cn(), person.email().asString());
 
     public static final Function<Calendar, VEvent> GET_FIRST_VEVENT_FUNCTION =
         calendar -> calendar.getComponent(Component.VEVENT)
@@ -200,14 +197,9 @@ public class AlarmTriggerService {
     }
 
     private Map<String, Object> toPugModel(VEvent vEvent, Duration duration, Locale locale) {
-        PersonModel organizer = PERSON_TO_MODEL.apply(EventParseUtils.getOrganizer(vEvent));
         String summary = EventParseUtils.getSummary(vEvent).orElse(StringUtils.EMPTY);
-        List<PersonModel> attendees = EventParseUtils.getAttendees(vEvent).stream()
-            .map(PERSON_TO_MODEL)
-            .toList();
-        List<PersonModel> resources = EventParseUtils.getResources(vEvent).stream()
-            .map(PERSON_TO_MODEL)
-            .toList();
+        List<PersonModel> attendees = PersonModel.fromList(EventParseUtils.getAttendees(vEvent, KEEP_FIRST));
+        List<PersonModel> resources = PersonModel.fromList(EventParseUtils.getResources(vEvent, KEEP_FIRST));
         Optional<String> location = EventParseUtils.getLocation(vEvent);
         Optional<String> description = EventParseUtils.getDescription(vEvent);
         Optional<String> videoConf = EventParseUtils.getPropertyValueIgnoreCase(vEvent, "X-OPENPAAS-VIDEOCONFERENCE");
@@ -216,7 +208,7 @@ public class AlarmTriggerService {
             .duration(duration)
             .summary(summary)
             .location(location)
-            .organizer(organizer)
+            .organizer(PersonModel.from(EventParseUtils.getOrganizer(vEvent)))
             .attendees(attendees)
             .resources(resources)
             .description(description)

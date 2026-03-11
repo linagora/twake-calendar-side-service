@@ -34,9 +34,11 @@ import java.time.format.DateTimeFormatterBuilder;
 import java.time.temporal.ChronoField;
 import java.time.temporal.Temporal;
 import java.time.temporal.TemporalAccessor;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -66,6 +68,11 @@ import net.fortuna.ical4j.model.property.Summary;
 import net.fortuna.ical4j.model.property.Uid;
 
 public class EventParseUtils {
+    public enum DuplicateAttendeePolicy {
+        KEEP_ALL,
+        KEEP_FIRST
+    }
+
     public static final Logger LOGGER = LoggerFactory.getLogger(EventParseUtils.class);
 
     public static final DateTimeFormatter UTC_DATE_TIME_FORMATTER = new DateTimeFormatterBuilder()
@@ -125,11 +132,39 @@ public class EventParseUtils {
     }
 
     public static List<EventFields.Person> getAttendees(VEvent vEvent) {
-        return getPeople(vEvent, GET_ATTENDEE);
+        return getAttendees(vEvent, DuplicateAttendeePolicy.KEEP_ALL);
+    }
+
+    public static List<EventFields.Person> getAttendees(VEvent vEvent, DuplicateAttendeePolicy duplicateAttendeePolicy) {
+        List<EventFields.Person> attendees = getPeople(vEvent, GET_ATTENDEE);
+        if (duplicateAttendeePolicy == DuplicateAttendeePolicy.KEEP_FIRST) {
+            return deduplicatePeopleByEmail(attendees);
+        }
+
+        return attendees;
+    }
+
+    private static List<EventFields.Person> deduplicatePeopleByEmail(List<EventFields.Person> people) {
+        return people.stream()
+            .collect(Collectors.collectingAndThen(
+                Collectors.toMap(EventFields.Person::email,
+                    Function.identity(),
+                    (first, ignored) -> first,
+                    LinkedHashMap::new),
+                map -> List.copyOf(map.values())));
     }
 
     public static List<EventFields.Person> getResources(VEvent vEvent) {
-        return getPeople(vEvent, GET_RESOURCE);
+        return getResources(vEvent, DuplicateAttendeePolicy.KEEP_ALL);
+    }
+
+    public static List<EventFields.Person> getResources(VEvent vEvent, DuplicateAttendeePolicy duplicateAttendeePolicy) {
+        List<EventFields.Person> resources = getPeople(vEvent, GET_RESOURCE);
+        if (duplicateAttendeePolicy == DuplicateAttendeePolicy.KEEP_FIRST) {
+            return deduplicatePeopleByEmail(resources);
+        }
+
+        return resources;
     }
 
     public static EventFields.Person getOrganizer(VEvent vEvent) {
