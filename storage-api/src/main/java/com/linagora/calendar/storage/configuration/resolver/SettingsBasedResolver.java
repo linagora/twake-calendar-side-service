@@ -41,6 +41,7 @@ import com.linagora.calendar.storage.configuration.ConfigurationKey;
 import com.linagora.calendar.storage.configuration.EntryIdentifier;
 import com.linagora.calendar.storage.configuration.ModuleName;
 import com.linagora.calendar.storage.exception.DomainNotFoundException;
+import com.linagora.calendar.storage.exception.UserNotFoundException;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -204,7 +205,9 @@ public interface SettingsBasedResolver {
         }
 
         private void logError(Username user, Throwable error) {
-            if (!(error instanceof DomainNotFoundException)) {
+            if (error instanceof UserNotFoundException || error instanceof DomainNotFoundException) {
+                LOGGER.debug("User {} not found in the system, will use default settings", user.asString());
+            } else {
                 LOGGER.error("Error resolving user settings for {}, will use default settings: {}",
                     user.asString(), ResolvedSettings.DEFAULT, error);
             }
