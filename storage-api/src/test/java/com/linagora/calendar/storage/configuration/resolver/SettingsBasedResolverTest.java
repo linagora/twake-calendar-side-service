@@ -44,6 +44,7 @@ import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.ConfigurationKey;
 import com.linagora.calendar.storage.configuration.ModuleName;
 import com.linagora.calendar.storage.exception.DomainNotFoundException;
+import com.linagora.calendar.storage.exception.UserNotFoundException;
 
 import reactor.core.publisher.Mono;
 
@@ -224,6 +225,46 @@ public class SettingsBasedResolverTest {
         SettingsBasedResolver.ResolvedSettings result = resolver.resolveOrDefault(recipientUser, senderUser).block();
         assertThat(result.locale()).isEqualTo(Locale.of("de"));
         assertThat(result.zoneId()).isEqualTo(ZoneId.of("Europe/Berlin"));
+    }
+
+    @Test
+    void twoUsersShouldFallbackToSecondUserSettingsWhenFirstUserNotFound() {
+        Username externalUser = Username.of("external@remote.com");
+        Username senderUser = Username.of("sender@local.com");
+
+        Table<ModuleName, ConfigurationKey, JsonNode> senderTable = HashBasedTable.create();
+        senderTable.put(LANGUAGE_IDENTIFIER.moduleName(), LANGUAGE_IDENTIFIER.configurationKey(), JsonNodeFactory.instance.textNode("fr"));
+        ObjectNode timezoneNode = JsonNodeFactory.instance.objectNode();
+        timezoneNode.put("timeZone", "Europe/Paris");
+        senderTable.put(TIMEZONE_IDENTIFIER.moduleName(), TIMEZONE_IDENTIFIER.configurationKey(), timezoneNode);
+
+        ConfigurationResolver configurationResolver = Mockito.mock(ConfigurationResolver.class);
+        Mockito.when(configurationResolver.resolve(Mockito.anySet(),
+                Mockito.argThat(s -> s != null && s.getUser().equals(externalUser))))
+            .thenReturn(Mono.error(new UserNotFoundException(externalUser)));
+        Mockito.when(configurationResolver.resolve(Mockito.anySet(),
+                Mockito.argThat(s -> s != null && s.getUser().equals(senderUser))))
+            .thenReturn(Mono.just(new ConfigurationDocument(senderTable)));
+
+        SettingsBasedResolver resolver = getSettingsBasedResolver(configurationResolver);
+
+        SettingsBasedResolver.ResolvedSettings result = resolver.resolveOrDefault(externalUser, senderUser).block();
+        assertThat(result.locale()).isEqualTo(Locale.of("fr"));
+        assertThat(result.zoneId()).isEqualTo(ZoneId.of("Europe/Paris"));
+    }
+
+    @Test
+    void singleUserShouldReturnDefaultWhenUserNotFound() {
+        Username externalUser = Username.of("external@remote.com");
+
+        ConfigurationResolver configurationResolver = Mockito.mock(ConfigurationResolver.class);
+        Mockito.when(configurationResolver.resolve(Mockito.anySet(), Mockito.any(MailboxSession.class)))
+            .thenReturn(Mono.error(new UserNotFoundException(externalUser)));
+
+        SettingsBasedResolver resolver = getSettingsBasedResolver(configurationResolver);
+
+        SettingsBasedResolver.ResolvedSettings result = resolver.resolveOrDefault(externalUser).block();
+        assertThat(result).isEqualTo(SettingsBasedResolver.ResolvedSettings.DEFAULT);
     }
 
     private SettingsBasedResolver getSettingsBasedResolver(ConfigurationResolver configurationResolver) {
