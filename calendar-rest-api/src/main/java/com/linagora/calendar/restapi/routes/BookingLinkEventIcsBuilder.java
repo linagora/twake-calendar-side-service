@@ -149,7 +149,7 @@ public class BookingLinkEventIcsBuilder {
             .withParameter(Rsvp.TRUE)
             .withParameter(Role.REQ_PARTICIPANT)
             .withParameter(CuType.INDIVIDUAL)
-            .withParameter(PartStat.NEEDS_ACTION)
+            .withParameter(PartStat.ACCEPTED)
             .getFluentTarget();
 
         if (StringUtils.isNotBlank(attendee.name())) {

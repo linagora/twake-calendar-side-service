@@ -232,8 +232,8 @@ class BookingLinkReservationRouteTest {
                     .formatted(openPaaSUser.fullName(), openPaaSUser.username().asString()),
                 "ATTENDEE;RSVP=TRUE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=%s:mailto:%s"
                     .formatted(openPaaSUser.fullName(), openPaaSUser.username().asString()),
-                "ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=BOB:mailto:creator@example.com",
-                "ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=Nguyen Van A:mailto:vana@example.com",
+                "ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED;CN=BOB:mailto:creator@example.com",
+                "ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED;CN=Nguyen Van A:mailto:vana@example.com",
                 "DESCRIPTION:Please call via Zoom.",
                 "X-PUBLICLY-CREATED:true",
                 "X-PUBLICLY-CREATOR:creator@example.com",
@@ -438,7 +438,7 @@ class BookingLinkReservationRouteTest {
                     .formatted(openPaaSUser.fullName(), openPaaSUser.username().asString()),
                 "ATTENDEE;RSVP=TRUE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=%s:mailto:%s"
                     .formatted(openPaaSUser.fullName(), openPaaSUser.username().asString()),
-                "ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION:mailto:creator@example.com")
+                "ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED:mailto:creator@example.com")
             .doesNotContain("X-OPENPAAS-VIDEOCONFERENCE")
             .doesNotContain("DESCRIPTION:");
     }
