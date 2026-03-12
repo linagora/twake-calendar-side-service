@@ -22,7 +22,6 @@ import static io.restassured.RestAssured.given;
 import static io.restassured.RestAssured.with;
 import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
-import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.charset.StandardCharsets;
@@ -53,14 +52,13 @@ import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
-import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 
 import io.restassured.RestAssured;
 import io.restassured.authentication.PreemptiveBasicAuthScheme;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.http.ContentType;
 
-class BookingLinkResetPublicIdRouteTest {
+class BookingLinkDeleteRouteTest {
 
     private static final boolean ACTIVE = true;
     private static final String PASSWORD = "secret";
@@ -116,87 +114,71 @@ class BookingLinkResetPublicIdRouteTest {
     }
 
     @Test
-    void shouldReturn200WithNewBookingLinkPublicId() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
-
-        String response = given()
-        .when()
-            .post("/booking-links/" + inserted.publicId().value() + "/reset")
-        .then()
-            .statusCode(HttpStatus.SC_OK)
-            .contentType(ContentType.JSON)
-            .extract().body().asString();
-
-        assertThatJson(response)
-            .isEqualTo("""
-                { "bookingLinkPublicId": "${json-unit.ignore}" }""");
-    }
-
-    @Test
-    void shouldReturnAPublicIdDifferentFromTheOldOne() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
-
-        String newPublicId = given()
-        .when()
-            .post("/booking-links/" + inserted.publicId().value() + "/reset")
-        .then()
-            .statusCode(HttpStatus.SC_OK)
-            .extract().jsonPath().getString("bookingLinkPublicId");
-
-        assertThat(newPublicId).isNotEqualTo(inserted.publicId().value().toString());
-    }
-
-    @Test
-    void shouldInvalidateOldPublicId() {
+    void shouldReturn204WhenDeletingExistingBookingLink() {
         BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         given()
         .when()
-            .post("/booking-links/" + inserted.publicId().value() + "/reset")
+            .delete("/booking-links/" + inserted.publicId().value())
         .then()
-            .statusCode(HttpStatus.SC_OK);
-
-        assertThat(dataProbe.findBookingLink(openPaaSUser.username(), inserted.publicId())).isNull();
+            .statusCode(HttpStatus.SC_NO_CONTENT);
     }
 
     @Test
-    void shouldMakeNewPublicIdRetrievable() {
+    void shouldDeleteBookingLink() {
         BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
-        String newPublicId = given()
+        given()
         .when()
-            .post("/booking-links/" + inserted.publicId().value() + "/reset")
+            .delete("/booking-links/" + inserted.publicId().value())
         .then()
-            .statusCode(HttpStatus.SC_OK)
-            .extract().jsonPath().getString("bookingLinkPublicId");
+            .statusCode(HttpStatus.SC_NO_CONTENT);
 
-        assertThat(dataProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(newPublicId)))).isNotNull();
+        assertThat(dataProbe.listBookingLinks(openPaaSUser.username())).isEmpty();
+    }
+
+    @Test
+    void shouldOnlyDeleteTheTargetedBookingLink() {
+        BookingLink toDelete = dataProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+        BookingLink toKeep = dataProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(60), ACTIVE, Optional.empty()));
+
+        given()
+        .when()
+            .delete("/booking-links/" + toDelete.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        assertThat(dataProbe.listBookingLinks(openPaaSUser.username()))
+            .extracting(BookingLink::publicId)
+            .containsExactly(toKeep.publicId());
     }
 
     @Test
     void shouldReturn404WhenBookingLinkDoesNotExist() {
         given()
         .when()
-            .post("/booking-links/" + UUID.randomUUID() + "/reset")
+            .delete("/booking-links/" + UUID.randomUUID())
         .then()
             .statusCode(HttpStatus.SC_NOT_FOUND);
     }
 
     @Test
-    void shouldReturn404WhenBookingLinkBelongsToAnotherUser() {
+    void shouldNotDeleteBookingLinkOfAnotherUser() {
         OpenPaaSUser otherUser = sabreDavExtension.newTestUser();
-        BookingLink inserted = dataProbe.insertBookingLink(otherUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+        BookingLink otherInserted = dataProbe.insertBookingLink(otherUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(otherUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         given()
         .when()
-            .post("/booking-links/" + inserted.publicId().value() + "/reset")
+            .delete("/booking-links/" + otherInserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_NOT_FOUND);
+
+        assertThat(dataProbe.listBookingLinks(otherUser.username())).hasSize(1);
     }
 
     @Test
@@ -208,17 +190,16 @@ class BookingLinkResetPublicIdRouteTest {
             .auth().none()
             .contentType(ContentType.JSON)
         .when()
-            .post("/booking-links/" + inserted.publicId().value() + "/reset")
+            .delete("/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_UNAUTHORIZED);
     }
 
     @Test
     void shouldReturn400WhenPublicIdIsNotAValidUUID() {
-        with()
-            .contentType(ContentType.JSON)
+        given()
         .when()
-            .post("/booking-links/invalid-uuid/reset")
+            .delete("/booking-links/not-a-uuid")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST);
     }
