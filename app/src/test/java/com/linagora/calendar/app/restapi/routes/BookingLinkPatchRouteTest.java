@@ -334,6 +334,22 @@ class BookingLinkPatchRouteTest {
     }
 
     @Test
+    void shouldReturn400WhenRequestContainsUnknownFields() {
+        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+
+        given()
+            .body("""
+                { "active": false, "unknownField": "value" }
+                """)
+        .when()
+            .patch("/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.details", equalTo("Unknown fields: [unknownField]"));
+    }
+
+    @Test
     void shouldReturn400WhenBodyIsEmpty() {
         BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
