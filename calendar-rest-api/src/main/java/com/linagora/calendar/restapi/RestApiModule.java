@@ -71,8 +71,10 @@ import com.linagora.calendar.restapi.auth.OidcFallbackCookieAuthenticationStrate
 import com.linagora.calendar.restapi.routes.AvatarRoute;
 import com.linagora.calendar.restapi.routes.BookingLinkCreateRoute;
 import com.linagora.calendar.restapi.routes.BookingLinkGetRoute;
+import com.linagora.calendar.restapi.routes.BookingLinkReservationRoute;
 import com.linagora.calendar.restapi.routes.BookingLinkResetPublicIdRoute;
 import com.linagora.calendar.restapi.routes.BookingLinkSlotsRoute;
+import com.linagora.calendar.restapi.routes.BookingLinkSlotsService;
 import com.linagora.calendar.restapi.routes.CalendarSearchRoute;
 import com.linagora.calendar.restapi.routes.CalendarTicketRoutes;
 import com.linagora.calendar.restapi.routes.CheckTechnicalUserTokenRoute;
@@ -91,6 +93,7 @@ import com.linagora.calendar.restapi.routes.LogoRoute;
 import com.linagora.calendar.restapi.routes.PeopleSearchRoute;
 import com.linagora.calendar.restapi.routes.ProfileAvatarRoute;
 import com.linagora.calendar.restapi.routes.ProfileUpdateRoute;
+import com.linagora.calendar.restapi.routes.PublicAgendaProposalNotifier;
 import com.linagora.calendar.restapi.routes.ResourceIconRoute;
 import com.linagora.calendar.restapi.routes.ResourceParticipationRoute;
 import com.linagora.calendar.restapi.routes.ResourceRoute;
@@ -146,6 +149,7 @@ public class RestApiModule extends AbstractModule {
         routes.addBinding().to(BookingLinkGetRoute.class);
         routes.addBinding().to(BookingLinkResetPublicIdRoute.class);
         routes.addBinding().to(BookingLinkSlotsRoute.class);
+        routes.addBinding().to(BookingLinkReservationRoute.class);
         routes.addBinding().to(DomainRoute.class);
         routes.addBinding().to(ThemeRoute.class);
         routes.addBinding().to(LogoRoute.class);
@@ -198,6 +202,8 @@ public class RestApiModule extends AbstractModule {
 
         bind(ImportWebSocketNotifier.class).in(Scopes.SINGLETON);
         bind(SendMailNotifier.class).in(Scopes.SINGLETON);
+        bind(BookingLinkSlotsService.class).in(Scopes.SINGLETON);
+        bind(PublicAgendaProposalNotifier.class).in(Scopes.SINGLETON);
 
         Multibinder<ImportResultNotifier> importResultNotifierMultibinder = Multibinder.newSetBinder(binder(), ImportResultNotifier.class);
         importResultNotifierMultibinder.addBinding().to(ImportWebSocketNotifier.class);

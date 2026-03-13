@@ -1,0 +1,1179 @@
+/********************************************************************
+ *  As a subpart of Twake Mail, this file is edited by Linagora.    *
+ *                                                                  *
+ *  https://twake-mail.com/                                         *
+ *  https://linagora.com                                            *
+ *                                                                  *
+ *  This file is subject to The Affero Gnu Public License           *
+ *  version 3.                                                      *
+ *                                                                  *
+ *  https://www.gnu.org/licenses/agpl-3.0.en.html                   *
+ *                                                                  *
+ *  This program is distributed in the hope that it will be         *
+ *  useful, but WITHOUT ANY WARRANTY; without even the implied      *
+ *  warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR         *
+ *  PURPOSE. See the GNU Affero General Public License for          *
+ *  more details.                                                   *
+ ********************************************************************/
+
+package com.linagora.calendar.app.restapi.routes;
+
+import static com.linagora.calendar.app.restapi.routes.ImportRouteTest.mailSenderConfigurationFunction;
+import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
+import static io.restassured.RestAssured.given;
+import static io.restassured.config.EncoderConfig.encoderConfig;
+import static io.restassured.config.RestAssuredConfig.newConfig;
+import static io.restassured.http.ContentType.JSON;
+import static net.javacrumbs.jsonunit.JsonMatchers.jsonEquals;
+import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.SoftAssertions.assertSoftly;
+import static org.awaitility.Durations.ONE_HUNDRED_MILLISECONDS;
+
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.IntStream;
+
+import jakarta.inject.Inject;
+
+import org.apache.http.HttpStatus;
+import org.apache.james.core.Domain;
+import org.apache.james.core.MaybeSender;
+import org.apache.james.core.Username;
+import org.apache.james.utils.GuiceProbe;
+import org.assertj.core.groups.Tuple;
+import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionFactory;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
+
+import com.google.inject.Scopes;
+import com.google.inject.multibindings.Multibinder;
+import com.linagora.calendar.api.CalendarUtil;
+import com.linagora.calendar.api.booking.AvailabilityRule.FixedAvailabilityRule;
+import com.linagora.calendar.api.booking.AvailabilityRules;
+import com.linagora.calendar.app.AppTestHelper;
+import com.linagora.calendar.app.TwakeCalendarConfiguration;
+import com.linagora.calendar.app.TwakeCalendarExtension;
+import com.linagora.calendar.app.TwakeCalendarGuiceServer;
+import com.linagora.calendar.app.modules.CalendarDataProbe;
+import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.DavModuleTestHelper;
+import com.linagora.calendar.dav.DavTestHelper;
+import com.linagora.calendar.dav.DockerSabreDavSetup;
+import com.linagora.calendar.dav.SabreDavExtension;
+import com.linagora.calendar.restapi.RestApiServerProbe;
+import com.linagora.calendar.smtp.MailSenderConfiguration;
+import com.linagora.calendar.smtp.MockSmtpServerExtension;
+import com.linagora.calendar.smtp.template.MailTemplateConfiguration;
+import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.OpenPaaSUser;
+import com.linagora.calendar.storage.booking.BookingLink;
+import com.linagora.calendar.storage.booking.BookingLinkDAO;
+import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
+import com.linagora.calendar.storage.booking.BookingLinkPublicId;
+import com.linagora.calendar.storage.booking.MemoryBookingLinkDAO;
+import com.linagora.calendar.storage.event.EventFields.Person;
+import com.linagora.calendar.storage.event.EventParseUtils;
+
+import io.restassured.RestAssured;
+import io.restassured.builder.RequestSpecBuilder;
+import io.restassured.http.ContentType;
+import io.restassured.path.json.JsonPath;
+import io.restassured.specification.RequestSpecification;
+import net.fortuna.ical4j.model.Calendar;
+import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.Property;
+import net.fortuna.ical4j.model.component.VEvent;
+import net.fortuna.ical4j.model.parameter.PartStat;
+
+class BookingLinkReservationRouteTest {
+    private static final String PASSWORD = "secret";
+    private static final Duration DURATION_30_MINUTES = Duration.ofMinutes(30);
+    private static final AvailabilityRules AVAILABILITY_RULE = AvailabilityRules.of(new FixedAvailabilityRule(
+        ZonedDateTime.parse("2036-01-26T09:00:00Z"),
+        ZonedDateTime.parse("2036-01-26T12:00:00Z")));
+    private static final ConditionFactory CALMLY_AWAIT = Awaitility
+        .with().pollInterval(ONE_HUNDRED_MILLISECONDS)
+        .and().pollDelay(ONE_HUNDRED_MILLISECONDS)
+        .await();
+
+    static class BookingLinkReservationProbe implements GuiceProbe {
+        private final BookingLinkDAO bookingLinkDAO;
+
+        @Inject
+        BookingLinkReservationProbe(BookingLinkDAO bookingLinkDAO) {
+            this.bookingLinkDAO = bookingLinkDAO;
+        }
+
+        BookingLink insert(Username username, BookingLinkInsertRequest request) {
+            return bookingLinkDAO.insert(username, request).block();
+        }
+    }
+
+    @RegisterExtension
+    @Order(1)
+    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+
+    @RegisterExtension
+    @Order(2)
+    static final MockSmtpServerExtension mockSmtpExtension = new MockSmtpServerExtension();
+
+    @RegisterExtension
+    @Order(3)
+    static TwakeCalendarExtension twakeCalendarExtension = new TwakeCalendarExtension(
+        TwakeCalendarConfiguration.builder()
+            .configurationFromClasspath()
+            .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
+            .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB),
+        AppTestHelper.OIDC_BY_PASS_MODULE,
+        DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
+        binder -> binder.bind(MailTemplateConfiguration.class)
+            .toInstance(new MailTemplateConfiguration("classpath://templates/",
+                MaybeSender.getMailSender("no-reply@openpaas.org"))),
+        binder -> binder.bind(MailSenderConfiguration.class)
+            .toInstance(mailSenderConfigurationFunction.apply(mockSmtpExtension)),
+        binder -> {
+            Multibinder.newSetBinder(binder, GuiceProbe.class)
+                .addBinding()
+                .to(BookingLinkReservationProbe.class);
+
+            binder.bind(MemoryBookingLinkDAO.class).in(Scopes.SINGLETON);
+            binder.bind(BookingLinkDAO.class).to(MemoryBookingLinkDAO.class);
+        });
+
+    @AfterAll
+    static void afterAll() {
+        RestAssured.reset();
+    }
+
+    private OpenPaaSUser openPaaSUser;
+    private CalDavClient calDavClient;
+    private DavTestHelper davTestHelper;
+    private int restApiPort;
+
+    static RequestSpecification mockSMTPRequestSpecification() {
+        return new RequestSpecBuilder()
+            .setPort(mockSmtpExtension.getMockSmtp().getRestApiPort())
+            .setBasePath("")
+            .build();
+    }
+
+    @BeforeEach
+    void setUp(TwakeCalendarGuiceServer server) throws Exception {
+        CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
+        Username ownerUsername = Username.fromLocalPartWithDomain("owner-" + UUID.randomUUID(), Domain.of("open-paas.org"));
+        calendarDataProbe.addDomain(ownerUsername.getDomainPart().orElseThrow());
+        calendarDataProbe.addUser(ownerUsername, PASSWORD, "Owner", "User");
+        openPaaSUser = calendarDataProbe.getUser(ownerUsername);
+
+        restApiPort = server.getProbe(RestApiServerProbe.class).getPort().getValue();
+        RestAssured.requestSpecification = new RequestSpecBuilder()
+            .setContentType(ContentType.JSON)
+            .setAccept(ContentType.JSON)
+            .setConfig(newConfig().encoderConfig(encoderConfig().defaultContentCharset(StandardCharsets.UTF_8)))
+            .setPort(restApiPort)
+            .setBasePath("")
+            .build();
+
+        calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
+        davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
+
+        given(mockSMTPRequestSpecification())
+            .delete("/smtpMails")
+            .then();
+
+        given(mockSMTPRequestSpecification())
+            .delete("/smtpBehaviors")
+            .then();
+    }
+
+    @Test
+    void shouldCreateBookingWithoutAuthentication(TwakeCalendarGuiceServer server) {
+        BookingLink inserted = insertActiveBookingLink(server);
+        String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();
+
+        given()
+            .auth().none()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body("""
+                {
+                  "startUtc": "%s",
+                  "creator": {
+                    "name": "BOB",
+                    "email": "creator@example.com"
+                  },
+                  "additional_attendees": [
+                    {
+                      "name": "Nguyen Van A",
+                      "email": "vana@example.com"
+                    }
+                  ],
+                  "eventTitle": "30-min intro call",
+                  "visioLink": false,
+                  "notes": ""
+                }
+                """.formatted(slotStartUtc))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED);
+    }
+    
+    @Test
+    void shouldCreateBookingAndPersistEventToSabre(TwakeCalendarGuiceServer server) {
+        // Given: an active public booking link owned by the test user.
+        BookingLink inserted = insertActiveBookingLink(server);
+        String slotStartUtc = getAvailableSlots(inserted.publicId()).get(1);
+
+        // When: a valid reservation request is posted.
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body("""
+                {
+                  "startUtc": "%s",
+                  "creator": {
+                    "name": "BOB",
+                    "email": "creator@example.com"
+                  },
+                  "additional_attendees": [
+                    {
+                      "name": "Nguyen Van A",
+                      "email": "vana@example.com"
+                    }
+                  ],
+                  "eventTitle": "30-min intro call",
+                  "visioLink": true,
+                  "notes": "Please call via Zoom."
+                }
+                """.formatted(slotStartUtc))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED);
+
+        // Then: one event is persisted and the exported ICS contains the expected booking metadata.
+        List<String> eventIds = calDavClient.findUserCalendarEventIds(openPaaSUser.username(), CalendarURL.from(openPaaSUser.id()))
+            .collectList()
+            .block();
+
+        assertThat(eventIds)
+            .describedAs("a successful booking should persist exactly one event")
+            .hasSize(1);
+
+        Calendar exportedCalendar = CalendarUtil.parseIcs(exportCalendar(openPaaSUser));
+        VEvent event = (VEvent) exportedCalendar.getComponent(Component.VEVENT).orElseThrow();
+        Function<String, String> getPropertyValue = property -> event.getProperty(property).get().getValue();
+
+        assertSoftly(softly -> {
+            softly.assertThat(getPropertyValue.apply(Property.TRANSP))
+                .isEqualTo("OPAQUE");
+            softly.assertThat(getPropertyValue.apply(Property.SUMMARY))
+                .isEqualTo("30-min intro call");
+            softly.assertThat(getPropertyValue.apply(Property.DTSTART))
+                .isEqualTo("20360126T093000Z");
+            softly.assertThat(getPropertyValue.apply(Property.DURATION))
+                .isEqualTo("PT30M");
+            softly.assertThat(EventParseUtils.getOrganizer(event))
+                .extracting(Person::cn, person -> person.email().asString(), Person::partStat)
+                .containsExactly(openPaaSUser.fullName(), openPaaSUser.username().asString(), Optional.empty());
+            softly.assertThat(EventParseUtils.getAttendees(event))
+                .extracting(Person::cn, person -> person.email().asString(), Person::partStat)
+                .containsExactly(
+                    Tuple.tuple(openPaaSUser.fullName(), openPaaSUser.username().asString(), Optional.of(PartStat.NEEDS_ACTION)),
+                    Tuple.tuple("BOB", "creator@example.com", Optional.of(PartStat.ACCEPTED)),
+                    Tuple.tuple("Nguyen Van A", "vana@example.com", Optional.of(PartStat.ACCEPTED)));
+            softly.assertThat(getPropertyValue.apply("X-OPENPAAS-VIDEOCONFERENCE"))
+                .startsWith("https://jitsi.linagora.com/")
+                .matches("https://jitsi\\.linagora\\.com/[a-z]{3}-[a-z]{4}-[a-z]{3}");
+            softly.assertThat(getPropertyValue.apply(Property.DESCRIPTION))
+                .isEqualTo("Please call via Zoom.\nVisio: " + getPropertyValue.apply("X-OPENPAAS-VIDEOCONFERENCE"));
+            softly.assertThat(getPropertyValue.apply("X-PUBLICLY-CREATED"))
+                .isEqualTo("true");
+            softly.assertThat(getPropertyValue.apply("X-PUBLICLY-CREATOR"))
+                .isEqualTo("creator@example.com");
+        });
+    }
+
+    @Test
+    void shouldSendProposalEmailToOrganizerWhenBookingCreated(TwakeCalendarGuiceServer server) {
+        BookingLink inserted = insertActiveBookingLink(server);
+        String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();
+
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body("""
+                {
+                  "startUtc": "%s",
+                  "creator": {
+                    "name": "BOB",
+                    "email": "creator@example.com"
+                  },
+                  "eventTitle": "30-min intro call"
+                }
+                """.formatted(slotStartUtc))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED);
+
+        JsonPath smtpMailsResponse = awaitProposalEmail();
+
+        assertSoftly(softly -> {
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(openPaaSUser.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[0].message")).contains("Subject: New event proposition from BOB: 30-min intro call");
+        });
+    }
+
+    @Test
+    void shouldIncludeThreeParticipationActionLinksInProposalEmail(TwakeCalendarGuiceServer server) {
+        BookingLink inserted = insertActiveBookingLink(server);
+        String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();
+
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body("""
+                {
+                  "startUtc": "%s",
+                  "creator": {
+                    "name": "BOB",
+                    "email": "creator@example.com"
+                  },
+                  "eventTitle": "30-min intro call"
+                }
+                """.formatted(slotStartUtc))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED);
+
+        String rawMessage = awaitProposalEmail().getString("[0].message");
+        List<String> actionLinks = extractParticipationActionLinks(getHtml(rawMessage));
+
+        assertSoftly(softly -> {
+            softly.assertThat(actionLinks).hasSize(3).doesNotHaveDuplicates();
+            softly.assertThat(actionLinks).allMatch(link -> link.startsWith("https://excal.linagora.com/excal/?jwt="));
+        });
+
+        String actualResponse = given()
+            .when()
+            .get(toParticipationEndpoint(actionLinks.getFirst()))
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(JSON)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(actualResponse).isEqualTo("""
+            {
+              "eventJSON": "${json-unit.ignore}",
+              "attendeeEmail": "%s",
+              "locale": "en",
+              "links": {
+                "yes": "${json-unit.ignore}",
+                "no": "${json-unit.ignore}",
+                "maybe": "${json-unit.ignore}"
+              }
+            }
+            """.formatted(openPaaSUser.username().asString()));
+    }
+
+    @Test
+    void shouldUpdateOrganizerPartStatWhenProposalActionLinksAreAccessed(TwakeCalendarGuiceServer server) {
+        BookingLink inserted = insertActiveBookingLink(server);
+        String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();
+
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body("""
+                {
+                  "startUtc": "%s",
+                  "creator": {
+                    "name": "BOB",
+                    "email": "creator@example.com"
+                  },
+                  "eventTitle": "30-min intro call"
+                }
+                """.formatted(slotStartUtc))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED);
+
+        List<String> actionLinks = extractParticipationActionLinks(getHtml(awaitProposalEmail().getString("[0].message")));
+        Map<String, String> linksByLabel = Map.of(
+            "yes", actionLinks.get(0),
+            "maybe", actionLinks.get(1),
+            "no", actionLinks.get(2));
+        Consumer<String> awaitOrganizerPartStat = expectedPartStat ->
+            CALMLY_AWAIT
+                .atMost(Duration.ofSeconds(5))
+                .untilAsserted(() -> assertThat(exportCalendar(openPaaSUser)
+                    .replace("\r\n ", ""))
+                    .contains("ATTENDEE;RSVP=TRUE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;CN=%s;PARTSTAT=%s:mailto:%s"
+                        .formatted(openPaaSUser.fullName(), expectedPartStat, openPaaSUser.username().asString())));
+
+        given().when().get(toParticipationEndpoint(linksByLabel.get("yes")))
+            .then().statusCode(HttpStatus.SC_OK).contentType(JSON);
+        awaitOrganizerPartStat.accept("ACCEPTED");
+
+        given().when().get(toParticipationEndpoint(linksByLabel.get("maybe")))
+            .then().statusCode(HttpStatus.SC_OK).contentType(JSON);
+        awaitOrganizerPartStat.accept("TENTATIVE");
+
+        given().when().get(toParticipationEndpoint(linksByLabel.get("no")))
+            .then().statusCode(HttpStatus.SC_OK).contentType(JSON);
+        awaitOrganizerPartStat.accept("DECLINED");
+    }
+
+    @Test
+    void shouldCreateBookingUsingSlotReturnedBySlotsEndpoint(TwakeCalendarGuiceServer server) {
+        BookingLink inserted = insertActiveBookingLink(server);
+
+        List<String> availableSlots = given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .queryParam("from", "2036-01-26T00:00:00Z")
+            .queryParam("to", "2036-01-27T00:00:00Z")
+        .when()
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(JSON)
+            .extract()
+            .jsonPath()
+            .getList("slots.start", String.class);
+
+        assertThat(availableSlots)
+            .describedAs("slots endpoint should return at least one available slot")
+            .isNotEmpty();
+
+        String availableSlotStart = availableSlots.get(ThreadLocalRandom.current().nextInt(availableSlots.size()));
+
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body(bodyRequest(availableSlotStart))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED);
+    }
+
+    @Test
+    void shouldRejectBookingUsingSlotNotReturnedBySlotsEndpoint(TwakeCalendarGuiceServer server) {
+        // Given: an active booking link with availability window [09:00, 12:00].
+        BookingLink inserted = insertActiveBookingLink(server);
+        List<String> availableSlots = getAvailableSlots(inserted.publicId());
+
+        // Given: 08:00 is not in returned slots and is outside the configured rule window.
+        String unavailableSlotStart = "2036-01-26T08:00:00Z";
+        assertThat(availableSlots)
+            .describedAs("sanity check: candidate slot should not be returned by slots endpoint")
+            .doesNotContain(unavailableSlotStart);
+
+        // When/Then: booking with this slot should be rejected as not available.
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body(bodyRequest(unavailableSlotStart))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .contentType(JSON)
+            .body("error", jsonEquals("""
+                {
+                  "code": 400,
+                  "message": "Bad Request",
+                  "details": "Requested slot is not available for booking link with publicId %s, slotStartUtc %s"
+                }
+                """.formatted(inserted.publicId().value(), unavailableSlotStart)));
+    }
+
+    @Test
+    void shouldRejectBookingWhenStartIsInsideRuleButNotOnComputedSlotBoundary(TwakeCalendarGuiceServer server) {
+        // Given: a 30-minute booking link with rule window [09:00, 12:00].
+        // Computed slot starts are aligned on 30-minute boundaries, e.g. 09:00, 09:30, 10:00...
+        BookingLink inserted = insertActiveBookingLink(server);
+        List<String> availableSlots = getAvailableSlots(inserted.publicId());
+
+        // Given: 09:15 is inside the free rule window and not busy, but it is not a computed slot boundary.
+        String unavailableSlotStart = "2036-01-26T09:15:00Z";
+        assertThat(availableSlots)
+            .describedAs("09:15 is inside rule window but must not be a computed 30-minute slot")
+            .doesNotContain(unavailableSlotStart);
+
+        // When/Then: booking with 09:15 should be rejected because startUtc must match a computed available slot.
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body(bodyRequest(unavailableSlotStart))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .contentType(JSON)
+            .body("error", jsonEquals("""
+                {
+                  "code": 400,
+                  "message": "Bad Request",
+                  "details": "Requested slot is not available for booking link with publicId %s, slotStartUtc %s"
+                }
+                """.formatted(inserted.publicId().value(), unavailableSlotStart)));
+    }
+
+    @Test
+    void shouldRejectSecondBookingWhenPostingSameSlotTwice(TwakeCalendarGuiceServer server) {
+        BookingLink inserted = insertActiveBookingLink(server);
+        String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();
+
+        // Given/When: first booking succeeds for the selected slot.
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body(bodyRequest(slotStartUtc))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED);
+
+        // Then: second booking on the same slot is rejected as no longer available.
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body(bodyRequest(slotStartUtc))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .contentType(JSON)
+            .body("error", jsonEquals("""
+                {
+                  "code": 400,
+                  "message": "Bad Request",
+                  "details": "Requested slot is not available for booking link with publicId %s, slotStartUtc %s"
+                }
+                """.formatted(inserted.publicId().value(), slotStartUtc)));
+
+        List<String> eventIds = calDavClient.findUserCalendarEventIds(openPaaSUser.username(), CalendarURL.from(openPaaSUser.id()))
+            .collectList()
+            .block();
+        assertThat(eventIds)
+            .describedAs("second booking attempt should not create another event")
+            .hasSize(1);
+    }
+
+    @Test
+    void shouldCreateSecondBookingWhenPostingNextSlot(TwakeCalendarGuiceServer server) {
+        BookingLink inserted = insertActiveBookingLink(server);
+        List<String> availableSlots = getAvailableSlots(inserted.publicId());
+        assertThat(availableSlots)
+            .describedAs("test requires at least two available slots")
+            .hasSizeGreaterThanOrEqualTo(2);
+
+        String firstSlotStartUtc = availableSlots.get(0);
+        String nextSlotStartUtc = availableSlots.get(1);
+
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body(bodyRequest(firstSlotStartUtc))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED);
+
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body(bodyRequest(nextSlotStartUtc))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED);
+
+        List<String> eventIds = calDavClient.findUserCalendarEventIds(openPaaSUser.username(), CalendarURL.from(openPaaSUser.id()))
+            .collectList()
+            .block();
+        assertThat(eventIds)
+            .describedAs("booking adjacent available slots should create two events")
+            .hasSize(2);
+    }
+
+    @Test
+    void shouldCreateBookingWhenOptionalFieldsAreMissing(TwakeCalendarGuiceServer server) {
+        BookingLink inserted = insertActiveBookingLink(server);
+        String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();
+
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body("""
+                {
+                  "startUtc": "%s",
+                  "creator": {
+                    "email": "creator@example.com"
+                  },
+                  "eventTitle": "optional fields omitted"
+                }
+                """.formatted(slotStartUtc))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED);
+
+        String unfoldedCalendar = exportCalendar(openPaaSUser)
+            .replace("\r\n ", "");
+        assertThat(unfoldedCalendar)
+            .describedAs("when optional fields are omitted, ICS should keep defaults and avoid optional properties")
+            .containsSubsequence(
+                "SUMMARY:optional fields omitted",
+                "ORGANIZER;CN=%s:mailto:%s"
+                    .formatted(openPaaSUser.fullName(), openPaaSUser.username().asString()),
+                "ATTENDEE;RSVP=TRUE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=%s:mailto:%s"
+                    .formatted(openPaaSUser.fullName(), openPaaSUser.username().asString()),
+                "ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED:mailto:creator@example.com")
+            .doesNotContain("X-OPENPAAS-VIDEOCONFERENCE")
+            .doesNotContain("DESCRIPTION:");
+    }
+
+    @Test
+    void shouldReturnBadRequestWhenStartUtcDoesNotMatchAnyAvailableSlot(TwakeCalendarGuiceServer server) {
+        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(
+            CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES,
+            AvailabilityRules.of(new FixedAvailabilityRule(
+                ZonedDateTime.parse("2036-01-26T09:00:00Z"),
+                ZonedDateTime.parse("2036-01-26T10:00:00Z"))));
+        BookingLink inserted = server.getProbe(BookingLinkReservationProbe.class)
+            .insert(openPaaSUser.username(), insertRequest);
+
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body(bodyRequest("2036-01-26T08:00:00Z"))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .contentType(JSON)
+            .body("error", jsonEquals("""
+                {
+                  "code": 400,
+                  "message": "Bad Request",
+                  "details": "Requested slot is not available for booking link with publicId %s, slotStartUtc 2036-01-26T08:00:00Z"
+                }
+                """.formatted(inserted.publicId().value())));
+    }
+
+    @Test
+    void shouldReturnBadRequestWhenRequestedSlotIsBusy(TwakeCalendarGuiceServer server) {
+        // Given:
+        // - Booking rule allows slots from 09:00 to 12:00 UTC with 30-minute duration.
+        BookingLink inserted = insertActiveBookingLink(server);
+
+        // - Calendar already has an opaque busy event in range [09:30, 10:00] UTC.
+        String busyEventUid = UUID.randomUUID().toString();
+        davTestHelper.upsertCalendar(openPaaSUser, """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Twake//BookingReservationTest//EN
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20360101T000000Z
+            DTSTART:20360126T093000Z
+            DTEND:20360126T100000Z
+            SUMMARY:busy-window
+            TRANSP:OPAQUE
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(busyEventUid), busyEventUid);
+
+        // When: booking the exact busy slot.
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body(bodyRequest("2036-01-26T09:30:00Z"))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .contentType(JSON)
+            .body("error", jsonEquals("""
+                {
+                  "code": 400,
+                  "message": "Bad Request",
+                  "details": "Requested slot is not available for booking link with publicId %s, slotStartUtc 2036-01-26T09:30:00Z"
+                }
+                """.formatted(inserted.publicId().value())));
+    }
+
+    @Test
+    void shouldReturnBadRequestWhenRequestBodyIsInvalidJson(TwakeCalendarGuiceServer server) {
+        BookingLink inserted = insertActiveBookingLink(server);
+
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body("{ invalid-json")
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .contentType(JSON)
+            .body("error", jsonEquals("""
+                {
+                  "code": 400,
+                  "message": "Bad Request",
+                  "details": "Missing or invalid request body"
+                }
+                """));
+    }
+
+    @Test
+    void shouldReturnBadRequestWhenStartUtcIsMissing(TwakeCalendarGuiceServer server) {
+        BookingLink inserted = insertActiveBookingLink(server);
+
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body("""
+            {
+              "creator": {
+                "name": "BOB",
+                "email": "creator@example.com"
+              },
+              "eventTitle": "30-min intro call"
+            }
+            """)
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .contentType(JSON)
+            .body("error", jsonEquals("""
+                {
+                  "code": 400,
+                  "message": "Bad Request",
+                  "details": "Missing or invalid request body"
+                }
+                """));
+    }
+
+    @Test
+    void shouldReturnBadRequestWhenCreatorIsMissing(TwakeCalendarGuiceServer server) {
+        BookingLink inserted = insertActiveBookingLink(server);
+
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body("""
+            {
+              "startUtc": "2036-01-26T09:00:00Z",
+              "eventTitle": "30-min intro call"
+            }
+            """)
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .contentType(JSON)
+            .body("error", jsonEquals("""
+                {
+                  "code": 400,
+                  "message": "Bad Request",
+                  "details": "Missing or invalid request body"
+                }
+                """));
+    }
+
+    @Test
+    void shouldReturnBadRequestWhenCreatorEmailHasInvalidFormat(TwakeCalendarGuiceServer server) {
+        BookingLink inserted = insertActiveBookingLink(server);
+
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body("""
+            {
+              "startUtc": "2036-01-26T09:00:00Z",
+              "creator": {
+                "name": "BOB",
+                "email": "invalid-email"
+              },
+              "eventTitle": "30-min intro call"
+            }
+            """)
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .contentType(JSON)
+            .body("error", jsonEquals("""
+                {
+                  "code": 400,
+                  "message": "Bad Request",
+                  "details": "'email' has invalid format: invalid-email"
+                }
+                """));
+    }
+
+    @Test
+    void shouldReturnBadRequestWhenAdditionalAttendeesContainCreatorEmail(TwakeCalendarGuiceServer server) {
+        BookingLink inserted = insertActiveBookingLink(server);
+
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body("""
+            {
+              "startUtc": "2036-01-26T09:00:00Z",
+              "creator": {
+                "name": "BOB",
+                "email": "creator@example.com"
+              },
+              "additional_attendees": [
+                {
+                  "name": "BOB duplicate",
+                  "email": "Creator@example.com"
+                }
+              ],
+              "eventTitle": "30-min intro call"
+            }
+            """)
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .contentType(JSON)
+            .body("error", jsonEquals("""
+                {
+                  "code": 400,
+                  "message": "Bad Request",
+                  "details": "'additional_attendees' must not contain creator email"
+                }
+                """));
+    }
+
+    @Test
+    void shouldReturnBadRequestWhenAdditionalAttendeesContainDuplicateEmailsIgnoreCase(TwakeCalendarGuiceServer server) {
+        // Given: a request containing duplicate attendee emails differing only by letter case.
+        BookingLink inserted = insertActiveBookingLink(server);
+
+        // When: posting reservation.
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body("""
+            {
+              "startUtc": "2036-01-26T09:00:00Z",
+              "creator": {
+                "name": "BOB",
+                "email": "creator@example.com"
+              },
+              "additional_attendees": [
+                {
+                  "name": "A",
+                  "email": "vana@example.com"
+                },
+                {
+                  "name": "A duplicate",
+                  "email": "VANA@example.com"
+                }
+              ],
+              "eventTitle": "30-min intro call"
+            }
+            """)
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .contentType(JSON)
+            .body("error", jsonEquals("""
+                {
+                  "code": 400,
+                  "message": "Bad Request",
+                  "details": "'additional_attendees' contains duplicate email: VANA@example.com"
+                }
+                """));
+    }
+
+    @Test
+    void shouldReturnBadRequestWhenAdditionalAttendeesExceedLimit(TwakeCalendarGuiceServer server) {
+        // Given: a request where additional attendees exceed MAX_ADDITIONAL_ATTENDEES.
+        BookingLink inserted = insertActiveBookingLink(server);
+        String additionalAttendees = IntStream.range(0, 21)
+            .mapToObj(i -> """
+                {
+                  "name": "user-%d",
+                  "email": "user-%d@example.com"
+                }
+                """.formatted(i, i))
+            .reduce((left, right) -> left + "," + right)
+            .orElse("");
+
+        // When: posting reservation.
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body("""
+            {
+              "startUtc": "2036-01-26T09:00:00Z",
+              "creator": {
+                "name": "BOB",
+                "email": "creator@example.com"
+              },
+              "additional_attendees": [%s],
+              "eventTitle": "30-min intro call"
+            }
+            """.formatted(additionalAttendees))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .contentType(JSON)
+            .body("error", jsonEquals("""
+                {
+                  "code": 400,
+                  "message": "Bad Request",
+                  "details": "'additional_attendees' must not exceed 20 items"
+                }
+                """));
+    }
+
+    @Test
+    void shouldReturnBadRequestWhenTitleIsBlank(TwakeCalendarGuiceServer server) {
+        BookingLink inserted = insertActiveBookingLink(server);
+
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body("""
+            {
+              "startUtc": "2036-01-26T09:00:00Z",
+              "creator": {
+                "name": "BOB",
+                "email": "creator@example.com"
+              },
+              "eventTitle": "   "
+            }
+            """)
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .contentType(JSON)
+            .body("error", jsonEquals("""
+                {
+                  "code": 400,
+                  "message": "Bad Request",
+                  "details": "'eventTitle' must not be blank"
+                }
+                """));
+    }
+
+    @Test
+    void shouldReturnBadRequestWhenTitleExceedsMaxLength(TwakeCalendarGuiceServer server) {
+        BookingLink inserted = insertActiveBookingLink(server);
+
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body("""
+            {
+              "startUtc": "2036-01-26T09:00:00Z",
+              "creator": {
+                "name": "BOB",
+                "email": "creator@example.com"
+              },
+              "eventTitle": "%s"
+            }
+            """.formatted("a".repeat(256)))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .contentType(JSON)
+            .body("error", jsonEquals("""
+                {
+                  "code": 400,
+                  "message": "Bad Request",
+                  "details": "'eventTitle' must not exceed 255 characters"
+                }
+                """));
+    }
+
+    @Test
+    void shouldReturnBadRequestWhenNotesExceedMaxLength(TwakeCalendarGuiceServer server) {
+        BookingLink inserted = insertActiveBookingLink(server);
+
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body("""
+            {
+              "startUtc": "2036-01-26T09:00:00Z",
+              "creator": {
+                "name": "BOB",
+                "email": "creator@example.com"
+              },
+              "eventTitle": "30-min intro call",
+              "notes": "%s"
+            }
+            """.formatted("n".repeat(2001)))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .contentType(JSON)
+            .body("error", jsonEquals("""
+                {
+                  "code": 400,
+                  "message": "Bad Request",
+                  "details": "'notes' must not exceed 2000 characters"
+                }
+                """));
+    }
+
+    @Test
+    void shouldReturnNotFoundWhenBookingLinkIsInactive(TwakeCalendarGuiceServer server) {
+        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(
+            CalendarURL.from(openPaaSUser.id()),
+            DURATION_30_MINUTES,
+            false,
+            Optional.of(AVAILABILITY_RULE));
+        BookingLink inserted = server.getProbe(BookingLinkReservationProbe.class)
+            .insert(openPaaSUser.username(), insertRequest);
+
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body(bodyRequest("2036-01-26T09:00:00Z"))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_NOT_FOUND)
+            .contentType(JSON)
+            .body("error", jsonEquals("""
+                {
+                  "code": 404,
+                  "message": "Not Found",
+                  "details": "Cannot find booking link with publicId %s"
+                }
+                """.formatted(inserted.publicId().value())));
+    }
+
+    @Test
+    void shouldReturnNotFoundWhenBookingLinkDoesNotExist() {
+        String notFoundPublicId = UUID.randomUUID().toString();
+
+        given()
+            .pathParam("bookingLinkPublicId", notFoundPublicId)
+            .body(bodyRequest("2036-01-26T09:00:00Z"))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_NOT_FOUND)
+            .contentType(JSON)
+            .body("error", jsonEquals("""
+                {
+                  "code": 404,
+                  "message": "Not Found",
+                  "details": "Cannot find booking link with publicId %s"
+                }
+                """.formatted(notFoundPublicId)));
+    }
+
+    private BookingLink insertActiveBookingLink(TwakeCalendarGuiceServer server) {
+        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(
+            CalendarURL.from(openPaaSUser.id()),
+            DURATION_30_MINUTES,
+            AVAILABILITY_RULE);
+        return server.getProbe(BookingLinkReservationProbe.class)
+            .insert(openPaaSUser.username(), insertRequest);
+    }
+
+    private List<String> getAvailableSlots(BookingLinkPublicId bookingLinkPublicId) {
+        return given()
+            .pathParam("bookingLinkPublicId", bookingLinkPublicId.value())
+            .queryParam("from", "2036-01-26T00:00:00Z")
+            .queryParam("to", "2036-01-27T00:00:00Z")
+        .when()
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(JSON)
+            .extract()
+            .jsonPath()
+            .getList("slots.start", String.class);
+    }
+
+    private String exportCalendar(OpenPaaSUser user) {
+        return calDavClient.export(CalendarURL.from(user.id()), user.username())
+            .map(e -> new String(e, StandardCharsets.UTF_8))
+            .block();
+    }
+
+    private String bodyRequest(String slotStartUtc) {
+        return """
+            {
+              "startUtc": "%s",
+              "creator": {
+                "name": "BOB",
+                "email": "creator@example.com"
+              },
+              "additional_attendees": [
+                {
+                  "name": "Nguyen Van A",
+                  "email": "vana@example.com"
+                }
+              ],
+              "eventTitle": "30-min intro call",
+              "visioLink": false,
+              "notes": ""
+            }
+            """.formatted(slotStartUtc);
+    }
+
+    private JsonPath awaitProposalEmail() {
+        java.util.function.Supplier<JsonPath> smtpMailsResponseSupplier = () -> given(mockSMTPRequestSpecification())
+            .get("/smtpMails")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract()
+            .jsonPath();
+
+        CALMLY_AWAIT
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        return smtpMailsResponseSupplier.get();
+    }
+
+    private String getHtml(String message) {
+        Pattern htmlPattern = Pattern.compile(
+            "Content-Transfer-Encoding: base64\\r?\\nContent-Type: text/html; charset=UTF-8\\r?\\nContent-Language: [^\\r\\n]+\\r?\\n\\r?\\n([A-Za-z0-9+/=\\r\\n]+)\\r?\\n---=Part",
+            Pattern.DOTALL);
+        Matcher matcher = htmlPattern.matcher(message);
+        assertThat(matcher.find()).isTrue();
+        String base64Html = matcher.group(1).replaceAll("\\s+", "");
+        return new String(Base64.getDecoder().decode(base64Html), StandardCharsets.UTF_8);
+    }
+
+    private List<String> extractParticipationActionLinks(String html) {
+        List<String> links = new ArrayList<>();
+        Pattern pattern = Pattern.compile("href\\s*=\\s*['\"]([^'\"]+)['\"]", Pattern.CASE_INSENSITIVE);
+        Matcher matcher = pattern.matcher(html);
+
+        while (matcher.find()) {
+            String link = matcher.group(1);
+            if (link.startsWith("https://excal.linagora.com/excal/?jwt=")) {
+                links.add(link);
+            }
+        }
+        return links;
+    }
+
+    private String toParticipationEndpoint(String excalLink) {
+        String jwt = excalLink.substring("https://excal.linagora.com/excal/?jwt=".length());
+        return String.format("http://localhost:%d/calendar/api/calendars/event/participation?jwt=%s",
+            restApiPort, URLEncoder.encode(jwt, StandardCharsets.UTF_8));
+    }
+
+}
