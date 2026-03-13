@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -184,6 +185,7 @@ public class MessageGenerator {
 
             return Message.Builder.of()
                 .setMessageId("<" + UUID.randomUUID() + "@" + Optional.of(fromAsMailAddress).map(MailAddress::getDomain).map(Domain::asString).orElse("") + ">")
+                .setDate(new Date())
                 .setSubject(subject(scopedVariableFinal))
                 .setBody(multipartBuilder.build())
                 .setFrom(fromAddress.toString())

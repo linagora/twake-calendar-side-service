@@ -22,6 +22,7 @@ import static com.linagora.calendar.amqp.EventFieldConverter.extractCalendarURL;
 import static com.linagora.calendar.smtp.template.MimeAttachment.ATTACHMENT_DISPOSITION_TYPE;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -341,6 +342,7 @@ public class EventMailHandler {
                 MailAddress fromAsMailAddress = event.senderEmail();
                 return Message.Builder.of()
                     .setMessageId("<" + UUID.randomUUID() + "@" + Optional.of(fromAsMailAddress).map(MailAddress::getDomain).map(Domain::asString).orElse("") + ">")
+                    .setDate(new Date())
                     .setSubject(subject)
                     .setBody(multipartBuilder.build())
                     .setFrom(event.senderEmail().asString())
