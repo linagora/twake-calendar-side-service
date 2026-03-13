@@ -62,8 +62,7 @@ import reactor.netty.http.server.HttpServerResponse;
 public class BookingLinkPatchRoute extends CalendarRoute {
 
     private static final String PUBLIC_ID_PARAM = "bookingLinkPublicId";
-    private static final ZoneId UTC = ZoneId.of("UTC");
-
+    
     private final BookingLinkDAO bookingLinkDAO;
     private final CalDavClient calDavClient;
 
@@ -110,12 +109,11 @@ public class BookingLinkPatchRoute extends CalendarRoute {
     private BookingLinkPatchRequest parsePatchRequest(byte[] body) {
         try {
             JsonNode node = OBJECT_MAPPER_DEFAULT.readTree(body);
-            ZoneId timeZone = parseTimeZone(node);
             return new BookingLinkPatchRequest(
                 parseCalendarUrl(node),
                 parseDuration(node),
                 parseActive(node),
-                parseAvailabilityRules(node, timeZone));
+                parseAvailabilityRules(node));
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
@@ -158,28 +156,34 @@ public class BookingLinkPatchRoute extends CalendarRoute {
         return ValuePatch.modifyTo(node.get("active").booleanValue());
     }
 
-    private ZoneId parseTimeZone(JsonNode node) {
-        if (!node.has("timeZone") || node.get("timeZone").isNull()) {
-            return UTC;
-        }
-        Preconditions.checkArgument(node.get("timeZone").isTextual(), "'timeZone' must be a string if present");
-        try {
-            return ZoneId.of(node.get("timeZone").asText());
-        } catch (DateTimeException e) {
-            throw new IllegalArgumentException("Invalid 'timeZone' format", e);
-        }
-    }
-
-    private ValuePatch<AvailabilityRules> parseAvailabilityRules(JsonNode node, ZoneId timeZone) {
+    private ValuePatch<AvailabilityRules> parseAvailabilityRules(JsonNode node) {
+        Optional<ZoneId> maybeTimeZone = parseTimeZone(node);
         if (!node.has("availabilityRules")) {
+            Preconditions.checkArgument(maybeTimeZone.isEmpty(), "'timeZone' cannot be provided if 'availabilityRules' is not being updated");
             return ValuePatch.keep();
         }
         if (node.get("availabilityRules").isNull()) {
+            Preconditions.checkArgument(maybeTimeZone.isEmpty(), "'timeZone' cannot be provided if 'availabilityRules' is being removed");
             return ValuePatch.remove();
         }
         Preconditions.checkArgument(node.get("availabilityRules").isArray(), "'availabilityRules' must be an array if present");
-        List<AvailabilityRule> rules = Streams.of(node.withArray("availabilityRules").elements()).map(ruleNode -> parseAvailabilityRule(ruleNode, timeZone)).toList();
+        List<AvailabilityRule> rules = Streams.of(node.withArray("availabilityRules").elements())
+            .map(ruleNode -> parseAvailabilityRule(ruleNode,
+                maybeTimeZone.orElseThrow(() -> new IllegalArgumentException("'timeZone' must be provided when updating 'availabilityRules'"))))
+            .toList();
         return ValuePatch.modifyTo(new AvailabilityRules(rules));
+    }
+
+    private Optional<ZoneId> parseTimeZone(JsonNode node) {
+        if (!node.has("timeZone") || node.get("timeZone").isNull()) {
+            return Optional.empty();
+        }
+        Preconditions.checkArgument(node.get("timeZone").isTextual(), "'timeZone' must be a string if present");
+        try {
+            return Optional.of(ZoneId.of(node.get("timeZone").asText()));
+        } catch (DateTimeException e) {
+            throw new IllegalArgumentException("Invalid 'timeZone' format", e);
+        }
     }
 
     private AvailabilityRule parseAvailabilityRule(JsonNode node, ZoneId timeZone) {

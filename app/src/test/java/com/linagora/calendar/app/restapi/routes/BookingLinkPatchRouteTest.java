@@ -435,6 +435,7 @@ class BookingLinkPatchRouteTest {
         given()
             .body("""
                 {
+                    "timeZone": "UTC",
                     "availabilityRules": [
                         { "start": "09:00", "end": "12:00", "type": "weekly" }
                     ]
@@ -455,6 +456,7 @@ class BookingLinkPatchRouteTest {
         given()
             .body("""
                 {
+                    "timeZone": "UTC",
                     "availabilityRules": [
                         { "dayOfWeek": "ABC", "start": "09:00", "end": "12:00", "type": "weekly" }
                     ]
@@ -475,6 +477,7 @@ class BookingLinkPatchRouteTest {
         given()
             .body("""
                 {
+                    "timeZone": "UTC",
                     "availabilityRules": [
                         { "dayOfWeek": "MON", "start": "invalid", "end": "12:00", "type": "weekly" }
                     ]
@@ -495,6 +498,7 @@ class BookingLinkPatchRouteTest {
         given()
             .body("""
                 {
+                    "timeZone": "UTC",
                     "availabilityRules": [
                         { "start": "not-a-date", "end": "2026-01-30T00:00:00", "type": "fixed" }
                     ]
@@ -515,6 +519,7 @@ class BookingLinkPatchRouteTest {
         given()
             .body("""
                 {
+                    "timeZone": "UTC",
                     "availabilityRules": [
                         { "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "type": "unknown" }
                     ]
@@ -554,6 +559,66 @@ class BookingLinkPatchRouteTest {
             .patch("/booking-links/not-a-uuid")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @Test
+    void shouldReturn400WhenTimeZoneIsProvidedWithoutAvailabilityRules() {
+        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+
+        given()
+            .body("""
+                {
+                    "timeZone": "UTC",
+                    "active": false
+                }
+                """)
+        .when()
+            .patch("/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.details", equalTo("'timeZone' cannot be provided if 'availabilityRules' is not being updated"));
+    }
+
+    @Test
+    void shouldReturn400WhenTimeZoneIsProvidedWhenAvailabilityRulesIsRemoved() {
+        AvailabilityRules existingRules = AvailabilityRules.of(
+            new WeeklyAvailabilityRule(DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(17, 0), UTC));
+        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.of(existingRules)));
+
+        given()
+            .body("""
+                {
+                    "timeZone": "UTC",
+                    "availabilityRules": null
+                }
+                """)
+        .when()
+            .patch("/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.details", equalTo("'timeZone' cannot be provided if 'availabilityRules' is being removed"));
+    }
+
+    @Test
+    void shouldReturn400WhenAvailabilityRulesAreUpdatedWithoutTimeZone() {
+        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+
+        given()
+            .body("""
+                {
+                    "availabilityRules": [
+                        { "dayOfWeek": "MON", "start": "09:00", "end": "17:00", "type": "weekly" }
+                    ]
+                }
+                """)
+        .when()
+            .patch("/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.details", equalTo("'timeZone' must be provided when updating 'availabilityRules'"));
     }
 
     @Test
