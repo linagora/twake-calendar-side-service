@@ -25,6 +25,7 @@ import static io.restassured.config.RestAssuredConfig.newConfig;
 import static io.restassured.http.ContentType.JSON;
 import static net.javacrumbs.jsonunit.JsonMatchers.jsonEquals;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.SoftAssertions.assertSoftly;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -33,6 +34,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Function;
 import java.util.stream.IntStream;
 
 import jakarta.inject.Inject;
@@ -41,6 +43,7 @@ import org.apache.http.HttpStatus;
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
 import org.apache.james.utils.GuiceProbe;
+import org.assertj.core.groups.Tuple;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Order;
@@ -49,6 +52,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.google.inject.Scopes;
 import com.google.inject.multibindings.Multibinder;
+import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.api.booking.AvailabilityRule.FixedAvailabilityRule;
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.app.AppTestHelper;
@@ -69,10 +73,17 @@ import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 import com.linagora.calendar.storage.booking.MemoryBookingLinkDAO;
+import com.linagora.calendar.storage.event.EventFields.Person;
+import com.linagora.calendar.storage.event.EventParseUtils;
 
 import io.restassured.RestAssured;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.http.ContentType;
+import net.fortuna.ical4j.model.Calendar;
+import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.Property;
+import net.fortuna.ical4j.model.component.VEvent;
+import net.fortuna.ical4j.model.parameter.PartStat;
 
 class BookingLinkReservationRouteTest {
     private static final String PASSWORD = "secret";
@@ -219,25 +230,38 @@ class BookingLinkReservationRouteTest {
             .describedAs("a successful booking should persist exactly one event")
             .hasSize(1);
 
-        String unfoldedCalendar = exportCalendar(openPaaSUser)
-            .replace("\r\n ", "");
-        assertThat(unfoldedCalendar)
-            .describedAs("exported ICS should include expected public-booking properties and attendees")
-            .containsSubsequence(
-                "TRANSP:OPAQUE",
-                "SUMMARY:30-min intro call",
-                "DTSTART:20360126T093000Z",
-                "DURATION:PT30M",
-                "ORGANIZER;CN=%s:mailto:%s"
-                    .formatted(openPaaSUser.fullName(), openPaaSUser.username().asString()),
-                "ATTENDEE;RSVP=TRUE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=%s:mailto:%s"
-                    .formatted(openPaaSUser.fullName(), openPaaSUser.username().asString()),
-                "ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED;CN=BOB:mailto:creator@example.com",
-                "ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED;CN=Nguyen Van A:mailto:vana@example.com",
-                "DESCRIPTION:Please call via Zoom.",
-                "X-PUBLICLY-CREATED:true",
-                "X-PUBLICLY-CREATOR:creator@example.com",
-                "X-OPENPAAS-VIDEOCONFERENCE:https://jitsi.linagora.com");
+        Calendar exportedCalendar = CalendarUtil.parseIcs(exportCalendar(openPaaSUser));
+        VEvent event = (VEvent) exportedCalendar.getComponent(Component.VEVENT).orElseThrow();
+        Function<String, String> getPropertyValue = property -> event.getProperty(property).get().getValue();
+
+        assertSoftly(softly -> {
+            softly.assertThat(getPropertyValue.apply(Property.TRANSP))
+                .isEqualTo("OPAQUE");
+            softly.assertThat(getPropertyValue.apply(Property.SUMMARY))
+                .isEqualTo("30-min intro call");
+            softly.assertThat(getPropertyValue.apply(Property.DTSTART))
+                .isEqualTo("20360126T093000Z");
+            softly.assertThat(getPropertyValue.apply(Property.DURATION))
+                .isEqualTo("PT30M");
+            softly.assertThat(EventParseUtils.getOrganizer(event))
+                .extracting(Person::cn, person -> person.email().asString(), Person::partStat)
+                .containsExactly(openPaaSUser.fullName(), openPaaSUser.username().asString(), Optional.empty());
+            softly.assertThat(EventParseUtils.getAttendees(event))
+                .extracting(Person::cn, person -> person.email().asString(), Person::partStat)
+                .containsExactly(
+                    Tuple.tuple(openPaaSUser.fullName(), openPaaSUser.username().asString(), Optional.of(PartStat.NEEDS_ACTION)),
+                    Tuple.tuple("BOB", "creator@example.com", Optional.of(PartStat.ACCEPTED)),
+                    Tuple.tuple("Nguyen Van A", "vana@example.com", Optional.of(PartStat.ACCEPTED)));
+            softly.assertThat(getPropertyValue.apply("X-OPENPAAS-VIDEOCONFERENCE"))
+                .startsWith("https://jitsi.linagora.com/")
+                .matches("https://jitsi\\.linagora\\.com/[a-z]{3}-[a-z]{4}-[a-z]{3}");
+            softly.assertThat(getPropertyValue.apply(Property.DESCRIPTION))
+                .isEqualTo("Please call via Zoom.\nVisio: " + getPropertyValue.apply("X-OPENPAAS-VIDEOCONFERENCE"));
+            softly.assertThat(getPropertyValue.apply("X-PUBLICLY-CREATED"))
+                .isEqualTo("true");
+            softly.assertThat(getPropertyValue.apply("X-PUBLICLY-CREATOR"))
+                .isEqualTo("creator@example.com");
+        });
     }
 
     @Test
