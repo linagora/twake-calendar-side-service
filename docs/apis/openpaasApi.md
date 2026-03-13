@@ -409,10 +409,10 @@ GET /api/calendars/{userId}/{calendarId}/calendar.ics?token=xyz
 
 Will return calendar data in an ICS format
 
-### GET /linagora.esn.resource/api/resources/{resourceId}
+### GET /api/resources/{resourceId}
 
 ```
-GET /linagora.esn.resource/api/resources/{resourceId}
+GET /api/resources/{resourceId}
 ```
 
 Allows retrieving the details of a resource by its id. Cross-domain access is denied (returns 404).
@@ -444,7 +444,7 @@ Example response:
 }
 ```
 
-### GET /linagora.esn.resource/images/icon/{icon}.svg
+### GET /images/icon/{icon}.svg
 
 Serves binary content corresponding to the SVG of the icon
 
@@ -520,7 +520,7 @@ Will return:
                     "names": [ { "displayName": "meeting-room", "type": "default" } ],
                     "emailAddresses": [ { "value": "%s", "type": "default" } ],
                     "phoneNumbers": [],
-                    "photos": [ { "url": "https://e-calendrier.avocat.fr/linagora.esn.resource/images/icon/laptop.svg", "type": "default" } ]
+                    "photos": [ { "url": "https://e-calendrier.avocat.fr/images/icon/laptop.svg", "type": "default" } ]
                   }
                 ]
 ```
@@ -665,6 +665,6 @@ POST /api/import
 }
 ```
 
-### POST /linagora.esn.dav.import/api/import
+### POST /api/import
 
 Exactly the same than `POST /api/import`
