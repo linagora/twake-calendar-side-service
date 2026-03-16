@@ -114,7 +114,7 @@ public class ResourceRoute extends CalendarRoute {
 
     @Override
     Endpoint endpoint() {
-        return new Endpoint(HttpMethod.GET, String.format("/linagora.esn.resource/api/resources/{%s}", RESOURCE_ID_PATH_PARAM));
+        return new Endpoint(HttpMethod.GET, String.format("/api/resources/{%s}", RESOURCE_ID_PATH_PARAM));
     }
 
     @Override

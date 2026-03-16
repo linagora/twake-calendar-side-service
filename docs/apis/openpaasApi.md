@@ -409,10 +409,10 @@ GET /api/calendars/{userId}/{calendarId}/calendar.ics?token=xyz
 
 Will return calendar data in an ICS format
 
-### GET /linagora.esn.resource/api/resources/{resourceId}
+### GET /api/resources/{resourceId}
 
 ```
-GET /linagora.esn.resource/api/resources/{resourceId}
+GET /api/resources/{resourceId}
 ```
 
 Allows retrieving the details of a resource by its id. Cross-domain access is denied (returns 404).
@@ -444,12 +444,25 @@ Example response:
 }
 ```
 
-### GET /linagora.esn.resource/images/icon/{icon}.svg
+### GET /linagora.esn.resource/api/resources/{resourceId} (Deprecated)
+
+Deprecated in favor of `GET /api/resources/{resourceId}`, kept for OpenPaaS backward compatibility.
+
+
+### GET /images/icon/{icon}.svg
+
+```
+GET /images/icon/{icon}.svg
+```
 
 Serves binary content corresponding to the SVG of the icon
 
 This [link](https://github.com/linagora/twake-calendar-side-service/tree/main/calendar-rest-api/src/main/resources/icons/resources) 
 references all usable icons.
+
+### GET /linagora.esn.resource/images/icon/{icon}.svg (Deprecated)
+
+Deprecated in favor of `GET /images/icon/{icon}.svg`, kept for OpenPaaS backward compatibility.
 
 ### GET /api/users/{userId}/profile/avatar
 
@@ -520,7 +533,7 @@ Will return:
                     "names": [ { "displayName": "meeting-room", "type": "default" } ],
                     "emailAddresses": [ { "value": "%s", "type": "default" } ],
                     "phoneNumbers": [],
-                    "photos": [ { "url": "https://e-calendrier.avocat.fr/linagora.esn.resource/images/icon/laptop.svg", "type": "default" } ]
+                    "photos": [ { "url": "https://e-calendrier.avocat.fr/images/icon/laptop.svg", "type": "default" } ]
                   }
                 ]
 ```
@@ -642,6 +655,10 @@ We implemented the following limitations fo file uploads:
 
 ### POST /api/import
 
+```
+POST /api/import
+```
+
 Allow to import an uploaded file either in the address book or the calendar.
 
 For calendars:
@@ -665,6 +682,6 @@ POST /api/import
 }
 ```
 
-### POST /linagora.esn.dav.import/api/import
+### POST /linagora.esn.dav.import/api/import (Deprecated)
 
-Exactly the same than `POST /api/import`
+Deprecated in favor of `POST /api/import`, kept for OpenPaaS backward compatibility.

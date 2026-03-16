@@ -83,12 +83,12 @@ import com.linagora.calendar.restapi.routes.DomainRoute;
 import com.linagora.calendar.restapi.routes.DownloadCalendarRoute;
 import com.linagora.calendar.restapi.routes.EventParticipationRoute;
 import com.linagora.calendar.restapi.routes.FileUploadRoute;
-import com.linagora.calendar.restapi.routes.ImportProxyRoute;
 import com.linagora.calendar.restapi.routes.ImportResultNotifier;
 import com.linagora.calendar.restapi.routes.ImportResultNotifier.ImportWebSocketNotifier;
 import com.linagora.calendar.restapi.routes.ImportResultNotifier.SendMailNotifier;
 import com.linagora.calendar.restapi.routes.ImportRoute;
 import com.linagora.calendar.restapi.routes.JwtRoutes;
+import com.linagora.calendar.restapi.routes.LegacyRoutes;
 import com.linagora.calendar.restapi.routes.LogoRoute;
 import com.linagora.calendar.restapi.routes.PeopleSearchRoute;
 import com.linagora.calendar.restapi.routes.ProfileAvatarRoute;
@@ -139,6 +139,7 @@ public class RestApiModule extends AbstractModule {
     protected void configure() {
         install(new AssetModule());
         install(ResourceIconLoader.MODULE);
+        install(LegacyRoutes.MODULE);
         Multibinder.newSetBinder(binder(), GuiceProbe.class).addBinding().to(RestApiServerProbe.class);
         bind(CalendarRestApiServer.class).in(Scopes.SINGLETON);
 
@@ -166,7 +167,6 @@ public class RestApiModule extends AbstractModule {
         routes.addBinding().to(FileUploadRoute.class);
         routes.addBinding().to(DownloadCalendarRoute.class);
         routes.addBinding().to(ImportRoute.class);
-        routes.addBinding().to(ImportProxyRoute.class);
         routes.addBinding().to(CalendarSearchRoute.class);
         routes.addBinding().to(CheckTechnicalUserTokenRoute.class);
         routes.addBinding().to(EventParticipationRoute.class);
