@@ -27,6 +27,8 @@ import jakarta.mail.internet.AddressException;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.MailAddress;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.api.booking.AvailableSlotsCalculator.AvailabilitySlot;
@@ -44,6 +46,7 @@ import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 import reactor.core.publisher.Mono;
 
 public class BookingLinkReservationService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(BookingLinkReservationService.class);
 
     private final BookingLinkDAO bookingLinkDAO;
     private final BookingLinkSlotsService bookingLinkSlotsService;
@@ -95,9 +98,18 @@ public class BookingLinkReservationService {
 
                 return calDavClient.importCalendar(bookingLink.calendarUrl(), eventIcsResult.eventIdAsString(), bookingLink.username(), eventIcsResult.icsBytes())
                     .onErrorMap(throwable -> BookingLinkReservationException.createEventFailed(bookingLink.publicId(), eventIcsResult.eventIdAsString(), throwable))
-                    .then(publicAgendaProposalNotifier.notify(new BookingCreated(bookingLink, request, organizer, eventIcsResult)));
+                    .then(notifyBookingCreated(new BookingCreated(bookingLink, request, organizer, eventIcsResult)));
             })
             .then();
+    }
+
+    private Mono<Void> notifyBookingCreated(BookingCreated bookingCreated) {
+        return publicAgendaProposalNotifier.notify(bookingCreated)
+            .onErrorResume(error -> {
+                LOGGER.warn("Failed to send proposal notification for booking {}: {}",
+                    bookingCreated.eventIcsResult().eventIdAsString(), error.getMessage(), error);
+                return Mono.empty();
+            });
     }
 
     public record BookingRequest(Instant slotStartUtc,
