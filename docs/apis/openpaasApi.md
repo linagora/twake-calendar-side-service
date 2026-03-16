@@ -444,12 +444,25 @@ Example response:
 }
 ```
 
+### GET /linagora.esn.resource/api/resources/{resourceId} (Deprecated)
+
+Deprecated in favor of `GET /api/resources/{resourceId}`, kept for OpenPaaS backward compatibility.
+
+
 ### GET /images/icon/{icon}.svg
+
+```
+GET /images/icon/{icon}.svg
+```
 
 Serves binary content corresponding to the SVG of the icon
 
 This [link](https://github.com/linagora/twake-calendar-side-service/tree/main/calendar-rest-api/src/main/resources/icons/resources) 
 references all usable icons.
+
+### GET /linagora.esn.resource/images/icon/{icon}.svg (Deprecated)
+
+Deprecated in favor of `GET /images/icon/{icon}.svg`, kept for OpenPaaS backward compatibility.
 
 ### GET /api/users/{userId}/profile/avatar
 
@@ -642,6 +655,10 @@ We implemented the following limitations fo file uploads:
 
 ### POST /api/import
 
+```
+POST /api/import
+```
+
 Allow to import an uploaded file either in the address book or the calendar.
 
 For calendars:
@@ -665,6 +682,6 @@ POST /api/import
 }
 ```
 
-### POST /api/import
+### POST /linagora.esn.dav.import/api/import (Deprecated)
 
-Exactly the same than `POST /api/import`
+Deprecated in favor of `POST /api/import`, kept for OpenPaaS backward compatibility.
