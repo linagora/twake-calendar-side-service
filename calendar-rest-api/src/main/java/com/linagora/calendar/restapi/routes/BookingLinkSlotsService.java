@@ -60,7 +60,7 @@ public class BookingLinkSlotsService {
                 .map(set -> Pair.of(bookingLink, set)));
     }
 
-    private Mono<Set<AvailabilitySlot>> computeSlots(BookingLink bookingLink, Instant from, Instant to) {
+    Mono<Set<AvailabilitySlot>> computeSlots(BookingLink bookingLink, Instant from, Instant to) {
         return retrieveUnavailableTimeRanges(bookingLink, from, to)
             .map(unavailableTimeRanges -> toComputeSlotsRequest(bookingLink, from, to, unavailableTimeRanges))
             .map(availableSlotsCalculator::computeSlots);
@@ -86,8 +86,7 @@ public class BookingLinkSlotsService {
     }
 
     private Mono<BookingLink> findActiveBookingLink(BookingLinkPublicId publicId) {
-        return bookingLinkDAO.findByPublicId(publicId)
-            .filter(BookingLink::active)
+        return bookingLinkDAO.findActiveByPublicId(publicId)
             .switchIfEmpty(Mono.error(() -> new BookingLinkNotFoundException(publicId)));
     }
 
