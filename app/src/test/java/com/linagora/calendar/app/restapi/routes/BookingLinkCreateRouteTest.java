@@ -521,7 +521,7 @@ class BookingLinkCreateRouteTest {
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.code", equalTo(400))
             .body("error.message", equalTo("Bad request"))
-            .body("error.details", equalTo("Invalid 'start' or 'end' date-time format for fixed rule, expected yyyy-MM-ddTHH:mm"));
+            .body("error.details", equalTo("Invalid 'start' or 'end' date-time format for fixed rule, expected yyyy-MM-ddTHH:mm:ss"));
     }
 
     @Test
@@ -544,6 +544,28 @@ class BookingLinkCreateRouteTest {
             .body("error.code", equalTo(400))
             .body("error.message", equalTo("Bad request"))
             .body("error.details", equalTo("Unknown availability rule type: unknown"));
+    }
+
+    @Test
+    void shouldReturn400WhenAvailabilityRuleTypeIsMissing() {
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "availabilityRules": [
+                        { "dayOfWeek": "MON", "start": "09:00", "end": "12:00" }
+                    ]
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
+            .when()
+            .post("/booking-links")
+            .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.code", equalTo(400))
+            .body("error.message", equalTo("Bad request"))
+            .body("error.details", equalTo("'type' is required in availability rule"));
     }
 
     @Test

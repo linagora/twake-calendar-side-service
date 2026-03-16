@@ -22,32 +22,25 @@ import static com.linagora.calendar.restapi.RestApiConstants.OBJECT_MAPPER_DEFAU
 
 import java.time.DateTimeException;
 import java.time.Duration;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.time.ZoneId;
-import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 
 import jakarta.inject.Inject;
 
-import org.apache.commons.lang3.stream.Streams;
 import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.http.Authenticator;
 import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.metrics.api.MetricFactory;
 import org.apache.james.util.ValuePatch;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Preconditions;
-import com.linagora.calendar.api.booking.AvailabilityRule;
-import com.linagora.calendar.api.booking.AvailabilityRule.FixedAvailabilityRule;
-import com.linagora.calendar.api.booking.AvailabilityRule.WeeklyAvailabilityRule;
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.dav.CalDavClient;
-import com.linagora.calendar.restapi.DayOfWeekUtil;
+import com.linagora.calendar.restapi.routes.dto.AvailabilityRuleDTO;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.booking.BookingLinkNotFoundException;
@@ -68,12 +61,13 @@ public class BookingLinkPatchRoute extends CalendarRoute {
     private static final String FIELD_ACTIVE = "active";
     private static final String FIELD_AVAILABILITY_RULES = "availabilityRules";
     private static final String FIELD_TIME_ZONE = "timeZone";
-    private static final String FIELD_TYPE = "type";
-    private static final String FIELD_START = "start";
-    private static final String FIELD_END = "end";
-    private static final String FIELD_DAY_OF_WEEK = "dayOfWeek";
-    private static final Set<String> ALLOWED_FIELDS = Set.of(
-        FIELD_CALENDAR_URL, FIELD_DURATION_MINUTES, FIELD_ACTIVE, FIELD_AVAILABILITY_RULES, FIELD_TIME_ZONE);
+
+    public record PatchDto(@JsonProperty(FIELD_CALENDAR_URL) Optional<String> calendarUrl,
+                           @JsonProperty(FIELD_DURATION_MINUTES) Optional<Integer> durationMinutes,
+                           @JsonProperty(FIELD_ACTIVE) Optional<Boolean> active,
+                           @JsonProperty(FIELD_TIME_ZONE) Optional<String> timeZone,
+                           @JsonProperty(FIELD_AVAILABILITY_RULES) Optional<List<AvailabilityRuleDTO>> availabilityRules) {
+    }
 
     private final BookingLinkDAO bookingLinkDAO;
     private final CalDavClient calDavClient;
@@ -121,16 +115,12 @@ public class BookingLinkPatchRoute extends CalendarRoute {
     private BookingLinkPatchRequest parsePatchRequest(byte[] body) {
         try {
             JsonNode node = OBJECT_MAPPER_DEFAULT.readTree(body);
-            Preconditions.checkArgument(node != null && node.isObject(), "Request body must be a JSON object");
-            List<String> unknownFields = Streams.of(node.fieldNames())
-                .filter(field -> !ALLOWED_FIELDS.contains(field))
-                .toList();
-            Preconditions.checkArgument(unknownFields.isEmpty(), "Unknown fields: %s", unknownFields);
+            PatchDto dto = parseJSONtoPatchDto(body);
             return new BookingLinkPatchRequest(
-                parseCalendarUrl(node),
-                parseDuration(node),
-                parseActive(node),
-                parseAvailabilityRules(node));
+                parseCalendarUrl(node, dto),
+                parseDuration(node, dto),
+                parseActive(node, dto),
+                parseAvailabilityRules(node, dto));
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
@@ -138,112 +128,69 @@ public class BookingLinkPatchRoute extends CalendarRoute {
         }
     }
 
-    private ValuePatch<CalendarURL> parseCalendarUrl(JsonNode node) {
+    private PatchDto parseJSONtoPatchDto(byte[] body) {
+        try {
+            return OBJECT_MAPPER_DEFAULT.readValue(body, PatchDto.class);
+        } catch (Exception e) {
+            if (e.getCause() instanceof IllegalArgumentException) {
+                throw (IllegalArgumentException) e.getCause();
+            }
+            throw new IllegalArgumentException("Invalid request body", e);
+        }
+    }
+
+    private ValuePatch<CalendarURL> parseCalendarUrl(JsonNode node, PatchDto dto) {
         if (!node.has(FIELD_CALENDAR_URL)) {
             return ValuePatch.keep();
         }
-        if (node.get(FIELD_CALENDAR_URL).isNull()) {
-            return ValuePatch.remove();
-        }
-        Preconditions.checkArgument(node.get(FIELD_CALENDAR_URL).isTextual(), "'calendarUrl' must be a string");
-        return ValuePatch.modifyTo(CalendarURL.parse(node.get(FIELD_CALENDAR_URL).asText()));
+        return dto.calendarUrl.map(CalendarURL::parse)
+            .map(ValuePatch::modifyTo)
+            .orElse(ValuePatch.remove());
     }
 
-    private ValuePatch<Duration> parseDuration(JsonNode node) {
+    private ValuePatch<Duration> parseDuration(JsonNode node, PatchDto dto) {
         if (!node.has(FIELD_DURATION_MINUTES)) {
             return ValuePatch.keep();
         }
-        if (node.get(FIELD_DURATION_MINUTES).isNull()) {
-            return ValuePatch.remove();
-        }
-        Preconditions.checkArgument(node.get(FIELD_DURATION_MINUTES).isInt(), "'durationMinutes' must be an integer");
-        int minutes = node.get(FIELD_DURATION_MINUTES).intValue();
-        Preconditions.checkArgument(minutes > 0, "'durationMinutes' must be positive");
-        return ValuePatch.modifyTo(Duration.ofMinutes(minutes));
+        return dto.durationMinutes.map(durationMinutes -> {
+                Preconditions.checkArgument(durationMinutes > 0, "'durationMinutes' must be positive");
+                return Duration.ofMinutes(durationMinutes);
+            }).map(ValuePatch::modifyTo)
+            .orElse(ValuePatch.remove());
     }
 
-    private ValuePatch<Boolean> parseActive(JsonNode node) {
+    private ValuePatch<Boolean> parseActive(JsonNode node, PatchDto dto) {
         if (!node.has(FIELD_ACTIVE)) {
             return ValuePatch.keep();
         }
-        if (node.get(FIELD_ACTIVE).isNull()) {
-            return ValuePatch.remove();
-        }
-        Preconditions.checkArgument(node.get(FIELD_ACTIVE).isBoolean(), "'active' must be a boolean");
-        return ValuePatch.modifyTo(node.get(FIELD_ACTIVE).booleanValue());
+        return dto.active.map(ValuePatch::modifyTo).orElse(ValuePatch.remove());
     }
 
-    private ValuePatch<AvailabilityRules> parseAvailabilityRules(JsonNode node) {
-        Optional<ZoneId> maybeTimeZone = parseTimeZone(node);
+    private ValuePatch<AvailabilityRules> parseAvailabilityRules(JsonNode node, PatchDto dto) {
         if (!node.has(FIELD_AVAILABILITY_RULES)) {
-            Preconditions.checkArgument(maybeTimeZone.isEmpty(), "'timeZone' cannot be provided if 'availabilityRules' is not being updated");
+            Preconditions.checkArgument(dto.timeZone().isEmpty(), "'timeZone' cannot be provided if 'availabilityRules' is not being updated");
             return ValuePatch.keep();
         }
-        if (node.get(FIELD_AVAILABILITY_RULES).isNull()) {
-            Preconditions.checkArgument(maybeTimeZone.isEmpty(), "'timeZone' cannot be provided if 'availabilityRules' is being removed");
-            return ValuePatch.remove();
-        }
-        Preconditions.checkArgument(node.get(FIELD_AVAILABILITY_RULES).isArray(), "'availabilityRules' must be an array if present");
-        List<AvailabilityRule> rules = Streams.of(node.withArray(FIELD_AVAILABILITY_RULES).elements())
-            .map(ruleNode -> parseAvailabilityRule(ruleNode,
-                maybeTimeZone.orElseThrow(() -> new IllegalArgumentException("'timeZone' must be provided when updating 'availabilityRules'"))))
-            .toList();
-        return ValuePatch.modifyTo(new AvailabilityRules(rules));
+        return dto.availabilityRules.map(rules -> rules.stream()
+            .map(availabilityRuleDTO -> availabilityRuleDTO.toAvailabilityRule(
+                dto.timeZone().map(this::toZoneId).orElseThrow(() -> new IllegalArgumentException("'timeZone' must be provided when updating 'availabilityRules'"))))
+            .toList())
+            .map(ruleList -> {
+                Preconditions.checkArgument(!ruleList.isEmpty(), "'availabilityRules' cannot be empty if provided");
+                return new AvailabilityRules(ruleList);
+            })
+            .map(ValuePatch::modifyTo)
+            .orElseGet(() -> {
+                Preconditions.checkArgument(dto.timeZone().isEmpty(), "'timeZone' cannot be provided if 'availabilityRules' is being removed");
+                return ValuePatch.remove();
+            });
     }
 
-    private Optional<ZoneId> parseTimeZone(JsonNode node) {
-        if (!node.has(FIELD_TIME_ZONE) || node.get(FIELD_TIME_ZONE).isNull()) {
-            return Optional.empty();
-        }
-        Preconditions.checkArgument(node.get(FIELD_TIME_ZONE).isTextual(), "'timeZone' must be a string if present");
+    private ZoneId toZoneId(String timeZone) {
         try {
-            return Optional.of(ZoneId.of(node.get(FIELD_TIME_ZONE).asText()));
+            return ZoneId.of(timeZone);
         } catch (DateTimeException e) {
             throw new IllegalArgumentException("Invalid 'timeZone' format", e);
         }
-    }
-
-    private AvailabilityRule parseAvailabilityRule(JsonNode node, ZoneId timeZone) {
-        String type = getFieldValueFromJson(node, FIELD_TYPE);
-        String start = getFieldValueFromJson(node, FIELD_START);
-        String end = getFieldValueFromJson(node, FIELD_END);
-        return switch (type) {
-            case "weekly" -> {
-                String dayOfWeek = getDayOfWeek(node);
-                try {
-                    yield new WeeklyAvailabilityRule(
-                        DayOfWeekUtil.fromAbbreviation(dayOfWeek),
-                        LocalTime.parse(start),
-                        LocalTime.parse(end),
-                        timeZone);
-                } catch (DateTimeParseException e) {
-                    throw new IllegalArgumentException("Invalid 'start' or 'end' time format for weekly rule, expected HH:mm", e);
-                }
-            }
-            case "fixed" -> {
-                try {
-                    yield new FixedAvailabilityRule(
-                        LocalDateTime.parse(start).atZone(timeZone),
-                        LocalDateTime.parse(end).atZone(timeZone));
-                } catch (DateTimeParseException e) {
-                    throw new IllegalArgumentException("Invalid 'start' or 'end' date-time format for fixed rule, expected yyyy-MM-ddTHH:mm:ss", e);
-                }
-            }
-            default -> throw new IllegalArgumentException("Unknown availability rule type: " + type);
-        };
-    }
-
-    private String getFieldValueFromJson(JsonNode node, String field) {
-        return Optional.ofNullable(node.get(field))
-            .filter(n -> !n.isNull())
-            .map(JsonNode::asText)
-            .orElseThrow(() -> new IllegalArgumentException("'" + field + "' is required in availability rule"));
-    }
-
-    private String getDayOfWeek(JsonNode node) {
-        return Optional.ofNullable(node.get(FIELD_DAY_OF_WEEK))
-            .filter(n -> !n.isNull())
-            .map(JsonNode::asText)
-            .orElseThrow(() -> new IllegalArgumentException("'dayOfWeek' is required in weekly availability rule"));
     }
 }

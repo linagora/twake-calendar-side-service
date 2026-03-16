@@ -346,7 +346,7 @@ class BookingLinkPatchRouteTest {
             .patch("/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
-            .body("error.details", equalTo("Unknown fields: [unknownField]"));
+            .body("error.details", equalTo("Invalid request body"));
     }
 
     @Test
@@ -461,7 +461,7 @@ class BookingLinkPatchRouteTest {
             .patch("/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
-            .body("error.details", equalTo("'dayOfWeek' is required in weekly availability rule"));
+            .body("error.details", equalTo("'dayOfWeek' must be provided for weekly rule"));
     }
 
     @Test
@@ -635,6 +635,117 @@ class BookingLinkPatchRouteTest {
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.details", equalTo("'timeZone' must be provided when updating 'availabilityRules'"));
+    }
+
+    @Test
+    void shouldReturn400WhenCalendarUrlIsNull() {
+        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+
+        given()
+            .body("""
+                { "calendarUrl": null }
+                """)
+        .when()
+            .patch("/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.details", equalTo("'calendarUrl' can not be removed"));
+    }
+
+    @Test
+    void shouldReturn400WhenDurationMinutesIsNull() {
+        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+
+        given()
+            .body("""
+                { "durationMinutes": null }
+                """)
+        .when()
+            .patch("/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.details", equalTo("'eventDuration' can not be removed"));
+    }
+
+    @Test
+    void shouldReturn400WhenActiveIsNull() {
+        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+
+        given()
+            .body("""
+                { "active": null }
+                """)
+        .when()
+            .patch("/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.details", equalTo("'active' can not be removed"));
+    }
+
+    @Test
+    void shouldReturn400WhenAvailabilityRulesIsEmptyArray() {
+        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+
+        given()
+            .body("""
+                {
+                    "timeZone": "UTC",
+                    "availabilityRules": []
+                }
+                """)
+        .when()
+            .patch("/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.details", equalTo("'availabilityRules' cannot be empty if provided"));
+    }
+
+    @Test
+    void shouldReturn400WhenFixedRuleStartIsAfterEnd() {
+        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+
+        given()
+            .body("""
+                {
+                    "timeZone": "UTC",
+                    "availabilityRules": [
+                        { "start": "2026-01-30T00:00:00", "end": "2026-01-26T00:00:00", "type": "fixed" }
+                    ]
+                }
+                """)
+        .when()
+            .patch("/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.details", equalTo("'start' must be before 'end' for fixed rule"));
+    }
+
+    @Test
+    void shouldReturn400WhenCalendarUrlBelongsToAnotherUser() {
+        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+
+        OpenPaaSUser otherUser = sabreDavExtension.newTestUser();
+        String otherCalendarId = "other-" + UUID.randomUUID();
+        calDavClient.createNewCalendar(otherUser.username(), otherUser.id(),
+            new CalDavClient.NewCalendar(otherCalendarId, "Other Calendar", "#FF0000", "")).block();
+
+        CalendarURL otherUserCalendarUrl = new CalendarURL(otherUser.id(), new OpenPaaSId(otherCalendarId));
+
+        given()
+            .body("""
+                { "calendarUrl": "%s" }
+                """.formatted(otherUserCalendarUrl.asUri().toString()))
+        .when()
+            .patch("/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.details", equalTo("Calendar not found or access denied: " + otherUserCalendarUrl.asUri()));
     }
 
     @Test
