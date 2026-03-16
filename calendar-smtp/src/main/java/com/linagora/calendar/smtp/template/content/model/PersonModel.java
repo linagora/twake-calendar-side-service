@@ -22,6 +22,8 @@ package com.linagora.calendar.smtp.template.content.model;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.commons.lang3.StringUtils;
+
 import com.linagora.calendar.storage.event.EventFields.Person;
 
 public record PersonModel(String cn, String email) {
@@ -39,5 +41,9 @@ public record PersonModel(String cn, String email) {
         return people.stream()
             .map(PersonModel::from)
             .toList();
+    }
+
+    public String displayName() {
+        return StringUtils.defaultIfEmpty(cn, email);
     }
 }

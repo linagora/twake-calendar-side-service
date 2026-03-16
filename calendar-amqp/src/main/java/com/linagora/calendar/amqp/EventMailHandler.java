@@ -21,26 +21,18 @@ package com.linagora.calendar.amqp;
 import static com.linagora.calendar.amqp.EventFieldConverter.extractCalendarURL;
 import static com.linagora.calendar.smtp.template.MimeAttachment.ATTACHMENT_DISPOSITION_TYPE;
 
-import java.nio.charset.StandardCharsets;
-import java.util.Date;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 
-import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.Domain;
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
 import org.apache.james.mailbox.model.ContentType;
 import org.apache.james.mime4j.dom.Message;
-import org.apache.james.mime4j.message.BodyPartBuilder;
-import org.apache.james.mime4j.message.MultipartBuilder;
 import org.apache.james.user.api.UsersRepository;
 import org.apache.james.util.AuditTrail;
 import org.slf4j.Logger;
@@ -49,6 +41,7 @@ import org.slf4j.LoggerFactory;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.linagora.calendar.amqp.model.CalendarEventBookingConfirmedNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventCancelNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventCounterNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventInviteNotificationEmail;
@@ -70,7 +63,6 @@ import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.ResourceDAO;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.ResolvedSettings;
-import com.linagora.calendar.storage.event.EventFields.Person;
 import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.model.ResourceId;
 
@@ -83,14 +75,21 @@ import reactor.core.scheduler.Schedulers;
 public class EventMailHandler {
 
     enum EventType {
-        INVITE,
-        UPDATE,
-        REPLY,
-        CANCEL,
-        COUNTER;
+        INVITE("event-invite"),
+        UPDATE("event-update"),
+        REPLY("event-reply"),
+        CANCEL("event-cancel"),
+        COUNTER("event-counter"),
+        BOOKING_CONFIRMED("event-booking-confirmed");
+
+        private final TemplateType templateType;
+
+        EventType(String templateName) {
+            this.templateType = new TemplateType(templateName);
+        }
 
         public TemplateType asTemplateType() {
-            return new TemplateType("event-" + this.name().toLowerCase(Locale.US));
+            return templateType;
         }
     }
 
@@ -314,41 +313,36 @@ public class EventMailHandler {
         }
     }
 
-    static class PublicAgendaEventMessageGenerator implements EventMessageGenerator {
-        private final CalendarEventNotificationEmail event;
+    class PublicAgendaEventMessageGenerator implements EventMessageGenerator {
+        private final CalendarEventBookingConfirmedNotificationEmail event;
+        private final Username recipientUser;
 
-        public PublicAgendaEventMessageGenerator(CalendarEventNotificationEmail event) {
+        public PublicAgendaEventMessageGenerator(CalendarEventBookingConfirmedNotificationEmail event,
+                                                 Username recipientUser) {
             this.event = event;
+            this.recipientUser = recipientUser;
         }
 
-        // TODO https://github.com/linagora/twake-calendar-side-service/issues/605
         @Override
         public Mono<Message> generate(ResolvedSettings resolvedSettings) {
-            return Mono.fromCallable(() -> {
-                String organizerDisplayName = Optional.ofNullable(EventParseUtils.getOrganizer(event.getFirstVEvent()))
-                    .map(Person::cn)
-                    .filter(StringUtils::isNotBlank)
-                    .orElse(event.senderEmail().asString());
-                String subject = organizerDisplayName + " has accepted your event proposal";
-                String body = "Public agenda event notification.";
+            return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(resolvedSettings.locale()), EventType.BOOKING_CONFIRMED.asTemplateType()))
+                .subscribeOn(Schedulers.boundedElastic())
+                .flatMap(messageGenerator -> generateBookingConfirmedMessage(resolvedSettings, messageGenerator))
+                .onErrorResume(error -> Mono.error(new EventMailHandlerException("Error occurred when generate booking confirmed event message", error)));
+        }
 
-                BodyPartBuilder bodyPart = BodyPartBuilder.create()
-                    .setContentTransferEncoding("base64")
-                    .setBody(body, "plain", StandardCharsets.UTF_8);
+        private Mono<Message> generateBookingConfirmedMessage(ResolvedSettings resolvedSettings, MessageGenerator messageGenerator) {
+            byte[] calendarAsBytes = event.base().eventAsBytes();
+            List<MimeAttachment> attachments = EventMessageGenerator.createAttachments(calendarAsBytes, ImmutableMethod.REQUEST);
+            MailAddress fromAddress = event.base().senderEmail();
 
-                MultipartBuilder multipartBuilder = MultipartBuilder.create("mixed")
-                    .addBodyPart(bodyPart.build());
+            return Mono.fromCallable(() -> toBookingConfirmedPugModel(resolvedSettings, messageGenerator))
+                .flatMap(scopedVariable -> messageGenerator.generate(recipientUser, fromAddress, scopedVariable, attachments));
+        }
 
-                MailAddress fromAsMailAddress = event.senderEmail();
-                return Message.Builder.of()
-                    .setMessageId("<" + UUID.randomUUID() + "@" + Optional.of(fromAsMailAddress).map(MailAddress::getDomain).map(Domain::asString).orElse("") + ">")
-                    .setDate(new Date())
-                    .setSubject(subject)
-                    .setBody(multipartBuilder.build())
-                    .setFrom(event.senderEmail().asString())
-                    .setTo(event.recipientEmail().asString())
-                    .build();
-            });
+        private Map<String, Object> toBookingConfirmedPugModel(ResolvedSettings resolvedSettings, MessageGenerator messageGenerator) throws Exception {
+            return event.toPugModel(resolvedSettings.locale(), resolvedSettings.zoneId(),
+                messageGenerator.getI18nTranslator(), recipientUser.asMailAddress());
         }
     }
 
@@ -402,10 +396,10 @@ public class EventMailHandler {
         return handleEvent(new CounterEventMessageGenerator(event, recipientUser), recipientUser, event.base().senderEmail());
     }
 
-    public Mono<Void> handlePublicAgendaEvent(CalendarEventNotificationEmail event) {
-        MailAddress recipientEmail = event.recipientEmail();
+    public Mono<Void> handlePublicAgendaEvent(CalendarEventBookingConfirmedNotificationEmail event) {
+        MailAddress recipientEmail = event.base().recipientEmail();
         Username recipientUser = Username.fromMailAddress(recipientEmail);
-        return handleEvent(new PublicAgendaEventMessageGenerator(event), recipientUser, event.senderEmail());
+        return handleEvent(new PublicAgendaEventMessageGenerator(event, recipientUser), recipientUser, event.base().senderEmail());
     }
 
     private Mono<Void> handleEvent(EventMessageGenerator eventMessageGenerator, Username recipientUser, MailAddress senderEmail) {
