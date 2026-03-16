@@ -43,10 +43,10 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.inject.name.Named;
+import com.linagora.calendar.amqp.model.CalendarEventBookingConfirmedNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventCancelNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventCounterNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventInviteNotificationEmail;
-import com.linagora.calendar.amqp.model.CalendarEventNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventReplyNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventUpdateNotificationEmail;
 import com.linagora.calendar.smtp.EventEmailFilter;
@@ -182,7 +182,7 @@ public class EventEmailConsumer implements Closeable, Startable {
                 if (publicAgendaEvent(calendarEventMessage.event())) {
                     LOGGER.info("Received public agenda calendar event message with method REQUEST and eventPath {}",
                         calendarEventMessage.eventPath());
-                    yield eventMailHandler.handlePublicAgendaEvent(CalendarEventNotificationEmail.from(calendarEventMessage))
+                    yield eventMailHandler.handlePublicAgendaEvent(CalendarEventBookingConfirmedNotificationEmail.from(calendarEventMessage))
                         .doOnSuccess(any -> publicAgendaSentMetric.increment());
                 }
 
