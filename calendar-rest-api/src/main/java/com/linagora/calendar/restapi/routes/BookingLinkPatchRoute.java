@@ -145,7 +145,7 @@ public class BookingLinkPatchRoute extends CalendarRoute {
         }
         return dto.calendarUrl.map(CalendarURL::parse)
             .map(ValuePatch::modifyTo)
-            .orElse(ValuePatch.remove());
+            .orElseThrow(() -> new IllegalArgumentException("'calendarUrl' cannot be removed"));
     }
 
     private ValuePatch<Duration> parseDuration(JsonNode node, PatchDto dto) {
@@ -156,14 +156,14 @@ public class BookingLinkPatchRoute extends CalendarRoute {
                 Preconditions.checkArgument(durationMinutes > 0, "'durationMinutes' must be positive");
                 return Duration.ofMinutes(durationMinutes);
             }).map(ValuePatch::modifyTo)
-            .orElse(ValuePatch.remove());
+            .orElseThrow(() -> new IllegalArgumentException("'durationMinutes' cannot be removed"));
     }
 
     private ValuePatch<Boolean> parseActive(JsonNode node, PatchDto dto) {
         if (!node.has(FIELD_ACTIVE)) {
             return ValuePatch.keep();
         }
-        return dto.active.map(ValuePatch::modifyTo).orElse(ValuePatch.remove());
+        return dto.active.map(ValuePatch::modifyTo).orElseThrow(() -> new IllegalArgumentException("'active' cannot be removed"));
     }
 
     private ValuePatch<AvailabilityRules> parseAvailabilityRules(JsonNode node, PatchDto dto) {

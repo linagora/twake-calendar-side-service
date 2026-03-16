@@ -650,7 +650,7 @@ class BookingLinkPatchRouteTest {
             .patch("/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
-            .body("error.details", equalTo("'calendarUrl' can not be removed"));
+            .body("error.details", equalTo("'calendarUrl' cannot be removed"));
     }
 
     @Test
@@ -666,7 +666,7 @@ class BookingLinkPatchRouteTest {
             .patch("/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
-            .body("error.details", equalTo("'eventDuration' can not be removed"));
+            .body("error.details", equalTo("'durationMinutes' cannot be removed"));
     }
 
     @Test
@@ -682,7 +682,7 @@ class BookingLinkPatchRouteTest {
             .patch("/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
-            .body("error.details", equalTo("'active' can not be removed"));
+            .body("error.details", equalTo("'active' cannot be removed"));
     }
 
     @Test

@@ -18,7 +18,7 @@
 
 package com.linagora.calendar.app.restapi.routes;
 
-import static io.restassured.RestAssured.given;
+import static io.restassured.RestAssured.when;
 import static io.restassured.RestAssured.with;
 import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
@@ -118,8 +118,7 @@ class BookingLinkDeleteRouteTest {
         BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
-        given()
-        .when()
+        when()
             .delete("/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
@@ -130,8 +129,7 @@ class BookingLinkDeleteRouteTest {
         BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
-        given()
-        .when()
+        when()
             .delete("/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
@@ -146,8 +144,7 @@ class BookingLinkDeleteRouteTest {
         BookingLink toKeep = dataProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(60), ACTIVE, Optional.empty()));
 
-        given()
-        .when()
+        when()
             .delete("/booking-links/" + toDelete.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
@@ -159,8 +156,7 @@ class BookingLinkDeleteRouteTest {
 
     @Test
     void shouldReturn404WhenBookingLinkDoesNotExist() {
-        given()
-        .when()
+        when()
             .delete("/booking-links/" + UUID.randomUUID())
         .then()
             .statusCode(HttpStatus.SC_NOT_FOUND);
@@ -172,8 +168,7 @@ class BookingLinkDeleteRouteTest {
         BookingLink otherInserted = dataProbe.insertBookingLink(otherUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(otherUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
-        given()
-        .when()
+        when()
             .delete("/booking-links/" + otherInserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_NOT_FOUND);
@@ -197,8 +192,7 @@ class BookingLinkDeleteRouteTest {
 
     @Test
     void shouldReturn400WhenPublicIdIsNotAValidUUID() {
-        given()
-        .when()
+        when()
             .delete("/booking-links/not-a-uuid")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST);
