@@ -19,7 +19,6 @@
 package com.linagora.calendar.restapi.routes;
 
 import static com.linagora.calendar.smtp.template.MimeAttachment.ATTACHMENT_DISPOSITION_TYPE;
-import static reactor.core.scheduler.Schedulers.DEFAULT_BOUNDED_ELASTIC_QUEUESIZE;
 
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -60,7 +59,6 @@ import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolve
 
 import net.fortuna.ical4j.model.property.immutable.ImmutableMethod;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Scheduler;
 import reactor.core.scheduler.Schedulers;
 
 public class PublicAgendaProposalNotifier {
@@ -76,7 +74,6 @@ public class PublicAgendaProposalNotifier {
     private final EventInCalendarLinkFactory eventInCalendarLinkFactory;
     private final MailSender.Factory mailSenderFactory;
     private final MailAddress fromMailAddress;
-    private final Scheduler mailScheduler;
 
     @Inject
     @Singleton
@@ -94,7 +91,6 @@ public class PublicAgendaProposalNotifier {
         this.mailSenderFactory = mailSenderFactory;
         this.fromMailAddress = templateConfiguration.sender().asOptional()
             .orElseThrow(() -> new IllegalArgumentException("Sender address must not be empty"));
-        this.mailScheduler = Schedulers.newBoundedElastic(1, DEFAULT_BOUNDED_ELASTIC_QUEUESIZE, "sendMailScheduler");
     }
 
     public Mono<Void> notify(BookingCreated bookingCreated) {
@@ -106,7 +102,7 @@ public class PublicAgendaProposalNotifier {
                         bookingCreated.bookingLink().calendarUrl().base().value())
                     .flatMap(actionLinks -> generateMail(settings, bookingCreated, actionLinks))
                     .flatMap(mail -> mailSenderFactory.create().flatMap(mailSender -> mailSender.send(mail)))))
-            .subscribeOn(mailScheduler)
+            .subscribeOn(Schedulers.boundedElastic())
             .then();
     }
 
