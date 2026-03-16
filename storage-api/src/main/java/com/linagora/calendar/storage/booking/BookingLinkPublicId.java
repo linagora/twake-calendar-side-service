@@ -24,4 +24,8 @@ public record BookingLinkPublicId(UUID value) {
     public static BookingLinkPublicId generate() {
         return new BookingLinkPublicId(UUID.randomUUID());
     }
+
+    public static BookingLinkPublicId from(String value) {
+        return new BookingLinkPublicId(UUID.fromString(value));
+    }
 }
