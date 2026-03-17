@@ -48,7 +48,7 @@ import com.linagora.calendar.api.booking.AvailabilityRule.FixedAvailabilityRule;
 import com.linagora.calendar.api.booking.AvailabilityRule.WeeklyAvailabilityRule;
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.app.AppTestHelper;
-import com.linagora.calendar.app.BookingLinkDataProbe;
+import com.linagora.calendar.app.BookingLinkProbe;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
@@ -87,7 +87,7 @@ class BookingLinkCreateRouteTest {
         binder -> {
             Multibinder.newSetBinder(binder, GuiceProbe.class)
                 .addBinding()
-                .to(BookingLinkDataProbe.class);
+                .to(BookingLinkProbe.class);
         });
 
     @AfterAll
@@ -95,7 +95,7 @@ class BookingLinkCreateRouteTest {
         RestAssured.reset();
     }
 
-    private BookingLinkDataProbe dataProbe;
+    private BookingLinkProbe bookingLinkProbe;
     private OpenPaaSUser openPaaSUser;
 
     @BeforeEach
@@ -105,7 +105,7 @@ class BookingLinkCreateRouteTest {
         calendarDataProbe.addDomain(openPaaSUser.username().getDomainPart().get());
         calendarDataProbe.addUserToRepository(openPaaSUser.username(), PASSWORD);
 
-        dataProbe = server.getProbe(BookingLinkDataProbe.class);
+        bookingLinkProbe = server.getProbe(BookingLinkProbe.class);
 
         PreemptiveBasicAuthScheme basicAuthScheme = new PreemptiveBasicAuthScheme();
         basicAuthScheme.setUserName(openPaaSUser.username().asString());
@@ -159,7 +159,7 @@ class BookingLinkCreateRouteTest {
             .statusCode(HttpStatus.SC_CREATED)
             .extract().jsonPath().getString("bookingLinkPublicId");
 
-        BookingLink stored = dataProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
+        BookingLink stored = bookingLinkProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
 
         assertThat(stored.username()).isEqualTo(openPaaSUser.username());
         assertThat(stored.calendarUrl()).isEqualTo(CalendarURL.from(openPaaSUser.id()));
@@ -189,7 +189,7 @@ class BookingLinkCreateRouteTest {
             .statusCode(HttpStatus.SC_CREATED)
             .extract().jsonPath().getString("bookingLinkPublicId");
 
-        BookingLink stored = dataProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
+        BookingLink stored = bookingLinkProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
 
         assertThat(stored.username()).isEqualTo(openPaaSUser.username());
         assertThat(stored.calendarUrl()).isEqualTo(CalendarURL.from(openPaaSUser.id()));
@@ -221,7 +221,7 @@ class BookingLinkCreateRouteTest {
             .statusCode(HttpStatus.SC_CREATED)
             .extract().jsonPath().getString("bookingLinkPublicId");
 
-        BookingLink stored = dataProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
+        BookingLink stored = bookingLinkProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
 
         assertThat(stored.duration()).isEqualTo(Duration.ofMinutes(60));
         assertThat(stored.active()).isFalse();
@@ -250,7 +250,7 @@ class BookingLinkCreateRouteTest {
             .statusCode(HttpStatus.SC_CREATED)
             .extract().jsonPath().getString("bookingLinkPublicId");
 
-        BookingLink stored = dataProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
+        BookingLink stored = bookingLinkProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
 
         assertThat(stored.availabilityRules().orElseThrow().values()).hasSize(2);
         assertThat(stored.availabilityRules()).isEqualTo(Optional.of(AvailabilityRules.of(
@@ -276,7 +276,7 @@ class BookingLinkCreateRouteTest {
             .then().statusCode(HttpStatus.SC_CREATED).extract().jsonPath().getString("bookingLinkPublicId");
 
         assertThat(firstPublicId).isNotEqualTo(secondPublicId);
-        assertThat(dataProbe.listBookingLinks(openPaaSUser.username())).hasSize(2);
+        assertThat(bookingLinkProbe.listBookingLinks(openPaaSUser.username())).hasSize(2);
     }
 
     @Test

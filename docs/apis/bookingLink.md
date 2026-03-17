@@ -145,9 +145,8 @@ Fields `availabilityRules` are omitted from the response when not set.
 
 ### **PATCH /booking-links/{bookingLinkPublicId}**
 
-Partially update a booking link. Only fields present in the request body are updated;
-absent fields are left unchanged. Setting a field to `null` removes it (only applicable
-to `availabilityRules`). At least one field must be provided.
+Partially update a booking link. Only fields present in the request body are updated,
+absent fields are left unchanged. At least one field must be provided.
 
 **Request body**
 

@@ -39,7 +39,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.google.inject.multibindings.Multibinder;
 import com.linagora.calendar.app.AppTestHelper;
-import com.linagora.calendar.app.BookingLinkDataProbe;
+import com.linagora.calendar.app.BookingLinkProbe;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
@@ -79,7 +79,7 @@ class BookingLinkDeleteRouteTest {
         binder -> {
             Multibinder.newSetBinder(binder, GuiceProbe.class)
                 .addBinding()
-                .to(BookingLinkDataProbe.class);
+                .to(BookingLinkProbe.class);
         });
 
     @AfterAll
@@ -87,7 +87,7 @@ class BookingLinkDeleteRouteTest {
         RestAssured.reset();
     }
 
-    private BookingLinkDataProbe dataProbe;
+    private BookingLinkProbe bookingLinkProbe;
     private OpenPaaSUser openPaaSUser;
 
     @BeforeEach
@@ -97,7 +97,7 @@ class BookingLinkDeleteRouteTest {
         calendarDataProbe.addDomain(openPaaSUser.username().getDomainPart().get());
         calendarDataProbe.addUserToRepository(openPaaSUser.username(), PASSWORD);
 
-        dataProbe = server.getProbe(BookingLinkDataProbe.class);
+        bookingLinkProbe = server.getProbe(BookingLinkProbe.class);
 
         PreemptiveBasicAuthScheme basicAuthScheme = new PreemptiveBasicAuthScheme();
         basicAuthScheme.setUserName(openPaaSUser.username().asString());
@@ -115,7 +115,7 @@ class BookingLinkDeleteRouteTest {
 
     @Test
     void shouldReturn204WhenDeletingExistingBookingLink() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         when()
@@ -126,7 +126,7 @@ class BookingLinkDeleteRouteTest {
 
     @Test
     void shouldDeleteBookingLink() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         when()
@@ -134,14 +134,14 @@ class BookingLinkDeleteRouteTest {
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
-        assertThat(dataProbe.listBookingLinks(openPaaSUser.username())).isEmpty();
+        assertThat(bookingLinkProbe.listBookingLinks(openPaaSUser.username())).isEmpty();
     }
 
     @Test
     void shouldOnlyDeleteTheTargetedBookingLink() {
-        BookingLink toDelete = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink toDelete = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
-        BookingLink toKeep = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink toKeep = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(60), ACTIVE, Optional.empty()));
 
         when()
@@ -149,7 +149,7 @@ class BookingLinkDeleteRouteTest {
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
-        assertThat(dataProbe.listBookingLinks(openPaaSUser.username()))
+        assertThat(bookingLinkProbe.listBookingLinks(openPaaSUser.username()))
             .extracting(BookingLink::publicId)
             .containsExactly(toKeep.publicId());
     }
@@ -165,7 +165,7 @@ class BookingLinkDeleteRouteTest {
     @Test
     void shouldNotDeleteBookingLinkOfAnotherUser() {
         OpenPaaSUser otherUser = sabreDavExtension.newTestUser();
-        BookingLink otherInserted = dataProbe.insertBookingLink(otherUser.username(),
+        BookingLink otherInserted = bookingLinkProbe.insertBookingLink(otherUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(otherUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         when()
@@ -173,12 +173,12 @@ class BookingLinkDeleteRouteTest {
         .then()
             .statusCode(HttpStatus.SC_NOT_FOUND);
 
-        assertThat(dataProbe.listBookingLinks(otherUser.username())).hasSize(1);
+        assertThat(bookingLinkProbe.listBookingLinks(otherUser.username())).hasSize(1);
     }
 
     @Test
     void shouldReturn401WhenUnauthenticated() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         with()

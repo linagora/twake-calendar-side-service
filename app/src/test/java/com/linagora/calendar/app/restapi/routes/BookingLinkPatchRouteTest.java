@@ -49,7 +49,7 @@ import com.linagora.calendar.api.booking.AvailabilityRule.FixedAvailabilityRule;
 import com.linagora.calendar.api.booking.AvailabilityRule.WeeklyAvailabilityRule;
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.app.AppTestHelper;
-import com.linagora.calendar.app.BookingLinkDataProbe;
+import com.linagora.calendar.app.BookingLinkProbe;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
@@ -93,7 +93,7 @@ class BookingLinkPatchRouteTest {
         binder -> {
             Multibinder.newSetBinder(binder, GuiceProbe.class)
                 .addBinding()
-                .to(BookingLinkDataProbe.class);
+                .to(BookingLinkProbe.class);
         });
 
     @AfterAll
@@ -101,7 +101,7 @@ class BookingLinkPatchRouteTest {
         RestAssured.reset();
     }
 
-    private BookingLinkDataProbe dataProbe;
+    private BookingLinkProbe bookingLinkProbe;
     private OpenPaaSUser openPaaSUser;
     private CalDavClient calDavClient;
 
@@ -112,7 +112,7 @@ class BookingLinkPatchRouteTest {
         calendarDataProbe.addDomain(openPaaSUser.username().getDomainPart().get());
         calendarDataProbe.addUserToRepository(openPaaSUser.username(), PASSWORD);
 
-        dataProbe = server.getProbe(BookingLinkDataProbe.class);
+        bookingLinkProbe = server.getProbe(BookingLinkProbe.class);
 
         PreemptiveBasicAuthScheme basicAuthScheme = new PreemptiveBasicAuthScheme();
         basicAuthScheme.setUserName(openPaaSUser.username().asString());
@@ -132,7 +132,7 @@ class BookingLinkPatchRouteTest {
 
     @Test
     void shouldReturn204WhenUpdatingActive() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         given()
@@ -147,7 +147,7 @@ class BookingLinkPatchRouteTest {
 
     @Test
     void shouldPersistUpdatedActive() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         given()
@@ -159,13 +159,13 @@ class BookingLinkPatchRouteTest {
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
-        BookingLink updated = dataProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
+        BookingLink updated = bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
         assertThat(updated.active()).isFalse();
     }
 
     @Test
     void shouldPersistUpdatedDurationMinutes() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         given()
@@ -177,13 +177,13 @@ class BookingLinkPatchRouteTest {
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
-        BookingLink updated = dataProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
+        BookingLink updated = bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
         assertThat(updated.duration()).isEqualTo(Duration.ofMinutes(60));
     }
 
     @Test
     void shouldPersistUpdatedCalendarUrl() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         String newCalendarId = "custom-" + UUID.randomUUID();
@@ -207,13 +207,13 @@ class BookingLinkPatchRouteTest {
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
-        BookingLink updated = dataProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
+        BookingLink updated = bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
         assertThat(updated.calendarUrl()).isEqualTo(newCalendarUrl);
     }
 
     @Test
     void shouldPersistUpdatedWeeklyAvailabilityRules() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         given()
@@ -231,7 +231,7 @@ class BookingLinkPatchRouteTest {
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
-        BookingLink updated = dataProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
+        BookingLink updated = bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
         assertThat(updated.availabilityRules()).isEqualTo(Optional.of(AvailabilityRules.of(
             new WeeklyAvailabilityRule(DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(12, 0), ZONE_HO_CHI_MINH),
             new WeeklyAvailabilityRule(DayOfWeek.MONDAY, LocalTime.of(13, 0), LocalTime.of(17, 0), ZONE_HO_CHI_MINH))));
@@ -239,7 +239,7 @@ class BookingLinkPatchRouteTest {
 
     @Test
     void shouldPersistUpdatedFixedAvailabilityRule() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         given()
@@ -256,7 +256,7 @@ class BookingLinkPatchRouteTest {
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
-        BookingLink updated = dataProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
+        BookingLink updated = bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
         FixedAvailabilityRule rule = (FixedAvailabilityRule) updated.availabilityRules().orElseThrow().values().getFirst();
         assertThat(rule.start().toInstant().toString()).isEqualTo("2026-01-26T02:00:00Z");
         assertThat(rule.end().toInstant().toString()).isEqualTo("2026-01-30T02:00:00Z");
@@ -266,7 +266,7 @@ class BookingLinkPatchRouteTest {
     void shouldRemoveAvailabilityRulesWhenSetToNull() {
         AvailabilityRules existingRules = AvailabilityRules.of(
             new WeeklyAvailabilityRule(DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(17, 0), UTC));
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.of(existingRules)));
 
         given()
@@ -278,7 +278,7 @@ class BookingLinkPatchRouteTest {
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
-        BookingLink updated = dataProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
+        BookingLink updated = bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
         assertThat(updated.availabilityRules()).isEmpty();
     }
 
@@ -286,7 +286,7 @@ class BookingLinkPatchRouteTest {
     void shouldNotUpdateFieldsAbsentFromRequest() {
         AvailabilityRules existingRules = AvailabilityRules.of(
             new WeeklyAvailabilityRule(DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(17, 0), UTC));
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.of(existingRules)));
 
         given()
@@ -298,7 +298,7 @@ class BookingLinkPatchRouteTest {
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
-        BookingLink updated = dataProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
+        BookingLink updated = bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
         assertThat(updated.duration()).isEqualTo(Duration.ofMinutes(45));
         assertThat(updated.calendarUrl()).isEqualTo(inserted.calendarUrl());
         assertThat(updated.active()).isEqualTo(inserted.active());
@@ -320,7 +320,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldReturn404WhenBookingLinkBelongsToAnotherUser() {
         OpenPaaSUser otherUser = sabreDavExtension.newTestUser();
-        BookingLink inserted = dataProbe.insertBookingLink(otherUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(otherUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(otherUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         given()
@@ -335,7 +335,7 @@ class BookingLinkPatchRouteTest {
 
     @Test
     void shouldReturn400WhenRequestContainsUnknownFields() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         given()
@@ -351,7 +351,7 @@ class BookingLinkPatchRouteTest {
 
     @Test
     void shouldReturn400WhenBodyIsEmpty() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         given()
@@ -365,7 +365,7 @@ class BookingLinkPatchRouteTest {
 
     @Test
     void shouldReturn400WhenBodyIsInvalidJson() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         given()
@@ -379,7 +379,7 @@ class BookingLinkPatchRouteTest {
 
     @Test
     void shouldReturn400WhenNoFieldIsUpdated() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         given()
@@ -392,7 +392,7 @@ class BookingLinkPatchRouteTest {
 
     @Test
     void shouldReturn400WhenDurationMinutesIsZero() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         given()
@@ -408,7 +408,7 @@ class BookingLinkPatchRouteTest {
 
     @Test
     void shouldReturn400WhenDurationMinutesIsNegative() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         given()
@@ -424,7 +424,7 @@ class BookingLinkPatchRouteTest {
 
     @Test
     void shouldReturn400WhenTimezoneIsInvalid() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         given()
@@ -445,7 +445,7 @@ class BookingLinkPatchRouteTest {
 
     @Test
     void shouldReturn400WhenWeeklyRuleIsMissingDayOfWeek() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         given()
@@ -466,7 +466,7 @@ class BookingLinkPatchRouteTest {
 
     @Test
     void shouldReturn400WhenWeeklyRuleHasInvalidDayOfWeek() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         given()
@@ -487,7 +487,7 @@ class BookingLinkPatchRouteTest {
 
     @Test
     void shouldReturn400WhenWeeklyRuleStartTimeIsInvalid() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         given()
@@ -508,7 +508,7 @@ class BookingLinkPatchRouteTest {
 
     @Test
     void shouldReturn400WhenFixedRuleStartTimeIsInvalid() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         given()
@@ -529,7 +529,7 @@ class BookingLinkPatchRouteTest {
 
     @Test
     void shouldReturn400WhenAvailabilityRuleTypeIsUnknown() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         given()
@@ -550,7 +550,7 @@ class BookingLinkPatchRouteTest {
 
     @Test
     void shouldReturn401WhenUnauthenticated() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         with()
@@ -579,7 +579,7 @@ class BookingLinkPatchRouteTest {
 
     @Test
     void shouldReturn400WhenTimeZoneIsProvidedWithoutAvailabilityRules() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         given()
@@ -600,7 +600,7 @@ class BookingLinkPatchRouteTest {
     void shouldReturn400WhenTimeZoneIsProvidedWhenAvailabilityRulesIsRemoved() {
         AvailabilityRules existingRules = AvailabilityRules.of(
             new WeeklyAvailabilityRule(DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(17, 0), UTC));
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.of(existingRules)));
 
         given()
@@ -619,7 +619,7 @@ class BookingLinkPatchRouteTest {
 
     @Test
     void shouldReturn400WhenAvailabilityRulesAreUpdatedWithoutTimeZone() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         given()
@@ -639,7 +639,7 @@ class BookingLinkPatchRouteTest {
 
     @Test
     void shouldReturn400WhenCalendarUrlIsNull() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         given()
@@ -655,7 +655,7 @@ class BookingLinkPatchRouteTest {
 
     @Test
     void shouldReturn400WhenDurationMinutesIsNull() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         given()
@@ -671,7 +671,7 @@ class BookingLinkPatchRouteTest {
 
     @Test
     void shouldReturn400WhenActiveIsNull() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         given()
@@ -687,7 +687,7 @@ class BookingLinkPatchRouteTest {
 
     @Test
     void shouldReturn400WhenAvailabilityRulesIsEmptyArray() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         given()
@@ -706,7 +706,7 @@ class BookingLinkPatchRouteTest {
 
     @Test
     void shouldReturn400WhenFixedRuleStartIsAfterEnd() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         given()
@@ -727,7 +727,7 @@ class BookingLinkPatchRouteTest {
 
     @Test
     void shouldReturn400WhenCalendarUrlBelongsToAnotherUser() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         OpenPaaSUser otherUser = sabreDavExtension.newTestUser();
@@ -750,7 +750,7 @@ class BookingLinkPatchRouteTest {
 
     @Test
     void shouldReturn400WhenCalendarDoesNotExist() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         CalendarURL nonExistentCalendarUrl = new CalendarURL(openPaaSUser.id(), new OpenPaaSId("nonexistentCalendar"));
