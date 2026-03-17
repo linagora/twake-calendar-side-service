@@ -97,7 +97,7 @@ public class BookingLinkReservationRoute implements JMAPRoutes {
             }
             case SlotNotAvailableException slotNotAvailableException -> {
                 LOGGER.warn("Requested slot is unavailable (likely busy) for [{}]: {}", request.uri(), slotNotAvailableException.getMessage());
-                yield ErrorResponseHandler.handle(response, HttpResponseStatus.BAD_REQUEST, slotNotAvailableException);
+                yield ErrorResponseHandler.handle(response, HttpResponseStatus.UNPROCESSABLE_ENTITY, slotNotAvailableException);
             }
             case BookingLinkReservationException bookingLinkReservationException -> {
                 LOGGER.error("Booking operation failed for [{}]", request.uri(), bookingLinkReservationException);

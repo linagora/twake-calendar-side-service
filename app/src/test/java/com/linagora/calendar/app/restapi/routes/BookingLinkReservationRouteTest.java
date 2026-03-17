@@ -495,12 +495,12 @@ class BookingLinkReservationRouteTest {
         .when()
             .post("/api/booking-links/{bookingLinkPublicId}/book")
         .then()
-            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .statusCode(HttpStatus.SC_UNPROCESSABLE_ENTITY)
             .contentType(JSON)
             .body("error", jsonEquals("""
                 {
-                  "code": 400,
-                  "message": "Bad Request",
+                  "code": 422,
+                  "message": "Unprocessable Entity",
                   "details": "Requested slot is not available for booking link with publicId %s, slotStartUtc %s"
                 }
                 """.formatted(inserted.publicId().value(), unavailableSlotStart)));
@@ -526,12 +526,12 @@ class BookingLinkReservationRouteTest {
         .when()
             .post("/api/booking-links/{bookingLinkPublicId}/book")
         .then()
-            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .statusCode(HttpStatus.SC_UNPROCESSABLE_ENTITY)
             .contentType(JSON)
             .body("error", jsonEquals("""
                 {
-                  "code": 400,
-                  "message": "Bad Request",
+                  "code": 422,
+                  "message": "Unprocessable Entity",
                   "details": "Requested slot is not available for booking link with publicId %s, slotStartUtc %s"
                 }
                 """.formatted(inserted.publicId().value(), unavailableSlotStart)));
@@ -558,12 +558,12 @@ class BookingLinkReservationRouteTest {
         .when()
             .post("/api/booking-links/{bookingLinkPublicId}/book")
         .then()
-            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .statusCode(HttpStatus.SC_UNPROCESSABLE_ENTITY)
             .contentType(JSON)
             .body("error", jsonEquals("""
                 {
-                  "code": 400,
-                  "message": "Bad Request",
+                  "code": 422,
+                  "message": "Unprocessable Entity",
                   "details": "Requested slot is not available for booking link with publicId %s, slotStartUtc %s"
                 }
                 """.formatted(inserted.publicId().value(), slotStartUtc)));
@@ -663,12 +663,12 @@ class BookingLinkReservationRouteTest {
         .when()
             .post("/api/booking-links/{bookingLinkPublicId}/book")
         .then()
-            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .statusCode(HttpStatus.SC_UNPROCESSABLE_ENTITY)
             .contentType(JSON)
             .body("error", jsonEquals("""
                 {
-                  "code": 400,
-                  "message": "Bad Request",
+                  "code": 422,
+                  "message": "Unprocessable Entity",
                   "details": "Requested slot is not available for booking link with publicId %s, slotStartUtc 2036-01-26T08:00:00Z"
                 }
                 """.formatted(inserted.publicId().value())));
@@ -704,12 +704,12 @@ class BookingLinkReservationRouteTest {
         .when()
             .post("/api/booking-links/{bookingLinkPublicId}/book")
         .then()
-            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .statusCode(HttpStatus.SC_UNPROCESSABLE_ENTITY)
             .contentType(JSON)
             .body("error", jsonEquals("""
                 {
-                  "code": 400,
-                  "message": "Bad Request",
+                  "code": 422,
+                  "message": "Unprocessable Entity",
                   "details": "Requested slot is not available for booking link with publicId %s, slotStartUtc 2036-01-26T09:30:00Z"
                 }
                 """.formatted(inserted.publicId().value())));
