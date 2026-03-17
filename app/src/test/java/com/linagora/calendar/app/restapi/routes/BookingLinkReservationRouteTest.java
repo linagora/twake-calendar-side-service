@@ -648,7 +648,7 @@ class BookingLinkReservationRouteTest {
     }
 
     @Test
-    void shouldReturnBadRequestWhenStartUtcDoesNotMatchAnyAvailableSlot(TwakeCalendarGuiceServer server) {
+    void shouldReturnUnprocessableEntityWhenStartUtcDoesNotMatchAnyAvailableSlot(TwakeCalendarGuiceServer server) {
         BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(
             CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES,
             AvailabilityRules.of(new FixedAvailabilityRule(
@@ -675,7 +675,7 @@ class BookingLinkReservationRouteTest {
     }
 
     @Test
-    void shouldReturnBadRequestWhenRequestedSlotIsBusy(TwakeCalendarGuiceServer server) {
+    void shouldReturnUnprocessableEntityWhenRequestedSlotIsBusy(TwakeCalendarGuiceServer server) {
         // Given:
         // - Booking rule allows slots from 09:00 to 12:00 UTC with 30-minute duration.
         BookingLink inserted = insertActiveBookingLink(server);
