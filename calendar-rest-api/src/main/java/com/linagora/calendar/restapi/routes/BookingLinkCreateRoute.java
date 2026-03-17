@@ -18,18 +18,23 @@
 
 package com.linagora.calendar.restapi.routes;
 
+import static com.linagora.calendar.storage.configuration.resolver.BusinessHoursSettingReader.BUSINESS_HOURS_IDENTIFIER;
 import static com.linagora.calendar.restapi.RestApiConstants.JSON_HEADER;
 import static com.linagora.calendar.restapi.RestApiConstants.OBJECT_MAPPER_DEFAULT;
 
 import java.time.DateTimeException;
+import java.time.DayOfWeek;
 import java.time.Duration;
+import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
 import jakarta.inject.Inject;
+import jakarta.inject.Named;
 
 import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.http.Authenticator;
@@ -39,12 +44,15 @@ import org.apache.james.metrics.api.MetricFactory;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
+import com.linagora.calendar.api.booking.AvailabilityRule;
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.storage.configuration.resolver.BusinessHoursSettingReader;
 import com.linagora.calendar.restapi.routes.dto.AvailabilityRuleDTO;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
+import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -60,27 +68,34 @@ public class BookingLinkCreateRoute extends CalendarRoute {
                                               @JsonProperty("timeZone") Optional<String> timeZone,
                                               @JsonProperty("availabilityRules") Optional<List<AvailabilityRuleDTO>> availabilityRules) {
 
-        public static BookingLinkInsertRequest toBookingLinkInsertRequest(CreateBookingLinkRequestDTO request) {
+        private static final boolean ABSENT = true;
+
+        public static BookingLinkInsertRequest toBookingLinkInsertRequest(CreateBookingLinkRequestDTO request,
+                                                                          ZoneId defaultZone,
+                                                                          Optional<AvailabilityRules> defaultAvailabilityRules) {
             Preconditions.checkArgument(!Strings.isNullOrEmpty(request.calendarUrl), "'calendarUrl' is required");
             Preconditions.checkArgument(!Objects.isNull(request.durationMinutes), "'durationMinutes' is required");
             Preconditions.checkArgument(request.durationMinutes > 0, "'durationMinutes' must be positive");
             Preconditions.checkArgument(!Objects.isNull(request.active), "'active' is required");
 
+            if (request.timeZone.isPresent() && request.availabilityRules.map(List::isEmpty).orElse(ABSENT)) {
+                throw new IllegalArgumentException("'timeZone' cannot be provided when 'availabilityRules' is null or empty");
+            }
+
             CalendarURL calendarURL = CalendarURL.parse(request.calendarUrl);
             Duration duration = Duration.ofMinutes(request.durationMinutes);
-            ZoneId timeZone = getTimeZone(request);
+            ZoneId timeZone = getTimeZone(request, defaultZone);
 
-            Optional<AvailabilityRules> availabilityRules = getAvailabilityRules(request, timeZone);
+            Optional<AvailabilityRules> availabilityRules = getAvailabilityRules(request, timeZone).or(() -> defaultAvailabilityRules);
 
             return new BookingLinkInsertRequest(calendarURL, duration, request.active, availabilityRules);
         }
 
-        private static ZoneId getTimeZone(CreateBookingLinkRequestDTO request) {
+        private static ZoneId getTimeZone(CreateBookingLinkRequestDTO request, ZoneId defaultZone) {
             try {
                 return request.timeZone()
-                    .filter(tz -> !tz.isEmpty())
                     .map(ZoneId::of)
-                    .orElse(UTC);
+                    .orElse(defaultZone);
             } catch (DateTimeException e) {
                 throw new IllegalArgumentException("Invalid 'timeZone' format", e);
             }
@@ -99,17 +114,22 @@ public class BookingLinkCreateRoute extends CalendarRoute {
     public static final ZoneId UTC = ZoneId.of("UTC");
     private static final String BOOKING_LINK_PUBLIC_ID = "bookingLinkPublicId";
 
+    private static final DateTimeFormatter BUSINESS_HOURS_TIME_FORMATTER = DateTimeFormatter.ofPattern("H:m");
+
     private final BookingLinkDAO bookingLinkDAO;
     private final CalDavClient calDavClient;
+    private final SettingsBasedResolver settingsResolver;
 
     @Inject
     public BookingLinkCreateRoute(Authenticator authenticator,
                                   MetricFactory metricFactory,
                                   BookingLinkDAO bookingLinkDAO,
-                                  CalDavClient calDavClient) {
+                                  CalDavClient calDavClient,
+                                  @Named("businessHours") SettingsBasedResolver settingsResolver) {
         super(authenticator, metricFactory);
         this.bookingLinkDAO = bookingLinkDAO;
         this.calDavClient = calDavClient;
+        this.settingsResolver = settingsResolver;
     }
 
     @Override
@@ -122,7 +142,9 @@ public class BookingLinkCreateRoute extends CalendarRoute {
         return request.receive().aggregate().asByteArray()
             .switchIfEmpty(Mono.error(new IllegalArgumentException("Request body must not be empty")))
             .map(this::parseRequest)
-            .map(CreateBookingLinkRequestDTO::toBookingLinkInsertRequest)
+            .flatMap(dto -> settingsResolver.resolveOrDefault(session.getUser())
+                .map(resolvedSettings ->
+                    CreateBookingLinkRequestDTO.toBookingLinkInsertRequest(dto, resolvedSettings.zoneId(), getDefaultAvailabilityRules(resolvedSettings))))
             .flatMap(insertRequest ->
                 validateCalendarAccess(insertRequest.calendarUrl(), session)
                     .thenReturn(insertRequest))
@@ -153,5 +175,22 @@ public class BookingLinkCreateRoute extends CalendarRoute {
             }
             throw new IllegalArgumentException("Invalid request body", e);
         }
+    }
+
+    private Optional<AvailabilityRules> getDefaultAvailabilityRules(SettingsBasedResolver.ResolvedSettings resolvedSettings) {
+        return resolvedSettings.get(BUSINESS_HOURS_IDENTIFIER, List.class)
+            .map(list -> ((List<BusinessHoursSettingReader.BusinessHoursDto>) list).stream()
+                .flatMap(dto -> toAvailabilityRuleList(dto, resolvedSettings.zoneId()).stream())
+                .toList())
+            .map(AvailabilityRules::new);
+    }
+
+    private List<AvailabilityRule> toAvailabilityRuleList(BusinessHoursSettingReader.BusinessHoursDto dto, ZoneId zoneId) {
+        LocalTime start = LocalTime.parse(dto.start(), BUSINESS_HOURS_TIME_FORMATTER);
+        LocalTime end = LocalTime.parse(dto.end(), BUSINESS_HOURS_TIME_FORMATTER);
+        return dto.daysOfWeek().stream()
+            .map(DayOfWeek::of)
+            .map(day -> (AvailabilityRule) new AvailabilityRule.WeeklyAvailabilityRule(day, start, end, zoneId))
+            .toList();
     }
 }

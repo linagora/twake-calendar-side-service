@@ -161,11 +161,23 @@ class BookingLinkCreateRouteTest {
 
         BookingLink stored = bookingLinkProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
 
+        ZoneId europeParis = ZoneId.of("Europe/Paris");
+        LocalTime businessStart = LocalTime.of(8, 0);
+        LocalTime businessEnd = LocalTime.of(19, 0);
+
         assertThat(stored.username()).isEqualTo(openPaaSUser.username());
         assertThat(stored.calendarUrl()).isEqualTo(CalendarURL.from(openPaaSUser.id()));
         assertThat(stored.duration()).isEqualTo(Duration.ofMinutes(30));
         assertThat(stored.active()).isTrue();
-        assertThat(stored.availabilityRules()).isEmpty();
+
+        // Default availability rules should be set when not provided, based on the default business hours and timezone
+        assertThat(stored.availabilityRules()).isEqualTo(Optional.of(AvailabilityRules.of(
+            new WeeklyAvailabilityRule(DayOfWeek.MONDAY, businessStart, businessEnd, europeParis),
+            new WeeklyAvailabilityRule(DayOfWeek.TUESDAY, businessStart, businessEnd, europeParis),
+            new WeeklyAvailabilityRule(DayOfWeek.WEDNESDAY, businessStart, businessEnd, europeParis),
+            new WeeklyAvailabilityRule(DayOfWeek.THURSDAY, businessStart, businessEnd, europeParis),
+            new WeeklyAvailabilityRule(DayOfWeek.FRIDAY, businessStart, businessEnd, europeParis)
+        )));
     }
 
     @Test
@@ -254,8 +266,8 @@ class BookingLinkCreateRouteTest {
 
         assertThat(stored.availabilityRules().orElseThrow().values()).hasSize(2);
         assertThat(stored.availabilityRules()).isEqualTo(Optional.of(AvailabilityRules.of(
-            new WeeklyAvailabilityRule(DayOfWeek.TUESDAY, LocalTime.of(9, 0), LocalTime.of(17, 0), ZoneId.of("UTC")),
-            new FixedAvailabilityRule(LocalDateTime.parse("2026-01-26T00:00:00").atZone(ZoneId.of("UTC")), LocalDateTime.parse("2026-01-30T00:00:00").atZone(ZoneId.of("UTC")))
+            new WeeklyAvailabilityRule(DayOfWeek.TUESDAY, LocalTime.of(9, 0), LocalTime.of(17, 0), ZoneId.of("Europe/Paris")),
+            new FixedAvailabilityRule(LocalDateTime.parse("2026-01-26T00:00:00").atZone(ZoneId.of("Europe/Paris")), LocalDateTime.parse("2026-01-30T00:00:00").atZone(ZoneId.of("Europe/Paris")))
         )));
     }
 
@@ -277,6 +289,32 @@ class BookingLinkCreateRouteTest {
 
         assertThat(firstPublicId).isNotEqualTo(secondPublicId);
         assertThat(bookingLinkProbe.listBookingLinks(openPaaSUser.username())).hasSize(2);
+    }
+
+    @Test
+    void shouldUseTimezoneFromSettingWhenNotProvided() {
+        String publicId = given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "availabilityRules": [
+                        { "dayOfWeek": "MON", "start": "09:00", "end": "17:00", "type": "weekly" }
+                    ]
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
+            .when()
+            .post("/booking-links")
+            .then()
+            .statusCode(HttpStatus.SC_CREATED)
+            .extract().jsonPath().getString("bookingLinkPublicId");
+
+        BookingLink stored = bookingLinkProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
+
+        assertThat(stored.availabilityRules()).isEqualTo(Optional.of(AvailabilityRules.of(
+            new WeeklyAvailabilityRule(DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(17, 0), ZoneId.of("Europe/Paris"))
+        )));
     }
 
     @Test
@@ -398,7 +436,10 @@ class BookingLinkCreateRouteTest {
                     "calendarUrl": "%s",
                     "durationMinutes": 30,
                     "active": true,
-                    "timeZone": "Invalid/Timezone"
+                    "timeZone": "Invalid/Timezone",
+                    "availabilityRules": [
+                        { "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "type": "weekly" }
+                    ]
                 }
                 """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
             .when()
@@ -566,6 +607,24 @@ class BookingLinkCreateRouteTest {
             .body("error.code", equalTo(400))
             .body("error.message", equalTo("Bad request"))
             .body("error.details", equalTo("'type' is required in availability rule"));
+    }
+
+    @Test
+    void shouldReturn400WhenTimeZoneProvidedWithoutAvailabilityRules() {
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "timeZone": "UTC"
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
+        .when()
+            .post("/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.details", equalTo("'timeZone' cannot be provided when 'availabilityRules' is null or empty"));
     }
 
     @Test
