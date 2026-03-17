@@ -30,11 +30,11 @@ import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 
-public class BookingLinkDataProbe implements GuiceProbe {
+public class BookingLinkProbe implements GuiceProbe {
     private final BookingLinkDAO bookingLinkDAO;
 
     @Inject
-    public BookingLinkDataProbe(BookingLinkDAO bookingLinkDAO) {
+    public BookingLinkProbe(BookingLinkDAO bookingLinkDAO) {
         this.bookingLinkDAO = bookingLinkDAO;
     }
 

@@ -22,7 +22,6 @@ import static com.linagora.calendar.restapi.RestApiConstants.JSON_HEADER;
 import static com.linagora.calendar.restapi.RestApiConstants.OBJECT_MAPPER_DEFAULT;
 
 import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -39,7 +38,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.linagora.calendar.api.booking.AvailabilityRule;
 import com.linagora.calendar.api.booking.AvailabilityRule.FixedAvailabilityRule;
 import com.linagora.calendar.api.booking.AvailabilityRule.WeeklyAvailabilityRule;
-import com.linagora.calendar.restapi.DayOfWeekUtil;
+import com.linagora.calendar.restapi.routes.dto.AvailabilityRuleDTO;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.booking.BookingLinkNotFoundException;
@@ -52,38 +51,6 @@ import reactor.netty.http.server.HttpServerRequest;
 import reactor.netty.http.server.HttpServerResponse;
 
 public class BookingLinkGetRoute extends CalendarRoute {
-
-    public static final String WEEKLY_RULE_TYPE = "weekly";
-    public static final String FIXED_RULE_TYPE = "fixed";
-
-    @JsonInclude(JsonInclude.Include.NON_ABSENT)
-    public record AvailabilityRuleDTO(@JsonProperty("type") String type,
-                                      @JsonProperty("dayOfWeek") Optional<String> dayOfWeek,
-                                      @JsonProperty("start") String start,
-                                      @JsonProperty("end") String end) {
-
-        private static final DateTimeFormatter LOCAL_DATE_TIME_FORMAT =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
-        public static final Optional<String> NO_DAY_OF_WEEK = Optional.empty();
-
-        private static AvailabilityRuleDTO from(AvailabilityRule rule) {
-            return switch (rule) {
-                case WeeklyAvailabilityRule weekly -> AvailabilityRuleDTO.fromWeekly(weekly);
-                case FixedAvailabilityRule fixed -> AvailabilityRuleDTO.fromFixed(fixed);
-            };
-        }
-
-        public static AvailabilityRuleDTO fromWeekly(WeeklyAvailabilityRule rule) {
-            return new AvailabilityRuleDTO(WEEKLY_RULE_TYPE, Optional.of(DayOfWeekUtil.toAbbreviation(rule.dayOfWeek())),
-                rule.start().toString(), rule.end().toString());
-        }
-
-        public static AvailabilityRuleDTO fromFixed(FixedAvailabilityRule rule) {
-            return new AvailabilityRuleDTO(FIXED_RULE_TYPE, NO_DAY_OF_WEEK,
-                rule.start().toLocalDateTime().format(LOCAL_DATE_TIME_FORMAT),
-                rule.end().toLocalDateTime().format(LOCAL_DATE_TIME_FORMAT));
-        }
-    }
 
     @JsonInclude(JsonInclude.Include.NON_ABSENT)
     public record BookingLinkDTO(@JsonProperty("publicId") String publicId,

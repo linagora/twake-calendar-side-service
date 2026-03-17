@@ -22,12 +22,8 @@ import static com.linagora.calendar.restapi.RestApiConstants.JSON_HEADER;
 import static com.linagora.calendar.restapi.RestApiConstants.OBJECT_MAPPER_DEFAULT;
 
 import java.time.DateTimeException;
-import java.time.DayOfWeek;
 import java.time.Duration;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.time.ZoneId;
-import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -43,12 +39,9 @@ import org.apache.james.metrics.api.MetricFactory;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
-import com.linagora.calendar.api.booking.AvailabilityRule;
-import com.linagora.calendar.api.booking.AvailabilityRule.FixedAvailabilityRule;
-import com.linagora.calendar.api.booking.AvailabilityRule.WeeklyAvailabilityRule;
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.dav.CalDavClient;
-import com.linagora.calendar.restapi.DayOfWeekUtil;
+import com.linagora.calendar.restapi.routes.dto.AvailabilityRuleDTO;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
@@ -60,41 +53,6 @@ import reactor.netty.http.server.HttpServerRequest;
 import reactor.netty.http.server.HttpServerResponse;
 
 public class BookingLinkCreateRoute extends CalendarRoute {
-
-    public record AvailabilityRuleDTO(@JsonProperty("type") String type,
-                                      @JsonProperty("dayOfWeek") Optional<String> dayOfWeek,
-                                      @JsonProperty("start") String start,
-                                      @JsonProperty("end") String end) {
-
-        public AvailabilityRule toAvailabilityRule(ZoneId timeZone) {
-            Preconditions.checkArgument(!Strings.isNullOrEmpty(type), "'type' is required in availability rule");
-            Preconditions.checkArgument(!Strings.isNullOrEmpty(start), "'start' is required in availability rule");
-            Preconditions.checkArgument(!Strings.isNullOrEmpty(end), "'end' is required in availability rule");
-            return switch (type) {
-                case "weekly" -> {
-                    DayOfWeek dayOfWeekObject = getDayOfWeek();
-                    try {
-                        yield new WeeklyAvailabilityRule(dayOfWeekObject, LocalTime.parse(start), LocalTime.parse(end), timeZone);
-                    } catch (DateTimeParseException e) {
-                        throw new IllegalArgumentException("Invalid 'start' or 'end' time format for weekly rule, expected HH:mm", e);
-                    }
-                }
-                case "fixed" -> {
-                    try {
-                        yield new FixedAvailabilityRule(LocalDateTime.parse(start).atZone(timeZone),
-                            LocalDateTime.parse(end).atZone(timeZone));
-                    } catch (DateTimeParseException e) {
-                        throw new IllegalArgumentException("Invalid 'start' or 'end' date-time format for fixed rule, expected yyyy-MM-ddTHH:mm", e);
-                    }
-                }
-                default -> throw new IllegalArgumentException("Unknown availability rule type: " + type);
-            };
-        }
-
-        private DayOfWeek getDayOfWeek() {
-            return DayOfWeekUtil.fromAbbreviation(dayOfWeek.orElseThrow(() -> new IllegalArgumentException("'dayOfWeek' must be provided for weekly rule")));
-        }
-    }
 
     public record CreateBookingLinkRequestDTO(@JsonProperty("calendarUrl") String calendarUrl,
                                               @JsonProperty("durationMinutes") Integer durationMinutes,
@@ -190,6 +148,9 @@ public class BookingLinkCreateRoute extends CalendarRoute {
         try {
             return OBJECT_MAPPER_DEFAULT.readValue(body, CreateBookingLinkRequestDTO.class);
         } catch (Exception e) {
+            if (e.getCause() instanceof IllegalArgumentException) {
+                throw (IllegalArgumentException) e.getCause();
+            }
             throw new IllegalArgumentException("Invalid request body", e);
         }
     }

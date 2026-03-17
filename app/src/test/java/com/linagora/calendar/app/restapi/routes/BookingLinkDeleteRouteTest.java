@@ -18,18 +18,14 @@
 
 package com.linagora.calendar.app.restapi.routes;
 
-import static io.restassured.RestAssured.given;
+import static io.restassured.RestAssured.when;
 import static io.restassured.RestAssured.with;
 import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
-import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.charset.StandardCharsets;
-import java.time.DayOfWeek;
 import java.time.Duration;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
-import java.time.ZoneId;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -42,9 +38,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.google.inject.multibindings.Multibinder;
-import com.linagora.calendar.api.booking.AvailabilityRule.FixedAvailabilityRule;
-import com.linagora.calendar.api.booking.AvailabilityRule.WeeklyAvailabilityRule;
-import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.app.AppTestHelper;
 import com.linagora.calendar.app.BookingLinkProbe;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
@@ -65,13 +58,10 @@ import io.restassured.authentication.PreemptiveBasicAuthScheme;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.http.ContentType;
 
-class BookingLinkGetRouteTest {
+class BookingLinkDeleteRouteTest {
 
     private static final boolean ACTIVE = true;
-    private static final boolean NOT_ACTIVE = false;
     private static final String PASSWORD = "secret";
-    private static final ZoneId ZONE_HO_CHI_MINH = ZoneId.of("Asia/Ho_Chi_Minh");
-    private static final ZoneId UTC = ZoneId.of("UTC");
 
     @RegisterExtension
     @Order(1)
@@ -124,147 +114,66 @@ class BookingLinkGetRouteTest {
     }
 
     @Test
-    void shouldReturn200WithExpectedBodyWhenNoAvailabilityRules() {
+    void shouldReturn204WhenDeletingExistingBookingLink() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
-        String response = given()
-        .when()
-            .get("/booking-links/" + inserted.publicId().value())
+        when()
+            .delete("/booking-links/" + inserted.publicId().value())
         .then()
-            .statusCode(HttpStatus.SC_OK)
-            .contentType(ContentType.JSON)
-            .extract().body().asString();
-
-        assertThatJson(response)
-            .isEqualTo("""
-                {
-                    "publicId": "%s",
-                    "calendarUrl": "%s",
-                    "durationMinutes": 30,
-                    "active": true
-                }
-                """.formatted(inserted.publicId().value(), CalendarURL.from(openPaaSUser.id()).asUri().toString()));
+            .statusCode(HttpStatus.SC_NO_CONTENT);
     }
 
     @Test
-    void shouldReturn200WithWeeklyAvailabilityRules() {
-        AvailabilityRules rules = AvailabilityRules.of(
-            new WeeklyAvailabilityRule(DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(12, 0), ZONE_HO_CHI_MINH),
-            new WeeklyAvailabilityRule(DayOfWeek.MONDAY, LocalTime.of(13, 0), LocalTime.of(17, 0), ZONE_HO_CHI_MINH));
+    void shouldDeleteBookingLink() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.of(rules)));
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
-        String response = given()
-        .when()
-            .get("/booking-links/" + inserted.publicId().value())
+        when()
+            .delete("/booking-links/" + inserted.publicId().value())
         .then()
-            .statusCode(HttpStatus.SC_OK)
-            .contentType(ContentType.JSON)
-            .extract().body().asString();
+            .statusCode(HttpStatus.SC_NO_CONTENT);
 
-        assertThatJson(response)
-            .isEqualTo("""
-                {
-                    "publicId": "%s",
-                    "calendarUrl": "%s",
-                    "durationMinutes": 30,
-                    "active": true,
-                    "timeZone": "Asia/Ho_Chi_Minh",
-                    "availabilityRules": [
-                        { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "12:00" },
-                        { "type": "weekly", "dayOfWeek": "MON", "start": "13:00", "end": "17:00" }
-                    ]
-                }
-                """.formatted(inserted.publicId().value(), CalendarURL.from(openPaaSUser.id()).asUri().toString()));
+        assertThat(bookingLinkProbe.listBookingLinks(openPaaSUser.username())).isEmpty();
     }
 
     @Test
-    void shouldReturn200WithFixedAvailabilityRule() {
-        AvailabilityRules rules = AvailabilityRules.of(
-            new FixedAvailabilityRule(
-                LocalDateTime.parse("2026-01-26T02:00:00").atZone(UTC),
-                LocalDateTime.parse("2026-01-30T02:00:00").atZone(UTC)));
-        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(60), NOT_ACTIVE, Optional.of(rules)));
+    void shouldOnlyDeleteTheTargetedBookingLink() {
+        BookingLink toDelete = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+        BookingLink toKeep = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(60), ACTIVE, Optional.empty()));
 
-        String response = given()
-        .when()
-            .get("/booking-links/" + inserted.publicId().value())
+        when()
+            .delete("/booking-links/" + toDelete.publicId().value())
         .then()
-            .statusCode(HttpStatus.SC_OK)
-            .contentType(ContentType.JSON)
-            .extract().body().asString();
+            .statusCode(HttpStatus.SC_NO_CONTENT);
 
-        assertThatJson(response)
-            .isEqualTo("""
-                {
-                    "publicId": "%s",
-                    "calendarUrl": "%s",
-                    "durationMinutes": 60,
-                    "active": false,
-                    "timeZone": "UTC",
-                    "availabilityRules": [
-                        { "type": "fixed", "start": "2026-01-26T02:00:00", "end": "2026-01-30T02:00:00" }
-                    ]
-                }
-                """.formatted(inserted.publicId().value(), CalendarURL.from(openPaaSUser.id()).asUri().toString()));
-    }
-
-    @Test
-    void shouldReturn200WithMixedAvailabilityRules() {
-        AvailabilityRules rules = AvailabilityRules.of(
-            new WeeklyAvailabilityRule(DayOfWeek.TUESDAY, LocalTime.of(9, 0), LocalTime.of(17, 0), ZONE_HO_CHI_MINH),
-            new FixedAvailabilityRule(
-                LocalDateTime.parse("2026-01-26T00:00:00").atZone(ZONE_HO_CHI_MINH),
-                LocalDateTime.parse("2026-01-30T00:00:00").atZone(ZONE_HO_CHI_MINH)));
-        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.of(rules)));
-
-        String response = given()
-        .when()
-            .get("/booking-links/" + inserted.publicId().value())
-        .then()
-            .statusCode(HttpStatus.SC_OK)
-            .contentType(ContentType.JSON)
-            .extract().body().asString();
-
-        assertThatJson(response)
-            .isEqualTo("""
-                {
-                    "publicId": "%s",
-                    "calendarUrl": "%s",
-                    "durationMinutes": 30,
-                    "active": true,
-                    "timeZone": "Asia/Ho_Chi_Minh",
-                    "availabilityRules": [
-                        { "type": "weekly", "dayOfWeek": "TUE", "start": "09:00", "end": "17:00" },
-                        { "type": "fixed", "start": "2026-01-26T00:00:00", "end": "2026-01-30T00:00:00" }
-                    ]
-                }
-                """.formatted(inserted.publicId().value(), CalendarURL.from(openPaaSUser.id()).asUri().toString()));
+        assertThat(bookingLinkProbe.listBookingLinks(openPaaSUser.username()))
+            .extracting(BookingLink::publicId)
+            .containsExactly(toKeep.publicId());
     }
 
     @Test
     void shouldReturn404WhenBookingLinkDoesNotExist() {
-        given()
-        .when()
-            .get("/booking-links/" + UUID.randomUUID())
+        when()
+            .delete("/booking-links/" + UUID.randomUUID())
         .then()
             .statusCode(HttpStatus.SC_NOT_FOUND);
     }
 
     @Test
-    void shouldReturn404WhenBookingLinkBelongsToAnotherUser() {
+    void shouldNotDeleteBookingLinkOfAnotherUser() {
         OpenPaaSUser otherUser = sabreDavExtension.newTestUser();
-        BookingLink inserted = bookingLinkProbe.insertBookingLink(otherUser.username(),
+        BookingLink otherInserted = bookingLinkProbe.insertBookingLink(otherUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(otherUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
-        given()
-        .when()
-            .get("/booking-links/" + inserted.publicId().value())
+        when()
+            .delete("/booking-links/" + otherInserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_NOT_FOUND);
+
+        assertThat(bookingLinkProbe.listBookingLinks(otherUser.username())).hasSize(1);
     }
 
     @Test
@@ -276,16 +185,15 @@ class BookingLinkGetRouteTest {
             .auth().none()
             .contentType(ContentType.JSON)
         .when()
-            .get("/booking-links/" + inserted.publicId().value())
+            .delete("/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_UNAUTHORIZED);
     }
 
     @Test
     void shouldReturn400WhenPublicIdIsNotAValidUUID() {
-        given()
-        .when()
-            .get("/booking-links/invalid-uuid")
+        when()
+            .delete("/booking-links/not-a-uuid")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST);
     }

@@ -40,7 +40,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.google.inject.multibindings.Multibinder;
 import com.linagora.calendar.app.AppTestHelper;
-import com.linagora.calendar.app.BookingLinkDataProbe;
+import com.linagora.calendar.app.BookingLinkProbe;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
@@ -81,7 +81,7 @@ class BookingLinkResetPublicIdRouteTest {
         binder -> {
             Multibinder.newSetBinder(binder, GuiceProbe.class)
                 .addBinding()
-                .to(BookingLinkDataProbe.class);
+                .to(BookingLinkProbe.class);
         });
 
     @AfterAll
@@ -89,7 +89,7 @@ class BookingLinkResetPublicIdRouteTest {
         RestAssured.reset();
     }
 
-    private BookingLinkDataProbe dataProbe;
+    private BookingLinkProbe bookingLinkProbe;
     private OpenPaaSUser openPaaSUser;
 
     @BeforeEach
@@ -99,7 +99,7 @@ class BookingLinkResetPublicIdRouteTest {
         calendarDataProbe.addDomain(openPaaSUser.username().getDomainPart().get());
         calendarDataProbe.addUserToRepository(openPaaSUser.username(), PASSWORD);
 
-        dataProbe = server.getProbe(BookingLinkDataProbe.class);
+        bookingLinkProbe = server.getProbe(BookingLinkProbe.class);
 
         PreemptiveBasicAuthScheme basicAuthScheme = new PreemptiveBasicAuthScheme();
         basicAuthScheme.setUserName(openPaaSUser.username().asString());
@@ -117,7 +117,7 @@ class BookingLinkResetPublicIdRouteTest {
 
     @Test
     void shouldReturn200WithNewBookingLinkPublicId() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         String response = given()
@@ -135,7 +135,7 @@ class BookingLinkResetPublicIdRouteTest {
 
     @Test
     void shouldReturnAPublicIdDifferentFromTheOldOne() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         String newPublicId = given()
@@ -145,12 +145,12 @@ class BookingLinkResetPublicIdRouteTest {
             .statusCode(HttpStatus.SC_OK)
             .extract().jsonPath().getString("bookingLinkPublicId");
 
-        assertThat(newPublicId).isNotEqualTo(inserted.publicId().value());
+        assertThat(newPublicId).isNotEqualTo(inserted.publicId().value().toString());
     }
 
     @Test
     void shouldInvalidateOldPublicId() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         given()
@@ -159,12 +159,12 @@ class BookingLinkResetPublicIdRouteTest {
         .then()
             .statusCode(HttpStatus.SC_OK);
 
-        assertThat(dataProbe.findBookingLink(openPaaSUser.username(), inserted.publicId())).isNull();
+        assertThat(bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId())).isNull();
     }
 
     @Test
     void shouldMakeNewPublicIdRetrievable() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         String newPublicId = given()
@@ -174,7 +174,7 @@ class BookingLinkResetPublicIdRouteTest {
             .statusCode(HttpStatus.SC_OK)
             .extract().jsonPath().getString("bookingLinkPublicId");
 
-        assertThat(dataProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(newPublicId)))).isNotNull();
+        assertThat(bookingLinkProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(newPublicId)))).isNotNull();
     }
 
     @Test
@@ -189,7 +189,7 @@ class BookingLinkResetPublicIdRouteTest {
     @Test
     void shouldReturn404WhenBookingLinkBelongsToAnotherUser() {
         OpenPaaSUser otherUser = sabreDavExtension.newTestUser();
-        BookingLink inserted = dataProbe.insertBookingLink(otherUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(otherUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         given()
@@ -201,7 +201,7 @@ class BookingLinkResetPublicIdRouteTest {
 
     @Test
     void shouldReturn401WhenUnauthenticated() {
-        BookingLink inserted = dataProbe.insertBookingLink(openPaaSUser.username(),
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         with()
