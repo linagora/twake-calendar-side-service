@@ -119,7 +119,7 @@ class BookingLinkDeleteRouteTest {
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         when()
-            .delete("/booking-links/" + inserted.publicId().value())
+            .delete("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
     }
@@ -130,7 +130,7 @@ class BookingLinkDeleteRouteTest {
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         when()
-            .delete("/booking-links/" + inserted.publicId().value())
+            .delete("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
@@ -145,7 +145,7 @@ class BookingLinkDeleteRouteTest {
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(60), ACTIVE, Optional.empty()));
 
         when()
-            .delete("/booking-links/" + toDelete.publicId().value())
+            .delete("/api/booking-links/" + toDelete.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
@@ -157,7 +157,7 @@ class BookingLinkDeleteRouteTest {
     @Test
     void shouldReturn404WhenBookingLinkDoesNotExist() {
         when()
-            .delete("/booking-links/" + UUID.randomUUID())
+            .delete("/api/booking-links/" + UUID.randomUUID())
         .then()
             .statusCode(HttpStatus.SC_NOT_FOUND);
     }
@@ -169,7 +169,7 @@ class BookingLinkDeleteRouteTest {
             new BookingLinkInsertRequest(CalendarURL.from(otherUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
 
         when()
-            .delete("/booking-links/" + otherInserted.publicId().value())
+            .delete("/api/booking-links/" + otherInserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_NOT_FOUND);
 
@@ -185,7 +185,7 @@ class BookingLinkDeleteRouteTest {
             .auth().none()
             .contentType(ContentType.JSON)
         .when()
-            .delete("/booking-links/" + inserted.publicId().value())
+            .delete("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_UNAUTHORIZED);
     }
@@ -193,7 +193,7 @@ class BookingLinkDeleteRouteTest {
     @Test
     void shouldReturn400WhenPublicIdIsNotAValidUUID() {
         when()
-            .delete("/booking-links/not-a-uuid")
+            .delete("/api/booking-links/not-a-uuid")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST);
     }

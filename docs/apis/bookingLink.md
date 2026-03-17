@@ -50,7 +50,7 @@ The `timeZone` field at the booking link level applies to all availability rules
 
 ## Endpoints
 
-### **POST /booking-links**
+### **POST /api/booking-links**
 
 Create a new booking link for the authenticated user.
 
@@ -66,7 +66,7 @@ Create a new booking link for the authenticated user.
 
 **Sample request**
 ```
-POST /booking-links
+POST /api/booking-links
 Authorization: Bearer <token>
 Content-Type: application/json
 
@@ -102,13 +102,13 @@ Content-Type: application/json
 
 ---
 
-### **GET /booking-links/{bookingLinkPublicId}**
+### **GET /api/booking-links/{bookingLinkPublicId}**
 
 Retrieve a booking link by its public ID. Only returns the link if it belongs to the authenticated user.
 
 **Sample request**
 ```
-GET /booking-links/550e8400-e29b-41d4-a716-446655440000
+GET /api/booking-links/550e8400-e29b-41d4-a716-446655440000
 Authorization: Bearer <token>
 ```
 
@@ -143,7 +143,7 @@ Fields `availabilityRules` are omitted from the response when not set.
 
 ---
 
-### **PATCH /booking-links/{bookingLinkPublicId}**
+### **PATCH /api/booking-links/{bookingLinkPublicId}**
 
 Partially update a booking link. Only fields present in the request body are updated,
 absent fields are left unchanged. At least one field must be provided.
@@ -162,7 +162,7 @@ All fields are optional. Include only the fields to update.
 
 **Sample request — update duration and deactivate**
 ```
-PATCH /booking-links/550e8400-e29b-41d4-a716-446655440000
+PATCH /api/booking-links/550e8400-e29b-41d4-a716-446655440000
 Authorization: Bearer <token>
 Content-Type: application/json
 
@@ -174,7 +174,7 @@ Content-Type: application/json
 
 **Sample request — replace availability rules**
 ```
-PATCH /booking-links/550e8400-e29b-41d4-a716-446655440000
+PATCH /api/booking-links/550e8400-e29b-41d4-a716-446655440000
 Authorization: Bearer <token>
 Content-Type: application/json
 
@@ -188,7 +188,7 @@ Content-Type: application/json
 
 **Sample request — remove availability rules**
 ```
-PATCH /booking-links/550e8400-e29b-41d4-a716-446655440000
+PATCH /api/booking-links/550e8400-e29b-41d4-a716-446655440000
 Authorization: Bearer <token>
 Content-Type: application/json
 
@@ -212,14 +212,14 @@ HTTP/1.1 204 No Content
 
 ---
 
-### **DELETE /booking-links/{bookingLinkPublicId}**
+### **DELETE /api/booking-links/{bookingLinkPublicId}**
 
 Delete a booking link. Only deletes the link if it belongs to the authenticated user.
 Returns 404 if the booking link does not exist or belongs to another user.
 
 **Sample request**
 ```
-DELETE /booking-links/550e8400-e29b-41d4-a716-446655440000
+DELETE /api/booking-links/550e8400-e29b-41d4-a716-446655440000
 Authorization: Bearer <token>
 ```
 
@@ -238,14 +238,14 @@ HTTP/1.1 204 No Content
 
 ---
 
-### **POST /booking-links/{bookingLinkPublicId}/reset**
+### **POST /api/booking-links/{bookingLinkPublicId}/reset**
 
 Generate a new public ID for an existing booking link, invalidating the old one.
 Useful when the current public link needs to be revoked and replaced.
 
 **Sample request**
 ```
-POST /booking-links/550e8400-e29b-41d4-a716-446655440000/reset
+POST /api/booking-links/550e8400-e29b-41d4-a716-446655440000/reset
 Authorization: Bearer <token>
 ```
 

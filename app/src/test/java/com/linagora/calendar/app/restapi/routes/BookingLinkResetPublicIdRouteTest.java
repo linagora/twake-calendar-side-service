@@ -122,7 +122,7 @@ class BookingLinkResetPublicIdRouteTest {
 
         String response = given()
         .when()
-            .post("/booking-links/" + inserted.publicId().value() + "/reset")
+            .post("/api/booking-links/" + inserted.publicId().value() + "/reset")
         .then()
             .statusCode(HttpStatus.SC_OK)
             .contentType(ContentType.JSON)
@@ -140,7 +140,7 @@ class BookingLinkResetPublicIdRouteTest {
 
         String newPublicId = given()
         .when()
-            .post("/booking-links/" + inserted.publicId().value() + "/reset")
+            .post("/api/booking-links/" + inserted.publicId().value() + "/reset")
         .then()
             .statusCode(HttpStatus.SC_OK)
             .extract().jsonPath().getString("bookingLinkPublicId");
@@ -155,7 +155,7 @@ class BookingLinkResetPublicIdRouteTest {
 
         given()
         .when()
-            .post("/booking-links/" + inserted.publicId().value() + "/reset")
+            .post("/api/booking-links/" + inserted.publicId().value() + "/reset")
         .then()
             .statusCode(HttpStatus.SC_OK);
 
@@ -169,7 +169,7 @@ class BookingLinkResetPublicIdRouteTest {
 
         String newPublicId = given()
         .when()
-            .post("/booking-links/" + inserted.publicId().value() + "/reset")
+            .post("/api/booking-links/" + inserted.publicId().value() + "/reset")
         .then()
             .statusCode(HttpStatus.SC_OK)
             .extract().jsonPath().getString("bookingLinkPublicId");
@@ -181,7 +181,7 @@ class BookingLinkResetPublicIdRouteTest {
     void shouldReturn404WhenBookingLinkDoesNotExist() {
         given()
         .when()
-            .post("/booking-links/" + UUID.randomUUID() + "/reset")
+            .post("/api/booking-links/" + UUID.randomUUID() + "/reset")
         .then()
             .statusCode(HttpStatus.SC_NOT_FOUND);
     }
@@ -194,7 +194,7 @@ class BookingLinkResetPublicIdRouteTest {
 
         given()
         .when()
-            .post("/booking-links/" + inserted.publicId().value() + "/reset")
+            .post("/api/booking-links/" + inserted.publicId().value() + "/reset")
         .then()
             .statusCode(HttpStatus.SC_NOT_FOUND);
     }
@@ -208,7 +208,7 @@ class BookingLinkResetPublicIdRouteTest {
             .auth().none()
             .contentType(ContentType.JSON)
         .when()
-            .post("/booking-links/" + inserted.publicId().value() + "/reset")
+            .post("/api/booking-links/" + inserted.publicId().value() + "/reset")
         .then()
             .statusCode(HttpStatus.SC_UNAUTHORIZED);
     }
@@ -218,7 +218,7 @@ class BookingLinkResetPublicIdRouteTest {
         with()
             .contentType(ContentType.JSON)
         .when()
-            .post("/booking-links/invalid-uuid/reset")
+            .post("/api/booking-links/invalid-uuid/reset")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST);
     }

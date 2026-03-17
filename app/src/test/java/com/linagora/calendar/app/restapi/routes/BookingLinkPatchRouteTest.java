@@ -140,7 +140,7 @@ class BookingLinkPatchRouteTest {
                 { "active": false }
                 """)
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
     }
@@ -155,7 +155,7 @@ class BookingLinkPatchRouteTest {
                 { "active": false }
                 """)
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
@@ -173,7 +173,7 @@ class BookingLinkPatchRouteTest {
                 { "durationMinutes": 60 }
                 """)
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
@@ -203,7 +203,7 @@ class BookingLinkPatchRouteTest {
                 { "calendarUrl": "%s" }
                 """.formatted(newCalendarUrl.asUri().toString()))
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
@@ -227,7 +227,7 @@ class BookingLinkPatchRouteTest {
                 }
                 """)
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
@@ -252,7 +252,7 @@ class BookingLinkPatchRouteTest {
                 }
                 """)
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
@@ -274,7 +274,7 @@ class BookingLinkPatchRouteTest {
                 { "availabilityRules": null }
                 """)
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
@@ -294,7 +294,7 @@ class BookingLinkPatchRouteTest {
                 { "durationMinutes": 45 }
                 """)
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
@@ -312,7 +312,7 @@ class BookingLinkPatchRouteTest {
                 { "active": false }
                 """)
         .when()
-            .patch("/booking-links/" + UUID.randomUUID())
+            .patch("/api/booking-links/" + UUID.randomUUID())
         .then()
             .statusCode(HttpStatus.SC_NOT_FOUND);
     }
@@ -328,7 +328,7 @@ class BookingLinkPatchRouteTest {
                 { "active": false }
                 """)
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_NOT_FOUND);
     }
@@ -343,7 +343,7 @@ class BookingLinkPatchRouteTest {
                 { "active": false, "unknownField": "value" }
                 """)
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.details", equalTo("Invalid request body"));
@@ -357,7 +357,7 @@ class BookingLinkPatchRouteTest {
         given()
             .body("")
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.details", equalTo("Request body must not be empty"));
@@ -371,7 +371,7 @@ class BookingLinkPatchRouteTest {
         given()
             .body("not-valid-json")
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.details", equalTo("Invalid request body"));
@@ -385,7 +385,7 @@ class BookingLinkPatchRouteTest {
         given()
             .body("{}")
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST);
     }
@@ -400,7 +400,7 @@ class BookingLinkPatchRouteTest {
                 { "durationMinutes": 0 }
                 """)
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.details", equalTo("'durationMinutes' must be positive"));
@@ -416,7 +416,7 @@ class BookingLinkPatchRouteTest {
                 { "durationMinutes": -10 }
                 """)
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.details", equalTo("'durationMinutes' must be positive"));
@@ -437,7 +437,7 @@ class BookingLinkPatchRouteTest {
                 }
                 """)
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.details", equalTo("Invalid 'timeZone' format"));
@@ -458,7 +458,7 @@ class BookingLinkPatchRouteTest {
                 }
                 """)
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.details", equalTo("'dayOfWeek' must be provided for weekly rule"));
@@ -479,7 +479,7 @@ class BookingLinkPatchRouteTest {
                 }
                 """)
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.details", equalTo("Unknown day of week abbreviation: ABC"));
@@ -500,7 +500,7 @@ class BookingLinkPatchRouteTest {
                 }
                 """)
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.details", equalTo("Invalid 'start' or 'end' time format for weekly rule, expected HH:mm"));
@@ -521,7 +521,7 @@ class BookingLinkPatchRouteTest {
                 }
                 """)
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.details", equalTo("Invalid 'start' or 'end' date-time format for fixed rule, expected yyyy-MM-ddTHH:mm:ss"));
@@ -542,7 +542,7 @@ class BookingLinkPatchRouteTest {
                 }
                 """)
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.details", equalTo("Unknown availability rule type: unknown"));
@@ -560,7 +560,7 @@ class BookingLinkPatchRouteTest {
                 { "active": false }
                 """)
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_UNAUTHORIZED);
     }
@@ -572,7 +572,7 @@ class BookingLinkPatchRouteTest {
                 { "active": false }
                 """)
         .when()
-            .patch("/booking-links/not-a-uuid")
+            .patch("/api/booking-links/not-a-uuid")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST);
     }
@@ -590,7 +590,7 @@ class BookingLinkPatchRouteTest {
                 }
                 """)
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.details", equalTo("'timeZone' cannot be provided if 'availabilityRules' is not being updated"));
@@ -611,7 +611,7 @@ class BookingLinkPatchRouteTest {
                 }
                 """)
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.details", equalTo("'timeZone' cannot be provided if 'availabilityRules' is being removed"));
@@ -631,7 +631,7 @@ class BookingLinkPatchRouteTest {
                 }
                 """)
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.details", equalTo("'timeZone' must be provided when updating 'availabilityRules'"));
@@ -647,7 +647,7 @@ class BookingLinkPatchRouteTest {
                 { "calendarUrl": null }
                 """)
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.details", equalTo("'calendarUrl' cannot be removed"));
@@ -663,7 +663,7 @@ class BookingLinkPatchRouteTest {
                 { "durationMinutes": null }
                 """)
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.details", equalTo("'durationMinutes' cannot be removed"));
@@ -679,7 +679,7 @@ class BookingLinkPatchRouteTest {
                 { "active": null }
                 """)
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.details", equalTo("'active' cannot be removed"));
@@ -698,7 +698,7 @@ class BookingLinkPatchRouteTest {
                 }
                 """)
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.details", equalTo("'availabilityRules' cannot be empty if provided"));
@@ -719,7 +719,7 @@ class BookingLinkPatchRouteTest {
                 }
                 """)
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.details", equalTo("'start' must be before 'end' for fixed rule"));
@@ -742,7 +742,7 @@ class BookingLinkPatchRouteTest {
                 { "calendarUrl": "%s" }
                 """.formatted(otherUserCalendarUrl.asUri().toString()))
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.details", equalTo("Calendar not found or access denied: " + otherUserCalendarUrl.asUri()));
@@ -762,7 +762,7 @@ class BookingLinkPatchRouteTest {
                 }
                 """.formatted(nonExistentCalendarUrl.asUri().toString()))
         .when()
-            .patch("/booking-links/" + inserted.publicId().value())
+            .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.code", equalTo(400))
