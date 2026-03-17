@@ -91,7 +91,7 @@ class AvailableSlotsCalculatorTest {
     }
 
     @Test
-    void shouldMergeWeeklyAndFixedAvailabilityRules() {
+    void shouldIntersectWeeklyAndFixedAvailabilityRules() {
         Duration eventDuration = Duration.ofHours(2);
         AvailabilityRules availabilityRules = AvailabilityRules.of(
             new WeeklyAvailabilityRule(DayOfWeek.TUESDAY,
@@ -106,9 +106,8 @@ class AvailableSlotsCalculatorTest {
             availabilityRules,
             EMPTY_UNAVAILABLE_TIME_RANGES);
 
-        // Weekly [09:00-10:00] and fixed [09:30-11:00] merge into one 2-hour slot at 09:00.
-        assertThat(testee.computeSlots(request))
-            .containsExactlyInAnyOrder(new AvailabilitySlot(Instant.parse("2026-02-24T09:00:00Z"), eventDuration));
+        // Weekly [09:00-10:00] intersect fixed [09:30-11:00] => [09:30-10:00], too short for a 2-hour slot.
+        assertThat(testee.computeSlots(request)).isEmpty();
     }
 
     @Test
@@ -132,16 +131,38 @@ class AvailableSlotsCalculatorTest {
             unavailableTimeRanges);
 
         assertThat(testee.computeSlots(request)).containsExactlyInAnyOrder(
-            // Tuesday slots
-            new AvailabilitySlot(Instant.parse("2026-02-24T09:00:00Z"), eventDuration),
-            new AvailabilitySlot(Instant.parse("2026-02-24T10:00:00Z"), eventDuration),
-            new AvailabilitySlot(Instant.parse("2026-02-24T10:30:00Z"), eventDuration),
-            new AvailabilitySlot(Instant.parse("2026-02-24T11:00:00Z"), eventDuration),
-            new AvailabilitySlot(Instant.parse("2026-02-24T11:30:00Z"), eventDuration),
-            // Wednesday slots
-            new AvailabilitySlot(Instant.parse("2026-02-25T13:00:00Z"), eventDuration),
-            new AvailabilitySlot(Instant.parse("2026-02-25T13:30:00Z"), eventDuration),
-            new AvailabilitySlot(Instant.parse("2026-02-25T15:30:00Z"), eventDuration));
+            // Tuesday intersection is [10:30-11:00], Wednesday intersection is removed by unavailable range.
+            new AvailabilitySlot(Instant.parse("2026-02-24T10:30:00Z"), eventDuration));
+    }
+
+    @Test
+    void shouldComputeSlotsFromIntersectionWhenWeeklyAndFixedRulesUseTimezone() {
+        Duration eventDuration = Duration.ofMinutes(20);
+        ZoneId hoChiMinh = ZoneId.of("Asia/Ho_Chi_Minh");
+
+        AvailabilityRules availabilityRules = AvailabilityRules.of(
+            // Weekly working window is Monday 09:00-10:00 in Asia/Ho_Chi_Minh.
+            new WeeklyAvailabilityRule(DayOfWeek.MONDAY, LocalTime.parse("09:00"), LocalTime.parse("10:00"), hoChiMinh),
+            // Fixed rule limits booking to a date interval in the same timezone.
+            new FixedAvailabilityRule(
+                ZonedDateTime.parse("2026-03-16T00:00:00+07:00[Asia/Ho_Chi_Minh]"),
+                ZonedDateTime.parse("2026-03-21T23:59:00+07:00[Asia/Ho_Chi_Minh]")));
+
+        ComputeSlotsRequest request = new ComputeSlotsRequest(
+            eventDuration,
+            Instant.parse("2026-03-16T00:00:00Z"),
+            Instant.parse("2026-03-19T00:00:00Z"),
+            availabilityRules,
+            EMPTY_UNAVAILABLE_TIME_RANGES);
+
+        Set<AvailabilitySlot> slots = testee.computeSlots(request);
+
+        // Intersecting the two rules in the queried window leaves only Monday 09:00-10:00 local time.
+        // In UTC this is 02:00-03:00, so with 20-minute duration we expect 3 starts: 02:00, 02:20, 02:40.
+        assertThat(slots).hasSize(3)
+            .containsExactlyInAnyOrder(new AvailabilitySlot(Instant.parse("2026-03-16T02:00:00Z"), eventDuration),
+                new AvailabilitySlot(Instant.parse("2026-03-16T02:20:00Z"), eventDuration),
+                new AvailabilitySlot(Instant.parse("2026-03-16T02:40:00Z"), eventDuration));
     }
 
     @Test

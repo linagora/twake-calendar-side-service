@@ -26,7 +26,10 @@ import static io.restassured.http.ContentType.JSON;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 
 import java.nio.charset.StandardCharsets;
+import java.time.DayOfWeek;
 import java.time.Duration;
+import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.Optional;
 import java.util.UUID;
@@ -45,6 +48,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import com.google.inject.Scopes;
 import com.google.inject.multibindings.Multibinder;
 import com.linagora.calendar.api.booking.AvailabilityRule.FixedAvailabilityRule;
+import com.linagora.calendar.api.booking.AvailabilityRule.WeeklyAvailabilityRule;
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.app.AppTestHelper;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
@@ -487,6 +491,40 @@ class BookingLinkSlotsRouteTest {
             .describedAs("should return empty slots when no availability matches requested range")
             .inPath("$.slots")
             .isEqualTo("[]");
+    }
+
+    @Test
+    void shouldIntersectWeeklyAndFixedRulesWhenComputingSlots(TwakeCalendarGuiceServer server) {
+        // 2036-01-26 is Saturday; weekly and fixed rules overlap on that same day.
+        AvailabilityRules mixedRules = AvailabilityRules.of(
+            new WeeklyAvailabilityRule(DayOfWeek.SATURDAY, LocalTime.parse("09:00"), LocalTime.parse("10:00"), ZoneId.of("UTC")),
+            new FixedAvailabilityRule(
+                ZonedDateTime.parse("2036-01-26T09:30:00Z"),
+                ZonedDateTime.parse("2036-01-26T10:30:00Z")));
+        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES, mixedRules);
+        BookingLink inserted = server.getProbe(BookingLinkSlotsProbe.class).insert(openPaaSUser.username(), insertRequest);
+
+        String response = given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .queryParam("from", FROM_20360126)
+            .queryParam("to", TO_20360127)
+        .when()
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(JSON)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response)
+            .describedAs("should return slots from the overlapping part of weekly and fixed rules")
+            .inPath("$.slots")
+            .isEqualTo("""
+                [
+                  { "start": "2036-01-26T09:30:00Z" }
+                ]
+                """);
     }
 
     @Test

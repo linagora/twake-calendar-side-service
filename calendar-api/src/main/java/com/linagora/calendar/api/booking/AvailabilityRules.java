@@ -22,6 +22,8 @@ import static com.linagora.calendar.api.booking.AvailableSlotsCalculator.validat
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Range;
@@ -38,14 +40,35 @@ public record AvailabilityRules(List<AvailabilityRule> values) {
         Preconditions.checkArgument(values != null && !values.isEmpty(), "'values' must not be null or empty");
     }
 
-    // Expands rules into ranges, merges overlaps, and clips the result to [start, end).
+    // Build availability as: intersection(union(rules by type)), clipped to [start, end).
     public RangeSet<Instant> toRangeSet(Instant start, Instant end) {
         validateTimeRange(start, end);
 
-        RangeSet<Instant> availabilityRanges = TreeRangeSet.create(values.stream()
-            .flatMap(rule -> rule.availabilityRanges(start, end).stream())
-            .toList());
+        Map<Class<? extends AvailabilityRule>, List<AvailabilityRule>> rulesByType = values.stream()
+            .collect(Collectors.groupingBy(AvailabilityRule::getClass));
+
+        List<RangeSet<Instant>> mergedByType = rulesByType.values().stream()
+            .map(rulesOfSameType -> mergeAvailabilityRanges(start, end, rulesOfSameType))
+            .toList();
+
+        RangeSet<Instant> availabilityRanges = intersectAvailabilityRanges(mergedByType);
 
         return availabilityRanges.subRangeSet(Range.closedOpen(start, end));
+    }
+
+    private RangeSet<Instant> mergeAvailabilityRanges(Instant start, Instant end, List<AvailabilityRule> rulesOfSameType) {
+        return TreeRangeSet.create(rulesOfSameType.stream()
+            .flatMap(rule -> rule.availabilityRanges(start, end).stream())
+            .toList());
+    }
+
+    private RangeSet<Instant> intersectAvailabilityRanges(List<RangeSet<Instant>> mergedByType) {
+        return mergedByType.stream()
+            .map(TreeRangeSet::create)
+            .reduce((left, right) -> {
+                left.removeAll(right.complement());
+                return left;
+            })
+            .orElseGet(TreeRangeSet::create);
     }
 }

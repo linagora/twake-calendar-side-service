@@ -130,7 +130,7 @@ class AvailabilityRulesTest {
     }
 
     @Test
-    void toRangeSetShouldMergeFixedAndWeeklyRules() {
+    void toRangeSetShouldIntersectFixedAndWeeklyRules() {
         AvailabilityRules rules = AvailabilityRules.of(
             new FixedAvailabilityRule(ZonedDateTime.parse("2026-02-23T09:00:00Z[UTC]"), ZonedDateTime.parse("2026-02-23T10:00:00Z[UTC]")),
             new WeeklyAvailabilityRule(DayOfWeek.MONDAY, LocalTime.parse("09:30"), LocalTime.parse("11:00")));
@@ -138,7 +138,20 @@ class AvailabilityRulesTest {
         RangeSet<Instant> actual = rules.toRangeSet(Instant.parse("2026-02-23T00:00:00Z"), Instant.parse("2026-02-24T00:00:00Z"));
 
         assertThat(actual.asRanges())
-            .containsExactly(Range.closedOpen(Instant.parse("2026-02-23T09:00:00Z"), Instant.parse("2026-02-23T11:00:00Z")));
+            .containsExactly(Range.closedOpen(Instant.parse("2026-02-23T09:30:00Z"), Instant.parse("2026-02-23T10:00:00Z")));
+    }
+
+    @Test
+    void toRangeSetShouldReturnEmptyWhenMixedRulesAndOneTypeHasNoRangeInWindow() {
+        AvailabilityRules rules = AvailabilityRules.of(
+            new WeeklyAvailabilityRule(DayOfWeek.MONDAY, LocalTime.parse("09:00"), LocalTime.parse("10:00"), ZoneId.of("UTC")),
+            new FixedAvailabilityRule(ZonedDateTime.parse("2026-02-24T09:00:00Z[UTC]"), ZonedDateTime.parse("2026-02-24T10:00:00Z[UTC]")));
+
+        RangeSet<Instant> actual = rules.toRangeSet(
+            Instant.parse("2026-02-23T00:00:00Z"),
+            Instant.parse("2026-02-24T00:00:00Z"));
+
+        assertThat(actual.asRanges()).isEmpty();
     }
 
     @Test
