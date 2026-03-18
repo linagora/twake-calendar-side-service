@@ -266,3 +266,116 @@ Content-Type: application/json
 | 400    | `bookingLinkPublicId` is not a valid UUID                         |
 | 401    | Unauthenticated                                                   |
 | 404    | Booking link not found or belongs to another user                 |
+
+---
+
+### **GET /api/booking-links/{bookingLinkPublicId}/slots**
+- No authentication required
+
+Compute available slots for a public booking link in a query time range.
+
+**Query parameters**
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `from`    | yes      | Range start, ISO-8601 instant (example: `2036-01-26T00:00:00Z`) |
+| `to`      | yes      | Range end, ISO-8601 instant (must be strictly after `from`) |
+
+Constraints:
+
+- Max query range is 60 days.
+
+**Sample request**
+
+```
+GET /api/booking-links/550e8400-e29b-41d4-a716-446655440000/slots?from=2036-01-26T00:00:00Z&to=2036-01-27T00:00:00Z
+```
+
+**Sample response**
+
+```
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "durationMinutes": 30,
+  "range": {
+    "from": "2036-01-26T00:00:00Z",
+    "to": "2036-01-27T00:00:00Z"
+  },
+  "slots": [
+    { "start": "2036-01-26T09:00:00Z" },
+    { "start": "2036-01-26T09:30:00Z" },
+    { "start": "2036-01-26T10:00:00Z" }
+  ]
+}
+```
+
+**Error responses**
+
+| Status | Cause |
+|--------|-------|
+| 400    | Missing/invalid `from` or `to`, invalid UUID, `to <= from`, range > 60 days |
+| 404    | Booking link not found or inactive |
+
+---
+
+### **POST /api/booking-links/{bookingLinkPublicId}/book**
+
+- No authentication required
+
+Create a booking on a selected slot for a public booking link.
+
+**Request body**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `startUtc` | yes | Slot start in ISO-8601 instant format |
+| `creator` | yes | Booking creator object |
+| `creator.email` | yes | Creator email |
+| `creator.name` | no | Creator display name |
+| `additional_attendees` | no | Additional attendees (max 20), unique emails, must not include creator email |
+| `eventTitle` | yes | Event title, non-blank, max 255 chars |
+| `visioLink` | no | Whether to generate a visio link (default: `false`) |
+| `notes` | no | Notes, max 2000 chars |
+
+**Sample request**
+
+```
+POST /api/booking-links/550e8400-e29b-41d4-a716-446655440000/book
+Content-Type: application/json
+
+{
+  "startUtc": "2036-01-26T09:00:00Z",
+  "creator": {
+    "name": "BOB",
+    "email": "creator@example.com"
+  },
+  "additional_attendees": [
+    {
+      "name": "Nguyen Van A",
+      "email": "vana@example.com"
+    }
+  ],
+  "eventTitle": "30-min intro call",
+  "visioLink": true,
+  "notes": "Please call via Zoom."
+}
+```
+
+**Sample response**
+
+```
+HTTP/1.1 201 Created
+```
+
+**Error responses**
+
+| Status | Cause |
+|--------|-------|
+| 400    | Invalid body, invalid email/constraints, requested slot not available |
+| 422    | Request is syntactically valid but cannot be processed due to business validation rules |
+| 404    | Booking link not found or inactive |
+| 500    | Unexpected server-side booking error |
+
+---
