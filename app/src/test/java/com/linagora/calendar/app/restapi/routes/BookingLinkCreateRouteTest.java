@@ -305,7 +305,7 @@ class BookingLinkCreateRouteTest {
                 }
                 """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
             .when()
-            .post("/booking-links")
+            .post("/api/booking-links")
             .then()
             .statusCode(HttpStatus.SC_CREATED)
             .extract().jsonPath().getString("bookingLinkPublicId");
@@ -621,7 +621,7 @@ class BookingLinkCreateRouteTest {
                 }
                 """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
         .when()
-            .post("/booking-links")
+            .post("/api/booking-links")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.details", equalTo("'timeZone' cannot be provided when 'availabilityRules' is null or empty"));
