@@ -103,7 +103,7 @@ public class BookingLinkGetRoute extends CalendarRoute {
 
     @Override
     Endpoint endpoint() {
-        return new Endpoint(HttpMethod.GET, "/booking-links/{" + PUBLIC_ID_PARAM + "}");
+        return new Endpoint(HttpMethod.GET, "/api/booking-links/{" + PUBLIC_ID_PARAM + "}");
     }
 
     @Override

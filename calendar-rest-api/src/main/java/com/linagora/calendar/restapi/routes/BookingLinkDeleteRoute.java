@@ -53,7 +53,7 @@ public class BookingLinkDeleteRoute extends CalendarRoute {
 
     @Override
     Endpoint endpoint() {
-        return new Endpoint(HttpMethod.DELETE, "/booking-links/{" + PUBLIC_ID_PARAM + "}");
+        return new Endpoint(HttpMethod.DELETE, "/api/booking-links/{" + PUBLIC_ID_PARAM + "}");
     }
 
     @Override

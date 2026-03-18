@@ -130,7 +130,7 @@ class BookingLinkGetRouteTest {
 
         String response = given()
         .when()
-            .get("/booking-links/" + inserted.publicId().value())
+            .get("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_OK)
             .contentType(ContentType.JSON)
@@ -157,7 +157,7 @@ class BookingLinkGetRouteTest {
 
         String response = given()
         .when()
-            .get("/booking-links/" + inserted.publicId().value())
+            .get("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_OK)
             .contentType(ContentType.JSON)
@@ -190,7 +190,7 @@ class BookingLinkGetRouteTest {
 
         String response = given()
         .when()
-            .get("/booking-links/" + inserted.publicId().value())
+            .get("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_OK)
             .contentType(ContentType.JSON)
@@ -223,7 +223,7 @@ class BookingLinkGetRouteTest {
 
         String response = given()
         .when()
-            .get("/booking-links/" + inserted.publicId().value())
+            .get("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_OK)
             .contentType(ContentType.JSON)
@@ -249,7 +249,7 @@ class BookingLinkGetRouteTest {
     void shouldReturn404WhenBookingLinkDoesNotExist() {
         given()
         .when()
-            .get("/booking-links/" + UUID.randomUUID())
+            .get("/api/booking-links/" + UUID.randomUUID())
         .then()
             .statusCode(HttpStatus.SC_NOT_FOUND);
     }
@@ -262,7 +262,7 @@ class BookingLinkGetRouteTest {
 
         given()
         .when()
-            .get("/booking-links/" + inserted.publicId().value())
+            .get("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_NOT_FOUND);
     }
@@ -276,7 +276,7 @@ class BookingLinkGetRouteTest {
             .auth().none()
             .contentType(ContentType.JSON)
         .when()
-            .get("/booking-links/" + inserted.publicId().value())
+            .get("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_UNAUTHORIZED);
     }
@@ -285,7 +285,7 @@ class BookingLinkGetRouteTest {
     void shouldReturn400WhenPublicIdIsNotAValidUUID() {
         given()
         .when()
-            .get("/booking-links/invalid-uuid")
+            .get("/api/booking-links/invalid-uuid")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST);
     }

@@ -83,7 +83,7 @@ public class BookingLinkPatchRoute extends CalendarRoute {
 
     @Override
     Endpoint endpoint() {
-        return new Endpoint(HttpMethod.PATCH, "/booking-links/{" + PUBLIC_ID_PARAM + "}");
+        return new Endpoint(HttpMethod.PATCH, "/api/booking-links/{" + PUBLIC_ID_PARAM + "}");
     }
 
     @Override

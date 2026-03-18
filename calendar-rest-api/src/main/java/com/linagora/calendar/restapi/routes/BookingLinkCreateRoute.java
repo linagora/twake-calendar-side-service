@@ -114,7 +114,7 @@ public class BookingLinkCreateRoute extends CalendarRoute {
 
     @Override
     Endpoint endpoint() {
-        return new Endpoint(HttpMethod.POST, "/booking-links");
+        return new Endpoint(HttpMethod.POST, "/api/booking-links");
     }
 
     @Override

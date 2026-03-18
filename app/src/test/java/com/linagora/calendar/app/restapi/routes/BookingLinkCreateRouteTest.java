@@ -132,7 +132,7 @@ class BookingLinkCreateRouteTest {
                 }
                 """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
         .when()
-            .post("/booking-links")
+            .post("/api/booking-links")
         .then()
             .statusCode(HttpStatus.SC_CREATED)
             .contentType(ContentType.JSON)
@@ -154,7 +154,7 @@ class BookingLinkCreateRouteTest {
                 }
                 """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
         .when()
-            .post("/booking-links")
+            .post("/api/booking-links")
         .then()
             .statusCode(HttpStatus.SC_CREATED)
             .extract().jsonPath().getString("bookingLinkPublicId");
@@ -184,7 +184,7 @@ class BookingLinkCreateRouteTest {
                 }
                 """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
         .when()
-            .post("/booking-links")
+            .post("/api/booking-links")
         .then()
             .statusCode(HttpStatus.SC_CREATED)
             .extract().jsonPath().getString("bookingLinkPublicId");
@@ -216,7 +216,7 @@ class BookingLinkCreateRouteTest {
                 }
                 """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
         .when()
-            .post("/booking-links")
+            .post("/api/booking-links")
         .then()
             .statusCode(HttpStatus.SC_CREATED)
             .extract().jsonPath().getString("bookingLinkPublicId");
@@ -245,7 +245,7 @@ class BookingLinkCreateRouteTest {
                 }
                 """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
         .when()
-            .post("/booking-links")
+            .post("/api/booking-links")
         .then()
             .statusCode(HttpStatus.SC_CREATED)
             .extract().jsonPath().getString("bookingLinkPublicId");
@@ -269,10 +269,10 @@ class BookingLinkCreateRouteTest {
             }
             """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString());
 
-        String firstPublicId = given().body(body).when().post("/booking-links")
+        String firstPublicId = given().body(body).when().post("/api/booking-links")
             .then().statusCode(HttpStatus.SC_CREATED).extract().jsonPath().getString("bookingLinkPublicId");
 
-        String secondPublicId = given().body(body).when().post("/booking-links")
+        String secondPublicId = given().body(body).when().post("/api/booking-links")
             .then().statusCode(HttpStatus.SC_CREATED).extract().jsonPath().getString("bookingLinkPublicId");
 
         assertThat(firstPublicId).isNotEqualTo(secondPublicId);
@@ -289,7 +289,7 @@ class BookingLinkCreateRouteTest {
                 }
                 """)
         .when()
-            .post("/booking-links")
+            .post("/api/booking-links")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.code", equalTo(400))
@@ -308,7 +308,7 @@ class BookingLinkCreateRouteTest {
                 }
                 """)
             .when()
-            .post("/booking-links")
+            .post("/api/booking-links")
             .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.code", equalTo(400))
@@ -326,7 +326,7 @@ class BookingLinkCreateRouteTest {
                 }
                 """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
         .when()
-            .post("/booking-links")
+            .post("/api/booking-links")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.code", equalTo(400))
@@ -345,7 +345,7 @@ class BookingLinkCreateRouteTest {
                 }
                 """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
         .when()
-            .post("/booking-links")
+            .post("/api/booking-links")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.code", equalTo(400))
@@ -364,7 +364,7 @@ class BookingLinkCreateRouteTest {
                 }
                 """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
         .when()
-            .post("/booking-links")
+            .post("/api/booking-links")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.code", equalTo(400))
@@ -382,7 +382,7 @@ class BookingLinkCreateRouteTest {
                 }
                 """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
         .when()
-            .post("/booking-links")
+            .post("/api/booking-links")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.code", equalTo(400))
@@ -402,7 +402,7 @@ class BookingLinkCreateRouteTest {
                 }
                 """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
             .when()
-            .post("/booking-links")
+            .post("/api/booking-links")
             .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.code", equalTo(400))
@@ -415,7 +415,7 @@ class BookingLinkCreateRouteTest {
         given()
             .body("")
         .when()
-            .post("/booking-links")
+            .post("/api/booking-links")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.code", equalTo(400))
@@ -428,7 +428,7 @@ class BookingLinkCreateRouteTest {
         given()
             .body("not-valid-json")
         .when()
-            .post("/booking-links")
+            .post("/api/booking-links")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.code", equalTo(400))
@@ -450,7 +450,7 @@ class BookingLinkCreateRouteTest {
                 }
                 """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
         .when()
-            .post("/booking-links")
+            .post("/api/booking-links")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.code", equalTo(400))
@@ -472,7 +472,7 @@ class BookingLinkCreateRouteTest {
                 }
                 """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
             .when()
-            .post("/booking-links")
+            .post("/api/booking-links")
             .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.code", equalTo(400))
@@ -494,7 +494,7 @@ class BookingLinkCreateRouteTest {
                 }
                 """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
             .when()
-            .post("/booking-links")
+            .post("/api/booking-links")
             .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.code", equalTo(400))
@@ -516,7 +516,7 @@ class BookingLinkCreateRouteTest {
                 }
                 """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
             .when()
-            .post("/booking-links")
+            .post("/api/booking-links")
             .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.code", equalTo(400))
@@ -538,7 +538,7 @@ class BookingLinkCreateRouteTest {
                 }
                 """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
         .when()
-            .post("/booking-links")
+            .post("/api/booking-links")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.code", equalTo(400))
@@ -560,7 +560,7 @@ class BookingLinkCreateRouteTest {
                 }
                 """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
             .when()
-            .post("/booking-links")
+            .post("/api/booking-links")
             .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.code", equalTo(400))
@@ -581,7 +581,7 @@ class BookingLinkCreateRouteTest {
                 }
                 """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
         .when()
-            .post("/booking-links")
+            .post("/api/booking-links")
         .then()
             .statusCode(HttpStatus.SC_UNAUTHORIZED);
     }
@@ -597,7 +597,7 @@ class BookingLinkCreateRouteTest {
                 }
                 """)
         .when()
-            .post("/booking-links")
+            .post("/api/booking-links")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .body("error.code", equalTo(400))

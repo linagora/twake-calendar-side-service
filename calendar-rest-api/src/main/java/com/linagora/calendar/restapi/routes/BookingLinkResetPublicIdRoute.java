@@ -58,7 +58,7 @@ public class BookingLinkResetPublicIdRoute extends CalendarRoute {
 
     @Override
     Endpoint endpoint() {
-        return new Endpoint(HttpMethod.POST, "/booking-links/{" + PUBLIC_ID_PARAM + "}/reset");
+        return new Endpoint(HttpMethod.POST, "/api/booking-links/{" + PUBLIC_ID_PARAM + "}/reset");
     }
 
     @Override
