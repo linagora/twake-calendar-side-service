@@ -18,9 +18,9 @@
 
 package com.linagora.calendar.restapi.routes;
 
-import static com.linagora.calendar.storage.configuration.resolver.BusinessHoursSettingReader.BUSINESS_HOURS_IDENTIFIER;
 import static com.linagora.calendar.restapi.RestApiConstants.JSON_HEADER;
 import static com.linagora.calendar.restapi.RestApiConstants.OBJECT_MAPPER_DEFAULT;
+import static com.linagora.calendar.storage.configuration.resolver.BusinessHoursSettingReader.BUSINESS_HOURS_IDENTIFIER;
 
 import java.time.DateTimeException;
 import java.time.DayOfWeek;
@@ -47,11 +47,11 @@ import com.google.common.base.Strings;
 import com.linagora.calendar.api.booking.AvailabilityRule;
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.dav.CalDavClient;
-import com.linagora.calendar.storage.configuration.resolver.BusinessHoursSettingReader;
 import com.linagora.calendar.restapi.routes.dto.AvailabilityRuleDTO;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
+import com.linagora.calendar.storage.configuration.resolver.BusinessHoursSettingReader;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 
 import io.netty.handler.codec.http.HttpMethod;
