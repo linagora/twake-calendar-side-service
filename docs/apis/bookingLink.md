@@ -56,13 +56,13 @@ Create a new booking link for the authenticated user.
 
 **Request body**
 
-| Field               | Required | Description                                        |
-|---------------------|----------|----------------------------------------------------|
-| `calendarUrl`       | yes      | Calendar URI (must be accessible by the user)      |
-| `durationMinutes`   | yes      | Slot duration in minutes, must be positive         |
-| `active`            | yes      | Whether the booking link is active                 |
-| `timeZone`          | no       | Defaults to `UTC` if omitted                       |
-| `availabilityRules` | no       | List of availability rules                         |
+| Field               | Required | Description                                                                                                                                                               |
+|---------------------|----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `calendarUrl`       | yes      | Calendar URI (must be accessible by the user)                                                                                                                             |
+| `durationMinutes`   | yes      | Slot duration in minutes, must be positive                                                                                                                                |
+| `active`            | yes      | Whether the booking link is active                                                                                                                                        |
+| `timeZone`          | no       | Default to the timezone setting of the user, then to the default configured timezone then UTC if omitted. Cannot be provided when `availabilityRules` is absent or empty. |
+| `availabilityRules` | no       | List of availability rules. Default to the business hours setting of the user, then to the default configured business hours when omitted.                                |
 
 **Sample request**
 ```
@@ -97,7 +97,7 @@ Content-Type: application/json
 
 | Status | Cause                                          |
 |--------|------------------------------------------------|
-| 400    | Missing or invalid field, unknown rule type, calendar not found or inaccessible |
+| 400    | Missing or invalid field, unknown rule type, calendar not found or inaccessible, `timeZone` provided without non-empty `availabilityRules` |
 | 401    | Unauthenticated                                |
 
 ---

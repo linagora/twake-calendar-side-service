@@ -116,6 +116,7 @@ import com.linagora.calendar.restapi.routes.people.search.ResourceSearchProvider
 import com.linagora.calendar.restapi.routes.people.search.UserSearchProvider;
 import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.TokenInfoResolver;
+import com.linagora.calendar.storage.configuration.resolver.BusinessHoursSettingReader;
 import com.linagora.calendar.storage.configuration.resolver.ConfigurationEntryResolver;
 import com.linagora.calendar.storage.configuration.resolver.ConfigurationResolver;
 import com.linagora.calendar.storage.configuration.resolver.ConstantConfigurationEntryResolver;
@@ -343,6 +344,13 @@ public class RestApiModule extends AbstractModule {
     @Named("language")
     SettingsBasedResolver provideLocaleResolver(ConfigurationResolver configurationResolver, SimpleSessionProvider sessionProvider) {
         return SettingsBasedResolver.of(configurationResolver, sessionProvider, Set.of(SettingsBasedResolver.LanguageSettingReader.INSTANCE));
+    }
+
+    @Provides
+    @Singleton
+    @Named("businessHours")
+    SettingsBasedResolver provideBusinessHourResolver(ConfigurationResolver configurationResolver, SimpleSessionProvider sessionProvider) {
+        return SettingsBasedResolver.of(configurationResolver, sessionProvider, Set.of(SettingsBasedResolver.TimeZoneSettingReader.INSTANCE, new BusinessHoursSettingReader()));
     }
 
     @Provides
