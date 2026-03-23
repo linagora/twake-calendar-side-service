@@ -82,7 +82,7 @@ public class EventCalendarNotificationConsumerTest {
 
     @RegisterExtension
     static RabbitMQExtension rabbitMQExtension = RabbitMQExtension.singletonRabbitMQ()
-        .isolationPolicy(RabbitMQExtension.IsolationPolicy.STRONG);
+        .isolationPolicy(RabbitMQExtension.IsolationPolicy.WEAK);
 
     private static ReactorRabbitMQChannelPool channelPool;
     private static SimpleConnectionPool connectionPool;
