@@ -55,7 +55,7 @@ public class RabbitMQDeadLetterQueueEmptinessHealthCheckTest {
 
     @RegisterExtension
     static RabbitMQExtension rabbitMQExtension = RabbitMQExtension.singletonRabbitMQ()
-        .isolationPolicy(RabbitMQExtension.IsolationPolicy.STRONG);
+        .isolationPolicy(RabbitMQExtension.IsolationPolicy.WEAK);
 
     private Connection connection;
     private Channel channel;
