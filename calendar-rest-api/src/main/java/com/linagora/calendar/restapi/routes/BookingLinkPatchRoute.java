@@ -20,7 +20,6 @@ package com.linagora.calendar.restapi.routes;
 
 import static com.linagora.calendar.restapi.RestApiConstants.OBJECT_MAPPER_DEFAULT;
 
-import java.time.DateTimeException;
 import java.time.Duration;
 import java.time.ZoneId;
 import java.util.List;
@@ -28,6 +27,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import jakarta.inject.Inject;
+import jakarta.inject.Named;
 
 import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.http.Authenticator;
@@ -46,6 +46,7 @@ import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.booking.BookingLinkNotFoundException;
 import com.linagora.calendar.storage.booking.BookingLinkPatchRequest;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
+import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -60,25 +61,27 @@ public class BookingLinkPatchRoute extends CalendarRoute {
     private static final String FIELD_DURATION_MINUTES = "durationMinutes";
     private static final String FIELD_ACTIVE = "active";
     private static final String FIELD_AVAILABILITY_RULES = "availabilityRules";
-    private static final String FIELD_TIME_ZONE = "timeZone";
 
     public record PatchDto(@JsonProperty(FIELD_CALENDAR_URL) Optional<String> calendarUrl,
                            @JsonProperty(FIELD_DURATION_MINUTES) Optional<Integer> durationMinutes,
                            @JsonProperty(FIELD_ACTIVE) Optional<Boolean> active,
-                           @JsonProperty(FIELD_TIME_ZONE) Optional<String> timeZone,
                            @JsonProperty(FIELD_AVAILABILITY_RULES) Optional<List<AvailabilityRuleDTO>> availabilityRules) {
     }
 
     private final BookingLinkDAO bookingLinkDAO;
     private final CalDavClient calDavClient;
+    private final SettingsBasedResolver settingsResolver;
 
     @Inject
     public BookingLinkPatchRoute(Authenticator authenticator,
                                  MetricFactory metricFactory,
-                                 BookingLinkDAO bookingLinkDAO, CalDavClient calDavClient) {
+                                 BookingLinkDAO bookingLinkDAO,
+                                 CalDavClient calDavClient,
+                                 @Named("businessHours") SettingsBasedResolver settingsResolver) {
         super(authenticator, metricFactory);
         this.bookingLinkDAO = bookingLinkDAO;
         this.calDavClient = calDavClient;
+        this.settingsResolver = settingsResolver;
     }
 
     @Override
@@ -92,7 +95,8 @@ public class BookingLinkPatchRoute extends CalendarRoute {
 
         return request.receive().aggregate().asByteArray()
             .switchIfEmpty(Mono.error(new IllegalArgumentException("Request body must not be empty")))
-            .map(this::parsePatchRequest)
+            .flatMap(body -> settingsResolver.resolveOrDefault(session.getUser())
+                .map(resolvedSettings -> parsePatchRequest(body, resolvedSettings.zoneId())))
             .flatMap(patchRequest ->
                 patchRequest.calendarUrl().toOptional().map(calendarURL ->
                     validateCalendarAccess(calendarURL, session).thenReturn(patchRequest)).orElse(Mono.just(patchRequest)))
@@ -112,7 +116,7 @@ public class BookingLinkPatchRoute extends CalendarRoute {
             });
     }
 
-    private BookingLinkPatchRequest parsePatchRequest(byte[] body) {
+    private BookingLinkPatchRequest parsePatchRequest(byte[] body, ZoneId defaultTimeZone) {
         try {
             JsonNode node = OBJECT_MAPPER_DEFAULT.readTree(body);
             PatchDto dto = parseJSONtoPatchDto(body);
@@ -120,7 +124,7 @@ public class BookingLinkPatchRoute extends CalendarRoute {
                 parseCalendarUrl(node, dto),
                 parseDuration(node, dto),
                 parseActive(node, dto),
-                parseAvailabilityRules(node, dto));
+                parseAvailabilityRules(node, dto, defaultTimeZone));
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
@@ -166,31 +170,18 @@ public class BookingLinkPatchRoute extends CalendarRoute {
         return dto.active.map(ValuePatch::modifyTo).orElseThrow(() -> new IllegalArgumentException("'active' cannot be removed"));
     }
 
-    private ValuePatch<AvailabilityRules> parseAvailabilityRules(JsonNode node, PatchDto dto) {
+    private ValuePatch<AvailabilityRules> parseAvailabilityRules(JsonNode node, PatchDto dto, ZoneId defaultTimeZone) {
         if (!node.has(FIELD_AVAILABILITY_RULES)) {
-            Preconditions.checkArgument(dto.timeZone().isEmpty(), "'timeZone' cannot be provided if 'availabilityRules' is not being updated");
             return ValuePatch.keep();
         }
         return dto.availabilityRules.map(rules -> rules.stream()
-            .map(availabilityRuleDTO -> availabilityRuleDTO.toAvailabilityRule(
-                dto.timeZone().map(this::toZoneId).orElseThrow(() -> new IllegalArgumentException("'timeZone' must be provided when updating 'availabilityRules'"))))
+            .map(availabilityRuleDTO -> availabilityRuleDTO.toAvailabilityRule(defaultTimeZone))
             .toList())
             .map(ruleList -> {
                 Preconditions.checkArgument(!ruleList.isEmpty(), "'availabilityRules' cannot be empty if provided");
                 return new AvailabilityRules(ruleList);
             })
             .map(ValuePatch::modifyTo)
-            .orElseGet(() -> {
-                Preconditions.checkArgument(dto.timeZone().isEmpty(), "'timeZone' cannot be provided if 'availabilityRules' is being removed");
-                return ValuePatch.remove();
-            });
-    }
-
-    private ZoneId toZoneId(String timeZone) {
-        try {
-            return ZoneId.of(timeZone);
-        } catch (DateTimeException e) {
-            throw new IllegalArgumentException("Invalid 'timeZone' format", e);
-        }
+            .orElseGet(ValuePatch::remove);
     }
 }

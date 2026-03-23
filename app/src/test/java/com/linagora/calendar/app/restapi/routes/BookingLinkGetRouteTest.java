@@ -151,7 +151,7 @@ class BookingLinkGetRouteTest {
     void shouldReturn200WithWeeklyAvailabilityRules() {
         AvailabilityRules rules = AvailabilityRules.of(
             new WeeklyAvailabilityRule(DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(12, 0), ZONE_HO_CHI_MINH),
-            new WeeklyAvailabilityRule(DayOfWeek.MONDAY, LocalTime.of(13, 0), LocalTime.of(17, 0), ZONE_HO_CHI_MINH));
+            new WeeklyAvailabilityRule(DayOfWeek.MONDAY, LocalTime.of(13, 0), LocalTime.of(17, 0), ZoneId.of("Europe/London")));
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.of(rules)));
 
@@ -170,10 +170,9 @@ class BookingLinkGetRouteTest {
                     "calendarUrl": "%s",
                     "durationMinutes": 30,
                     "active": true,
-                    "timeZone": "Asia/Ho_Chi_Minh",
                     "availabilityRules": [
-                        { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "12:00" },
-                        { "type": "weekly", "dayOfWeek": "MON", "start": "13:00", "end": "17:00" }
+                        { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "timeZone": "Asia/Ho_Chi_Minh" },
+                        { "type": "weekly", "dayOfWeek": "MON", "start": "13:00", "end": "17:00", "timeZone": "Europe/London" }
                     ]
                 }
                 """.formatted(inserted.publicId().value(), CalendarURL.from(openPaaSUser.id()).asUri().toString()));
@@ -203,9 +202,8 @@ class BookingLinkGetRouteTest {
                     "calendarUrl": "%s",
                     "durationMinutes": 60,
                     "active": false,
-                    "timeZone": "UTC",
                     "availabilityRules": [
-                        { "type": "fixed", "start": "2026-01-26T02:00:00", "end": "2026-01-30T02:00:00" }
+                        { "type": "fixed", "start": "2026-01-26T02:00:00", "end": "2026-01-30T02:00:00", "timeZone": "UTC" }
                     ]
                 }
                 """.formatted(inserted.publicId().value(), CalendarURL.from(openPaaSUser.id()).asUri().toString()));
@@ -216,8 +214,8 @@ class BookingLinkGetRouteTest {
         AvailabilityRules rules = AvailabilityRules.of(
             new WeeklyAvailabilityRule(DayOfWeek.TUESDAY, LocalTime.of(9, 0), LocalTime.of(17, 0), ZONE_HO_CHI_MINH),
             new FixedAvailabilityRule(
-                LocalDateTime.parse("2026-01-26T00:00:00").atZone(ZONE_HO_CHI_MINH),
-                LocalDateTime.parse("2026-01-30T00:00:00").atZone(ZONE_HO_CHI_MINH)));
+                LocalDateTime.parse("2026-01-26T00:00:00").atZone(ZoneId.of("Europe/London")),
+                LocalDateTime.parse("2026-01-30T00:00:00").atZone(ZoneId.of("Europe/London"))));
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.of(rules)));
 
@@ -236,10 +234,9 @@ class BookingLinkGetRouteTest {
                     "calendarUrl": "%s",
                     "durationMinutes": 30,
                     "active": true,
-                    "timeZone": "Asia/Ho_Chi_Minh",
                     "availabilityRules": [
-                        { "type": "weekly", "dayOfWeek": "TUE", "start": "09:00", "end": "17:00" },
-                        { "type": "fixed", "start": "2026-01-26T00:00:00", "end": "2026-01-30T00:00:00" }
+                        { "type": "weekly", "dayOfWeek": "TUE", "start": "09:00", "end": "17:00", "timeZone": "Asia/Ho_Chi_Minh" },
+                        { "type": "fixed", "start": "2026-01-26T00:00:00", "end": "2026-01-30T00:00:00", "timeZone": "Europe/London" }
                     ]
                 }
                 """.formatted(inserted.publicId().value(), CalendarURL.from(openPaaSUser.id()).asUri().toString()));

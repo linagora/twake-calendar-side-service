@@ -1,14 +1,15 @@
 # Booking Link API
 
-This document describes the Booking Link endpoints for managing user booking links.
+This document describes the Booking Link endpoints for managing user booking links (authenticated users) and using booking links to book events (public users).
 
 ---
 
 ## Overview
 
-A booking link allows an authenticated user to expose availability slots for scheduling.
+Booking link API allows an authenticated user to expose availability slots for scheduling.
 Each booking link is identified by a UUID public ID, scoped to a calendar, and can define
-availability rules (weekly recurring or fixed date ranges).
+availability rules (weekly recurring or fixed date ranges). 
+Public users can use booking links to book events.
 
 ---
 
@@ -22,29 +23,28 @@ availability rules (weekly recurring or fixed date ranges).
 | `calendarUrl`       | string           | Calendar URI in the form `/calendars/{baseId}/{calendarId}`                 |
 | `durationMinutes`   | integer          | Duration of each bookable slot in minutes (must be positive)                |
 | `active`            | boolean          | Whether the booking link is active                                          |
-| `timeZone`          | string           | IANA timezone used for availability rules (e.g. `Asia/Ho_Chi_Minh`, `UTC`) |
 | `availabilityRules` | array (optional) | List of availability rule objects (weekly or fixed)                         |
 
 ### Availability rule object
 
 **Weekly rule** — repeats on a given day of the week:
 
-| Field       | Type   | Description                                         |
-|-------------|--------|-----------------------------------------------------|
-| `type`      | string | `"weekly"`                                          |
+| Field       | Type   | Description                                                                |
+|-------------|--------|----------------------------------------------------------------------------|
+| `type`      | string | `"weekly"`                                                                 |
 | `dayOfWeek` | string | Three-letter abbreviation: `MON`, `TUE`, `WED`, `THU`, `FRI`, `SAT`, `SUN` |
-| `start`     | string | Start time in `HH:mm` format                        |
-| `end`       | string | End time in `HH:mm` format                          |
+| `start`     | string | Start time in `HH:mm` format                                               |
+| `end`       | string | End time in `HH:mm` format                                                 |
+| `timeZone`  | string | IANA timezone for this rule (e.g. `Asia/Ho_Chi_Minh`, `UTC`). Default to the timezone setting of the user, then to the default configured timezone then UTC if omitted. |
 
 **Fixed rule** — a one-time date range:
 
-| Field   | Type   | Description                                          |
-|---------|--------|------------------------------------------------------|
-| `type`  | string | `"fixed"`                                            |
-| `start` | string | Start date-time in `yyyy-MM-ddTHH:mm:ss` format      |
-| `end`   | string | End date-time in `yyyy-MM-ddTHH:mm:ss` format        |
-
-The `timeZone` field at the booking link level applies to all availability rules.
+| Field      | Type   | Description                                         |
+|------------|--------|-----------------------------------------------------|
+| `type`     | string | `"fixed"`                                           |
+| `start`    | string | Start date-time in `yyyy-MM-ddTHH:mm:ss` format     |
+| `end`      | string | End date-time in `yyyy-MM-ddTHH:mm:ss` format       |
+| `timeZone` | string | IANA timezone used to interpret `start` and `end`. Default to the timezone setting of the user, then to the default configured timezone then UTC if omitted. |
 
 ---
 
@@ -56,13 +56,12 @@ Create a new booking link for the authenticated user.
 
 **Request body**
 
-| Field               | Required | Description                                                                                                                                                               |
-|---------------------|----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `calendarUrl`       | yes      | Calendar URI (must be accessible by the user)                                                                                                                             |
-| `durationMinutes`   | yes      | Slot duration in minutes, must be positive                                                                                                                                |
-| `active`            | yes      | Whether the booking link is active                                                                                                                                        |
-| `timeZone`          | no       | Default to the timezone setting of the user, then to the default configured timezone then UTC if omitted. Cannot be provided when `availabilityRules` is absent or empty. |
-| `availabilityRules` | no       | List of availability rules. Default to the business hours setting of the user, then to the default configured business hours when omitted.                                |
+| Field               | Required | Description                                                                                                                                              |
+|---------------------|----------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `calendarUrl`       | yes      | Calendar URI (must be accessible by the user)                                                                                                            |
+| `durationMinutes`   | yes      | Slot duration in minutes, must be positive                                                                                                               |
+| `active`            | yes      | Whether the booking link is active                                                                                                                       |
+| `availabilityRules` | no       | List of availability rules. Defaults to business hours from user settings when omitted. Each rule may specify its own `timeZone` (see availability rule object above). |
 
 **Sample request**
 ```
@@ -74,11 +73,10 @@ Content-Type: application/json
     "calendarUrl": "/calendars/67c3a792e4b0884b05ef8aef/67c3a792e4b0884b05ef8aef",
     "durationMinutes": 30,
     "active": true,
-    "timeZone": "Asia/Ho_Chi_Minh",
     "availabilityRules": [
-        { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "12:00" },
-        { "type": "weekly", "dayOfWeek": "MON", "start": "13:00", "end": "17:00" },
-        { "type": "fixed", "start": "2026-01-26T02:00:00", "end": "2026-01-30T02:00:00" }
+        { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "timeZone": "Asia/Ho_Chi_Minh" },
+        { "type": "weekly", "dayOfWeek": "MON", "start": "13:00", "end": "17:00", "timeZone": "Europe/London" },
+        { "type": "fixed", "start": "2026-01-26T02:00:00", "end": "2026-01-30T02:00:00", "timeZone": "UTC" }
     ]
 }
 ```
@@ -97,7 +95,7 @@ Content-Type: application/json
 
 | Status | Cause                                          |
 |--------|------------------------------------------------|
-| 400    | Missing or invalid field, unknown rule type, calendar not found or inaccessible, `timeZone` provided without non-empty `availabilityRules` |
+| 400    | Missing or invalid field, unknown rule type, invalid `timeZone`, calendar not found or inaccessible |
 | 401    | Unauthenticated                                |
 
 ---
@@ -122,11 +120,10 @@ Content-Type: application/json
     "calendarUrl": "/calendars/67c3a792e4b0884b05ef8aef/67c3a792e4b0884b05ef8aef",
     "durationMinutes": 30,
     "active": true,
-    "timeZone": "Asia/Ho_Chi_Minh",
     "availabilityRules": [
-        { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "12:00" },
-        { "type": "weekly", "dayOfWeek": "MON", "start": "13:00", "end": "17:00" },
-        { "type": "fixed", "start": "2026-01-26T02:00:00", "end": "2026-01-30T02:00:00" }
+        { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "timeZone": "Asia/Ho_Chi_Minh" },
+        { "type": "weekly", "dayOfWeek": "MON", "start": "13:00", "end": "17:00", "timeZone": "Europe/London" },
+        { "type": "fixed", "start": "2026-01-26T02:00:00", "end": "2026-01-30T02:00:00", "timeZone": "UTC" }
     ]
 }
 ```
@@ -152,13 +149,12 @@ absent fields are left unchanged. At least one field must be provided.
 
 All fields are optional. Include only the fields to update.
 
-| Field               | Description                                                           |
-|---------------------|-----------------------------------------------------------------------|
-| `calendarUrl`       | New calendar URI                                                      |
-| `durationMinutes`   | New slot duration in minutes, must be positive                        |
-| `active`            | New active state                                                      |
-| `timeZone`          | Timezone applied when parsing updated availability rules              |
-| `availabilityRules` | Replaces all existing rules. Set to `null` to remove all rules        |
+| Field               | Description                                                                                                      |
+|---------------------|------------------------------------------------------------------------------------------------------------------|
+| `calendarUrl`       | New calendar URI                                                                                                 |
+| `durationMinutes`   | New slot duration in minutes, must be positive                                                                   |
+| `active`            | New active state                                                                                                 |
+| `availabilityRules` | Replaces all existing rules. Set to `null` to remove all rules. Each rule may specify its own `timeZone`. |
 
 **Sample request — update duration and deactivate**
 ```
@@ -179,9 +175,8 @@ Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-    "timeZone": "UTC",
     "availabilityRules": [
-        { "type": "weekly", "dayOfWeek": "FRI", "start": "14:00", "end": "18:00" }
+        { "type": "weekly", "dayOfWeek": "FRI", "start": "14:00", "end": "18:00", "timeZone": "UTC" }
     ]
 }
 ```
@@ -206,7 +201,7 @@ HTTP/1.1 204 No Content
 
 | Status | Cause                                                             |
 |--------|-------------------------------------------------------------------|
-| 400    | No field provided, invalid value, calendar not found or inaccessible |
+| 400    | No field provided, invalid value, invalid `timeZone`, calendar not found or inaccessible |
 | 401    | Unauthenticated                                                   |
 | 404    | Booking link not found or belongs to another user                 |
 
