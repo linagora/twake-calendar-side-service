@@ -45,6 +45,7 @@ public class CalendarQueueUtil {
             .add(EventITIPConsumer.QUEUE_NAME)
             .add(CalendarDelegatedNotificationConsumer.QUEUE)
             .add(CalendarListNotificationConsumer.QUEUE_NAME)
+            .add(ItipLocalDeliveryConsumer.QUEUE_NAME)
             .build();
     }
 
@@ -69,6 +70,7 @@ public class CalendarQueueUtil {
             .add(EventITIPConsumer.DEAD_LETTER_QUEUE)
             .add(CalendarDelegatedNotificationConsumer.DEAD_LETTER_QUEUE)
             .add(CalendarListNotificationConsumer.DEAD_LETTER_QUEUE)
+            .add(ItipLocalDeliveryConsumer.DEAD_LETTER_QUEUE)
             .build();
     }
 }

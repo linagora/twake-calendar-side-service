@@ -481,6 +481,54 @@ public class CalDavClient extends DavClient {
             });
     }
 
+    /**
+     * Submits an iTIP message to Sabre's {@code POST /itip} endpoint, impersonating the
+     * recipient.
+     *
+     * @return {@code true} when the recipient is local (HTTP 204), {@code false} when the
+     *         recipient is not locally known (HTTP 400 — external attendee).
+     * @throws DavClientException on any 5xx response, causing the AMQP message to be dead-lettered.
+     */
+    public Mono<Boolean> sendItip(Username recipient, String uid, String sender,
+                                  String recipientEmail, String ical, String method) {
+        try {
+            String payload = OBJECT_MAPPER.writeValueAsString(new ItipRequest(uid, sender, recipientEmail, ical, method));
+            return httpClientWithImpersonation(recipient)
+                .headers(headers -> headers
+                    .add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_JSON)
+                    .add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_JSON))
+                .request(HttpMethod.POST)
+                .uri("/itip")
+                .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(payload.getBytes(StandardCharsets.UTF_8))))
+                .responseSingle((response, responseContent) -> {
+                    int status = response.status().code();
+                    if (status == 204) {
+                        LOGGER.debug("ITIP delivered locally for uid {} to {}", uid, recipientEmail);
+                        return Mono.just(true);
+                    }
+                    if (status == 400) {
+                        LOGGER.debug("ITIP recipient {} not locally known (external) for uid {}", recipientEmail, uid);
+                        return Mono.just(false);
+                    }
+                    return responseContent.asString(StandardCharsets.UTF_8)
+                        .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                        .flatMap(body -> Mono.error(new DavClientException("""
+                            Unexpected status %d from POST /itip for uid '%s' recipient '%s'
+                            %s
+                            """.formatted(status, uid, recipientEmail, body))));
+                });
+        } catch (Exception e) {
+            return Mono.error(new DavClientException("Failed to serialize ITIP request for uid " + uid, e));
+        }
+    }
+
+    private record ItipRequest(@JsonProperty("uid") String uid,
+                                @JsonProperty("sender") String sender,
+                                @JsonProperty("recipient") String recipient,
+                                @JsonProperty("ical") String ical,
+                                @JsonProperty("method") String method) {
+    }
+
     public Mono<Void> sendIMIPCallback(Username connectedUser, URI requestURI, byte[] payload) {
         return httpClientWithImpersonation(connectedUser)
             .responseTimeout(imipCallbackResponseTimeout)
