@@ -21,7 +21,6 @@ package com.linagora.calendar.restapi.routes;
 import static com.linagora.calendar.restapi.RestApiConstants.JSON_HEADER;
 import static com.linagora.calendar.restapi.RestApiConstants.OBJECT_MAPPER_DEFAULT;
 
-import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -35,9 +34,6 @@ import org.apache.james.metrics.api.MetricFactory;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.linagora.calendar.api.booking.AvailabilityRule;
-import com.linagora.calendar.api.booking.AvailabilityRule.FixedAvailabilityRule;
-import com.linagora.calendar.api.booking.AvailabilityRule.WeeklyAvailabilityRule;
 import com.linagora.calendar.restapi.routes.dto.AvailabilityRuleDTO;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
@@ -57,10 +53,7 @@ public class BookingLinkGetRoute extends CalendarRoute {
                                  @JsonProperty("calendarUrl") String calendarUrl,
                                  @JsonProperty("durationMinutes") long durationMinutes,
                                  @JsonProperty("active") boolean active,
-                                 @JsonProperty("timeZone") Optional<String> timeZone,
                                  @JsonProperty("availabilityRules") Optional<List<AvailabilityRuleDTO>> availabilityRules) {
-
-        public static final String UTC = "UTC";
 
         public static BookingLinkDTO from(BookingLink bookingLink) {
             Optional<List<AvailabilityRuleDTO>> ruleDTOs = bookingLink.availabilityRules()
@@ -68,24 +61,12 @@ public class BookingLinkGetRoute extends CalendarRoute {
                     .map(AvailabilityRuleDTO::from)
                     .toList());
 
-            Optional<String> timeZone = bookingLink.availabilityRules()
-                .flatMap(rules -> rules.values().stream().findFirst())
-                .map(BookingLinkDTO::extractTimeZone);
-
             return new BookingLinkDTO(
                 bookingLink.publicId().value().toString(),
                 bookingLink.calendarUrl().asUri().toString(),
                 bookingLink.duration().toMinutes(),
                 bookingLink.active(),
-                timeZone,
                 ruleDTOs);
-        }
-
-        private static String extractTimeZone(AvailabilityRule rule) {
-            return switch (rule) {
-                case WeeklyAvailabilityRule weekly -> weekly.timeZone().map(ZoneId::getId).orElse(UTC);
-                case FixedAvailabilityRule fixed -> fixed.start().getZone().getId();
-            };
         }
     }
 

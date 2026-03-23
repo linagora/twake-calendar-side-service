@@ -22,7 +22,6 @@ import static com.linagora.calendar.restapi.RestApiConstants.JSON_HEADER;
 import static com.linagora.calendar.restapi.RestApiConstants.OBJECT_MAPPER_DEFAULT;
 import static com.linagora.calendar.storage.configuration.resolver.BusinessHoursSettingReader.BUSINESS_HOURS_IDENTIFIER;
 
-import java.time.DateTimeException;
 import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.LocalTime;
@@ -65,10 +64,7 @@ public class BookingLinkCreateRoute extends CalendarRoute {
     public record CreateBookingLinkRequestDTO(@JsonProperty("calendarUrl") String calendarUrl,
                                               @JsonProperty("durationMinutes") Integer durationMinutes,
                                               @JsonProperty("active") Boolean active,
-                                              @JsonProperty("timeZone") Optional<String> timeZone,
                                               @JsonProperty("availabilityRules") Optional<List<AvailabilityRuleDTO>> availabilityRules) {
-
-        private static final boolean ABSENT = true;
 
         public static BookingLinkInsertRequest toBookingLinkInsertRequest(CreateBookingLinkRequestDTO request,
                                                                           ZoneId defaultZone,
@@ -78,40 +74,23 @@ public class BookingLinkCreateRoute extends CalendarRoute {
             Preconditions.checkArgument(request.durationMinutes > 0, "'durationMinutes' must be positive");
             Preconditions.checkArgument(!Objects.isNull(request.active), "'active' is required");
 
-            if (request.timeZone.isPresent() && request.availabilityRules.map(List::isEmpty).orElse(ABSENT)) {
-                throw new IllegalArgumentException("'timeZone' cannot be provided when 'availabilityRules' is null or empty");
-            }
-
             CalendarURL calendarURL = CalendarURL.parse(request.calendarUrl);
             Duration duration = Duration.ofMinutes(request.durationMinutes);
-            ZoneId timeZone = getTimeZone(request, defaultZone);
 
-            Optional<AvailabilityRules> availabilityRules = getAvailabilityRules(request, timeZone).or(() -> defaultAvailabilityRules);
+            Optional<AvailabilityRules> availabilityRules = getAvailabilityRules(request, defaultZone).or(() -> defaultAvailabilityRules);
 
             return new BookingLinkInsertRequest(calendarURL, duration, request.active, availabilityRules);
         }
 
-        private static ZoneId getTimeZone(CreateBookingLinkRequestDTO request, ZoneId defaultZone) {
-            try {
-                return request.timeZone()
-                    .map(ZoneId::of)
-                    .orElse(defaultZone);
-            } catch (DateTimeException e) {
-                throw new IllegalArgumentException("Invalid 'timeZone' format", e);
-            }
-        }
-
-        private static Optional<AvailabilityRules> getAvailabilityRules(CreateBookingLinkRequestDTO request, ZoneId timeZone) {
+        private static Optional<AvailabilityRules> getAvailabilityRules(CreateBookingLinkRequestDTO request, ZoneId defaultZone) {
             return request.availabilityRules()
                 .filter(rules -> !rules.isEmpty())
                 .map(rules -> rules.stream()
-                    .map(dto -> dto.toAvailabilityRule(timeZone))
+                    .map(dto -> dto.toAvailabilityRule(defaultZone))
                     .toList())
                 .map(AvailabilityRules::new);
         }
     }
-
-    public static final ZoneId UTC = ZoneId.of("UTC");
     private static final String BOOKING_LINK_PUBLIC_ID = "bookingLinkPublicId";
 
     private static final DateTimeFormatter BUSINESS_HOURS_TIME_FORMATTER = DateTimeFormatter.ofPattern("H:m");

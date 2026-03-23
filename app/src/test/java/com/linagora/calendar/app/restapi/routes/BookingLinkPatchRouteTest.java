@@ -219,10 +219,9 @@ class BookingLinkPatchRouteTest {
         given()
             .body("""
                 {
-                    "timeZone": "Asia/Ho_Chi_Minh",
                     "availabilityRules": [
-                        { "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "type": "weekly" },
-                        { "dayOfWeek": "MON", "start": "13:00", "end": "17:00", "type": "weekly" }
+                        { "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "type": "weekly", "timeZone": "Asia/Ho_Chi_Minh" },
+                        { "dayOfWeek": "MON", "start": "13:00", "end": "17:00", "type": "weekly", "timeZone": "Europe/London" }
                     ]
                 }
                 """)
@@ -234,7 +233,7 @@ class BookingLinkPatchRouteTest {
         BookingLink updated = bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
         assertThat(updated.availabilityRules()).isEqualTo(Optional.of(AvailabilityRules.of(
             new WeeklyAvailabilityRule(DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(12, 0), ZONE_HO_CHI_MINH),
-            new WeeklyAvailabilityRule(DayOfWeek.MONDAY, LocalTime.of(13, 0), LocalTime.of(17, 0), ZONE_HO_CHI_MINH))));
+            new WeeklyAvailabilityRule(DayOfWeek.MONDAY, LocalTime.of(13, 0), LocalTime.of(17, 0), ZoneId.of("Europe/London")))));
     }
 
     @Test
@@ -245,9 +244,8 @@ class BookingLinkPatchRouteTest {
         given()
             .body("""
                 {
-                    "timeZone": "UTC",
                     "availabilityRules": [
-                        { "start": "2026-01-26T02:00:00", "end": "2026-01-30T02:00:00", "type": "fixed" }
+                        { "start": "2026-01-26T02:00:00", "end": "2026-01-30T02:00:00", "type": "fixed", "timeZone": "UTC" }
                     ]
                 }
                 """)
@@ -430,9 +428,8 @@ class BookingLinkPatchRouteTest {
         given()
             .body("""
                 {
-                    "timeZone": "Invalid/Timezone",
                     "availabilityRules": [
-                        { "dayOfWeek": "MON", "start": "09:00", "end": "17:00", "type": "weekly" }
+                        { "dayOfWeek": "MON", "start": "09:00", "end": "17:00", "type": "weekly", "timeZone": "Invalid/Timezone" }
                     ]
                 }
                 """)
@@ -440,7 +437,7 @@ class BookingLinkPatchRouteTest {
             .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
-            .body("error.details", equalTo("Invalid 'timeZone' format"));
+            .body("error.details", equalTo("Invalid 'timeZone' format: Invalid/Timezone"));
     }
 
     @Test
@@ -451,7 +448,6 @@ class BookingLinkPatchRouteTest {
         given()
             .body("""
                 {
-                    "timeZone": "UTC",
                     "availabilityRules": [
                         { "start": "09:00", "end": "12:00", "type": "weekly" }
                     ]
@@ -472,7 +468,6 @@ class BookingLinkPatchRouteTest {
         given()
             .body("""
                 {
-                    "timeZone": "UTC",
                     "availabilityRules": [
                         { "dayOfWeek": "ABC", "start": "09:00", "end": "12:00", "type": "weekly" }
                     ]
@@ -493,7 +488,6 @@ class BookingLinkPatchRouteTest {
         given()
             .body("""
                 {
-                    "timeZone": "UTC",
                     "availabilityRules": [
                         { "dayOfWeek": "MON", "start": "invalid", "end": "12:00", "type": "weekly" }
                     ]
@@ -514,9 +508,8 @@ class BookingLinkPatchRouteTest {
         given()
             .body("""
                 {
-                    "timeZone": "UTC",
                     "availabilityRules": [
-                        { "start": "not-a-date", "end": "2026-01-30T00:00:00", "type": "fixed" }
+                        { "start": "not-a-date", "end": "2026-01-30T00:00:00", "type": "fixed", "timeZone": "UTC" }
                     ]
                 }
                 """)
@@ -535,7 +528,6 @@ class BookingLinkPatchRouteTest {
         given()
             .body("""
                 {
-                    "timeZone": "UTC",
                     "availabilityRules": [
                         { "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "type": "unknown" }
                     ]
@@ -575,66 +567,6 @@ class BookingLinkPatchRouteTest {
             .patch("/api/booking-links/not-a-uuid")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST);
-    }
-
-    @Test
-    void shouldReturn400WhenTimeZoneIsProvidedWithoutAvailabilityRules() {
-        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
-
-        given()
-            .body("""
-                {
-                    "timeZone": "UTC",
-                    "active": false
-                }
-                """)
-        .when()
-            .patch("/api/booking-links/" + inserted.publicId().value())
-        .then()
-            .statusCode(HttpStatus.SC_BAD_REQUEST)
-            .body("error.details", equalTo("'timeZone' cannot be provided if 'availabilityRules' is not being updated"));
-    }
-
-    @Test
-    void shouldReturn400WhenTimeZoneIsProvidedWhenAvailabilityRulesIsRemoved() {
-        AvailabilityRules existingRules = AvailabilityRules.of(
-            new WeeklyAvailabilityRule(DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(17, 0), UTC));
-        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.of(existingRules)));
-
-        given()
-            .body("""
-                {
-                    "timeZone": "UTC",
-                    "availabilityRules": null
-                }
-                """)
-        .when()
-            .patch("/api/booking-links/" + inserted.publicId().value())
-        .then()
-            .statusCode(HttpStatus.SC_BAD_REQUEST)
-            .body("error.details", equalTo("'timeZone' cannot be provided if 'availabilityRules' is being removed"));
-    }
-
-    @Test
-    void shouldReturn400WhenAvailabilityRulesAreUpdatedWithoutTimeZone() {
-        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
-
-        given()
-            .body("""
-                {
-                    "availabilityRules": [
-                        { "dayOfWeek": "MON", "start": "09:00", "end": "17:00", "type": "weekly" }
-                    ]
-                }
-                """)
-        .when()
-            .patch("/api/booking-links/" + inserted.publicId().value())
-        .then()
-            .statusCode(HttpStatus.SC_BAD_REQUEST)
-            .body("error.details", equalTo("'timeZone' must be provided when updating 'availabilityRules'"));
     }
 
     @Test
@@ -693,7 +625,6 @@ class BookingLinkPatchRouteTest {
         given()
             .body("""
                 {
-                    "timeZone": "UTC",
                     "availabilityRules": []
                 }
                 """)
@@ -712,9 +643,8 @@ class BookingLinkPatchRouteTest {
         given()
             .body("""
                 {
-                    "timeZone": "UTC",
                     "availabilityRules": [
-                        { "start": "2026-01-30T00:00:00", "end": "2026-01-26T00:00:00", "type": "fixed" }
+                        { "start": "2026-01-30T00:00:00", "end": "2026-01-26T00:00:00", "type": "fixed", "timeZone": "UTC" }
                     ]
                 }
                 """)
