@@ -291,6 +291,11 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     /**
      * Returns {@code true} when the recipient was not listed as an attendee in the old iCal
      * (i.e. the event is new for them, or there is no previous state).
+     *
+     * <p>For occurrence overrides (VEVENT with RECURRENCE-ID), only the matching old override is
+     * consulted. If the old calendar has no such override (the occurrence was never explicitly
+     * stored, only inherited from the master), the occurrence is treated as new for the recipient,
+     * even if they appear in the master VEVENT.
      */
     private boolean isNewEventForRecipient(ItipLocalDeliveryDTO dto) {
         if (dto.oldMessage().isEmpty()) {
@@ -298,11 +303,43 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
         }
         try {
             Calendar oldCal = CalendarUtil.parseIcs(dto.oldMessage().get());
-            String recipient = dto.recipients().get(0).toLowerCase();
+            Calendar newCal = CalendarUtil.parseIcs(dto.message());
+            String strippedRecipient = dto.recipients().get(0).toLowerCase().replace("mailto:", "");
+
+            Optional<String> recurrenceId = newCal.getComponents(Component.VEVENT).stream()
+                .map(VEvent.class::cast)
+                .flatMap(vEvent -> vEvent.getProperty(Property.RECURRENCE_ID).stream())
+                .map(Property::getValue)
+                .findFirst();
+
+            if (recurrenceId.isPresent()) {
+                String rid = recurrenceId.get();
+                boolean hasOldOverride = oldCal.getComponents(Component.VEVENT).stream()
+                    .map(VEvent.class::cast)
+                    .anyMatch(vEvent -> vEvent.getProperty(Property.RECURRENCE_ID)
+                        .map(Property::getValue)
+                        .filter(rid::equals)
+                        .isPresent());
+
+                if (!hasOldOverride) {
+                    // No prior explicit override for this occurrence — treat as new
+                    return true;
+                }
+
+                return oldCal.getComponents(Component.VEVENT).stream()
+                    .map(VEvent.class::cast)
+                    .filter(vEvent -> vEvent.getProperty(Property.RECURRENCE_ID)
+                        .map(Property::getValue)
+                        .filter(rid::equals)
+                        .isPresent())
+                    .flatMap(vEvent -> vEvent.getProperties(Property.ATTENDEE).stream())
+                    .noneMatch(p -> p.getValue().toLowerCase().contains(strippedRecipient));
+            }
+
             return oldCal.getComponents(Component.VEVENT).stream()
                 .map(VEvent.class::cast)
                 .flatMap(vEvent -> vEvent.getProperties(Property.ATTENDEE).stream())
-                .noneMatch(p -> p.getValue().toLowerCase().contains(recipient.replace("mailto:", "")));
+                .noneMatch(p -> p.getValue().toLowerCase().contains(strippedRecipient));
         } catch (Exception e) {
             LOGGER.warn("Could not determine isNewEvent for {}: {}", dto.strippedRecipient(), e.getMessage());
             return false;

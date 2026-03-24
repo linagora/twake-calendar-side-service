@@ -129,6 +129,58 @@ public class ItipLocalDeliveryConsumerTest {
         END:VCALENDAR
         """;
 
+    /** Recurring master event — Alice is attendee, no occurrence overrides. */
+    private static final String RECURRING_MASTER_ICAL = """
+        BEGIN:VCALENDAR
+        VERSION:2.0
+        PRODID:-//Test//Test//EN
+        BEGIN:VEVENT
+        UID:abc-123-def-456
+        SUMMARY:Recurring Meeting
+        DTSTART;TZID=Europe/Paris:20240601T100000
+        DTEND;TZID=Europe/Paris:20240601T110000
+        RRULE:FREQ=WEEKLY
+        ORGANIZER:mailto:bob@example.com
+        ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:alice@example.com
+        END:VEVENT
+        END:VCALENDAR
+        """;
+
+    /** Override for occurrence #2 of the recurring series — Alice + Cedric. */
+    private static final String OCCURRENCE_OVERRIDE_ICAL = """
+        BEGIN:VCALENDAR
+        VERSION:2.0
+        PRODID:-//Test//Test//EN
+        BEGIN:VEVENT
+        UID:abc-123-def-456
+        SUMMARY:Recurring Meeting - occurrence 2
+        DTSTART;TZID=Europe/Paris:20240608T100000
+        DTEND;TZID=Europe/Paris:20240608T110000
+        RECURRENCE-ID;TZID=Europe/Paris:20240608T100000
+        ORGANIZER:mailto:bob@example.com
+        ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:alice@example.com
+        ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:cedric@example.com
+        END:VEVENT
+        END:VCALENDAR
+        """;
+
+    /** Same override occurrence but with only Alice (before Cedric was added). */
+    private static final String OCCURRENCE_OVERRIDE_ALICE_ONLY_ICAL = """
+        BEGIN:VCALENDAR
+        VERSION:2.0
+        PRODID:-//Test//Test//EN
+        BEGIN:VEVENT
+        UID:abc-123-def-456
+        SUMMARY:Recurring Meeting - occurrence 2
+        DTSTART;TZID=Europe/Paris:20240608T100000
+        DTEND;TZID=Europe/Paris:20240608T110000
+        RECURRENCE-ID;TZID=Europe/Paris:20240608T100000
+        ORGANIZER:mailto:bob@example.com
+        ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:alice@example.com
+        END:VEVENT
+        END:VCALENDAR
+        """;
+
     @RegisterExtension
     static RabbitMQExtension rabbitMQExtension = RabbitMQExtension.singletonRabbitMQ()
         .isolationPolicy(RabbitMQExtension.IsolationPolicy.WEAK);
@@ -488,6 +540,60 @@ public class ItipLocalDeliveryConsumerTest {
             (tag, delivery) -> emailMessages.add(delivery.getBody()), tag -> {});
 
         publishToConsumer(buildPayload(List.of("mailto:" + ALICE), true, Optional.of(SIMPLE_ICAL), "REQUEST"));
+
+        awaitAtMost.untilAsserted(() -> assertThat(emailMessages).hasSize(1));
+
+        assertThat(OBJECT_MAPPER.readTree(emailMessages.get(0)).at("/isNewEvent").asBoolean()).isFalse();
+    }
+
+    @Test
+    void isNewEventShouldBeTrueForOccurrenceOverrideWhenNoMatchingOldOverride() throws Exception {
+        wireMockServer.stubFor(WireMock.post(WireMock.urlEqualTo("/itip"))
+            .willReturn(WireMock.aResponse().withStatus(204)));
+
+        List<byte[]> emailMessages = new ArrayList<>();
+        channel.basicConsume(testEmailQueue, true,
+            (tag, delivery) -> emailMessages.add(delivery.getBody()), tag -> {});
+
+        // Old: recurring master with Alice. New: override for occurrence #2 (RECURRENCE-ID).
+        // Old calendar has no override for that occurrence → isNewEvent = true for Alice,
+        // even though she is present in the master VEVENT.
+        ObjectNode node = OBJECT_MAPPER.createObjectNode();
+        node.put("sender", "mailto:" + BOB);
+        node.put("method", "REQUEST");
+        node.put("uid", EVENT_UID);
+        node.put("message", OCCURRENCE_OVERRIDE_ICAL);
+        node.put("hasChange", true);
+        node.put("oldMessage", RECURRING_MASTER_ICAL);
+        node.putArray("recipients").add("mailto:" + ALICE);
+        publishToConsumer(OBJECT_MAPPER.writeValueAsString(node));
+
+        awaitAtMost.untilAsserted(() -> assertThat(emailMessages).hasSize(1));
+
+        assertThat(OBJECT_MAPPER.readTree(emailMessages.get(0)).at("/isNewEvent").asBoolean()).isTrue();
+    }
+
+    @Test
+    void isNewEventShouldBeFalseWhenRecipientPresentInMatchingOldOverride() throws Exception {
+        wireMockServer.stubFor(WireMock.post(WireMock.urlEqualTo("/itip"))
+            .willReturn(WireMock.aResponse().withStatus(204)));
+
+        List<byte[]> emailMessages = new ArrayList<>();
+        channel.basicConsume(testEmailQueue, true,
+            (tag, delivery) -> emailMessages.add(delivery.getBody()), tag -> {});
+
+        // Old: override for occurrence #2 with Alice only.
+        // New: same override with Alice + Cedric (Cedric added).
+        // Alice was already in the old override → isNewEvent = false for Alice.
+        ObjectNode node = OBJECT_MAPPER.createObjectNode();
+        node.put("sender", "mailto:" + BOB);
+        node.put("method", "REQUEST");
+        node.put("uid", EVENT_UID);
+        node.put("message", OCCURRENCE_OVERRIDE_ICAL);
+        node.put("hasChange", true);
+        node.put("oldMessage", OCCURRENCE_OVERRIDE_ALICE_ONLY_ICAL);
+        node.putArray("recipients").add("mailto:" + ALICE);
+        publishToConsumer(OBJECT_MAPPER.writeValueAsString(node));
 
         awaitAtMost.untilAsserted(() -> assertThat(emailMessages).hasSize(1));
 
