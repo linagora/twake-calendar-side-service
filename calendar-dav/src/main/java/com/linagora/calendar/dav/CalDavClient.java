@@ -493,6 +493,8 @@ public class CalDavClient extends DavClient {
                                   String recipientEmail, String ical, String method) {
         try {
             String payload = OBJECT_MAPPER.writeValueAsString(new ItipRequest(uid, sender, recipientEmail, ical, method));
+            LOGGER.debug("POST /itip uid={} sender={} recipient={} method={} payload={}",
+                uid, sender, recipientEmail, method, payload);
             return httpClientWithImpersonation(recipient)
                 .headers(headers -> headers
                     .add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_JSON)
