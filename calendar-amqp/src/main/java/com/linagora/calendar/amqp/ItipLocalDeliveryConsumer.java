@@ -352,8 +352,13 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
      * Computes the diff between the old and new iCal for the tracked properties
      * (SUMMARY, LOCATION, DESCRIPTION, DTSTART, DTEND).
      *
-     * <p>Returns {@code Optional.empty()} when there is no previous state (new event).
+     * <p>Returns {@code Optional.empty()} when there is no previous state (new event or new
+     * occurrence override with no prior override in the old calendar).
      * Returns an (possibly empty) {@code ObjectNode} when a previous state exists.
+     *
+     * <p>For occurrence overrides (VEVENT with RECURRENCE-ID), the diff is computed against the
+     * matching old override if one exists. If no matching old override exists the occurrence is
+     * brand-new and {@code Optional.empty()} is returned.
      */
     private Optional<ObjectNode> computeChanges(ItipLocalDeliveryDTO dto) {
         if (dto.oldMessage().isEmpty()) {
@@ -363,8 +368,44 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
             Calendar oldCal = CalendarUtil.parseIcs(dto.oldMessage().get());
             Calendar newCal = CalendarUtil.parseIcs(dto.message());
 
-            VEvent oldEvent = firstVEvent(oldCal).orElse(null);
-            VEvent newEvent = firstVEvent(newCal).orElse(null);
+            Optional<String> recurrenceId = newCal.getComponents(Component.VEVENT).stream()
+                .map(VEvent.class::cast)
+                .flatMap(vEvent -> vEvent.getProperty(Property.RECURRENCE_ID).stream())
+                .map(Property::getValue)
+                .findFirst();
+
+            VEvent oldEvent;
+            VEvent newEvent;
+
+            if (recurrenceId.isPresent()) {
+                String rid = recurrenceId.get();
+                Optional<VEvent> oldOverride = oldCal.getComponents(Component.VEVENT).stream()
+                    .map(VEvent.class::cast)
+                    .filter(vEvent -> vEvent.getProperty(Property.RECURRENCE_ID)
+                        .map(Property::getValue)
+                        .filter(rid::equals)
+                        .isPresent())
+                    .findFirst();
+
+                if (oldOverride.isEmpty()) {
+                    // Brand-new occurrence override — no previous version to diff
+                    return Optional.empty();
+                }
+
+                oldEvent = oldOverride.get();
+                newEvent = newCal.getComponents(Component.VEVENT).stream()
+                    .map(VEvent.class::cast)
+                    .filter(vEvent -> vEvent.getProperty(Property.RECURRENCE_ID)
+                        .map(Property::getValue)
+                        .filter(rid::equals)
+                        .isPresent())
+                    .findFirst()
+                    .orElse(null);
+            } else {
+                oldEvent = firstVEvent(oldCal).orElse(null);
+                newEvent = firstVEvent(newCal).orElse(null);
+            }
+
             if (oldEvent == null || newEvent == null) {
                 return Optional.of(OBJECT_MAPPER.createObjectNode());
             }

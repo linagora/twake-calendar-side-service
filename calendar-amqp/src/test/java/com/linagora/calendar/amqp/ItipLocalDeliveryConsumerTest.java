@@ -513,6 +513,63 @@ public class ItipLocalDeliveryConsumerTest {
     }
 
     @Test
+    void changesFieldShouldBeAbsentWhenOccurrenceOverrideNotInOldCalendar() throws Exception {
+        wireMockServer.stubFor(WireMock.post(WireMock.urlEqualTo("/itip"))
+            .willReturn(WireMock.aResponse().withStatus(204)));
+
+        List<byte[]> emailMessages = new ArrayList<>();
+        channel.basicConsume(testEmailQueue, true,
+            (tag, delivery) -> emailMessages.add(delivery.getBody()), tag -> {});
+
+        // Old: master only. New: override with RECURRENCE-ID.
+        // No old override to diff against → changes field must be absent (not "{}").
+        ObjectNode node = OBJECT_MAPPER.createObjectNode();
+        node.put("sender", "mailto:" + BOB);
+        node.put("method", "REQUEST");
+        node.put("uid", EVENT_UID);
+        node.put("message", OCCURRENCE_OVERRIDE_ICAL);
+        node.put("hasChange", true);
+        node.put("oldMessage", RECURRING_MASTER_ICAL);
+        node.putArray("recipients").add("mailto:" + ALICE);
+        publishToConsumer(OBJECT_MAPPER.writeValueAsString(node));
+
+        awaitAtMost.untilAsserted(() -> assertThat(emailMessages).hasSize(1));
+
+        assertThat(OBJECT_MAPPER.readTree(emailMessages.get(0)).has("changes")).isFalse();
+    }
+
+    @Test
+    void changesFieldShouldContainDiffForUpdatedOccurrenceOverride() throws Exception {
+        wireMockServer.stubFor(WireMock.post(WireMock.urlEqualTo("/itip"))
+            .willReturn(WireMock.aResponse().withStatus(204)));
+
+        List<byte[]> emailMessages = new ArrayList<>();
+        channel.basicConsume(testEmailQueue, true,
+            (tag, delivery) -> emailMessages.add(delivery.getBody()), tag -> {});
+
+        // Old: override occurrence with Alice only (SUMMARY "Recurring Meeting - occurrence 2").
+        // New: same override occurrence with Alice + Cedric and updated summary.
+        String updatedOverrideIcal = OCCURRENCE_OVERRIDE_ICAL.replace(
+            "SUMMARY:Recurring Meeting - occurrence 2", "SUMMARY:Updated occurrence 2");
+        ObjectNode node = OBJECT_MAPPER.createObjectNode();
+        node.put("sender", "mailto:" + BOB);
+        node.put("method", "REQUEST");
+        node.put("uid", EVENT_UID);
+        node.put("message", updatedOverrideIcal);
+        node.put("hasChange", true);
+        node.put("oldMessage", OCCURRENCE_OVERRIDE_ALICE_ONLY_ICAL);
+        node.putArray("recipients").add("mailto:" + ALICE);
+        publishToConsumer(OBJECT_MAPPER.writeValueAsString(node));
+
+        awaitAtMost.untilAsserted(() -> assertThat(emailMessages).hasSize(1));
+
+        JsonNode changes = OBJECT_MAPPER.readTree(emailMessages.get(0)).at("/changes");
+        assertThat(changes.isMissingNode()).isFalse();
+        assertThat(changes.at("/summary/previous").asText()).isEqualTo("Recurring Meeting - occurrence 2");
+        assertThat(changes.at("/summary/current").asText()).isEqualTo("Updated occurrence 2");
+    }
+
+    @Test
     void isNewEventShouldBeTrueWhenRecipientAbsentFromOldMessage() throws Exception {
         wireMockServer.stubFor(WireMock.post(WireMock.urlEqualTo("/itip"))
             .willReturn(WireMock.aResponse().withStatus(204)));
