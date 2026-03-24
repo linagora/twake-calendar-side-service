@@ -161,6 +161,17 @@ public interface BookingLinkDAOContract {
     }
 
     @Test
+    default void findByUsernameShouldReturnSortedByUpdatedAtDescending() {
+        BookingLink first = testee().insert(USER_1, INSERT_REQUEST).block();
+
+        clock().setInstant(clock().instant().plusSeconds(1));
+        BookingLink second = testee().insert(USER_1, INSERT_REQUEST).block();
+
+        assertThat(testee().findByUsername(USER_1).collectList().block())
+            .containsExactly(second, first);
+    }
+
+    @Test
     default void updateShouldFailWhenPublicIdDoesNotExist() {
         BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
             ValuePatch.modifyTo(UPDATED_CALENDAR_URL),

@@ -52,6 +52,7 @@ import com.mongodb.client.model.FindOneAndUpdateOptions;
 import com.mongodb.client.model.IndexOptions;
 import com.mongodb.client.model.Indexes;
 import com.mongodb.client.model.ReturnDocument;
+import com.mongodb.client.model.Sorts;
 import com.mongodb.reactivestreams.client.MongoCollection;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
@@ -93,7 +94,8 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
     public static Mono<String> declareIndex(MongoCollection<Document> collection) {
         return Mono.from(collection.createIndex(Indexes.ascending(FIELD_USERNAME, FIELD_PUBLIC_ID), new IndexOptions().unique(true)))
             .then(Mono.from(collection.createIndex(Indexes.ascending(FIELD_USERNAME))))
-            .then(Mono.from(collection.createIndex(Indexes.ascending(FIELD_PUBLIC_ID))));
+            .then(Mono.from(collection.createIndex(Indexes.ascending(FIELD_PUBLIC_ID))))
+            .then(Mono.from(collection.createIndex(Indexes.ascending(FIELD_UPDATED_AT))));
     }
 
     @Override
@@ -137,7 +139,8 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
     @Override
     public Flux<BookingLink> findByUsername(Username username) {
         return Flux.from(database.getCollection(COLLECTION)
-                .find(Filters.eq(FIELD_USERNAME, username.asString())))
+                .find(Filters.eq(FIELD_USERNAME, username.asString()))
+                .sort(Sorts.descending(FIELD_UPDATED_AT)))
             .map(this::fromDocument);
     }
 

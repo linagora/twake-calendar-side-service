@@ -100,6 +100,44 @@ Content-Type: application/json
 
 ---
 
+### **GET /api/booking-links**
+
+List all booking links of the authenticated user (sorted by update time).
+
+**Sample request**
+```
+GET /api/booking-links
+Authorization: Bearer <token>
+```
+
+**Sample response**
+```
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+[
+    {
+        "publicId": "550e8400-e29b-41d4-a716-446655440000",
+        "calendarUrl": "/calendars/67c3a792e4b0884b05ef8aef/67c3a792e4b0884b05ef8aef",
+        "durationMinutes": 30,
+        "active": true,
+        "availabilityRules": [
+            { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "17:00", "timeZone": "Asia/Ho_Chi_Minh" }
+        ]
+    }
+]
+```
+
+Field `availabilityRules` is omitted from each entry when not set.
+
+**Error responses**
+
+| Status | Cause           |
+|--------|-----------------|
+| 401    | Unauthenticated |
+
+---
+
 ### **GET /api/booking-links/{bookingLinkPublicId}**
 
 Retrieve a booking link by its public ID. Only returns the link if it belongs to the authenticated user.
