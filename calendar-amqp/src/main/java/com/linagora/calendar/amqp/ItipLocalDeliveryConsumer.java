@@ -89,7 +89,6 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     public static final String QUEUE_NAME = "tcalendar:itip:localDelivery";
     public static final String DEAD_LETTER_QUEUE = "tcalendar:itip:localDelivery:dead-letter";
 
-    private static final String DEFAULT_CALENDAR_URI = "events";
     /** Date format used in the {@code changes} payload — PHP-compatible microsecond precision. */
     private static final DateTimeFormatter CHANGE_DATE_FORMATTER =
         DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.000000");
@@ -233,30 +232,37 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     private Mono<Void> publishEmailNotification(ItipLocalDeliveryDTO dto,
                                                  Username recipientUsername,
                                                  boolean isLocal) {
-        return resolveEventPath(dto, recipientUsername, isLocal)
-            .map(eventPath -> buildEmailNotificationPayload(dto, eventPath))
+        return resolveEventPathAndCalendarId(dto, recipientUsername, isLocal)
+            .map(info -> buildEmailNotificationPayload(dto, info.eventPath()))
             .flatMap(payloadBytes -> sender.send(
                 Mono.just(new OutboundMessage(EventEmailConsumer.EXCHANGE_NAME, EMPTY_ROUTING_KEY, payloadBytes))))
             .then(ReactorUtils.logAsMono(() ->
                 LOGGER.debug("Published email notification for uid {} to {}", dto.uid(), dto.strippedRecipient())));
     }
 
+    private record EventPathInfo(String eventPath) {
+        static final EventPathInfo EMPTY = new EventPathInfo("");
+    }
+
     /**
-     * Resolves {@code /calendars/<userId>/events/<uid>.ics} for local recipients.
-     * Returns an empty string for external recipients (eventPath omitted in the payload).
+     * Resolves {@code /calendars/<userId>/<calendarId>/<uid>.ics} for local recipients.
+     * Returns {@link EventPathInfo#EMPTY} for external recipients (eventPath omitted in the payload).
      */
-    private Mono<String> resolveEventPath(ItipLocalDeliveryDTO dto,
-                                           Username recipientUsername,
-                                           boolean isLocal) {
+    private Mono<EventPathInfo> resolveEventPathAndCalendarId(ItipLocalDeliveryDTO dto,
+                                                               Username recipientUsername,
+                                                               boolean isLocal) {
         if (!isLocal) {
-            return Mono.just("");
+            return Mono.just(EventPathInfo.EMPTY);
         }
         return openPaaSUserDAO.retrieve(recipientUsername)
-            .map(user -> CalendarURL.CALENDAR_URL_PATH_PREFIX
-                + "/" + user.id().value()
-                + "/" + DEFAULT_CALENDAR_URI
-                + "/" + dto.uid() + ".ics")
-            .switchIfEmpty(Mono.just(""));
+            .map(user -> {
+                String eventPath = CalendarURL.CALENDAR_URL_PATH_PREFIX
+                    + "/" + user.id().value()
+                    + "/" + dto.calendarId()
+                    + "/" + dto.uid() + ".ics";
+                return new EventPathInfo(eventPath);
+            })
+            .switchIfEmpty(Mono.just(EventPathInfo.EMPTY));
     }
 
     private byte[] buildEmailNotificationPayload(ItipLocalDeliveryDTO dto, String eventPath) {
@@ -267,7 +273,7 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
             node.put("method", dto.method());
             node.put("event", dto.message());
             node.put("notify", true);
-            node.put("calendarURI", DEFAULT_CALENDAR_URI);
+            node.put("calendarURI", dto.calendarId());
 
             if (!eventPath.isEmpty()) {
                 node.put("eventPath", eventPath);

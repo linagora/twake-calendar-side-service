@@ -93,6 +93,7 @@ public class ItipLocalDeliveryConsumerTest {
     private static final String CEDRIC = "cedric@example.com";
     private static final String EVENT_UID = "abc-123-def-456";
     private static final String RECIPIENT_OPENPAAS_ID = "60a7b2c3d4e5f6a7b8c9d0e1";
+    private static final String CALENDAR_ID = "my-calendar-id";
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module());
 
     // Test queue names — declared fresh per test to avoid AMQP channel-close-on-404 issues
@@ -392,7 +393,8 @@ public class ItipLocalDeliveryConsumerTest {
 
         JsonNode emailPayload = OBJECT_MAPPER.readTree(emailMessages.get(0));
         assertThat(emailPayload.at("/eventPath").asText())
-            .isEqualTo("/calendars/" + RECIPIENT_OPENPAAS_ID + "/events/" + EVENT_UID + ".ics");
+            .isEqualTo("/calendars/" + RECIPIENT_OPENPAAS_ID + "/" + CALENDAR_ID + "/" + EVENT_UID + ".ics");
+        assertThat(emailPayload.at("/calendarURI").asText()).isEqualTo(CALENDAR_ID);
     }
 
     @Test
@@ -527,6 +529,7 @@ public class ItipLocalDeliveryConsumerTest {
         node.put("sender", "mailto:" + BOB);
         node.put("method", "REQUEST");
         node.put("uid", EVENT_UID);
+        node.put("calendarId", CALENDAR_ID);
         node.put("message", OCCURRENCE_OVERRIDE_ICAL);
         node.put("hasChange", true);
         node.put("oldMessage", RECURRING_MASTER_ICAL);
@@ -555,6 +558,7 @@ public class ItipLocalDeliveryConsumerTest {
         node.put("sender", "mailto:" + BOB);
         node.put("method", "REQUEST");
         node.put("uid", EVENT_UID);
+        node.put("calendarId", CALENDAR_ID);
         node.put("message", updatedOverrideIcal);
         node.put("hasChange", true);
         node.put("oldMessage", OCCURRENCE_OVERRIDE_ALICE_ONLY_ICAL);
@@ -619,6 +623,7 @@ public class ItipLocalDeliveryConsumerTest {
         node.put("sender", "mailto:" + BOB);
         node.put("method", "REQUEST");
         node.put("uid", EVENT_UID);
+        node.put("calendarId", CALENDAR_ID);
         node.put("message", OCCURRENCE_OVERRIDE_ICAL);
         node.put("hasChange", true);
         node.put("oldMessage", RECURRING_MASTER_ICAL);
@@ -646,6 +651,7 @@ public class ItipLocalDeliveryConsumerTest {
         node.put("sender", "mailto:" + BOB);
         node.put("method", "REQUEST");
         node.put("uid", EVENT_UID);
+        node.put("calendarId", CALENDAR_ID);
         node.put("message", OCCURRENCE_OVERRIDE_ICAL);
         node.put("hasChange", true);
         node.put("oldMessage", OCCURRENCE_OVERRIDE_ALICE_ONLY_ICAL);
@@ -711,6 +717,7 @@ public class ItipLocalDeliveryConsumerTest {
             node.put("sender", "mailto:" + BOB);
             node.put("method", method);
             node.put("uid", EVENT_UID);
+            node.put("calendarId", CALENDAR_ID);
             node.put("message", UPDATED_ICAL);
             node.put("hasChange", hasChange);
             oldMessage.ifPresent(old -> node.put("oldMessage", old));

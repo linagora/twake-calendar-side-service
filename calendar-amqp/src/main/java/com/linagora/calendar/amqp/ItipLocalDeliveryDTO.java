@@ -34,6 +34,7 @@ public record ItipLocalDeliveryDTO(
     @JsonProperty("sender") String sender,
     @JsonProperty("method") String method,
     @JsonProperty("uid") String uid,
+    @JsonProperty("calendarId") String calendarId,
     @JsonProperty("message") String message,
     @JsonProperty("oldMessage") Optional<String> oldMessage,
     @JsonProperty("hasChange") boolean hasChange,
@@ -41,7 +42,7 @@ public record ItipLocalDeliveryDTO(
 
     /** Returns a copy of this DTO with a single recipient (used during fan-out). */
     public ItipLocalDeliveryDTO withSingleRecipient(String recipient) {
-        return new ItipLocalDeliveryDTO(sender, method, uid, message, oldMessage, hasChange, List.of(recipient));
+        return new ItipLocalDeliveryDTO(sender, method, uid, calendarId, message, oldMessage, hasChange, List.of(recipient));
     }
 
     /** Strips the {@code mailto:} prefix from the sender address. */
