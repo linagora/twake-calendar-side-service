@@ -216,6 +216,23 @@ class BookingLinkListRouteTest {
     }
 
     @Test
+    void shouldNotReturnDeletedBookingLinks() {
+        BookingLink toDelete = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+        bookingLinkProbe.deleteBookingLink(openPaaSUser.username(), toDelete.publicId());
+
+        String response = given()
+        .when()
+            .get("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(ContentType.JSON)
+            .extract().body().asString();
+
+        assertThatJson(response).isEqualTo("[]");
+    }
+
+    @Test
     void shouldReturn401WhenUnauthenticated() {
         with()
             .auth().none()

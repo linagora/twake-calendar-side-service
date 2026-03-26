@@ -93,9 +93,8 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
 
     public static Mono<String> declareIndex(MongoCollection<Document> collection) {
         return Mono.from(collection.createIndex(Indexes.ascending(FIELD_USERNAME, FIELD_PUBLIC_ID), new IndexOptions().unique(true)))
-            .then(Mono.from(collection.createIndex(Indexes.ascending(FIELD_USERNAME))))
             .then(Mono.from(collection.createIndex(Indexes.ascending(FIELD_PUBLIC_ID))))
-            .then(Mono.from(collection.createIndex(Indexes.ascending(FIELD_UPDATED_AT))));
+            .then(Mono.from(collection.createIndex(Indexes.compoundIndex(Indexes.ascending(FIELD_USERNAME), Indexes.descending(FIELD_UPDATED_AT)))));
     }
 
     @Override
