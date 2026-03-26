@@ -72,6 +72,7 @@ import com.linagora.calendar.restapi.routes.AvatarRoute;
 import com.linagora.calendar.restapi.routes.BookingLinkCreateRoute;
 import com.linagora.calendar.restapi.routes.BookingLinkDeleteRoute;
 import com.linagora.calendar.restapi.routes.BookingLinkGetRoute;
+import com.linagora.calendar.restapi.routes.BookingLinkListRoute;
 import com.linagora.calendar.restapi.routes.BookingLinkPatchRoute;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationRoute;
 import com.linagora.calendar.restapi.routes.BookingLinkResetPublicIdRoute;
@@ -152,6 +153,7 @@ public class RestApiModule extends AbstractModule {
         routes.addBinding().to(BookingLinkCreateRoute.class);
         routes.addBinding().to(BookingLinkDeleteRoute.class);
         routes.addBinding().to(BookingLinkGetRoute.class);
+        routes.addBinding().to(BookingLinkListRoute.class);
         routes.addBinding().to(BookingLinkPatchRoute.class);
         routes.addBinding().to(BookingLinkResetPublicIdRoute.class);
         routes.addBinding().to(BookingLinkSlotsRoute.class);

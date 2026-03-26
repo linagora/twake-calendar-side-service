@@ -1,0 +1,245 @@
+/********************************************************************
+ *  As a subpart of Twake Mail, this file is edited by Linagora.    *
+ *                                                                  *
+ *  https://twake-mail.com/                                         *
+ *  https://linagora.com                                            *
+ *                                                                  *
+ *  This file is subject to The Affero Gnu Public License           *
+ *  version 3.                                                      *
+ *                                                                  *
+ *  https://www.gnu.org/licenses/agpl-3.0.en.html                   *
+ *                                                                  *
+ *  This program is distributed in the hope that it will be         *
+ *  useful, but WITHOUT ANY WARRANTY; without even the implied      *
+ *  warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR         *
+ *  PURPOSE. See the GNU Affero General Public License for          *
+ *  more details.                                                   *
+ ********************************************************************/
+
+package com.linagora.calendar.app.restapi.routes;
+
+import static io.restassured.RestAssured.given;
+import static io.restassured.RestAssured.with;
+import static io.restassured.config.EncoderConfig.encoderConfig;
+import static io.restassured.config.RestAssuredConfig.newConfig;
+import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
+
+import java.nio.charset.StandardCharsets;
+import java.time.DayOfWeek;
+import java.time.Duration;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.util.Optional;
+
+import org.apache.http.HttpStatus;
+import org.apache.james.utils.GuiceProbe;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
+
+import com.google.inject.multibindings.Multibinder;
+import com.linagora.calendar.api.booking.AvailabilityRule.WeeklyAvailabilityRule;
+import com.linagora.calendar.api.booking.AvailabilityRules;
+import com.linagora.calendar.app.AppTestHelper;
+import com.linagora.calendar.app.BookingLinkProbe;
+import com.linagora.calendar.app.TwakeCalendarConfiguration;
+import com.linagora.calendar.app.TwakeCalendarExtension;
+import com.linagora.calendar.app.TwakeCalendarGuiceServer;
+import com.linagora.calendar.app.modules.CalendarDataProbe;
+import com.linagora.calendar.dav.DavModuleTestHelper;
+import com.linagora.calendar.dav.DockerSabreDavSetup;
+import com.linagora.calendar.dav.SabreDavExtension;
+import com.linagora.calendar.restapi.RestApiServerProbe;
+import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.OpenPaaSUser;
+import com.linagora.calendar.storage.booking.BookingLink;
+import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
+
+import io.restassured.RestAssured;
+import io.restassured.authentication.PreemptiveBasicAuthScheme;
+import io.restassured.builder.RequestSpecBuilder;
+import io.restassured.http.ContentType;
+
+class BookingLinkListRouteTest {
+
+    private static final boolean ACTIVE = true;
+    private static final String PASSWORD = "secret";
+    private static final ZoneId UTC = ZoneId.of("UTC");
+
+    @RegisterExtension
+    @Order(1)
+    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+
+    @RegisterExtension
+    @Order(2)
+    static TwakeCalendarExtension twakeCalendarExtension = new TwakeCalendarExtension(
+        TwakeCalendarConfiguration.builder()
+            .configurationFromClasspath()
+            .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
+            .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB),
+        AppTestHelper.OIDC_BY_PASS_MODULE,
+        DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
+        binder -> {
+            Multibinder.newSetBinder(binder, GuiceProbe.class)
+                .addBinding()
+                .to(BookingLinkProbe.class);
+        });
+
+    @AfterAll
+    static void afterAll() {
+        RestAssured.reset();
+    }
+
+    private BookingLinkProbe bookingLinkProbe;
+    private OpenPaaSUser openPaaSUser;
+
+    @BeforeEach
+    void setUp(TwakeCalendarGuiceServer server) {
+        openPaaSUser = sabreDavExtension.newTestUser();
+        CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
+        calendarDataProbe.addDomain(openPaaSUser.username().getDomainPart().get());
+        calendarDataProbe.addUserToRepository(openPaaSUser.username(), PASSWORD);
+
+        bookingLinkProbe = server.getProbe(BookingLinkProbe.class);
+
+        PreemptiveBasicAuthScheme basicAuthScheme = new PreemptiveBasicAuthScheme();
+        basicAuthScheme.setUserName(openPaaSUser.username().asString());
+        basicAuthScheme.setPassword(PASSWORD);
+
+        RestAssured.requestSpecification = new RequestSpecBuilder()
+            .setContentType(ContentType.JSON)
+            .setAccept(ContentType.JSON)
+            .setConfig(newConfig().encoderConfig(encoderConfig().defaultContentCharset(StandardCharsets.UTF_8)))
+            .setPort(server.getProbe(RestApiServerProbe.class).getPort().getValue())
+            .setBasePath("")
+            .setAuth(basicAuthScheme)
+            .build();
+    }
+
+    @Test
+    void shouldReturn200WithEmptyArrayWhenNoBookingLinks() {
+        String response = given()
+        .when()
+            .get("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(ContentType.JSON)
+            .extract().body().asString();
+
+        assertThatJson(response).isEqualTo("[]");
+    }
+
+    @Test
+    void shouldReturn200WithAllBookingLinksOfUser() {
+        BookingLink first = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+        BookingLink second = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(60), false, Optional.empty()));
+
+        String response = given()
+        .when()
+            .get("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(ContentType.JSON)
+            .extract().body().asString();
+
+        assertThatJson(response)
+            .isEqualTo("""
+                [
+                    {
+                        "publicId": "%s",
+                        "calendarUrl": "%s",
+                        "durationMinutes": 60,
+                        "active": false
+                    },
+                    {
+                        "publicId": "%s",
+                        "calendarUrl": "%s",
+                        "durationMinutes": 30,
+                        "active": true
+                    }
+                ]
+                """.formatted(
+                    second.publicId().value(), CalendarURL.from(openPaaSUser.id()).asUri(),
+                    first.publicId().value(), CalendarURL.from(openPaaSUser.id()).asUri()));
+    }
+
+    @Test
+    void shouldReturn200WithAvailabilityRules() {
+        AvailabilityRules rules = AvailabilityRules.of(
+            new WeeklyAvailabilityRule(DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(17, 0), UTC));
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.of(rules)));
+
+        String response = given()
+        .when()
+            .get("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(ContentType.JSON)
+            .extract().body().asString();
+
+        assertThatJson(response)
+            .isEqualTo("""
+                [
+                    {
+                        "publicId": "%s",
+                        "calendarUrl": "%s",
+                        "durationMinutes": 30,
+                        "active": true,
+                        "availabilityRules": [
+                            { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "17:00", "timeZone": "UTC" }
+                        ]
+                    }
+                ]
+                """.formatted(inserted.publicId().value(), CalendarURL.from(openPaaSUser.id()).asUri()));
+    }
+
+    @Test
+    void shouldNotReturnBookingLinksOfOtherUsers() {
+        OpenPaaSUser otherUser = sabreDavExtension.newTestUser();
+        bookingLinkProbe.insertBookingLink(otherUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(otherUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+
+        String response = given()
+        .when()
+            .get("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(ContentType.JSON)
+            .extract().body().asString();
+
+        assertThatJson(response).isEqualTo("[]");
+    }
+
+    @Test
+    void shouldNotReturnDeletedBookingLinks() {
+        BookingLink toDelete = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+        bookingLinkProbe.deleteBookingLink(openPaaSUser.username(), toDelete.publicId());
+
+        String response = given()
+        .when()
+            .get("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(ContentType.JSON)
+            .extract().body().asString();
+
+        assertThatJson(response).isEqualTo("[]");
+    }
+
+    @Test
+    void shouldReturn401WhenUnauthenticated() {
+        with()
+            .auth().none()
+            .contentType(ContentType.JSON)
+        .when()
+            .get("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_UNAUTHORIZED);
+    }
+}

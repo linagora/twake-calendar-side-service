@@ -20,6 +20,7 @@ package com.linagora.calendar.storage.booking;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.Map;
 import java.util.Optional;
 
@@ -76,7 +77,9 @@ public class MemoryBookingLinkDAO implements BookingLinkDAO {
 
     @Override
     public Flux<BookingLink> findByUsername(Username username) {
-        return Flux.fromIterable(store.row(username).values());
+        return Flux.fromIterable(store.row(username).values().stream()
+            .sorted(Comparator.comparing(BookingLink::updatedAt).reversed())
+            .toList());
     }
 
     @Override

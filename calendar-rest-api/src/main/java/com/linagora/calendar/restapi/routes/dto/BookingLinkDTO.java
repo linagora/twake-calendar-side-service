@@ -16,41 +16,33 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.app;
+package com.linagora.calendar.restapi.routes.dto;
 
 import java.util.List;
+import java.util.Optional;
 
-import jakarta.inject.Inject;
-
-import org.apache.james.core.Username;
-import org.apache.james.utils.GuiceProbe;
-
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.linagora.calendar.storage.booking.BookingLink;
-import com.linagora.calendar.storage.booking.BookingLinkDAO;
-import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
-import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 
-public class BookingLinkProbe implements GuiceProbe {
-    private final BookingLinkDAO bookingLinkDAO;
+@JsonInclude(JsonInclude.Include.NON_ABSENT)
+public record BookingLinkDTO(@JsonProperty("publicId") String publicId,
+                             @JsonProperty("calendarUrl") String calendarUrl,
+                             @JsonProperty("durationMinutes") long durationMinutes,
+                             @JsonProperty("active") boolean active,
+                             @JsonProperty("availabilityRules") Optional<List<AvailabilityRuleDTO>> availabilityRules) {
 
-    @Inject
-    public BookingLinkProbe(BookingLinkDAO bookingLinkDAO) {
-        this.bookingLinkDAO = bookingLinkDAO;
-    }
+    public static BookingLinkDTO from(BookingLink bookingLink) {
+        Optional<List<AvailabilityRuleDTO>> ruleDTOs = bookingLink.availabilityRules()
+            .map(rules -> rules.values().stream()
+                .map(AvailabilityRuleDTO::from)
+                .toList());
 
-    public BookingLink findBookingLink(Username username, BookingLinkPublicId publicId) {
-        return bookingLinkDAO.findByPublicId(username, publicId).block();
-    }
-
-    public List<BookingLink> listBookingLinks(Username username) {
-        return bookingLinkDAO.findByUsername(username).collectList().block();
-    }
-
-    public BookingLink insertBookingLink(Username username, BookingLinkInsertRequest request) {
-        return bookingLinkDAO.insert(username, request).block();
-    }
-
-    public void deleteBookingLink(Username username, BookingLinkPublicId publicId) {
-        bookingLinkDAO.delete(username, publicId).block();
+        return new BookingLinkDTO(
+            bookingLink.publicId().value().toString(),
+            bookingLink.calendarUrl().asUri().toString(),
+            bookingLink.duration().toMinutes(),
+            bookingLink.active(),
+            ruleDTOs);
     }
 }
