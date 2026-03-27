@@ -24,6 +24,7 @@ import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
 import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.io.Closeable;
+import java.nio.charset.StandardCharsets;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -218,6 +219,7 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
         Username recipientUsername = Username.of(dto.strippedRecipient());
 
         if ("COUNTER".equalsIgnoreCase(dto.method())) {
+            System.out.println("processSingleRecipient " + recipientUsername + dto);
             return openPaaSUserDAO.retrieve(recipientUsername)
                 .hasElement()
                 .flatMap(isLocal -> publishEmailNotification(dto, recipientUsername, isLocal));
@@ -240,8 +242,11 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
                                                  boolean isLocal) {
         return resolveEventPathAndCalendarId(dto, recipientUsername, isLocal)
             .map(info -> buildEmailNotificationPayload(dto, info.eventPath()))
-            .flatMap(payloadBytes -> sender.send(
-                Mono.just(new OutboundMessage(EventEmailConsumer.EXCHANGE_NAME, EMPTY_ROUTING_KEY, payloadBytes))))
+            .flatMap(payloadBytes -> {
+                System.out.println("publishEmailNotification " + new String(payloadBytes, StandardCharsets.UTF_8));
+                return sender.send(
+                    Mono.just(new OutboundMessage(EventEmailConsumer.EXCHANGE_NAME, EMPTY_ROUTING_KEY, payloadBytes)));
+            })
             .then(ReactorUtils.logAsMono(() ->
                 LOGGER.debug("Published email notification for uid {} to {}", dto.uid(), dto.strippedRecipient())));
     }
@@ -264,7 +269,7 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
             .map(user -> {
                 String eventPath = CalendarURL.CALENDAR_URL_PATH_PREFIX
                     + "/" + user.id().value()
-                    + "/" + dto.calendarId()
+                    + "/" + ("COUNTER".equalsIgnoreCase(dto.method()) ? user.id().value() : dto.calendarId())
                     + "/" + dto.uid() + ".ics";
                 return new EventPathInfo(eventPath);
             })
@@ -288,10 +293,10 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
             boolean isNewEvent = isNewEventForRecipient(dto);
             node.put("isNewEvent", isNewEvent);
 
-            computeChanges(dto).ifPresent(changesNode -> node.set("changes", changesNode));
-
             if ("COUNTER".equalsIgnoreCase(dto.method())) {
                 dto.oldMessage().ifPresent(old -> node.put("oldEvent", old));
+            } else {
+                computeChanges(dto).ifPresent(changesNode -> node.set("changes", changesNode));
             }
 
             return OBJECT_MAPPER.writeValueAsBytes(node);
