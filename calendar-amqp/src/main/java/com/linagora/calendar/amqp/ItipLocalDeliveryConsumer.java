@@ -217,6 +217,12 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     private Mono<Void> processSingleRecipient(ItipLocalDeliveryDTO dto) {
         Username recipientUsername = Username.of(dto.strippedRecipient());
 
+        if ("COUNTER".equalsIgnoreCase(dto.method())) {
+            return openPaaSUserDAO.retrieve(recipientUsername)
+                .hasElement()
+                .flatMap(isLocal -> publishEmailNotification(dto, recipientUsername, isLocal));
+        }
+
         return calDavClient.sendItip(recipientUsername, dto.uid(), dto.strippedSender(),
                 dto.strippedRecipient(), dto.message(), dto.method())
             .flatMap(isLocal -> {
@@ -230,12 +236,11 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     // ---- Email notification ------------------------------------------------------------------
 
     private Mono<Void> publishEmailNotification(ItipLocalDeliveryDTO dto,
-                                                 Username recipientUsername,
-                                                 boolean isLocal) {
+                                                Username recipientUsername,
+                                                boolean isLocal) {
         return resolveEventPathAndCalendarId(dto, recipientUsername, isLocal)
             .map(info -> buildEmailNotificationPayload(dto, info.eventPath()))
-            .flatMap(payloadBytes -> sender.send(
-                Mono.just(new OutboundMessage(EventEmailConsumer.EXCHANGE_NAME, EMPTY_ROUTING_KEY, payloadBytes))))
+            .flatMap(payloadBytes -> sender.send(Mono.just(new OutboundMessage(EventEmailConsumer.EXCHANGE_NAME, EMPTY_ROUTING_KEY, payloadBytes))))
             .then(ReactorUtils.logAsMono(() ->
                 LOGGER.debug("Published email notification for uid {} to {}", dto.uid(), dto.strippedRecipient())));
     }
@@ -249,8 +254,16 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
      * Returns {@link EventPathInfo#EMPTY} for external recipients (eventPath omitted in the payload).
      */
     private Mono<EventPathInfo> resolveEventPathAndCalendarId(ItipLocalDeliveryDTO dto,
-                                                               Username recipientUsername,
-                                                               boolean isLocal) {
+                                                              Username recipientUsername,
+                                                              boolean isLocal) {
+        if (!isLocal && "COUNTER".equalsIgnoreCase(dto.method())) {
+            String eventPath = CalendarURL.CALENDAR_URL_PATH_PREFIX
+                + "/" + dto.calendarId()
+                + "/" + dto.calendarId()
+                + "/" + dto.uid() + ".ics";
+            return Mono.just(new EventPathInfo(eventPath));
+        }
+
         if (!isLocal) {
             return Mono.just(EventPathInfo.EMPTY);
         }
@@ -258,7 +271,7 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
             .map(user -> {
                 String eventPath = CalendarURL.CALENDAR_URL_PATH_PREFIX
                     + "/" + user.id().value()
-                    + "/" + dto.calendarId()
+                    + "/" + ("COUNTER".equalsIgnoreCase(dto.method()) ? user.id().value() : dto.calendarId())
                     + "/" + dto.uid() + ".ics";
                 return new EventPathInfo(eventPath);
             })
@@ -279,13 +292,18 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
                 node.put("eventPath", eventPath);
             }
 
-            boolean isNewEvent = isNewEventForRecipient(dto);
-            node.put("isNewEvent", isNewEvent);
-
-            computeChanges(dto).ifPresent(changesNode -> node.set("changes", changesNode));
-
             if ("COUNTER".equalsIgnoreCase(dto.method())) {
                 dto.oldMessage().ifPresent(old -> node.put("oldEvent", old));
+            } else {
+                if (isNewEventForRecipient(dto)) {
+                    node.put("isNewEvent", true);
+                }
+
+                if (!"REPLY".equalsIgnoreCase(dto.method())) {
+                    computeChanges(dto)
+                        .filter(changesNode -> !changesNode.isEmpty())
+                        .ifPresent(changesNode -> node.set("changes", changesNode));
+                }
             }
 
             return OBJECT_MAPPER.writeValueAsBytes(node);
@@ -304,6 +322,10 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
      * even if they appear in the master VEVENT.
      */
     private boolean isNewEventForRecipient(ItipLocalDeliveryDTO dto) {
+        if ("CANCEL".equalsIgnoreCase(dto.method())
+            || "REPLY".equalsIgnoreCase(dto.method())) {
+            return false;
+        }
         if (dto.oldMessage().isEmpty()) {
             return true;
         }
