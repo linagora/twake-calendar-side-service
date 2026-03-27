@@ -262,6 +262,14 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     private Mono<EventPathInfo> resolveEventPathAndCalendarId(ItipLocalDeliveryDTO dto,
                                                                Username recipientUsername,
                                                                boolean isLocal) {
+        if (!isLocal && "COUNTER".equalsIgnoreCase(dto.method())) {
+            String eventPath = CalendarURL.CALENDAR_URL_PATH_PREFIX
+                + "/" + dto.calendarId()
+                + "/" + dto.calendarId()
+                + "/" + dto.uid() + ".ics";
+            return Mono.just(new EventPathInfo(eventPath));
+        }
+
         if (!isLocal) {
             return Mono.just(EventPathInfo.EMPTY);
         }
