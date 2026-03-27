@@ -217,6 +217,12 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     private Mono<Void> processSingleRecipient(ItipLocalDeliveryDTO dto) {
         Username recipientUsername = Username.of(dto.strippedRecipient());
 
+        if ("COUNTER".equalsIgnoreCase(dto.method())) {
+            return openPaaSUserDAO.retrieve(recipientUsername)
+                .hasElement()
+                .flatMap(isLocal -> publishEmailNotification(dto, recipientUsername, isLocal));
+        }
+
         return calDavClient.sendItip(recipientUsername, dto.uid(), dto.strippedSender(),
                 dto.strippedRecipient(), dto.message(), dto.method())
             .flatMap(isLocal -> {
