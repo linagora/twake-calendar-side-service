@@ -290,12 +290,11 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
                 node.put("eventPath", eventPath);
             }
 
-            boolean isNewEvent = isNewEventForRecipient(dto);
-            node.put("isNewEvent", isNewEvent);
-
             if ("COUNTER".equalsIgnoreCase(dto.method())) {
                 dto.oldMessage().ifPresent(old -> node.put("oldEvent", old));
             } else {
+                boolean isNewEvent = isNewEventForRecipient(dto);
+                node.put("isNewEvent", isNewEvent);
                 computeChanges(dto).ifPresent(changesNode -> node.set("changes", changesNode));
             }
 

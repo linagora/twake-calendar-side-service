@@ -19,7 +19,7 @@ services:
       - web-proxy
 
   tcalendar-side-service:
-    image: linagora/twake-calendar-side-service:branch-master
+    image: linagora/twake-calendar-side-service:pr-667-eed3a123
     container_name: tcalendar-side-service.linagora.local
     depends_on:
       - mongo
@@ -129,7 +129,7 @@ services:
       RABBITMQ_DEFAULT_PASS: tcalendar
 
   sabre_dav:
-    image: linagora/esn-sabre:sabre-4_7_0-03-02-2026
+    image: esn-sabre-dev:latest
     container_name: sabre_dav
     hostname: sabre-dav.linagora.local
     networks:
@@ -150,8 +150,9 @@ services:
       - SABRE_ADMIN_LOGIN=admin
       - SABRE_ADMIN_PASSWORD=secret123
       - SABRE_IMPERSONATION_ENABLED=true
+      - AMQP_SCHEDULING_ENABLED=true
     volumes:
-      - ./conf-side-service/jwt_publickey:/var/www/config/esn.key.pub
+      - /Users/tungtv/workplace/temp/esnSabreLab/esn-sabre:/var/www
     depends_on:
       mongo:
         condition: service_healthy
