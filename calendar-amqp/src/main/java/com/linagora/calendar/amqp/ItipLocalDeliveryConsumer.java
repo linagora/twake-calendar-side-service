@@ -171,6 +171,7 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     }
 
     private Mono<Void> consumeMessage(AcknowledgableDelivery ackDelivery) {
+        System.out.println("consumeMessage: " + new String(ackDelivery.getBody()));
         return Mono.fromCallable(() -> OBJECT_MAPPER.readValue(ackDelivery.getBody(), ItipLocalDeliveryDTO.class))
             .flatMap(dto -> {
                 if (dto.recipients().size() > 1) {
@@ -238,8 +239,8 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     // ---- Email notification ------------------------------------------------------------------
 
     private Mono<Void> publishEmailNotification(ItipLocalDeliveryDTO dto,
-                                                 Username recipientUsername,
-                                                 boolean isLocal) {
+                                                Username recipientUsername,
+                                                boolean isLocal) {
         return resolveEventPathAndCalendarId(dto, recipientUsername, isLocal)
             .map(info -> buildEmailNotificationPayload(dto, info.eventPath()))
             .flatMap(payloadBytes -> {
@@ -260,8 +261,8 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
      * Returns {@link EventPathInfo#EMPTY} for external recipients (eventPath omitted in the payload).
      */
     private Mono<EventPathInfo> resolveEventPathAndCalendarId(ItipLocalDeliveryDTO dto,
-                                                               Username recipientUsername,
-                                                               boolean isLocal) {
+                                                              Username recipientUsername,
+                                                              boolean isLocal) {
         if (!isLocal && "COUNTER".equalsIgnoreCase(dto.method())) {
             String eventPath = CalendarURL.CALENDAR_URL_PATH_PREFIX
                 + "/" + dto.calendarId()
@@ -301,9 +302,15 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
             if ("COUNTER".equalsIgnoreCase(dto.method())) {
                 dto.oldMessage().ifPresent(old -> node.put("oldEvent", old));
             } else {
-                boolean isNewEvent = isNewEventForRecipient(dto);
-                node.put("isNewEvent", isNewEvent);
-                computeChanges(dto).ifPresent(changesNode -> node.set("changes", changesNode));
+                if (isNewEventForRecipient(dto)) {
+                    node.put("isNewEvent", true);
+                }
+
+                if (!"REPLY".equalsIgnoreCase(dto.method())) {
+                    computeChanges(dto)
+                        .filter(changesNode -> !changesNode.isEmpty())
+                        .ifPresent(changesNode -> node.set("changes", changesNode));
+                }
             }
 
             return OBJECT_MAPPER.writeValueAsBytes(node);
@@ -322,6 +329,10 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
      * even if they appear in the master VEVENT.
      */
     private boolean isNewEventForRecipient(ItipLocalDeliveryDTO dto) {
+        if ("CANCEL".equalsIgnoreCase(dto.method())
+            || "REPLY".equalsIgnoreCase(dto.method())) {
+            return false;
+        }
         if (dto.oldMessage().isEmpty()) {
             return true;
         }
