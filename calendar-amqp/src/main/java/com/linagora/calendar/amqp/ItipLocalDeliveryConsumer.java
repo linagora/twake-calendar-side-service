@@ -44,14 +44,19 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.inject.name.Named;
+import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.CalDavClient.ItipRequest;
 import com.linagora.calendar.dav.dto.CalendarReportJsonResponse;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.rabbitmq.client.BuiltinExchangeType;
 
+import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.property.Method;
+import net.fortuna.ical4j.model.property.Sequence;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -217,8 +222,17 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
         if (localRecipientId.isEmpty() || Method.VALUE_COUNTER.equalsIgnoreCase(localDelivery.method())) {
             return Mono.empty();
         }
-        return calDavClient.sendItip(recipientUsername, localDelivery.uid(), localDelivery.strippedSender(),
-                localDelivery.strippedRecipient(), localDelivery.message(), localDelivery.method())
+
+        Optional<Integer> sequence = CalendarUtil.parseIcs(localDelivery.message())
+            .getComponents(Component.VEVENT)
+            .stream()
+            .map(vevent -> ((VEvent) vevent).getSequence())
+            .map(Sequence::getSequenceNo)
+            .max(Integer::compareTo);
+
+        ItipRequest itipRequest = new ItipRequest(localDelivery.uid(), localDelivery.strippedSender(),
+            localDelivery.strippedRecipient(), localDelivery.message(), localDelivery.method(), sequence);
+        return calDavClient.sendItip(recipientUsername, itipRequest)
             .then();
     }
 
