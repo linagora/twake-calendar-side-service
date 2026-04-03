@@ -86,7 +86,7 @@ public class CalendarRedisEventBus implements EventBus, Startable {
         this.redisSetReactiveCommands = redisEventBusClientFactory.createRedisSetCommand();
         this.redisPublisher = redisEventBusClientFactory.createRedisPubSubCommand();
         this.redisEventBusConfiguration = redisEventBusConfiguration;
-        this.namingStrategy = new NamingStrategy(EVENT_BUS_NAME);
+        this.namingStrategy = new DefaultNamingStrategy(EVENT_BUS_NAME);
         this.isRunning = false;
         this.isStopping = false;
     }
