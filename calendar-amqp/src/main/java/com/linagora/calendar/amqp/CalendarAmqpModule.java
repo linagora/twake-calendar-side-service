@@ -41,6 +41,7 @@ import com.google.inject.name.Named;
 
 public class CalendarAmqpModule extends AbstractModule {
     public static final String INJECT_KEY_DAV = "dav";
+    public static final int DEFAULT_ITIP_EVENT_MESSAGES_PREFETCH_COUNT = 16;
 
     private static final boolean FALLBACK_CLASSIC_QUEUES_VERSION_1 = Boolean.parseBoolean(System.getProperty("fallback.classic.queues.v1", "false"));
     private static final String QUEUES_QUORUM_BYPASS_PROPERTY = "dav.queues.quorum.bypass";
@@ -57,6 +58,7 @@ public class CalendarAmqpModule extends AbstractModule {
         bind(CalendarDelegatedNotificationConsumer.class).in(Scopes.SINGLETON);
         bind(CalendarListNotificationConsumer.class).in(Scopes.SINGLETON);
         bind(CalendarListNotificationHandler.class).in(Scopes.SINGLETON);
+        bind(ItipLocalDeliveryConsumer.class).in(Scopes.SINGLETON);
 
         Multibinder<HealthCheck> healthCheckMultibinder = Multibinder.newSetBinder(binder(), HealthCheck.class);
         healthCheckMultibinder.addBinding().to(RabbitMQCalendarQueueConsumerHealthCheck.class);
@@ -191,12 +193,32 @@ public class CalendarAmqpModule extends AbstractModule {
             .init(instance::init);
     }
 
+    @ProvidesIntoSet
+    SimpleConnectionPool.ReconnectionHandler provideItipLocalDeliveryReconnectionHandler(ItipLocalDeliveryReconnectionHandler reconnectionHandler) {
+        return reconnectionHandler;
+    }
+
+    @ProvidesIntoSet
+    public InitializationOperation initializeItipLocalDeliveryConsumer(ItipLocalDeliveryConsumer instance) {
+        return InitilizationOperationBuilder
+            .forClass(ItipLocalDeliveryConsumer.class)
+            .init(instance::init);
+    }
+
     @Provides
     @Singleton
     @Named("defaultCalendarPublicVisibilityEnabled")
     boolean provideDefaultCalendarPublicVisibilityEnabled(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
         Configuration config = propertiesProvider.getConfiguration("configuration");
         return config.getBoolean("default.calendar.public.visibility.enabled", false);
+    }
+
+    @Provides
+    @Singleton
+    @Named("itipEventMessagesPrefetchCount")
+    int provideITIPEventMessagesPrefetchCount(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
+        Configuration config = propertiesProvider.getConfiguration("configuration");
+        return config.getInt("itip.event.messages.prefetch.count", DEFAULT_ITIP_EVENT_MESSAGES_PREFETCH_COUNT);
     }
 
 }

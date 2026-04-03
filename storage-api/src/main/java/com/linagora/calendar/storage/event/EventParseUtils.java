@@ -316,6 +316,12 @@ public class EventParseUtils {
         return events.size() > 1 || events.getFirst().getProperty(Property.RRULE).isPresent();
     }
 
+    public static VEvent getFirstEvent(Calendar calendar) {
+        return calendar.getComponent(Component.VEVENT)
+            .map(VEvent.class::cast)
+            .orElseThrow(() -> new IllegalStateException("No VEVENT found in the calendar"));
+    }
+
     public static String extractEventUid(Calendar calendar) {
         return calendar.getComponents(Component.VEVENT).stream()
             .map(Component::getUid)

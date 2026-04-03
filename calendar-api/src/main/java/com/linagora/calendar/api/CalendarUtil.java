@@ -37,8 +37,10 @@ import net.fortuna.ical4j.data.CalendarParserFactory;
 import net.fortuna.ical4j.data.ContentHandlerContext;
 import net.fortuna.ical4j.data.ParserException;
 import net.fortuna.ical4j.model.Calendar;
+import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.TimeZoneRegistry;
 import net.fortuna.ical4j.model.TimeZoneRegistryImpl;
+import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.util.CompatibilityHints;
 import net.fortuna.ical4j.util.MapTimeZoneCache;
 
@@ -89,5 +91,15 @@ public class CalendarUtil {
         } catch (ParserException e) {
             throw new RuntimeException("Error while parsing ICal object", e);
         }
+    }
+
+    public static Calendar withSingleVEvent(Calendar template, VEvent vevent) {
+        Calendar copiedCalendar = template.copy();
+        copiedCalendar.getComponents(Component.VEVENT).stream()
+            .map(VEvent.class::cast)
+            .toList()
+            .forEach(copiedCalendar::remove);
+        copiedCalendar.add(vevent.copy());
+        return copiedCalendar;
     }
 }

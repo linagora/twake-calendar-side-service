@@ -27,6 +27,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import javax.net.ssl.SSLException;
 
@@ -40,12 +41,14 @@ import org.apache.james.util.ReactorUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.dto.CalendarListResponse;
@@ -107,7 +110,7 @@ public class CalDavClient extends DavClient {
         "withRights", "true");
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CalDavClient.class);
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module());
 
     public static class CalDavExportException extends DavClientException {
         public CalDavExportException(URI calendarUri, Username username, String davResponse) {
@@ -479,6 +482,50 @@ public class CalDavClient extends DavClient {
                         %s
                         """.formatted(response.status().code(), uri, errorBody))));
             });
+    }
+
+    /**
+     * Submits an iTIP message to Sabre's {@code POST /itip} endpoint, impersonating the
+     * recipient.
+     *
+     * @return {@code true} when the recipient is local (HTTP 204), {@code false} when the
+     *         recipient is not locally known (HTTP 400 — external attendee).
+     * @throws DavClientException on any 5xx response, causing the AMQP message to be dead-lettered.
+     */
+    public Mono<Boolean> sendItip(Username recipient, ItipRequest itipRequest) {
+        return httpClientWithImpersonation(recipient)
+            .headers(headers -> headers
+                .add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_JSON)
+                .add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_JSON))
+            .request(HttpMethod.POST)
+            .uri("/itip")
+            .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(OBJECT_MAPPER.writeValueAsBytes(itipRequest))))
+            .responseSingle((response, responseContent) -> {
+                int status = response.status().code();
+                if (status == 204) {
+                    LOGGER.debug("ITIP delivered locally for uid {} to {}", itipRequest.uid(), itipRequest.recipient());
+                    return Mono.just(true);
+                }
+                if (status == 400) {
+                    LOGGER.debug("ITIP recipient {} not locally known (external) for uid {}", itipRequest.recipient(), itipRequest.uid());
+                    return Mono.just(false);
+                }
+                return responseContent.asString(StandardCharsets.UTF_8)
+                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .flatMap(body -> Mono.error(new DavClientException("""
+                        Unexpected status %d from POST /itip for uid '%s' recipient '%s'
+                        %s
+                        """.formatted(status, itipRequest.uid(), itipRequest.recipient(), body))));
+            });
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_ABSENT)
+    public record ItipRequest(@JsonProperty("uid") String uid,
+                              @JsonProperty("sender") String sender,
+                              @JsonProperty("recipient") String recipient,
+                              @JsonProperty("ical") String ical,
+                              @JsonProperty("method") String method,
+                              @JsonProperty("sequence") Optional<Integer> sequence) {
     }
 
     public Mono<Void> sendIMIPCallback(Username connectedUser, URI requestURI, byte[] payload) {
