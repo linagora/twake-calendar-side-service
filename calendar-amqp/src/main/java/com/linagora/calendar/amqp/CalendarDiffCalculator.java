@@ -190,12 +190,7 @@ public class CalendarDiffCalculator {
             .map(property -> compareStringProperty(previous, current, property))
             .flatMap(Optional::stream);
 
-        Stream<PropertyChange> dateTimeChanges = Stream.of(
-                compareStartTime(previous, current),
-                compareEndTime(previous, current))
-            .flatMap(Optional::stream);
-
-        return Optional.<List<PropertyChange>>of(Stream.concat(stringChanges, dateTimeChanges)
+        return Optional.<List<PropertyChange>>of(Stream.concat(stringChanges, compareDateTimeProperties(previous, current))
                 .collect(ImmutableList.toImmutableList()))
             .filter(list -> !list.isEmpty());
     }
@@ -209,30 +204,29 @@ public class CalendarDiffCalculator {
         return Optional.of(new StringPropertyChange(propertyName, previousValue, currentValue));
     }
 
-    private Optional<DateTimePropertyChange> compareStartTime(VEvent previous, VEvent current) {
+    private Stream<DateTimePropertyChange> compareDateTimeProperties(VEvent previous, VEvent current) {
+        Stream.Builder<DateTimePropertyChange> changes = Stream.builder();
         ZonedDateTime previousStart = EventParseUtils.getStartTime(previous);
         ZonedDateTime currentStart = EventParseUtils.getStartTime(current);
 
-        if (Objects.equals(previousStart, currentStart)) {
-            return Optional.empty();
+        if (!Objects.equals(previousStart, currentStart)) {
+            changes.add(new DateTimePropertyChange(
+                Property.DTSTART,
+                DateTimeValue.from(previous, previousStart),
+                DateTimeValue.from(current, currentStart)));
         }
 
-        return Optional.of(new DateTimePropertyChange(Property.DTSTART,
-            DateTimeValue.from(previous, previousStart),
-            DateTimeValue.from(current, currentStart)));
-    }
-
-    private Optional<DateTimePropertyChange> compareEndTime(VEvent previous, VEvent current) {
         Optional<ZonedDateTime> previousEnd = EventParseUtils.getEndTime(previous);
         Optional<ZonedDateTime> currentEnd = EventParseUtils.getEndTime(current);
-        if (Objects.equals(previousEnd, currentEnd)) {
-            return Optional.empty();
+
+        if (!Objects.equals(previousEnd, currentEnd)) {
+            changes.add(new DateTimePropertyChange(
+                Property.DTEND,
+                previousEnd.map(time -> DateTimeValue.from(previous, time)).orElse(null),
+                currentEnd.map(time -> DateTimeValue.from(current, time)).orElse(null)));
         }
 
-        return Optional.of(new DateTimePropertyChange(
-            Property.DTEND,
-            previousEnd.map(time -> DateTimeValue.from(previous, time)).orElse(null),
-            currentEnd.map(time -> DateTimeValue.from(current, time)).orElse(null)));
+        return changes.build();
     }
 
 }
