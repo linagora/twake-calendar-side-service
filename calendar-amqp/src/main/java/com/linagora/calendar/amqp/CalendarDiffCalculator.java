@@ -18,7 +18,8 @@
 
 package com.linagora.calendar.amqp;
 
-import java.time.ZoneOffset;
+import static com.linagora.calendar.amqp.CalendarDiffCalculator.DateTimePropertyChange.DateTimeValue;
+
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
@@ -31,75 +32,68 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.storage.event.EventParseUtils;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
-import net.fortuna.ical4j.model.Parameter;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.component.VEvent;
 
 public class CalendarDiffCalculator {
 
+    private static final String MASTER_RECURRENCE_ID = "master";
     private static final String PREVIOUS_FIELD = "previous";
     private static final String CURRENT_FIELD = "current";
-    private static final String MASTER_RECURRENCE_ID = "master";
-
-    interface ChangeValue {
-        JsonNode serialize();
-    }
+    private static final int TIMEZONE_TYPE_DEFAULT = 3;
+    private static final DateTimeFormatter CHANGE_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.000000");
+    private static final List<String> STRING_PROPS = List.of(Property.SUMMARY, Property.LOCATION, Property.DESCRIPTION);
 
     sealed interface PropertyChange permits StringPropertyChange, DateTimePropertyChange {
         String propertyName();
 
-        ChangeValue previousValue();
+        ObjectNode serialize();
+    }
 
-        ChangeValue currentValue();
+    record StringPropertyChange(String propertyName, String previous, String current) implements PropertyChange {
+        @Override
+        public ObjectNode serialize() {
+            return JsonNodeFactory.instance.objectNode()
+                .put(PREVIOUS_FIELD, previous)
+                .put(CURRENT_FIELD, current);
+        }
+    }
 
-        default ObjectNode serialize() {
+    record DateTimePropertyChange(String propertyName,
+                                   DateTimeValue previousValue,
+                                   DateTimeValue currentValue) implements PropertyChange {
+        @Override
+        public ObjectNode serialize() {
             ObjectNode node = JsonNodeFactory.instance.objectNode();
-            Optional.ofNullable(previousValue())
-                .map(ChangeValue::serialize)
-                .ifPresent(value -> node.set(PREVIOUS_FIELD, value));
-            Optional.ofNullable(currentValue())
-                .map(ChangeValue::serialize)
-                .ifPresent(value -> node.set(CURRENT_FIELD, value));
+            Optional.ofNullable(previousValue).map(DateTimeValue::toJson).ifPresent(value -> node.set(PREVIOUS_FIELD, value));
+            Optional.ofNullable(currentValue).map(DateTimeValue::toJson).ifPresent(value -> node.set(CURRENT_FIELD, value));
             return node;
         }
-    }
 
-    record StringPropertyChange(String propertyName, StringValue previousValue, StringValue currentValue) implements PropertyChange {
-        record StringValue(String value) implements ChangeValue {
-            @Override
-            public JsonNode serialize() {
-                return JsonNodeFactory.instance.textNode(value);
+        record DateTimeValue(boolean isAllDay, String date, int timezoneType, String timezone) {
+            static DateTimeValue from(VEvent event, ZonedDateTime dateTime) {
+                return new DateTimeValue(
+                    EventParseUtils.isAllDay(event),
+                    CHANGE_DATE_FORMATTER.format(dateTime),
+                    TIMEZONE_TYPE_DEFAULT,
+                    dateTime.getZone().getId());
             }
-        }
 
-        static StringPropertyChange from(String propertyName, String previousValue, String currentValue) {
-            return new StringPropertyChange(propertyName, new StringValue(previousValue),  new StringValue(currentValue));
-        }
-    }
-
-    record DateTimePropertyChange(String propertyName, DateTimeValue previousValue, DateTimeValue currentValue) implements PropertyChange {
-        private static final String IS_ALL_DAY_FIELD = "isAllDay";
-        private static final String DATE_FIELD = "date";
-        private static final String TIMEZONE_TYPE_FIELD = "timezone_type";
-        private static final String TIMEZONE_FIELD = "timezone";
-
-        record DateTimeValue(boolean isAllDay, String date, int timezoneType, String timezone) implements ChangeValue {
-            @Override
-            public JsonNode serialize() {
-                ObjectNode node = JsonNodeFactory.instance.objectNode();
-                node.put(IS_ALL_DAY_FIELD, isAllDay);
-                node.put(DATE_FIELD, date);
-                node.put(TIMEZONE_TYPE_FIELD, timezoneType);
-                node.put(TIMEZONE_FIELD, timezone);
-                return node;
+            ObjectNode toJson() {
+                return JsonNodeFactory.instance.objectNode()
+                    .put("isAllDay", isAllDay)
+                    .put("date", date)
+                    .put("timezone_type", timezoneType)
+                    .put("timezone", timezone);
             }
         }
     }
@@ -107,145 +101,128 @@ public class CalendarDiffCalculator {
     public record EventDiff(VEvent vevent, boolean isNewEvent, Optional<List<PropertyChange>> changes) {
         public Optional<ObjectNode> serializeChanges() {
             return changes
-                .map(EventDiff::toChangesNode)
-                .filter(changesNode -> !changesNode.isEmpty());
-        }
-
-        private static ObjectNode toChangesNode(List<PropertyChange> changes) {
-            ObjectNode node = JsonNodeFactory.instance.objectNode();
-            changes.forEach(change -> node.set(change.propertyName().toLowerCase(), change.serialize()));
-            return node;
+                .map(list -> {
+                    ObjectNode node = JsonNodeFactory.instance.objectNode();
+                    list.forEach(change -> node.set(change.propertyName().toLowerCase(), change.serialize()));
+                    return node;
+                })
+                .filter(node -> !node.isEmpty());
         }
     }
-
-    private static final DateTimeFormatter CHANGE_DATE_FORMATTER =
-        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.000000");
-    private static final List<String> STRING_PROPS =
-        List.of(Property.SUMMARY, Property.LOCATION, Property.DESCRIPTION);
-    private static final List<String> DATE_PROPS =
-        List.of(Property.DTSTART, Property.DTEND);
 
     public List<EventDiff> calculate(String recipientEmail, Calendar newCalendar, Calendar oldCalendar) {
         String recipient = StringUtils.lowerCase(recipientEmail);
-        Map<String, VEvent> oldEventsByRecurrenceId = indexByRecurrenceId(oldCalendar);
+        if (!EventParseUtils.isRecurringEvent(newCalendar) && !EventParseUtils.isRecurringEvent(oldCalendar)) {
+            return calculateSingleEventDiff(recipient, newCalendar, oldCalendar);
+        }
 
-        return indexByRecurrenceId(newCalendar).entrySet().stream()
-            .map(entry -> toDiff(recipient, oldEventsByRecurrenceId, entry.getKey(), entry.getValue()))
-            .flatMap(Optional::stream)
+        return calculateRecurringEventDiff(recipient, newCalendar, oldCalendar);
+    }
+
+    private List<EventDiff> calculateSingleEventDiff(String recipient, Calendar newCalendar, Calendar oldCalendar) {
+        VEvent currentEvent = EventParseUtils.getFirstEvent(newCalendar);
+        VEvent previousEvent = EventParseUtils.getFirstEvent(oldCalendar);
+
+        boolean recipientWasAttending = attends(recipient, previousEvent);
+        boolean recipientIsAttendingNow = attends(recipient, currentEvent);
+        if (!recipientIsAttendingNow && !recipientWasAttending) {
+            return ImmutableList.of();
+        }
+
+        Optional<List<PropertyChange>> changes = computePropertyChanges(previousEvent, currentEvent);
+        return List.of(new EventDiff(currentEvent, !recipientWasAttending, changes));
+    }
+
+    private List<EventDiff> calculateRecurringEventDiff(String recipient, Calendar newCalendar, Calendar oldCalendar) {
+        Map<String, VEvent> previousEventsByRecurrenceId = indexByRecurrenceId(oldCalendar);
+        VEvent previousMasterEvent = previousEventsByRecurrenceId.get(MASTER_RECURRENCE_ID);
+        Map<String, VEvent> currentEventsByRecurrenceId = indexByRecurrenceId(newCalendar);
+
+        return currentEventsByRecurrenceId.entrySet().stream()
+            .flatMap(entry -> computeDiffForEvent(recipient, previousEventsByRecurrenceId, previousMasterEvent, entry).stream())
             .toList();
     }
 
-    private Optional<EventDiff> toDiff(String recipient, Map<String, VEvent> oldEventsByRecurrenceId, String recurrenceId,
-                                       VEvent currentOccurrence) {
-        VEvent previousOccurrence = oldEventsByRecurrenceId.get(recurrenceId);
-        boolean isNewOccurrence = previousOccurrence == null;
+    private Optional<EventDiff> computeDiffForEvent(String recipient,
+                                                    Map<String, VEvent> previousEventsByRecurrenceId,
+                                                    VEvent previousMasterEvent,
+                                                    Map.Entry<String, VEvent> currentEventEntry) {
+        VEvent previousOccurrence = previousEventsByRecurrenceId.get(currentEventEntry.getKey());
+        VEvent previousEventForRecipient = Optional.ofNullable(previousOccurrence)
+            .orElse(previousMasterEvent);
+        VEvent currentOccurrence = currentEventEntry.getValue();
+        boolean hasPreviousOccurrence = previousOccurrence != null;
 
-        if (!isNewOccurrence && !hasInstanceChanged(previousOccurrence, currentOccurrence)) {
+        boolean recipientWasAttending = attends(recipient, previousEventForRecipient);
+        boolean recipientIsAttendingNow = attends(recipient, currentOccurrence);
+        if (!recipientIsAttendingNow && !recipientWasAttending) {
             return Optional.empty();
         }
 
-        VEvent previousForRecipient = Optional.ofNullable(previousOccurrence)
-            .orElseGet(() -> oldEventsByRecurrenceId.get(MASTER_RECURRENCE_ID));
-        boolean wasAttending = isAttending(recipient, previousForRecipient);
-        boolean isAttendingNow = isAttending(recipient, currentOccurrence);
-
-        if (!isAttendingNow && !wasAttending) {
+        Optional<List<PropertyChange>> changes = computePropertyChanges(previousEventForRecipient, currentOccurrence);
+        if (hasPreviousOccurrence && changes.isEmpty()) {
             return Optional.empty();
         }
 
-        Optional<List<PropertyChange>> propertyChanges = computePropertyChanges(previousForRecipient, currentOccurrence);
-
-        return Optional.of(new EventDiff(currentOccurrence, !wasAttending, propertyChanges));
+        return Optional.of(new EventDiff(currentOccurrence, !recipientWasAttending, changes));
     }
 
     private Map<String, VEvent> indexByRecurrenceId(Calendar calendar) {
         return calendar.getComponents(Component.VEVENT).stream()
             .map(VEvent.class::cast)
-            .collect(Collectors.toMap(this::recurrenceIdOrMaster, Function.identity(),
-                (a, b) -> a, LinkedHashMap::new));
+            .collect(Collectors.toMap(
+                vevent -> EventParseUtils.getRecurrenceId(vevent).orElse(MASTER_RECURRENCE_ID),
+                Function.identity(), (first, second) -> first, LinkedHashMap::new));
     }
 
-    private String recurrenceIdOrMaster(VEvent vEvent) {
-        return EventParseUtils.getRecurrenceId(vEvent)
-            .orElse(MASTER_RECURRENCE_ID);
-    }
-
-    private boolean hasInstanceChanged(VEvent old, VEvent current) {
-        return hasTrackedPropertyChanges(old, current)
-            || hasDateTimeChanges(old, current);
-    }
-
-    private boolean hasTrackedPropertyChanges(VEvent old, VEvent current) {
-        return STRING_PROPS.stream().anyMatch(property -> !stringPropertyValue(old, property).equals(stringPropertyValue(current, property)))
-            || !sortedAttendees(old).equals(sortedAttendees(current));
-    }
-
-    private boolean hasDateTimeChanges(VEvent old, VEvent current) {
-        return DATE_PROPS.stream()
-            .map(property -> compareDateProperty(old, current, property))
-            .flatMap(Optional::stream)
-            .findAny()
-            .isPresent();
-    }
-
-    private boolean isAttending(String recipient, VEvent vEvent) {
-        if (vEvent == null) {
-            return false;
-        }
-        return vEvent.getProperties(Property.ATTENDEE).stream()
+    private boolean attends(String recipient, VEvent vEvent) {
+        return vEvent != null && vEvent.getProperties(Property.ATTENDEE).stream()
             .map(Property::getValue)
-            .anyMatch(attendee -> StringUtils.containsIgnoreCase(attendee, recipient));
+            .anyMatch(attendee -> Strings.CI.contains(attendee, recipient));
     }
 
     private Optional<List<PropertyChange>> computePropertyChanges(VEvent previous, VEvent current) {
         if (previous == null) {
             return Optional.empty();
         }
-        List<PropertyChange> propertyChanges = Stream.concat(
-                STRING_PROPS.stream().map(property -> compareStringProperty(previous, current, property)),
-                DATE_PROPS.stream().map(property -> compareDateProperty(previous, current, property)))
-            .flatMap(Optional::stream)
-            .toList();
 
-        if (propertyChanges.isEmpty()) {
-            return Optional.empty();
-        }
-        return Optional.of(propertyChanges);
+        Stream<PropertyChange> stringChanges = STRING_PROPS.stream()
+            .map(property -> compareStringProperty(previous, current, property))
+            .flatMap(Optional::stream);
+
+        Stream<PropertyChange> dateTimeChanges = Stream.of(
+                compareStartTime(previous, current),
+                compareEndTime(previous, current))
+            .flatMap(Optional::stream);
+
+        return Optional.<List<PropertyChange>>of(Stream.concat(stringChanges, dateTimeChanges)
+                .collect(ImmutableList.toImmutableList()))
+            .filter(list -> !list.isEmpty());
     }
 
-    private Optional<PropertyChange> compareStringProperty(VEvent previous, VEvent current, String propertyName) {
-        String previousValue = stringPropertyValue(previous, propertyName);
-        String currentValue = stringPropertyValue(current, propertyName);
-        if (previousValue.equals(currentValue)) {
+    private Optional<StringPropertyChange> compareStringProperty(VEvent previous, VEvent current, String propertyName) {
+        String previousValue = EventParseUtils.getPropertyValueIgnoreCase(previous, propertyName).orElse(StringUtils.EMPTY);
+        String currentValue = EventParseUtils.getPropertyValueIgnoreCase(current, propertyName).orElse(StringUtils.EMPTY);
+        if (Strings.CS.equals(previousValue, currentValue)) {
             return Optional.empty();
         }
-        return Optional.of(StringPropertyChange.from(propertyName, previousValue, currentValue));
+        return Optional.of(new StringPropertyChange(propertyName, previousValue, currentValue));
     }
 
-    private Optional<PropertyChange> compareDateProperty(VEvent previous, VEvent current, String propertyName) {
-        if (Property.DTEND.equals(propertyName)) {
-            return compareEndTime(previous, current);
-        }
+    private Optional<DateTimePropertyChange> compareStartTime(VEvent previous, VEvent current) {
+        ZonedDateTime previousStart = EventParseUtils.getStartTime(previous);
+        ZonedDateTime currentStart = EventParseUtils.getStartTime(current);
 
-        Optional<Property> previousProperty = previous.getProperty(propertyName);
-        Optional<Property> currentProperty = current.getProperty(propertyName);
-        if (samePropertyValue(previousProperty, currentProperty)) {
+        if (Objects.equals(previousStart, currentStart)) {
             return Optional.empty();
         }
 
-        return Optional.of(new DateTimePropertyChange(
-            propertyName,
-            toDateTimeValue(previousProperty),
-            toDateTimeValue(currentProperty)));
+        return Optional.of(new DateTimePropertyChange(Property.DTSTART,
+            DateTimeValue.from(previous, previousStart),
+            DateTimeValue.from(current, currentStart)));
     }
 
-    private Optional<PropertyChange> compareEndTime(VEvent previous, VEvent current) {
-        Optional<Property> previousDtend = previous.getProperty(Property.DTEND);
-        Optional<Property> currentDtend = current.getProperty(Property.DTEND);
-        if (samePropertyValue(previousDtend, currentDtend) && previousDtend.isPresent()) {
-            return Optional.empty();
-        }
-
+    private Optional<DateTimePropertyChange> compareEndTime(VEvent previous, VEvent current) {
         Optional<ZonedDateTime> previousEnd = EventParseUtils.getEndTime(previous);
         Optional<ZonedDateTime> currentEnd = EventParseUtils.getEndTime(current);
         if (Objects.equals(previousEnd, currentEnd)) {
@@ -254,56 +231,8 @@ public class CalendarDiffCalculator {
 
         return Optional.of(new DateTimePropertyChange(
             Property.DTEND,
-            toEffectiveEndDateTime(previousDtend, previousEnd, previous),
-            toEffectiveEndDateTime(currentDtend, currentEnd, current)));
-    }
-
-    private boolean samePropertyValue(Optional<Property> previousProperty, Optional<Property> currentProperty) {
-        return Objects.equals(
-            previousProperty.map(Property::getValue).orElse(""),
-            currentProperty.map(Property::getValue).orElse(""));
-    }
-
-    private DateTimePropertyChange.DateTimeValue toDateTimeValue(Optional<Property> property) {
-        return property.map(this::toDateTimeValue).orElse(null);
-    }
-
-    private DateTimePropertyChange.DateTimeValue toEffectiveEndDateTime(Optional<Property> dtend,
-                                                                         Optional<ZonedDateTime> effectiveEnd,
-                                                                         VEvent event) {
-        return dtend.map(this::toDateTimeValue)
-            .or(() -> effectiveEnd.map(zdt -> zdtToDateTimeValue(event, zdt)))
-            .orElse(null);
-    }
-
-    private DateTimePropertyChange.DateTimeValue toDateTimeValue(Property prop) {
-        ZonedDateTime zdt = EventParseUtils.parseTime(prop).orElseGet(() -> ZonedDateTime.now(ZoneOffset.UTC));
-        return new DateTimePropertyChange.DateTimeValue(
-            EventParseUtils.isDateType(prop),
-            CHANGE_DATE_FORMATTER.format(zdt),
-            3,
-            prop.getParameter(Parameter.TZID).map(Parameter::getValue).orElseGet(() -> zdt.getZone().getId()));
-    }
-
-    /** Builds a {@link DateTimePropertyChange.DateTimeValue} from a pre-computed {@link ZonedDateTime} (DURATION fallback). */
-    private DateTimePropertyChange.DateTimeValue zdtToDateTimeValue(VEvent event, ZonedDateTime zdt) {
-        return new DateTimePropertyChange.DateTimeValue(
-            EventParseUtils.isAllDay(event),
-            CHANGE_DATE_FORMATTER.format(zdt),
-            3,
-            zdt.getZone().getId());
-    }
-
-    private static String stringPropertyValue(VEvent event, String propertyName) {
-        return EventParseUtils.getPropertyValueIgnoreCase(event, propertyName)
-            .orElse(StringUtils.EMPTY);
-    }
-
-    private static List<String> sortedAttendees(VEvent event) {
-        return event.getProperties(Property.ATTENDEE).stream()
-            .map(p -> p.getValue().toLowerCase())
-            .sorted()
-            .toList();
+            previousEnd.map(time -> DateTimeValue.from(previous, time)).orElse(null),
+            currentEnd.map(time -> DateTimeValue.from(current, time)).orElse(null)));
     }
 
 }

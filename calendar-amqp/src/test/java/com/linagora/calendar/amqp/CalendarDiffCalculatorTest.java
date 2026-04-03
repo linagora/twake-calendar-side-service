@@ -130,8 +130,8 @@ class CalendarDiffCalculatorTest {
             assertThat(diff.changes().get()).singleElement()
                 .isInstanceOfSatisfying(StringPropertyChange.class, change -> {
                     assertThat(change.propertyName()).isEqualTo(Property.SUMMARY);
-                    assertThat(change.previousValue().value()).isEqualTo("Weekly sync (moved)");
-                    assertThat(change.currentValue().value()).isEqualTo("Weekly sync UPDATED");
+                    assertThat(change.previous()).isEqualTo("Weekly sync (moved)");
+                    assertThat(change.current()).isEqualTo("Weekly sync UPDATED");
                 });
         }
 
