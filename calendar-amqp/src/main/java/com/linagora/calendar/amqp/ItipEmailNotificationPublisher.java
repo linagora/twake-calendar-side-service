@@ -20,6 +20,7 @@ package com.linagora.calendar.amqp;
 
 import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
 
+import java.net.URI;
 import java.util.List;
 import java.util.Optional;
 
@@ -56,22 +57,22 @@ class ItipEmailNotificationPublisher {
     }
 
     Mono<Void> send(ItipLocalDeliveryDTO localDelivery,
-                    String eventPath,
-                    Optional<String> oldEventIcs) {
-        return sender.send(toOutboundMessages(localDelivery, eventPath, oldEventIcs)).then();
+                    URI eventPath,
+                    Optional<Calendar> oldEventCalendar) {
+        return sender.send(toOutboundMessages(localDelivery, eventPath, oldEventCalendar)).then();
     }
 
     private Flux<OutboundMessage> toOutboundMessages(ItipLocalDeliveryDTO localDelivery,
-                                                     String eventPath,
-                                                     Optional<String> oldEventIcs) {
-        return Mono.fromCallable(() -> buildNotificationMessages(localDelivery, eventPath, oldEventIcs))
+                                                     URI eventPath,
+                                                     Optional<Calendar> oldEventCalendar) {
+        return Mono.fromCallable(() -> buildNotificationMessages(localDelivery, eventPath, oldEventCalendar))
             .flatMapMany(Flux::fromIterable)
             .flatMap(payload -> toOutboundMessage(payload, localDelivery.uid()));
     }
 
     private List<NotificationEmailDTO> buildNotificationMessages(ItipLocalDeliveryDTO localDelivery,
-                                                                 String eventPath,
-                                                                 Optional<String> oldEventIcs) {
+                                                                 URI eventPath,
+                                                                 Optional<Calendar> oldEventCalendar) {
         String normalizedMethod = StringUtils.upperCase(localDelivery.method());
 
         return switch (normalizedMethod) {
@@ -86,23 +87,22 @@ class ItipEmailNotificationPublisher {
             }
             default -> {
                 Calendar newCalendar = CalendarUtil.parseIcs(localDelivery.message());
-                yield oldEventIcs.map(oldEvent -> buildDiffBasedNotifications(localDelivery, eventPath, newCalendar, oldEvent))
+                yield oldEventCalendar.map(oldCalendar -> buildDiffBasedNotifications(localDelivery, eventPath, newCalendar, oldCalendar))
                     .orElseGet(() -> buildOccurrenceBasedNotifications(localDelivery, eventPath, newCalendar));
             }
         };
     }
 
     private List<NotificationEmailDTO> buildReplyNotifications(ItipLocalDeliveryDTO localDelivery,
-                                                               String eventPath,
+                                                               URI eventPath,
                                                                Calendar newCalendar) {
         return buildNotificationsByOccurrence(localDelivery, eventPath, newCalendar, !MARK_AS_NEW_EVENT);
     }
 
     private List<NotificationEmailDTO> buildDiffBasedNotifications(ItipLocalDeliveryDTO localDelivery,
-                                                                   String eventPath,
+                                                                   URI eventPath,
                                                                    Calendar newCalendar,
-                                                                   String oldEventIcs) {
-        Calendar oldCalendar = CalendarUtil.parseIcs(oldEventIcs);
+                                                                   Calendar oldCalendar) {
         NotificationEmailDTO.Builder payloadBuilderTemplate = NotificationEmailDTO.builder(localDelivery)
             .withEventPath(eventPath);
         return calendarDiffCalculator.calculate(localDelivery.strippedRecipient(), newCalendar, oldCalendar)
@@ -112,14 +112,14 @@ class ItipEmailNotificationPublisher {
     }
 
     private List<NotificationEmailDTO> buildOccurrenceBasedNotifications(ItipLocalDeliveryDTO localDelivery,
-                                                                         String eventPath,
+                                                                         URI eventPath,
                                                                          Calendar newCalendar) {
         boolean markAsNewEvent = Method.VALUE_REQUEST.equalsIgnoreCase(localDelivery.method());
         return buildNotificationsByOccurrence(localDelivery, eventPath, newCalendar, markAsNewEvent);
     }
 
     private List<NotificationEmailDTO> buildNotificationsByOccurrence(ItipLocalDeliveryDTO localDelivery,
-                                                                      String eventPath,
+                                                                      URI eventPath,
                                                                       Calendar newCalendar,
                                                                       boolean markAsNewEvent) {
         NotificationEmailDTO.Builder payloadBuilderTemplate = NotificationEmailDTO.builder(localDelivery)
@@ -232,8 +232,9 @@ class ItipEmailNotificationPublisher {
                 return this;
             }
 
-            Builder withEventPath(String eventPathValue) {
-                eventPath = Optional.ofNullable(eventPathValue);
+            Builder withEventPath(URI eventPathValue) {
+                eventPath = Optional.ofNullable(eventPathValue)
+                    .map(URI::getPath);
                 return this;
             }
 

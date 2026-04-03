@@ -53,6 +53,7 @@ import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.rabbitmq.client.BuiltinExchangeType;
 
+import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.property.Method;
@@ -209,11 +210,11 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     private Mono<Void> processSingleRecipient(ItipLocalDeliveryDTO localDelivery) {
         Username recipientUsername = Username.of(localDelivery.strippedRecipient());
         Mono<Optional<OpenPaaSId>> localRecipientIdPublisher = retrieveRecipientId(recipientUsername).cache();
-        Optional<String> oldEventIcs = localDelivery.oldMessage();
+        Optional<Calendar> oldEventCalendar = localDelivery.oldMessage().map(CalendarUtil::parseIcs);
 
         return localRecipientIdPublisher
             .flatMap(localRecipientId -> sendItipIfNecessary(localDelivery, recipientUsername, localRecipientId)
-                .then(publishEmailNotification(localDelivery, recipientUsername, localRecipientId, oldEventIcs)));
+                .then(publishEmailNotification(localDelivery, recipientUsername, localRecipientId, oldEventCalendar)));
     }
 
     private Mono<Void> sendItipIfNecessary(ItipLocalDeliveryDTO localDelivery,
@@ -245,28 +246,27 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     private Mono<Void> publishEmailNotification(ItipLocalDeliveryDTO localDelivery,
                                                 Username recipientUsername,
                                                 Optional<OpenPaaSId> localRecipientId,
-                                                Optional<String> oldEventIcs) {
+                                                Optional<Calendar> oldEventCalendar) {
         return resolveEventPath(localDelivery, recipientUsername, localRecipientId)
-            .flatMap(eventPath -> itipEmailNotificationPublisher.send(localDelivery, eventPath, oldEventIcs))
+            .flatMap(eventPath -> itipEmailNotificationPublisher.send(localDelivery, eventPath, oldEventCalendar))
             .then(ReactorUtils.logAsMono(() ->
                 LOGGER.debug("Published email notifications for uid {} to {}", localDelivery.uid(), localDelivery.strippedRecipient())));
     }
 
-    private Mono<String> resolveEventPath(ItipLocalDeliveryDTO localDelivery,
-                                          Username recipientUsername,
-                                          Optional<OpenPaaSId> localRecipientId) {
+    private Mono<URI> resolveEventPath(ItipLocalDeliveryDTO localDelivery,
+                                       Username recipientUsername,
+                                       Optional<OpenPaaSId> localRecipientId) {
         return Mono.justOrEmpty(localRecipientId)
             .flatMap(recipientId -> retrieveRecipientEventHref(recipientUsername, recipientId, localDelivery.uid()))
-            .map(URI::getPath)
-            .filter(StringUtils::isNotEmpty)
+            .filter(uri -> StringUtils.isNotEmpty(uri.getPath()))
             .switchIfEmpty(Mono.just(defaultEventPath(localDelivery.calendarId(), localDelivery.uid())));
     }
 
-    private String defaultEventPath(String calendarId, String uid) {
+    private URI defaultEventPath(String calendarId, String uid) {
         if (StringUtils.isEmpty(calendarId)) {
-            return StringUtils.EMPTY;
+            return URI.create(StringUtils.EMPTY);
         }
-        return String.format("%s/%s/%s/%s.ics", CalendarURL.CALENDAR_URL_PATH_PREFIX, calendarId, calendarId, uid);
+        return URI.create(String.format("%s/%s/%s/%s.ics", CalendarURL.CALENDAR_URL_PATH_PREFIX, calendarId, calendarId, uid));
     }
 
     private Mono<URI> retrieveRecipientEventHref(Username recipientUsername, OpenPaaSId recipientId, String uid) {
