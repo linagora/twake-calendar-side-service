@@ -93,6 +93,8 @@ public class EventParseUtils {
         .appendPattern("yyyyMMdd")
         .toFormatter();
 
+    public static final ZoneId ZONE_ID_DEFAULT = ZoneId.of("UTC");
+
     private static final DateTimeFormatter FLEXIBLE_DATE_TIME_FORMATTER =
         new DateTimeFormatterBuilder()
             .appendPattern("yyyyMMdd'T'HHmmss")
@@ -276,7 +278,7 @@ public class EventParseUtils {
     }
 
     public static Optional<ZonedDateTime> temporalToZonedDateTime(Temporal temporal) {
-        return temporalToZonedDateTime(temporal, ZoneId.of("UTC"));
+        return temporalToZonedDateTime(temporal, ZONE_ID_DEFAULT);
     }
 
     public static Optional<ZonedDateTime> temporalToZonedDateTime(Temporal temporal, ZoneId zoneIdDefault) {
@@ -287,10 +289,6 @@ public class EventParseUtils {
             case Instant instant -> Optional.of(instant.atZone(zoneIdDefault));
             case null, default -> Optional.empty();
         };
-    }
-
-    public static ZoneId getAlternativeZoneId(VEvent calendarEvent) {
-        return getZoneIdFromTZID(calendarEvent).orElse(ZoneId.of("UTC"));
     }
 
     public static Optional<ZoneId> getZoneIdFromTZID(VEvent calendarEvent) {
@@ -369,10 +367,22 @@ public class EventParseUtils {
 
         removeProperties(instance, Property.RRULE, Property.EXDATE, Property.DTSTART, Property.DTEND, Property.DURATION);
 
+        Function<Temporal, Temporal> normalizedTemporalOutput = temporal -> {
+            ZoneId zoneId = getZoneIdFromStartDate(master).orElse(ZONE_ID_DEFAULT);
+            return switch (temporal) {
+                case LocalDate lcd -> lcd;
+                case ZonedDateTime zdt -> zdt.withZoneSameInstant(zoneId);
+                case OffsetDateTime odt -> odt.atZoneSameInstant(zoneId);
+                case LocalDateTime ldt -> ldt.atZone(zoneId);
+                case Instant instant -> instant.atZone(zoneId);
+                case null, default -> temporal;
+            };
+        };
+
         addProperties(instance,
-            new RecurrenceId<>(recurrenceDate),
-            new DtStart<>(normalizeTemporal(actualPeriod.getStart())),
-            new DtEnd<>(normalizeTemporal(actualPeriod.getEnd())));
+            new RecurrenceId<>(normalizedTemporalOutput.apply(recurrenceDate)),
+            new DtStart<>(normalizedTemporalOutput.apply(actualPeriod.getStart())),
+            new DtEnd<>(normalizedTemporalOutput.apply(actualPeriod.getEnd())));
 
         return instance;
     }
@@ -420,15 +430,6 @@ public class EventParseUtils {
             .toList();
 
         vEvent.setPropertyList(new PropertyList(filtered));
-    }
-
-    public static Temporal normalizeTemporal(Temporal temporal) {
-        if (temporal instanceof LocalDate) {
-            return temporal;
-        }
-        return temporalToZonedDateTime(temporal, ZoneId.of("UTC"))
-            .map(ZonedDateTime::toInstant)
-            .orElseThrow(() -> new IllegalArgumentException("Cannot convert: " + temporal));
     }
 
 }
