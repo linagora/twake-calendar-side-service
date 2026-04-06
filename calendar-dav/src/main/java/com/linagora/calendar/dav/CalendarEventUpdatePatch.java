@@ -21,8 +21,6 @@ package com.linagora.calendar.dav;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.Strings;
 import org.apache.james.core.Username;
@@ -93,14 +91,4 @@ public interface CalendarEventUpdatePatch {
         vEvent.setPropertyList(new PropertyList(newProperties));
     }
 
-    static void removeProperties(VEvent vEvent, String... propertyNames) {
-        Set<String> namesToRemove = Arrays.stream(propertyNames)
-            .collect(Collectors.toSet());
-
-        List<Property> filtered = vEvent.getProperties().stream()
-            .filter(p -> !namesToRemove.contains(p.getName()))
-            .toList();
-
-        vEvent.setPropertyList(new PropertyList(filtered));
-    }
 }

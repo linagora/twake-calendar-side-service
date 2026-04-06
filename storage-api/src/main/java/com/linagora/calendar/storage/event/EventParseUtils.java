@@ -34,10 +34,12 @@ import java.time.format.DateTimeFormatterBuilder;
 import java.time.temporal.ChronoField;
 import java.time.temporal.Temporal;
 import java.time.temporal.TemporalAccessor;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -52,18 +54,24 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.Content;
 import net.fortuna.ical4j.model.Parameter;
+import net.fortuna.ical4j.model.Period;
 import net.fortuna.ical4j.model.Property;
+import net.fortuna.ical4j.model.PropertyList;
 import net.fortuna.ical4j.model.TimeZone;
 import net.fortuna.ical4j.model.component.CalendarComponent;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
 import net.fortuna.ical4j.model.property.Description;
+import net.fortuna.ical4j.model.property.DtEnd;
+import net.fortuna.ical4j.model.property.DtStart;
 import net.fortuna.ical4j.model.property.Location;
+import net.fortuna.ical4j.model.property.RecurrenceId;
 import net.fortuna.ical4j.model.property.Summary;
 import net.fortuna.ical4j.model.property.Uid;
 
@@ -354,4 +362,73 @@ public class EventParseUtils {
             return new MailAddress(LenientAddressParser.DEFAULT.parseAddress(decoded).toString());
         }
     }
+
+    public static VEvent createInstanceVEvent(VEvent master, Temporal recurrenceDate) {
+        VEvent instance = master.copy();
+        Period actualPeriod = calculateRecurrenceSet(master, recurrenceDate);
+
+        removeProperties(instance, Property.RRULE, Property.EXDATE, Property.DTSTART, Property.DTEND, Property.DURATION);
+
+        addProperties(instance,
+            new RecurrenceId<>(recurrenceDate),
+            new DtStart<>(normalizeTemporal(actualPeriod.getStart())),
+            new DtEnd<>(normalizeTemporal(actualPeriod.getEnd())));
+
+        return instance;
+    }
+
+    public static Period calculateRecurrenceSet(VEvent master, Temporal recurrenceDate) {
+        try {
+            Period period = switch (recurrenceDate) {
+                case Instant instant -> {
+                    ZonedDateTime startOfDay = instant.atZone(ZoneOffset.UTC)
+                        .toLocalDate()
+                        .atStartOfDay(ZoneOffset.UTC);
+                    yield new Period(startOfDay, startOfDay.plusDays(1));
+                }
+                case LocalDate localDate -> {
+                    LocalDate nextDay = localDate.plusDays(1);
+                    yield new Period(nextDay, nextDay);
+                }
+                default -> new Period(recurrenceDate, recurrenceDate);
+            };
+
+            return (Period) master.calculateRecurrenceSet(period).stream()
+                .findFirst()
+                .orElseThrow();
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("Cannot calculateRecurrenceSet for recurrenceDate: " + recurrenceDate
+                + " of event: " + master, exception);
+        }
+    }
+
+    public static void addProperties(VEvent vEvent, Property... properties) {
+        List<Property> newProperties = ImmutableList.<Property>builder()
+            .addAll(vEvent.getProperties())
+            .addAll(Arrays.asList(properties))
+            .build();
+
+        vEvent.setPropertyList(new PropertyList(newProperties));
+    }
+
+    public static void removeProperties(VEvent vEvent, String... propertyNames) {
+        Set<String> namesToRemove = Arrays.stream(propertyNames)
+            .collect(Collectors.toSet());
+
+        List<Property> filtered = vEvent.getProperties().stream()
+            .filter(p -> !namesToRemove.contains(p.getName()))
+            .toList();
+
+        vEvent.setPropertyList(new PropertyList(filtered));
+    }
+
+    public static Temporal normalizeTemporal(Temporal temporal) {
+        if (temporal instanceof LocalDate) {
+            return temporal;
+        }
+        return temporalToZonedDateTime(temporal, ZoneId.of("UTC"))
+            .map(ZonedDateTime::toInstant)
+            .orElseThrow(() -> new IllegalArgumentException("Cannot convert: " + temporal));
+    }
+
 }

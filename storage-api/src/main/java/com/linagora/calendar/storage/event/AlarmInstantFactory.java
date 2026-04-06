@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.storage.event;
 
+import static com.linagora.calendar.storage.event.EventParseUtils.createInstanceVEvent;
 import static net.fortuna.ical4j.model.Property.ACTION;
 import static net.fortuna.ical4j.model.Property.ATTENDEE;
 import static net.fortuna.ical4j.model.Property.TRIGGER;
@@ -30,13 +31,11 @@ import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.Temporal;
 import java.time.temporal.TemporalAmount;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -53,19 +52,14 @@ import org.slf4j.LoggerFactory;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableList;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
-import net.fortuna.ical4j.model.Period;
 import net.fortuna.ical4j.model.Property;
-import net.fortuna.ical4j.model.PropertyList;
 import net.fortuna.ical4j.model.Recur;
 import net.fortuna.ical4j.model.component.VAlarm;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
-import net.fortuna.ical4j.model.property.DtEnd;
-import net.fortuna.ical4j.model.property.DtStart;
 import net.fortuna.ical4j.model.property.ExDate;
 import net.fortuna.ical4j.model.property.RRule;
 import net.fortuna.ical4j.model.property.RecurrenceId;
@@ -309,63 +303,5 @@ public interface AlarmInstantFactory {
                 .orElseThrow(() -> new IllegalArgumentException("Cannot convert: " + temporal));
         }
 
-        public static VEvent createInstanceVEvent(VEvent master, Temporal recurrenceDate) {
-            VEvent instance = master.copy();
-            Period actualPeriod = calculateRecurrenceSet(master, recurrenceDate);
-
-            removeProperties(instance, Property.RRULE, Property.EXDATE, Property.DTSTART, Property.DTEND, Property.DURATION);
-
-            addProperties(instance,
-                new RecurrenceId<>(recurrenceDate),
-                new DtStart<>(normalizeTemporal(actualPeriod.getStart())),
-                new DtEnd<>(normalizeTemporal(actualPeriod.getEnd())));
-
-            return instance;
-        }
-
-        public static Period calculateRecurrenceSet(VEvent master, Temporal recurrenceDate) {
-            try {
-                Period period = switch (recurrenceDate) {
-                    case Instant instant -> {
-                        ZonedDateTime startOfDay = instant.atZone(ZoneOffset.UTC)
-                            .toLocalDate()
-                            .atStartOfDay(ZoneOffset.UTC);
-                        yield new Period(startOfDay, startOfDay.plusDays(1));
-                    }
-                    case LocalDate localDate -> {
-                        LocalDate nextDay = localDate.plusDays(1);
-                        yield new Period(nextDay, nextDay);
-                    }
-                    default -> new Period(recurrenceDate, recurrenceDate);
-                };
-
-                return (Period) master.calculateRecurrenceSet(period).stream()
-                    .findFirst()
-                    .orElseThrow();
-            } catch (Exception exception) {
-                throw new IllegalArgumentException("Cannot calculateRecurrenceSet for recurrenceDate: " + recurrenceDate
-                    + " of event: " + master, exception);
-            }
-        }
-
-        static void addProperties(VEvent vEvent, Property... properties) {
-            List<Property> newProperties = ImmutableList.<Property>builder()
-                .addAll(vEvent.getProperties())
-                .addAll(Arrays.asList(properties))
-                .build();
-
-            vEvent.setPropertyList(new PropertyList(newProperties));
-        }
-
-        static void removeProperties(VEvent vEvent, String... propertyNames) {
-            Set<String> namesToRemove = Arrays.stream(propertyNames)
-                .collect(Collectors.toSet());
-
-            List<Property> filtered = vEvent.getProperties().stream()
-                .filter(p -> !namesToRemove.contains(p.getName()))
-                .toList();
-
-            vEvent.setPropertyList(new PropertyList(filtered));
-        }
     }
 }
