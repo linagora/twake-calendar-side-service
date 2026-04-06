@@ -374,7 +374,7 @@ public class EventParseUtils {
                 case ZonedDateTime zdt -> zdt.withZoneSameInstant(zoneId);
                 case OffsetDateTime odt -> odt.atZoneSameInstant(zoneId);
                 case LocalDateTime ldt -> ldt.atZone(zoneId);
-                case Instant instant -> instant.atZone(zoneId);
+                case Instant instant -> instant;
                 case null, default -> temporal;
             };
         };
