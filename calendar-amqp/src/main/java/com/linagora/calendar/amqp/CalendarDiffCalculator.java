@@ -146,9 +146,9 @@ public class CalendarDiffCalculator {
     }
 
     private static Optional<EventDiff> computeDiffForEvent(String recipient,
-                                                    Map<String, VEvent> previousEventsByRecurrenceId,
-                                                    VEvent previousMasterEvent,
-                                                    Map.Entry<String, VEvent> currentEventEntry) {
+                                                           Map<String, VEvent> previousEventsByRecurrenceId,
+                                                           VEvent previousMasterEvent,
+                                                           Map.Entry<String, VEvent> currentEventEntry) {
         VEvent previousOccurrence = previousEventsByRecurrenceId.get(currentEventEntry.getKey());
         VEvent previousEventForRecipient = Optional.ofNullable(previousOccurrence)
             .orElse(previousMasterEvent);
@@ -163,7 +163,8 @@ public class CalendarDiffCalculator {
 
         Optional<List<PropertyChange>> changes = computePropertyChanges(previousEventForRecipient, currentOccurrence);
         boolean organizerAcceptedTransition = organizerAcceptedTransition(previousEventForRecipient, currentOccurrence);
-        if (hasPreviousOccurrence && changes.isEmpty() && !organizerAcceptedTransition) {
+        boolean hasNoRelevantChanges = hasPreviousOccurrence && changes.isEmpty() && !organizerAcceptedTransition;
+        if (hasNoRelevantChanges) {
             return Optional.empty();
         }
 

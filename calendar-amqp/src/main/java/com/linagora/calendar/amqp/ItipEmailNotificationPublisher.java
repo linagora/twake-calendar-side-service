@@ -19,7 +19,6 @@
 package com.linagora.calendar.amqp;
 
 import static com.linagora.calendar.storage.event.EventParseUtils.createInstanceVEvent;
-import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
 
 import java.net.URI;
 import java.time.LocalDate;
@@ -30,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -67,11 +67,14 @@ class ItipEmailNotificationPublisher {
     private final Sender sender;
     private final NotificationStrategy singleEventNotificationStrategy;
     private final NotificationStrategy recurringEventNotificationStrategy;
+    private final Function<byte[], OutboundMessage> outboundMessageFunction;
 
-    public ItipEmailNotificationPublisher(Sender sender) {
+    public ItipEmailNotificationPublisher(Sender sender,
+                                          Function<byte[], OutboundMessage> outboundMessageFunction) {
         this.sender = sender;
         this.singleEventNotificationStrategy = new SingleEventNotificationStrategy();
         this.recurringEventNotificationStrategy = new RecurringEventNotificationStrategy();
+        this.outboundMessageFunction = outboundMessageFunction;
     }
 
     Mono<Void> send(ItipLocalDeliveryDTO localDelivery,
@@ -303,8 +306,8 @@ class ItipEmailNotificationPublisher {
     }
 
     private Mono<OutboundMessage> toOutboundMessage(NotificationEmailDTO payload, String uid) {
-        return Mono.fromCallable(() -> new OutboundMessage(EventEmailConsumer.EXCHANGE_NAME, EMPTY_ROUTING_KEY,
-                OBJECT_MAPPER.writeValueAsBytes(payload.serialize())))
+        return Mono.fromCallable(() -> outboundMessageFunction
+            .apply(OBJECT_MAPPER.writeValueAsBytes(payload.serialize())))
             .onErrorMap(error -> new RuntimeException(
                 "Failed to serialize email notification payload for uid " + uid, error));
     }
@@ -328,17 +331,8 @@ class ItipEmailNotificationPublisher {
             .setSerializationInclusion(JsonInclude.Include.NON_ABSENT);
 
         static Builder builder(ItipLocalDeliveryDTO dto) {
-            return new Builder(
-                dto.strippedSender(),
-                dto.strippedRecipient(),
-                dto.method(),
-                true,
-                dto.calendarId(),
-                dto.message(),
-                Optional.empty(),
-                Optional.empty(),
-                !MARK_AS_NEW_EVENT,
-                Optional.empty());
+            return new Builder(dto.strippedSender(), dto.strippedRecipient(),
+                dto.calendarId(), dto.method()).withEvent(dto.message());
         }
 
         ObjectNode serialize() {
@@ -353,23 +347,17 @@ class ItipEmailNotificationPublisher {
             private final String calendarURI;
             private String event;
             private boolean isNewEvent;
-            private Optional<String> eventPath;
-            private Optional<String> oldEvent;
-            private Optional<ObjectNode> changes;
+            private Optional<URI> eventPath = Optional.empty();
+            private Optional<String> oldEvent = Optional.empty();
+            private Optional<ObjectNode> changes = Optional.empty();
 
-            private Builder(String senderEmail, String recipientEmail, String method,
-                            boolean shouldNotify, String calendarURI, String event, Optional<String> eventPath,
-                            Optional<String> oldEvent, boolean isNewEvent, Optional<ObjectNode> changes) {
+            private Builder(String senderEmail, String recipientEmail,
+                            String calendarURI, String method) {
                 this.senderEmail = senderEmail;
                 this.recipientEmail = recipientEmail;
-                this.method = method;
-                this.shouldNotify = shouldNotify;
                 this.calendarURI = calendarURI;
-                this.event = event;
-                this.eventPath = eventPath;
-                this.oldEvent = oldEvent;
-                this.isNewEvent = isNewEvent;
-                this.changes = changes;
+                this.method = method;
+                this.shouldNotify = true;
             }
 
             Builder withEvent(String eventIcs) {
@@ -382,9 +370,13 @@ class ItipEmailNotificationPublisher {
                 return this;
             }
 
-            Builder withEventPath(URI eventPathValue) {
-                eventPath = Optional.ofNullable(eventPathValue)
-                    .map(URI::getPath);
+            Builder withEventPath(URI eventPath) {
+                this.eventPath = Optional.of(eventPath);
+                return this;
+            }
+
+            Builder withEventPath(Optional<URI> eventPath) {
+                this.eventPath = eventPath;
                 return this;
             }
 
@@ -410,14 +402,18 @@ class ItipEmailNotificationPublisher {
             }
 
             Builder copy() {
-                return new Builder(senderEmail, recipientEmail, method, shouldNotify, calendarURI, event, eventPath,
-                    oldEvent, isNewEvent, changes.map(ObjectNode::deepCopy));
+                return new Builder(senderEmail, recipientEmail, calendarURI, method)
+                    .withEvent(event)
+                    .withEventPath(eventPath)
+                    .withOldEvent(oldEvent)
+                    .isNewEvent(isNewEvent)
+                    .withChanges(changes.map(ObjectNode::deepCopy));
             }
 
             NotificationEmailDTO build() {
                 return new NotificationEmailDTO(
-                    senderEmail, recipientEmail, method, event, shouldNotify, calendarURI, eventPath, oldEvent,
-                    isNewEvent, changes);
+                    senderEmail, recipientEmail, method, event, shouldNotify, calendarURI,
+                    eventPath.map(URI::getPath), oldEvent, isNewEvent, changes);
             }
         }
     }

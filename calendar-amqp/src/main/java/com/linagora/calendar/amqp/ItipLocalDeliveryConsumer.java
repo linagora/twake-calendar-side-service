@@ -33,6 +33,7 @@ import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.james.backends.rabbitmq.QueueArguments;
+import org.apache.james.backends.rabbitmq.QueueArguments.Builder;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.ReceiverProvider;
 import org.apache.james.core.Username;
@@ -81,7 +82,7 @@ import reactor.rabbitmq.Sender;
  *
  * <p><b>Phase 2 — Process</b> ({@code recipients.length === 1}): submits {@code POST /itip} to
  * Sabre impersonating the recipient, then publishes a {@code calendar:event:notificationEmail:send}
- * message when {@code hasChange} is true.
+ * message.
  */
 public class ItipLocalDeliveryConsumer implements Closeable, Startable {
 
@@ -100,23 +101,28 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     private final ResourceDAO resourceDAO;
     private final ItipEmailNotificationPublisher itipEmailNotificationPublisher;
     private final int prefetchCount;
-
+    private final Supplier<QueueArguments.Builder> queueArgumentSupplier;
     private Disposable consumeDisposable;
 
     @Inject
     public ItipLocalDeliveryConsumer(ReactorRabbitMQChannelPool channelPool,
                                      @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier,
                                      CalDavClient calDavClient,
-                                     OpenPaaSUserDAO openPaaSUserDAO, ResourceDAO resourceDAO,
+                                     OpenPaaSUserDAO openPaaSUserDAO,
+                                     ResourceDAO resourceDAO,
                                      @Named("itipEventMessagesPrefetchCount") int prefetchCount) {
         this.receiverProvider = channelPool::createReceiver;
         this.sender = channelPool.getSender();
         this.calDavClient = calDavClient;
         this.openPaaSUserDAO = openPaaSUserDAO;
         this.resourceDAO = resourceDAO;
-        this.itipEmailNotificationPublisher = new ItipEmailNotificationPublisher(sender);
         this.prefetchCount = prefetchCount;
+        this.queueArgumentSupplier = queueArgumentSupplier;
+        this.itipEmailNotificationPublisher = new ItipEmailNotificationPublisher(sender,
+            bytes -> new OutboundMessage(EventEmailConsumer.EXCHANGE_NAME, EMPTY_ROUTING_KEY, bytes));
+    }
 
+    private static void declareExchangeAndQueue(Supplier<Builder> queueArgumentSupplier, Sender sender) {
         Flux.concat(
                 sender.declareExchange(ExchangeSpecification.exchange(EXCHANGE_NAME)
                     .durable(DURABLE).type(BuiltinExchangeType.FANOUT.getType())),
@@ -141,6 +147,7 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     }
 
     public void start() {
+        declareExchangeAndQueue(queueArgumentSupplier, sender);
         consumeDisposable = doConsumeMessages();
     }
 
