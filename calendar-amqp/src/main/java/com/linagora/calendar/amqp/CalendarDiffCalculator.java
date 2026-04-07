@@ -37,12 +37,14 @@ import org.apache.commons.lang3.Strings;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
+import com.linagora.calendar.storage.event.EventFields.Person;
 import com.linagora.calendar.storage.event.EventParseUtils;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.component.VEvent;
+import net.fortuna.ical4j.model.parameter.PartStat;
 
 public class CalendarDiffCalculator {
 
@@ -110,7 +112,7 @@ public class CalendarDiffCalculator {
         }
     }
 
-    public List<EventDiff> calculate(String recipientEmail, Calendar newCalendar, Calendar oldCalendar) {
+    public static List<EventDiff> calculate(String recipientEmail, Calendar newCalendar, Calendar oldCalendar) {
         String recipient = StringUtils.lowerCase(recipientEmail);
         if (!EventParseUtils.isRecurringEvent(newCalendar) && !EventParseUtils.isRecurringEvent(oldCalendar)) {
             return calculateSingleEventDiff(recipient, newCalendar, oldCalendar);
@@ -119,7 +121,7 @@ public class CalendarDiffCalculator {
         return calculateRecurringEventDiff(recipient, newCalendar, oldCalendar);
     }
 
-    private List<EventDiff> calculateSingleEventDiff(String recipient, Calendar newCalendar, Calendar oldCalendar) {
+    private static List<EventDiff> calculateSingleEventDiff(String recipient, Calendar newCalendar, Calendar oldCalendar) {
         VEvent currentEvent = EventParseUtils.getFirstEvent(newCalendar);
         VEvent previousEvent = EventParseUtils.getFirstEvent(oldCalendar);
 
@@ -133,7 +135,7 @@ public class CalendarDiffCalculator {
         return List.of(new EventDiff(currentEvent, !recipientWasAttending, changes));
     }
 
-    private List<EventDiff> calculateRecurringEventDiff(String recipient, Calendar newCalendar, Calendar oldCalendar) {
+    private static List<EventDiff> calculateRecurringEventDiff(String recipient, Calendar newCalendar, Calendar oldCalendar) {
         Map<String, VEvent> previousEventsByRecurrenceId = indexByRecurrenceId(oldCalendar);
         VEvent previousMasterEvent = previousEventsByRecurrenceId.get(MASTER_RECURRENCE_ID);
         Map<String, VEvent> currentEventsByRecurrenceId = indexByRecurrenceId(newCalendar);
@@ -143,7 +145,7 @@ public class CalendarDiffCalculator {
             .toList();
     }
 
-    private Optional<EventDiff> computeDiffForEvent(String recipient,
+    private static Optional<EventDiff> computeDiffForEvent(String recipient,
                                                     Map<String, VEvent> previousEventsByRecurrenceId,
                                                     VEvent previousMasterEvent,
                                                     Map.Entry<String, VEvent> currentEventEntry) {
@@ -160,14 +162,33 @@ public class CalendarDiffCalculator {
         }
 
         Optional<List<PropertyChange>> changes = computePropertyChanges(previousEventForRecipient, currentOccurrence);
-        if (hasPreviousOccurrence && changes.isEmpty()) {
+        boolean organizerAcceptedTransition = organizerAcceptedTransition(previousEventForRecipient, currentOccurrence);
+        if (hasPreviousOccurrence && changes.isEmpty() && !organizerAcceptedTransition) {
             return Optional.empty();
         }
 
         return Optional.of(new EventDiff(currentOccurrence, !recipientWasAttending, changes));
     }
 
-    private Map<String, VEvent> indexByRecurrenceId(Calendar calendar) {
+    private static boolean organizerAcceptedTransition(VEvent previousEvent, VEvent currentEvent) {
+        Person organizer = EventParseUtils.getOrganizer(previousEvent);
+
+        boolean wasDeclinedOrNeedAction = EventParseUtils.getAttendees(previousEvent)
+            .stream()
+            .filter(person -> person.email().equals(organizer.email()))
+            .flatMap(person -> person.partStat().stream())
+            .anyMatch(stat -> stat.equals(PartStat.NEEDS_ACTION) || stat.equals(PartStat.DECLINED));
+
+        boolean isNowAccepted = EventParseUtils.getAttendees(currentEvent)
+            .stream()
+            .filter(person -> person.email().equals(organizer.email()))
+            .flatMap(person -> person.partStat().stream())
+            .anyMatch(stat -> stat.equals(PartStat.ACCEPTED) || stat.equals(PartStat.TENTATIVE));
+
+        return wasDeclinedOrNeedAction && isNowAccepted;
+    }
+
+    private static Map<String, VEvent> indexByRecurrenceId(Calendar calendar) {
         return calendar.getComponents(Component.VEVENT).stream()
             .map(VEvent.class::cast)
             .collect(Collectors.toMap(
@@ -175,13 +196,13 @@ public class CalendarDiffCalculator {
                 Function.identity(), (first, second) -> first, LinkedHashMap::new));
     }
 
-    private boolean attends(String recipient, VEvent vEvent) {
+    private static boolean attends(String recipient, VEvent vEvent) {
         return vEvent != null && vEvent.getProperties(Property.ATTENDEE).stream()
             .map(Property::getValue)
             .anyMatch(attendee -> Strings.CI.contains(attendee, recipient));
     }
 
-    private Optional<List<PropertyChange>> computePropertyChanges(VEvent previous, VEvent current) {
+    private static Optional<List<PropertyChange>> computePropertyChanges(VEvent previous, VEvent current) {
         if (previous == null) {
             return Optional.empty();
         }
@@ -195,7 +216,7 @@ public class CalendarDiffCalculator {
             .filter(list -> !list.isEmpty());
     }
 
-    private Optional<StringPropertyChange> compareStringProperty(VEvent previous, VEvent current, String propertyName) {
+    private static Optional<StringPropertyChange> compareStringProperty(VEvent previous, VEvent current, String propertyName) {
         String previousValue = EventParseUtils.getPropertyValueIgnoreCase(previous, propertyName).orElse(StringUtils.EMPTY);
         String currentValue = EventParseUtils.getPropertyValueIgnoreCase(current, propertyName).orElse(StringUtils.EMPTY);
         if (Strings.CS.equals(previousValue, currentValue)) {
@@ -204,7 +225,7 @@ public class CalendarDiffCalculator {
         return Optional.of(new StringPropertyChange(propertyName, previousValue, currentValue));
     }
 
-    private Stream<DateTimePropertyChange> compareDateTimeProperties(VEvent previous, VEvent current) {
+    private static Stream<DateTimePropertyChange> compareDateTimeProperties(VEvent previous, VEvent current) {
         Stream.Builder<DateTimePropertyChange> changes = Stream.builder();
         ZonedDateTime previousStart = EventParseUtils.getStartTime(previous);
         ZonedDateTime currentStart = EventParseUtils.getStartTime(current);

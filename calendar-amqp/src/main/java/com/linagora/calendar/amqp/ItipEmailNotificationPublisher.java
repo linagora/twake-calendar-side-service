@@ -23,7 +23,6 @@ import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
 
 import java.net.URI;
 import java.time.LocalDate;
-import java.time.ZonedDateTime;
 import java.time.chrono.ChronoZonedDateTime;
 import java.time.temporal.Temporal;
 import java.util.LinkedHashMap;
@@ -66,13 +65,11 @@ class ItipEmailNotificationPublisher {
     private static final boolean MARK_AS_NEW_EVENT = true;
 
     private final Sender sender;
-    private final CalendarDiffCalculator calendarDiffCalculator;
     private final NotificationStrategy singleEventNotificationStrategy;
     private final NotificationStrategy recurringEventNotificationStrategy;
 
     public ItipEmailNotificationPublisher(Sender sender) {
         this.sender = sender;
-        this.calendarDiffCalculator = new CalendarDiffCalculator();
         this.singleEventNotificationStrategy = new SingleEventNotificationStrategy();
         this.recurringEventNotificationStrategy = new RecurringEventNotificationStrategy();
     }
@@ -144,7 +141,7 @@ class ItipEmailNotificationPublisher {
         }
 
         private List<NotificationEmailDTO> buildEventDiffNotifications(ItipLocalDeliveryDTO localDelivery, Calendar newCalendar, Calendar old, Builder builderTemplate) {
-            return calendarDiffCalculator.calculate(localDelivery.strippedRecipient(), newCalendar, old)
+            return CalendarDiffCalculator.calculate(localDelivery.strippedRecipient(), newCalendar, old)
                 .stream()
                 .map(diff -> builderTemplate
                     .isNewEvent(diff.isNewEvent())
@@ -178,7 +175,7 @@ class ItipEmailNotificationPublisher {
                                                                       Calendar oldCalendar) {
             Map<Temporal, Calendar> cancelCalendarsByRecurrence = computeCancelledCalendars(newCalendar, oldCalendar);
 
-            List<NotificationEmailDTO> requestNotifications = calendarDiffCalculator.calculate(localDelivery.strippedRecipient(), newCalendar, oldCalendar)
+            List<NotificationEmailDTO> requestNotifications = CalendarDiffCalculator.calculate(localDelivery.strippedRecipient(), newCalendar, oldCalendar)
                 .stream()
                 .filter(diff -> shouldSendRequest(diff, cancelCalendarsByRecurrence.keySet()))
                 .map(diff -> buildChangedOccurrenceNotification(NotificationEmailDTO.builder(localDelivery).withEventPath(eventPath),
@@ -201,7 +198,7 @@ class ItipEmailNotificationPublisher {
                                                                        URI eventPath,
                                                                        Calendar newCalendar,
                                                                        Calendar oldCalendar) {
-            return calendarDiffCalculator.calculate(localDelivery.strippedRecipient(), newCalendar, oldCalendar)
+            return CalendarDiffCalculator.calculate(localDelivery.strippedRecipient(), newCalendar, oldCalendar)
                 .stream()
                 .map(diff -> buildChangedOccurrenceNotification(
                     NotificationEmailDTO.builder(localDelivery).withEventPath(eventPath), newCalendar, diff))
