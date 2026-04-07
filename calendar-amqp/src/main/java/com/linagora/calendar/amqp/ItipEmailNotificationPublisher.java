@@ -307,7 +307,7 @@ class ItipEmailNotificationPublisher {
 
     private Mono<OutboundMessage> toOutboundMessage(NotificationEmailDTO payload, String uid) {
         return Mono.fromCallable(() -> outboundMessageFunction
-            .apply(OBJECT_MAPPER.writeValueAsBytes(payload.serialize())))
+                .apply(OBJECT_MAPPER.writeValueAsBytes(payload.serialize())))
             .onErrorMap(error -> new RuntimeException(
                 "Failed to serialize email notification payload for uid " + uid, error));
     }

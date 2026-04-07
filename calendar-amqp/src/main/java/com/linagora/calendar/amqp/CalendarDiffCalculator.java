@@ -71,8 +71,8 @@ public class CalendarDiffCalculator {
     }
 
     record DateTimePropertyChange(String propertyName,
-                                   DateTimeValue previousValue,
-                                   DateTimeValue currentValue) implements PropertyChange {
+                                  DateTimeValue previousValue,
+                                  DateTimeValue currentValue) implements PropertyChange {
         @Override
         public ObjectNode serialize() {
             ObjectNode node = JsonNodeFactory.instance.objectNode();

@@ -18,17 +18,16 @@
 
 package com.linagora.calendar.amqp;
 
+import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.SoftAssertions.assertSoftly;
 
 import java.util.List;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import com.linagora.calendar.amqp.CalendarDiffCalculator.DateTimePropertyChange;
 import com.linagora.calendar.amqp.CalendarDiffCalculator.EventDiff;
-import com.linagora.calendar.amqp.CalendarDiffCalculator.PropertyChange;
 import com.linagora.calendar.amqp.CalendarDiffCalculator.StringPropertyChange;
 import com.linagora.calendar.api.CalendarUtil;
 
@@ -38,13 +37,6 @@ import net.fortuna.ical4j.model.Property;
 class CalendarDiffCalculatorTest {
 
     private static final String RECIPIENT = "bob@example.com";
-
-    private CalendarDiffCalculator calculator;
-
-    @BeforeEach
-    void setUp() {
-        calculator = new CalendarDiffCalculator();
-    }
 
     private static Calendar parse(String ics) {
         return CalendarUtil.parseIcs(ics);
@@ -58,6 +50,7 @@ class CalendarDiffCalculatorTest {
             VERSION:2.0
             PRODID:-//Test//Test//EN
             METHOD:REQUEST
+            
             BEGIN:VEVENT
             UID:uid-recur@test
             DTSTART:20260401T100000Z
@@ -68,6 +61,7 @@ class CalendarDiffCalculatorTest {
             ATTENDEE:mailto:bob@example.com
             ORGANIZER:mailto:alice@example.com
             END:VEVENT
+            
             BEGIN:VEVENT
             UID:uid-recur@test
             RECURRENCE-ID:20260408T100000Z
@@ -78,12 +72,13 @@ class CalendarDiffCalculatorTest {
             ATTENDEE:mailto:bob@example.com
             ORGANIZER:mailto:alice@example.com
             END:VEVENT
+            
             END:VCALENDAR
             """;
 
         @Test
         void unchangedRecurringUpdateReturnsNoDiff() {
-            List<EventDiff> diffs = calculator.calculate(
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(
                 RECIPIENT, parse(MASTER_AND_EXCEPTION_OLD), parse(MASTER_AND_EXCEPTION_OLD));
 
             assertThat(diffs).isEmpty();
@@ -96,6 +91,7 @@ class CalendarDiffCalculatorTest {
                 VERSION:2.0
                 PRODID:-//Test//Test//EN
                 METHOD:REQUEST
+                
                 BEGIN:VEVENT
                 UID:uid-recur@test
                 DTSTART:20260401T100000Z
@@ -106,6 +102,7 @@ class CalendarDiffCalculatorTest {
                 ATTENDEE:mailto:bob@example.com
                 ORGANIZER:mailto:alice@example.com
                 END:VEVENT
+                
                 BEGIN:VEVENT
                 UID:uid-recur@test
                 RECURRENCE-ID:20260408T100000Z
@@ -116,23 +113,35 @@ class CalendarDiffCalculatorTest {
                 ATTENDEE:mailto:bob@example.com
                 ORGANIZER:mailto:alice@example.com
                 END:VEVENT
+                
                 END:VCALENDAR
                 """;
 
-            List<EventDiff> diffs = calculator.calculate(
+            List<EventDiff> eventDiffs = CalendarDiffCalculator.calculate(
                 RECIPIENT, parse(newIcs), parse(MASTER_AND_EXCEPTION_OLD));
 
-            assertThat(diffs).hasSize(1);
-            EventDiff diff = diffs.get(0);
-            assertThat(diff.isNewEvent()).isFalse();
-            assertThat(diff.vevent().getProperty(Property.RECURRENCE_ID)).isPresent();
-            assertThat(diff.changes()).isPresent();
-            assertThat(diff.changes().get()).singleElement()
-                .isInstanceOfSatisfying(StringPropertyChange.class, change -> {
-                    assertThat(change.propertyName()).isEqualTo(Property.SUMMARY);
-                    assertThat(change.previous()).isEqualTo("Weekly sync (moved)");
-                    assertThat(change.current()).isEqualTo("Weekly sync UPDATED");
-                });
+            assertThat(eventDiffs).hasSize(1);
+            EventDiff eventDiff = eventDiffs.getFirst();
+            StringPropertyChange summaryChange = (StringPropertyChange) eventDiff.changes().orElseThrow().getFirst();
+
+            assertSoftly(softly -> {
+                softly.assertThat(eventDiff.isNewEvent()).isFalse();
+                softly.assertThat(summaryChange.propertyName()).isEqualTo(Property.SUMMARY);
+                softly.assertThat(summaryChange.previous()).isEqualTo("Weekly sync (moved)");
+                softly.assertThat(summaryChange.current()).isEqualTo("Weekly sync UPDATED");
+                softly.assertThat(eventDiff.vevent().toString())
+                    .isEqualToIgnoringNewLines("""
+                        BEGIN:VEVENT
+                        UID:uid-recur@test
+                        RECURRENCE-ID:20260408T100000Z
+                        DTSTART:20260408T120000Z
+                        DTEND:20260408T130000Z
+                        SUMMARY:Weekly sync UPDATED
+                        SEQUENCE:2
+                        ATTENDEE:mailto:bob@example.com
+                        ORGANIZER:mailto:alice@example.com
+                        END:VEVENT""".trim());
+            });
         }
 
         @Test
@@ -142,6 +151,7 @@ class CalendarDiffCalculatorTest {
                 VERSION:2.0
                 PRODID:-//Test//Test//EN
                 METHOD:REQUEST
+                
                 BEGIN:VEVENT
                 UID:uid-recur@test
                 DTSTART:20260401T100000Z
@@ -152,6 +162,7 @@ class CalendarDiffCalculatorTest {
                 ATTENDEE:mailto:bob@example.com
                 ORGANIZER:mailto:alice@example.com
                 END:VEVENT
+                
                 BEGIN:VEVENT
                 UID:uid-recur@test
                 RECURRENCE-ID:20260408T100000Z
@@ -162,15 +173,18 @@ class CalendarDiffCalculatorTest {
                 ATTENDEE:mailto:bob@example.com
                 ORGANIZER:mailto:alice@example.com
                 END:VEVENT
+                
                 END:VCALENDAR
                 """;
 
-            List<EventDiff> diffs = calculator.calculate(
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(
                 RECIPIENT, parse(newIcs), parse(MASTER_AND_EXCEPTION_OLD));
 
-            assertThat(diffs).hasSize(2);
-            assertThat(diffs).allMatch(diff -> !diff.isNewEvent());
-            assertThat(diffs).allMatch(diff -> diff.changes().isPresent());
+            assertThat(diffs).hasSize(2)
+                .allSatisfy(diff -> {
+                    assertThat(diff.isNewEvent()).isFalse();
+                    assertThat(diff.changes()).isPresent();
+                });
         }
 
         @Test
@@ -197,6 +211,7 @@ class CalendarDiffCalculatorTest {
                 VERSION:2.0
                 PRODID:-//Test//Test//EN
                 METHOD:REQUEST
+                
                 BEGIN:VEVENT
                 UID:uid-recur2@test
                 DTSTART:20260401T100000Z
@@ -207,6 +222,7 @@ class CalendarDiffCalculatorTest {
                 ATTENDEE:mailto:bob@example.com
                 ORGANIZER:mailto:alice@example.com
                 END:VEVENT
+                
                 BEGIN:VEVENT
                 UID:uid-recur2@test
                 RECURRENCE-ID:20260408T100000Z
@@ -220,11 +236,14 @@ class CalendarDiffCalculatorTest {
                 END:VCALENDAR
                 """;
 
-            List<EventDiff> diffs = calculator.calculate(RECIPIENT, parse(newIcs), parse(oldIcs));
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(
+                RECIPIENT, parse(newIcs), parse(oldIcs));
 
-            assertThat(diffs).hasSize(1);
-            assertThat(diffs.get(0).isNewEvent()).isFalse();
-            assertThat(diffs.get(0).changes()).isPresent();
+            assertThat(diffs).singleElement()
+                .satisfies(diff -> {
+                    assertThat(diff.isNewEvent()).isFalse();
+                    assertThat(diff.changes()).isPresent();
+                });
         }
 
         @Test
@@ -251,6 +270,7 @@ class CalendarDiffCalculatorTest {
                 VERSION:2.0
                 PRODID:-//Test//Test//EN
                 METHOD:REQUEST
+                
                 BEGIN:VEVENT
                 UID:uid-recur3@test
                 DTSTART:20260401T100000Z
@@ -261,6 +281,7 @@ class CalendarDiffCalculatorTest {
                 ATTENDEE:mailto:charlie@example.com
                 ORGANIZER:mailto:alice@example.com
                 END:VEVENT
+                
                 BEGIN:VEVENT
                 UID:uid-recur3@test
                 RECURRENCE-ID:20260408T100000Z
@@ -272,13 +293,15 @@ class CalendarDiffCalculatorTest {
                 ATTENDEE:mailto:bob@example.com
                 ORGANIZER:mailto:alice@example.com
                 END:VEVENT
+                
                 END:VCALENDAR
                 """;
 
-            List<EventDiff> diffs = calculator.calculate(RECIPIENT, parse(newIcs), parse(oldIcs));
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(
+                RECIPIENT, parse(newIcs), parse(oldIcs));
 
-            assertThat(diffs).hasSize(1);
-            assertThat(diffs.get(0).isNewEvent()).isTrue();
+            assertThat(diffs).singleElement()
+                .satisfies(diff -> assertThat(diff.isNewEvent()).isTrue());
         }
 
         @Test
@@ -288,6 +311,7 @@ class CalendarDiffCalculatorTest {
                 VERSION:2.0
                 PRODID:-//Test//Test//EN
                 METHOD:REQUEST
+                
                 BEGIN:VEVENT
                 UID:uid-recur4@test
                 DTSTART:20260401T100000Z
@@ -297,6 +321,7 @@ class CalendarDiffCalculatorTest {
                 ATTENDEE:mailto:bob@example.com
                 ORGANIZER:mailto:alice@example.com
                 END:VEVENT
+                
                 BEGIN:VEVENT
                 UID:uid-recur4@test
                 RECURRENCE-ID:20260408T100000Z
@@ -313,6 +338,7 @@ class CalendarDiffCalculatorTest {
                 VERSION:2.0
                 PRODID:-//Test//Test//EN
                 METHOD:REQUEST
+                
                 BEGIN:VEVENT
                 UID:uid-recur4@test
                 DTSTART:20260401T100000Z
@@ -322,6 +348,7 @@ class CalendarDiffCalculatorTest {
                 ATTENDEE:mailto:bob@example.com
                 ORGANIZER:mailto:alice@example.com
                 END:VEVENT
+                
                 BEGIN:VEVENT
                 UID:uid-recur4@test
                 RECURRENCE-ID:20260408T100000Z
@@ -334,23 +361,284 @@ class CalendarDiffCalculatorTest {
                 END:VCALENDAR
                 """;
 
-            List<EventDiff> diffs = calculator.calculate(RECIPIENT, parse(newIcs), parse(oldIcs));
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(
+                RECIPIENT, parse(newIcs), parse(oldIcs));
 
-            assertThat(diffs).hasSize(1);
-            assertThat(diffs.get(0).changes()).isPresent();
+            assertThat(diffs).singleElement()
+                .satisfies(diff ->
+                    assertThatJson(diff.serializeChanges().orElseThrow().toString())
+                        .isEqualTo("""
+                            {
+                                "dtstart": {
+                                    "previous": {
+                                        "isAllDay": false,
+                                        "date": "2026-04-08 12:00:00.000000",
+                                        "timezone_type": 3,
+                                        "timezone": "Z"
+                                    },
+                                    "current": {
+                                        "isAllDay": false,
+                                        "date": "2026-04-08 14:00:00.000000",
+                                        "timezone_type": 3,
+                                        "timezone": "Z"
+                                    }
+                                },
+                                "dtend": {
+                                    "previous": {
+                                        "isAllDay": false,
+                                        "date": "2026-04-08 13:00:00.000000",
+                                        "timezone_type": 3,
+                                        "timezone": "Z"
+                                    },
+                                    "current": {
+                                        "isAllDay": false,
+                                        "date": "2026-04-08 15:00:00.000000",
+                                        "timezone_type": 3,
+                                        "timezone": "Z"
+                                    }
+                                }
+                            }"""));
+        }
+    }
 
-            List<PropertyChange> changes = diffs.get(0).changes().get();
-            PropertyChange dtStartChange = changes.stream()
-                .filter(change -> change.propertyName().equals(Property.DTSTART))
-                .findFirst()
-                .orElseThrow();
+    @Nested
+    class SingleEventDiff {
 
-            assertThat(dtStartChange).isInstanceOfSatisfying(DateTimePropertyChange.class, change -> {
-                assertThat(change.previousValue().timezoneType()).isEqualTo(3);
-                assertThat(change.previousValue().isAllDay()).isFalse();
-                assertThat(change.previousValue().date()).isEqualTo("2026-04-08 12:00:00.000000");
-                assertThat(change.currentValue().date()).isEqualTo("2026-04-08 14:00:00.000000");
-            });
+        private static final String BASE_ICS = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Test//Test//EN
+            METHOD:REQUEST
+            BEGIN:VEVENT
+            UID:uid-single@test
+            DTSTART:20260401T100000Z
+            DTEND:20260401T110000Z
+            SUMMARY:Team meeting
+            LOCATION:Room A
+            DESCRIPTION:Discuss roadmap
+            ATTENDEE:mailto:bob@example.com
+            ORGANIZER:mailto:alice@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        @Test
+        void recipientNotAttendingReturnsNoDiff() {
+            String ics = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Test//Test//EN
+                METHOD:REQUEST
+                BEGIN:VEVENT
+                UID:uid-single@test
+                DTSTART:20260401T100000Z
+                DTEND:20260401T110000Z
+                SUMMARY:Team meeting
+                ATTENDEE:mailto:charlie@example.com
+                ORGANIZER:mailto:alice@example.com
+                END:VEVENT
+                END:VCALENDAR
+                """;
+
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(
+                RECIPIENT, parse(ics), parse(ics));
+
+            assertThat(diffs).isEmpty();
+        }
+
+        @Test
+        void newRecipientAddedMarksIsNewEvent() {
+            String oldIcs = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Test//Test//EN
+                METHOD:REQUEST
+                BEGIN:VEVENT
+                UID:uid-single@test
+                DTSTART:20260401T100000Z
+                DTEND:20260401T110000Z
+                SUMMARY:Team meeting
+                ATTENDEE:mailto:charlie@example.com
+                ORGANIZER:mailto:alice@example.com
+                END:VEVENT
+                END:VCALENDAR
+                """;
+
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(
+                RECIPIENT, parse(BASE_ICS), parse(oldIcs));
+
+            assertThat(diffs).singleElement()
+                .satisfies(diff -> assertThat(diff.isNewEvent()).isTrue());
+        }
+
+        @Test
+        void summaryChangeReturnsDiff() {
+            String newIcs = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Test//Test//EN
+                METHOD:REQUEST
+                BEGIN:VEVENT
+                UID:uid-single@test
+                DTSTART:20260401T100000Z
+                DTEND:20260401T110000Z
+                SUMMARY:Team meeting UPDATED
+                LOCATION:Room A
+                DESCRIPTION:Discuss roadmap
+                ATTENDEE:mailto:bob@example.com
+                ORGANIZER:mailto:alice@example.com
+                END:VEVENT
+                END:VCALENDAR
+                """;
+
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(
+                RECIPIENT, parse(newIcs), parse(BASE_ICS));
+
+            assertThat(diffs).singleElement()
+                .satisfies(diff -> {
+                    assertThat(diff.isNewEvent()).isFalse();
+                    assertThatJson(diff.serializeChanges().orElseThrow().toString())
+                        .isEqualTo("""
+                            {
+                                "summary": {
+                                    "previous": "Team meeting",
+                                    "current": "Team meeting UPDATED"
+                                }
+                            }""");
+                });
+        }
+
+        @Test
+        void locationChangeReturnsDiff() {
+            String newIcs = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Test//Test//EN
+                METHOD:REQUEST
+                BEGIN:VEVENT
+                UID:uid-single@test
+                DTSTART:20260401T100000Z
+                DTEND:20260401T110000Z
+                SUMMARY:Team meeting
+                LOCATION:Room B
+                DESCRIPTION:Discuss roadmap
+                ATTENDEE:mailto:bob@example.com
+                ORGANIZER:mailto:alice@example.com
+                END:VEVENT
+                END:VCALENDAR
+                """;
+
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(
+                RECIPIENT, parse(newIcs), parse(BASE_ICS));
+
+            assertThat(diffs).singleElement()
+                .satisfies(diff -> {
+                    assertThat(diff.isNewEvent()).isFalse();
+                    assertThatJson(diff.serializeChanges().orElseThrow().toString())
+                        .isEqualTo("""
+                            {
+                                "location": {
+                                    "previous": "Room A",
+                                    "current": "Room B"
+                                }
+                            }""");
+                });
+        }
+
+        @Test
+        void dtendChangeReturnsDiff() {
+            String newIcs = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Test//Test//EN
+                METHOD:REQUEST
+                BEGIN:VEVENT
+                UID:uid-single@test
+                DTSTART:20260401T100000Z
+                DTEND:20260401T120000Z
+                SUMMARY:Team meeting
+                LOCATION:Room A
+                DESCRIPTION:Discuss roadmap
+                ATTENDEE:mailto:bob@example.com
+                ORGANIZER:mailto:alice@example.com
+                END:VEVENT
+                END:VCALENDAR
+                """;
+
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(
+                RECIPIENT, parse(newIcs), parse(BASE_ICS));
+
+            assertThat(diffs).singleElement()
+                .satisfies(diff -> {
+                    assertThat(diff.isNewEvent()).isFalse();
+                    assertThatJson(diff.serializeChanges().orElseThrow().toString())
+                        .isEqualTo("""
+                            {
+                                "dtend": {
+                                    "previous": {
+                                        "isAllDay": false,
+                                        "date": "2026-04-01 11:00:00.000000",
+                                        "timezone_type": 3,
+                                        "timezone": "Z"
+                                    },
+                                    "current": {
+                                        "isAllDay": false,
+                                        "date": "2026-04-01 12:00:00.000000",
+                                        "timezone_type": 3,
+                                        "timezone": "Z"
+                                    }
+                                }
+                            }""");
+                });
+        }
+    }
+
+    @Nested
+    class OrganizerAcceptedTransition {
+
+        @Test
+        void organizerTransitionFromNeedsActionToAcceptedReturnsDiff() {
+            String oldIcs = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Test//Test//EN
+                METHOD:REQUEST
+                BEGIN:VEVENT
+                UID:uid-organizer@test
+                DTSTART:20260401T100000Z
+                DTEND:20260401T110000Z
+                SUMMARY:Team meeting
+                ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:alice@example.com
+                ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                ORGANIZER:mailto:alice@example.com
+                END:VEVENT
+                END:VCALENDAR
+                """;
+            String newIcs = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Test//Test//EN
+                METHOD:REQUEST
+                BEGIN:VEVENT
+                UID:uid-organizer@test
+                DTSTART:20260401T100000Z
+                DTEND:20260401T110000Z
+                SUMMARY:Team meeting
+                ATTENDEE;PARTSTAT=ACCEPTED:mailto:alice@example.com
+                ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                ORGANIZER:mailto:alice@example.com
+                END:VEVENT
+                END:VCALENDAR
+                """;
+
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(
+                RECIPIENT, parse(newIcs), parse(oldIcs));
+
+            assertThat(diffs).singleElement()
+                .satisfies(diff -> {
+                    assertThat(diff.isNewEvent()).isFalse();
+                    assertThat(diff.serializeChanges()).isEmpty();
+                });
         }
     }
 }

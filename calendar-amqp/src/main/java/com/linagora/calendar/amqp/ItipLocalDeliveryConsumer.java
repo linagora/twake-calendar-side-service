@@ -51,11 +51,7 @@ import com.linagora.calendar.dav.CalDavClient.ItipRequest;
 import com.linagora.calendar.dav.dto.CalendarReportJsonResponse;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
-import com.linagora.calendar.storage.OpenPaaSUser;
-import com.linagora.calendar.storage.OpenPaaSUserDAO;
-import com.linagora.calendar.storage.ResourceDAO;
 import com.linagora.calendar.storage.event.EventParseUtils;
-import com.linagora.calendar.storage.model.ResourceId;
 import com.rabbitmq.client.BuiltinExchangeType;
 
 import net.fortuna.ical4j.model.Calendar;
@@ -97,8 +93,7 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     private final ReceiverProvider receiverProvider;
     private final Sender sender;
     private final CalDavClient calDavClient;
-    private final OpenPaaSUserDAO openPaaSUserDAO;
-    private final ResourceDAO resourceDAO;
+    private final LocalRecipientResolver localRecipientResolver;
     private final ItipEmailNotificationPublisher itipEmailNotificationPublisher;
     private final int prefetchCount;
     private final Supplier<QueueArguments.Builder> queueArgumentSupplier;
@@ -108,14 +103,12 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     public ItipLocalDeliveryConsumer(ReactorRabbitMQChannelPool channelPool,
                                      @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier,
                                      CalDavClient calDavClient,
-                                     OpenPaaSUserDAO openPaaSUserDAO,
-                                     ResourceDAO resourceDAO,
+                                     LocalRecipientResolver localRecipientResolver,
                                      @Named("itipEventMessagesPrefetchCount") int prefetchCount) {
         this.receiverProvider = channelPool::createReceiver;
         this.sender = channelPool.getSender();
         this.calDavClient = calDavClient;
-        this.openPaaSUserDAO = openPaaSUserDAO;
-        this.resourceDAO = resourceDAO;
+        this.localRecipientResolver = localRecipientResolver;
         this.prefetchCount = prefetchCount;
         this.queueArgumentSupplier = queueArgumentSupplier;
         this.itipEmailNotificationPublisher = new ItipEmailNotificationPublisher(sender,
@@ -221,7 +214,7 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
         Username recipientUsername = Username.of(localDelivery.strippedRecipient());
         Optional<Calendar> oldEventCalendar = localDelivery.oldMessage().map(CalendarUtil::parseIcs);
 
-        return retrieveRecipientId(recipientUsername)
+        return localRecipientResolver.resolve(recipientUsername)
             .flatMap(localRecipientId -> sendItipIfNecessary(localDelivery, recipientUsername, localRecipientId)
                 .then(publishEmailNotification(localDelivery, recipientUsername, localRecipientId, oldEventCalendar)));
     }
@@ -239,15 +232,6 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
             localDelivery.strippedRecipient(), localDelivery.message(), localDelivery.method(), sequence);
         return calDavClient.sendItip(recipientUsername, itipRequest)
             .then();
-    }
-
-    private Mono<Optional<OpenPaaSId>> retrieveRecipientId(Username recipientUsername) {
-        return openPaaSUserDAO.retrieve(recipientUsername)
-            .map(OpenPaaSUser::id)
-            .switchIfEmpty(resourceDAO.findById(new ResourceId(recipientUsername.getLocalPart()))
-                .map(resource -> resource.id().asOpenPaaSId()))
-            .map(Optional::of)
-            .switchIfEmpty(Mono.just(Optional.empty()));
     }
 
     private Mono<Void> publishEmailNotification(ItipLocalDeliveryDTO localDelivery,
