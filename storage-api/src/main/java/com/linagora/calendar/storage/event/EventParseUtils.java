@@ -38,6 +38,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
@@ -72,6 +73,7 @@ import net.fortuna.ical4j.model.property.DtEnd;
 import net.fortuna.ical4j.model.property.DtStart;
 import net.fortuna.ical4j.model.property.Location;
 import net.fortuna.ical4j.model.property.RecurrenceId;
+import net.fortuna.ical4j.model.property.Sequence;
 import net.fortuna.ical4j.model.property.Summary;
 import net.fortuna.ical4j.model.property.Uid;
 
@@ -320,6 +322,28 @@ public class EventParseUtils {
         Preconditions.checkArgument(!events.isEmpty(), "VEVENT is empty");
 
         return events.size() > 1 || events.getFirst().getProperty(Property.RRULE).isPresent();
+    }
+
+    public static VEvent getFirstEvent(Calendar calendar) {
+        return calendar.getComponent(Component.VEVENT)
+            .map(VEvent.class::cast)
+            .orElseThrow(() -> new IllegalStateException("No VEVENT found in the calendar"));
+    }
+
+        public static VEvent getMasterRecurrenceEvent(Calendar calendar) {
+        return calendar.getComponent(Component.VEVENT)
+            .map(VEvent.class::cast)
+            .filter(vEvent -> isRecurrentMaster(vEvent).orElse(false))
+            .orElseThrow(() -> new IllegalStateException("No VEVENT found in the calendar"));
+    }
+
+    public static Optional<Integer> maxSequenceNo(Calendar calendar) {
+        return calendar.getComponents(Component.VEVENT)
+            .stream()
+            .map(vevent -> ((VEvent) vevent).getSequence())
+            .filter(Objects::nonNull)
+            .map(Sequence::getSequenceNo)
+            .max(Integer::compareTo);
     }
 
     public static String extractEventUid(Calendar calendar) {
