@@ -391,16 +391,29 @@ public class EventParseUtils {
 
         removeProperties(instance, Property.RRULE, Property.EXDATE, Property.DTSTART, Property.DTEND, Property.DURATION);
 
+        Optional<ZoneId> masterZoneId = getZoneIdFromStartDate(master);
         Function<Temporal, Temporal> normalizedTemporalOutput = temporal -> {
-            ZoneId zoneId = getZoneIdFromStartDate(master).orElse(ZONE_ID_DEFAULT);
-            return switch (temporal) {
-                case LocalDate lcd -> lcd;
-                case ZonedDateTime zdt -> zdt.withZoneSameInstant(zoneId);
-                case OffsetDateTime odt -> odt.atZoneSameInstant(zoneId);
-                case LocalDateTime ldt -> ldt.atZone(zoneId);
-                case Instant instant -> instant;
-                case null, default -> temporal;
-            };
+            if (masterZoneId.isPresent()) {
+                ZoneId zoneId = masterZoneId.get();
+                return switch (temporal) {
+                    case LocalDate lcd -> lcd;
+                    case ZonedDateTime zdt -> zdt.withZoneSameInstant(zoneId);
+                    case OffsetDateTime odt -> odt.atZoneSameInstant(zoneId);
+                    case LocalDateTime ldt -> ldt.atZone(zoneId);
+                    case Instant instant -> instant.atZone(zoneId);
+                    case null, default -> temporal;
+                };
+            } else {
+                // No TZID on master (UTC-Z or all-day): keep LocalDate as-is, convert datetime to Instant
+                return switch (temporal) {
+                    case LocalDate lcd -> lcd;
+                    case ZonedDateTime zdt -> zdt.toInstant();
+                    case OffsetDateTime odt -> odt.toInstant();
+                    case LocalDateTime ldt -> ldt.toInstant(ZoneOffset.UTC);
+                    case Instant instant -> instant;
+                    case null, default -> temporal;
+                };
+            }
         };
 
         addProperties(instance,
