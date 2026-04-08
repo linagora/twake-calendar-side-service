@@ -40,6 +40,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
 import com.linagora.calendar.amqp.CalendarDiffCalculator.EventDiff;
 import com.linagora.calendar.amqp.ItipEmailNotificationPublisher.NotificationEmailDTO.Builder;
@@ -91,9 +92,10 @@ class ItipEmailNotificationPublisher {
             .flatMap(payload -> toOutboundMessage(payload, localDelivery.uid()));
     }
 
-    private List<NotificationEmailDTO> buildNotificationMessages(ItipLocalDeliveryDTO localDelivery,
-                                                                 URI eventPath,
-                                                                 Optional<Calendar> oldEventCalendar) {
+    @VisibleForTesting
+    public List<NotificationEmailDTO> buildNotificationMessages(ItipLocalDeliveryDTO localDelivery,
+                                                                URI eventPath,
+                                                                Optional<Calendar> oldEventCalendar) {
         Calendar newCalendar = CalendarUtil.parseIcs(localDelivery.message());
         return notificationStrategy(newCalendar)
             .handle(localDelivery, eventPath, newCalendar, oldEventCalendar);
@@ -122,7 +124,7 @@ class ItipEmailNotificationPublisher {
         }
     }
 
-    private class SingleEventNotificationStrategy implements NotificationStrategy {
+    private static class SingleEventNotificationStrategy implements NotificationStrategy {
         @Override
         public List<NotificationEmailDTO> handle(ItipLocalDeliveryDTO localDelivery,
                                                  URI eventPath,
@@ -153,7 +155,7 @@ class ItipEmailNotificationPublisher {
         }
     }
 
-    private class RecurringEventNotificationStrategy implements NotificationStrategy {
+    private static class RecurringEventNotificationStrategy implements NotificationStrategy {
         @Override
         public List<NotificationEmailDTO> handle(ItipLocalDeliveryDTO localDelivery,
                                                  URI eventPath,
@@ -308,8 +310,7 @@ class ItipEmailNotificationPublisher {
     private Mono<OutboundMessage> toOutboundMessage(NotificationEmailDTO payload, String uid) {
         return Mono.fromCallable(() -> outboundMessageFunction
                 .apply(OBJECT_MAPPER.writeValueAsBytes(payload.serialize())))
-            .onErrorMap(error -> new RuntimeException(
-                "Failed to serialize email notification payload for uid " + uid, error));
+            .onErrorMap(error -> new RuntimeException("Failed to serialize email notification payload for uid " + uid, error));
     }
 
     @JsonInclude(JsonInclude.Include.NON_ABSENT)
