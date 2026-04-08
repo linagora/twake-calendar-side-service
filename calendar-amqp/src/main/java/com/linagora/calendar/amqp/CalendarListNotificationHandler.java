@@ -32,7 +32,9 @@ import com.linagora.calendar.storage.CalendarListChangedEvent;
 import com.linagora.calendar.storage.CalendarListChangedEvent.ChangeType;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.ResourceDAO;
 import com.linagora.calendar.storage.UsernameRegistrationKey;
+import com.linagora.calendar.storage.model.ResourceId;
 
 import reactor.core.publisher.Mono;
 
@@ -42,9 +44,11 @@ public class CalendarListNotificationHandler {
 
     private final EventBus eventBus;
     private final OpenPaaSUserDAO openPaaSUserDAO;
+    private final ResourceDAO resourceDAO;
 
     @Inject
-    public CalendarListNotificationHandler(EventBus eventBus, OpenPaaSUserDAO openPaaSUserDAO) {
+    public CalendarListNotificationHandler(EventBus eventBus, OpenPaaSUserDAO openPaaSUserDAO, ResourceDAO resourceDAO) {
+        this.resourceDAO = resourceDAO;
         this.eventBus = eventBus;
         this.openPaaSUserDAO = openPaaSUserDAO;
     }
@@ -54,9 +58,11 @@ public class CalendarListNotificationHandler {
         ChangeType changeType = resolveChangeType(exchange, message);
 
         return openPaaSUserDAO.retrieve(calendarURL.base())
-            .switchIfEmpty(Mono.error(new IllegalStateException("OpenPaaS user not found for id " + calendarURL.base().value())))
+            .switchIfEmpty(Mono.defer(() -> resourceDAO.findById(ResourceId.from(calendarURL.base()))
+                .switchIfEmpty(Mono.error(() -> new IllegalStateException("Can not resolve base id " + calendarURL.base().value())))
+                .then(Mono.empty())))
             .flatMap(user -> eventBus.dispatch(
-                CalendarListChangedEvent.of(user.username(), calendarURL, changeType),
+                    CalendarListChangedEvent.of(user.username(), calendarURL, changeType),
                     new UsernameRegistrationKey(user.username()))
                 .doOnSuccess(ignored -> LOGGER.debug("Published calendar list changed event {} for {}", changeType, calendarURL.asUri()))
                 .then());
