@@ -355,13 +355,10 @@ class EventParseUtilsTest {
             VEvent instance = EventParseUtils.createInstanceVEvent(master,
                 ZonedDateTime.parse("2025-04-11T09:00:00Z"));
 
-            assertSoftly(softly -> {
-                softly.assertThat(EventParseUtils.getStartTime(instance))
-                    .isEqualTo(ZonedDateTime.parse("2025-04-11T09:00:00Z[UTC]"));
-                softly.assertThat(EventParseUtils.getEndTime(instance))
-                    .hasValue(ZonedDateTime.parse("2025-04-11T10:00:00Z[UTC]"));
-                softly.assertThat(instance.getProperty(Property.RECURRENCE_ID)).isPresent();
-            });
+            assertThat(instance.toString())
+                .contains("RECURRENCE-ID:20250411T090000Z",
+                    "DTSTART:20250411T090000Z",
+                    "DTEND:20250411T100000Z");
         }
 
         @Test
@@ -383,12 +380,10 @@ class EventParseUtilsTest {
 
             VEvent instance = EventParseUtils.createInstanceVEvent(master, LocalDate.of(2025, 4, 11));
 
-            assertSoftly(softly -> {
-                softly.assertThat(EventParseUtils.isAllDay(instance)).isTrue();
-                softly.assertThat(EventParseUtils.getStartTime(instance))
-                    .isEqualTo(ZonedDateTime.parse("2025-04-11T00:00:00Z"));
-                softly.assertThat(instance.getProperty(Property.RECURRENCE_ID)).isPresent();
-            });
+            assertThat(instance.toString())
+                .contains("RECURRENCE-ID;VALUE=DATE:20250411",
+                    "DTSTART;VALUE=DATE:20250411",
+                    "DTEND;VALUE=DATE:20250412");
         }
 
         @Test
@@ -411,13 +406,10 @@ class EventParseUtilsTest {
             VEvent instance = EventParseUtils.createInstanceVEvent(master,
                 ZonedDateTime.parse("2025-04-11T09:00:00+07:00[Asia/Ho_Chi_Minh]"));
 
-            assertSoftly(softly -> {
-                softly.assertThat(EventParseUtils.getStartTime(instance))
-                    .isEqualTo(ZonedDateTime.parse("2025-04-11T09:00:00+07:00[Asia/Ho_Chi_Minh]"));
-                softly.assertThat(EventParseUtils.getEndTime(instance))
-                    .hasValue(ZonedDateTime.parse("2025-04-11T10:00:00+07:00[Asia/Ho_Chi_Minh]"));
-                softly.assertThat(instance.getProperty(Property.RECURRENCE_ID)).isPresent();
-            });
+            assertThat(instance.toString())
+                .contains("RECURRENCE-ID;TZID=Asia/Ho_Chi_Minh:20250411T090000",
+                    "DTSTART;TZID=Asia/Ho_Chi_Minh:20250411T090000",
+                    "DTEND;TZID=Asia/Ho_Chi_Minh:20250411T100000");
         }
     }
 }

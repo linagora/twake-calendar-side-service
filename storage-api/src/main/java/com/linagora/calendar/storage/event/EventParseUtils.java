@@ -391,24 +391,32 @@ public class EventParseUtils {
 
         removeProperties(instance, Property.RRULE, Property.EXDATE, Property.DTSTART, Property.DTEND, Property.DURATION);
 
-        Function<Temporal, Temporal> normalizedTemporalOutput = temporal -> {
-            ZoneId zoneId = getZoneIdFromStartDate(master).orElse(ZONE_ID_DEFAULT);
-            return switch (temporal) {
-                case LocalDate lcd -> lcd;
-                case ZonedDateTime zdt -> zdt.withZoneSameInstant(zoneId);
-                case OffsetDateTime odt -> odt.atZoneSameInstant(zoneId);
-                case LocalDateTime ldt -> ldt.atZone(zoneId);
-                case Instant instant -> instant;
-                case null, default -> temporal;
-            };
-        };
-
+        Optional<ZoneId> masterZoneId = getZoneIdFromStartDate(master);
         addProperties(instance,
-            new RecurrenceId<>(normalizedTemporalOutput.apply(recurrenceDate)),
-            new DtStart<>(normalizedTemporalOutput.apply(actualPeriod.getStart())),
-            new DtEnd<>(normalizedTemporalOutput.apply(actualPeriod.getEnd())));
+            new RecurrenceId<>(normalizeTemporal(recurrenceDate, masterZoneId)),
+            new DtStart<>(normalizeTemporal(actualPeriod.getStart(), masterZoneId)),
+            new DtEnd<>(normalizeTemporal(actualPeriod.getEnd(), masterZoneId)));
 
         return instance;
+    }
+
+    private static Temporal normalizeTemporal(Temporal temporal, Optional<ZoneId> masterZoneId) {
+        return switch (temporal) {
+            case LocalDate lcd -> lcd;
+            case ZonedDateTime zdt -> masterZoneId
+                .map(zoneId -> (Temporal) zdt.withZoneSameInstant(zoneId))
+                .orElseGet(zdt::toInstant);
+            case OffsetDateTime odt -> masterZoneId
+                .map(zoneId -> (Temporal) odt.atZoneSameInstant(zoneId))
+                .orElseGet(odt::toInstant);
+            case LocalDateTime ldt -> masterZoneId
+                .map(zoneId -> (Temporal) ldt.atZone(zoneId))
+                .orElseGet(() -> ldt.toInstant(ZoneOffset.UTC));
+            case Instant instant -> masterZoneId
+                .map(zoneId -> (Temporal) instant.atZone(zoneId))
+                .orElse(instant);
+            case null, default -> temporal;
+        };
     }
 
     public static Period calculateRecurrenceSet(VEvent master, Temporal recurrenceDate) {
