@@ -79,20 +79,21 @@ public record ItipLocalDeliveryDTO(
                 p.skipChildren();
                 return List.of();
             }
+
             List<String> recipients = new ArrayList<>();
-            while (p.nextToken() != JsonToken.END_ARRAY) {
-                if (p.currentToken() == JsonToken.VALUE_STRING) {
-                    String value = p.getValueAsString();
-                    // skip null or blank entries
-                    if (value != null) {
-                        String trimmed = value.trim();
-                        if (!trimmed.isEmpty()) {
-                            recipients.add(trimmed);
-                        }
-                    }
-                } else {
+
+            JsonToken token;
+            while ((token = p.nextToken()) != JsonToken.END_ARRAY) {
+                if (token != JsonToken.VALUE_STRING) {
                     p.skipChildren();
+                    continue;
                 }
+
+                String recipient = StringUtils.trimToNull(p.getValueAsString());
+                if (recipient == null) {
+                    continue;
+                }
+                recipients.add(recipient);
             }
             return List.copyOf(recipients);
         }
