@@ -19,9 +19,12 @@
 package com.linagora.calendar.amqp;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+
+import org.apache.commons.lang3.StringUtils;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonParser;
@@ -64,7 +67,8 @@ public record ItipLocalDeliveryDTO(
         try {
             return OBJECT_MAPPER.readValue(payload, ItipLocalDeliveryDTO.class);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to deserialize ItipLocalDeliveryDTO: " + new String(payload), e);
+            String preview = new String(payload, StandardCharsets.UTF_8);
+            throw new RuntimeException("Failed to deserialize ItipLocalDeliveryDTO: " + StringUtils.left(preview, 512), e);
         }
     }
 
