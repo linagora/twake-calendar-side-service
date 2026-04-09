@@ -42,8 +42,6 @@ import org.apache.james.util.ReactorUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.inject.name.Named;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.CalDavClient;
@@ -88,8 +86,6 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ItipLocalDeliveryConsumer.class);
     private static final boolean REQUEUE_ON_NACK = true;
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module());
-
     private final ReceiverProvider receiverProvider;
     private final Sender sender;
     private final CalDavClient calDavClient;
@@ -170,7 +166,7 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     }
 
     private Mono<Void> consumeMessage(AcknowledgableDelivery ackDelivery) {
-        return Mono.fromCallable(() -> OBJECT_MAPPER.readValue(ackDelivery.getBody(), ItipLocalDeliveryDTO.class))
+        return Mono.fromCallable(() -> ItipLocalDeliveryDTO.deserialize(ackDelivery.getBody()))
             .flatMap(dto -> {
                 if (dto.recipients().size() > 1) {
                     return fanOut(dto);
@@ -195,7 +191,7 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
         List<OutboundMessage> outboundMessages = dto.recipients().stream()
             .map(recipient -> {
                 try {
-                    byte[] payload = OBJECT_MAPPER.writeValueAsBytes(dto.withSingleRecipient(recipient));
+                    byte[] payload = ItipLocalDeliveryDTO.serialize(dto.withSingleRecipient(recipient));
                     return new OutboundMessage(EXCHANGE_NAME, EMPTY_ROUTING_KEY, payload);
                 } catch (Exception e) {
                     throw new RuntimeException("Failed to serialize fan-out message for recipient " + recipient, e);

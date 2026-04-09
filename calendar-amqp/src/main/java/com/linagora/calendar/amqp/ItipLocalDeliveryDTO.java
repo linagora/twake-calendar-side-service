@@ -18,10 +18,19 @@
 
 package com.linagora.calendar.amqp;
 
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonToken;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 
 /**
  * AMQP message payload for the {@code calendar:itip:localDelivery} exchange.
@@ -38,7 +47,43 @@ public record ItipLocalDeliveryDTO(
     @JsonProperty("message") String message,
     @JsonProperty("oldMessage") Optional<String> oldMessage,
     @JsonProperty("hasChange") boolean hasChange,
+    @JsonDeserialize(using = RecipientListDeserializer.class)
     @JsonProperty("recipients") List<String> recipients) {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module());
+
+    public static byte[] serialize(ItipLocalDeliveryDTO dto) {
+        try {
+            return OBJECT_MAPPER.writeValueAsBytes(dto);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to serialize ItipLocalDeliveryDTO for uid " + dto.uid(), e);
+        }
+    }
+
+    public static ItipLocalDeliveryDTO deserialize(byte[] payload) {
+        try {
+            return OBJECT_MAPPER.readValue(payload, ItipLocalDeliveryDTO.class);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to deserialize ItipLocalDeliveryDTO: " + new String(payload), e);
+        }
+    }
+
+    private static class RecipientListDeserializer extends JsonDeserializer<List<String>> {
+        @Override
+        public List<String> deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+            List<String> recipients = new ArrayList<>();
+            while (p.nextToken() != JsonToken.END_ARRAY) {
+                if (p.currentToken() == JsonToken.VALUE_STRING) {
+                    String value = p.getValueAsString();
+                    // skip null or blank entries
+                    if (value != null && !value.isBlank()) {
+                        recipients.add(value);
+                    }
+                }
+            }
+            return List.copyOf(recipients);
+        }
+    }
 
     /** Returns a copy of this DTO with a single recipient (used during fan-out). */
     public ItipLocalDeliveryDTO withSingleRecipient(String recipient) {
@@ -52,7 +97,7 @@ public record ItipLocalDeliveryDTO(
 
     /** Strips the {@code mailto:} prefix from the single recipient address. */
     public String strippedRecipient() {
-        return stripMailto(recipients.get(0));
+        return stripMailto(recipients.getFirst());
     }
 
     private static String stripMailto(String address) {
