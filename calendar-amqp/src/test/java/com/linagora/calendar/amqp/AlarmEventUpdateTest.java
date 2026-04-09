@@ -606,7 +606,7 @@ public class AlarmEventUpdateTest {
             String endFirstInstanceLocal = "20251001T120000";
             String startSecondOverrideLocal = "20251002T140000";
             String endSecondOverrideLocal = "20251002T150000";
-            String originalSecondStartUtcRecId = "20251002T040000Z"; // 11:00 ICT -> 04:00Z
+            String originalSecondStartRecId = "20251002T110000";
             String dtStampUtc = "20250930T000000Z";
 
             EventUid eventUid = new EventUid(UUID.randomUUID().toString());
@@ -649,7 +649,7 @@ public class AlarmEventUpdateTest {
                 SUMMARY:Recurrence Meeting
                 ORGANIZER;CN={organizer}:mailto:{organizer}
                 DTSTAMP:{dtStamp}
-                RECURRENCE-ID:{recIdUtc}
+                RECURRENCE-ID;TZID=Asia/Ho_Chi_Minh:{recId}
                 ATTENDEE;PARTSTAT=DECLINED;ROLE=CHAIR:mailto:{organizer}
                 SEQUENCE:1
                 BEGIN:VALARM
@@ -668,7 +668,7 @@ public class AlarmEventUpdateTest {
                 .replace("{endFirst}", endFirstInstanceLocal)
                 .replace("{startSecondOverride}", startSecondOverrideLocal)
                 .replace("{endSecondOverride}", endSecondOverrideLocal)
-                .replace("{recIdUtc}", originalSecondStartUtcRecId)
+                .replace("{recId}", originalSecondStartRecId)
                 .replace("{dtStamp}", dtStampUtc);
 
             // Set "now" to day-2 00:01 ICT (well before original 11:00 ICT)
@@ -690,7 +690,7 @@ public class AlarmEventUpdateTest {
 
                 assertThat(alarmEvent).isNotNull();
                 assertThat(alarmEvent.alarmTime()).isEqualTo(expectedAlarm);
-                assertThat(alarmEvent.recurrenceId()).contains("20251003T040000Z");
+                assertThat(alarmEvent.recurrenceId()).contains("20251003T110000");
             });
         }
     }
