@@ -75,14 +75,23 @@ public record ItipLocalDeliveryDTO(
     private static class RecipientListDeserializer extends JsonDeserializer<List<String>> {
         @Override
         public List<String> deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+            if (!p.isExpectedStartArrayToken()) {
+                p.skipChildren();
+                return List.of();
+            }
             List<String> recipients = new ArrayList<>();
             while (p.nextToken() != JsonToken.END_ARRAY) {
                 if (p.currentToken() == JsonToken.VALUE_STRING) {
                     String value = p.getValueAsString();
                     // skip null or blank entries
-                    if (value != null && !value.isBlank()) {
-                        recipients.add(value);
+                    if (value != null) {
+                        String trimmed = value.trim();
+                        if (!trimmed.isEmpty()) {
+                            recipients.add(trimmed);
+                        }
                     }
+                } else {
+                    p.skipChildren();
                 }
             }
             return List.copyOf(recipients);
