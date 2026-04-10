@@ -25,6 +25,7 @@ import java.net.URI;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.Queue;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -37,6 +38,7 @@ import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
 import org.apache.james.backends.rabbitmq.RabbitMQConnectionFactory;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
+import org.apache.james.core.Username;
 import org.apache.james.events.EventBus;
 import org.apache.james.events.InVMEventBus;
 import org.apache.james.events.MemoryEventDeadLetters;
@@ -47,6 +49,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
@@ -64,7 +67,10 @@ import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.ResourceDAO;
+import com.linagora.calendar.storage.ResourceInsertRequest;
 import com.linagora.calendar.storage.UsernameRegistrationKey;
+import com.linagora.calendar.storage.model.ResourceAdministrator;
+import com.linagora.calendar.storage.model.ResourceId;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
@@ -84,6 +90,9 @@ public class CalendarListNotificationConsumerTest {
     private EventBus eventBus;
     private CalDavClient calDavClient;
     private CalendarListNotificationConsumer consumer;
+    private MongoDBOpenPaaSDomainDAO domainDAO;
+    private OpenPaaSUserDAO openPaaSUserDAO;
+    private ResourceDAO resourceDAO;
 
     @BeforeAll
     static void beforeAll(DockerSabreDavSetup dockerSabreDavSetup) throws Exception {
@@ -117,9 +126,9 @@ public class CalendarListNotificationConsumerTest {
         calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
 
         MongoDatabase mongoDB = sabreDavExtension.dockerSabreDavSetup().getMongoDB();
-        MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
-        OpenPaaSUserDAO openPaaSUserDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
-        ResourceDAO resourceDAO = new MongoDBResourceDAO(mongoDB, Clock.systemUTC());
+        domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
+        openPaaSUserDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
+        resourceDAO = new MongoDBResourceDAO(mongoDB, Clock.systemUTC());
 
         CalendarListNotificationHandler handler = new CalendarListNotificationHandler(eventBus, openPaaSUserDAO, resourceDAO);
         consumer = new CalendarListNotificationConsumer(channelPool, QueueArguments.Builder::new, handler);
@@ -646,6 +655,162 @@ public class CalendarListNotificationConsumerTest {
                 assertThat(event.calendarURL().base()).isEqualTo(delegate.id());
                 assertThat(event.changeType()).isEqualTo(ChangeType.DELETED);
             }));
+    }
+
+    @Nested
+    class ResourceCalendarListNotification {
+
+        @Test
+        void shouldDispatchSubscribedWhenUserSubscribesToResourceCalendar() {
+            OpenPaaSUser creator = sabreDavExtension.newTestUser();
+            OpenPaaSUser bob = sabreDavExtension.newTestUser(Optional.of("Bob"));
+            Queue<CalendarListChangedEvent> eventsReceived = new ConcurrentLinkedQueue<>();
+            registerListener(bob, eventsReceived);
+
+            ResourceId resourceId = createResourceViaWebAdmin(creator, "TV", List.of());
+
+            SubscribedCalendarRequest subscribedCalendarRequest = SubscribedCalendarRequest.builder()
+                .id(UUID.randomUUID().toString())
+                .sourceUserId(resourceId.value())
+                .name("TV")
+                .color("#00FF00")
+                .readOnly(true)
+                .build();
+
+            davTestHelper.subscribeToSharedCalendar(bob, subscribedCalendarRequest);
+
+            CalendarURL subscribedCalendar = new CalendarURL(bob.id(), new OpenPaaSId(subscribedCalendarRequest.id()));
+
+            awaitAtMost.untilAsserted(() -> assertThat(eventsReceived)
+                .anySatisfy(event -> {
+                    assertThat(event.username()).isEqualTo(bob.username());
+                    assertThat(event.calendarURL()).isEqualTo(subscribedCalendar);
+                    assertThat(event.changeType()).isEqualTo(ChangeType.SUBSCRIBED);
+                }));
+        }
+
+        @Test
+        void shouldDispatchDelegatedWhenUserBecomesResourceAdministratorViaWebAdmin() {
+            OpenPaaSUser creator = sabreDavExtension.newTestUser();
+            OpenPaaSUser bob = sabreDavExtension.newTestUser(Optional.of("Bob"));
+            Queue<CalendarListChangedEvent> eventsReceived = new ConcurrentLinkedQueue<>();
+            registerListener(bob, eventsReceived);
+
+            createResourceViaWebAdmin(creator, "TV", List.of(bob));
+
+            awaitAtMost.untilAsserted(() -> assertThat(eventsReceived)
+                .anySatisfy(event -> {
+                    assertThat(event.username()).isEqualTo(bob.username());
+                    assertThat(event.calendarURL().base()).isEqualTo(bob.id());
+                    assertThat(event.changeType()).isEqualTo(ChangeType.DELEGATED);
+                }));
+        }
+
+        @Test
+        void shouldDispatchDeletedWhenUserUnsubscribesFromResourceCalendar() {
+            OpenPaaSUser creator = sabreDavExtension.newTestUser();
+            OpenPaaSUser bob = sabreDavExtension.newTestUser(Optional.of("Bob"));
+            Queue<CalendarListChangedEvent> eventsReceived = new ConcurrentLinkedQueue<>();
+            registerListener(bob, eventsReceived);
+
+            ResourceId resourceId = createResourceViaWebAdmin(creator, "TV", List.of());
+
+            SubscribedCalendarRequest subscribedCalendarRequest = SubscribedCalendarRequest.builder()
+                .id(UUID.randomUUID().toString())
+                .sourceUserId(resourceId.value())
+                .name("TV")
+                .color("#00FF00")
+                .readOnly(true)
+                .build();
+            davTestHelper.subscribeToSharedCalendar(bob, subscribedCalendarRequest);
+
+            CalendarURL subscribedCalendar = new CalendarURL(bob.id(), new OpenPaaSId(subscribedCalendarRequest.id()));
+            calDavClient.deleteCalendar(bob.username(), subscribedCalendar).block();
+
+            awaitAtMost.untilAsserted(() -> assertThat(eventsReceived)
+                .anySatisfy(event -> {
+                    assertThat(event.username()).isEqualTo(bob.username());
+                    assertThat(event.calendarURL()).isEqualTo(subscribedCalendar);
+                    assertThat(event.changeType()).isEqualTo(ChangeType.DELETED);
+                }));
+        }
+
+        @Test
+        void shouldDispatchDeletedWhenDelegatedUserRightsRevokedViaWebAdmin() {
+            OpenPaaSUser creator = sabreDavExtension.newTestUser();
+            OpenPaaSUser bob = sabreDavExtension.newTestUser(Optional.of("Bob"));
+            Queue<CalendarListChangedEvent> eventsReceived = new ConcurrentLinkedQueue<>();
+            registerListener(bob, eventsReceived);
+
+            ResourceId resourceId = createResourceViaWebAdmin(creator, "TV", List.of(bob));
+            CalendarURL delegatedCalendarURL = getDelegatedCalendarURL(bob);
+
+            revokeResourceAdminRightsViaWebAdmin(creator, resourceId);
+
+            awaitAtMost.untilAsserted(() -> assertThat(eventsReceived)
+                .anySatisfy(event -> {
+                    assertThat(event.username()).isEqualTo(bob.username());
+                    assertThat(event.calendarURL()).isEqualTo(delegatedCalendarURL);
+                    assertThat(event.changeType()).isEqualTo(ChangeType.DELETED);
+                }));
+        }
+
+        @Test
+        void shouldDispatchDeletedWhenDelegatedUserDeletesResourceCalendar() {
+            OpenPaaSUser creator = sabreDavExtension.newTestUser();
+            OpenPaaSUser bob = sabreDavExtension.newTestUser(Optional.of("Bob"));
+            Queue<CalendarListChangedEvent> eventsReceived = new ConcurrentLinkedQueue<>();
+            registerListener(bob, eventsReceived);
+
+            createResourceViaWebAdmin(creator, "TV", List.of(bob));
+            CalendarURL delegatedCalendarURL = getDelegatedCalendarURL(bob);
+
+            calDavClient.deleteCalendar(bob.username(), delegatedCalendarURL).block();
+
+            awaitAtMost.untilAsserted(() -> assertThat(eventsReceived)
+                .anySatisfy(event -> {
+                    assertThat(event.username()).isEqualTo(bob.username());
+                    assertThat(event.calendarURL()).isEqualTo(delegatedCalendarURL);
+                    assertThat(event.changeType()).isEqualTo(ChangeType.DELETED);
+                }));
+        }
+
+        private ResourceId createResourceViaWebAdmin(OpenPaaSUser creator, String resourceName, List<OpenPaaSUser> administrators) {
+            OpenPaaSId domainId = domainDAO.retrieve(creator.username().getDomainPart().get())
+                .map(OpenPaaSDomain::id)
+                .block();
+
+            ResourceInsertRequest resourceInsertRequest = new ResourceInsertRequest(administrators.stream()
+                .map(admin -> new ResourceAdministrator(admin.id(), "user"))
+                .toList(),
+                creator.id(), "resource description", domainId, "tv", resourceName);
+            ResourceId resourceId = resourceDAO.insert(resourceInsertRequest).block();
+
+            if (!administrators.isEmpty()) {
+                calDavClient.grantReadWriteRights(domainId, resourceId, administrators.stream()
+                    .map(OpenPaaSUser::username)
+                    .toList()).block();
+            }
+
+            return resourceId;
+        }
+
+        private void revokeResourceAdminRightsViaWebAdmin(OpenPaaSUser actor, ResourceId resourceId) {
+            OpenPaaSId domainId = domainDAO.retrieve(actor.username().getDomainPart().get())
+                .map(OpenPaaSDomain::id)
+                .block();
+
+            List<Username> adminUsernames = resourceDAO.findById(resourceId).block()
+                .administrators().stream()
+                .filter(admin -> "user".equalsIgnoreCase(admin.objectType()))
+                .flatMap(admin -> Optional.ofNullable(openPaaSUserDAO.retrieve(admin.refId()).block()).stream())
+                .map(OpenPaaSUser::username)
+                .toList();
+
+            if (!adminUsernames.isEmpty()) {
+                calDavClient.revokeWriteRights(domainId, resourceId, adminUsernames).block();
+            }
+        }
     }
 
     private void registerListener(OpenPaaSUser user, Queue<CalendarListChangedEvent> eventsReceived) {
