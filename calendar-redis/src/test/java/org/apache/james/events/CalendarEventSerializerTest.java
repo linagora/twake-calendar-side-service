@@ -109,49 +109,49 @@ public class CalendarEventSerializerTest {
 
     @Test
     void shouldSerializeCalendarChangeEvent() {
-        String json = serializer.toJson(CALENDAR_CHANGE_EVENT);
+        String json = serializer.toJson(CALENDAR_CHANGE_EVENT).json();
         assertThatJson(json).isEqualTo(CALENDAR_CHANGE_JSON);
     }
 
     @Test
     void shouldDeserializeJsonToCalendarChangeEvent() {
-        Event event = serializer.asEvent(CALENDAR_CHANGE_JSON);
+        Event event = serializer.asEvent(CALENDAR_CHANGE_JSON).event();
         assertThat(event).isEqualTo(CALENDAR_CHANGE_EVENT);
     }
 
     @Test
     void shouldSerializeImportEvent() {
-        String json = serializer.toJson(IMPORT_EVENT);
+        String json = serializer.toJson(IMPORT_EVENT).json();
         assertThatJson(json).isEqualTo(IMPORT_EVENT_JSON);
     }
 
     @Test
     void shouldDeserializeJsonToImportEvent() {
-        Event event = serializer.asEvent(IMPORT_EVENT_JSON);
+        Event event = serializer.asEvent(IMPORT_EVENT_JSON).event();
         assertThat(event).isEqualTo(IMPORT_EVENT);
     }
 
     @Test
     void shouldSerializeAlarmEvent() {
-        String json = serializer.toJson(ALARM_EVENT);
+        String json = serializer.toJson(ALARM_EVENT).json();
         assertThatJson(json).isEqualTo(ALARM_EVENT_JSON);
     }
 
     @Test
     void shouldDeserializeJsonToAlarmEvent() {
-        Event event = serializer.asEvent(ALARM_EVENT_JSON);
+        Event event = serializer.asEvent(ALARM_EVENT_JSON).event();
         assertThat(event).isEqualTo(ALARM_EVENT);
     }
 
     @Test
     void shouldSerializeCalendarListChangedEvent() {
-        String json = serializer.toJson(CALENDAR_LIST_CHANGED_EVENT);
+        String json = serializer.toJson(CALENDAR_LIST_CHANGED_EVENT).json();
         assertThatJson(json).isEqualTo(CALENDAR_LIST_CHANGED_JSON);
     }
 
     @Test
     void shouldDeserializeJsonToCalendarListChangedEvent() {
-        Event event = serializer.asEvent(CALENDAR_LIST_CHANGED_JSON);
+        Event event = serializer.asEvent(CALENDAR_LIST_CHANGED_JSON).event();
         assertThat(event).isEqualTo(CALENDAR_LIST_CHANGED_EVENT);
     }
 }
