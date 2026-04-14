@@ -314,4 +314,54 @@ public class TwakeCalendarOidcFallbackCookieAuthenticationTest {
             .statusCode(401);
     }
 
+    @Test
+    void shouldSupportProfileAvatarWithLemonLdapCookie(TwakeCalendarGuiceServer server) {
+        String validLemonLdapCookie = "123";
+        mockServer.when(HttpRequest.request()
+                .withMethod("GET")
+                .withPath(COOKIE_RESOLUTION_PATH)
+                .withCookie("lemonldap", validLemonLdapCookie))
+            .respond(HttpResponse.response()
+                .withStatusCode(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"result\":\"%s\"}".formatted(USERNAME.getLocalPart())));
+
+        String userId = server.getProbe(CalendarDataProbe.class).userId(USERNAME).value();
+        given()
+            .redirects().follow(false)
+            .cookie("lemonldap", validLemonLdapCookie)
+        .when()
+            .get("/api/users/" + userId + "/profile/avatar")
+        .then()
+            .statusCode(302)
+            .header("Location", "https://twcalendar.linagora.com/api/avatars?email=" + USERNAME.asString());
+    }
+
+    @Test
+    void profileAvatarShouldNotExposeUserFromAnotherDomainWithLemonLdapCookie(TwakeCalendarGuiceServer server) {
+        String validLemonLdapCookie = "123";
+        mockServer.when(HttpRequest.request()
+                .withMethod("GET")
+                .withPath(COOKIE_RESOLUTION_PATH)
+                .withCookie("lemonldap", validLemonLdapCookie))
+            .respond(HttpResponse.response()
+                .withStatusCode(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"result\":\"%s\"}".formatted(USERNAME.getLocalPart())));
+
+        CalendarDataProbe probe = server.getProbe(CalendarDataProbe.class);
+        Domain anotherDomain = Domain.of("another-domain.tld");
+        Username anotherUser = Username.fromLocalPartWithDomain("another-user", anotherDomain.asString());
+        probe.addDomain(anotherDomain).addUser(anotherUser, "dummyPassword");
+
+        String anotherUserId = probe.userId(anotherUser).value();
+        given()
+            .redirects().follow(false)
+            .cookie("lemonldap", validLemonLdapCookie)
+        .when()
+            .get("/api/users/" + anotherUserId + "/profile/avatar")
+        .then()
+            .statusCode(404);
+    }
+
 }

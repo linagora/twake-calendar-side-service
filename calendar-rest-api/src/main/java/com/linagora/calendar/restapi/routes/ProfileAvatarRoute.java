@@ -18,13 +18,11 @@
 
 package com.linagora.calendar.restapi.routes;
 
-import java.util.stream.Stream;
-
 import jakarta.inject.Inject;
 
 import org.apache.james.jmap.Endpoint;
-import org.apache.james.jmap.JMAPRoute;
-import org.apache.james.jmap.JMAPRoutes;
+import org.apache.james.jmap.http.Authenticator;
+import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.metrics.api.MetricFactory;
 
 import com.linagora.calendar.restapi.NotFoundException;
@@ -37,34 +35,35 @@ import reactor.core.publisher.Mono;
 import reactor.netty.http.server.HttpServerRequest;
 import reactor.netty.http.server.HttpServerResponse;
 
-public class ProfileAvatarRoute implements JMAPRoutes {
-    private final MetricFactory metricFactory;
+public class ProfileAvatarRoute extends CalendarRoute {
     private final OpenPaaSUserDAO userDAO;
     private final RestApiConfiguration configuration;
 
     @Inject
-    public ProfileAvatarRoute(MetricFactory metricFactory, OpenPaaSUserDAO userDAO, RestApiConfiguration configuration) {
-        this.metricFactory = metricFactory;
+    public ProfileAvatarRoute(Authenticator authenticator,
+                              MetricFactory metricFactory,
+                              OpenPaaSUserDAO userDAO,
+                              RestApiConfiguration configuration) {
+        super(authenticator, metricFactory);
         this.userDAO = userDAO;
         this.configuration = configuration;
     }
 
+    @Override
     Endpoint endpoint() {
         return new Endpoint(HttpMethod.GET, "/api/users/{userId}/profile/avatar");
     }
 
     @Override
-    public Stream<JMAPRoute> routes() {
-        return Stream.of(
-            JMAPRoute.builder()
-                .endpoint(endpoint())
-                .action((req, res) -> Mono.from(metricFactory.decoratePublisherWithTimerMetric(this.getClass().getSimpleName(), generateAvatar(req, res))))
-                .corsHeaders());
-    }
-
-    Mono<Void> generateAvatar(HttpServerRequest request, HttpServerResponse response) {
+    Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response, MailboxSession session) {
         return Mono.fromCallable(() -> new OpenPaaSId(request.param("userId")))
             .flatMap(userDAO::retrieve)
+            .flatMap(user -> {
+                if (crossDomainAccess(session, user.username().getDomainPart().get())) {
+                    return Mono.error(NotFoundException::new);
+                }
+                return Mono.just(user);
+            })
             .switchIfEmpty(Mono.error(NotFoundException::new))
             .flatMap(user -> response
                 .status(302)
