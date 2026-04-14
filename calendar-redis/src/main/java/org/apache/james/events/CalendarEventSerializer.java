@@ -21,7 +21,6 @@ package org.apache.james.events;
 import java.net.URI;
 import java.time.Instant;
 import java.util.Collection;
-import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -32,7 +31,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
-import com.google.common.collect.ImmutableList;
+import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.storage.CalendarChangeEvent;
 import com.linagora.calendar.storage.CalendarListChangedEvent;
 import com.linagora.calendar.storage.CalendarListChangedEvent.ChangeType;
@@ -140,55 +139,56 @@ public class CalendarEventSerializer implements EventSerializer {
     }
 
     @Override
-    public String toJson(Event event) {
+    public SerializationResult toJson(Event event) {
         try {
-            EventDTO eventDTO = toDTO(event);
-            return objectMapper.writeValueAsString(eventDTO);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException(e);
+            Optional<String> maybeEventDTO = toDTO(event)
+                .map(Throwing.function(objectMapper::writeValueAsString).sneakyThrow());
+            return SerializationResult.of(maybeEventDTO, "Unexpected value: " + event);
+        } catch (Exception e) {
+            return new SerializationResult.Failure(e.getMessage());
         }
     }
 
     @Override
-    public String toJson(Collection<Event> event) {
+    public SerializationResult toJson(Collection<Event> event) {
         if (event.size() != 1) {
-            throw new IllegalArgumentException("Not supported for multiple events, please serialize separately");
+            return new SerializationResult.Failure("Not supported for multiple events, please serialize separately");
         }
         return toJson(event.iterator().next());
     }
 
     @Override
-    public Event asEvent(String serialized) {
+    public DeserializationResult asEvent(String serialized) {
         try {
             EventDTO eventDTO = objectMapper.readValue(serialized, EventDTO.class);
-            return fromDTO(eventDTO);
+            return DeserializationResult.of(fromDTO(eventDTO), "Unexpected value: " + eventDTO);
         } catch (JsonProcessingException e) {
-            throw new RuntimeException(e);
+            return new DeserializationResult.Failure(e.getMessage());
         }
     }
 
     @Override
-    public List<Event> asEvents(String serialized) {
-        return ImmutableList.of(asEvent(serialized));
+    public DeserializationResult asEvents(String serialized) {
+        return asEvent(serialized);
     }
 
-    private EventDTO toDTO(Event event) {
-        return switch (event) {
+    private Optional<EventDTO> toDTO(Event event) {
+        return Optional.ofNullable(switch (event) {
             case CalendarChangeEvent calendarChangeEvent -> CalendarChangeDTO.from(calendarChangeEvent);
             case CalendarListChangedEvent calendarListChangedEvent -> CalendarListChangedDTO.from(calendarListChangedEvent);
             case ImportEvent importEvent -> ImportEventDTO.from(importEvent);
             case EventBusAlarmEvent alarmEvent -> AlarmEventDTO.from(alarmEvent);
-            default -> throw new IllegalArgumentException("Unsupported event type: " + event.getClass());
-        };
+            default -> null;
+        });
     }
 
-    private Event fromDTO(EventDTO eventDTO) {
-        return switch (eventDTO) {
+    private Optional<Event> fromDTO(EventDTO eventDTO) {
+        return Optional.ofNullable(switch (eventDTO) {
             case CalendarChangeDTO calendarChangeDTO -> calendarChangeDTO.asEvent();
             case CalendarListChangedDTO calendarListChangedDTO -> calendarListChangedDTO.asEvent();
             case ImportEventDTO importEventDTO -> importEventDTO.asEvent();
             case AlarmEventDTO alarmEventDTO -> alarmEventDTO.asEvent();
-            default -> throw new IllegalArgumentException("Unsupported event DTO type: " + eventDTO.getClass());
-        };
+            default -> null;
+        });
     }
 }
