@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.storage;
 
+import java.util.List;
 import java.util.Optional;
 
 import jakarta.inject.Inject;
@@ -39,7 +40,6 @@ import com.linagora.calendar.storage.model.Sid;
 import com.linagora.calendar.storage.model.Token;
 import com.linagora.calendar.storage.model.TokenInfo;
 
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
@@ -75,8 +75,11 @@ public class CaffeineOIDCTokenCache implements OIDCTokenCache {
 
     @Override
     public Mono<Void> invalidate(Sid sid) {
-        return Flux.fromIterable(sidToTokens.get(sid))
-            .collectList()
+        return Mono.fromCallable(() -> {
+                synchronized (sidToTokens) {
+                    return List.copyOf(sidToTokens.get(sid));
+                }
+            })
             .flatMap(tokenList -> Mono.fromRunnable(() -> cacheToken.synchronous().invalidateAll(tokenList)).subscribeOn(Schedulers.boundedElastic()))
             .then(Mono.fromRunnable(() -> sidToTokens.removeAll(sid)))
             .then();
