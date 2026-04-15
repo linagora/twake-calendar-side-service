@@ -69,7 +69,8 @@ import reactor.rabbitmq.Sender;
 
 /**
  * Consumes messages from {@code calendar:itip:localDelivery} and implements the fan-out then
- * process pattern described in ADR-0001.
+ * process pattern described in
+ * <a href="https://github.com/linagora/esn-sabre/blob/master/adr/0001-async-scheduling.md">ADR-0001</a>.
  *
  * <p><b>Phase 1 — Fan-out</b> ({@code recipients.length > 1}): re-publishes one message per
  * recipient to the same exchange, then acks the original.
