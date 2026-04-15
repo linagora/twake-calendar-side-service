@@ -34,6 +34,7 @@ import java.net.URI;
 import java.net.URL;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
@@ -80,9 +81,14 @@ import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.ResourceDAO;
+import com.linagora.calendar.storage.ResourceInsertRequest;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
+import com.linagora.calendar.storage.model.ResourceAdministrator;
+import com.linagora.calendar.storage.model.ResourceId;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
+import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 import com.rabbitmq.client.Channel;
 
@@ -110,6 +116,7 @@ public class CalendarDelegatedNotificationConsumerTest {
 
     private CalDavClient calDavClient;
     private CalendarDelegatedNotificationConsumer consumer;
+    private ResourceDAO resourceDAO;
 
     private OpenPaaSUser bob;
     private OpenPaaSUser alice;
@@ -148,8 +155,9 @@ public class CalendarDelegatedNotificationConsumerTest {
         calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         bob = sabreDavExtension.newTestUser(Optional.of("Bob"));
         alice = sabreDavExtension.newTestUser(Optional.of("Alice"));
-        domain = new MongoDBOpenPaaSDomainDAO(sabreDavExtension.dockerSabreDavSetup().getMongoDB())
-            .retrieve(bob.username().getDomainPart().get()).block();
+        MongoDatabase mongoDB = sabreDavExtension.dockerSabreDavSetup().getMongoDB();
+        domain = new MongoDBOpenPaaSDomainDAO(mongoDB).retrieve(bob.username().getDomainPart().get()).block();
+        resourceDAO = new MongoDBResourceDAO(mongoDB, Clock.systemUTC());
 
         when(settingsResolver.resolveOrDefault(any(Username.class)))
             .thenReturn(Mono.just(new SettingsBasedResolver.ResolvedSettings(
@@ -191,7 +199,7 @@ public class CalendarDelegatedNotificationConsumerTest {
         URL spaCalendarURL = URI.create("https://localhost/").toURL();
         byte[] calendarLogo = new byte[0];
         DelegatedCalendarNotificationHandler notificationHandler = new DelegatedCalendarNotificationHandler(
-            openPaaSUserDAO, calDavClient, settingsResolver, mailSenderFactory, mailTemplateConfig, messageFactory,
+            openPaaSUserDAO, resourceDAO, calDavClient, settingsResolver, mailSenderFactory, mailTemplateConfig, messageFactory,
             eventEmailFilter, spaCalendarURL, calendarLogo);
 
         consumer = new CalendarDelegatedNotificationConsumer(channelPool, QueueArguments.Builder::new, notificationHandler);
@@ -314,6 +322,42 @@ public class CalendarDelegatedNotificationConsumerTest {
         // Then: no mail should be sent
         awaitAtMost.untilAsserted(() ->
             assertThat(smtpMailsResponseSupplier.get().getList("")).isEmpty());
+    }
+
+    @Test
+    void shouldSendMailWhenResourceCalendarIsDelegatedToUser() {
+        String resourceName = "TV";
+        createResourceViaWebAdmin(resourceName, List.of(bob));
+
+        awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+        JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
+
+        assertSoftly(Throwing.consumer(softly -> {
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(bob.username().asString());
+            String subject = extractSubject(smtpMailsResponse.getString("[0].message"));
+            softly.assertThat(subject)
+                .isEqualTo("%s shared the “%s\u201d calendar with you"
+                    .formatted(resourceName, resourceName));
+        }));
+    }
+
+    private void createResourceViaWebAdmin(String resourceName, List<OpenPaaSUser> administrators) {
+        ResourceInsertRequest resourceInsertRequest = new ResourceInsertRequest(administrators.stream()
+                .map(admin -> new ResourceAdministrator(admin.id(), "user"))
+                .toList(),
+            administrators.isEmpty() ? bob.id() : administrators.getFirst().id(),
+            "resource description",
+            domain.id(),
+            "tv",
+            resourceName);
+        ResourceId resourceId = resourceDAO.insert(resourceInsertRequest).block();
+
+        if (!administrators.isEmpty()) {
+            calDavClient.grantReadWriteRights(domain.id(), resourceId, administrators.stream()
+                .map(OpenPaaSUser::username)
+                .toList()).block();
+        }
     }
 
     @Test

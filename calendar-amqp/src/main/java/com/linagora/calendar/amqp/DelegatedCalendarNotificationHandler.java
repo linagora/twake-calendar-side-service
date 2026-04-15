@@ -53,8 +53,10 @@ import com.linagora.calendar.smtp.template.TemplateType;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.ResourceDAO;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.ResolvedSettings;
+import com.linagora.calendar.storage.model.ResourceId;
 
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -72,6 +74,7 @@ public class DelegatedCalendarNotificationHandler {
     private static final String CALENDAR_NAME_PROPERTY = "dav:name";
 
     private final OpenPaaSUserDAO openPaaSUserDAO;
+    private final ResourceDAO resourceDAO;
     private final CalDavClient calDavClient;
     private final SettingsBasedResolver settingsResolver;
     private final MailSender.Factory mailSenderFactory;
@@ -84,6 +87,7 @@ public class DelegatedCalendarNotificationHandler {
 
     @Inject
     public DelegatedCalendarNotificationHandler(OpenPaaSUserDAO openPaaSUserDAO,
+                                                ResourceDAO resourceDAO,
                                                 CalDavClient calDavClient,
                                                 @Named("language") SettingsBasedResolver settingsResolver,
                                                 MailSender.Factory mailSenderFactory,
@@ -93,6 +97,7 @@ public class DelegatedCalendarNotificationHandler {
                                                 @Named("spaCalendarUrl") URL calendarBaseUrl,
                                                 @Named("calendar-logo") byte[] calendarLogo) throws URISyntaxException {
         this.openPaaSUserDAO = openPaaSUserDAO;
+        this.resourceDAO = resourceDAO;
         this.calDavClient = calDavClient;
         this.settingsResolver = settingsResolver;
         this.mailSenderFactory = mailSenderFactory;
@@ -111,7 +116,7 @@ public class DelegatedCalendarNotificationHandler {
             .build();
     }
 
-    public record DelegatedCalendarNotificationData(OpenPaaSUser delegatorUser,
+    public record DelegatedCalendarNotificationData(String delegatorFullName,
                                                     CalendarURL originalCalendarURL,
                                                     String originalCalendarName,
                                                     OpenPaaSUser delegatedUser,
@@ -121,16 +126,17 @@ public class DelegatedCalendarNotificationHandler {
         public Map<String, Object> toPugModel(URI spaCalendarBaseUrl) {
             return ImmutableMap.of(
                 "content", ImmutableMap.of(
-                    "delegatorName", delegatorUser.fullName(),
+                    "delegatorName", delegatorFullName,
                     "calendarName", originalCalendarName,
                     "calendarUrl", spaCalendarBaseUrl.toASCIIString()),
-                "delegatorName", delegatorUser.fullName(),
+                "delegatorName", delegatorFullName,
                 "calendarName", originalCalendarName);
         }
     }
 
-    private record CalendarMetadata(OpenPaaSUser owner, JsonNode metadata) {
-    }
+    private record CalendarMetadata(OpenPaaSUser user, JsonNode metadata) {}
+
+    private record OriginalCalendarInfo(String ownerFullName, String calendarName) {}
 
     public Mono<Void> handle(CalendarDelegatedCreatedMessage createdMessage) {
         return buildNotificationData(createdMessage)
@@ -167,21 +173,16 @@ public class DelegatedCalendarNotificationHandler {
         return fetchCalendarWithOwner(delegatedCalendarURL)
             .filter(result -> result.metadata().has(DELEGATED_SOURCE_PROPERTY))
             .flatMap(delegated -> {
-                LOGGER.debug("Delegated calendar detected for calendar {}, delegated user={}", delegatedCalendarURL.serialize(), delegated.owner().username());
                 CalendarURL originalCalendarURL = CalendarURL.parse(delegated.metadata().get(DELEGATED_SOURCE_PROPERTY).asText());
-                OpenPaaSUser delegatedUser = delegated.owner();
-
-                return fetchCalendarWithOwner(originalCalendarURL)
-                    .map(original -> {
-                        String originalCalendarName = original.metadata().path(CALENDAR_NAME_PROPERTY).asText();
-                        return new DelegatedCalendarNotificationData(
-                            original.owner(),
-                            originalCalendarURL,
-                            originalCalendarName,
-                            delegatedUser,
-                            delegatedCalendarURL,
-                            message.rightKey().orElse(null));
-                    });
+                LOGGER.debug("Delegated calendar detected for calendar {}, delegated user={}", delegatedCalendarURL.serialize(), delegated.user().username());
+                return fetchOriginalCalendarInfo(originalCalendarURL)
+                    .map(original -> new DelegatedCalendarNotificationData(
+                        original.ownerFullName(),
+                        originalCalendarURL,
+                        original.calendarName(),
+                        delegated.user(),
+                        delegatedCalendarURL,
+                        message.rightKey().orElse(null)));
             });
     }
 
@@ -190,5 +191,13 @@ public class DelegatedCalendarNotificationHandler {
             .flatMap(user -> calDavClient.fetchCalendarMetadata(user.username(), calendarURL)
                 .map(metadata -> new CalendarMetadata(user, metadata)))
             .doOnError(e -> LOGGER.error("Failed to resolve owner or metadata for calendar {}", calendarURL.serialize(), e));
+    }
+
+    private Mono<OriginalCalendarInfo> fetchOriginalCalendarInfo(CalendarURL calendarURL) {
+        return fetchCalendarWithOwner(calendarURL)
+            .map(lookup -> new OriginalCalendarInfo(lookup.user().fullName(), lookup.metadata().path(CALENDAR_NAME_PROPERTY).asText()))
+            .switchIfEmpty(Mono.defer(() -> resourceDAO.findById(ResourceId.from(calendarURL.base()))
+                .map(resource -> new OriginalCalendarInfo(resource.name(), resource.name()))))
+            .doOnError(e -> LOGGER.error("Failed to fetch original calendar info for {}", calendarURL.serialize(), e));
     }
 }
