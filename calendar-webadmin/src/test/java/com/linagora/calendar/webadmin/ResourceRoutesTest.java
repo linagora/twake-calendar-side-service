@@ -91,7 +91,6 @@ class ResourceRoutesTest {
                 new JsonTransformer(), resourceAdministratorService, taskManager, calDavClient)).start();
 
         RestAssured.requestSpecification = WebAdminUtils.buildRequestSpecification(webAdminServer)
-            .setBasePath(ResourceRoutes.BASE_PATH)
             .build();
     }
 
@@ -102,26 +101,10 @@ class ResourceRoutesTest {
 
     @Test
     void getResourcesShouldReturnEmptyByDefault() {
-        String string = when()
-            .get()
-        .then()
-            .contentType(ContentType.JSON)
-            .statusCode(200)
-            .extract()
-            .body()
-            .asString();
-
-        assertThatJson(string).isEqualTo("[]");
-    }
-
-    @Test
-    void getResourcesFilteredByDomainShouldReturnEmptyByDefault() {
         domainDAO.add(Domain.of("linagora.com")).block();
 
-        String string = given()
-            .queryParam("domain", "linagora.com")
-        .when()
-            .get()
+        String string = when()
+            .get("/domains/linagora.com/resources")
         .then()
             .contentType(ContentType.JSON)
             .statusCode(200)
@@ -133,41 +116,26 @@ class ResourceRoutesTest {
     }
 
     @Test
-    void getResourcesFilteredByDomainShouldReturnInvalidRequestWhenDomainDoNotExist() {
+    void getResourcesShouldReturn404WhenDomainDoesNotExist() {
         String notExistDomain = UUID.randomUUID() + ".com";
-        given()
-            .queryParam("domain", notExistDomain)
-        .when()
-            .get()
+        when()
+            .get("/domains/" + notExistDomain + "/resources")
+        .then()
+            .contentType(ContentType.JSON)
+            .statusCode(404);
+    }
+
+    @Test
+    void getResourcesShouldReturn400WhenBadDomain() {
+        when()
+            .get("/domains/linagor@.com/resources")
         .then()
             .contentType(ContentType.JSON)
             .statusCode(400);
     }
 
     @Test
-    void getResourcesFilteredByDomainShouldReturnInvalidRequestWhenBadDomain() {
-        given()
-            .queryParam("domain", "linagor@.com")
-        .when()
-            .get()
-        .then()
-            .contentType(ContentType.JSON)
-            .statusCode(400);
-    }
-
-    @Test
-    void getResourcesFilteredByDomainShouldReturnInvalidRequestWhenEmptyDomain() {
-        given()
-            .queryParam("domain", "")
-        .when()
-            .get()
-        .then()
-            .contentType(ContentType.JSON)
-            .statusCode(400);
-    }
-
-    @Test
-    void getResourcesShouldReturnCreatedResources() {
+    void getResourcesShouldReturnOnlyResourcesOfThatDomain() {
         OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
         OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
         OpenPaaSUser user2 = userDAO.add(Username.of("user2@linagora.com")).block();
@@ -181,11 +149,11 @@ class ResourceRoutesTest {
         OpenPaaSUser user4 = userDAO.add(Username.of("user4@twake.app")).block();
         ResourceAdministrator admin3 = new ResourceAdministrator(user3.id(), "user");
         ResourceAdministrator admin4 = new ResourceAdministrator(user4.id(), "user");
-        ResourceId resourceId2 = resourceDAO.insert(new ResourceInsertRequest(ImmutableList.of(admin3, admin4),
+        resourceDAO.insert(new ResourceInsertRequest(ImmutableList.of(admin3, admin4),
             user3.id(), "Descripting", domain2.id(), "laptop", "Resource name")).block();
 
         String string = when()
-            .get()
+            .get("/domains/linagora.com/resources")
         .then()
             .contentType(ContentType.JSON)
             .statusCode(200)
@@ -213,83 +181,9 @@ class ResourceRoutesTest {
                                        "email": "user2@linagora.com"
                                    }
                                ]
-                           },
-                           {
-                               "name": "Resource name",
-                               "deleted": false,
-                               "description": "Descripting",
-                               "id": "RESOURCE_ID_2",
-                               "creator":"user3@twake.app",
-                               "icon": "laptop",
-                               "domain": "twake.app",
-                               "administrators": [
-                                   {
-                                       "email": "user3@twake.app"
-                                   },
-                                   {
-                                       "email": "user4@twake.app"
-                                   }
-                               ]
                            }
                                             ]"""
-            .replace("RESOURCE_ID_1", resourceId.value())
-            .replace("RESOURCE_ID_2", resourceId2.value()));
-    }
-
-    @Test
-    void getResourcesFilteredByDomainShouldReturnCreatedResourceOfThisDomain() {
-        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
-        OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
-        OpenPaaSUser user2 = userDAO.add(Username.of("user2@linagora.com")).block();
-        ResourceAdministrator admin1 = new ResourceAdministrator(user1.id(), "user");
-        ResourceAdministrator admin2 = new ResourceAdministrator(user2.id(), "user");
-        ResourceId resourceId = resourceDAO.insert(new ResourceInsertRequest(ImmutableList.of(admin1, admin2),
-            user1.id(), "Descripting", domain.id(), "laptop", "Resource name")).block();
-
-        OpenPaaSDomain domain2 = domainDAO.add(Domain.of("twake.app")).block();
-        OpenPaaSUser user3 = userDAO.add(Username.of("user3@twake.app")).block();
-        OpenPaaSUser user4 = userDAO.add(Username.of("user4@twake.app")).block();
-        ResourceAdministrator admin3 = new ResourceAdministrator(user3.id(), "user");
-        ResourceAdministrator admin4 = new ResourceAdministrator(user4.id(), "user");
-        ResourceId resourceId2 = resourceDAO.insert(new ResourceInsertRequest(ImmutableList.of(admin3, admin4),
-            user3.id(), "Descripting", domain2.id(), "laptop", "Resource name")).block();
-
-        String string = given()
-            .queryParam("domain", "linagora.com")
-        .when()
-            .get()
-         .then()
-            .contentType(ContentType.JSON)
-            .statusCode(200)
-            .extract()
-            .body()
-            .asString();
-
-
-        assertThatJson(string)
-            .withOptions(Option.IGNORING_ARRAY_ORDER)
-            .isEqualTo("""
-                           [
-                           {
-                               "name": "Resource name",
-                               "deleted": false,
-                               "description": "Descripting",
-                               "creator":"user1@linagora.com",
-                               "id": "RESOURCE_ID_1",
-                               "icon": "laptop",
-                               "domain": "linagora.com",
-                               "administrators": [
-                                   {
-                                       "email": "user1@linagora.com"
-                                   },
-                                   {
-                                       "email": "user2@linagora.com"
-                                   }
-                               ]
-                           }
-                                            ]"""
-            .replace("RESOURCE_ID_1", resourceId.value())
-            .replace("RESOURCE_ID_2", resourceId2.value()));
+            .replace("RESOURCE_ID_1", resourceId.value()));
     }
 
     @Test
@@ -303,7 +197,7 @@ class ResourceRoutesTest {
             user1.id(), "Descripting", domain.id(), "laptop", "Resource name")).block();
 
         String string = when()
-            .get(resourceId.value())
+            .get("/domains/linagora.com/resources/" + resourceId.value())
          .then()
             .contentType(ContentType.JSON)
             .statusCode(200)
@@ -359,14 +253,12 @@ class ResourceRoutesTest {
                                ]
                            }
                 """)
-            .patch(resourceId.value())
+            .patch("/domains/linagora.com/resources/" + resourceId.value())
             .then()
             .statusCode(204);
 
-        String string = given()
-            .queryParam("domain", "linagora.com")
-        .when()
-            .get(resourceId.value())
+        String string = when()
+            .get("/domains/linagora.com/resources/" + resourceId.value())
         .then()
             .contentType(ContentType.JSON)
             .statusCode(200)
@@ -408,14 +300,12 @@ class ResourceRoutesTest {
             .body("""
                 {"name": "Resource name 2"}
                 """)
-            .patch(resourceId.value())
+            .patch("/domains/linagora.com/resources/" + resourceId.value())
             .then()
             .statusCode(204);
 
-        String string = given()
-            .queryParam("domain", "linagora.com")
-        .when()
-            .get(resourceId.value())
+        String string = when()
+            .get("/domains/linagora.com/resources/" + resourceId.value())
         .then()
             .contentType(ContentType.JSON)
             .statusCode(200)
@@ -464,7 +354,7 @@ class ResourceRoutesTest {
                   {"email": "user2@linagora.com"}
                 ]
                 """)
-            .patch(resourceId.value())
+            .patch("/domains/linagora.com/resources/" + resourceId.value())
             .then()
             .statusCode(400);
     }
@@ -475,11 +365,12 @@ class ResourceRoutesTest {
         "6901de931710f414cf7953a9"
     })
     void patchShouldReturn404WhenResourceNotFound(String notFoundId) {
+        domainDAO.add(Domain.of("linagora.com")).block();
         given()
             .body("""
                 {"name":"user2@linagora.com"}
                 """)
-            .patch(notFoundId)
+            .patch("/domains/linagora.com/resources/" + notFoundId)
             .then()
             .statusCode(404);
     }
@@ -496,7 +387,6 @@ class ResourceRoutesTest {
                                "description": "Descripting",
                                "creator":"{USER1}",
                                "icon": "laptop",
-                               "domain": "{DOMAIN}",
                                "administrators": [
                                    {
                                        "email": "{USER1}"
@@ -506,17 +396,15 @@ class ResourceRoutesTest {
                                    }
                                ]
                            }
-                """.replace("{DOMAIN}", DOMAIN)
+                """
                 .replace("{USER1}", user1.username().asString())
                 .replace("{USER2}", user2.username().asString()))
-            .post()
+            .post("/domains/" + DOMAIN + "/resources")
         .then()
             .statusCode(201);
 
-        String string = given()
-            .queryParam("domain", DOMAIN)
-        .when()
-            .get()
+        String string = when()
+            .get("/domains/" + DOMAIN + "/resources")
          .then()
             .contentType(ContentType.JSON)
             .statusCode(200)
@@ -554,9 +442,9 @@ class ResourceRoutesTest {
 
     @Test
     void postShouldRejectDeletedField() {
-        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
-        OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
-        OpenPaaSUser user2 = userDAO.add(Username.of("user2@linagora.com")).block();
+        domainDAO.add(Domain.of("linagora.com")).block();
+        userDAO.add(Username.of("user1@linagora.com")).block();
+        userDAO.add(Username.of("user2@linagora.com")).block();
 
         given()
             .body("""
@@ -566,7 +454,6 @@ class ResourceRoutesTest {
                                "deleted": false,
                                "creator":"user1@linagora.com",
                                "icon": "laptop",
-                               "domain": "linagora.com",
                                "administrators": [
                                    {
                                        "email": "user1@linagora.com"
@@ -577,16 +464,16 @@ class ResourceRoutesTest {
                                ]
                            }
                 """)
-            .post()
+            .post("/domains/linagora.com/resources")
         .then()
             .statusCode(400);
     }
 
     @Test
     void postShouldRejectIdField() {
-        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
-        OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
-        OpenPaaSUser user2 = userDAO.add(Username.of("user2@linagora.com")).block();
+        domainDAO.add(Domain.of("linagora.com")).block();
+        userDAO.add(Username.of("user1@linagora.com")).block();
+        userDAO.add(Username.of("user2@linagora.com")).block();
 
         given()
             .body("""
@@ -596,7 +483,6 @@ class ResourceRoutesTest {
                                "id": "abc",
                                "creator":"user1@linagora.com",
                                "icon": "laptop",
-                               "domain": "linagora.com",
                                "administrators": [
                                    {
                                        "email": "user1@linagora.com"
@@ -607,56 +493,41 @@ class ResourceRoutesTest {
                                ]
                            }
                 """)
-            .post()
+            .post("/domains/linagora.com/resources")
         .then()
             .statusCode(400);
     }
 
     @Test
-    void postShouldRejectUnknownDomain() {
-        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
-        OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
-        OpenPaaSUser user2 = userDAO.add(Username.of("user2@linagora.com")).block();
-
+    void postShouldReturn404WhenDomainNotFound() {
         given()
             .body("""
                 {
                                "name": "Resource name",
                                "description": "Descripting",
-                               "id": "abc",
                                "creator":"user1@linagora.com",
                                "icon": "laptop",
-                               "domain": "notfound.com",
-                               "administrators": [
-                                   {
-                                       "email": "user1@linagora.com"
-                                   },
-                                   {
-                                       "email": "user2@linagora.com"
-                                   }
-                               ]
+                               "administrators": []
                            }
                 """)
-            .post()
+            .post("/domains/notfound.com/resources")
         .then()
-            .statusCode(400);
+            .statusCode(404);
     }
 
     @Test
     void postShouldRejectUnknownCreator() {
-        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
-        OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
-        OpenPaaSUser user2 = userDAO.add(Username.of("user2@linagora.com")).block();
+        domainDAO.add(Domain.of("linagora.com")).block();
+        userDAO.add(Username.of("user1@linagora.com")).block();
+        userDAO.add(Username.of("user2@linagora.com")).block();
 
         given()
             .body("""
                 {
                                "name": "Resource name",
                                "description": "Descripting",
-                               "id": "abc",
                                "creator":"notfound@linagora.com",
                                "icon": "laptop",
-                               "domain": "notfound.com",
                                "administrators": [
                                    {
                                        "email": "user1@linagora.com"
@@ -667,26 +538,24 @@ class ResourceRoutesTest {
                                ]
                            }
                 """)
-            .post()
+            .post("/domains/linagora.com/resources")
         .then()
             .statusCode(400);
     }
 
     @Test
     void postShouldRejectUnknownAdmin() {
-        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
-        OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
-        OpenPaaSUser user2 = userDAO.add(Username.of("user2@linagora.com")).block();
+        domainDAO.add(Domain.of("linagora.com")).block();
+        userDAO.add(Username.of("user1@linagora.com")).block();
+        userDAO.add(Username.of("user2@linagora.com")).block();
 
         given()
             .body("""
                 {
                                "name": "Resource name",
                                "description": "Descripting",
-                               "id": "abc",
-                               "creator":"notfound@linagora.com",
+                               "creator":"user1@linagora.com",
                                "icon": "laptop",
-                               "domain": "notfound.com",
                                "administrators": [
                                    {
                                        "email": "notfound@linagora.com"
@@ -697,30 +566,27 @@ class ResourceRoutesTest {
                                ]
                            }
                 """)
-            .post()
+            .post("/domains/linagora.com/resources")
         .then()
             .statusCode(400);
     }
 
     @Test
     void postShouldAcceptNoAdmins() {
-        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
-        OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
-        OpenPaaSUser user2 = userDAO.add(Username.of("user2@linagora.com")).block();
+        domainDAO.add(Domain.of("linagora.com")).block();
+        userDAO.add(Username.of("user1@linagora.com")).block();
 
         given()
             .body("""
                 {
                                "name": "Resource name",
                                "description": "Descripting",
-                               "id": "abc",
                                "creator":"notfound@linagora.com",
                                "icon": "laptop",
-                               "domain": "notfound.com",
                                "administrators": []
                            }
                 """)
-            .post()
+            .post("/domains/linagora.com/resources")
         .then()
             .statusCode(400);
     }
@@ -736,13 +602,13 @@ class ResourceRoutesTest {
             user1.id(), "Descripting", domain.id(), "laptop", "Resource name")).block();
 
         when()
-            .delete(resourceId.value())
+            .delete("/domains/linagora.com/resources/" + resourceId.value())
          .then()
             .contentType(ContentType.JSON)
             .statusCode(204);
 
         String string = when()
-            .get(resourceId.value())
+            .get("/domains/linagora.com/resources/" + resourceId.value())
          .then()
             .contentType(ContentType.JSON)
             .statusCode(200)
@@ -777,8 +643,9 @@ class ResourceRoutesTest {
 
     @Test
     void getResourceShouldReturnNotFoundWhenNotExist() {
+        domainDAO.add(Domain.of("linagora.com")).block();
         when()
-            .get("notfound")
+            .get("/domains/linagora.com/resources/notfound")
         .then()
             .contentType(ContentType.JSON)
             .statusCode(404);
@@ -790,8 +657,9 @@ class ResourceRoutesTest {
         "6901de931710f414cf7953a9"
     })
     void deleteResourceShouldReturnNotFoundWhenNotExist(String notFoundId) {
+        domainDAO.add(Domain.of("linagora.com")).block();
         when()
-            .delete(notFoundId)
+            .delete("/domains/linagora.com/resources/" + notFoundId)
         .then()
             .statusCode(404)
             .contentType(ContentType.JSON);
@@ -810,13 +678,12 @@ class ResourceRoutesTest {
                     "description": "Room for team meetings",
                     "creator": "%s",
                     "icon": "door",
-                    "domain": "%s",
                     "administrators": [
                         { "email": "%s" }
                     ]
                 }
-                """.formatted(creator.username().asString(), DOMAIN, admin.username().asString()))
-            .post()
+                """.formatted(creator.username().asString(), admin.username().asString()))
+            .post("/domains/" + DOMAIN + "/resources")
             .then()
             .statusCode(201)
             .extract()
@@ -848,11 +715,10 @@ class ResourceRoutesTest {
                     "name": "Meeting Room Without Admins",
                     "description": "Room created without administrators field",
                     "creator": "%s",
-                    "icon": "door",
-                    "domain": "%s"
+                    "icon": "door"
                 }
-                """.formatted(creator.username().asString(), DOMAIN))
-            .post()
+                """.formatted(creator.username().asString()))
+            .post("/domains/" + DOMAIN + "/resources")
         .then()
             .statusCode(201)
             .extract()
@@ -861,7 +727,7 @@ class ResourceRoutesTest {
         String resourceId = location.substring(location.lastIndexOf('/') + 1);
 
         String resource = when()
-            .get(resourceId)
+            .get("/domains/" + DOMAIN + "/resources/" + resourceId)
         .then()
             .statusCode(200)
             .extract()
@@ -888,15 +754,14 @@ class ResourceRoutesTest {
                     "description": "Room for board meetings",
                     "creator": "%s",
                     "icon": "meeting_room",
-                    "domain": "%s",
                     "administrators": [
                         { "email": "%s" },
                         { "email": "%s" }
                     ]
                 }
-                """.formatted(creator.username().asString(), DOMAIN,
+                """.formatted(creator.username().asString(),
                 admin1.username().asString(), admin2.username().asString()))
-            .post()
+            .post("/domains/" + DOMAIN + "/resources")
             .then()
             .statusCode(201)
             .extract()
@@ -935,15 +800,14 @@ class ResourceRoutesTest {
                     "description": "Room for presentations",
                     "creator": "%s",
                     "icon": "meeting_room",
-                    "domain": "%s",
                     "administrators": [
                         { "email": "%s" },
                         { "email": "%s" }
                     ]
                 }
-                """.formatted(creator.username().asString(), DOMAIN,
+                """.formatted(creator.username().asString(),
                 admin1.username().asString(), admin2.username().asString()))
-            .post()
+            .post("/domains/" + DOMAIN + "/resources")
             .then()
             .statusCode(201)
             .extract()
@@ -968,7 +832,7 @@ class ResourceRoutesTest {
 
         // When — delete the resource
         when()
-            .delete(resourceId)
+            .delete("/domains/" + DOMAIN + "/resources/" + resourceId)
             .then()
             .statusCode(204);
 
@@ -1000,11 +864,10 @@ class ResourceRoutesTest {
                     "description": "Room for updates",
                     "creator": "%s",
                     "icon": "door",
-                    "domain": "%s",
                     "administrators": [{ "email": "%s" }]
                 }
-                """.formatted(creator.username().asString(), DOMAIN, admin1.username().asString()))
-            .post()
+                """.formatted(creator.username().asString(), admin1.username().asString()))
+            .post("/domains/" + DOMAIN + "/resources")
             .then()
             .statusCode(201)
             .extract()
@@ -1032,7 +895,7 @@ class ResourceRoutesTest {
                     ]
                 }
                 """.formatted(admin1.username().asString(), admin2.username().asString()))
-            .patch(resourceId)
+            .patch("/domains/" + DOMAIN + "/resources/" + resourceId)
             .then()
             .statusCode(204);
 
@@ -1061,15 +924,14 @@ class ResourceRoutesTest {
                     "description": "Room for admin revocation",
                     "creator": "%s",
                     "icon": "door",
-                    "domain": "%s",
                     "administrators": [
                         { "email": "%s" },
                         { "email": "%s" }
                     ]
                 }
-                """.formatted(creator.username().asString(), DOMAIN,
+                """.formatted(creator.username().asString(),
                 admin1.username().asString(), admin2.username().asString()))
-            .post()
+            .post("/domains/" + DOMAIN + "/resources")
         .then()
             .statusCode(201)
             .extract()
@@ -1096,7 +958,7 @@ class ResourceRoutesTest {
                     ]
                 }
                 """.formatted(admin1.username().asString()))
-            .patch(resourceId)
+            .patch("/domains/" + DOMAIN + "/resources/" + resourceId)
         .then()
             .statusCode(204);
 
@@ -1123,11 +985,10 @@ class ResourceRoutesTest {
                     "description": "Original description",
                     "creator": "%s",
                     "icon": "door",
-                    "domain": "%s",
                     "administrators": [{ "email": "%s" }]
                 }
-                """.formatted(creator.username().asString(), DOMAIN, admin.username().asString()))
-            .post()
+                """.formatted(creator.username().asString(), admin.username().asString()))
+            .post("/domains/" + DOMAIN + "/resources")
         .then()
             .statusCode(201)
             .extract()
@@ -1151,7 +1012,7 @@ class ResourceRoutesTest {
                     "description": "Updated description only"
                 }
                 """)
-            .patch(resourceId)
+            .patch("/domains/" + DOMAIN + "/resources/" + resourceId)
             .then()
             .statusCode(204);
 
@@ -1179,15 +1040,14 @@ class ResourceRoutesTest {
                     "description": "Room for clearing all admins",
                     "creator": "%s",
                     "icon": "door",
-                    "domain": "%s",
                     "administrators": [
                         { "email": "%s" },
                         { "email": "%s" }
                     ]
                 }
-                """.formatted(creator.username().asString(), DOMAIN,
+                """.formatted(creator.username().asString(),
                 admin1.username().asString(), admin2.username().asString()))
-            .post()
+            .post("/domains/" + DOMAIN + "/resources")
         .then()
             .statusCode(201)
             .extract()
@@ -1212,7 +1072,7 @@ class ResourceRoutesTest {
                     "administrators": []
                 }
                 """)
-            .patch(resourceId)
+            .patch("/domains/" + DOMAIN + "/resources/" + resourceId)
         .then()
             .statusCode(204);
 
