@@ -70,7 +70,10 @@ public class ResourceRoutes implements Routes {
 
     private static final String TASK_REPOSITION_WRITE_RIGHTS = "repositionWriteRights";
 
-    public static final String BASE_PATH = "resources";
+    public static final String DOMAINS = "domains";
+    private static final String DOMAIN_PARAM = ":domain";
+    public static final String RESOURCES_PATH = DOMAINS + "/" + DOMAIN_PARAM + "/resources";
+    private static final String RESOURCE_PATH = RESOURCES_PATH + "/:id";
 
     public record AdministratorDTO(String email) {
         @JsonCreator
@@ -88,19 +91,17 @@ public class ResourceRoutes implements Routes {
         }
     }
 
-    public record ResourceCreationDTO(String name, String description, String icon, String domain,
+    public record ResourceCreationDTO(String name, String description, String icon,
                                       List<AdministratorDTO> administrators, String creator) {
         @JsonCreator
         public ResourceCreationDTO(@JsonProperty("name") String name,
                                    @JsonProperty("description") String description,
                                    @JsonProperty("icon") String icon,
-                                   @JsonProperty("domain") String domain,
                                    @JsonProperty("administrators") List<AdministratorDTO> administrators,
                                    @JsonProperty("creator") String creator) {
             this.name = name;
             this.description = description;
             this.icon = icon;
-            this.domain = domain;
             this.administrators = administrators;
             this.creator = creator;
         }
@@ -130,7 +131,7 @@ public class ResourceRoutes implements Routes {
 
     @Override
     public String getBasePath() {
-        return BASE_PATH;
+        return DOMAINS;
     }
 
     private final ResourceDAO resourceDAO;
@@ -164,11 +165,11 @@ public class ResourceRoutes implements Routes {
 
     @Override
     public void define(Service service) {
-        service.get(getBasePath(), (req, res) -> listResources(req), jsonTransformer);
-        service.get(getBasePath() + "/:id", (req, res) -> getResource(req), jsonTransformer);
-        service.delete(getBasePath() + "/:id", this::deleteResource);
-        service.patch(getBasePath() + "/:id", this::updateResource);
-        service.post(getBasePath(), this::handlePostRequest, jsonTransformer);
+        service.get(RESOURCES_PATH, (req, res) -> listResources(req), jsonTransformer);
+        service.get(RESOURCE_PATH, (req, res) -> getResource(req), jsonTransformer);
+        service.delete(RESOURCE_PATH, this::deleteResource);
+        service.patch(RESOURCE_PATH, this::updateResource);
+        service.post(RESOURCES_PATH, this::handlePostRequest, jsonTransformer);
     }
 
     private Object handlePostRequest(Request req, Response res) throws Exception {
@@ -185,28 +186,29 @@ public class ResourceRoutes implements Routes {
     }
 
     private List<ResourceDTO> listResources(Request req) {
-        Optional<Domain> maybeDomain = retrieveDomain(req);
-
-        return maybeDomain.map(this::findResourceByDomain)
-            .orElseGet(resourceDAO::findAll)
+        OpenPaaSDomain domain = asDomainObject(req);
+        return resourceDAO.findByDomain(domain.id())
             .flatMap(this::toDto, ReactorUtils.LOW_CONCURRENCY)
             .collectList()
             .block();
     }
 
     private ResourceDTO getResource(Request req) {
+        OpenPaaSDomain domain = asDomainObject(req);
         ResourceId id = new ResourceId(req.params("id"));
 
         return resourceDAO.findById(id)
+            .filter(resource -> resource.domain().equals(domain.id()))
             .flatMap(this::toDto)
             .blockOptional()
             .orElseThrow(() -> resourceNotFound(id));
     }
 
     private String deleteResource(Request req, Response res) {
+        OpenPaaSDomain domain = asDomainObject(req);
         ResourceId resourceId = new ResourceId(req.params("id"));
 
-        return findNotDeletedResource(resourceId)
+        return findNotDeletedResourceInDomain(resourceId, domain.id())
             .flatMap(currentResource -> resourceAdministratorService.revokeAdmins(currentResource)
                 .then(resourceDAO.softDelete(resourceId)))
             .doOnSuccess(any -> res.status(HttpStatus.NO_CONTENT_204))
@@ -216,28 +218,24 @@ public class ResourceRoutes implements Routes {
     }
 
     private String createResource(Request req, Response res) throws JsonExtractException {
+        OpenPaaSDomain domain = asDomainObject(req);
         ResourceCreationDTO creationDTO = creationDTOJsonExtractor.parse(req.body());
 
         Mono<OpenPaaSId> creatorIdMono = retrieveExistingUser(Username.of(creationDTO.creator))
             .map(OpenPaaSUser::id);
 
-        Mono<OpenPaaSId> domainIdMono = domainDAO.retrieve(Domain.of(creationDTO.domain))
-            .switchIfEmpty(Mono.error(() -> new IllegalArgumentException(String.format("domain '%s' must exist", creationDTO.domain))))
-            .map(OpenPaaSDomain::id);
-
         Mono<Map<Username, ResourceAdministrator>> adminMapMono = resolveAdministratorsFromDTO(creationDTO.administrators);
 
-        return Mono.zip(creatorIdMono, domainIdMono, adminMapMono)
+        return Mono.zip(creatorIdMono, adminMapMono)
             .flatMap(tuple -> {
                 OpenPaaSId creatorId = tuple.getT1();
-                OpenPaaSId domainId = tuple.getT2();
-                Map<Username, ResourceAdministrator> adminMap = tuple.getT3();
-                return resourceDAO.insert(buildInsertRequest(adminMap, creatorId, creationDTO, domainId))
-                    .flatMap(resourceId -> resourceAdministratorService.setAdmins(domainId, resourceId, adminMap.keySet())
+                Map<Username, ResourceAdministrator> adminMap = tuple.getT2();
+                return resourceDAO.insert(buildInsertRequest(adminMap, creatorId, creationDTO, domain.id()))
+                    .flatMap(resourceId -> resourceAdministratorService.setAdmins(domain.id(), resourceId, adminMap.keySet())
                         .thenReturn(resourceId));
             })
             .map(resourceId -> {
-                res.header(HttpHeader.LOCATION.asString(), getBasePath() + "/" + resourceId.value());
+                res.header(HttpHeader.LOCATION.asString(), DOMAINS + "/" + domain.domain().asString() + "/resources/" + resourceId.value());
                 res.status(HttpStatus.CREATED_201);
                 return StringUtils.EMPTY;
             })
@@ -250,10 +248,11 @@ public class ResourceRoutes implements Routes {
     }
 
     private String updateResource(Request req, Response res) throws JsonExtractException {
+        OpenPaaSDomain domain = asDomainObject(req);
         ResourceUpdateDTO dto = updateDTOJsonExtractor.parse(req.body());
         ResourceId resourceId = new ResourceId(req.params("id"));
 
-        return findNotDeletedResource(resourceId)
+        return findNotDeletedResourceInDomain(resourceId, domain.id())
             .flatMap(resource -> dto.administrators()
                 .map(admins -> resourceAdministratorService.updateAdmins(resource, admins).map(Optional::of))
                 .orElse(Mono.just(Optional.empty()))
@@ -272,11 +271,31 @@ public class ResourceRoutes implements Routes {
             .collectMap(OpenPaaSUser::username, user -> new ResourceAdministrator(user.id(), "user"));
     }
 
-    private Flux<Resource> findResourceByDomain(Domain domain) {
-        return domainDAO.retrieve(domain)
-            .switchIfEmpty(Mono.error(() -> new IllegalArgumentException("domain does not exist")))
-            .map(OpenPaaSDomain::id)
-            .flatMapMany(resourceDAO::findByDomain);
+    private OpenPaaSDomain asDomainObject(Request request) {
+        String domainName = request.params("domain");
+        try {
+            Domain domain = Domain.of(domainName);
+            return domainDAO.retrieve(domain)
+                .blockOptional()
+                .orElseThrow(() -> ErrorResponder.builder()
+                    .statusCode(HttpStatus.NOT_FOUND_404)
+                    .type(ErrorResponder.ErrorType.NOT_FOUND)
+                    .message("Domain not found: %s", domainName)
+                    .haltError());
+        } catch (IllegalArgumentException e) {
+            throw ErrorResponder.builder()
+                .statusCode(HttpStatus.BAD_REQUEST_400)
+                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                .message("Invalid domain: %s", domainName)
+                .cause(e)
+                .haltError();
+        }
+    }
+
+    private Mono<Resource> findNotDeletedResourceInDomain(ResourceId resourceId, OpenPaaSId domainId) {
+        return resourceDAO.findById(resourceId)
+            .filter(resource -> !resource.deleted() && resource.domain().equals(domainId))
+            .switchIfEmpty(Mono.error(() -> new ResourceNotFoundException(resourceId)));
     }
 
     private Mono<ResourceDTO> toDto(Resource resource) {
@@ -289,17 +308,6 @@ public class ResourceRoutes implements Routes {
                     .map(u -> new AdministratorDTO(u.username().asString()))
                     .collectList())
             .map(tuple -> ResourceDTO.fromDomainObject(resource, tuple.getT1().domain(), tuple.getT3(), tuple.getT2().username().asString()));
-    }
-
-    private Optional<Domain> retrieveDomain(Request request) {
-        return Optional.ofNullable(request.queryParams("domain"))
-            .map(Domain::of);
-    }
-
-    private Mono<Resource> findNotDeletedResource(ResourceId resourceId) {
-        return resourceDAO.findById(resourceId)
-            .filter(resource -> !resource.deleted())
-            .switchIfEmpty(Mono.error(() -> new ResourceNotFoundException(resourceId)));
     }
 
     private Mono<OpenPaaSUser> retrieveExistingUser(Username username) {

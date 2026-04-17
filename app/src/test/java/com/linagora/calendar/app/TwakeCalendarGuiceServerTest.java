@@ -310,7 +310,7 @@ class TwakeCalendarGuiceServerTest  {
     void shouldExposeWebAdminRepositionResourceRightsTask() {
         String taskId = given()
             .when()
-            .post("/resources?task=repositionWriteRights")
+            .post("/domains/linagora.com/resources?task=repositionWriteRights")
             .jsonPath()
             .get("taskId");
 

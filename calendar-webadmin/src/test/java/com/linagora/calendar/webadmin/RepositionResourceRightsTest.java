@@ -111,7 +111,6 @@ public class RepositionResourceRightsTest {
             .start();
 
         RestAssured.requestSpecification = WebAdminUtils.buildRequestSpecification(webAdminServer)
-            .setBasePath(ResourceRoutes.BASE_PATH)
             .build();
 
         creator = sabreDavExtension.newTestUser();
@@ -127,10 +126,11 @@ public class RepositionResourceRightsTest {
 
     @Test
     void shouldShowAllInformationInResponse() {
+        String domain = creator.username().getDomainPart().get().asString();
         String taskId = given()
             .queryParam("task", "repositionWriteRights")
         .when()
-            .post()
+            .post("/domains/" + domain + "/resources")
             .jsonPath()
             .get("taskId");
 
@@ -153,10 +153,11 @@ public class RepositionResourceRightsTest {
 
     @Test
     void shouldReturnErrorWhenTaskNameIsInvalid() {
+        String domain = creator.username().getDomainPart().get().asString();
         given()
             .queryParam("task", "invalidTaskName")
         .when()
-            .post()
+            .post("/domains/" + domain + "/resources")
         .then()
             .statusCode(400)
             .body("details", is("Unknown task: invalidTaskName"));
@@ -273,9 +274,10 @@ public class RepositionResourceRightsTest {
                 Mockito.any());
 
         // When — trigger reposition task
+        String domain = creator.username().getDomainPart().get().asString();
         String taskId = given()
             .queryParam("task", "repositionWriteRights")
-            .post()
+            .post("/domains/" + domain + "/resources")
             .jsonPath()
             .get("taskId");
 
@@ -388,10 +390,11 @@ public class RepositionResourceRightsTest {
 
     @Test
     void shouldCompleteSuccessfullyWhenNoResourcesPresent() {
+        String domain = creator.username().getDomainPart().get().asString();
         String taskId = given()
             .queryParam("task", "repositionWriteRights")
         .when()
-            .post()
+            .post("/domains/" + domain + "/resources")
             .jsonPath()
             .get("taskId");
 
@@ -414,10 +417,11 @@ public class RepositionResourceRightsTest {
         // Mark resource as deleted
         resourceDAO.softDelete(resourceId).block();
 
+        String domain = creator.username().getDomainPart().get().asString();
         String taskId = given()
             .queryParam("task", "repositionWriteRights")
         .when()
-            .post()
+            .post("/domains/" + domain + "/resources")
             .jsonPath()
             .get("taskId");
 
@@ -513,6 +517,7 @@ public class RepositionResourceRightsTest {
     }
 
     private ResourceId createNewResource(OpenPaaSUser creator, List<OpenPaaSUser> admins) {
+        String domain = creator.username().getDomainPart().get().asString();
         String adminsJson = String.join(", ",
             admins.stream()
                 .map(admin -> "{ \"email\": \"" + admin.username().asString() + "\" }")
@@ -523,7 +528,6 @@ public class RepositionResourceRightsTest {
                 "description": "%s",
                 "creator": "%s",
                 "icon": "door",
-                "domain": "%s",
                 "administrators": [
                     %s
                 ]
@@ -532,12 +536,11 @@ public class RepositionResourceRightsTest {
             UUID.randomUUID().toString(),
             UUID.randomUUID().toString(),
             creator.username().asString(),
-            creator.username().getDomainPart().get().asString(),
             adminsJson.toString());
 
         String location = given()
             .body(body)
-            .post()
+            .post("/domains/" + domain + "/resources")
         .then()
             .statusCode(201)
             .extract()
@@ -547,9 +550,10 @@ public class RepositionResourceRightsTest {
     }
 
     private ValidatableResponse runRepositionTaskAndAwait() {
+        String domain = creator.username().getDomainPart().get().asString();
         String taskId = given()
             .queryParam("task", "repositionWriteRights")
-            .post()
+            .post("/domains/" + domain + "/resources")
             .jsonPath()
             .get("taskId");
         return given()
