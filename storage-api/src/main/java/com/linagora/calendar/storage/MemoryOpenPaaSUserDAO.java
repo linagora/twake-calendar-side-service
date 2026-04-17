@@ -113,6 +113,12 @@ public class MemoryOpenPaaSUserDAO implements OpenPaaSUserDAO {
     }
 
     @Override
+    public Flux<OpenPaaSUser> listByDomain(Domain domain) {
+        return Flux.fromIterable(hashMap.values())
+            .filter(user -> user.username().getDomainPart().map(domain::equals).orElse(false));
+    }
+
+    @Override
     public Flux<OpenPaaSUser> search(Domain domain, String query, int limit) {
         return Flux.fromIterable(hashMap.values())
             .filter(user -> user.username().getDomainPart().map(domain::equals).orElse(false))

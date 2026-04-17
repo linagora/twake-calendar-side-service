@@ -39,6 +39,8 @@ public interface OpenPaaSUserDAO {
 
     Flux<OpenPaaSUser> list();
 
+    Flux<OpenPaaSUser> listByDomain(Domain domain);
+
     Flux<OpenPaaSUser> search(Domain domain, String query, int limit);
 
     Mono<MigrationResult> addMissingFields();
