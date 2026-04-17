@@ -187,7 +187,7 @@ class DomainRegisteredUsersRoutesTest {
             .post("/domains/linagora.com/registeredUsers")
         .then()
             .statusCode(400)
-            .body("message", equalTo("Missing email"));
+            .body("message", equalTo("JSON payload of the request is not valid"));
     }
 
     @Test

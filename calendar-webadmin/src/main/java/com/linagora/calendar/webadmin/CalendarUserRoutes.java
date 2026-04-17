@@ -32,6 +32,7 @@ import org.apache.james.webadmin.utils.JsonExtractor;
 import org.apache.james.webadmin.utils.JsonTransformer;
 import org.eclipse.jetty.http.HttpStatus;
 
+import com.google.common.base.Preconditions;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
@@ -48,6 +49,12 @@ import spark.Spark;
 public class CalendarUserRoutes implements Routes {
 
     public record CalendarUserDTO(String email, String firstname, String lastname, String id) {
+        public CalendarUserDTO {
+            Preconditions.checkArgument(!StringUtils.isEmpty(email), "Missing email");
+            Preconditions.checkArgument(!StringUtils.isEmpty(firstname), "Missing firstname");
+            Preconditions.checkArgument(!StringUtils.isEmpty(lastname), "Missing lastname");
+        }
+
         public static CalendarUserDTO fromDomainObject(OpenPaaSUser user) {
             return new CalendarUserDTO(
                 user.username().asString(),
@@ -165,7 +172,6 @@ public class CalendarUserRoutes implements Routes {
 
     private String addUser(Request request, Response response) throws JsonExtractException {
         CalendarUserDTO dto = jsonExtractor.parse(request.body());
-        validateAddUserRequest(dto);
 
         try {
             Username username = Username.of(dto.email());
@@ -183,32 +189,6 @@ public class CalendarUserRoutes implements Routes {
                 .statusCode(HttpStatus.CONFLICT_409)
                 .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
                 .message(e.getMessage())
-                .haltError();
-        }
-    }
-
-    private void validateAddUserRequest(CalendarUserDTO dto) {
-        if (StringUtils.isEmpty(dto.email())) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.BAD_REQUEST_400)
-                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                .message("Missing email")
-                .haltError();
-        }
-
-        if (StringUtils.isEmpty(dto.firstname())) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.BAD_REQUEST_400)
-                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                .message("Missing firstname")
-                .haltError();
-        }
-
-        if (StringUtils.isEmpty(dto.lastname())) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.BAD_REQUEST_400)
-                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                .message("Missing lastname")
                 .haltError();
         }
     }
@@ -271,14 +251,6 @@ public class CalendarUserRoutes implements Routes {
                 .statusCode(HttpStatus.BAD_REQUEST_400)
                 .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
                 .message("Missing 'id' query parameter")
-                .haltError();
-        }
-
-        if (StringUtils.isEmpty(dto.email()) || StringUtils.isEmpty(dto.firstname()) || StringUtils.isEmpty(dto.lastname())) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.BAD_REQUEST_400)
-                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                .message("Missing one or more required fields: email, firstname, lastname")
                 .haltError();
         }
     }
