@@ -150,7 +150,7 @@ class CalendarUserRoutesTest {
             .contentType(ContentType.JSON)
             .body("statusCode", is(HttpStatus.BAD_REQUEST_400))
             .body("type", is("InvalidArgument"))
-            .body("message", is("Missing email"));
+            .body("message", is("JSON payload of the request is not valid"));
     }
 
     @Test
@@ -164,7 +164,7 @@ class CalendarUserRoutesTest {
             .contentType(ContentType.JSON)
             .body("statusCode", is(HttpStatus.BAD_REQUEST_400))
             .body("type", is("InvalidArgument"))
-            .body("message", is("Missing firstname"));
+            .body("message", is("JSON payload of the request is not valid"));
     }
 
     @Test
@@ -178,7 +178,7 @@ class CalendarUserRoutesTest {
             .contentType(ContentType.JSON)
             .body("statusCode", is(HttpStatus.BAD_REQUEST_400))
             .body("type", is("InvalidArgument"))
-            .body("message", is("Missing lastname"));
+            .body("message", is("JSON payload of the request is not valid"));
     }
 
     @Test
@@ -294,7 +294,7 @@ class CalendarUserRoutesTest {
             .patch()
         .then()
             .statusCode(400)
-            .body("message", equalTo("Missing one or more required fields: email, firstname, lastname"));
+            .body("message", equalTo("JSON payload of the request is not valid"));
     }
 
     @Test

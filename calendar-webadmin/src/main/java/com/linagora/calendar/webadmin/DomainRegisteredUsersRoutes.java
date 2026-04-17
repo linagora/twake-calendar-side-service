@@ -108,7 +108,6 @@ public class DomainRegisteredUsersRoutes implements Routes {
     private String addUser(Request request, Response response) throws JsonExtractException {
         Domain domain = asDomain(request);
         CalendarUserRoutes.CalendarUserDTO dto = jsonExtractor.parse(request.body());
-        validateAddUserRequest(dto);
 
         Username username = Username.of(dto.email());
         if (!username.getDomainPart().map(domain::equals).orElse(false)) {
@@ -167,37 +166,9 @@ public class DomainRegisteredUsersRoutes implements Routes {
         String id = request.queryParams("id");
         CalendarUserRoutes.CalendarUserDTO dto = jsonExtractor.parse(request.body());
 
-        if (StringUtils.isEmpty(id)) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.BAD_REQUEST_400)
-                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                .message("Missing 'id' query parameter")
-                .haltError();
-        }
-
-        if (StringUtils.isEmpty(dto.email()) || StringUtils.isEmpty(dto.firstname()) || StringUtils.isEmpty(dto.lastname())) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.BAD_REQUEST_400)
-                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                .message("Missing one or more required fields: email, firstname, lastname")
-                .haltError();
-        }
-
+        validateUpdateRequest(id, dto);
         OpenPaaSId openPaaSId = new OpenPaaSId(id);
-        OpenPaaSUser existing = userDAO.retrieve(openPaaSId).blockOptional()
-            .orElseThrow(() -> ErrorResponder.builder()
-                .statusCode(HttpStatus.NOT_FOUND_404)
-                .type(ErrorResponder.ErrorType.NOT_FOUND)
-                .message("User with id " + id + " not found")
-                .haltError());
-
-        if (!existing.username().getDomainPart().map(domain::equals).orElse(false)) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.NOT_FOUND_404)
-                .type(ErrorResponder.ErrorType.NOT_FOUND)
-                .message("User with id " + id + " not found")
-                .haltError();
-        }
+        requireUserInDomain(openPaaSId, id, domain);
 
         try {
             userDAO.update(openPaaSId, Username.of(dto.email()), dto.firstname(), dto.lastname()).block();
@@ -214,6 +185,33 @@ public class DomainRegisteredUsersRoutes implements Routes {
                 .statusCode(HttpStatus.CONFLICT_409)
                 .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
                 .message(e.getMessage())
+                .haltError();
+        }
+    }
+
+    private void validateUpdateRequest(String id, CalendarUserRoutes.CalendarUserDTO dto) {
+        if (StringUtils.isEmpty(id)) {
+            throw ErrorResponder.builder()
+                .statusCode(HttpStatus.BAD_REQUEST_400)
+                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                .message("Missing 'id' query parameter")
+                .haltError();
+        }
+    }
+
+    private void requireUserInDomain(OpenPaaSId openPaaSId, String id, Domain domain) {
+        OpenPaaSUser existing = userDAO.retrieve(openPaaSId).blockOptional()
+            .orElseThrow(() -> ErrorResponder.builder()
+                .statusCode(HttpStatus.NOT_FOUND_404)
+                .type(ErrorResponder.ErrorType.NOT_FOUND)
+                .message("User with id " + id + " not found")
+                .haltError());
+
+        if (!existing.username().getDomainPart().map(domain::equals).orElse(false)) {
+            throw ErrorResponder.builder()
+                .statusCode(HttpStatus.NOT_FOUND_404)
+                .type(ErrorResponder.ErrorType.NOT_FOUND)
+                .message("User with id " + id + " not found")
                 .haltError();
         }
     }
@@ -240,27 +238,4 @@ public class DomainRegisteredUsersRoutes implements Routes {
         }
     }
 
-    private void validateAddUserRequest(CalendarUserRoutes.CalendarUserDTO dto) {
-        if (StringUtils.isEmpty(dto.email())) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.BAD_REQUEST_400)
-                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                .message("Missing email")
-                .haltError();
-        }
-        if (StringUtils.isEmpty(dto.firstname())) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.BAD_REQUEST_400)
-                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                .message("Missing firstname")
-                .haltError();
-        }
-        if (StringUtils.isEmpty(dto.lastname())) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.BAD_REQUEST_400)
-                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                .message("Missing lastname")
-                .haltError();
-        }
-    }
 }
