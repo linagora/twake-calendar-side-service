@@ -486,6 +486,88 @@ allowing the to accept, reject and counter events in the name of the resource.
 
 Note that existing delegation write to no longer existing users will not be revoked.
 
+## Domain registered users routes
+
+Domain-scoped mirror of the `/registeredUsers` routes, allowing multi-tenant safe access.
+The global `/registeredUsers` routes remain available for global admin operations.
+
+### Listing users of a domain
+
+```
+GET /domains/linagora.com/registeredUsers
+```
+
+Returns only users whose email belongs to `linagora.com`:
+
+```json
+[
+  {
+    "email": "james@linagora.com",
+    "firstname": "James",
+    "lastname": "Bond",
+    "id": "248y230r2c"
+  }
+]
+```
+
+Optional `?email=` filter to retrieve a single user:
+
+```
+GET /domains/linagora.com/registeredUsers?email=james@linagora.com
+```
+
+Returns 404 if the user does not exist or belongs to another domain.
+
+Status codes:
+- 200 on success
+- 400 if domain name is malformed
+- 404 if domain does not exist
+
+### Adding a user to a domain
+
+```
+POST /domains/linagora.com/registeredUsers
+{
+  "email": "james@linagora.com",
+  "firstname": "James",
+  "lastname": "Bond"
+}
+```
+
+The email domain must match the URL domain.
+
+Status codes:
+- 201 if created
+- 400 if a required field is missing or the email domain does not match the URL domain
+- 404 if domain does not exist
+- 409 if a user with that email already exists
+
+### Testing existence of a user within a domain
+
+```
+HEAD /domains/linagora.com/registeredUsers?email=james@linagora.com
+HEAD /domains/linagora.com/registeredUsers?id=248y230r2c
+```
+
+Returns 200 if the user exists and belongs to that domain, 404 otherwise.
+
+### Updating a user within a domain
+
+```
+PATCH /domains/linagora.com/registeredUsers?id=248y230r2c
+{
+  "email": "james2@linagora.com",
+  "firstname": "James2",
+  "lastname": "Bond2"
+}
+```
+
+Status codes:
+- 204 if updated
+- 400 if required fields are missing
+- 404 if the user does not exist or belongs to another domain
+- 409 if the new email is already taken
+
 ## Domain admins routes
 
 Manage the list of administrators (admins) for each domain.
