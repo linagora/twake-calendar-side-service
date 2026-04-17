@@ -81,6 +81,10 @@ public class MongoDBCollectionFactory {
             // ESN migration trick
             LOGGER.warn("Incorrect index positioned on accounts.emails. Ignoring.", e);
         }
+
+        Mono.from(database.getCollection(USERS)
+                .createIndex(new Document("domains.domain_id", 1)))
+            .block();
     }
 
     private static void createDomainsCollection(MongoDatabase database) {
