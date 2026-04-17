@@ -161,6 +161,15 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
     }
 
     @Override
+    public Flux<OpenPaaSUser> listByDomain(Domain domain) {
+        return domainDAO.retrieve(domain)
+            .flatMapMany(openPaaSDomain ->
+                Flux.from(database.getCollection(COLLECTION)
+                        .find(Filters.eq("domains.domain_id", new ObjectId(openPaaSDomain.id().value()))))
+                    .map(this::toOpenPaaSUser));
+    }
+
+    @Override
     public Flux<OpenPaaSUser> search(Domain domain, String query, int limit) {
         Pattern searchPattern = Pattern.compile("^" + Pattern.quote(query),
             Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
