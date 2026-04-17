@@ -90,6 +90,7 @@ import com.linagora.calendar.storage.redis.RedisEventBusModule;
 import com.linagora.calendar.storage.redis.RedisOIDCModule;
 import com.linagora.calendar.webadmin.CalendarRoutesModule;
 import com.linagora.calendar.webadmin.DomainMembersSyncRouteModule;
+import com.linagora.calendar.webadmin.DomainTasksModule;
 import com.linagora.calendar.webadmin.LdapUsersImportRouteModule;
 import com.linagora.tmail.james.jmap.module.OSContactAutoCompleteModule;
 
@@ -98,6 +99,7 @@ public class TwakeCalendarMain {
         new WebAdminServerModule(),
         new NoJwtModule(),
         new CalendarRoutesModule(),
+        new DomainTasksModule(),
         new DeleteUserDataRoutesModule(),
         binder -> Multibinder.newSetBinder(binder, Routes.class).addBinding().to(MetricsRoutes.class),
         binder -> Multibinder.newSetBinder(binder, Routes.class).addBinding().to(DomainsRoutes.class),
