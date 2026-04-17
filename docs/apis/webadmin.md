@@ -320,13 +320,15 @@ the task `additionalInformation` also contains a `targetUser` property indicatin
 
 ## Resource routes
 
+All resource routes are scoped under a domain: `/domains/{domain}/resources`.
+
 ### Listing resources
 
 ```
-GET /resources
+GET /domains/linagora.com/resources
 ```
 
-Will list exising resources:
+Will list existing resources for that domain:
 
 ```
 [
@@ -342,39 +344,19 @@ Will list exising resources:
       {"email": "user1@linagora.com"},
       {"email": "user2@linagora.com"}
     ]
-  },
-  {
-    "name": "Resource name",
-    "deleted": false,
-    "description": "Descripting",
-    "id": "RESOURCE_ID_2",
-    "creator":"user3@twake.app",
-    "icon": "laptop",
-    "domain": "twake.app",
-    "administrators": [
-      {"email": "user3@twake.app"},
-      {"email": "user4@twake.app"}
-    ]
   }
 ]
 ```
 
-The `domain` query parameter allow filtering resources by domain.
-
-Eg:
-
-```
-GET /resources?domain=linagora.com
-```
-
 Status codes:
  - 200 when returning results
- - 400 when domain is either invalid or do not exist
+ - 400 when domain name is malformed
+ - 404 when domain does not exist
 
 ### Getting a specific resource
 
 ```
-GET /resources/RESOURCE_ID_2
+GET /domains/linagora.com/resources/RESOURCE_ID
 ```
 
 Will return the corresponding resource:
@@ -384,39 +366,38 @@ Will return the corresponding resource:
     "name": "Resource name",
     "deleted": false,
     "description": "Descripting",
-    "id": "RESOURCE_ID_2",
-    "creator":"user3@twake.app",
+    "id": "RESOURCE_ID",
+    "creator":"user1@linagora.com",
     "icon": "laptop",
-    "domain": "twake.app",
+    "domain": "linagora.com",
     "administrators": [
-      {"email": "user3@twake.app"},
-      {"email": "user4@twake.app"}
+      {"email": "user1@linagora.com"},
+      {"email": "user2@linagora.com"}
     ]
   }
 ```
 
-Status code: 404 if not found, 200 otherwise.
+Status codes: 404 if domain or resource not found (or resource belongs to another domain), 200 otherwise.
 
 ### Marking a resource as deleted
 
 ```
-DELETE /resources/RESOURCE_ID_2
+DELETE /domains/linagora.com/resources/RESOURCE_ID
 ```
 
 Will mark the resource as deleted.
 
-Status code: 404 if not found, 204 otherwise.
+Status codes: 404 if domain or resource not found, 204 otherwise.
 
 ### Creating a resource
 
 ```
-POST /resources
+POST /domains/linagora.com/resources
 {
   "name": "Resource name",
   "description": "Descripting",
   "creator":"user1@linagora.com",
   "icon": "laptop",
-  "domain": "linagora.com",
   "administrators": [
     {"email": "user1@linagora.com"},
     {"email": "user2@linagora.com"}
@@ -427,33 +408,33 @@ POST /resources
 The `administrators` field is optional. Omitting it (or providing an empty list) creates a resource with no administrator:
 
 ```
-POST /resources
+POST /domains/linagora.com/resources
 {
   "name": "Resource name",
   "description": "Descripting",
   "creator":"user1@linagora.com",
-  "icon": "laptop",
-  "domain": "linagora.com"
+  "icon": "laptop"
 }
 ```
 
 Will create the following resource.
 
 Status codes:
- - 201 if created. Location includes the URL allowing to read resource details
- - 400 if invalid: the creator/domain/administrator do not exist or extra fields / invalid JSON
+ - 201 if created. Location header contains the URL to read resource details
+ - 400 if invalid: creator/administrator do not exist, or extra fields / invalid JSON
+ - 404 if domain does not exist
 
 A resource without administrator is not subject to the validation flow: any event request with this resource is
 automatically accepted.
 
 Please note that resource administrators:
- - are emails upon events created that book the resource
+ - are emailed upon events created that book the resource
  - have delegation write access to the calendar of the resource
 
 ### Updating a resource
 
 ```
-PATCH resources/RESOURCE_ID
+PATCH /domains/linagora.com/resources/RESOURCE_ID
 {
   "name": "Resource name 2",
   "description": "Descripting 2",
@@ -464,27 +445,24 @@ PATCH resources/RESOURCE_ID
 }
 ```
 
-Would update the resource accordingly. Each field is nullable and if unspecified the field is not updated.
+Would update the resource accordingly. Each field is optional; omitting a field leaves it unchanged.
 
-Status code: 204 if updated, 400 if invalid eg administrator not found, 404 if the resource is not found.
-
-
+Status codes: 204 if updated, 400 if invalid (e.g. administrator not found), 404 if domain or resource not found.
 
 Please note that resource administrators:
- - are emails upon events created that book the resource
- - have delegation write access to the calendar of the resource. Removing administrator will revoke this delegation 
-right.
+ - are emailed upon events created that book the resource
+ - have delegation write access to the calendar of the resource. Removing an administrator revokes this delegation right.
 
-### Repositioning write right for admins on resource calendar
+### Repositioning write rights for admins on resource calendar
 
 ```
-POST /resources?task=repositionWriteRights
+POST /domains/linagora.com/resources?task=repositionWriteRights
 ```
 
-Will iterate on each resource and ensures current administrators have delegation write access to the resource calendar,
-allowing the to accept, reject and counter events in the name of the resource.
+Will iterate on each resource and ensure current administrators have delegation write access to the resource calendar,
+allowing them to accept, reject and counter events in the name of the resource.
 
-Note that existing delegation write to no longer existing users will not be revoked.
+Note that existing delegation write access granted to users no longer listed as administrators will not be revoked.
 
 ## Domain admins routes
 
