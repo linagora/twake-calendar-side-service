@@ -536,6 +536,63 @@ Revokes administrator rights of user `user1@linagora.com` for domain `linagora.c
 - `404` if the domain or user does not exist.
 - `400` if `domainName` or `username` has an invalid format.
 
+## Domain-scoped task routes
+
+These routes provide domain-filtered access to the standard webadmin task management endpoints. They are intended for WebAdmin proxies that enforce multi-tenancy based on the domain in the URL. A task is only accessible if it belongs to the specified domain; otherwise a `404` is returned (to avoid leaking task IDs across domains).
+
+The following task types are domain-scoped:
+
+| Task type | Domain resolution |
+|-----------|-------------------|
+| `calendar-archival` (single-user) | domain extracted from `targetUser` |
+| `DeleteUserDataTask` | domain extracted from `username` |
+| `sync-domain-members-contacts-ldap-to-dav` (single-domain) | `domain` field in additional information |
+
+Multi-domain tasks (e.g. archive all users, sync all domains) are not attributed to any specific domain and are therefore not accessible through these routes.
+
+### Get task status
+
+```
+GET /domains/{domain}/tasks/{taskId}
+```
+
+Returns the task execution details if the task belongs to the domain. Same response body as `GET /tasks/{taskId}`.
+
+**Status codes**:
+- `200`: task found and belongs to the domain
+- `400`: invalid task id format
+- `404`: domain does not exist, task not found, or task does not belong to the domain
+
+### Await task completion
+
+```
+GET /domains/{domain}/tasks/{taskId}/await?timeout=3600s
+```
+
+Waits for the task to complete and returns the final execution details. Same semantics as `GET /tasks/{taskId}/await`.
+
+Optional query parameter:
+- `timeout`: maximum wait duration (e.g. `3600s`, `1d`). Defaults to 365 days.
+
+**Status codes**:
+- `200`: task completed and belongs to the domain
+- `400`: invalid task id or timeout format
+- `404`: domain does not exist, task not found, or task does not belong to the domain
+- `408`: timeout reached before task completion
+
+### Cancel a task
+
+```
+DELETE /domains/{domain}/tasks/{taskId}
+```
+
+Cancels the task if it belongs to the domain.
+
+**Status codes**:
+- `204`: task cancelled (or already completed/cancelled)
+- `400`: invalid task id format
+- `404`: domain does not exist, task not found, or task does not belong to the domain
+
 ## User data deletion
 
 Allows deleting all data associated with a user. This is an asynchronous task that executes multiple deletion steps.
