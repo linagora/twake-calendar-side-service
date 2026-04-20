@@ -317,6 +317,21 @@ class DomainRegisteredUsersRoutesTest {
     }
 
     @Test
+    void patchShouldReturn400WhenEmailDomainMismatch() {
+        domainDAO.add(Domain.of("linagora.com")).block();
+        OpenPaaSUser user = userDAO.add(Username.of("james@linagora.com"), "James", "Bond").block();
+
+        given()
+            .queryParam("id", user.id().value())
+            .body("{\"email\":\"james@other.com\",\"firstname\":\"James\",\"lastname\":\"Bond\"}")
+        .when()
+            .patch("/domains/linagora.com/registeredUsers")
+        .then()
+            .statusCode(400)
+            .body("message", equalTo("Email domain must match URL domain: linagora.com"));
+    }
+
+    @Test
     void patchShouldReturn409WhenUpdatingToExistingEmail() {
         domainDAO.add(Domain.of("linagora.com")).block();
         userDAO.add(Username.of("user1@linagora.com"), "User", "One").block();
