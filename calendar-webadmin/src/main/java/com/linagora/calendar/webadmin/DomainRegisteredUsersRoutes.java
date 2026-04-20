@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.webadmin;
 
+import java.util.Optional;
+
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
@@ -82,13 +84,6 @@ public class DomainRegisteredUsersRoutes implements Routes {
             String email = request.queryParams("email");
             Username username = Username.of(email);
 
-            OpenPaaSUser user = userDAO.retrieve(username).blockOptional()
-                .orElseThrow(() -> ErrorResponder.builder()
-                    .statusCode(HttpStatus.NOT_FOUND_404)
-                    .type(ErrorResponder.ErrorType.NOT_FOUND)
-                    .message("User does not exist")
-                    .haltError());
-
             if (!username.getDomainPart().map(domain::equals).orElse(false)) {
                 throw ErrorResponder.builder()
                     .statusCode(HttpStatus.NOT_FOUND_404)
@@ -96,6 +91,13 @@ public class DomainRegisteredUsersRoutes implements Routes {
                     .message("User does not exist")
                     .haltError();
             }
+
+            OpenPaaSUser user = userDAO.retrieve(username).blockOptional()
+                .orElseThrow(() -> ErrorResponder.builder()
+                    .statusCode(HttpStatus.NOT_FOUND_404)
+                    .type(ErrorResponder.ErrorType.NOT_FOUND)
+                    .message("User does not exist")
+                    .haltError());
             return CalendarUserRoutes.CalendarUserDTO.fromDomainObject(user);
         }
 
@@ -110,13 +112,7 @@ public class DomainRegisteredUsersRoutes implements Routes {
         CalendarUserRoutes.CalendarUserDTO dto = jsonExtractor.parse(request.body());
 
         Username username = Username.of(dto.email());
-        if (!username.getDomainPart().map(domain::equals).orElse(false)) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.BAD_REQUEST_400)
-                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                .message("Email domain must match URL domain: %s".formatted(domain.asString()))
-                .haltError();
-        }
+        validateEmailDomain(username, domain);
 
         try {
             userDAO.add(username, dto.firstname(), dto.lastname()).block();
@@ -163,15 +159,23 @@ public class DomainRegisteredUsersRoutes implements Routes {
 
     private String updateUser(Request request, Response response) throws JsonExtractException {
         Domain domain = asDomain(request);
-        String id = request.queryParams("id");
-        CalendarUserRoutes.CalendarUserDTO dto = jsonExtractor.parse(request.body());
+        String id = Optional.ofNullable(request.queryParams("id"))
+            .filter(StringUtils::isNotEmpty)
+            .orElseThrow(() -> ErrorResponder.builder()
+                .statusCode(HttpStatus.BAD_REQUEST_400)
+                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                .message("Missing 'id' query parameter")
+                .haltError());
 
-        validateUpdateRequest(id, dto);
+        CalendarUserRoutes.CalendarUserDTO dto = jsonExtractor.parse(request.body());
+        Username username = Username.of(dto.email());
+        validateEmailDomain(username, domain);
+
         OpenPaaSId openPaaSId = new OpenPaaSId(id);
         requireUserInDomain(openPaaSId, id, domain);
 
         try {
-            userDAO.update(openPaaSId, Username.of(dto.email()), dto.firstname(), dto.lastname()).block();
+            userDAO.update(openPaaSId, username, dto.firstname(), dto.lastname()).block();
             response.status(HttpStatus.NO_CONTENT_204);
             return Constants.EMPTY_BODY;
         } catch (DomainNotFoundException | UserNotFoundException e) {
@@ -189,12 +193,12 @@ public class DomainRegisteredUsersRoutes implements Routes {
         }
     }
 
-    private void validateUpdateRequest(String id, CalendarUserRoutes.CalendarUserDTO dto) {
-        if (StringUtils.isEmpty(id)) {
+    private void validateEmailDomain(Username username, Domain domain) {
+        if (!username.getDomainPart().map(domain::equals).orElse(false)) {
             throw ErrorResponder.builder()
                 .statusCode(HttpStatus.BAD_REQUEST_400)
                 .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                .message("Missing 'id' query parameter")
+                .message("Email domain must match URL domain: %s".formatted(domain.asString()))
                 .haltError();
         }
     }
