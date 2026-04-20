@@ -201,6 +201,88 @@ class DomainRegisteredUsersRoutesTest {
     }
 
     @Test
+    void postShouldReturn400WhenFirstnameMissing() {
+        domainDAO.add(Domain.of("linagora.com")).block();
+
+        given()
+            .body("{\"email\":\"james@linagora.com\",\"lastname\":\"Bond\"}")
+        .when()
+            .post("/domains/linagora.com/registeredUsers")
+        .then()
+            .statusCode(400)
+            .body("message", equalTo("Invalid arguments supplied in the user request"));
+    }
+
+    @Test
+    void postShouldReturn400WhenLastnameMissing() {
+        domainDAO.add(Domain.of("linagora.com")).block();
+
+        given()
+            .body("{\"email\":\"james@linagora.com\",\"firstname\":\"James\"}")
+        .when()
+            .post("/domains/linagora.com/registeredUsers")
+        .then()
+            .statusCode(400)
+            .body("message", equalTo("Invalid arguments supplied in the user request"));
+    }
+
+    @Test
+    void getUsersShouldSucceedWhenUserHasEmptyFirstname() {
+        domainDAO.add(Domain.of("linagora.com")).block();
+        userDAO.add(Username.of("james@linagora.com"), "", "Bond").block();
+
+        when()
+            .get("/domains/linagora.com/registeredUsers")
+        .then()
+            .statusCode(200)
+            .body("[0].firstname", equalTo(""))
+            .body("[0].lastname", equalTo("Bond"));
+    }
+
+    @Test
+    void getUsersShouldSucceedWhenUserHasEmptyLastname() {
+        domainDAO.add(Domain.of("linagora.com")).block();
+        userDAO.add(Username.of("james@linagora.com"), "James", "").block();
+
+        when()
+            .get("/domains/linagora.com/registeredUsers")
+        .then()
+            .statusCode(200)
+            .body("[0].firstname", equalTo("James"))
+            .body("[0].lastname", equalTo(""));
+    }
+
+    @Test
+    void patchShouldReturn400WhenFirstnameMissing() {
+        domainDAO.add(Domain.of("linagora.com")).block();
+        OpenPaaSUser user = userDAO.add(Username.of("james@linagora.com"), "James", "Bond").block();
+
+        given()
+            .queryParam("id", user.id().value())
+            .body("{\"email\":\"james@linagora.com\",\"lastname\":\"Bond\"}")
+        .when()
+            .patch("/domains/linagora.com/registeredUsers")
+        .then()
+            .statusCode(400)
+            .body("message", equalTo("Invalid arguments supplied in the user request"));
+    }
+
+    @Test
+    void patchShouldReturn400WhenLastnameMissing() {
+        domainDAO.add(Domain.of("linagora.com")).block();
+        OpenPaaSUser user = userDAO.add(Username.of("james@linagora.com"), "James", "Bond").block();
+
+        given()
+            .queryParam("id", user.id().value())
+            .body("{\"email\":\"james@linagora.com\",\"firstname\":\"James\"}")
+        .when()
+            .patch("/domains/linagora.com/registeredUsers")
+        .then()
+            .statusCode(400)
+            .body("message", equalTo("Invalid arguments supplied in the user request"));
+    }
+
+    @Test
     void postShouldReturn409WhenUserAlreadyExists() {
         domainDAO.add(Domain.of("linagora.com")).block();
         userDAO.add(Username.of("james@linagora.com"), "James", "Bond").block();

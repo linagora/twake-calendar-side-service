@@ -109,7 +109,7 @@ public class DomainRegisteredUsersRoutes implements Routes {
 
     private String addUser(Request request, Response response) throws JsonExtractException {
         Domain domain = asDomain(request);
-        CalendarUserRoutes.CalendarUserDTO dto = jsonExtractor.parse(request.body());
+        CalendarUserRoutes.CalendarUserDTO dto = jsonExtractor.parse(request.body()).validateForWrite();
 
         Username username = Username.of(dto.email());
         validateEmailDomain(username, domain);
@@ -167,7 +167,7 @@ public class DomainRegisteredUsersRoutes implements Routes {
                 .message("Missing 'id' query parameter")
                 .haltError());
 
-        CalendarUserRoutes.CalendarUserDTO dto = jsonExtractor.parse(request.body());
+        CalendarUserRoutes.CalendarUserDTO dto = jsonExtractor.parse(request.body()).validateForWrite();
         Username username = Username.of(dto.email());
         validateEmailDomain(username, domain);
 

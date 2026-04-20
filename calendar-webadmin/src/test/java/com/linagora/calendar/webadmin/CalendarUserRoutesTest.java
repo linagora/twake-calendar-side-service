@@ -164,7 +164,7 @@ class CalendarUserRoutesTest {
             .contentType(ContentType.JSON)
             .body("statusCode", is(HttpStatus.BAD_REQUEST_400))
             .body("type", is("InvalidArgument"))
-            .body("message", is("JSON payload of the request is not valid"));
+            .body("message", is("Invalid arguments supplied in the user request"));
     }
 
     @Test
@@ -178,7 +178,67 @@ class CalendarUserRoutesTest {
             .contentType(ContentType.JSON)
             .body("statusCode", is(HttpStatus.BAD_REQUEST_400))
             .body("type", is("InvalidArgument"))
-            .body("message", is("JSON payload of the request is not valid"));
+            .body("message", is("Invalid arguments supplied in the user request"));
+    }
+
+    @Test
+    void getUsersShouldSucceedWhenUserHasEmptyFirstname() {
+        userDAO.add(Username.of("james@linagora.com"), "", "Bond").block();
+
+        when()
+            .get()
+        .then()
+            .statusCode(200)
+            .body("[0].email", equalTo("james@linagora.com"))
+            .body("[0].firstname", equalTo(""))
+            .body("[0].lastname", equalTo("Bond"));
+    }
+
+    @Test
+    void getUsersShouldSucceedWhenUserHasEmptyLastname() {
+        userDAO.add(Username.of("james@linagora.com"), "James", "").block();
+
+        when()
+            .get()
+        .then()
+            .statusCode(200)
+            .body("[0].email", equalTo("james@linagora.com"))
+            .body("[0].firstname", equalTo("James"))
+            .body("[0].lastname", equalTo(""));
+    }
+
+    @Test
+    void patchUserShouldReturn400WhenFirstnameMissing() {
+        OpenPaaSUser user = userDAO.add(Username.of("james@linagora.com"), "James", "Bond").block();
+
+        given()
+            .queryParam("id", user.id().value())
+            .body("{\"email\":\"james@linagora.com\",\"lastname\":\"Bond\"}")
+        .when()
+            .patch()
+        .then()
+            .statusCode(400)
+            .contentType(ContentType.JSON)
+            .body("statusCode", is(HttpStatus.BAD_REQUEST_400))
+            .body("type", is("InvalidArgument"))
+            .body("message", is("Invalid arguments supplied in the user request"));
+    }
+
+    @Test
+    void patchUserShouldReturn400WhenLastnameMissing() {
+        OpenPaaSUser user = userDAO.add(Username.of("james@linagora.com"), "James", "Bond").block();
+
+        given()
+            .queryParam("id", user.id().value())
+            .body("{\"email\":\"james@linagora.com\",\"firstname\":\"James\"}")
+        .when()
+            .patch()
+        .then()
+            .statusCode(400)
+            .contentType(ContentType.JSON)
+            .body("statusCode", is(HttpStatus.BAD_REQUEST_400))
+            .body("type", is("InvalidArgument"))
+            .body("message", is("Invalid arguments supplied in the user request"));
     }
 
     @Test
