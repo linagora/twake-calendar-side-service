@@ -51,8 +51,12 @@ public class CalendarUserRoutes implements Routes {
     public record CalendarUserDTO(String email, String firstname, String lastname, String id) {
         public CalendarUserDTO {
             Preconditions.checkArgument(!StringUtils.isEmpty(email), "Missing email");
+        }
+
+        public CalendarUserDTO validateForWrite() {
             Preconditions.checkArgument(!StringUtils.isEmpty(firstname), "Missing firstname");
             Preconditions.checkArgument(!StringUtils.isEmpty(lastname), "Missing lastname");
+            return this;
         }
 
         public static CalendarUserDTO fromDomainObject(OpenPaaSUser user) {
@@ -171,7 +175,7 @@ public class CalendarUserRoutes implements Routes {
     }
 
     private String addUser(Request request, Response response) throws JsonExtractException {
-        CalendarUserDTO dto = jsonExtractor.parse(request.body());
+        CalendarUserDTO dto = jsonExtractor.parse(request.body()).validateForWrite();
 
         try {
             Username username = Username.of(dto.email());
@@ -214,7 +218,7 @@ public class CalendarUserRoutes implements Routes {
 
     private String updateUser(Request request, Response response) throws JsonExtractException {
         String id = request.queryParams("id");
-        CalendarUserDTO dto = jsonExtractor.parse(request.body());
+        CalendarUserDTO dto = jsonExtractor.parse(request.body()).validateForWrite();
 
         validateUpdateUserRequest(id, dto);
 
