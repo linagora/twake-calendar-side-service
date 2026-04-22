@@ -21,6 +21,7 @@ package com.linagora.calendar.restapi.routes;
 import static com.linagora.calendar.restapi.RestApiConstants.JSON_HEADER;
 
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
 
@@ -35,8 +36,10 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.fge.lambdas.Throwing;
+import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.restapi.ErrorResponse;
 import com.linagora.calendar.restapi.RestApiConstants;
+import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.TechnicalTokenService;
 import com.linagora.calendar.storage.TechnicalTokenService.JwtToken;
 
@@ -48,17 +51,19 @@ import reactor.netty.http.server.HttpServerRequest;
 import reactor.netty.http.server.HttpServerResponse;
 
 public class CheckTechnicalUserTokenRoute implements JMAPRoutes {
-
     private static final Logger LOGGER = LoggerFactory.getLogger(CheckTechnicalUserTokenRoute.class);
     private static final String TOKEN_HEADER_NAME = "X-TECHNICAL-TOKEN";
+
     private final TechnicalTokenService technicalTokenService;
     private final MetricFactory metricFactory;
+    private final OpenPaaSDomainDAO domainDAO;
     private final ObjectMapper objectMapper;
 
     @Inject
-    public CheckTechnicalUserTokenRoute(TechnicalTokenService technicalTokenService, MetricFactory metricFactory) {
+    public CheckTechnicalUserTokenRoute(TechnicalTokenService technicalTokenService, MetricFactory metricFactory, OpenPaaSDomainDAO domainDAO) {
         this.technicalTokenService = technicalTokenService;
         this.metricFactory = metricFactory;
+        this.domainDAO = domainDAO;
         this.objectMapper = RestApiConstants.OBJECT_MAPPER_DEFAULT;
     }
 
@@ -79,7 +84,8 @@ public class CheckTechnicalUserTokenRoute implements JMAPRoutes {
         return Mono.justOrEmpty(getToken(request))
             .switchIfEmpty(Mono.error(new IllegalArgumentException("Missing technical user token in request headers " + TOKEN_HEADER_NAME)))
             .flatMap(requestToken -> technicalTokenService.claim(new JwtToken(requestToken)))
-            .map(Throwing.function(tokenClaims -> objectMapper.writeValueAsBytes(tokenClaims.data())))
+            .flatMap(this::withDomain)
+            .map(Throwing.function(objectMapper::writeValueAsBytes))
             .flatMap(bytes -> response.status(200)
                 .headers(JSON_HEADER)
                 .sendByteArray(Mono.just(bytes))
@@ -88,6 +94,14 @@ public class CheckTechnicalUserTokenRoute implements JMAPRoutes {
                 LOGGER.warn("Error while verifying technical user ", exception);
                 return doOnError(response);
             });
+    }
+
+    private Mono<Map<String, Object>> withDomain(TechnicalTokenService.TechnicalTokenInfo tokenInfo) {
+        return Mono.from(domainDAO.retrieve(tokenInfo.domainId()))
+            .map(domain -> ImmutableMap.<String, Object>builder()
+                .put("domain", domain.domain().asString())
+                .putAll(tokenInfo.data())
+                .build());
     }
 
     Mono<Void> doOnError(HttpServerResponse response) {
