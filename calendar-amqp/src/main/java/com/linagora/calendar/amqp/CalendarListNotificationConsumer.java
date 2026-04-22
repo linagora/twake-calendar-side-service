@@ -119,11 +119,18 @@ public class CalendarListNotificationConsumer implements Closeable, Startable {
                     .flatMap(exchange -> sender.declareExchange(ExchangeSpecification.exchange(exchange.asString())
                         .durable(DURABLE)
                         .type(BuiltinExchangeType.FANOUT.getType()))),
+                sender.declareExchange(ExchangeSpecification.exchange(DEAD_LETTER_QUEUE)
+                    .durable(DURABLE)
+                    .type(BuiltinExchangeType.FANOUT.getType())),
                 sender.declareQueue(QueueSpecification
                     .queue(DEAD_LETTER_QUEUE)
                     .durable(DURABLE)
                     .arguments(queueArgumentSupplier.get()
                         .build())),
+                sender.bind(BindingSpecification.binding()
+                    .exchange(DEAD_LETTER_QUEUE)
+                    .queue(DEAD_LETTER_QUEUE)
+                    .routingKey(EMPTY_ROUTING_KEY)),
                 sender.declareQueue(QueueSpecification
                     .queue(QUEUE_NAME)
                     .durable(DURABLE)

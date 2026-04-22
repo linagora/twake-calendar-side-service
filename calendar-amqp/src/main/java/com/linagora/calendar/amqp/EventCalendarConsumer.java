@@ -102,11 +102,17 @@ public class EventCalendarConsumer implements Closeable, Startable {
         this.declareExchangeAndQueue = eventQueue -> Flux.concat(
                 sender.declareExchange(ExchangeSpecification.exchange(eventQueue.exchangeName)
                     .durable(DURABLE).type(BuiltinExchangeType.FANOUT.getType())),
+                sender.declareExchange(ExchangeSpecification.exchange(eventQueue.deadLetter)
+                    .durable(DURABLE).type(BuiltinExchangeType.FANOUT.getType())),
                 sender.declareQueue(QueueSpecification
                     .queue(eventQueue.deadLetter)
                     .durable(DURABLE)
                     .arguments(queueArgumentSupplier.get()
                         .build())),
+                sender.bind(BindingSpecification.binding()
+                    .exchange(eventQueue.deadLetter)
+                    .queue(eventQueue.deadLetter)
+                    .routingKey(EMPTY_ROUTING_KEY)),
                 sender.declareQueue(QueueSpecification
                     .queue(eventQueue.queueName)
                     .durable(DURABLE)

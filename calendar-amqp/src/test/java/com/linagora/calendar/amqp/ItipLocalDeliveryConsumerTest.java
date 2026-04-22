@@ -478,20 +478,6 @@ public class ItipLocalDeliveryConsumerTest {
         when(localRecipientResolver.resolve(Username.of(ALICE)))
             .thenReturn(Mono.just(Optional.of(new OpenPaaSId(LOCAL_USER_ID))));
 
-        Sender sender = channelPool.getSender();
-        sender.declareExchange(ExchangeSpecification.exchange(ItipLocalDeliveryConsumer.DEAD_LETTER_QUEUE)
-            .durable(DURABLE)
-            .type(BuiltinExchangeType.FANOUT.getType())).block();
-        sender.bind(BindingSpecification.binding()
-            .exchange(ItipLocalDeliveryConsumer.DEAD_LETTER_QUEUE)
-            .queue(ItipLocalDeliveryConsumer.DEAD_LETTER_QUEUE)
-            .routingKey(EMPTY_ROUTING_KEY)).block();
-        try {
-            channel.queuePurge(ItipLocalDeliveryConsumer.DEAD_LETTER_QUEUE);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-
         wireMockServer.stubFor(WireMock.post(WireMock.urlEqualTo("/itip"))
             .willReturn(WireMock.aResponse().withStatus(500).withBody("Internal Server Error")));
 
