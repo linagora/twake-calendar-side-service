@@ -32,6 +32,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.ResourceDAO;
@@ -79,14 +80,17 @@ public class RepositionResourceRightsTask implements Task {
 
     private final ResourceDAO resourceDAO;
     private final OpenPaaSUserDAO userDAO;
+    private final OpenPaaSDomainDAO domainDAO;
     private final CalDavClient calDavClient;
     private final Context context;
 
     public RepositionResourceRightsTask(ResourceDAO resourceDAO,
                                         OpenPaaSUserDAO userDAO,
+                                        OpenPaaSDomainDAO domainDAO,
                                         CalDavClient calDavClient) {
         this.resourceDAO = resourceDAO;
         this.userDAO = userDAO;
+        this.domainDAO = domainDAO;
         this.calDavClient = calDavClient;
         this.context = new Context();
     }
@@ -106,8 +110,8 @@ public class RepositionResourceRightsTask implements Task {
     }
 
     private Mono<Task.Result> reapplyWriteRights(Resource resource, Context context) {
-        return resolveAdministratorUsernames(resource)
-            .flatMap(usernames -> calDavClient.grantReadWriteRights(resource.domain(), resource.id(), usernames)
+        return Mono.zip(resolveAdministratorUsernames(resource), domainDAO.retrieve(resource.domain()))
+            .flatMap(tuple -> calDavClient.grantReadWriteRights(tuple.getT2(), resource.id(), tuple.getT1())
                 .thenReturn(Result.COMPLETED)
                 .onErrorResume(e -> {
                     LOGGER.error("Error granting rights for resource {}", resource.id().value(), e);

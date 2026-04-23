@@ -44,7 +44,7 @@ import reactor.core.scheduler.Schedulers;
 
 public interface TechnicalTokenService {
 
-    Mono<JwtToken> generate(OpenPaaSId domainId);
+    Mono<JwtToken> generate(OpenPaaSDomain domain);
 
     Mono<TechnicalTokenInfo> claim(JwtToken token);
 
@@ -84,7 +84,7 @@ public interface TechnicalTokenService {
             }
         }
 
-        public static final Function<OpenPaaSId, Map<String, Object>> TOKEN_DATA_FUNCTION = domainId -> Map.of(
+        public static final Function<OpenPaaSDomain, Map<String, Object>> TOKEN_DATA_FUNCTION = domain -> Map.of(
             "data", Map.of("principal", "principals/technicalUser"),
             "type", "dav",
             "user_type", "technical",
@@ -92,8 +92,9 @@ public interface TechnicalTokenService {
             "__v", 0,
             "description", "Allows to authenticate on Sabre DAV",
             "name", "Sabre Dav",
-            "domainId", domainId.value(),
-            "_id", UUID.nameUUIDFromBytes(domainId.value().getBytes(StandardCharsets.UTF_8)).toString());
+            "domainId", domain.id().value(),
+            "domain", domain.domain().asString(),
+            "_id", UUID.nameUUIDFromBytes(domain.id().value().getBytes(StandardCharsets.UTF_8)).toString());
 
         private static final Logger LOGGER = LoggerFactory.getLogger(TechnicalTokenService.class);
         private static final String CLAIM_NAME_DOMAIN_ID = "domainId";
@@ -127,12 +128,12 @@ public interface TechnicalTokenService {
         }
 
         @Override
-        public Mono<JwtToken> generate(OpenPaaSId domainId) {
+        public Mono<JwtToken> generate(OpenPaaSDomain domain) {
             return Mono.fromCallable(() -> JWT.create()
                     .withIssuer(ISSUER)
-                    .withClaim(CLAIM_NAME_DOMAIN_ID, domainId.value())
+                    .withClaim(CLAIM_NAME_DOMAIN_ID, domain.id().value())
                     .withClaim(CLAIM_TECHNICAL_TOKEN, true)
-                    .withClaim(CLAIM_NAME_DATA, TOKEN_DATA_FUNCTION.apply(domainId))
+                    .withClaim(CLAIM_NAME_DATA, TOKEN_DATA_FUNCTION.apply(domain))
                     .withExpiresAt(clock.instant().plusSeconds(expiration.toSeconds()))
                     .sign(algorithm))
                 .map(JwtToken::new)

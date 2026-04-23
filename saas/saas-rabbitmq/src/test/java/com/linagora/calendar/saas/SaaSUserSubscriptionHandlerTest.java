@@ -174,7 +174,7 @@ class SaaSUserSubscriptionHandlerTest {
     @Test
     void shouldNotAddContactToAddressBookWhenNotSupportSharingForDomain() {
         OpenPaaSDomain nonSharedDomain = domainDAO.add(Domain.of("nonshared.tld")).block();
-        cardDavClient.createDomainMembersAddressBook(nonSharedDomain.id()).block();
+        cardDavClient.createDomainMembersAddressBook(nonSharedDomain).block();
 
         String userEmail = "bob@" + nonSharedDomain.domain().asString();
         String json = """
@@ -199,7 +199,7 @@ class SaaSUserSubscriptionHandlerTest {
     }
 
     private String listContactDomainMembersAsVcard(OpenPaaSDomain domain) {
-        return cardDavClient.listContactDomainMembers(domain.id())
+        return cardDavClient.listContactDomainMembers(domain)
             .blockOptional()
             .map(bytes -> new String(bytes, StandardCharsets.UTF_8))
             .orElse("");

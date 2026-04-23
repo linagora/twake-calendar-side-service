@@ -329,6 +329,6 @@ public class ResourceRoutes implements Routes {
     }
 
     private RepositionResourceRightsTask getRepositionResourceRightsTask(Request request) {
-        return new RepositionResourceRightsTask(resourceDAO, userDAO, calDavClient);
+        return new RepositionResourceRightsTask(resourceDAO, userDAO, domainDAO, calDavClient);
     }
 }

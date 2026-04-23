@@ -73,11 +73,13 @@ import com.linagora.calendar.dav.SabreDavProvisioningService;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.smtp.MailSenderConfiguration;
 import com.linagora.calendar.smtp.MockSmtpServerExtension;
+import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.model.Resource;
 import com.linagora.calendar.storage.model.ResourceId;
+import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 
 import io.restassured.RestAssured;
 import net.fortuna.ical4j.model.Component;
@@ -135,6 +137,7 @@ public class ResourceParticipationRouteTest {
     private OpenPaaSUser organizer;
     private OpenPaaSUser admin;
     private Resource resource;
+    private OpenPaaSDomain resourceDomain;
 
     private DavTestHelper davTestHelper;
     private TwakeCalendarGuiceServer guiceServer;
@@ -146,6 +149,8 @@ public class ResourceParticipationRouteTest {
         organizer = SABRE_DAV_EXTENSION.newTestUser(Optional.of("organizer"));
         admin = SABRE_DAV_EXTENSION.newTestUser(Optional.of("admin"));
         resource = server.getProbe(ResourceProbe.class).save(admin, "projector toshiba", "projector");
+        MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(SABRE_DAV_EXTENSION.dockerSabreDavSetup().getMongoDB());
+        resourceDomain = domainDAO.retrieve(resource.domain()).block();
 
         davTestHelper = new DavTestHelper(SABRE_DAV_EXTENSION.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         server.getProbe(CalendarDataProbe.class).addUserToRepository(attendee.username(), DEFAULT_USER_PASSWORD);
@@ -274,9 +279,9 @@ public class ResourceParticipationRouteTest {
 
         davTestHelper.upsertCalendar(organizer, generateCalendarData(eventUidA, resourceEmailA), eventUidA);
         Fixture.awaitAtMost.untilAsserted(() ->
-            assertThat(davTestHelper.findFirstEventId(resourceIdA, resource.domain())).isPresent());
+            assertThat(davTestHelper.findFirstEventId(resourceIdA, resourceDomain)).isPresent());
 
-        String eventPathIdA = davTestHelper.findFirstEventId(resourceIdA, resource.domain()).get();
+        String eventPathIdA = davTestHelper.findFirstEventId(resourceIdA, resourceDomain).get();
 
         // Create a second resource B (different from A)
         Resource anotherResource = server.getProbe(ResourceProbe.class)
@@ -531,7 +536,7 @@ public class ResourceParticipationRouteTest {
     private String createEventAndGetEventPathId(ResourceId resourceId, String eventUid) {
         String resourceEmail = Username.fromLocalPartWithDomain(resourceId.value(), TEST_DOMAIN).asString();
         davTestHelper.upsertCalendar(organizer, generateCalendarData(eventUid, resourceEmail), eventUid);
-        Fixture.awaitAtMost.untilAsserted(() -> assertThat(davTestHelper.findFirstEventId(resourceId, resource.domain())).isPresent());
-        return davTestHelper.findFirstEventId(resourceId, resource.domain()).get();
+        Fixture.awaitAtMost.untilAsserted(() -> assertThat(davTestHelper.findFirstEventId(resourceId, resourceDomain)).isPresent());
+        return davTestHelper.findFirstEventId(resourceId, resourceDomain).get();
     }
 }

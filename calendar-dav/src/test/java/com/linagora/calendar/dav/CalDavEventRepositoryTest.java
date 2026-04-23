@@ -399,11 +399,11 @@ public class CalDavEventRepositoryTest {
 
         // Wait until resource calendar sees the event
         Fixture.awaitAtMost.untilAsserted(() ->
-            assertThat(davTestHelper.findFirstEventId(resourceId, domain.id()))
+            assertThat(davTestHelper.findFirstEventId(resourceId, domain))
                 .withFailMessage("Event not created for resource: " + resourceId.value())
                 .isPresent());
 
-        String eventPathId = davTestHelper.findFirstEventId(resourceId, domain.id()).get();
+        String eventPathId = davTestHelper.findFirstEventId(resourceId, domain).get();
 
         // When: update participation status of the resource to ACCEPTED
         testee.updatePartStat(domain, resourceId, eventPathId, PartStat.ACCEPTED).block();

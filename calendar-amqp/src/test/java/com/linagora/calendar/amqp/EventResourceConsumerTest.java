@@ -286,7 +286,7 @@ public class EventResourceConsumerTest {
             resourceId.value());
         davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
 
-        String resourceEventId = awaitAtMost.until(() -> davTestHelper.findFirstEventId(resourceId, domain.id()), Optional::isPresent).get();
+        String resourceEventId = awaitAtMost.until(() -> davTestHelper.findFirstEventId(resourceId, domain), Optional::isPresent).get();
 
         // Wait for the mail to be received via mock SMTP
         awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
@@ -439,7 +439,7 @@ public class EventResourceConsumerTest {
             resourceId.value());
         davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
 
-        String resourceEventId = awaitAtMost.until(() -> davTestHelper.findFirstEventId(resourceId, domain.id()), Optional::isPresent).get();
+        String resourceEventId = awaitAtMost.until(() -> davTestHelper.findFirstEventId(resourceId, domain), Optional::isPresent).get();
 
         awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
 
@@ -499,7 +499,7 @@ public class EventResourceConsumerTest {
             resourceId.value());
         davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
 
-        String resourceEventId = awaitAtMost.until(() -> davTestHelper.findFirstEventId(resourceId, domain.id()), Optional::isPresent).get();
+        String resourceEventId = awaitAtMost.until(() -> davTestHelper.findFirstEventId(resourceId, domain), Optional::isPresent).get();
 
         awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
 
@@ -565,7 +565,7 @@ public class EventResourceConsumerTest {
             resourceId.value());
         davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
 
-        String resourceEventId = awaitAtMost.until(() -> davTestHelper.findFirstEventId(resourceId, domain.id()), Optional::isPresent).get();
+        String resourceEventId = awaitAtMost.until(() -> davTestHelper.findFirstEventId(resourceId, domain), Optional::isPresent).get();
 
         // Wait for the mail to be received via mock SMTP
         awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));

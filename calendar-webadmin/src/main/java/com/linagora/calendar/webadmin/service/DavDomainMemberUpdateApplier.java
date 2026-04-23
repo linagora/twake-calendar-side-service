@@ -33,7 +33,7 @@ import org.slf4j.LoggerFactory;
 import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.dav.AddressBookContact;
 import com.linagora.calendar.dav.CardDavClient;
-import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.OpenPaaSDomain;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -106,12 +106,12 @@ public interface DavDomainMemberUpdateApplier {
         private static final Logger LOGGER = LoggerFactory.getLogger(Default.class);
 
         private final CardDavClient davClient;
-        private final OpenPaaSId domainId;
+        private final OpenPaaSDomain domain;
 
         public Default(CardDavClient davClient,
-                       OpenPaaSId domainId) {
+                       OpenPaaSDomain domain) {
             this.davClient = davClient;
-            this.domainId = domainId;
+            this.domain = domain;
         }
 
         @Override
@@ -129,11 +129,11 @@ public interface DavDomainMemberUpdateApplier {
         }
 
         private ContactOperation upsertContactOperation() {
-            return contact -> davClient.upsertContactDomainMembers(domainId, contact.vcardUid(), contact.toVcardBytes());
+            return contact -> davClient.upsertContactDomainMembers(domain, contact.vcardUid(), contact.toVcardBytes());
         }
 
         private ContactOperation deleteContactOperation() {
-            return contact -> davClient.deleteContactDomainMembers(domainId, contact.vcardUid());
+            return contact -> davClient.deleteContactDomainMembers(domain, contact.vcardUid());
         }
 
         private Mono<Void> processContacts(Iterable<AddressBookContact> contacts,
@@ -150,7 +150,7 @@ public interface DavDomainMemberUpdateApplier {
                             LOGGER.error("Failed to {} contact {} for domain {}",
                                 type.name().toLowerCase(),
                                 contact.mail().map(MailAddress::asString).orElse(null),
-                                domainId.value(),
+                                domain.id().value(),
                                 e);
                             return Mono.empty();
                         }), ReactorUtils.LOW_CONCURRENCY)

@@ -489,7 +489,7 @@ public class CalendarListNotificationConsumerTest {
         calDavClient.createNewCalendar(owner.username(), owner.id(), newCalendar).block();
 
         CalendarURL ownerCalendarURL = new CalendarURL(owner.id(), new OpenPaaSId(calendarId));
-        calDavClient.patchReadWriteDelegations(domain.id(), ownerCalendarURL, List.of(delegate.username()), List.of()).block();
+        calDavClient.patchReadWriteDelegations(domain, ownerCalendarURL, List.of(delegate.username()), List.of()).block();
 
         awaitAtMost.untilAsserted(() -> assertThat(eventsReceived)
             .anySatisfy(event -> {
@@ -516,8 +516,8 @@ public class CalendarListNotificationConsumerTest {
         calDavClient.createNewCalendar(owner.username(), owner.id(), newCalendar).block();
 
         CalendarURL ownerCalendarURL = new CalendarURL(owner.id(), new OpenPaaSId(calendarId));
-        calDavClient.patchReadWriteDelegations(domain.id(), ownerCalendarURL, List.of(delegate.username()), List.of()).block();
-        calDavClient.patchReadWriteDelegations(domain.id(), ownerCalendarURL, List.of(), List.of(delegate.username())).block();
+        calDavClient.patchReadWriteDelegations(domain, ownerCalendarURL, List.of(delegate.username()), List.of()).block();
+        calDavClient.patchReadWriteDelegations(domain, ownerCalendarURL, List.of(), List.of(delegate.username())).block();
 
         awaitAtMost.untilAsserted(() -> assertThat(eventsReceived)
             .anySatisfy(event -> {
@@ -544,7 +544,7 @@ public class CalendarListNotificationConsumerTest {
         calDavClient.createNewCalendar(owner.username(), owner.id(), newCalendar).block();
 
         CalendarURL calendarURL = new CalendarURL(owner.id(), new OpenPaaSId(calendarId));
-        calDavClient.patchReadWriteDelegations(domain.id(), calendarURL, List.of(delegate.username()), List.of()).block();
+        calDavClient.patchReadWriteDelegations(domain, calendarURL, List.of(delegate.username()), List.of()).block();
 
         awaitAtMost.untilAsserted(() -> assertThat(eventsReceived)
             .anySatisfy(event -> {
@@ -570,7 +570,7 @@ public class CalendarListNotificationConsumerTest {
         calDavClient.createNewCalendar(owner.username(), owner.id(), newCalendar).block();
 
         CalendarURL ownerCalendarURL = new CalendarURL(owner.id(), new OpenPaaSId(calendarId));
-        calDavClient.patchReadWriteDelegations(domain.id(), ownerCalendarURL, List.of(delegate.username()), List.of()).block();
+        calDavClient.patchReadWriteDelegations(domain, ownerCalendarURL, List.of(delegate.username()), List.of()).block();
 
         CalendarURL delegatedCalendarURL = getDelegatedCalendarURL(delegate);
         String payload = """
@@ -611,7 +611,7 @@ public class CalendarListNotificationConsumerTest {
         calDavClient.createNewCalendar(owner.username(), owner.id(), newCalendar).block();
 
         CalendarURL ownerCalendarURL = new CalendarURL(owner.id(), new OpenPaaSId(calendarId));
-        calDavClient.patchReadWriteDelegations(domain.id(), ownerCalendarURL, List.of(delegate.username()), List.of()).block();
+        calDavClient.patchReadWriteDelegations(domain, ownerCalendarURL, List.of(delegate.username()), List.of()).block();
 
         CalendarURL delegatedCalendarURL = getDelegatedCalendarURL(delegate);
         Queue<CalendarListChangedEvent> eventsReceived = new ConcurrentLinkedQueue<>();
@@ -645,9 +645,9 @@ public class CalendarListNotificationConsumerTest {
 
         CalendarURL calendarURL = new CalendarURL(owner.id(), new OpenPaaSId(calendarId));
         // add right
-        calDavClient.patchReadWriteDelegations(domain.id(), calendarURL, List.of(delegate.username()), List.of()).block();
+        calDavClient.patchReadWriteDelegations(domain, calendarURL, List.of(delegate.username()), List.of()).block();
         // revoke right
-        calDavClient.patchReadWriteDelegations(domain.id(), calendarURL, List.of(), List.of(delegate.username())).block();
+        calDavClient.patchReadWriteDelegations(domain, calendarURL, List.of(), List.of(delegate.username())).block();
 
         awaitAtMost.untilAsserted(() -> assertThat(eventsReceived)
             .anySatisfy(event -> {
@@ -776,18 +776,16 @@ public class CalendarListNotificationConsumerTest {
         }
 
         private ResourceId createResourceViaWebAdmin(OpenPaaSUser creator, String resourceName, List<OpenPaaSUser> administrators) {
-            OpenPaaSId domainId = domainDAO.retrieve(creator.username().getDomainPart().get())
-                .map(OpenPaaSDomain::id)
-                .block();
+            OpenPaaSDomain domain = domainDAO.retrieve(creator.username().getDomainPart().get()).block();
 
             ResourceInsertRequest resourceInsertRequest = new ResourceInsertRequest(administrators.stream()
                 .map(admin -> new ResourceAdministrator(admin.id(), "user"))
                 .toList(),
-                creator.id(), "resource description", domainId, "tv", resourceName);
+                creator.id(), "resource description", domain.id(), "tv", resourceName);
             ResourceId resourceId = resourceDAO.insert(resourceInsertRequest).block();
 
             if (!administrators.isEmpty()) {
-                calDavClient.grantReadWriteRights(domainId, resourceId, administrators.stream()
+                calDavClient.grantReadWriteRights(domain, resourceId, administrators.stream()
                     .map(OpenPaaSUser::username)
                     .toList()).block();
             }
@@ -796,9 +794,7 @@ public class CalendarListNotificationConsumerTest {
         }
 
         private void revokeResourceAdminRightsViaWebAdmin(OpenPaaSUser actor, ResourceId resourceId) {
-            OpenPaaSId domainId = domainDAO.retrieve(actor.username().getDomainPart().get())
-                .map(OpenPaaSDomain::id)
-                .block();
+            OpenPaaSDomain domain = domainDAO.retrieve(actor.username().getDomainPart().get()).block();
 
             List<Username> adminUsernames = resourceDAO.findById(resourceId).block()
                 .administrators().stream()
@@ -808,7 +804,7 @@ public class CalendarListNotificationConsumerTest {
                 .toList();
 
             if (!adminUsernames.isEmpty()) {
-                calDavClient.revokeWriteRights(domainId, resourceId, adminUsernames).block();
+                calDavClient.revokeWriteRights(domain, resourceId, adminUsernames).block();
             }
         }
     }

@@ -68,7 +68,7 @@ class CheckTechnicalUserTokenRouteTest {
 
         public String generateToken(Domain domain) {
             return domainDAO.retrieve(domain)
-                .flatMap(openPaaSDomain -> technicalTokenService.generate(openPaaSDomain.id()))
+                .flatMap(technicalTokenService::generate)
                 .map(TechnicalTokenService.JwtToken::value)
                 .block();
         }

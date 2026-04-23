@@ -66,12 +66,12 @@ public class DavDomainMemberUpdateApplierTest {
     void setupEach() throws Exception {
         cardDavClient = new CardDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         openPaaSDomain = createNewDomainMemberAddressBook();
-        testee = new DavDomainMemberUpdateApplier.Default(cardDavClient, openPaaSDomain.id());
+        testee = new DavDomainMemberUpdateApplier.Default(cardDavClient, openPaaSDomain);
     }
 
     private OpenPaaSDomain createNewDomainMemberAddressBook() {
         OpenPaaSDomain newDomain = mongoDBOpenPaaSDomainDAO.add(Domain.of("new-domain" + UUID.randomUUID() + ".tld")).block();
-        cardDavClient.createDomainMembersAddressBook(newDomain.id()).block();
+        cardDavClient.createDomainMembersAddressBook(newDomain).block();
         return newDomain;
     }
 
@@ -372,13 +372,13 @@ public class DavDomainMemberUpdateApplierTest {
     }
 
     private String listContactDomainMembersAsVcard(OpenPaaSDomain domain) {
-        return cardDavClient.listContactDomainMembers(domain.id())
+        return cardDavClient.listContactDomainMembers(domain)
             .blockOptional()
             .map(bytes -> new String(bytes, StandardCharsets.UTF_8))
             .orElse("");
     }
 
     private void insertContact(OpenPaaSDomain domain, AddressBookContact contact) {
-        cardDavClient.upsertContactDomainMembers(domain.id(), contact.vcardUid(), contact.toVcardBytes()).block();
+        cardDavClient.upsertContactDomainMembers(domain, contact.vcardUid(), contact.toVcardBytes()).block();
     }
 }

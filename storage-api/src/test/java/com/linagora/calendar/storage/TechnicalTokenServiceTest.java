@@ -29,6 +29,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.util.Map;
 
+import org.apache.james.core.Domain;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -53,14 +54,14 @@ public class TechnicalTokenServiceTest {
 
     @Test
     void generateThenClaimShouldReturnExpectedInfo() {
-        OpenPaaSId domainId = new OpenPaaSId("test-domain-id");
-        JwtToken jwtToken = testee.generate(domainId).block();
+        OpenPaaSDomain domain = new OpenPaaSDomain(Domain.of("example.com"), new OpenPaaSId("test-domain-id"));
+        JwtToken jwtToken = testee.generate(domain).block();
 
         TechnicalTokenInfo technicalTokenInfo = testee.claim(jwtToken).block();
 
         assertThat(technicalTokenInfo)
             .isEqualTo(new TechnicalTokenInfo(
-                domainId,
+                domain.id(),
                 Map.of("__v", 0,
                     "data", Map.of("principal", "principals/technicalUser"),
                     "schemaVersion", 1,
@@ -68,6 +69,7 @@ public class TechnicalTokenServiceTest {
                     "name", "Sabre Dav",
                     "user_type", "technical",
                     "domainId", "test-domain-id",
+                    "domain", "example.com",
                     "_id", "4890c190-d1d6-392e-afbf-991d4ce359b6",
                     "type", "dav")
             ));
@@ -75,8 +77,8 @@ public class TechnicalTokenServiceTest {
 
     @Test
     void generateShouldReturnJwtToken() {
-        OpenPaaSId domainId = new OpenPaaSId("test-domain-id");
-        JwtToken jwtToken = testee.generate(domainId).block();
+        OpenPaaSDomain domain = new OpenPaaSDomain(Domain.of("example.com"), new OpenPaaSId("test-domain-id"));
+        JwtToken jwtToken = testee.generate(domain).block();
 
         assertThat(jwtToken.value())
             .startsWith("eyJ"); // Heuristic for detecting JWT
@@ -99,6 +101,7 @@ public class TechnicalTokenServiceTest {
                         },
                         "schemaVersion": 1,
                         "domainId": "test-domain-id",
+                        "domain": "example.com",
                         "_id": "4890c190-d1d6-392e-afbf-991d4ce359b6"
                     },
                     "exp": 4070908920
@@ -108,8 +111,8 @@ public class TechnicalTokenServiceTest {
 
     @Test
     void generateShouldProduceDifferentPayloadsForDifferentDomains() throws JsonProcessingException {
-        JwtToken jwtToken1 = testee.generate(new OpenPaaSId("domain-A")).block();
-        JwtToken jwtToken2 = testee.generate(new OpenPaaSId("domain-B")).block();
+        JwtToken jwtToken1 = testee.generate(new OpenPaaSDomain(Domain.of("domain-a.com"), new OpenPaaSId("domain-A"))).block();
+        JwtToken jwtToken2 = testee.generate(new OpenPaaSDomain(Domain.of("domain-b.com"), new OpenPaaSId("domain-B"))).block();
 
         String payload1 = decodeJWTPayloadPart(jwtToken1.value());
         String payload2 = decodeJWTPayloadPart(jwtToken2.value());
@@ -132,7 +135,7 @@ public class TechnicalTokenServiceTest {
         TechnicalTokenService.Impl technicalTokenService =
             new TechnicalTokenService.Impl("my-secret", expiration, fixedClock);
 
-        JwtToken jwtToken = technicalTokenService.generate(new OpenPaaSId("domain-id")).block();
+        JwtToken jwtToken = technicalTokenService.generate(new OpenPaaSDomain(Domain.of("example.com"), new OpenPaaSId("domain-id"))).block();
 
         String payload = decodeJWTPayloadPart(jwtToken.value());
         JsonNode json = new ObjectMapper().readTree(payload);
@@ -143,14 +146,14 @@ public class TechnicalTokenServiceTest {
 
     @Test
     void claimShouldThrowWhenTokenIsExpired() {
-        OpenPaaSId domainId = new OpenPaaSId("test-domain-id");
+        OpenPaaSDomain domain = new OpenPaaSDomain(Domain.of("example.com"), new OpenPaaSId("test-domain-id"));
         Clock fixedClock = Clock.fixed(Instant.now().minusSeconds(10), ZoneId.of("UTC"));
 
         TechnicalTokenService.Impl tokenServiceWithExpiredClock =
             new TechnicalTokenService.Impl("my-secret",
                 Duration.ofSeconds(2), fixedClock);
 
-        TechnicalTokenService.JwtToken jwtToken = tokenServiceWithExpiredClock.generate(domainId).block();
+        TechnicalTokenService.JwtToken jwtToken = tokenServiceWithExpiredClock.generate(domain).block();
 
         assertThatThrownBy(() -> tokenServiceWithExpiredClock.claim(jwtToken).block())
             .isInstanceOf(TechnicalTokenClaimException.class)
@@ -160,7 +163,7 @@ public class TechnicalTokenServiceTest {
 
     @Test
     void claimShouldFailWhenTokenIsTampered() {
-        JwtToken validToken = testee.generate(new OpenPaaSId("domain-id")).block();
+        JwtToken validToken = testee.generate(new OpenPaaSDomain(Domain.of("example.com"), new OpenPaaSId("domain-id"))).block();
 
         String[] parts = validToken.value().split("\\.");
         String fakePayload = BaseEncoding.base64Url().encode("{\"some\":\"tampered\"}".getBytes(StandardCharsets.UTF_8));
@@ -180,7 +183,7 @@ public class TechnicalTokenServiceTest {
         TechnicalTokenService.Impl tokenService1 = new TechnicalTokenService.Impl("secret-1", Duration.ofMinutes(2), clock);
         TechnicalTokenService.Impl tokenService2 = new TechnicalTokenService.Impl("secret-2", Duration.ofMinutes(2), clock);
 
-        JwtToken tokenFromOtherSecret = tokenService1.generate(new OpenPaaSId("domain-id")).block();
+        JwtToken tokenFromOtherSecret = tokenService1.generate(new OpenPaaSDomain(Domain.of("example.com"), new OpenPaaSId("domain-id"))).block();
 
         assertThatThrownBy(() -> tokenService2.claim(tokenFromOtherSecret).block())
             .isInstanceOf(TechnicalTokenClaimException.class)

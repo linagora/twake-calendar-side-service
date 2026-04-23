@@ -61,7 +61,6 @@ import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSDomain;
-import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.model.ResourceId;
@@ -88,7 +87,7 @@ public class RepositionResourceRightsTest {
     private DavTestHelper davTestHelper;
 
     private OpenPaaSUser creator;
-    private OpenPaaSId domainId;
+    private OpenPaaSDomain domain;
    
     @BeforeEach
     void setUp() throws SSLException {
@@ -101,7 +100,7 @@ public class RepositionResourceRightsTest {
         davTestHelper = sabreDavExtension.davTestHelper();
 
         TaskManager taskManager = new MemoryTaskManager(new Hostname("foo"));
-        ResourceAdministratorService resourceAdministratorService = new ResourceAdministratorService(calDavClient, userDAO);
+        ResourceAdministratorService resourceAdministratorService = new ResourceAdministratorService(calDavClient, userDAO, domainDAO);
         ResourceRoutes resourceRoutes = new ResourceRoutes(resourceDAO, domainDAO, userDAO, new JsonTransformer(), resourceAdministratorService, taskManager, calDavClient);
 
         webAdminServer = WebAdminUtils.createWebAdminServer(resourceRoutes,
@@ -114,8 +113,7 @@ public class RepositionResourceRightsTest {
             .build();
 
         creator = sabreDavExtension.newTestUser();
-        domainId = domainDAO.retrieve(creator.username().getDomainPart().get())
-            .map(OpenPaaSDomain::id).block();
+        domain = domainDAO.retrieve(creator.username().getDomainPart().get()).block();
     }
 
     @AfterEach
@@ -173,17 +171,17 @@ public class RepositionResourceRightsTest {
         ResourceId resourceId = createNewResource(creator, List.of(admin1, admin2));
 
         // Sanity check — initial invites include both admins
-        ArrayNode before = davTestHelper.getCalendarDelegateInvites(domainId, resourceId).block();
+        ArrayNode before = davTestHelper.getCalendarDelegateInvites(domain, resourceId).block();
 
         assertThat(before.findValuesAsText("href"))
             .contains("mailto:" + admin1.username().asString(), "mailto:" + admin2.username().asString());
 
         // WHEN — Manually revoke rights on DAV to simulate drift
-        calDavClient.revokeWriteRights(domainId, resourceId, List.of(admin1.username(), admin2.username())).block();
+        calDavClient.revokeWriteRights(domain, resourceId, List.of(admin1.username(), admin2.username())).block();
 
         // Assert they are indeed removed
         ArrayNode afterRevoke = sabreDavExtension.davTestHelper()
-            .getCalendarDelegateInvites(domainId, resourceId)
+            .getCalendarDelegateInvites(domain, resourceId)
             .block();
 
         assertThat(afterRevoke.findValuesAsText("href"))
@@ -198,7 +196,7 @@ public class RepositionResourceRightsTest {
 
         // THEN — rights should be restored on DAV
         ArrayNode afterTask = sabreDavExtension.davTestHelper()
-            .getCalendarDelegateInvites(domainId, resourceId)
+            .getCalendarDelegateInvites(domain, resourceId)
             .block();
 
         assertThat(afterTask.findValuesAsText("href"))
@@ -216,8 +214,8 @@ public class RepositionResourceRightsTest {
         ResourceId resourceId2 = createNewResource(creator, List.of(admin2));
 
         // Sanity check — both resources have their admins
-        ArrayNode before1 = davTestHelper.getCalendarDelegateInvites(domainId, resourceId1).block();
-        ArrayNode before2 = davTestHelper.getCalendarDelegateInvites(domainId, resourceId2).block();
+        ArrayNode before1 = davTestHelper.getCalendarDelegateInvites(domain, resourceId1).block();
+        ArrayNode before2 = davTestHelper.getCalendarDelegateInvites(domain, resourceId2).block();
 
         assertThat(before1.findValuesAsText("href"))
             .contains("mailto:" + admin1.username().asString());
@@ -225,14 +223,14 @@ public class RepositionResourceRightsTest {
             .contains("mailto:" + admin2.username().asString());
 
         // WHEN — revoke rights on DAV
-        calDavClient.revokeWriteRights(domainId, resourceId1, List.of(admin1.username())).block();
-        calDavClient.revokeWriteRights(domainId, resourceId2, List.of(admin2.username())).block();
+        calDavClient.revokeWriteRights(domain, resourceId1, List.of(admin1.username())).block();
+        calDavClient.revokeWriteRights(domain, resourceId2, List.of(admin2.username())).block();
 
         // Assert they are removed
         ArrayNode afterRevoke1 = sabreDavExtension.davTestHelper()
-            .getCalendarDelegateInvites(domainId, resourceId1).block();
+            .getCalendarDelegateInvites(domain, resourceId1).block();
         ArrayNode afterRevoke2 = sabreDavExtension.davTestHelper()
-            .getCalendarDelegateInvites(domainId, resourceId2).block();
+            .getCalendarDelegateInvites(domain, resourceId2).block();
 
         assertThat(afterRevoke1.findValuesAsText("href"))
             .doesNotContain("mailto:" + admin1.username().asString());
@@ -247,9 +245,9 @@ public class RepositionResourceRightsTest {
 
         // THEN — both resources restored
         ArrayNode afterTask1 = sabreDavExtension.davTestHelper()
-            .getCalendarDelegateInvites(domainId, resourceId1).block();
+            .getCalendarDelegateInvites(domain, resourceId1).block();
         ArrayNode afterTask2 = sabreDavExtension.davTestHelper()
-            .getCalendarDelegateInvites(domainId, resourceId2).block();
+            .getCalendarDelegateInvites(domain, resourceId2).block();
 
         assertThat(afterTask1.findValuesAsText("href"))
             .contains("mailto:" + admin1.username().asString());
@@ -305,7 +303,7 @@ public class RepositionResourceRightsTest {
 
         // Sanity check — initial rights
         ArrayNode before = sabreDavExtension.davTestHelper()
-            .getCalendarDelegateInvites(domainId, resourceId)
+            .getCalendarDelegateInvites(domain, resourceId)
             .block();
         assertThat(before.findValuesAsText("href"))
             .contains("mailto:" + admin1.username().asString(), "mailto:" + admin2.username().asString());
@@ -326,7 +324,7 @@ public class RepositionResourceRightsTest {
 
         // THEN — Rights should remain unchanged
         ArrayNode after = sabreDavExtension.davTestHelper()
-            .getCalendarDelegateInvites(domainId, resourceId)
+            .getCalendarDelegateInvites(domain, resourceId)
             .block();
 
         assertThat(after.findValuesAsText("href"))
@@ -351,20 +349,20 @@ public class RepositionResourceRightsTest {
         ResourceId resourceId2 = createNewResource(creator2, List.of(admin2));
 
         // Sanity check — ensure both admins exist initially
-        ArrayNode before1 = davTestHelper.getCalendarDelegateInvites(domain1.id(), resourceId1).block();
-        ArrayNode before2 = davTestHelper.getCalendarDelegateInvites(domain2.id(), resourceId2).block();
+        ArrayNode before1 = davTestHelper.getCalendarDelegateInvites(domain1, resourceId1).block();
+        ArrayNode before2 = davTestHelper.getCalendarDelegateInvites(domain2, resourceId2).block();
         assertThat(before1.findValuesAsText("href"))
             .contains("mailto:" + admin1.username().asString());
         assertThat(before2.findValuesAsText("href"))
             .contains("mailto:" + admin2.username().asString());
 
         // WHEN — revoke rights manually
-        calDavClient.revokeWriteRights(domain1.id(), resourceId1, List.of(admin1.username())).block();
-        calDavClient.revokeWriteRights(domain2.id(), resourceId2, List.of(admin2.username())).block();
+        calDavClient.revokeWriteRights(domain1, resourceId1, List.of(admin1.username())).block();
+        calDavClient.revokeWriteRights(domain2, resourceId2, List.of(admin2.username())).block();
 
         // Confirm both removed
-        ArrayNode afterRevoke1 = davTestHelper.getCalendarDelegateInvites(domain1.id(), resourceId1).block();
-        ArrayNode afterRevoke2 = davTestHelper.getCalendarDelegateInvites(domain2.id(), resourceId2).block();
+        ArrayNode afterRevoke1 = davTestHelper.getCalendarDelegateInvites(domain1, resourceId1).block();
+        ArrayNode afterRevoke2 = davTestHelper.getCalendarDelegateInvites(domain2, resourceId2).block();
         assertThat(afterRevoke1.findValuesAsText("href"))
             .doesNotContain("mailto:" + admin1.username().asString());
         assertThat(afterRevoke2.findValuesAsText("href"))
@@ -379,9 +377,9 @@ public class RepositionResourceRightsTest {
 
         // Both rights restored
         ArrayNode afterTask1 = sabreDavExtension.davTestHelper()
-            .getCalendarDelegateInvites(domain1.id(), resourceId1).block();
+            .getCalendarDelegateInvites(domain1, resourceId1).block();
         ArrayNode afterTask2 = sabreDavExtension.davTestHelper()
-            .getCalendarDelegateInvites(domain2.id(), resourceId2).block();
+            .getCalendarDelegateInvites(domain2, resourceId2).block();
         assertThat(afterTask1.findValuesAsText("href"))
             .contains("mailto:" + admin1.username().asString());
         assertThat(afterTask2.findValuesAsText("href"))
@@ -448,19 +446,19 @@ public class RepositionResourceRightsTest {
 
         // Sanity check — DAV initially contains only admin1
         ArrayNode before = sabreDavExtension.davTestHelper()
-            .getCalendarDelegateInvites(domainId, resourceId)
+            .getCalendarDelegateInvites(domain, resourceId)
             .block();
 
         assertThat(before.findValuesAsText("href"))
             .contains("mailto:" + admin1.username().asString());
 
         // Simulate an extra DAV-only admin (ghost)
-        calDavClient.grantReadWriteRights(domainId, resourceId, List.of(ghostAdmin.username()))
+        calDavClient.grantReadWriteRights(domain, resourceId, List.of(ghostAdmin.username()))
             .block();
 
         // Confirm both admins are now on DAV
         ArrayNode withGhost = sabreDavExtension.davTestHelper()
-            .getCalendarDelegateInvites(domainId, resourceId)
+            .getCalendarDelegateInvites(domain, resourceId)
             .block();
 
         assertThat(withGhost.findValuesAsText("href"))
@@ -476,7 +474,7 @@ public class RepositionResourceRightsTest {
 
         // THEN — both admins (backend + extra) should still be present
         ArrayNode after = sabreDavExtension.davTestHelper()
-            .getCalendarDelegateInvites(domainId, resourceId)
+            .getCalendarDelegateInvites(domain, resourceId)
             .block();
 
         assertThat(after.findValuesAsText("href"))

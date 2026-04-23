@@ -25,7 +25,7 @@ import javax.net.ssl.SSLException;
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.james.core.Username;
 
-import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.TechnicalTokenService;
 
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -71,8 +71,8 @@ public abstract class DavClient {
             headers.add(HttpHeaderNames.AUTHORIZATION, authenticationToken(username.asString())));
     }
 
-    protected Mono<HttpClient> httpClientWithTechnicalToken(OpenPaaSId domainId) {
-        return technicalTokenService.generate(domainId)
+    protected Mono<HttpClient> httpClientWithTechnicalToken(OpenPaaSDomain domain) {
+        return technicalTokenService.generate(domain)
             .map(token -> client.headers(headers -> headers
                 .add(TWAKE_CALENDAR_TOKEN_HEADER_NAME, token.value())));
     }

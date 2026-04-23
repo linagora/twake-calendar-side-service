@@ -36,6 +36,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.dav.dto.SubscribedCalendarRequest;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.TechnicalTokenService;
@@ -186,10 +187,10 @@ public class DavTestHelper extends DavClient {
             .flatMap(e -> e.stream().findFirst());
     }
 
-    public Optional<String> findFirstEventId(ResourceId resourceId, OpenPaaSId domainId) {
+    public Optional<String> findFirstEventId(ResourceId resourceId, OpenPaaSDomain domain) {
         CalendarURL calendarURL = CalendarURL.from(resourceId.asOpenPaaSId());
 
-        return calDavClient.findUserCalendarEventIds(httpClientWithTechnicalToken(domainId), calendarURL)
+        return calDavClient.findUserCalendarEventIds(httpClientWithTechnicalToken(domain), calendarURL)
             .retryWhen(Retry.fixedDelay(2, Duration.ofMillis(500))
                 .filter(throwable -> throwable instanceof DavClientException))
             .next()
@@ -374,8 +375,8 @@ public class DavTestHelper extends DavClient {
             });
     }
 
-    public Mono<ArrayNode> getCalendarDelegateInvites(OpenPaaSId domainId, ResourceId resourceId) {
-        return httpClientWithTechnicalToken(domainId)
+    public Mono<ArrayNode> getCalendarDelegateInvites(OpenPaaSDomain domain, ResourceId resourceId) {
+        return httpClientWithTechnicalToken(domain)
             .flatMap(client ->
                 client.headers(headers -> headers.add(HttpHeaderNames.ACCEPT, "application/calendar+json"))
                     .request(HttpMethod.GET)

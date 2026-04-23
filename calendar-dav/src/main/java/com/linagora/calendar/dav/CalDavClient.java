@@ -56,6 +56,7 @@ import com.linagora.calendar.dav.dto.CalendarReportJsonResponse;
 import com.linagora.calendar.dav.dto.CalendarReportXmlResponse;
 import com.linagora.calendar.dav.model.CalendarQuery;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.TechnicalTokenService;
@@ -589,7 +590,7 @@ public class CalDavClient extends DavClient {
             .collect(OBJECT_MAPPER::createArrayNode, ArrayNode::add, ArrayNode::addAll);
     }
 
-    public Mono<Void> patchReadWriteDelegations(OpenPaaSId domainId,
+    public Mono<Void> patchReadWriteDelegations(OpenPaaSDomain domain,
                                                 CalendarURL calendarURL,
                                                 Collection<Username> addOrUpdateAdmins,
                                                 Collection<Username> revokeAdmins) {
@@ -598,7 +599,7 @@ public class CalDavClient extends DavClient {
             return Mono.empty();
         }
 
-        return httpClientWithTechnicalToken(domainId)
+        return httpClientWithTechnicalToken(domain)
             .flatMap(client -> client
                 .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, JSON_CHARSET_UTF_8)
                     .add(HttpHeaderNames.ACCEPT, DEFAULT_JSON_ACCEPT))
@@ -620,14 +621,14 @@ public class CalDavClient extends DavClient {
                 .then());
     }
 
-    public Mono<Void> grantReadWriteRights(OpenPaaSId domainId, ResourceId resourceId, Collection<Username> administrators) {
+    public Mono<Void> grantReadWriteRights(OpenPaaSDomain domain, ResourceId resourceId, Collection<Username> administrators) {
         CalendarURL calendarURL = CalendarURL.from(resourceId.asOpenPaaSId());
-        return patchReadWriteDelegations(domainId, calendarURL, administrators, List.of());
+        return patchReadWriteDelegations(domain, calendarURL, administrators, List.of());
     }
 
-    public Mono<Void> revokeWriteRights(OpenPaaSId domainId, ResourceId resourceId, List<Username> administrators) {
+    public Mono<Void> revokeWriteRights(OpenPaaSDomain domain, ResourceId resourceId, List<Username> administrators) {
         CalendarURL calendarURL = CalendarURL.from(resourceId.asOpenPaaSId());
-        return patchReadWriteDelegations(domainId, calendarURL, List.of(), administrators);
+        return patchReadWriteDelegations(domain, calendarURL, List.of(), administrators);
     }
 
     public Mono<SyncToken> retrieveSyncToken(Username username, CalendarURL calendarUrl) {

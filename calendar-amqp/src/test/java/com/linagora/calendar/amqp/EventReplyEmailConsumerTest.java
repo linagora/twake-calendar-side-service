@@ -543,11 +543,11 @@ public class EventReplyEmailConsumerTest {
 
         davTestHelper.upsertCalendar(organizer, icalData, eventUid);
         Fixture.awaitAtMost.untilAsserted(() ->
-            assertThat(davTestHelper.findFirstEventId(resourceId, openPaaSDomain.id()))
+            assertThat(davTestHelper.findFirstEventId(resourceId, openPaaSDomain))
                 .withFailMessage("Event not created for resource: " + resourceId.value())
                 .isPresent());
 
-        String eventPathId = davTestHelper.findFirstEventId(resourceId, openPaaSDomain.id()).get();
+        String eventPathId = davTestHelper.findFirstEventId(resourceId, openPaaSDomain).get();
         calDavEventRepository().updatePartStat(openPaaSDomain, resourceId, eventPathId, PartStat.ACCEPTED).block();
 
 

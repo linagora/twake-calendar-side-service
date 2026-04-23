@@ -29,7 +29,6 @@ import org.slf4j.LoggerFactory;
 import com.linagora.calendar.dav.AddressBookContact;
 import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.storage.OpenPaaSDomain;
-import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.ldap.LdapDomainMemberProvider;
 import com.linagora.calendar.storage.ldap.LdapUser;
 import com.linagora.calendar.webadmin.service.DavDomainMemberUpdateApplier.ContactUpdateContext;
@@ -43,14 +42,14 @@ public class LdapToDavDomainMembersSyncService {
 
     private final LdapDomainMemberProvider ldapDomainMemberProvider;
     private final CardDavClient davClient;
-    private final Function<OpenPaaSId, DavDomainMemberUpdateApplier> davDomainMemberUpdateApplierFactory;
+    private final Function<OpenPaaSDomain, DavDomainMemberUpdateApplier> davDomainMemberUpdateApplierFactory;
 
     @Inject
     public LdapToDavDomainMembersSyncService(LdapDomainMemberProvider ldapDomainMemberProvider,
                                              CardDavClient davClient) {
         this.ldapDomainMemberProvider = ldapDomainMemberProvider;
         this.davClient = davClient;
-        this.davDomainMemberUpdateApplierFactory = openPaaSId -> new DavDomainMemberUpdateApplier.Default(davClient, openPaaSId);
+        this.davDomainMemberUpdateApplierFactory = openPaaSDomain -> new DavDomainMemberUpdateApplier.Default(davClient, openPaaSDomain);
     }
 
     public Mono<UpdateResult> syncDomainMembers(OpenPaaSDomain openPaaSDomain, ContactUpdateContext contexts) {
@@ -59,13 +58,13 @@ public class LdapToDavDomainMembersSyncService {
                 List<LdapUser> ldapMembers = tuple.getT1();
                 List<AddressBookContact> davContacts = tuple.getT2();
                 DomainMemberUpdate domainMemberUpdate = DomainMemberUpdate.compute(ldapMembers, davContacts);
-                return davDomainMemberUpdateApplierFactory.apply(openPaaSDomain.id()).apply(domainMemberUpdate, contexts);
+                return davDomainMemberUpdateApplierFactory.apply(openPaaSDomain).apply(domainMemberUpdate, contexts);
             })
             .doOnSubscribe(sub -> LOGGER.info("Syncing domain: {}", openPaaSDomain.domain()));
     }
 
     private Mono<List<AddressBookContact>> fetchDavDomainMembers(OpenPaaSDomain openPaaSDomain) {
-        return davClient.listContactDomainMembers(openPaaSDomain.id())
+        return davClient.listContactDomainMembers(openPaaSDomain)
             .map(AddressBookContact::parse)
             .defaultIfEmpty(List.of())
             .doOnError(throwable -> LOGGER.error("Error fetching DAV domain members for domain: {}", openPaaSDomain.domain(), throwable));

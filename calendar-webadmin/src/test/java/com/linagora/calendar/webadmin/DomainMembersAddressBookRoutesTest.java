@@ -58,7 +58,6 @@ import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.OpenPaaSDomain;
-import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.ldap.LdapDomainMemberProvider;
 import com.linagora.calendar.storage.ldap.LdapUser;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
@@ -268,11 +267,11 @@ public class DomainMembersAddressBookRoutesTest {
             .body("status", is("completed"))
             .body("additionalInformation.addedCount", is(2));
 
-        assertThat(listContactDomainMembersAsVcard(openPaaSDomain1.id()))
+        assertThat(listContactDomainMembersAsVcard(openPaaSDomain1))
             .contains("alice@example.com")
             .doesNotContain("bob@example.org");
 
-        assertThat(listContactDomainMembersAsVcard(openPaaSDomain2.id()))
+        assertThat(listContactDomainMembersAsVcard(openPaaSDomain2))
             .contains("bob@example.org")
             .doesNotContain("alice@example.com");
     }
@@ -322,10 +321,10 @@ public class DomainMembersAddressBookRoutesTest {
             .body("additionalInformation.ignoredDomains", hasItem(domain2.asString()));
 
         // Then: domain1 is synced, domain2 is ignored
-        assertThat(listContactDomainMembersAsVcard(openPaaSDomain1.id()))
+        assertThat(listContactDomainMembersAsVcard(openPaaSDomain1))
             .contains("alice@example.com");
 
-        assertThat(listContactDomainMembersAsVcard(openPaaSDomain2.id()))
+        assertThat(listContactDomainMembersAsVcard(openPaaSDomain2))
             .doesNotContain("bob@example.org");
     }
 
@@ -383,13 +382,13 @@ public class DomainMembersAddressBookRoutesTest {
             .body("additionalInformation.ignoredDomains", hasItem(domain3.asString()));
 
         // Then: domain1 is synced, domain2 and domain3 are ignored
-        assertThat(listContactDomainMembersAsVcard(openPaaSDomain1.id()))
+        assertThat(listContactDomainMembersAsVcard(openPaaSDomain1))
             .contains("alice@example.com");
 
-        assertThat(listContactDomainMembersAsVcard(openPaaSDomain2.id()))
+        assertThat(listContactDomainMembersAsVcard(openPaaSDomain2))
             .doesNotContain("bob@example.org");
 
-        assertThat(listContactDomainMembersAsVcard(openPaaSDomain3.id()))
+        assertThat(listContactDomainMembersAsVcard(openPaaSDomain3))
             .doesNotContain("charlie@example.net");
     }
 
@@ -438,10 +437,10 @@ public class DomainMembersAddressBookRoutesTest {
             .body("additionalInformation.addedCount", is(2));
 
         // Both domains should be synced
-        assertThat(listContactDomainMembersAsVcard(openPaaSDomain1.id()))
+        assertThat(listContactDomainMembersAsVcard(openPaaSDomain1))
             .contains("alice@example.com");
 
-        assertThat(listContactDomainMembersAsVcard(openPaaSDomain2.id()))
+        assertThat(listContactDomainMembersAsVcard(openPaaSDomain2))
             .contains("bob@example.org");
     }
 
@@ -495,7 +494,7 @@ public class DomainMembersAddressBookRoutesTest {
             .body("status", is("completed"))
             .body("additionalInformation.addedCount", is(1));
 
-        String vcard = listContactDomainMembersAsVcard(openPaaSDomain1.id());
+        String vcard = listContactDomainMembersAsVcard(openPaaSDomain1);
         assertThat(vcard)
             .contains("EMAIL:charlie@example.net");
     }
@@ -575,8 +574,8 @@ public class DomainMembersAddressBookRoutesTest {
             .build();
     }
 
-    private String listContactDomainMembersAsVcard(OpenPaaSId domainId) {
-        return cardDavClient.listContactDomainMembers(domainId)
+    private String listContactDomainMembersAsVcard(OpenPaaSDomain domain) {
+        return cardDavClient.listContactDomainMembers(domain)
             .blockOptional()
             .map(bytes -> new String(bytes, StandardCharsets.UTF_8))
             .orElse("");

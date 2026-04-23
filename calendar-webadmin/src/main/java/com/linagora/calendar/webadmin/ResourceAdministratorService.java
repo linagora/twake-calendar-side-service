@@ -37,6 +37,7 @@ import org.slf4j.LoggerFactory;
 import com.google.common.collect.Sets;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
@@ -55,22 +56,25 @@ public class ResourceAdministratorService {
 
     private final CalDavClient calDavClient;
     private final OpenPaaSUserDAO userDAO;
+    private final OpenPaaSDomainDAO domainDAO;
 
     @Inject
     @Singleton
-    public ResourceAdministratorService(CalDavClient calDavClient, OpenPaaSUserDAO userDAO) {
+    public ResourceAdministratorService(CalDavClient calDavClient, OpenPaaSUserDAO userDAO, OpenPaaSDomainDAO domainDAO) {
         this.calDavClient = calDavClient;
         this.userDAO = userDAO;
+        this.domainDAO = domainDAO;
     }
 
     public Mono<Void> setAdmins(OpenPaaSId domainId, ResourceId resourceId, Collection<Username> admins) {
-        return calDavClient.grantReadWriteRights(domainId, resourceId, admins)
+        return domainDAO.retrieve(domainId)
+            .flatMap(domain -> calDavClient.grantReadWriteRights(domain, resourceId, admins))
             .doOnError(err -> LOGGER.error("Error granting rights for resource {}", resourceId.value(), err));
     }
 
     public Mono<Void> revokeAdmins(Resource resource) {
-        return resolveAdminUsernames(resource)
-            .flatMap(adminUsers -> calDavClient.revokeWriteRights(resource.domain(), resource.id(), adminUsers)
+        return Mono.zip(resolveAdminUsernames(resource), domainDAO.retrieve(resource.domain()))
+            .flatMap(tuple -> calDavClient.revokeWriteRights(tuple.getT2(), resource.id(), tuple.getT1())
                 .doOnError(error -> LOGGER.error("Error revoking write rights for resource {}", resource.id().value(), error)));
     }
 
@@ -82,9 +86,9 @@ public class ResourceAdministratorService {
     }
 
     private Mono<Void> applyCalDavPatch(Resource resource, AdminChanges changes) {
-        return Mono.zip(findUsernamesByIds(changes.toAdd()), findUsernamesByIds(changes.toRemove()))
+        return Mono.zip(findUsernamesByIds(changes.toAdd()), findUsernamesByIds(changes.toRemove()), domainDAO.retrieve(resource.domain()))
             .flatMap(tuple -> calDavClient.patchReadWriteDelegations(
-                resource.domain(), CalendarURL.from(resource.id().asOpenPaaSId()), tuple.getT1(), tuple.getT2()))
+                tuple.getT3(), CalendarURL.from(resource.id().asOpenPaaSId()), tuple.getT1(), tuple.getT2()))
             .doOnError(err -> LOGGER.error("Error patching CalDAV delegation for resource {}", resource.id().value(), err));
     }
 

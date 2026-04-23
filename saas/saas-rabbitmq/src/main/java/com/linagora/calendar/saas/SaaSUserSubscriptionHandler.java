@@ -79,7 +79,7 @@ public class SaaSUserSubscriptionHandler implements SaaSMessageHandler {
 
     private Mono<Void> upsertUserContact(OpenPaaSDomain domain, OpenPaaSUser user) {
         return Mono.fromSupplier(Throwing.supplier(() -> AddressBookContact.builder().mail(user.username().asMailAddress()).build()))
-            .flatMap(contact -> cardDavClient.upsertContactDomainMembers(domain.id(), contact.vcardUid(), contact.toVcardBytes()))
+            .flatMap(contact -> cardDavClient.upsertContactDomainMembers(domain, contact.vcardUid(), contact.toVcardBytes()))
             .doOnSuccess(ignored -> LOGGER.info("Added user {} to domain member addressbook of domain {}",
                 user.username().asString(), domain.domain().asString()));
     }

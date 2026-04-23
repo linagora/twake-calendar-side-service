@@ -229,7 +229,7 @@ public class CalendarDelegatedNotificationConsumerTest {
             calendarName, "#123456", "Calendar for testing");
         calDavClient.createNewCalendar(bob.username(), bob.id(), bobCalendar).block();
 
-        calDavClient.patchReadWriteDelegations(domain.id(), new CalendarURL(bob.id(), new OpenPaaSId(bobCalendar.id())),
+        calDavClient.patchReadWriteDelegations(domain, new CalendarURL(bob.id(), new OpenPaaSId(bobCalendar.id())),
                 List.of(alice.username()), List.of())
             .block();
 
@@ -258,7 +258,7 @@ public class CalendarDelegatedNotificationConsumerTest {
             calendarName, "#123456", "Calendar for testing");
         calDavClient.createNewCalendar(bob.username(), bob.id(), bobCalendar).block();
 
-        calDavClient.patchReadWriteDelegations(domain.id(), new CalendarURL(bob.id(), new OpenPaaSId(bobCalendar.id())),
+        calDavClient.patchReadWriteDelegations(domain, new CalendarURL(bob.id(), new OpenPaaSId(bobCalendar.id())),
                 List.of(alice.username()), List.of())
             .block();
 
@@ -290,7 +290,7 @@ public class CalendarDelegatedNotificationConsumerTest {
             calendarName, "#654321", "Calendar for invalid message test");
         calDavClient.createNewCalendar(bob.username(), bob.id(), bobCalendar).block();
 
-        calDavClient.patchReadWriteDelegations(domain.id(), new CalendarURL(bob.id(), new OpenPaaSId(bobCalendar.id())),
+        calDavClient.patchReadWriteDelegations(domain, new CalendarURL(bob.id(), new OpenPaaSId(bobCalendar.id())),
                 List.of(alice.username()), List.of())
             .block();
 
@@ -315,7 +315,7 @@ public class CalendarDelegatedNotificationConsumerTest {
         calDavClient.createNewCalendar(bob.username(), bob.id(), bobCalendar).block();
 
         // Bob delegates the calendar to Alice
-        calDavClient.patchReadWriteDelegations(domain.id(), new CalendarURL(bob.id(), new OpenPaaSId(bobCalendar.id())),
+        calDavClient.patchReadWriteDelegations(domain, new CalendarURL(bob.id(), new OpenPaaSId(bobCalendar.id())),
             List.of(alice.username()), List.of()).block();
 
         Thread.sleep(1000);
@@ -354,7 +354,7 @@ public class CalendarDelegatedNotificationConsumerTest {
         ResourceId resourceId = resourceDAO.insert(resourceInsertRequest).block();
 
         if (!administrators.isEmpty()) {
-            calDavClient.grantReadWriteRights(domain.id(), resourceId, administrators.stream()
+            calDavClient.grantReadWriteRights(domain, resourceId, administrators.stream()
                 .map(OpenPaaSUser::username)
                 .toList()).block();
         }

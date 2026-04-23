@@ -96,7 +96,7 @@ public class LdapToDavDomainMembersSyncServiceTest {
 
     private OpenPaaSDomain createNewDomainMemberAddressBook() {
         OpenPaaSDomain newDomain = mongoDBOpenPaaSDomainDAO.add(Domain.of("new-domain" + UUID.randomUUID() + ".tld")).block();
-        cardDavClient.createDomainMembersAddressBook(newDomain.id()).block();
+        cardDavClient.createDomainMembersAddressBook(newDomain).block();
         return newDomain;
     }
 
@@ -220,7 +220,7 @@ public class LdapToDavDomainMembersSyncServiceTest {
         UpdateResult result = testee.syncDomainMembers(openPaaSDomain, new ContactUpdateContext()).block();
 
         assertThat(result.deletedCount()).isEqualTo(1);
-        verify(cardDavClient).deleteContactDomainMembers(eq(openPaaSDomain.id()), any());
+        verify(cardDavClient).deleteContactDomainMembers(eq(openPaaSDomain), any());
 
         assertThat(listContactDomainMembersAsVcard(openPaaSDomain))
             .doesNotContain("user1@example.com");
@@ -266,7 +266,7 @@ public class LdapToDavDomainMembersSyncServiceTest {
         verify(cardDavClient, never()).upsertContactDomainMembers(any(), any(), any());
         verify(cardDavClient, never()).deleteContactDomainMembers(any(), any());
 
-        List<AddressBookContact> latestDomainMembersContact = cardDavClient.listContactDomainMembers(openPaaSDomain.id())
+        List<AddressBookContact> latestDomainMembersContact = cardDavClient.listContactDomainMembers(openPaaSDomain)
             .map(AddressBookContact::parse)
             .block();
 
@@ -319,7 +319,7 @@ public class LdapToDavDomainMembersSyncServiceTest {
     }
 
     private String listContactDomainMembersAsVcard(OpenPaaSDomain domain) {
-        return cardDavClient.listContactDomainMembers(domain.id())
+        return cardDavClient.listContactDomainMembers(domain)
             .blockOptional()
             .map(bytes -> new String(bytes, StandardCharsets.UTF_8))
             .orElse("");

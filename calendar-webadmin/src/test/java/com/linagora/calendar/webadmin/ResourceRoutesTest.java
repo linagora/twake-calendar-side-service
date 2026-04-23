@@ -85,7 +85,7 @@ class ResourceRoutesTest {
         CalDavClient calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         TaskManager taskManager = new MemoryTaskManager(new Hostname("foo"));
 
-        ResourceAdministratorService resourceAdministratorService = new ResourceAdministratorService(calDavClient, userDAO);
+        ResourceAdministratorService resourceAdministratorService = new ResourceAdministratorService(calDavClient, userDAO, domainDAO);
         webAdminServer = WebAdminUtils.createWebAdminServer(
             new ResourceRoutes(resourceDAO, domainDAO, userDAO,
                 new JsonTransformer(), resourceAdministratorService, taskManager, calDavClient)).start();
@@ -695,7 +695,7 @@ class ResourceRoutesTest {
         OpenPaaSDomain openPaaSDomain = domainDAO.retrieve(creator.username().getDomainPart().get()).block();
 
         ArrayNode invites = sabreDavExtension.davTestHelper()
-            .getCalendarDelegateInvites(openPaaSDomain.id(), new ResourceId(resourceId))
+            .getCalendarDelegateInvites(openPaaSDomain, new ResourceId(resourceId))
             .block();
 
         assertThat(invites)
@@ -773,7 +773,7 @@ class ResourceRoutesTest {
         OpenPaaSDomain openPaaSDomain = domainDAO.retrieve(creator.username().getDomainPart().get()).block();
 
         ArrayNode invites = sabreDavExtension.davTestHelper()
-            .getCalendarDelegateInvites(openPaaSDomain.id(), new ResourceId(resourceId))
+            .getCalendarDelegateInvites(openPaaSDomain, new ResourceId(resourceId))
             .block();
 
         assertThat(invites)
@@ -819,7 +819,7 @@ class ResourceRoutesTest {
 
         // Sanity check: ensure rights are present before delete
         ArrayNode invitesBefore = sabreDavExtension.davTestHelper()
-            .getCalendarDelegateInvites(openPaaSDomain.id(), new ResourceId(resourceId))
+            .getCalendarDelegateInvites(openPaaSDomain, new ResourceId(resourceId))
             .block();
 
         assertThat(invitesBefore)
@@ -838,7 +838,7 @@ class ResourceRoutesTest {
 
         // Then — DAV rights should be revoked
         ArrayNode invitesAfter = sabreDavExtension.davTestHelper()
-            .getCalendarDelegateInvites(openPaaSDomain.id(), new ResourceId(resourceId))
+            .getCalendarDelegateInvites(openPaaSDomain, new ResourceId(resourceId))
             .block();
 
         assertThat(invitesAfter)
@@ -878,7 +878,7 @@ class ResourceRoutesTest {
 
         // Sanity check
         ArrayNode before = sabreDavExtension.davTestHelper()
-            .getCalendarDelegateInvites(domain.id(), new ResourceId(resourceId))
+            .getCalendarDelegateInvites(domain, new ResourceId(resourceId))
             .block();
 
         assertThat(before.findValuesAsText("href"))
@@ -901,7 +901,7 @@ class ResourceRoutesTest {
 
         // Then — DAV invites should include both admins
         ArrayNode after = sabreDavExtension.davTestHelper()
-            .getCalendarDelegateInvites(domain.id(), new ResourceId(resourceId))
+            .getCalendarDelegateInvites(domain, new ResourceId(resourceId))
             .block();
 
         assertThat(after.findValuesAsText("href"))
@@ -942,7 +942,7 @@ class ResourceRoutesTest {
 
         // Sanity check — before patch
         ArrayNode before = sabreDavExtension.davTestHelper()
-            .getCalendarDelegateInvites(domain.id(), new ResourceId(resourceId))
+            .getCalendarDelegateInvites(domain, new ResourceId(resourceId))
             .block();
 
         assertThat(before.findValuesAsText("href"))
@@ -964,7 +964,7 @@ class ResourceRoutesTest {
 
         // Then — DAV should no longer contain admin2
         ArrayNode after = sabreDavExtension.davTestHelper()
-            .getCalendarDelegateInvites(domain.id(), new ResourceId(resourceId))
+            .getCalendarDelegateInvites(domain, new ResourceId(resourceId))
             .block();
 
         assertThat(after.findValuesAsText("href"))
@@ -999,7 +999,7 @@ class ResourceRoutesTest {
 
         // Sanity check — ensure admin exists before patch
         ArrayNode before = sabreDavExtension.davTestHelper()
-            .getCalendarDelegateInvites(domain.id(), new ResourceId(resourceId))
+            .getCalendarDelegateInvites(domain, new ResourceId(resourceId))
             .block();
 
         assertThat(before.findValuesAsText("href"))
@@ -1018,7 +1018,7 @@ class ResourceRoutesTest {
 
         // Then — DAV should remain unchanged
         ArrayNode after = sabreDavExtension.davTestHelper()
-            .getCalendarDelegateInvites(domain.id(), new ResourceId(resourceId))
+            .getCalendarDelegateInvites(domain, new ResourceId(resourceId))
             .block();
 
         assertThat(after.findValuesAsText("href"))
@@ -1058,7 +1058,7 @@ class ResourceRoutesTest {
 
         // Sanity check — before patch
         ArrayNode before = sabreDavExtension.davTestHelper()
-            .getCalendarDelegateInvites(domain.id(), new ResourceId(resourceId))
+            .getCalendarDelegateInvites(domain, new ResourceId(resourceId))
             .block();
 
         assertThat(before.findValuesAsText("href"))
@@ -1078,7 +1078,7 @@ class ResourceRoutesTest {
 
         // Then — DAV should have no admin delegations
         ArrayNode after = sabreDavExtension.davTestHelper()
-            .getCalendarDelegateInvites(domain.id(), new ResourceId(resourceId))
+            .getCalendarDelegateInvites(domain, new ResourceId(resourceId))
             .block();
 
         assertThat(after.findValuesAsText("href"))

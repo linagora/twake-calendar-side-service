@@ -42,6 +42,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Streams;
 import com.linagora.calendar.storage.AddressBookURL;
+import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.TechnicalTokenService;
 
@@ -166,25 +167,25 @@ public class CardDavClient extends DavClient {
         };
     }
 
-    public Mono<Void> createDomainMembersAddressBook(OpenPaaSId domainId) {
-        return httpClientWithTechnicalToken(domainId)
-            .flatMap(httpClient -> createDomainMembersAddressBook(httpClient, domainId));
+    public Mono<Void> createDomainMembersAddressBook(OpenPaaSDomain domain) {
+        return httpClientWithTechnicalToken(domain)
+            .flatMap(httpClient -> createDomainMembersAddressBook(httpClient, domain));
     }
 
-    private Mono<Void> createDomainMembersAddressBook(HttpClient authenticatedClient, OpenPaaSId domainId) {
+    private Mono<Void> createDomainMembersAddressBook(HttpClient authenticatedClient, OpenPaaSDomain domain) {
         return authenticatedClient.headers(headers ->
                 headers.add(HttpHeaderNames.CONTENT_TYPE, HttpHeaderValues.APPLICATION_JSON)
                     .add(HttpHeaderNames.ACCEPT, HttpHeaderValues.APPLICATION_JSON))
             .post()
-            .uri("/addressbooks/%s.json".formatted(domainId.value()))
+            .uri("/addressbooks/%s.json".formatted(domain.id().value()))
             .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(CREATE_DOMAIN_MEMBERS_ADDRESS_BOOK_PAYLOAD)))
-            .responseSingle((res, buf) -> handleCreateAddressBookResponse(res, buf, domainId))
+            .responseSingle((res, buf) -> handleCreateAddressBookResponse(res, buf, domain))
             .retryWhen(Retry.fixedDelay(1, Duration.ofMillis(500))
                 .filter(throwable -> throwable instanceof RetryableDavClientException))
             .then();
     }
 
-    private Mono<Void> handleCreateAddressBookResponse(HttpClientResponse response, ByteBufMono byteBufMono, OpenPaaSId domainId) {
+    private Mono<Void> handleCreateAddressBookResponse(HttpClientResponse response, ByteBufMono byteBufMono, OpenPaaSDomain domain) {
         return switch (response.status().code()) {
             case 201 -> Mono.empty();
             case 404 ->
@@ -195,33 +196,33 @@ public class CardDavClient extends DavClient {
                 .filter(serverResponse -> !Strings.CS.contains(serverResponse, "The resource you tried to create already exists"))
                 .switchIfEmpty(Mono.empty())
                 .flatMap(errorBody -> Mono.error(new DavClientException(
-                    "Failed to create `domain-members` address book for domain %s: %s".formatted(domainId.value(), errorBody))));
+                    "Failed to create `domain-members` address book for domain %s: %s".formatted(domain.id().value(), errorBody))));
         };
     }
 
-    public Mono<Void> upsertContactDomainMembers(OpenPaaSId domainId, String vcardUid, byte[] vcardPayload) {
+    public Mono<Void> upsertContactDomainMembers(OpenPaaSDomain domain, String vcardUid, byte[] vcardPayload) {
         Preconditions.checkArgument(StringUtils.isNotEmpty(vcardUid), "vcardUid must not be empty");
         Preconditions.checkArgument(vcardPayload != null && vcardPayload.length > 0, "vcardPayload must not be empty");
 
-        AddressBookURL addressBookURL = new AddressBookURL(domainId, DOMAIN_MEMBERS_ADDRESS_BOOK_ID);
-        return httpClientWithTechnicalToken(domainId)
+        AddressBookURL addressBookURL = new AddressBookURL(domain.id(), DOMAIN_MEMBERS_ADDRESS_BOOK_ID);
+        return httpClientWithTechnicalToken(domain)
             .flatMap(client -> upsertContact(client, addressBookURL, vcardUid, vcardPayload)
                 .onErrorResume(DavClientException.class, exception -> {
                     if (isNotFoundPathResourceError(exception)) {
-                        return createDomainMembersAddressBook(domainId)
+                        return createDomainMembersAddressBook(domain)
                             .then(upsertContact(client, addressBookURL, vcardUid, vcardPayload))
                             .doOnSubscribe(s
-                                -> LOGGER.info("Creating domain members address book for domain {} and retrying to upsert contact", domainId.value()));
+                                -> LOGGER.info("Creating domain members address book for domain {} and retrying to upsert contact", domain.id().value()));
                     }
                     return Mono.error(exception);
                 }));
     }
 
-    public Mono<Void> deleteContactDomainMembers(OpenPaaSId domainId, String vcardUid) {
+    public Mono<Void> deleteContactDomainMembers(OpenPaaSDomain domain, String vcardUid) {
         Preconditions.checkArgument(StringUtils.isNotEmpty(vcardUid), "vcardUid must not be empty");
 
-        AddressBookURL addressBookURL = new AddressBookURL(domainId, DOMAIN_MEMBERS_ADDRESS_BOOK_ID);
-        return httpClientWithTechnicalToken(domainId)
+        AddressBookURL addressBookURL = new AddressBookURL(domain.id(), DOMAIN_MEMBERS_ADDRESS_BOOK_ID);
+        return httpClientWithTechnicalToken(domain)
             .flatMap(client -> client.headers(headers
                     -> headers.add(HttpHeaderNames.ACCEPT, HttpHeaderValues.TEXT_PLAIN))
                 .delete()
@@ -230,7 +231,7 @@ public class CardDavClient extends DavClient {
                     int statusCode = response.status().code();
 
                     if (statusCode == HttpStatus.SC_NO_CONTENT) {
-                        LOGGER.debug("Delete successful for domain {} and vcardUid {}", domainId.value(), vcardUid);
+                        LOGGER.debug("Delete successful for domain {} and vcardUid {}", domain.id().value(), vcardUid);
                         return Mono.empty();
                     }
                     return responseBodyAsString(byteBufMono)
@@ -238,18 +239,18 @@ public class CardDavClient extends DavClient {
                         .switchIfEmpty(Mono.empty())
                         .flatMap(bodyStr -> Mono.error(new DavClientException(String.format(
                             "Unexpected status code: %d when deleting contact for domain %s and vcardUid: %s\n%s",
-                            statusCode, domainId.value(), vcardUid, bodyStr))));
+                            statusCode, domain.id().value(), vcardUid, bodyStr))));
                 }));
     }
 
-    public Mono<byte[]> listContactDomainMembers(OpenPaaSId domainId) {
-        return tryListContactDomainMembers(domainId)
+    public Mono<byte[]> listContactDomainMembers(OpenPaaSDomain domain) {
+        return tryListContactDomainMembers(domain)
             .onErrorResume(DavClientException.class, exception -> {
                 if (isNotFoundPathResourceError(exception)) {
-                    return createDomainMembersAddressBook(domainId)
-                        .then(tryListContactDomainMembers(domainId))
+                    return createDomainMembersAddressBook(domain)
+                        .then(tryListContactDomainMembers(domain))
                         .doOnSubscribe(s
-                            -> LOGGER.info("Creating domain members address book for domain {} and retrying to list contacts", domainId.value()));
+                            -> LOGGER.info("Creating domain members address book for domain {} and retrying to list contacts", domain.id().value()));
                 }
                 return Mono.error(exception);
             });
@@ -261,9 +262,9 @@ public class CardDavClient extends DavClient {
             || Strings.CI.contains(ex.getMessage(), "Could not find node at path: addressbooks/"));
     }
 
-    private Mono<byte[]> tryListContactDomainMembers(OpenPaaSId domainId) {
-        AddressBookURL url = new AddressBookURL(domainId, DOMAIN_MEMBERS_ADDRESS_BOOK_ID);
-        return httpClientWithTechnicalToken(domainId)
+    private Mono<byte[]> tryListContactDomainMembers(OpenPaaSDomain domain) {
+        AddressBookURL url = new AddressBookURL(domain.id(), DOMAIN_MEMBERS_ADDRESS_BOOK_ID);
+        return httpClientWithTechnicalToken(domain)
             .flatMap(authenticatedClient -> exportContactAsVcard(authenticatedClient, url));
     }
 

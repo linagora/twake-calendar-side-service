@@ -90,7 +90,7 @@ public class CalDavEventRepository {
             .resolve(eventPathId + ".ics");
         Username resourceUsername = Username.fromLocalPartWithDomain(resourceId.value(), openPaaSDomain.domain());
         AttendeePartStatusUpdatePatch attendeePartStatusUpdatePatch = new AttendeePartStatusUpdatePatch(resourceUsername, partStat);
-        return applyModifierToEvent(client.httpClientWithTechnicalToken(openPaaSDomain.id()),
+        return applyModifierToEvent(client.httpClientWithTechnicalToken(openPaaSDomain),
             calendarEventHref, CalendarEventModifier.of(attendeePartStatusUpdatePatch));
     }
 

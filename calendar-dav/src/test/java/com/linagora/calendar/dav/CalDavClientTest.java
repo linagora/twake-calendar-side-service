@@ -1332,12 +1332,11 @@ public class CalDavClientTest {
 
         testee.createNewCalendar(owner.username(), owner.id(), newCalendar).block();
 
-        OpenPaaSId domainId = new MongoDBOpenPaaSDomainDAO(sabreDavExtension.dockerSabreDavSetup().getMongoDB())
-            .retrieve(owner.username().getDomainPart().get())
-            .map(OpenPaaSDomain::id).block();
+        OpenPaaSDomain domain = new MongoDBOpenPaaSDomainDAO(sabreDavExtension.dockerSabreDavSetup().getMongoDB())
+            .retrieve(owner.username().getDomainPart().get()).block();
 
         CalendarURL calendarURL = new CalendarURL(owner.id(), new OpenPaaSId(newCalendar.id()));
-        testee.patchReadWriteDelegations(domainId, calendarURL, List.of(delegate.username()), List.of()).block();
+        testee.patchReadWriteDelegations(domain, calendarURL, List.of(delegate.username()), List.of()).block();
 
         List<CalendarURL> delegateCalendars = testee.findUserCalendars(delegate.username(), delegate.id()).collectList().block();
 
