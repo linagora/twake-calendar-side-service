@@ -32,6 +32,7 @@ import java.util.function.Supplier;
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.QueueArguments.Builder;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
@@ -84,6 +85,7 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     public static final String EXCHANGE_NAME = "calendar:itip:localDelivery";
     public static final String QUEUE_NAME = "tcalendar:itip:localDelivery";
     public static final String DEAD_LETTER_QUEUE = "tcalendar:itip:localDelivery:dead-letter";
+    private static final boolean SKIP = true;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ItipLocalDeliveryConsumer.class);
     private static final boolean REQUEUE_ON_NACK = true;
@@ -211,24 +213,70 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
         Username recipientUsername = Username.of(localDelivery.strippedRecipient());
         Optional<Calendar> oldEventCalendar = localDelivery.oldMessage().map(CalendarUtil::parseIcs);
 
-        return localRecipientResolver.resolve(recipientUsername)
-            .flatMap(localRecipientId -> sendItipIfNecessary(localDelivery, recipientUsername, localRecipientId)
-                .then(publishEmailNotification(localDelivery, recipientUsername, localRecipientId, oldEventCalendar)));
+        return Mono.fromCallable(() -> CalendarUtil.parseIcs(localDelivery.message()))
+            .filter(calendar -> !localDeliveryIgnored(localDelivery, calendar, oldEventCalendar))
+            .flatMap(calendar -> localRecipientResolver.resolve(recipientUsername)
+                .flatMap(localRecipientId -> sendItipIfNecessary(localDelivery, recipientUsername, localRecipientId, calendar)
+                    .then(publishEmailNotification(localDelivery, recipientUsername, localRecipientId, oldEventCalendar))));
+    }
+
+    private boolean localDeliveryIgnored(ItipLocalDeliveryDTO localDelivery,
+                                         Calendar calendar,
+                                         Optional<Calendar> oldEventCalendar) {
+        if (Method.VALUE_REQUEST.equalsIgnoreCase(localDelivery.method())
+            && hasInvalidRequestOrganizer(localDelivery, calendar, oldEventCalendar)) {
+            return SKIP;
+        }
+        return !SKIP;
     }
 
     private Mono<Void> sendItipIfNecessary(ItipLocalDeliveryDTO localDelivery,
                                            Username recipientUsername,
-                                           Optional<OpenPaaSId> localRecipientId) {
+                                           Optional<OpenPaaSId> localRecipientId,
+                                           Calendar calendar) {
         if (localRecipientId.isEmpty() || Method.VALUE_COUNTER.equalsIgnoreCase(localDelivery.method())) {
             return Mono.empty();
         }
 
-        Optional<Integer> sequence = EventParseUtils.maxSequenceNo(CalendarUtil.parseIcs(localDelivery.message()));
-
+        Optional<Integer> sequence = EventParseUtils.maxSequenceNo(calendar);
         ItipRequest itipRequest = new ItipRequest(localDelivery.uid(), localDelivery.strippedSender(),
             localDelivery.strippedRecipient(), localDelivery.message(), localDelivery.method(), sequence);
         return calDavClient.sendItip(recipientUsername, itipRequest)
             .then();
+    }
+
+    private boolean hasInvalidRequestOrganizer(ItipLocalDeliveryDTO localDelivery,
+                                               Calendar calendar,
+                                               Optional<Calendar> oldEventCalendar) {
+        Optional<String> currentOrganizer = organizerEmail(calendar);
+        if (currentOrganizer.isEmpty()) {
+            return SKIP;
+        }
+
+        String organizer = currentOrganizer.get();
+        if (organizerChanged(organizer, oldEventCalendar)) {
+            return SKIP;
+        }
+
+        return senderIsNotOrganizer(localDelivery, organizer);
+    }
+
+    private boolean organizerChanged(String currentOrganizer, Optional<Calendar> oldEventCalendar) {
+        return oldEventCalendar
+            .map(calendar -> organizerEmail(calendar)
+                .map(oldOrganizer -> !Strings.CI.equals(currentOrganizer, oldOrganizer))
+                .orElse(SKIP))
+            .orElse(!SKIP);
+    }
+
+    private boolean senderIsNotOrganizer(ItipLocalDeliveryDTO localDelivery, String organizer) {
+        return !Strings.CI.equals(organizer, StringUtils.trimToEmpty(localDelivery.strippedSender()));
+    }
+
+    private Optional<String> organizerEmail(Calendar calendar) {
+        return Optional.ofNullable(EventParseUtils.getOrganizer(EventParseUtils.getFirstEvent(calendar)))
+            .map(person -> person.email().asString())
+            .map(String::trim);
     }
 
     private Mono<Void> publishEmailNotification(ItipLocalDeliveryDTO localDelivery,

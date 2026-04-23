@@ -375,6 +375,62 @@ public class ItipLocalDeliveryConsumerTest {
     }
 
     @Test
+    void shouldIgnoreDeliveryWhenRequestSenderIsNotOrganizer() {
+        when(localRecipientResolver.resolve(Username.of(ALICE)))
+            .thenReturn(Mono.just(Optional.of(new OpenPaaSId(LOCAL_USER_ID))));
+        declareQueueBoundToExchange(EventEmailConsumer.EXCHANGE_NAME, testEmailQueue);
+        List<JsonNode> emailMessages = consumeJsonMessages(testEmailQueue);
+
+        String payload = """
+            {
+              "sender": "mailto:%s",
+              "method": "REQUEST",
+              "uid": "%s",
+              "calendarId": "%s",
+              "message": %s,
+              "hasChange": true,
+              "recipients": ["mailto:%s"]
+            }
+            """.formatted(CEDRIC, EVENT_UID, CALENDAR_ID, jsonString(SIMPLE_ICAL), ALICE);
+
+        publishToConsumer(payload);
+
+        AWAIT_AT_MOST.untilAsserted(() -> {
+            WireMock.verify(0, WireMock.postRequestedFor(WireMock.urlEqualTo("/itip")));
+            assertThat(emailMessages).isEmpty();
+        });
+    }
+
+    @Test
+    void shouldIgnoreDeliveryWhenRequestOrganizerChangedComparedToOldMessage() {
+        when(localRecipientResolver.resolve(Username.of(ALICE)))
+            .thenReturn(Mono.just(Optional.of(new OpenPaaSId(LOCAL_USER_ID))));
+        declareQueueBoundToExchange(EventEmailConsumer.EXCHANGE_NAME, testEmailQueue);
+        List<JsonNode> emailMessages = consumeJsonMessages(testEmailQueue);
+        String oldMessageWithDifferentOrganizer = SIMPLE_ICAL.replace("mailto:" + BOB, "mailto:" + CEDRIC);
+
+        String payload = """
+            {
+              "sender": "mailto:%s",
+              "method": "REQUEST",
+              "uid": "%s",
+              "calendarId": "%s",
+              "message": %s,
+              "oldMessage": %s,
+              "hasChange": true,
+              "recipients": ["mailto:%s"]
+            }
+            """.formatted(BOB, EVENT_UID, CALENDAR_ID, jsonString(SIMPLE_ICAL), jsonString(oldMessageWithDifferentOrganizer), ALICE);
+
+        publishToConsumer(payload);
+
+        AWAIT_AT_MOST.untilAsserted(() -> {
+            WireMock.verify(0, WireMock.postRequestedFor(WireMock.urlEqualTo("/itip")));
+            assertThat(emailMessages).isEmpty();
+        });
+    }
+
+    @Test
     void shouldNotCallItipWhenRecipientIsExternal() {
         when(localRecipientResolver.resolve(Username.of(ALICE))).thenReturn(Mono.just(Optional.empty()));
         declareQueueBoundToExchange(EventEmailConsumer.EXCHANGE_NAME, testEmailQueue);
