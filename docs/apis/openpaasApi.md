@@ -603,7 +603,24 @@ With the following header:
 X-TECHNICAL-TOKEN: xyz
 ```
 
-Will return 200 if the token is valid and 404 otherwise (non-existent or expired)
+Will return 200 if the token is valid and 404 otherwise (non-existent or expired) and token details:
+
+```
+{
+   "__v": 0,
+   "name": "Sabre Dav",
+   "domainId": "xxx",
+   "domain": "linagora.com",
+   "_id": "xxx",
+   "data": {
+     "principal": "principals/technicalUser"
+   },
+   "user_type": "technical",
+   "schemaVersion": 1,
+   "type": "dav",
+   "description": "Allows to authenticate on Sabre DAV"
+}
+```
 
 ### GET /calendar/api/calendars/event/participation
 

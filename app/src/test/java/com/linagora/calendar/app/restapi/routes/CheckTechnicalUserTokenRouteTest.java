@@ -141,6 +141,7 @@ class CheckTechnicalUserTokenRouteTest {
                     "__v": 0,
                     "name": "Sabre Dav",
                     "domainId": "%s",
+                    "domain": "%s",
                     "_id": "%s",
                     "data": {
                         "principal": "principals/technicalUser"
@@ -149,7 +150,7 @@ class CheckTechnicalUserTokenRouteTest {
                     "schemaVersion": 1,
                     "type": "dav",
                     "description": "Allows to authenticate on Sabre DAV"
-                }""".formatted(domainId, technicalUserId));
+                }""".formatted(domainId, DOMAIN.asString(), technicalUserId));
     }
 
     @Test
@@ -256,6 +257,7 @@ class CheckTechnicalUserTokenRouteTest {
                     "__v": 0,
                     "name": "Sabre Dav",
                     "domainId": "%s",
+                    "domain": "%s",
                     "_id": "%s",
                     "data": {
                         "principal": "principals/technicalUser"
@@ -264,7 +266,7 @@ class CheckTechnicalUserTokenRouteTest {
                     "schemaVersion": 1,
                     "type": "dav",
                     "description": "Allows to authenticate on Sabre DAV"
-                }""".formatted(domainId1, getTechnicalUserId.apply(domainId1)));
+                }""".formatted(domainId1, DOMAIN.asString(), getTechnicalUserId.apply(domainId1)));
 
         assertThatJson(getResponse.apply(token2))
             .isEqualTo("""
@@ -272,6 +274,7 @@ class CheckTechnicalUserTokenRouteTest {
                     "__v": 0,
                     "name": "Sabre Dav",
                     "domainId": "%s",
+                    "domain": "%s",
                     "_id": "%s",
                     "data": {
                         "principal": "principals/technicalUser"
@@ -280,7 +283,7 @@ class CheckTechnicalUserTokenRouteTest {
                     "schemaVersion": 1,
                     "type": "dav",
                     "description": "Allows to authenticate on Sabre DAV"
-                }""".formatted(domainId2, getTechnicalUserId.apply(domainId2)));
+                }""".formatted(domainId2, otherDomain.asString(), getTechnicalUserId.apply(domainId2)));
     }
 
     @Test
