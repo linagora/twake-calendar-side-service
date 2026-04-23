@@ -254,12 +254,12 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     private boolean hasInvalidRequestOrganizer(ItipLocalDeliveryDTO localDelivery,
                                                Calendar calendar,
                                                Optional<Calendar> oldEventCalendar) {
-        Set<String> currentOrganizers = organizerEmails(calendar);
+        Set<Username> currentOrganizers = extractOrganizer(calendar);
         if (currentOrganizers.size() != 1) {
             return SKIP;
         }
 
-        String currentOrganizer = currentOrganizers.iterator().next();
+        Username currentOrganizer = currentOrganizers.iterator().next();
         if (organizerChanged(currentOrganizer, oldEventCalendar)) {
             return SKIP;
         }
@@ -267,26 +267,26 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
         return senderIsNotOrganizer(localDelivery, currentOrganizer);
     }
 
-    private boolean organizerChanged(String currentOrganizer, Optional<Calendar> oldEventCalendar) {
+    private boolean organizerChanged(Username currentOrganizer, Optional<Calendar> oldEventCalendar) {
         return oldEventCalendar
             .map(oldCalendar -> {
-                Set<String> oldOrganizers = organizerEmails(oldCalendar);
+                Set<Username> oldOrganizers = extractOrganizer(oldCalendar);
                 return oldOrganizers.size() != 1 || !oldOrganizers.iterator().next().equals(currentOrganizer);
             })
             .orElse(!SKIP);
     }
 
-    private boolean senderIsNotOrganizer(ItipLocalDeliveryDTO localDelivery, String organizer) {
-        return !Strings.CI.equals(organizer, normalizeEmail(localDelivery.strippedSender()));
+    private boolean senderIsNotOrganizer(ItipLocalDeliveryDTO localDelivery, Username organizer) {
+        return !Strings.CI.equals(organizer.asString(), normalizeEmail(localDelivery.strippedSender()));
     }
 
-    private Set<String> organizerEmails(Calendar calendar) {
+    private Set<Username> extractOrganizer(Calendar calendar) {
         return calendar.getComponents(Component.VEVENT).stream()
             .map(vEvent -> EventParseUtils.getOrganizer((VEvent) vEvent))
             .filter(Objects::nonNull)
             .map(person -> person.email().asString())
-            .map(this::normalizeEmail)
             .filter(StringUtils::isNotBlank)
+            .map(email -> Username.of(normalizeEmail(email)))
             .collect(Collectors.toSet());
     }
 
