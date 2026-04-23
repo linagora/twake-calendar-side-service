@@ -26,8 +26,12 @@ import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 import java.io.Closeable;
 import java.net.URI;
 import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 import jakarta.inject.Inject;
 
@@ -54,6 +58,8 @@ import com.linagora.calendar.storage.event.EventParseUtils;
 import com.rabbitmq.client.BuiltinExchangeType;
 
 import net.fortuna.ical4j.model.Calendar;
+import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.property.Method;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
@@ -248,35 +254,44 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     private boolean hasInvalidRequestOrganizer(ItipLocalDeliveryDTO localDelivery,
                                                Calendar calendar,
                                                Optional<Calendar> oldEventCalendar) {
-        Optional<String> currentOrganizer = organizerEmail(calendar);
-        if (currentOrganizer.isEmpty()) {
+        Set<String> currentOrganizers = organizerEmails(calendar);
+        if (currentOrganizers.size() != 1) {
             return SKIP;
         }
 
-        String organizer = currentOrganizer.get();
-        if (organizerChanged(organizer, oldEventCalendar)) {
+        String currentOrganizer = currentOrganizers.iterator().next();
+        if (organizerChanged(currentOrganizer, oldEventCalendar)) {
             return SKIP;
         }
 
-        return senderIsNotOrganizer(localDelivery, organizer);
+        return senderIsNotOrganizer(localDelivery, currentOrganizer);
     }
 
     private boolean organizerChanged(String currentOrganizer, Optional<Calendar> oldEventCalendar) {
         return oldEventCalendar
-            .map(calendar -> organizerEmail(calendar)
-                .map(oldOrganizer -> !Strings.CI.equals(currentOrganizer, oldOrganizer))
-                .orElse(SKIP))
+            .map(oldCalendar -> {
+                Set<String> oldOrganizers = organizerEmails(oldCalendar);
+                return oldOrganizers.size() != 1 || !oldOrganizers.iterator().next().equals(currentOrganizer);
+            })
             .orElse(!SKIP);
     }
 
     private boolean senderIsNotOrganizer(ItipLocalDeliveryDTO localDelivery, String organizer) {
-        return !Strings.CI.equals(organizer, StringUtils.trimToEmpty(localDelivery.strippedSender()));
+        return !Strings.CI.equals(organizer, normalizeEmail(localDelivery.strippedSender()));
     }
 
-    private Optional<String> organizerEmail(Calendar calendar) {
-        return Optional.ofNullable(EventParseUtils.getOrganizer(EventParseUtils.getFirstEvent(calendar)))
+    private Set<String> organizerEmails(Calendar calendar) {
+        return calendar.getComponents(Component.VEVENT).stream()
+            .map(vEvent -> EventParseUtils.getOrganizer((VEvent) vEvent))
+            .filter(Objects::nonNull)
             .map(person -> person.email().asString())
-            .map(String::trim);
+            .map(this::normalizeEmail)
+            .filter(StringUtils::isNotBlank)
+            .collect(Collectors.toSet());
+    }
+
+    private String normalizeEmail(String email) {
+        return StringUtils.trimToEmpty(email).toLowerCase(Locale.ROOT);
     }
 
     private Mono<Void> publishEmailNotification(ItipLocalDeliveryDTO localDelivery,
