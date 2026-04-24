@@ -52,7 +52,7 @@ public class MemoryOpenPaaSUserDAO implements OpenPaaSUserDAO {
 
     @Override
     public Mono<OpenPaaSUser> add(Username username) {
-        return add(username, username.asString(), username.asString());
+        return add(username, "", "");
     }
 
     @Override

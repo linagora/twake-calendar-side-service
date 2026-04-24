@@ -161,7 +161,8 @@ public class MessageGenerator {
     public Mono<InternetAddress> resolveInternetAddress(Username username) {
         return userDAO.retrieve(username)
             .map(OpenPaaSUser::fullName)
-            .flatMap(fullName -> Mono.fromCallable(() -> new InternetAddress(username.asString(), fullName)))
+            .flatMap(fullName -> Mono.fromCallable(() -> new InternetAddress(username.asString(),
+                StringUtils.defaultIfEmpty(fullName, username.asString()))))
             .switchIfEmpty(Mono.fromCallable(() -> new InternetAddress(username.asString())));
     }
 

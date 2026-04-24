@@ -203,9 +203,10 @@ public class TwakeCalendarMain {
     public static Module chooseUsersModule(TwakeCalendarConfiguration.UserChoice userChoice) {
         return switch (userChoice) {
             case MEMORY -> new MemoryUserModule();
-            case LDAP -> Modules.combine(Modules.override(new MemoryUserModule())
-                    .with(new LdapUsersRepositoryModule()),
-                new LdapStorageModule(), new DomainMembersSyncRouteModule(), new LdapUsersImportRouteModule());
+            case LDAP -> Modules.combine(
+                Modules.override(new MemoryUserModule())
+                    .with(new LdapUsersRepositoryModule(), new LdapStorageModule()),
+                new DomainMembersSyncRouteModule(), new LdapUsersImportRouteModule());
         };
     }
 

@@ -376,7 +376,7 @@ public class EventReplyEmailConsumerTest {
 
             String subject = extractSubject(smtpMailsResponse.getString("[1].message"));
             softly.assertThat(subject)
-                .isEqualTo("Accepted: Sprint planning #04 (%s)".formatted(attendee.fullName()));
+                .isEqualTo("Accepted: Sprint planning #04 (%s)".formatted(attendee.username().asString()));
         }));
     }
 

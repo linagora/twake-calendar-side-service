@@ -312,8 +312,8 @@ public class EventInviteEmailConsumerTest {
                 .contains("http://localhost:8888/excal/?jwt=mocked-jwt-token-tentative");
 
             Message message = TestFixture.toMessage(smtpMailsResponse.getString("[0].message"));
-            assertThat(message.getFrom().getFirst().getName()).isEqualTo(organizer.fullName());
-            assertThat(((Mailbox) message.getTo().getFirst()).getName()).isEqualTo(attendee.fullName());
+            assertThat(message.getFrom().getFirst().getName()).isEqualTo(organizer.username().asString());
+            assertThat(((Mailbox) message.getTo().getFirst()).getName()).isEqualTo(attendee.username().asString());
         }));
     }
 
