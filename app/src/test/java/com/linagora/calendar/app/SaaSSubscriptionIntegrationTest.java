@@ -33,6 +33,7 @@ import java.util.UUID;
 
 import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
 import org.apache.james.backends.rabbitmq.RabbitMQConnectionFactory;
+import org.apache.james.backends.rabbitmq.RabbitMQManagementAPI;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
 import org.apache.james.core.Domain;
@@ -134,6 +135,8 @@ class SaaSSubscriptionIntegrationTest {
 
     @BeforeEach
     void setUp(TwakeCalendarGuiceServer server) {
+        purgeSaaSSubscriptionDeadLetterQueues();
+
         sender = channelPool.getSender();
 
         webadminRequestSpecification = new RequestSpecBuilder()
@@ -150,6 +153,16 @@ class SaaSSubscriptionIntegrationTest {
             .statusCode(200)
             .body("checks.find { it.componentName == 'SaaSSubscriptionQueueConsumerHealthCheck' }.status",
                 equalTo("healthy")));
+    }
+
+    private void purgeSaaSSubscriptionDeadLetterQueues() {
+        try {
+            RabbitMQManagementAPI rabbitMQManagementAPI = RabbitMQManagementAPI.from(sabreDavExtension.dockerSabreDavSetup().rabbitMQConfiguration());
+            rabbitMQManagementAPI.purgeQueue("/", SaaSSubscriptionConsumer.SAAS_SUBSCRIPTION_DEAD_LETTER_QUEUE);
+            rabbitMQManagementAPI.purgeQueue("/", SaaSDomainSubscriptionConsumer.SAAS_DOMAIN_SUBSCRIPTION_DEAD_LETTER_QUEUE);
+        } catch (Exception e) {
+            throw new RuntimeException("Unable to purge SaaS subscription dead letter queues before test", e);
+        }
     }
 
     @AfterEach
