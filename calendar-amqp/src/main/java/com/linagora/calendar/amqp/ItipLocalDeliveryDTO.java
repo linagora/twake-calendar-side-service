@@ -24,7 +24,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+import jakarta.mail.internet.AddressException;
+
 import org.apache.commons.lang3.StringUtils;
+import org.apache.james.core.MailAddress;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonParser;
@@ -107,6 +110,10 @@ public record ItipLocalDeliveryDTO(
     /** Strips the {@code mailto:} prefix from the sender address. */
     public String strippedSender() {
         return stripMailto(sender);
+    }
+
+    public MailAddress senderAsMailAddress() throws AddressException {
+        return new MailAddress(strippedSender());
     }
 
     /** Strips the {@code mailto:} prefix from the single recipient address. */

@@ -39,6 +39,7 @@ import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.component.VEvent;
+import net.fortuna.ical4j.model.parameter.PartStat;
 
 class EventParseUtilsTest {
 
@@ -248,6 +249,75 @@ class EventParseUtilsTest {
         VEvent event = (VEvent) calendar.getComponent(Component.VEVENT).get();
 
         assertThat(EventParseUtils.getOrganizer(event)).isEqualTo(new EventFields.Person("Test Organizer", new MailAddress("organizer@abc.com")));
+    }
+
+    @Test
+    void findAttendeePartStatShouldMatchAttendeeCaseInsensitive() throws AddressException {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:event-1
+            DTSTART:20250911T100000Z
+            DTEND:20250911T120000Z
+            ATTENDEE;CN=Test Attendee;PARTSTAT=ACCEPTED:mailto:attendee@abc.com
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+        VEvent event = (VEvent) calendar.getComponent(Component.VEVENT).get();
+
+        assertThat(EventParseUtils.findAttendeePartStat(event, new MailAddress("ATTENDEE@ABC.COM")))
+            .contains(PartStat.ACCEPTED);
+    }
+
+    @Test
+    void findInstanceByRecurrenceIdShouldFindMatchingInstance() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:event-1
+            DTSTART:20250411T090000Z
+            DTEND:20250411T100000Z
+            RRULE:FREQ=WEEKLY;BYDAY=FR
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:event-1
+            RECURRENCE-ID:20250418T090000Z
+            DTSTART:20250418T090000Z
+            DTEND:20250418T110000Z
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+        Optional<VEvent> instance = EventParseUtils.findInstanceByRecurrenceId(calendar, "20250418T090000Z");
+
+        assertThat(instance).isPresent();
+        assertThat(instance.flatMap(EventParseUtils::getRecurrenceId))
+            .contains("20250418T090000Z");
+    }
+
+    @Test
+    void findInstanceByRecurrenceIdShouldReturnEmptyWhenNoMatch() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:event-1
+            DTSTART:20250411T090000Z
+            DTEND:20250411T100000Z
+            RRULE:FREQ=WEEKLY;BYDAY=FR
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+
+        assertThat(EventParseUtils.findInstanceByRecurrenceId(calendar, "20250418T090000Z"))
+            .isEmpty();
     }
 
     @Nested
