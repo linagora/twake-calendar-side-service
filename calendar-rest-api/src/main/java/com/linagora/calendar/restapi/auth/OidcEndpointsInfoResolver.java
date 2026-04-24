@@ -45,6 +45,7 @@ import com.linagora.calendar.restapi.RestApiConfiguration;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.TokenInfoResolver;
+import com.linagora.calendar.storage.UserNameResolver;
 import com.linagora.calendar.storage.model.Aud;
 import com.linagora.calendar.storage.model.Sid;
 import com.linagora.calendar.storage.model.Token;
@@ -65,6 +66,7 @@ public class OidcEndpointsInfoResolver implements TokenInfoResolver {
     private final IntrospectionEndpoint introspectionEndpoint;
     private final RestApiConfiguration configuration;
     private final OpenPaaSUserDAO userDAO;
+    private final UserNameResolver userNameResolver;
 
     @Inject
     public OidcEndpointsInfoResolver(DefaultCheckTokenClient checkTokenClient,
@@ -72,13 +74,15 @@ public class OidcEndpointsInfoResolver implements TokenInfoResolver {
                                      @Named("userInfo") URL userInfoURL,
                                      IntrospectionEndpoint introspectionEndpoint,
                                      RestApiConfiguration configuration,
-                                     OpenPaaSUserDAO userDAO) {
+                                     OpenPaaSUserDAO userDAO,
+                                     UserNameResolver userNameResolver) {
         this.checkTokenClient = checkTokenClient;
         this.metricFactory = metricFactory;
         this.userInfoURL = userInfoURL;
         this.introspectionEndpoint = introspectionEndpoint;
         this.configuration = configuration;
         this.userDAO = userDAO;
+        this.userNameResolver = userNameResolver;
     }
 
     @Override
@@ -121,7 +125,10 @@ public class OidcEndpointsInfoResolver implements TokenInfoResolver {
     private Mono<Username> provisionUserIfNeed(Username username, Optional<Pair<String, String>> firstnameAndSurnameOpt) {
         Mono<OpenPaaSUser> createPublisher = Mono.justOrEmpty(firstnameAndSurnameOpt)
             .flatMap(name -> userDAO.add(username, name.first, name.second))
-            .switchIfEmpty(Mono.defer(() -> userDAO.add(username)))
+            .switchIfEmpty(Mono.defer(() -> userNameResolver.resolve(username)
+                .flatMap(names -> names
+                    .map(n -> userDAO.add(username, n.firstname(), n.lastname()))
+                    .orElseGet(() -> userDAO.add(username)))))
             .doOnNext(openPaaSUser -> LOGGER.info("Created user: {}", openPaaSUser.username().asString()));
 
         return userDAO.retrieve(username)

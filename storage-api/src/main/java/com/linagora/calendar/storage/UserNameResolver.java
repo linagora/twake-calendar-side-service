@@ -16,19 +16,23 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage.ldap;
+package com.linagora.calendar.storage;
 
-import com.google.inject.AbstractModule;
-import com.google.inject.Scopes;
-import com.linagora.calendar.storage.UserNameResolver;
+import java.util.Optional;
 
-public class LdapStorageModule extends AbstractModule {
+import org.apache.james.core.Username;
 
-    @Override
-    protected void configure() {
-        bind(DefaultLdapDomainMemberProvider.class).in(Scopes.SINGLETON);
-        bind(LdapDomainMemberProvider.class).to(DefaultLdapDomainMemberProvider.class);
-        bind(LdapUserNameResolver.class).in(Scopes.SINGLETON);
-        bind(UserNameResolver.class).to(LdapUserNameResolver.class);
+import reactor.core.publisher.Mono;
+
+public interface UserNameResolver {
+    record UserNames(String firstname, String lastname) {}
+
+    Mono<Optional<UserNames>> resolve(Username username);
+
+    class Noop implements UserNameResolver {
+        @Override
+        public Mono<Optional<UserNames>> resolve(Username username) {
+            return Mono.just(Optional.empty());
+        }
     }
 }

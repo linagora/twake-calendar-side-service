@@ -44,6 +44,7 @@ import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.UserNameResolver;
 import com.linagora.calendar.storage.configuration.resolver.ConfigurationResolver;
 
 import io.netty.handler.codec.http.HttpMethod;
@@ -144,14 +145,16 @@ public class UserProfileRoute extends CalendarRoute {
     private final OpenPaaSDomainDAO domainDAO;
     private final ConfigurationResolver configurationResolver;
     private final UsersRepository usersRepository;
+    private final UserNameResolver userNameResolver;
 
     @Inject
-    public UserProfileRoute(Authenticator authenticator, MetricFactory metricFactory, OpenPaaSUserDAO userDAO, OpenPaaSDomainDAO domainDAO, ConfigurationResolver configurationResolver, UsersRepository usersRepository) {
+    public UserProfileRoute(Authenticator authenticator, MetricFactory metricFactory, OpenPaaSUserDAO userDAO, OpenPaaSDomainDAO domainDAO, ConfigurationResolver configurationResolver, UsersRepository usersRepository, UserNameResolver userNameResolver) {
         super(authenticator, metricFactory);
         this.userDAO = userDAO;
         this.domainDAO = domainDAO;
         this.configurationResolver = configurationResolver;
         this.usersRepository = usersRepository;
+        this.userNameResolver = userNameResolver;
     }
 
     @Override
@@ -177,7 +180,10 @@ public class UserProfileRoute extends CalendarRoute {
         return Mono.from(usersRepository.containsReactive(username))
             .flatMap(exists -> {
                 if (exists) {
-                    return userDAO.add(username);
+                    return userNameResolver.resolve(username)
+                        .flatMap(names -> names
+                            .map(n -> userDAO.add(username, n.firstname(), n.lastname()))
+                            .orElseGet(() -> userDAO.add(username)));
                 }
                 return Mono.empty();
             });

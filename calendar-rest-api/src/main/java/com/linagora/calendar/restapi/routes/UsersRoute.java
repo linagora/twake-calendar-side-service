@@ -39,6 +39,7 @@ import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.UserNameResolver;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 
 import io.netty.handler.codec.http.HttpMethod;
@@ -58,6 +59,7 @@ public class UsersRoute extends CalendarRoute {
     private final UsersRepository usersRepository;
     private final SettingsBasedResolver settingsResolver;
     private final RestApiConfiguration restApiConfiguration;
+    private final UserNameResolver userNameResolver;
 
     @Inject
     public UsersRoute(Authenticator authenticator,
@@ -66,13 +68,15 @@ public class UsersRoute extends CalendarRoute {
                       OpenPaaSDomainDAO domainDAO,
                       UsersRepository usersRepository,
                       @Named("language_timezone") SettingsBasedResolver settingsResolver,
-                      RestApiConfiguration restApiConfiguration) {
+                      RestApiConfiguration restApiConfiguration,
+                      UserNameResolver userNameResolver) {
         super(authenticator, metricFactory);
         this.userDAO = userDAO;
         this.domainDAO = domainDAO;
         this.usersRepository = usersRepository;
         this.settingsResolver = settingsResolver;
         this.restApiConfiguration = restApiConfiguration;
+        this.userNameResolver = userNameResolver;
     }
 
     @Override
@@ -116,7 +120,10 @@ public class UsersRoute extends CalendarRoute {
         return Mono.from(usersRepository.containsReactive(username))
             .flatMap(exists -> {
                 if (exists) {
-                    return userDAO.add(username);
+                    return userNameResolver.resolve(username)
+                        .flatMap(names -> names
+                            .map(n -> userDAO.add(username, n.firstname(), n.lastname()))
+                            .orElseGet(() -> userDAO.add(username)));
                 }
                 return Mono.empty();
             });
