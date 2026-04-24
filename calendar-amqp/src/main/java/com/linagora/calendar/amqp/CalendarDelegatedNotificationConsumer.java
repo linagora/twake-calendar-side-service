@@ -115,9 +115,16 @@ public class CalendarDelegatedNotificationConsumer implements Closeable, Startab
         Flux.concat(sender.declareExchange(ExchangeSpecification.exchange(EXCHANGE)
                     .durable(DURABLE)
                     .type(BuiltinExchangeType.FANOUT.getType())),
+                sender.declareExchange(ExchangeSpecification.exchange(DEAD_LETTER_QUEUE)
+                    .durable(DURABLE)
+                    .type(BuiltinExchangeType.FANOUT.getType())),
                 sender.declareQueue(QueueSpecification.queue(DEAD_LETTER_QUEUE)
                     .durable(DURABLE)
                     .arguments(queueArguments.get().build())),
+                sender.bind(BindingSpecification.binding()
+                    .exchange(DEAD_LETTER_QUEUE)
+                    .queue(DEAD_LETTER_QUEUE)
+                    .routingKey(EMPTY_ROUTING_KEY)),
                 sender.declareQueue(QueueSpecification.queue(QUEUE)
                     .durable(DURABLE)
                     .arguments(queueArguments.get()
