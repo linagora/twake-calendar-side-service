@@ -613,6 +613,345 @@ public class ItipLocalDeliveryConsumerTest {
             assertThat(channel.basicGet(ItipLocalDeliveryConsumer.DEAD_LETTER_QUEUE, true)).isNotNull());
     }
 
+    @Test
+    void shouldCallItipAndEmailWhenReplyPartStatChanged() {
+        when(localRecipientResolver.resolve(Username.of(BOB)))
+            .thenReturn(Mono.just(Optional.of(new OpenPaaSId(LOCAL_USER_ID))));
+        stubItipNoContent();
+        declareQueueBoundToExchange(EventEmailConsumer.EXCHANGE_NAME, testEmailQueue);
+        List<JsonNode> emailMessages = consumeJsonMessages(testEmailQueue);
+
+        String replyIcal = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Test//Test//EN
+            METHOD:REPLY
+            BEGIN:VEVENT
+            UID:{UID}
+            SUMMARY:Test Meeting
+            DTSTART;TZID=Europe/Paris:20260401T100000
+            DTEND;TZID=Europe/Paris:20260401T110000
+            ORGANIZER:mailto:{ORGANIZER}
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:{ATTENDEE}
+            END:VEVENT
+            END:VCALENDAR
+            """
+            .replace("{UID}", EVENT_UID)
+            .replace("{ORGANIZER}", BOB)
+            .replace("{ATTENDEE}", ALICE);
+        String oldIcal = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Test//Test//EN
+            METHOD:REQUEST
+            BEGIN:VEVENT
+            UID:{UID}
+            SUMMARY:Test Meeting
+            DTSTART;TZID=Europe/Paris:20260401T100000
+            DTEND;TZID=Europe/Paris:20260401T110000
+            ORGANIZER:mailto:{ORGANIZER}
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:{ATTENDEE}
+            END:VEVENT
+            END:VCALENDAR
+            """
+            .replace("{UID}", EVENT_UID)
+            .replace("{ORGANIZER}", BOB)
+            .replace("{ATTENDEE}", ALICE);
+
+        String payload = """
+            {
+              "sender": "mailto:%s",
+              "method": "REPLY",
+              "uid": "%s",
+              "calendarId": "%s",
+              "message": %s,
+              "oldMessage": %s,
+              "hasChange": true,
+              "recipients": ["mailto:%s"]
+            }
+            """.formatted(ALICE, EVENT_UID, CALENDAR_ID, jsonString(replyIcal), jsonString(oldIcal), BOB);
+
+        publishToConsumer(payload);
+
+        AWAIT_AT_MOST.untilAsserted(() -> {
+            WireMock.verify(WireMock.postRequestedFor(WireMock.urlEqualTo("/itip")));
+            assertThat(emailMessages).hasSize(1);
+        });
+    }
+
+    @Test
+    void shouldIgnoreReplyWhenReplyPartStatUnchanged() {
+        declareQueueBoundToExchange(EventEmailConsumer.EXCHANGE_NAME, testEmailQueue);
+        List<JsonNode> emailMessages = consumeJsonMessages(testEmailQueue);
+
+        String replyIcal = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Test//Test//EN
+            METHOD:REPLY
+            BEGIN:VEVENT
+            UID:{UID}
+            SUMMARY:Test Meeting
+            DTSTART;TZID=Europe/Paris:20260401T100000
+            DTEND;TZID=Europe/Paris:20260401T110000
+            ORGANIZER:mailto:{ORGANIZER}
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:{ATTENDEE}
+            END:VEVENT
+            END:VCALENDAR
+            """
+            .replace("{UID}", EVENT_UID)
+            .replace("{ORGANIZER}", BOB)
+            .replace("{ATTENDEE}", ALICE);
+        String oldIcal = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Test//Test//EN
+            METHOD:REQUEST
+            BEGIN:VEVENT
+            UID:{UID}
+            SUMMARY:Test Meeting
+            DTSTART;TZID=Europe/Paris:20260401T100000
+            DTEND;TZID=Europe/Paris:20260401T110000
+            ORGANIZER:mailto:{ORGANIZER}
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:{ATTENDEE}
+            END:VEVENT
+            END:VCALENDAR
+            """
+            .replace("{UID}", EVENT_UID)
+            .replace("{ORGANIZER}", BOB)
+            .replace("{ATTENDEE}", ALICE);
+
+        String payload = """
+            {
+              "sender": "mailto:%s",
+              "method": "REPLY",
+              "uid": "%s",
+              "calendarId": "%s",
+              "message": %s,
+              "oldMessage": %s,
+              "hasChange": true,
+              "recipients": ["mailto:%s"]
+            }
+            """.formatted(ALICE, EVENT_UID, CALENDAR_ID, jsonString(replyIcal), jsonString(oldIcal), BOB);
+
+        publishToConsumer(payload);
+
+        AWAIT_AT_MOST.untilAsserted(() -> {
+            WireMock.verify(0, WireMock.postRequestedFor(WireMock.urlEqualTo("/itip")));
+            assertThat(emailMessages).isEmpty();
+        });
+    }
+
+    @Test
+    void shouldCallItipAndEmailWhenReplyPartStatDiffersFromMasterWithoutOldInstance() {
+        when(localRecipientResolver.resolve(Username.of(BOB)))
+            .thenReturn(Mono.just(Optional.of(new OpenPaaSId(LOCAL_USER_ID))));
+        stubItipNoContent();
+        declareQueueBoundToExchange(EventEmailConsumer.EXCHANGE_NAME, testEmailQueue);
+        List<JsonNode> emailMessages = consumeJsonMessages(testEmailQueue);
+
+        String replyIcal = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Test//Test//EN
+            METHOD:REPLY
+            BEGIN:VEVENT
+            UID:{UID}
+            RECURRENCE-ID;TZID=Europe/Paris:20260402T100000
+            SUMMARY:Recurring meeting override
+            DTSTART;TZID=Europe/Paris:20260402T100000
+            DTEND;TZID=Europe/Paris:20260402T110000
+            ORGANIZER:mailto:{ORGANIZER}
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:{ATTENDEE}
+            END:VEVENT
+            END:VCALENDAR
+            """
+            .replace("{UID}", EVENT_UID)
+            .replace("{ORGANIZER}", BOB)
+            .replace("{ATTENDEE}", ALICE);
+        String oldIcal = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Test//Test//EN
+            METHOD:REQUEST
+            BEGIN:VEVENT
+            UID:{UID}
+            SUMMARY:Recurring meeting
+            DTSTART;TZID=Europe/Paris:20260401T100000
+            DTEND;TZID=Europe/Paris:20260401T110000
+            RRULE:FREQ=DAILY;COUNT=2
+            ORGANIZER:mailto:{ORGANIZER}
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:{ATTENDEE}
+            END:VEVENT
+            END:VCALENDAR
+            """
+            .replace("{UID}", EVENT_UID)
+            .replace("{ORGANIZER}", BOB)
+            .replace("{ATTENDEE}", ALICE);
+
+        String payload = """
+            {
+              "sender": "mailto:%s",
+              "method": "REPLY",
+              "uid": "%s",
+              "calendarId": "%s",
+              "message": %s,
+              "oldMessage": %s,
+              "hasChange": true,
+              "recipients": ["mailto:%s"]
+            }
+            """.formatted(ALICE, EVENT_UID, CALENDAR_ID, jsonString(replyIcal), jsonString(oldIcal), BOB);
+
+        publishToConsumer(payload);
+
+        AWAIT_AT_MOST.untilAsserted(() -> {
+            WireMock.verify(WireMock.postRequestedFor(WireMock.urlEqualTo("/itip")));
+            assertThat(emailMessages).hasSize(1);
+        });
+    }
+
+    @Test
+    void shouldCallItipAndEmailWhenReplyPartStatDiffersFromMasterWithOldInstance() {
+        when(localRecipientResolver.resolve(Username.of(BOB)))
+            .thenReturn(Mono.just(Optional.of(new OpenPaaSId(LOCAL_USER_ID))));
+        stubItipNoContent();
+        declareQueueBoundToExchange(EventEmailConsumer.EXCHANGE_NAME, testEmailQueue);
+        List<JsonNode> emailMessages = consumeJsonMessages(testEmailQueue);
+
+        String replyIcal = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Test//Test//EN
+            METHOD:REPLY
+            BEGIN:VEVENT
+            UID:{UID}
+            RECURRENCE-ID;TZID=Europe/Paris:20260402T100000
+            SUMMARY:Recurring meeting override
+            DTSTART;TZID=Europe/Paris:20260402T100000
+            DTEND;TZID=Europe/Paris:20260402T110000
+            ORGANIZER:mailto:{ORGANIZER}
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:{ATTENDEE}
+            END:VEVENT
+            END:VCALENDAR
+            """
+            .replace("{UID}", EVENT_UID)
+            .replace("{ORGANIZER}", BOB)
+            .replace("{ATTENDEE}", ALICE);
+        String oldIcal = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Test//Test//EN
+            METHOD:REQUEST
+            BEGIN:VEVENT
+            UID:{UID}
+            SUMMARY:Recurring meeting
+            DTSTART;TZID=Europe/Paris:20260401T100000
+            DTEND;TZID=Europe/Paris:20260401T110000
+            RRULE:FREQ=DAILY;COUNT=2
+            ORGANIZER:mailto:{ORGANIZER}
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:{ATTENDEE}
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:{UID}
+            RECURRENCE-ID;TZID=Europe/Paris:20260402T100000
+            SUMMARY:Recurring meeting override
+            DTSTART;TZID=Europe/Paris:20260402T100000
+            DTEND;TZID=Europe/Paris:20260402T110000
+            ORGANIZER:mailto:{ORGANIZER}
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:{ATTENDEE}
+            END:VEVENT
+            END:VCALENDAR
+            """
+            .replace("{UID}", EVENT_UID)
+            .replace("{ORGANIZER}", BOB)
+            .replace("{ATTENDEE}", ALICE);
+
+        String payload = """
+            {
+              "sender": "mailto:%s",
+              "method": "REPLY",
+              "uid": "%s",
+              "calendarId": "%s",
+              "message": %s,
+              "oldMessage": %s,
+              "hasChange": true,
+              "recipients": ["mailto:%s"]
+            }
+            """.formatted(ALICE, EVENT_UID, CALENDAR_ID, jsonString(replyIcal), jsonString(oldIcal), BOB);
+
+        publishToConsumer(payload);
+
+        AWAIT_AT_MOST.untilAsserted(() -> {
+            WireMock.verify(WireMock.postRequestedFor(WireMock.urlEqualTo("/itip")));
+            assertThat(emailMessages).hasSize(1);
+        });
+    }
+
+    @Test
+    void shouldIgnoreReplyWhenPartStatMatchesMasterWithoutOldInstance() {
+        declareQueueBoundToExchange(EventEmailConsumer.EXCHANGE_NAME, testEmailQueue);
+        List<JsonNode> emailMessages = consumeJsonMessages(testEmailQueue);
+
+        String replyIcal = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Test//Test//EN
+            METHOD:REPLY
+            BEGIN:VEVENT
+            UID:{UID}
+            RECURRENCE-ID;TZID=Europe/Paris:20260402T100000
+            SUMMARY:Recurring meeting override
+            DTSTART;TZID=Europe/Paris:20260402T100000
+            DTEND;TZID=Europe/Paris:20260402T110000
+            ORGANIZER:mailto:{ORGANIZER}
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:{ATTENDEE}
+            END:VEVENT
+            END:VCALENDAR
+            """
+            .replace("{UID}", EVENT_UID)
+            .replace("{ORGANIZER}", BOB)
+            .replace("{ATTENDEE}", ALICE);
+        String oldIcal = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Test//Test//EN
+            METHOD:REQUEST
+            BEGIN:VEVENT
+            UID:{UID}
+            SUMMARY:Recurring meeting
+            DTSTART;TZID=Europe/Paris:20260401T100000
+            DTEND;TZID=Europe/Paris:20260401T110000
+            RRULE:FREQ=DAILY;COUNT=2
+            ORGANIZER:mailto:{ORGANIZER}
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:{ATTENDEE}
+            END:VEVENT
+            END:VCALENDAR
+            """
+            .replace("{UID}", EVENT_UID)
+            .replace("{ORGANIZER}", BOB)
+            .replace("{ATTENDEE}", ALICE);
+
+        String payload = """
+            {
+              "sender": "mailto:%s",
+              "method": "REPLY",
+              "uid": "%s",
+              "calendarId": "%s",
+              "message": %s,
+              "oldMessage": %s,
+              "hasChange": true,
+              "recipients": ["mailto:%s"]
+            }
+            """.formatted(ALICE, EVENT_UID, CALENDAR_ID, jsonString(replyIcal), jsonString(oldIcal), BOB);
+
+        publishToConsumer(payload);
+
+        AWAIT_AT_MOST.untilAsserted(() -> {
+            WireMock.verify(0, WireMock.postRequestedFor(WireMock.urlEqualTo("/itip")));
+            assertThat(emailMessages).isEmpty();
+        });
+    }
+
     private List<JsonNode> consumeJsonMessages(String queueName) {
         List<JsonNode> messages = new ArrayList<>();
         try {

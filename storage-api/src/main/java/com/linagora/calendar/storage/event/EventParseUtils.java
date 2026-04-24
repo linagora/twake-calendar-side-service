@@ -156,6 +156,22 @@ public class EventParseUtils {
         return attendees;
     }
 
+    public static Optional<PartStat> findAttendeePartStat(VEvent vEvent, MailAddress attendee) {
+        return getAttendees(vEvent).stream()
+            .filter(person -> Strings.CI.equals(person.email().asString(), attendee.asString()))
+            .findFirst()
+            .flatMap(EventFields.Person::partStat);
+    }
+
+    public static Optional<VEvent> findInstanceByRecurrenceId(Calendar calendar, String recurrenceId) {
+        return calendar.getComponents(Component.VEVENT).stream()
+            .map(VEvent.class::cast)
+            .filter(vEvent -> getRecurrenceId(vEvent)
+                .filter(id -> Strings.CI.equals(id, recurrenceId))
+                .isPresent())
+            .findFirst();
+    }
+
     private static List<EventFields.Person> deduplicatePeopleByEmail(List<EventFields.Person> people) {
         return people.stream()
             .collect(Collectors.collectingAndThen(

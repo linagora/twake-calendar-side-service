@@ -41,12 +41,14 @@ import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.QueueArguments.Builder;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.ReceiverProvider;
+import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;
 import org.apache.james.lifecycle.api.Startable;
 import org.apache.james.util.ReactorUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.github.fge.lambdas.Throwing;
 import com.google.inject.name.Named;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.CalDavClient;
@@ -60,6 +62,7 @@ import com.rabbitmq.client.BuiltinExchangeType;
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.component.VEvent;
+import net.fortuna.ical4j.model.parameter.PartStat;
 import net.fortuna.ical4j.model.property.Method;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
@@ -239,7 +242,36 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
             && hasInvalidRequestOrganizer(localDelivery, calendar, oldEventCalendar)) {
             return SKIP;
         }
+        if (Method.VALUE_REPLY.equalsIgnoreCase(localDelivery.method())
+            && replyPartStatUnchanged(localDelivery, calendar, oldEventCalendar)) {
+            return SKIP;
+        }
         return !SKIP;
+    }
+
+    private boolean replyPartStatUnchanged(ItipLocalDeliveryDTO localDelivery,
+                                           Calendar newCalendar,
+                                           Optional<Calendar> oldCalendar) {
+
+        MailAddress attendee = Throwing.supplier(localDelivery::senderAsMailAddress).get();
+        VEvent newVEvent = EventParseUtils.getFirstEvent(newCalendar);
+        Optional<PartStat> newPartStat = EventParseUtils.findAttendeePartStat(newVEvent, attendee);
+
+        if (newPartStat.isEmpty()) {
+            return !SKIP;
+        }
+
+        Optional<String> newRecurrenceId = EventParseUtils.getRecurrenceId(newVEvent);
+        Optional<PartStat> oldPartStat = oldCalendar.flatMap(oldCal -> {
+            if (newRecurrenceId.isPresent()) {
+                return EventParseUtils.findInstanceByRecurrenceId(oldCal, newRecurrenceId.get())
+                    .map(instance -> EventParseUtils.findAttendeePartStat(instance, attendee))
+                    .orElseGet(() -> EventParseUtils.findAttendeePartStat(EventParseUtils.getMasterRecurrenceEvent(oldCal), attendee));
+            }
+            return EventParseUtils.findAttendeePartStat(EventParseUtils.getFirstEvent(oldCal), attendee);
+        });
+
+        return newPartStat.equals(oldPartStat);
     }
 
     private Mono<Void> sendItipIfNecessary(ItipLocalDeliveryDTO localDelivery,
