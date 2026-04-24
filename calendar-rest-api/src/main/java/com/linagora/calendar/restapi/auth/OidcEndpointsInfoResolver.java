@@ -128,7 +128,7 @@ public class OidcEndpointsInfoResolver implements TokenInfoResolver {
             .switchIfEmpty(Mono.defer(() -> userNameResolver.resolve(username)
                 .flatMap(names -> names
                     .map(n -> userDAO.add(username, n.firstname(), n.lastname()))
-                    .orElseGet(() -> userDAO.add(username)))))
+                    .orElseGet(() -> userDAO.add(username, username.asString(), username.asString())))))
             .doOnNext(openPaaSUser -> LOGGER.info("Created user: {}", openPaaSUser.username().asString()));
 
         return userDAO.retrieve(username)
