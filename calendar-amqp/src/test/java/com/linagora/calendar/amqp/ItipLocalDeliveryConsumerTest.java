@@ -375,6 +375,120 @@ public class ItipLocalDeliveryConsumerTest {
     }
 
     @Test
+    void shouldIgnoreDeliveryWhenRequestSenderIsNotOrganizer() {
+        when(localRecipientResolver.resolve(Username.of(ALICE)))
+            .thenReturn(Mono.just(Optional.of(new OpenPaaSId(LOCAL_USER_ID))));
+        declareQueueBoundToExchange(EventEmailConsumer.EXCHANGE_NAME, testEmailQueue);
+        List<JsonNode> emailMessages = consumeJsonMessages(testEmailQueue);
+
+        String payload = """
+            {
+              "sender": "mailto:%s",
+              "method": "REQUEST",
+              "uid": "%s",
+              "calendarId": "%s",
+              "message": %s,
+              "hasChange": true,
+              "recipients": ["mailto:%s"]
+            }
+            """.formatted(CEDRIC, EVENT_UID, CALENDAR_ID, jsonString(SIMPLE_ICAL), ALICE);
+
+        publishToConsumer(payload);
+
+        AWAIT_AT_MOST.untilAsserted(() -> {
+            WireMock.verify(0, WireMock.postRequestedFor(WireMock.urlEqualTo("/itip")));
+            assertThat(emailMessages).isEmpty();
+        });
+    }
+
+    @Test
+    void shouldIgnoreDeliveryWhenRequestOrganizerChangedComparedToOldMessage() {
+        when(localRecipientResolver.resolve(Username.of(ALICE)))
+            .thenReturn(Mono.just(Optional.of(new OpenPaaSId(LOCAL_USER_ID))));
+        declareQueueBoundToExchange(EventEmailConsumer.EXCHANGE_NAME, testEmailQueue);
+        List<JsonNode> emailMessages = consumeJsonMessages(testEmailQueue);
+        String oldMessageWithDifferentOrganizer = SIMPLE_ICAL.replace("mailto:" + BOB, "mailto:" + CEDRIC);
+
+        String payload = """
+            {
+              "sender": "mailto:%s",
+              "method": "REQUEST",
+              "uid": "%s",
+              "calendarId": "%s",
+              "message": %s,
+              "oldMessage": %s,
+              "hasChange": true,
+              "recipients": ["mailto:%s"]
+            }
+            """.formatted(BOB, EVENT_UID, CALENDAR_ID, jsonString(SIMPLE_ICAL), jsonString(oldMessageWithDifferentOrganizer), ALICE);
+
+        publishToConsumer(payload);
+
+        AWAIT_AT_MOST.untilAsserted(() -> {
+            WireMock.verify(0, WireMock.postRequestedFor(WireMock.urlEqualTo("/itip")));
+            assertThat(emailMessages).isEmpty();
+        });
+    }
+
+    @Test
+    void shouldIgnoreDeliveryWhenRecurringRequestHasMultipleOrganizers() {
+        when(localRecipientResolver.resolve(Username.of(ALICE)))
+            .thenReturn(Mono.just(Optional.of(new OpenPaaSId(LOCAL_USER_ID))));
+        declareQueueBoundToExchange(EventEmailConsumer.EXCHANGE_NAME, testEmailQueue);
+        List<JsonNode> emailMessages = consumeJsonMessages(testEmailQueue);
+        String recurringMessage = recurringIcal(BOB, CEDRIC);
+
+        String payload = """
+            {
+              "sender": "mailto:%s",
+              "method": "REQUEST",
+              "uid": "%s",
+              "calendarId": "%s",
+              "message": %s,
+              "hasChange": true,
+              "recipients": ["mailto:%s"]
+            }
+            """.formatted(BOB, EVENT_UID, CALENDAR_ID, jsonString(recurringMessage), ALICE);
+
+        publishToConsumer(payload);
+
+        AWAIT_AT_MOST.untilAsserted(() -> {
+            WireMock.verify(0, WireMock.postRequestedFor(WireMock.urlEqualTo("/itip")));
+            assertThat(emailMessages).isEmpty();
+        });
+    }
+
+    @Test
+    void shouldIgnoreDeliveryWhenRecurringRequestOrganizerChangedComparedToOldMessage() {
+        when(localRecipientResolver.resolve(Username.of(ALICE)))
+            .thenReturn(Mono.just(Optional.of(new OpenPaaSId(LOCAL_USER_ID))));
+        declareQueueBoundToExchange(EventEmailConsumer.EXCHANGE_NAME, testEmailQueue);
+        List<JsonNode> emailMessages = consumeJsonMessages(testEmailQueue);
+        String recurringCurrentMessage = recurringIcal(BOB, BOB);
+        String recurringOldMessage = recurringIcal(CEDRIC, CEDRIC);
+
+        String payload = """
+            {
+              "sender": "mailto:%s",
+              "method": "REQUEST",
+              "uid": "%s",
+              "calendarId": "%s",
+              "message": %s,
+              "oldMessage": %s,
+              "hasChange": true,
+              "recipients": ["mailto:%s"]
+            }
+            """.formatted(BOB, EVENT_UID, CALENDAR_ID, jsonString(recurringCurrentMessage), jsonString(recurringOldMessage), ALICE);
+
+        publishToConsumer(payload);
+
+        AWAIT_AT_MOST.untilAsserted(() -> {
+            WireMock.verify(0, WireMock.postRequestedFor(WireMock.urlEqualTo("/itip")));
+            assertThat(emailMessages).isEmpty();
+        });
+    }
+
+    @Test
     void shouldNotCallItipWhenRecipientIsExternal() {
         when(localRecipientResolver.resolve(Username.of(ALICE))).thenReturn(Mono.just(Optional.empty()));
         declareQueueBoundToExchange(EventEmailConsumer.EXCHANGE_NAME, testEmailQueue);
@@ -550,5 +664,37 @@ public class ItipLocalDeliveryConsumerTest {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private String recurringIcal(String masterOrganizer, String overrideOrganizer) {
+        return """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Test//Test//EN
+            METHOD:REQUEST
+            BEGIN:VEVENT
+            UID:{UID}
+            SUMMARY:Recurring meeting
+            DTSTART;TZID=Europe/Paris:20260401T100000
+            DTEND;TZID=Europe/Paris:20260401T110000
+            RRULE:FREQ=DAILY;COUNT=2
+            ORGANIZER:mailto:{MASTER_ORGANIZER}
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:{ATTENDEE}
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:{UID}
+            RECURRENCE-ID;TZID=Europe/Paris:20260402T100000
+            SUMMARY:Recurring meeting override
+            DTSTART;TZID=Europe/Paris:20260402T100000
+            DTEND;TZID=Europe/Paris:20260402T110000
+            ORGANIZER:mailto:{OVERRIDE_ORGANIZER}
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:{ATTENDEE}
+            END:VEVENT
+            END:VCALENDAR
+            """
+            .replace("{UID}", EVENT_UID)
+            .replace("{MASTER_ORGANIZER}", masterOrganizer)
+            .replace("{OVERRIDE_ORGANIZER}", overrideOrganizer)
+            .replace("{ATTENDEE}", ALICE);
     }
 }

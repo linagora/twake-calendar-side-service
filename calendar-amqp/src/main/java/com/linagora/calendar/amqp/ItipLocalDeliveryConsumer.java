@@ -26,12 +26,17 @@ import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 import java.io.Closeable;
 import java.net.URI;
 import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.QueueArguments.Builder;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
@@ -53,6 +58,8 @@ import com.linagora.calendar.storage.event.EventParseUtils;
 import com.rabbitmq.client.BuiltinExchangeType;
 
 import net.fortuna.ical4j.model.Calendar;
+import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.property.Method;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
@@ -84,6 +91,7 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     public static final String EXCHANGE_NAME = "calendar:itip:localDelivery";
     public static final String QUEUE_NAME = "tcalendar:itip:localDelivery";
     public static final String DEAD_LETTER_QUEUE = "tcalendar:itip:localDelivery:dead-letter";
+    private static final boolean SKIP = true;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ItipLocalDeliveryConsumer.class);
     private static final boolean REQUEUE_ON_NACK = true;
@@ -217,24 +225,79 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
         Username recipientUsername = Username.of(localDelivery.strippedRecipient());
         Optional<Calendar> oldEventCalendar = localDelivery.oldMessage().map(CalendarUtil::parseIcs);
 
-        return localRecipientResolver.resolve(recipientUsername)
-            .flatMap(localRecipientId -> sendItipIfNecessary(localDelivery, recipientUsername, localRecipientId)
-                .then(publishEmailNotification(localDelivery, recipientUsername, localRecipientId, oldEventCalendar)));
+        return Mono.fromCallable(() -> CalendarUtil.parseIcs(localDelivery.message()))
+            .filter(calendar -> !localDeliveryIgnored(localDelivery, calendar, oldEventCalendar))
+            .flatMap(calendar -> localRecipientResolver.resolve(recipientUsername)
+                .flatMap(localRecipientId -> sendItipIfNecessary(localDelivery, recipientUsername, localRecipientId, calendar)
+                    .then(publishEmailNotification(localDelivery, recipientUsername, localRecipientId, oldEventCalendar))));
+    }
+
+    private boolean localDeliveryIgnored(ItipLocalDeliveryDTO localDelivery,
+                                         Calendar calendar,
+                                         Optional<Calendar> oldEventCalendar) {
+        if (Method.VALUE_REQUEST.equalsIgnoreCase(localDelivery.method())
+            && hasInvalidRequestOrganizer(localDelivery, calendar, oldEventCalendar)) {
+            return SKIP;
+        }
+        return !SKIP;
     }
 
     private Mono<Void> sendItipIfNecessary(ItipLocalDeliveryDTO localDelivery,
                                            Username recipientUsername,
-                                           Optional<OpenPaaSId> localRecipientId) {
+                                           Optional<OpenPaaSId> localRecipientId,
+                                           Calendar calendar) {
         if (localRecipientId.isEmpty() || Method.VALUE_COUNTER.equalsIgnoreCase(localDelivery.method())) {
             return Mono.empty();
         }
 
-        Optional<Integer> sequence = EventParseUtils.maxSequenceNo(CalendarUtil.parseIcs(localDelivery.message()));
-
+        Optional<Integer> sequence = EventParseUtils.maxSequenceNo(calendar);
         ItipRequest itipRequest = new ItipRequest(localDelivery.uid(), localDelivery.strippedSender(),
             localDelivery.strippedRecipient(), localDelivery.message(), localDelivery.method(), sequence);
         return calDavClient.sendItip(recipientUsername, itipRequest)
             .then();
+    }
+
+    private boolean hasInvalidRequestOrganizer(ItipLocalDeliveryDTO localDelivery,
+                                               Calendar calendar,
+                                               Optional<Calendar> oldEventCalendar) {
+        Set<Username> currentOrganizers = extractOrganizer(calendar);
+        if (currentOrganizers.size() != 1) {
+            return SKIP;
+        }
+
+        Username currentOrganizer = currentOrganizers.iterator().next();
+        if (organizerChanged(currentOrganizer, oldEventCalendar)) {
+            return SKIP;
+        }
+
+        return senderIsNotOrganizer(localDelivery, currentOrganizer);
+    }
+
+    private boolean organizerChanged(Username currentOrganizer, Optional<Calendar> oldEventCalendar) {
+        return oldEventCalendar
+            .map(oldCalendar -> {
+                Set<Username> oldOrganizers = extractOrganizer(oldCalendar);
+                return oldOrganizers.size() != 1 || !oldOrganizers.iterator().next().equals(currentOrganizer);
+            })
+            .orElse(!SKIP);
+    }
+
+    private boolean senderIsNotOrganizer(ItipLocalDeliveryDTO localDelivery, Username organizer) {
+        return !Strings.CI.equals(organizer.asString(), normalizeEmail(localDelivery.strippedSender()));
+    }
+
+    private Set<Username> extractOrganizer(Calendar calendar) {
+        return calendar.getComponents(Component.VEVENT).stream()
+            .map(vEvent -> EventParseUtils.getOrganizer((VEvent) vEvent))
+            .filter(Objects::nonNull)
+            .map(person -> person.email().asString())
+            .filter(StringUtils::isNotBlank)
+            .map(email -> Username.of(normalizeEmail(email)))
+            .collect(Collectors.toSet());
+    }
+
+    private String normalizeEmail(String email) {
+        return StringUtils.trimToEmpty(email).toLowerCase(Locale.ROOT);
     }
 
     private Mono<Void> publishEmailNotification(ItipLocalDeliveryDTO localDelivery,
