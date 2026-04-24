@@ -51,6 +51,7 @@ import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.Fixture;
 import com.linagora.calendar.restapi.RestApiServerProbe;
+import com.linagora.calendar.saas.TWPCalendarSettingsModule;
 import com.linagora.tmail.saas.rabbitmq.settings.TWPSettingsConsumer;
 
 import io.restassured.RestAssured;
@@ -116,6 +117,8 @@ class TWPSyncSettingsIntegrationTest {
 
     @BeforeEach
     void setUp(TwakeCalendarGuiceServer server) {
+        purgeTWPSettingsDeadLetterQueue();
+
         server.getProbe(CalendarDataProbe.class)
             .addDomain(DOMAIN)
             .addUser(USERNAME, PASSWORD);
@@ -416,6 +419,15 @@ class TWPSyncSettingsIntegrationTest {
                             }
                         """));
         });
+    }
+
+    private void purgeTWPSettingsDeadLetterQueue() {
+        try {
+            rabbitMQExtension.managementAPI()
+                .purgeQueue("/", TWPCalendarSettingsModule.CONSUMER_CONFIG.deadLetterQueue());
+        } catch (Exception e) {
+            throw new RuntimeException("Unable to purge TWP settings dead letter queue before healthcheck assertion", e);
+        }
     }
 
     private void publishAmqpSettingsMessage(String message) {
