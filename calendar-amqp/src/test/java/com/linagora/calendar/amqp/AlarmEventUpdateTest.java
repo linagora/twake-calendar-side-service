@@ -695,109 +695,105 @@ public class AlarmEventUpdateTest {
         }
     }
 
-    @Nested
-    class ReplaceRecurringEventWithNewUidTest {
+    @Test
+    void shouldCreateAlarmForNewUidWhenOrganizerPutsNewIcsWithDifferentUidToSamePath() {
+        // Given: recurring event OLD_UID stored at path <OLD_UID>.ics → alarm created
+        String oldUid = UUID.randomUUID().toString();
+        String newUid = UUID.randomUUID().toString();
+        String organizerEmail = organizer.username().asString();
 
-        @Test
-        void shouldCreateAlarmForNewUidWhenOrganizerPutsNewIcsWithDifferentUidToSamePath() {
-            // Given: recurring event OLD_UID stored at path <OLD_UID>.ics → alarm created
-            String oldUid = UUID.randomUUID().toString();
-            String newUid = UUID.randomUUID().toString();
-            String organizerEmail = organizer.username().asString();
+        davTestHelper.upsertCalendar(organizer, generateRecurringEventWithValarm(oldUid, organizerEmail), oldUid);
+        awaitAlarmEventCreated(new EventUid(oldUid), organizer.username());
 
-            davTestHelper.upsertCalendar(organizer, generateRecurringEventWithValarm(oldUid, organizerEmail), oldUid);
-            awaitAlarmEventCreated(new EventUid(oldUid), organizer.username());
+        // When: organizer PUTs a completely new ICS (new UID) to the SAME .ics path
+        davTestHelper.upsertCalendar(organizer, generateRecurringEventWithValarm(newUid, organizerEmail), oldUid);
 
-            // When: organizer PUTs a completely new ICS (new UID) to the SAME .ics path
-            davTestHelper.upsertCalendar(organizer, generateRecurringEventWithValarm(newUid, organizerEmail), oldUid);
+        // Then: alarm for new UID is created
+        awaitAtMost.atMost(Duration.ofSeconds(30)).untilAsserted(() ->
+            assertThat(alarmEventDAO
+                .find(new EventUid(newUid), organizer.username().asMailAddress())
+                .block())
+                .isNotNull());
 
-            // Then: alarm for new UID is created
-            awaitAtMost.atMost(Duration.ofSeconds(30)).untilAsserted(() ->
-                assertThat(alarmEventDAO
-                    .find(new EventUid(newUid), organizer.username().asMailAddress())
-                    .block())
-                    .isNotNull());
+        // And: alarm for old UID is gone (no orphan)
+        awaitAtMost.atMost(Duration.ofSeconds(30)).untilAsserted(() ->
+            assertThat(alarmEventDAO
+                .find(new EventUid(oldUid), organizer.username().asMailAddress())
+                .block())
+                .isNull());
+    }
 
-            // And: alarm for old UID is gone (no orphan)
-            awaitAtMost.atMost(Duration.ofSeconds(30)).untilAsserted(() ->
-                assertThat(alarmEventDAO
-                    .find(new EventUid(oldUid), organizer.username().asMailAddress())
-                    .block())
-                    .isNull());
-        }
+    @Test
+    void shouldReplaceAlarmWhenOrganizerDeletesThenRecreatesRecurringEventWithNewUid() {
+        // Given: recurring event OLD_UID → alarm created
+        String oldUid = UUID.randomUUID().toString();
+        String newUid = UUID.randomUUID().toString();
+        String organizerEmail = organizer.username().asString();
 
-        @Test
-        void shouldReplaceAlarmWhenOrganizerDeletesThenRecreatesRecurringEventWithNewUid() {
-            // Given: recurring event OLD_UID → alarm created
-            String oldUid = UUID.randomUUID().toString();
-            String newUid = UUID.randomUUID().toString();
-            String organizerEmail = organizer.username().asString();
+        davTestHelper.upsertCalendar(organizer, generateRecurringEventWithValarm(oldUid, organizerEmail), oldUid);
+        awaitAlarmEventCreated(new EventUid(oldUid), organizer.username());
 
-            davTestHelper.upsertCalendar(organizer, generateRecurringEventWithValarm(oldUid, organizerEmail), oldUid);
-            awaitAlarmEventCreated(new EventUid(oldUid), organizer.username());
+        // When: organizer deletes the old resource then PUTs a brand-new one at a different path
+        davTestHelper.deleteCalendar(organizer, oldUid);
+        davTestHelper.upsertCalendar(organizer, generateRecurringEventWithValarm(newUid, organizerEmail), newUid);
 
-            // When: organizer deletes the old resource then PUTs a brand-new one at a different path
-            davTestHelper.deleteCalendar(organizer, oldUid);
-            davTestHelper.upsertCalendar(organizer, generateRecurringEventWithValarm(newUid, organizerEmail), newUid);
+        // Then: alarm for old UID is removed
+        awaitAtMost.atMost(Duration.ofSeconds(30)).untilAsserted(() ->
+            assertThat(alarmEventDAO
+                .find(new EventUid(oldUid), organizer.username().asMailAddress())
+                .block())
+                .isNull());
 
-            // Then: alarm for old UID is removed
-            awaitAtMost.atMost(Duration.ofSeconds(30)).untilAsserted(() ->
-                assertThat(alarmEventDAO
-                    .find(new EventUid(oldUid), organizer.username().asMailAddress())
-                    .block())
-                    .isNull());
+        // And: alarm for new UID exists
+        awaitAtMost.atMost(Duration.ofSeconds(30)).untilAsserted(() ->
+            assertThat(alarmEventDAO
+                .find(new EventUid(newUid), organizer.username().asMailAddress())
+                .block())
+                .isNotNull());
+    }
 
-            // And: alarm for new UID exists
-            awaitAtMost.atMost(Duration.ofSeconds(30)).untilAsserted(() ->
-                assertThat(alarmEventDAO
-                    .find(new EventUid(newUid), organizer.username().asMailAddress())
-                    .block())
-                    .isNotNull());
-        }
+    private String generateRecurringEventWithValarm(String eventUid, String organizerEmail) {
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss");
+        LocalDateTime baseTime = clock.instant().atZone(clock.getZone()).plusDays(3).toLocalDateTime();
+        String startDateTime = baseTime.format(fmt);
+        String endDateTime = baseTime.plusHours(1).format(fmt);
+        String dtStamp = baseTime.minusDays(3).format(fmt);
 
-        private String generateRecurringEventWithValarm(String eventUid, String organizerEmail) {
-            DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss");
-            LocalDateTime baseTime = clock.instant().atZone(clock.getZone()).plusDays(3).toLocalDateTime();
-            String startDateTime = baseTime.format(fmt);
-            String endDateTime = baseTime.plusHours(1).format(fmt);
-            String dtStamp = baseTime.minusDays(3).format(fmt);
-
-            return """
-                BEGIN:VCALENDAR
-                VERSION:2.0
-                PRODID:-//Sabre//Sabre VObject 4.2.2//EN
-                CALSCALE:GREGORIAN
-                BEGIN:VTIMEZONE
-                TZID:Asia/Ho_Chi_Minh
-                BEGIN:STANDARD
-                TZOFFSETFROM:+0700
-                TZOFFSETTO:+0700
-                TZNAME:ICT
-                DTSTART:19700101T000000
-                END:STANDARD
-                END:VTIMEZONE
-                BEGIN:VEVENT
-                UID:%s
-                DTSTAMP:%sZ
-                SEQUENCE:1
-                DTSTART;TZID=Asia/Ho_Chi_Minh:%s
-                DTEND;TZID=Asia/Ho_Chi_Minh:%s
-                RRULE:FREQ=DAILY;COUNT=3
-                SUMMARY:Daily Standup
-                ORGANIZER:mailto:%s
-                ATTENDEE;PARTSTAT=ACCEPTED:mailto:%s
-                BEGIN:VALARM
-                TRIGGER:-PT10M
-                ACTION:EMAIL
-                ATTENDEE:mailto:%s
-                SUMMARY:Daily Standup Reminder
-                DESCRIPTION:This is an automatic alarm sent by OpenPaas
-                END:VALARM
-                END:VEVENT
-                END:VCALENDAR
-                """.formatted(eventUid, dtStamp, startDateTime, endDateTime,
-                organizerEmail, organizerEmail, organizerEmail);
-        }
+        return """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
+            CALSCALE:GREGORIAN
+            BEGIN:VTIMEZONE
+            TZID:Asia/Ho_Chi_Minh
+            BEGIN:STANDARD
+            TZOFFSETFROM:+0700
+            TZOFFSETTO:+0700
+            TZNAME:ICT
+            DTSTART:19700101T000000
+            END:STANDARD
+            END:VTIMEZONE
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:%sZ
+            SEQUENCE:1
+            DTSTART;TZID=Asia/Ho_Chi_Minh:%s
+            DTEND;TZID=Asia/Ho_Chi_Minh:%s
+            RRULE:FREQ=DAILY;COUNT=3
+            SUMMARY:Daily Standup
+            ORGANIZER:mailto:%s
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:%s
+            BEGIN:VALARM
+            TRIGGER:-PT10M
+            ACTION:EMAIL
+            ATTENDEE:mailto:%s
+            SUMMARY:Daily Standup Reminder
+            DESCRIPTION:This is an automatic alarm sent by OpenPaas
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(eventUid, dtStamp, startDateTime, endDateTime,
+            organizerEmail, organizerEmail, organizerEmail);
     }
 
     private EventUid createEventWithVALARM(OpenPaaSUser... attendees) {
