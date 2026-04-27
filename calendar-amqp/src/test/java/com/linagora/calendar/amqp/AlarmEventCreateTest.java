@@ -38,7 +38,9 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +49,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
+import org.junit.jupiter.api.Nested;
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
 import org.apache.james.backends.rabbitmq.RabbitMQConnectionFactory;
@@ -750,5 +753,214 @@ public class AlarmEventCreateTest {
             .build();
 
         channel.basicPublish(exchange, EMPTY_ROUTING_KEY, basicProperties, message.getBytes(StandardCharsets.UTF_8));
+    }
+
+    @Nested
+    class RecurringEventAcceptanceTest {
+
+        @Test
+        void shouldCreateAlarmForNextUpcomingOccurrenceWhenAttendeeAcceptsWholeSeriesAfterFirstOccurrencePassed() {
+            // Given: 3 daily occurrences; attendee has not yet accepted
+            String eventUid = UUID.randomUUID().toString();
+            String organizerEmail = organizer.username().asString();
+            String attendeeEmail = attendee.username().asString();
+
+            String calendarData = generateDailyRecurringEventWithValarm(
+                eventUid, organizerEmail, List.of(attendeeEmail), PartStat.NEEDS_ACTION,
+                valarmFor(organizerEmail));
+
+            Instant firstOccurrenceStart = extractStartTime(calendarData);
+            Instant secondOccurrenceStart = firstOccurrenceStart.plus(1, ChronoUnit.DAYS);
+
+            // Organizer creates the event (clock is before all occurrences)
+            davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
+
+            // Advance clock past the first occurrence before attendee accepts
+            clock.setInstant(firstOccurrenceStart.plus(1, ChronoUnit.HOURS));
+
+            // When: attendee accepts the whole recurring series after the first occurrence has passed
+            attendeeAcceptsEvent(attendee, eventUid);
+
+            // Then: alarm must target the SECOND occurrence (next upcoming), NOT the first (already past)
+            Instant expectedAlarmTime = secondOccurrenceStart.minus(5, MINUTES);
+
+            awaitAtMost.atMost(Duration.ofSeconds(30)).untilAsserted(() -> {
+                AlarmEvent alarmEvent = alarmEventDAO
+                    .find(new EventUid(eventUid), attendee.username().asMailAddress())
+                    .block();
+
+                assertThat(alarmEvent).isNotNull();
+                assertSoftly(softly -> {
+                    softly.assertThat(alarmEvent.eventUid().value()).as("eventUid").isEqualTo(eventUid);
+                    softly.assertThat(alarmEvent.alarmTime()).as("alarmTime").isEqualTo(expectedAlarmTime);
+                    softly.assertThat(alarmEvent.eventStartTime()).as("eventStartTime").isEqualTo(secondOccurrenceStart);
+                    softly.assertThat(alarmEvent.recurring()).as("recurring").isTrue();
+                    softly.assertThat(alarmEvent.recipient().asString()).as("recipient").isEqualTo(attendeeEmail);
+                });
+            });
+        }
+
+        @Test
+        void shouldCreateAlarmOnlyForAcceptedOccurrenceWhenAttendeeAcceptsSingleOccurrence() {
+            // Given: 3 daily occurrences; attendee accepts ONLY the 2nd occurrence via RECURRENCE-ID
+            // Occurrences 1 and 3 remain NEEDS-ACTION → no alarm for them
+            String eventUid = UUID.randomUUID().toString();
+            String organizerEmail = organizer.username().asString();
+            String attendeeEmail = attendee.username().asString();
+
+            String organizerIcs = generateDailyRecurringEventWithValarm(
+                eventUid, organizerEmail, List.of(attendeeEmail), PartStat.NEEDS_ACTION,
+                valarmFor(organizerEmail));
+
+            Instant firstOccurrenceStart = extractStartTime(organizerIcs);
+            Instant secondOccurrenceStart = firstOccurrenceStart.plus(1, ChronoUnit.DAYS);
+
+            // When: attendee's calendar contains master (NEEDS-ACTION) + exception for occurrence 2 (ACCEPTED)
+            String attendeeIcs = buildAttendeeIcsWithSingleOccurrenceAccepted(
+                eventUid, organizerEmail, attendeeEmail,
+                firstOccurrenceStart, secondOccurrenceStart);
+
+            davTestHelper.upsertCalendar(attendee, attendeeIcs, eventUid);
+
+            // Then: alarm is created ONLY for the accepted 2nd occurrence
+            Instant expectedAlarmTime = secondOccurrenceStart.minus(5, MINUTES);
+
+            awaitAtMost.atMost(Duration.ofSeconds(30)).untilAsserted(() -> {
+                AlarmEvent alarmEvent = alarmEventDAO
+                    .find(new EventUid(eventUid), attendee.username().asMailAddress())
+                    .block();
+
+                assertThat(alarmEvent).isNotNull();
+                assertSoftly(softly -> {
+                    softly.assertThat(alarmEvent.alarmTime()).as("alarmTime").isEqualTo(expectedAlarmTime);
+                    softly.assertThat(alarmEvent.eventStartTime()).as("eventStartTime").isEqualTo(secondOccurrenceStart);
+                    softly.assertThat(alarmEvent.recurring()).as("recurring").isTrue();
+                    softly.assertThat(alarmEvent.recipient().asString()).as("recipient").isEqualTo(attendeeEmail);
+                    softly.assertThat(alarmEvent.eventStartTime())
+                        .as("not pinned to 1st occurrence (still NEEDS-ACTION)")
+                        .isNotEqualTo(firstOccurrenceStart);
+                });
+            });
+        }
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    private String valarmFor(String email) {
+        return """
+            BEGIN:VALARM
+            TRIGGER:-PT5M
+            ACTION:EMAIL
+            ATTENDEE:mailto:%s
+            SUMMARY:Daily Standup Reminder
+            DESCRIPTION:This is an automatic alarm sent by OpenPaas
+            END:VALARM""".formatted(email);
+    }
+
+    private String generateDailyRecurringEventWithValarm(String eventUid, String organizerEmail,
+                                                          List<String> attendeeEmails, PartStat partStat,
+                                                          String vAlarm) {
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss");
+        LocalDateTime baseTime = clock.instant().atZone(clock.getZone()).plusDays(1).toLocalDateTime();
+        String startDateTime = baseTime.format(fmt);
+        String endDateTime = baseTime.plusHours(1).format(fmt);
+        String dtStamp = baseTime.format(fmt);
+
+        String attendeeLines = attendeeEmails.stream()
+            .map(email -> "ATTENDEE;PARTSTAT=%s:mailto:%s".formatted(partStat.getValue(), email))
+            .collect(Collectors.joining("\n"));
+
+        return """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
+            CALSCALE:GREGORIAN
+            BEGIN:VTIMEZONE
+            TZID:Asia/Ho_Chi_Minh
+            BEGIN:STANDARD
+            TZOFFSETFROM:+0700
+            TZOFFSETTO:+0700
+            TZNAME:ICT
+            DTSTART:19700101T000000
+            END:STANDARD
+            END:VTIMEZONE
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:%sZ
+            SEQUENCE:1
+            DTSTART;TZID=Asia/Ho_Chi_Minh:%s
+            DTEND;TZID=Asia/Ho_Chi_Minh:%s
+            RRULE:FREQ=DAILY;COUNT=3
+            SUMMARY:Daily Standup
+            ORGANIZER:mailto:%s
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:%s
+            %s
+            %s
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(eventUid, dtStamp, startDateTime, endDateTime,
+            organizerEmail, organizerEmail, attendeeLines, vAlarm);
+    }
+
+    // Builds the attendee's own ICS: master VEVENT with NEEDS-ACTION + exception VEVENT for
+    // secondOccurrence with ACCEPTED. Simulates accepting only that one occurrence.
+    private String buildAttendeeIcsWithSingleOccurrenceAccepted(
+            String eventUid, String organizerEmail, String attendeeEmail,
+            Instant firstOccurrenceStart, Instant secondOccurrenceStart) {
+
+        ZoneId ict = ZoneId.of("Asia/Ho_Chi_Minh");
+        DateTimeFormatter localFmt = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss");
+
+        String occ1Start = firstOccurrenceStart.atZone(ict).format(localFmt);
+        String occ1End = firstOccurrenceStart.plus(1, ChronoUnit.HOURS).atZone(ict).format(localFmt);
+        String occ2Start = secondOccurrenceStart.atZone(ict).format(localFmt);
+        String occ2End = secondOccurrenceStart.plus(1, ChronoUnit.HOURS).atZone(ict).format(localFmt);
+        String dtStamp = firstOccurrenceStart.atZone(ict).format(localFmt);
+        String vAlarm = valarmFor(attendeeEmail);
+
+        return """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
+            CALSCALE:GREGORIAN
+            BEGIN:VTIMEZONE
+            TZID:Asia/Ho_Chi_Minh
+            BEGIN:STANDARD
+            TZOFFSETFROM:+0700
+            TZOFFSETTO:+0700
+            TZNAME:ICT
+            DTSTART:19700101T000000
+            END:STANDARD
+            END:VTIMEZONE
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:%sZ
+            SEQUENCE:1
+            DTSTART;TZID=Asia/Ho_Chi_Minh:%s
+            DTEND;TZID=Asia/Ho_Chi_Minh:%s
+            RRULE:FREQ=DAILY;COUNT=3
+            SUMMARY:Daily Standup
+            ORGANIZER:mailto:%s
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:%s
+            %s
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:%sZ
+            SEQUENCE:1
+            DTSTART;TZID=Asia/Ho_Chi_Minh:%s
+            DTEND;TZID=Asia/Ho_Chi_Minh:%s
+            RECURRENCE-ID;TZID=Asia/Ho_Chi_Minh:%s
+            SUMMARY:Daily Standup
+            ORGANIZER:mailto:%s
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:%s
+            %s
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(
+            // master VEVENT
+            eventUid, dtStamp, occ1Start, occ1End, organizerEmail, attendeeEmail, vAlarm,
+            // exception VEVENT – 2nd occurrence accepted
+            eventUid, dtStamp, occ2Start, occ2End, occ2Start, organizerEmail, attendeeEmail, vAlarm);
     }
 }
