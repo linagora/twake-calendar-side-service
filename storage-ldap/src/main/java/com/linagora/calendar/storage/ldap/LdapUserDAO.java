@@ -19,9 +19,11 @@
 package com.linagora.calendar.storage.ldap;
 
 import java.util.List;
+import java.util.Optional;
 
 import jakarta.inject.Inject;
 
+import org.apache.james.core.Username;
 import org.apache.james.user.ldap.LdapRepositoryConfiguration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,5 +55,16 @@ public class LdapUserDAO {
         return searchResult.getSearchEntries().stream()
             .map(LdapUser::fromLdapEntry)
             .toList();
+    }
+
+    public Optional<LdapUser> findByMail(Username username) throws LDAPSearchException {
+        String baseDn = ldapRepositoryConfiguration.getUserBase();
+        Filter filter = Filter.createANDFilter(
+            Filter.createEqualityFilter("objectClass", ldapRepositoryConfiguration.getUserObjectClass()),
+            Filter.createEqualityFilter("mail", username.asString()));
+        SearchResult searchResult = ldapConnectionPool.search(baseDn, SearchScope.SUB, filter);
+        return searchResult.getSearchEntries().stream()
+            .map(LdapUser::fromLdapEntry)
+            .findFirst();
     }
 }

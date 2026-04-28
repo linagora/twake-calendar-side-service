@@ -22,14 +22,12 @@ import static org.apache.james.user.ldap.DockerLdapSingleton.ADMIN;
 import static org.apache.james.user.ldap.DockerLdapSingleton.ADMIN_PASSWORD;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.util.List;
 import java.util.Optional;
 
 import org.apache.commons.configuration2.HierarchicalConfiguration;
 import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.commons.configuration2.plist.PropertyListConfiguration;
 import org.apache.commons.configuration2.tree.ImmutableNode;
-import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;
 import org.apache.james.user.ldap.DockerLdapSingleton;
 import org.apache.james.user.ldap.LDAPConnectionFactory;
@@ -39,80 +37,43 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import com.linagora.calendar.storage.UserNameResolver;
 import com.unboundid.ldap.sdk.LDAPException;
 
-public class LdapUserDAOTest {
+public class LdapUserNameResolverTest {
 
     @RegisterExtension
     static LdapExtension ldapExtension = new LdapExtension(DockerLdapSingleton.ldapContainer);
 
-    private LdapUserDAO ldapUserDAO;
+    private LdapUserNameResolver resolver;
 
     @BeforeEach
     void setUp() throws ConfigurationException, LDAPException {
         LdapRepositoryConfiguration configuration = LdapRepositoryConfiguration.from(ldapRepositoryConfiguration(ldapExtension.ldapContainer(), Optional.of(ADMIN)));
-        ldapUserDAO = new LdapUserDAO(
-            configuration,
-            new LDAPConnectionFactory(configuration).getLdapConnectionPool());
+        LdapUserDAO ldapUserDAO = new LdapUserDAO(configuration, new LDAPConnectionFactory(configuration).getLdapConnectionPool());
+        resolver = new LdapUserNameResolver(ldapUserDAO);
     }
 
     @Test
-    void findByMailShouldReturnUserWhenPresent() throws Exception {
-        Optional<LdapUser> actual = ldapUserDAO.findByMail(Username.of("james-user@james.org"));
+    void resolveShouldReturnNamesFromLdap() {
+        Optional<UserNameResolver.UserNames> result = resolver.resolve(Username.of("james-user@james.org")).block();
 
-        assertThat(actual).contains(LdapUser.builder()
-            .uid("james-user")
-            .cn("James User")
-            .sn("User")
-            .givenName("James")
-            .mail(new MailAddress("james-user@james.org"))
-            .telephoneNumber("+33612345678")
-            .displayName("James User")
-            .build());
+        assertThat(result).contains(new UserNameResolver.UserNames("James", "User"));
     }
 
     @Test
-    void findByMailShouldReturnEmptyWhenNotFound() throws Exception {
-        Optional<LdapUser> actual = ldapUserDAO.findByMail(Username.of("unknown@james.org"));
+    void resolveShouldDeriveFirstnameFromCnWhenSnPresent() {
+        // james-user2 has cn="James User2", sn="User2", no givenName
+        Optional<UserNameResolver.UserNames> result = resolver.resolve(Username.of("james-user2@james.org")).block();
 
-        assertThat(actual).isEmpty();
+        assertThat(result).contains(new UserNameResolver.UserNames("James", "User2"));
     }
 
     @Test
-    void getAllUsersShouldReturnAllUsers() throws Exception {
-        LdapUser expected1 = LdapUser.builder()
-            .uid("james-user")
-            .cn("James User")
-            .sn("User")
-            .givenName("James")
-            .mail(new MailAddress("james-user@james.org"))
-            .telephoneNumber("+33612345678")
-            .displayName("James User")
-            .build();
+    void resolveShouldReturnEmptyWhenUserNotInLdap() {
+        Optional<UserNameResolver.UserNames> result = resolver.resolve(Username.of("unknown@james.org")).block();
 
-        LdapUser expected2 = LdapUser.builder()
-            .uid("james-user2")
-            .cn("James User2")
-            .sn("User2")
-            .mail(new MailAddress("james-user2@james.org"))
-            .build();
-
-        LdapUser expected3 = LdapUser.builder()
-            .uid("other-domain-user")
-            .cn("other-domain-user")
-            .sn("other-domain-user")
-            .mail(new MailAddress("other-domain-user@other.domain"))
-            .build();
-
-        LdapUser expected4 = LdapUser.builder()
-            .uid("no-mail-user")
-            .cn("no-mail-user")
-            .sn("no-mail-user")
-            .build();
-
-        List<LdapUser> actual = ldapUserDAO.getAllUsers();
-
-        assertThat(actual).containsExactlyInAnyOrder(expected1, expected2, expected3, expected4);
+        assertThat(result).isEmpty();
     }
 
     private HierarchicalConfiguration<ImmutableNode> ldapRepositoryConfiguration(LdapGenericContainer ldapContainer, Optional<Username> administrator) {

@@ -896,8 +896,8 @@ class TwakeCalendarGuiceServerTest  {
                     "emails": [
                         "btellier@linagora.com"
                     ],
-                    "firstname": "btellier@linagora.com",
-                    "lastname": "btellier@linagora.com",
+                    "firstname": "",
+                    "lastname": "",
                     "objectType": "user",
                     "timezone" : "Europe/Paris"
                 }
@@ -965,8 +965,8 @@ class TwakeCalendarGuiceServerTest  {
                     "emails": [
                         "btellier@linagora.com"
                     ],
-                    "firstname": "btellier@linagora.com",
-                    "lastname": "btellier@linagora.com",
+                    "firstname": "",
+                    "lastname": "",
                     "objectType": "user",
                     "timezone" : "Europe/Paris"
                 }]
@@ -1039,8 +1039,8 @@ class TwakeCalendarGuiceServerTest  {
                     "emails": [
                         "btellier@linagora.com"
                     ],
-                    "firstname": "btellier@linagora.com",
-                    "lastname": "btellier@linagora.com",
+                    "firstname": "",
+                    "lastname": "",
                     "objectType": "user",
                     "timezone" : "Europe/Paris"
                 }]
@@ -1104,8 +1104,8 @@ class TwakeCalendarGuiceServerTest  {
                     "emails": [
                         "to-be-provisionned@linagora.com"
                     ],
-                    "firstname": "to-be-provisionned@linagora.com",
-                    "lastname": "to-be-provisionned@linagora.com",
+                    "firstname": "",
+                    "lastname": "",
                     "objectType": "user",
                     "timezone" : "Europe/Paris"
                 }]
@@ -1278,8 +1278,8 @@ class TwakeCalendarGuiceServerTest  {
                     "emails": [
                         "btellier@linagora.com"
                     ],
-                    "firstname": "btellier@linagora.com",
-                    "lastname": "btellier@linagora.com",
+                    "firstname": "",
+                    "lastname": "",
                     "objectType": "user"
                 }""", userId, userId, domainId));
     }
