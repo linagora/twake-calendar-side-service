@@ -17,5 +17,4 @@ html
                                 h2(style="margin:0 0 16px 0;font-weight:normal;")
                                     | #{translator.get('mail_body_resource_admin_title')} "#{content.calendarName}" #{translator.get('mail_body_resource_admin_title_suffix')}
                                 p(style="margin:0 0 24px 0;color:#555555;")
-                                    | #{translator.get('mail_body_resource_admin_body_prefix')}
-                                    a(href=content.calendarUrl)= translator.get('mail_body_resource_admin_body_link')
+                                    | #{translator.get('mail_body_resource_admin_body_prefix')} #[a(href=content.calendarUrl)= translator.get('mail_body_resource_admin_body_link')]
