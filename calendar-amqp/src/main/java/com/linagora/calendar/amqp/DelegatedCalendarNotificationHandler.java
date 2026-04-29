@@ -70,6 +70,7 @@ public class DelegatedCalendarNotificationHandler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(DelegatedCalendarNotificationHandler.class);
     private static final TemplateType MAIL_TEMPLATE = new TemplateType("calendar-delegate-created");
+    private static final TemplateType RESOURCE_ADMIN_MAIL_TEMPLATE = new TemplateType("calendar-resource-admin-created");
     private static final String DELEGATED_SOURCE_PROPERTY = "calendarserver:delegatedsource";
     private static final String CALENDAR_NAME_PROPERTY = "dav:name";
 
@@ -121,7 +122,8 @@ public class DelegatedCalendarNotificationHandler {
                                                     String originalCalendarName,
                                                     OpenPaaSUser delegatedUser,
                                                     CalendarURL delegatedCalendarURL,
-                                                    String rightKey) {
+                                                    String rightKey,
+                                                    boolean isResource) {
 
         public Map<String, Object> toPugModel(URI spaCalendarBaseUrl) {
             return ImmutableMap.of(
@@ -136,7 +138,7 @@ public class DelegatedCalendarNotificationHandler {
 
     private record CalendarMetadata(OpenPaaSUser user, JsonNode metadata) {}
 
-    private record OriginalCalendarInfo(String ownerFullName, String calendarName) {}
+    private record OriginalCalendarInfo(String ownerFullName, String calendarName, boolean isResource) {}
 
     public Mono<Void> handle(CalendarDelegatedCreatedMessage createdMessage) {
         return buildNotificationData(createdMessage)
@@ -156,7 +158,8 @@ public class DelegatedCalendarNotificationHandler {
     }
 
     private Mono<Message> generateMessage(DelegatedCalendarNotificationData notificationData, ResolvedSettings resolvedSettings) {
-        return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(resolvedSettings.locale()), MAIL_TEMPLATE))
+        TemplateType template = notificationData.isResource() ? RESOURCE_ADMIN_MAIL_TEMPLATE : MAIL_TEMPLATE;
+        return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(resolvedSettings.locale()), template))
             .subscribeOn(Schedulers.boundedElastic())
             .flatMap(messageGenerator -> {
                 Username recipientUser = notificationData.delegatedUser().username();
@@ -182,7 +185,8 @@ public class DelegatedCalendarNotificationHandler {
                         original.calendarName(),
                         delegated.user(),
                         delegatedCalendarURL,
-                        message.rightKey().orElse(null)));
+                        message.rightKey().orElse(null),
+                        original.isResource()));
             });
     }
 
@@ -195,9 +199,9 @@ public class DelegatedCalendarNotificationHandler {
 
     private Mono<OriginalCalendarInfo> fetchOriginalCalendarInfo(CalendarURL calendarURL) {
         return fetchCalendarWithOwner(calendarURL)
-            .map(lookup -> new OriginalCalendarInfo(lookup.user().fullName(), lookup.metadata().path(CALENDAR_NAME_PROPERTY).asText()))
+            .map(lookup -> new OriginalCalendarInfo(lookup.user().fullName(), lookup.metadata().path(CALENDAR_NAME_PROPERTY).asText(), false))
             .switchIfEmpty(Mono.defer(() -> resourceDAO.findById(ResourceId.from(calendarURL.base()))
-                .map(resource -> new OriginalCalendarInfo(resource.name(), resource.name()))))
+                .map(resource -> new OriginalCalendarInfo(resource.name(), resource.name(), true))))
             .doOnError(e -> LOGGER.error("Failed to fetch original calendar info for {}", calendarURL.serialize(), e));
     }
 }

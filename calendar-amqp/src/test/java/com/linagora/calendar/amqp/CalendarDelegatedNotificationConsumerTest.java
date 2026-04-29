@@ -337,8 +337,7 @@ public class CalendarDelegatedNotificationConsumerTest {
             softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(bob.username().asString());
             String subject = extractSubject(smtpMailsResponse.getString("[0].message"));
             softly.assertThat(subject)
-                .isEqualTo("%s shared the “%s\u201d calendar with you"
-                    .formatted(resourceName, resourceName));
+                .isEqualTo("You were added as an admin of \"%s\" resource".formatted(resourceName));
         }));
     }
 
