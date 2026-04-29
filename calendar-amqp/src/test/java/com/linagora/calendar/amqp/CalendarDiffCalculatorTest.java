@@ -247,6 +247,200 @@ class CalendarDiffCalculatorTest {
         }
 
         @Test
+        void recurringOverrideShouldUseOccurrenceAsPreviousDateTime() {
+            // Given: A recurring DAILY event (COUNT=3) without existing override in the old calendar
+            String oldIcs = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Test//Test//EN
+                METHOD:REQUEST
+                BEGIN:VEVENT
+                UID:uid-recur-daily@test
+                DTSTART:20260401T100000Z
+                DTEND:20260401T110000Z
+                RRULE:FREQ=DAILY;COUNT=3
+                SUMMARY:Daily standup
+                SEQUENCE:1
+                ATTENDEE:mailto:bob@example.com
+                ORGANIZER:mailto:alice@example.com
+                END:VEVENT
+                END:VCALENDAR
+                """;
+            // When: A new override occurrence is added on day 2 with a shifted DTSTART/DTEND
+            String newIcs = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Test//Test//EN
+                METHOD:REQUEST
+                
+                BEGIN:VEVENT
+                UID:uid-recur-daily@test
+                DTSTART:20260401T100000Z
+                DTEND:20260401T110000Z
+                RRULE:FREQ=DAILY;COUNT=3
+                SUMMARY:Daily standup
+                SEQUENCE:1
+                ATTENDEE:mailto:bob@example.com
+                ORGANIZER:mailto:alice@example.com
+                END:VEVENT
+                
+                BEGIN:VEVENT
+                UID:uid-recur-daily@test
+                RECURRENCE-ID:20260402T100000Z
+                DTSTART:20260402T150000Z
+                DTEND:20260402T160000Z
+                SUMMARY:Daily standup
+                SEQUENCE:2
+                ATTENDEE:mailto:bob@example.com
+                ORGANIZER:mailto:alice@example.com
+                END:VEVENT
+                END:VCALENDAR
+                """;
+
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(
+                RECIPIENT, parse(newIcs), parse(oldIcs));
+
+            // Then: The diff computes `previous` from the day-2 master occurrence, not from day-1 master DTSTART/DTEND
+            assertThat(diffs).singleElement()
+                .satisfies(diff -> {
+                    assertThat(diff.isNewEvent()).isFalse();
+                    assertThatJson(diff.serializeChanges().orElseThrow().toString())
+                        .isEqualTo("""
+                            {
+                                "dtstart": {
+                                    "previous": {
+                                        "isAllDay": false,
+                                        "date": "2026-04-02 10:00:00.000000",
+                                        "timezone_type": 3,
+                                        "timezone": "Z"
+                                    },
+                                    "current": {
+                                        "isAllDay": false,
+                                        "date": "2026-04-02 15:00:00.000000",
+                                        "timezone_type": 3,
+                                        "timezone": "Z"
+                                    }
+                                },
+                                "dtend": {
+                                    "previous": {
+                                        "isAllDay": false,
+                                        "date": "2026-04-02 11:00:00.000000",
+                                        "timezone_type": 3,
+                                        "timezone": "Z"
+                                    },
+                                    "current": {
+                                        "isAllDay": false,
+                                        "date": "2026-04-02 16:00:00.000000",
+                                        "timezone_type": 3,
+                                        "timezone": "Z"
+                                    }
+                                }
+                            }""");
+                });
+        }
+
+        @Test
+        void existingRecurringOverrideDateTimeUpdateShouldUsePreviousOverrideDateTime() {
+            // Given: A recurring DAILY event (COUNT=3) with an existing override occurrence on day 2
+            String oldIcs = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Test//Test//EN
+                METHOD:REQUEST
+                BEGIN:VEVENT
+                UID:uid-recur-daily-update@test
+                DTSTART:20260401T100000Z
+                DTEND:20260401T110000Z
+                RRULE:FREQ=DAILY;COUNT=3
+                SUMMARY:Daily standup
+                SEQUENCE:1
+                ATTENDEE:mailto:bob@example.com
+                ORGANIZER:mailto:alice@example.com
+                END:VEVENT
+                BEGIN:VEVENT
+                UID:uid-recur-daily-update@test
+                RECURRENCE-ID:20260402T100000Z
+                DTSTART:20260402T150000Z
+                DTEND:20260402T160000Z
+                SUMMARY:Daily standup
+                SEQUENCE:2
+                ATTENDEE:mailto:bob@example.com
+                ORGANIZER:mailto:alice@example.com
+                END:VEVENT
+                END:VCALENDAR
+                """;
+            // When: The same override occurrence is updated with a new DTSTART/DTEND
+            String newIcs = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Test//Test//EN
+                METHOD:REQUEST
+                BEGIN:VEVENT
+                UID:uid-recur-daily-update@test
+                DTSTART:20260401T100000Z
+                DTEND:20260401T110000Z
+                RRULE:FREQ=DAILY;COUNT=3
+                SUMMARY:Daily standup
+                SEQUENCE:1
+                ATTENDEE:mailto:bob@example.com
+                ORGANIZER:mailto:alice@example.com
+                END:VEVENT
+                BEGIN:VEVENT
+                UID:uid-recur-daily-update@test
+                RECURRENCE-ID:20260402T100000Z
+                DTSTART:20260402T170000Z
+                DTEND:20260402T180000Z
+                SUMMARY:Daily standup
+                SEQUENCE:3
+                ATTENDEE:mailto:bob@example.com
+                ORGANIZER:mailto:alice@example.com
+                END:VEVENT
+                END:VCALENDAR
+                """;
+
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(
+                RECIPIENT, parse(newIcs), parse(oldIcs));
+
+            // Then: The diff uses the previous override datetime as `previous`, not the master occurrence datetime
+            assertThat(diffs).singleElement()
+                .satisfies(diff -> {
+                    assertThat(diff.isNewEvent()).isFalse();
+                    assertThatJson(diff.serializeChanges().orElseThrow().toString())
+                        .isEqualTo("""
+                            {
+                                "dtstart": {
+                                    "previous": {
+                                        "isAllDay": false,
+                                        "date": "2026-04-02 15:00:00.000000",
+                                        "timezone_type": 3,
+                                        "timezone": "Z"
+                                    },
+                                    "current": {
+                                        "isAllDay": false,
+                                        "date": "2026-04-02 17:00:00.000000",
+                                        "timezone_type": 3,
+                                        "timezone": "Z"
+                                    }
+                                },
+                                "dtend": {
+                                    "previous": {
+                                        "isAllDay": false,
+                                        "date": "2026-04-02 16:00:00.000000",
+                                        "timezone_type": 3,
+                                        "timezone": "Z"
+                                    },
+                                    "current": {
+                                        "isAllDay": false,
+                                        "date": "2026-04-02 18:00:00.000000",
+                                        "timezone_type": 3,
+                                        "timezone": "Z"
+                                    }
+                                }
+                            }""");
+                });
+        }
+
+        @Test
         void newExceptionWithRecipientOnlyInExceptionMarksIsNewEvent() {
             String oldIcs = """
                 BEGIN:VCALENDAR
