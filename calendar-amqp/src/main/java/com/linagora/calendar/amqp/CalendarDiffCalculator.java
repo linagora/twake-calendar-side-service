@@ -45,6 +45,7 @@ import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
+import net.fortuna.ical4j.model.property.RecurrenceId;
 
 public class CalendarDiffCalculator {
 
@@ -150,9 +151,10 @@ public class CalendarDiffCalculator {
                                                            VEvent previousMasterEvent,
                                                            Map.Entry<String, VEvent> currentEventEntry) {
         VEvent previousOccurrence = previousEventsByRecurrenceId.get(currentEventEntry.getKey());
-        VEvent previousEventForRecipient = Optional.ofNullable(previousOccurrence)
-            .orElse(previousMasterEvent);
         VEvent currentOccurrence = currentEventEntry.getValue();
+        VEvent previousEventForRecipient = Optional.ofNullable(previousOccurrence)
+            .orElseGet(() -> toPreviousOccurrenceFromMaster(previousMasterEvent, currentOccurrence)
+                .orElse(previousMasterEvent));
         boolean hasPreviousOccurrence = previousOccurrence != null;
 
         boolean recipientWasAttending = attends(recipient, previousEventForRecipient);
@@ -169,6 +171,15 @@ public class CalendarDiffCalculator {
         }
 
         return Optional.of(new EventDiff(currentOccurrence, !recipientWasAttending, changes));
+    }
+
+    private static Optional<VEvent> toPreviousOccurrenceFromMaster(VEvent previousMasterEvent, VEvent currentOccurrence) {
+        if (previousMasterEvent == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(currentOccurrence.getRecurrenceId())
+            .map(RecurrenceId::getDate)
+            .map(recurrenceDate -> EventParseUtils.createInstanceVEvent(previousMasterEvent, recurrenceDate));
     }
 
     private static boolean organizerAcceptedTransition(VEvent previousEvent, VEvent currentEvent) {
