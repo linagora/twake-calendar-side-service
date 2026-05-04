@@ -33,6 +33,8 @@ import java.util.stream.Stream;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -45,9 +47,9 @@ import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
-import net.fortuna.ical4j.model.property.RecurrenceId;
 
 public class CalendarDiffCalculator {
+    private static final Logger LOGGER = LoggerFactory.getLogger(CalendarDiffCalculator.class);
 
     private static final String MASTER_RECURRENCE_ID = "master";
     private static final String PREVIOUS_FIELD = "previous";
@@ -174,12 +176,17 @@ public class CalendarDiffCalculator {
     }
 
     private static Optional<VEvent> toPreviousOccurrenceFromMaster(VEvent previousMasterEvent, VEvent currentOccurrence) {
-        if (previousMasterEvent == null) {
+        if (previousMasterEvent == null || currentOccurrence.getRecurrenceId() == null) {
             return Optional.empty();
         }
-        return Optional.ofNullable(currentOccurrence.getRecurrenceId())
-            .map(RecurrenceId::getDate)
-            .map(recurrenceDate -> EventParseUtils.createInstanceVEvent(previousMasterEvent, recurrenceDate));
+
+        try {
+            return Optional.of(EventParseUtils.createInstanceVEvent(previousMasterEvent,
+                currentOccurrence.getRecurrenceId().getDate()));
+        } catch (IllegalArgumentException exception) {
+            LOGGER.warn("Failed to resolve recurring override", exception);
+            return Optional.empty();
+        }
     }
 
     private static boolean organizerAcceptedTransition(VEvent previousEvent, VEvent currentEvent) {
