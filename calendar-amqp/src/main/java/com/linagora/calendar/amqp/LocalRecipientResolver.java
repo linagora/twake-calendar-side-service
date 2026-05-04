@@ -36,6 +36,13 @@ import reactor.core.publisher.Mono;
 
 public class LocalRecipientResolver {
 
+    public sealed interface ResolvedRecipient {
+        record LocalUser(OpenPaaSId id) implements ResolvedRecipient {}
+        record LocalResource(OpenPaaSId id) implements ResolvedRecipient {}
+
+        OpenPaaSId id();
+    }
+
     private final OpenPaaSUserDAO openPaaSUserDAO;
     private final ResourceDAO resourceDAO;
     private final OpenPaaSDomainDAO domainDAO;
@@ -50,24 +57,24 @@ public class LocalRecipientResolver {
         this.domainDAO = domainDAO;
     }
 
-    public Mono<Optional<OpenPaaSId>> resolve(Username username) {
+    public Mono<Optional<ResolvedRecipient>> resolve(Username username) {
         return resolveAsUser(username)
             .switchIfEmpty(resolveAsResource(username))
             .switchIfEmpty(Mono.just(Optional.empty()));
     }
 
-    private Mono<Optional<OpenPaaSId>> resolveAsUser(Username username) {
+    private Mono<Optional<ResolvedRecipient>> resolveAsUser(Username username) {
         return openPaaSUserDAO.retrieve(username)
             .map(OpenPaaSUser::id)
-            .map(Optional::of);
+            .map(id -> Optional.of((ResolvedRecipient) new ResolvedRecipient.LocalUser(id)));
     }
 
-    private Mono<Optional<OpenPaaSId>> resolveAsResource(Username username) {
+    private Mono<Optional<ResolvedRecipient>> resolveAsResource(Username username) {
         ResourceId resourceId = new ResourceId(username.getLocalPart());
         return Mono.justOrEmpty(username.getDomainPart())
             .flatMap(domainDAO::retrieve)
             .flatMap(domain -> resourceDAO.exist(resourceId, domain.id()))
             .filter(exist -> exist)
-            .map(ignored -> Optional.of(resourceId.asOpenPaaSId()));
+            .map(ignored -> Optional.of((ResolvedRecipient) new ResolvedRecipient.LocalResource(resourceId.asOpenPaaSId())));
     }
 }
