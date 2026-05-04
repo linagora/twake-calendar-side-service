@@ -299,7 +299,7 @@ public class ItipLocalDeliveryConsumerTest {
     @Test
     void shouldCallItipWhenRecipientIsLocalUser() {
         when(localRecipientResolver.resolve(Username.of(ALICE)))
-            .thenReturn(Mono.just(Optional.of(new OpenPaaSId(LOCAL_USER_ID))));
+            .thenReturn(Mono.just(Optional.of(new LocalRecipientResolver.ResolvedRecipient.LocalUser(new OpenPaaSId(LOCAL_USER_ID)))));
         stubItipNoContent();
 
         String payload = """
@@ -327,7 +327,7 @@ public class ItipLocalDeliveryConsumerTest {
     @Test
     void shouldCallItipWhenRecipientIsResource() {
         when(localRecipientResolver.resolve(Username.of(ALICE)))
-            .thenReturn(Mono.just(Optional.of(new OpenPaaSId(RESOURCE_ID))));
+            .thenReturn(Mono.just(Optional.of(new LocalRecipientResolver.ResolvedRecipient.LocalResource(new OpenPaaSId(RESOURCE_ID)))));
         stubItipNoContent();
 
         String payload = """
@@ -350,9 +350,37 @@ public class ItipLocalDeliveryConsumerTest {
     }
 
     @Test
+    void shouldNotPublishEmailNotificationWhenRecipientIsResource() {
+        when(localRecipientResolver.resolve(Username.of(ALICE)))
+            .thenReturn(Mono.just(Optional.of(new LocalRecipientResolver.ResolvedRecipient.LocalResource(new OpenPaaSId(RESOURCE_ID)))));
+        stubItipNoContent();
+        declareQueueBoundToExchange(EventEmailConsumer.EXCHANGE_NAME, testEmailQueue);
+        List<JsonNode> emailMessages = consumeJsonMessages(testEmailQueue);
+
+        String payload = """
+            {
+              "sender": "mailto:%s",
+              "method": "REQUEST",
+              "uid": "%s",
+              "calendarId": "%s",
+              "message": %s,
+              "hasChange": true,
+              "recipients": ["mailto:%s"]
+            }
+            """.formatted(BOB, EVENT_UID, CALENDAR_ID, jsonString(SIMPLE_ICAL), ALICE);
+
+        publishToConsumer(payload);
+
+        AWAIT_AT_MOST.untilAsserted(() ->
+            WireMock.verify(WireMock.postRequestedFor(WireMock.urlEqualTo("/itip"))
+                .withRequestBody(WireMock.matchingJsonPath("$.recipient", WireMock.equalTo(ALICE)))));
+        assertThat(emailMessages).isEmpty();
+    }
+
+    @Test
     void shouldNotCallItipWhenMethodIsCounter() {
         when(localRecipientResolver.resolve(Username.of(ALICE)))
-            .thenReturn(Mono.just(Optional.of(new OpenPaaSId(LOCAL_USER_ID))));
+            .thenReturn(Mono.just(Optional.of(new LocalRecipientResolver.ResolvedRecipient.LocalUser(new OpenPaaSId(LOCAL_USER_ID)))));
         declareQueueBoundToExchange(EventEmailConsumer.EXCHANGE_NAME, testEmailQueue);
         List<JsonNode> emailMessages = consumeJsonMessages(testEmailQueue);
 
@@ -377,7 +405,7 @@ public class ItipLocalDeliveryConsumerTest {
     @Test
     void shouldIgnoreDeliveryWhenRequestSenderIsNotOrganizer() {
         when(localRecipientResolver.resolve(Username.of(ALICE)))
-            .thenReturn(Mono.just(Optional.of(new OpenPaaSId(LOCAL_USER_ID))));
+            .thenReturn(Mono.just(Optional.of(new LocalRecipientResolver.ResolvedRecipient.LocalUser(new OpenPaaSId(LOCAL_USER_ID)))));
         declareQueueBoundToExchange(EventEmailConsumer.EXCHANGE_NAME, testEmailQueue);
         List<JsonNode> emailMessages = consumeJsonMessages(testEmailQueue);
 
@@ -404,7 +432,7 @@ public class ItipLocalDeliveryConsumerTest {
     @Test
     void shouldIgnoreDeliveryWhenRequestOrganizerChangedComparedToOldMessage() {
         when(localRecipientResolver.resolve(Username.of(ALICE)))
-            .thenReturn(Mono.just(Optional.of(new OpenPaaSId(LOCAL_USER_ID))));
+            .thenReturn(Mono.just(Optional.of(new LocalRecipientResolver.ResolvedRecipient.LocalUser(new OpenPaaSId(LOCAL_USER_ID)))));
         declareQueueBoundToExchange(EventEmailConsumer.EXCHANGE_NAME, testEmailQueue);
         List<JsonNode> emailMessages = consumeJsonMessages(testEmailQueue);
         String oldMessageWithDifferentOrganizer = SIMPLE_ICAL.replace("mailto:" + BOB, "mailto:" + CEDRIC);
@@ -433,7 +461,7 @@ public class ItipLocalDeliveryConsumerTest {
     @Test
     void shouldIgnoreDeliveryWhenRecurringRequestHasMultipleOrganizers() {
         when(localRecipientResolver.resolve(Username.of(ALICE)))
-            .thenReturn(Mono.just(Optional.of(new OpenPaaSId(LOCAL_USER_ID))));
+            .thenReturn(Mono.just(Optional.of(new LocalRecipientResolver.ResolvedRecipient.LocalUser(new OpenPaaSId(LOCAL_USER_ID)))));
         declareQueueBoundToExchange(EventEmailConsumer.EXCHANGE_NAME, testEmailQueue);
         List<JsonNode> emailMessages = consumeJsonMessages(testEmailQueue);
         String recurringMessage = recurringIcal(BOB, CEDRIC);
@@ -461,7 +489,7 @@ public class ItipLocalDeliveryConsumerTest {
     @Test
     void shouldIgnoreDeliveryWhenRecurringRequestOrganizerChangedComparedToOldMessage() {
         when(localRecipientResolver.resolve(Username.of(ALICE)))
-            .thenReturn(Mono.just(Optional.of(new OpenPaaSId(LOCAL_USER_ID))));
+            .thenReturn(Mono.just(Optional.of(new LocalRecipientResolver.ResolvedRecipient.LocalUser(new OpenPaaSId(LOCAL_USER_ID)))));
         declareQueueBoundToExchange(EventEmailConsumer.EXCHANGE_NAME, testEmailQueue);
         List<JsonNode> emailMessages = consumeJsonMessages(testEmailQueue);
         String recurringCurrentMessage = recurringIcal(BOB, BOB);
@@ -515,7 +543,7 @@ public class ItipLocalDeliveryConsumerTest {
     @Test
     void shouldIncludeSequenceWhenMethodIsCancelAndSequencePresent() {
         when(localRecipientResolver.resolve(Username.of(ALICE)))
-            .thenReturn(Mono.just(Optional.of(new OpenPaaSId(LOCAL_USER_ID))));
+            .thenReturn(Mono.just(Optional.of(new LocalRecipientResolver.ResolvedRecipient.LocalUser(new OpenPaaSId(LOCAL_USER_ID)))));
         stubItipNoContent();
 
         String payload = """
@@ -556,7 +584,7 @@ public class ItipLocalDeliveryConsumerTest {
     @Test
     void shouldPublishEmailNotificationForSingleRecipient() {
         when(localRecipientResolver.resolve(Username.of(ALICE)))
-            .thenReturn(Mono.just(Optional.of(new OpenPaaSId(LOCAL_USER_ID))));
+            .thenReturn(Mono.just(Optional.of(new LocalRecipientResolver.ResolvedRecipient.LocalUser(new OpenPaaSId(LOCAL_USER_ID)))));
         stubItipNoContent();
 
         declareQueueBoundToExchange(EventEmailConsumer.EXCHANGE_NAME, testEmailQueue);
@@ -590,7 +618,7 @@ public class ItipLocalDeliveryConsumerTest {
     @Test
     void shouldRouteToDeadLetterWhenItipReturns5xx() {
         when(localRecipientResolver.resolve(Username.of(ALICE)))
-            .thenReturn(Mono.just(Optional.of(new OpenPaaSId(LOCAL_USER_ID))));
+            .thenReturn(Mono.just(Optional.of(new LocalRecipientResolver.ResolvedRecipient.LocalUser(new OpenPaaSId(LOCAL_USER_ID)))));
 
         wireMockServer.stubFor(WireMock.post(WireMock.urlEqualTo("/itip"))
             .willReturn(WireMock.aResponse().withStatus(500).withBody("Internal Server Error")));
@@ -616,7 +644,7 @@ public class ItipLocalDeliveryConsumerTest {
     @Test
     void shouldCallItipAndEmailWhenReplyPartStatChanged() {
         when(localRecipientResolver.resolve(Username.of(BOB)))
-            .thenReturn(Mono.just(Optional.of(new OpenPaaSId(LOCAL_USER_ID))));
+            .thenReturn(Mono.just(Optional.of(new LocalRecipientResolver.ResolvedRecipient.LocalUser(new OpenPaaSId(LOCAL_USER_ID)))));
         stubItipNoContent();
         declareQueueBoundToExchange(EventEmailConsumer.EXCHANGE_NAME, testEmailQueue);
         List<JsonNode> emailMessages = consumeJsonMessages(testEmailQueue);
@@ -745,7 +773,7 @@ public class ItipLocalDeliveryConsumerTest {
     @Test
     void shouldCallItipAndEmailWhenReplyPartStatDiffersFromMasterWithoutOldInstance() {
         when(localRecipientResolver.resolve(Username.of(BOB)))
-            .thenReturn(Mono.just(Optional.of(new OpenPaaSId(LOCAL_USER_ID))));
+            .thenReturn(Mono.just(Optional.of(new LocalRecipientResolver.ResolvedRecipient.LocalUser(new OpenPaaSId(LOCAL_USER_ID)))));
         stubItipNoContent();
         declareQueueBoundToExchange(EventEmailConsumer.EXCHANGE_NAME, testEmailQueue);
         List<JsonNode> emailMessages = consumeJsonMessages(testEmailQueue);
@@ -813,7 +841,7 @@ public class ItipLocalDeliveryConsumerTest {
     @Test
     void shouldCallItipAndEmailWhenReplyPartStatDiffersFromMasterWithOldInstance() {
         when(localRecipientResolver.resolve(Username.of(BOB)))
-            .thenReturn(Mono.just(Optional.of(new OpenPaaSId(LOCAL_USER_ID))));
+            .thenReturn(Mono.just(Optional.of(new LocalRecipientResolver.ResolvedRecipient.LocalUser(new OpenPaaSId(LOCAL_USER_ID)))));
         stubItipNoContent();
         declareQueueBoundToExchange(EventEmailConsumer.EXCHANGE_NAME, testEmailQueue);
         List<JsonNode> emailMessages = consumeJsonMessages(testEmailQueue);

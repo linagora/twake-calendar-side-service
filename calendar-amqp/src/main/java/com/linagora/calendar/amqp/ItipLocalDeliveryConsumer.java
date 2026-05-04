@@ -231,8 +231,12 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
         return Mono.fromCallable(() -> CalendarUtil.parseIcs(localDelivery.message()))
             .filter(calendar -> !localDeliveryIgnored(localDelivery, calendar, oldEventCalendar))
             .flatMap(calendar -> localRecipientResolver.resolve(recipientUsername)
-                .flatMap(localRecipientId -> sendItipIfNecessary(localDelivery, recipientUsername, localRecipientId, calendar)
-                    .then(publishEmailNotification(localDelivery, recipientUsername, localRecipientId, oldEventCalendar))));
+                .flatMap(resolved -> {
+                    Optional<OpenPaaSId> localRecipientId = resolved.map(LocalRecipientResolver.ResolvedRecipient::id);
+                    boolean isResource = resolved.map(recipient -> recipient instanceof LocalRecipientResolver.ResolvedRecipient.LocalResource).orElse(false);
+                    return sendItipIfNecessary(localDelivery, recipientUsername, localRecipientId, calendar)
+                        .then(isResource ? Mono.empty() : publishEmailNotification(localDelivery, recipientUsername, localRecipientId, oldEventCalendar));
+                }));
     }
 
     private boolean localDeliveryIgnored(ItipLocalDeliveryDTO localDelivery,
