@@ -34,7 +34,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.github.fge.lambdas.Throwing;
-import com.linagora.calendar.restapi.RestApiConfiguration;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -59,7 +58,6 @@ public class UsersRoute extends CalendarRoute {
     private final OpenPaaSDomainDAO domainDAO;
     private final UsersRepository usersRepository;
     private final SettingsBasedResolver settingsResolver;
-    private final RestApiConfiguration restApiConfiguration;
     private final UserNameResolver userNameResolver;
 
     @Inject
@@ -69,14 +67,12 @@ public class UsersRoute extends CalendarRoute {
                       OpenPaaSDomainDAO domainDAO,
                       UsersRepository usersRepository,
                       @Named("language_timezone") SettingsBasedResolver settingsResolver,
-                      RestApiConfiguration restApiConfiguration,
                       UserNameResolver userNameResolver) {
         super(authenticator, metricFactory);
         this.userDAO = userDAO;
         this.domainDAO = domainDAO;
         this.usersRepository = usersRepository;
         this.settingsResolver = settingsResolver;
-        this.restApiConfiguration = restApiConfiguration;
         this.userNameResolver = userNameResolver;
     }
 
