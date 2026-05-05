@@ -40,12 +40,13 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
-import com.ibm.icu.impl.Pair;
 import com.linagora.calendar.restapi.RestApiConfiguration;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.TokenInfoResolver;
 import com.linagora.calendar.storage.UserNameResolver;
+import com.linagora.calendar.storage.UserNameResolver.UserNames;
+import com.linagora.calendar.storage.exception.UserConflictException;
 import com.linagora.calendar.storage.model.Aud;
 import com.linagora.calendar.storage.model.Sid;
 import com.linagora.calendar.storage.model.Token;
@@ -122,22 +123,25 @@ public class OidcEndpointsInfoResolver implements TokenInfoResolver {
         return ImmutableList.of(new Aud(audJson.asText()));
     }
 
-    private Mono<Username> provisionUserIfNeed(Username username, Optional<Pair<String, String>> firstnameAndSurnameOpt) {
-        Mono<OpenPaaSUser> createPublisher = Mono.justOrEmpty(firstnameAndSurnameOpt)
-            .flatMap(name -> userDAO.add(username, name.first, name.second))
-            .switchIfEmpty(Mono.defer(() -> userNameResolver.resolve(username)
-                .flatMap(names -> names
-                    .map(n -> userDAO.add(username, n.firstname(), n.lastname()))
-                    .orElseGet(() -> userDAO.add(username, username.asString(), username.asString())))))
-            .doOnNext(openPaaSUser -> LOGGER.info("Created user: {}", openPaaSUser.username().asString()));
+    private Mono<Username> provisionUserIfNeed(Username username, Optional<UserNames> optionalUserNames) {
+        Mono<UserNames> resolvedUserNamesPublisher = optionalUserNames.map(Mono::just)
+            .orElseGet(() -> Mono.defer(() -> userNameResolver.resolve(username)
+                .map(resolvedOptionalUserNames -> resolvedOptionalUserNames
+                    .orElseGet(() -> new UserNames(username.asString(), username.asString())))));
+
+        Mono<OpenPaaSUser> createUserPublisher = resolvedUserNamesPublisher
+            .flatMap(resolvedUserNames -> userDAO.add(username, resolvedUserNames.firstname(), resolvedUserNames.lastname())
+                .doOnNext(openPaaSUser -> LOGGER.info("Created user: {}", openPaaSUser.username().asString()))
+                .onErrorResume(UserConflictException.class, e -> userDAO.retrieve(username)
+                    .switchIfEmpty(Mono.error(e))));
 
         return userDAO.retrieve(username)
-            .switchIfEmpty(createPublisher)
+            .switchIfEmpty(createUserPublisher)
             .doOnError(error -> LOGGER.error("Failed to provisioning user: {}", username.asString(), error))
             .thenReturn(username);
     }
 
-    private Optional<Pair<String, String>> parseFirstnameAndSurnameFromToken(UserinfoResponse userinfoResponse) {
+    private Optional<UserNames> parseFirstnameAndSurnameFromToken(UserinfoResponse userinfoResponse) {
         Optional<String> firstname = userinfoResponse.claimByPropertyName(FIRSTNAME_PROPERTY);
         Optional<String> surname = userinfoResponse.claimByPropertyName(SURNAME_PROPERTY);
 
@@ -145,6 +149,6 @@ public class OidcEndpointsInfoResolver implements TokenInfoResolver {
             return Optional.empty();
         }
 
-        return Optional.of(Pair.of(firstname.orElse(StringUtils.EMPTY), surname.orElse(StringUtils.EMPTY)));
+        return Optional.of(new UserNames(firstname.orElse(StringUtils.EMPTY), surname.orElse(StringUtils.EMPTY)));
     }
 }

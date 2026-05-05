@@ -46,6 +46,7 @@ import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.UserNameResolver;
 import com.linagora.calendar.storage.configuration.resolver.ConfigurationResolver;
+import com.linagora.calendar.storage.exception.UserConflictException;
 
 import io.netty.handler.codec.http.HttpMethod;
 import reactor.core.publisher.Mono;
@@ -181,9 +182,9 @@ public class UserProfileRoute extends CalendarRoute {
             .flatMap(exists -> {
                 if (exists) {
                     return userNameResolver.resolve(username)
-                        .flatMap(names -> names
-                            .map(n -> userDAO.add(username, n.firstname(), n.lastname()))
-                            .orElseGet(() -> userDAO.add(username)));
+                        .flatMap(optionalUserNames -> userDAO.add(username, optionalUserNames)
+                            .onErrorResume(UserConflictException.class, e -> userDAO.retrieve(username)
+                                .switchIfEmpty(Mono.error(e))));
                 }
                 return Mono.empty();
             });
