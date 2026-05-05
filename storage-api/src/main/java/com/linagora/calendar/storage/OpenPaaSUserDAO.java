@@ -18,8 +18,12 @@
 
 package com.linagora.calendar.storage;
 
+import java.util.Optional;
+
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
+
+import com.linagora.calendar.storage.UserNameResolver.UserNames;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -32,6 +36,12 @@ public interface OpenPaaSUserDAO {
     Mono<OpenPaaSUser> add(Username username);
 
     Mono<OpenPaaSUser> add(Username username, String firstName, String lastName);
+
+    default Mono<OpenPaaSUser> add(Username user, Optional<UserNames> optionalUserNames) {
+        return optionalUserNames
+            .map(userNames -> add(user, userNames.firstname(), userNames.lastname()))
+            .orElseGet(() -> add(user));
+    }
 
     Mono<Void> update(OpenPaaSId id, Username newUsername, String newFirstname, String newLastname);
 
