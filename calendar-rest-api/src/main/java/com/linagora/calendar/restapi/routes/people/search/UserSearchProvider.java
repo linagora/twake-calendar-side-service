@@ -28,6 +28,7 @@ import jakarta.inject.Named;
 
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.james.core.Domain;
+import org.apache.james.core.Username;
 import org.apache.james.mailbox.MailboxSession;
 
 import com.google.common.collect.ImmutableSet;
@@ -47,14 +48,17 @@ public class UserSearchProvider implements PeopleSearchProvider {
     private final OpenPaaSUserDAO userDAO;
     private final URL baseAvatarUrl;
     private final Set<Domain> userSearchDisabledDomains;
+    private final Set<Domain> userSearchLimitedDomains;
 
     @Inject
     public UserSearchProvider(OpenPaaSUserDAO userDAO,
                               @Named("selfUrl") URL baseAvatarUrl,
-                              @Named("userSearchDisabledDomains") Set<Domain> userSearchDisabledDomains) {
+                              @Named("userSearchDisabledDomains") Set<Domain> userSearchDisabledDomains,
+                              @Named("userSearchLimitedDomains") Set<Domain> userSearchLimitedDomains) {
         this.userDAO = userDAO;
         this.baseAvatarUrl = baseAvatarUrl;
         this.userSearchDisabledDomains = userSearchDisabledDomains;
+        this.userSearchLimitedDomains = userSearchLimitedDomains;
     }
 
     @Override
@@ -70,7 +74,11 @@ public class UserSearchProvider implements PeopleSearchProvider {
 
         return Mono.justOrEmpty(session.getUser().getDomainPart())
             .filter(domain -> !userSearchDisabledDomains.contains(domain))
-            .flatMapMany(domain -> userDAO.search(domain, query, limit))
+            .flatMapMany(domain -> userSearchLimitedDomains.contains(domain)
+                ? userDAO.retrieve(Username.of(query))
+                    .filter(user -> user.username().getDomainPart().map(domain::equals).orElse(false))
+                    .flux()
+                : userDAO.search(domain, query, limit))
             .map(this::toResponseDTO);
     }
 

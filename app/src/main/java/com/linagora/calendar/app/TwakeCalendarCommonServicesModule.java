@@ -136,4 +136,24 @@ public class TwakeCalendarCommonServicesModule extends AbstractModule {
         LOGGER.info("User search is disabled for domains: {}", disabledDomains.stream().map(Domain::asString).collect(Collectors.joining(", ")));
         return disabledDomains;
     }
+
+    @Provides
+    @Singleton
+    @Named("userSearchLimitedDomains")
+    Set<Domain> provideUserSearchLimitedDomains(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
+        org.apache.commons.configuration2.Configuration config = propertiesProvider.getConfiguration("configuration");
+        List<String> rawValues = config.getList(String.class, "user.search.limited.domains", List.of());
+
+        if (rawValues.isEmpty()) {
+            LOGGER.info("No user search limited domains configured");
+            return Set.of();
+        }
+
+        Set<Domain> limitedDomains = rawValues.stream()
+            .map(Domain::of)
+            .collect(Collectors.toUnmodifiableSet());
+
+        LOGGER.info("User search is limited to exact email match for domains: {}", limitedDomains.stream().map(Domain::asString).collect(Collectors.joining(", ")));
+        return limitedDomains;
+    }
 }
