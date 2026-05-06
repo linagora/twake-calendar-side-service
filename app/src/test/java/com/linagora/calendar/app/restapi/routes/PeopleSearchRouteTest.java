@@ -121,6 +121,7 @@ class PeopleSearchRouteTest {
     private static final String DOMAIN = "open-paas.ltd";
     private static final Domain DISABLED_DOMAIN_1 = Domain.of("twake.app");
     private static final Domain DISABLED_DOMAIN_2 = Domain.of("xyz.com");
+    private static final Domain LIMITED_DOMAIN = Domain.of("limited.example.com");
     private static final String PASSWORD = "secret";
     private static final Username USERNAME = Username.fromLocalPartWithDomain("bob", DOMAIN);
 
@@ -851,6 +852,108 @@ class PeopleSearchRouteTest {
                 assertThatJson(json)
                     .node("emailAddresses[0].value")
                     .isEqualTo("contact2@" + foreignDomain.asString()));
+    }
+
+    @Test
+    void shouldNotReturnUserWhenLimitedDomainAndQueryIsPartialEmail(TwakeCalendarGuiceServer server) {
+        CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
+        calendarDataProbe.addDomain(LIMITED_DOMAIN);
+
+        Username limitedUser = Username.fromLocalPartWithDomain("bob", LIMITED_DOMAIN.asString());
+        Username targetUser = Username.fromLocalPartWithDomain("alice", LIMITED_DOMAIN.asString());
+
+        calendarDataProbe.addUser(limitedUser, PASSWORD);
+        calendarDataProbe.addUser(targetUser, PASSWORD);
+
+        given()
+            .auth().preemptive()
+            .basic(limitedUser.asString(), PASSWORD)
+            .body("""
+                {
+                  "q": "alice",
+                  "objectTypes": ["user"],
+                  "limit": 10
+                }
+                """)
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .body("", hasSize(0));
+    }
+
+    @Test
+    void shouldReturnUserWhenLimitedDomainAndQueryIsExactEmail(TwakeCalendarGuiceServer server) {
+        CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
+        calendarDataProbe.addDomain(LIMITED_DOMAIN);
+
+        Username limitedUser = Username.fromLocalPartWithDomain("bob", LIMITED_DOMAIN.asString());
+        Username targetUser = Username.fromLocalPartWithDomain("alice", LIMITED_DOMAIN.asString());
+
+        calendarDataProbe.addUser(limitedUser, PASSWORD);
+        calendarDataProbe.addUser(targetUser, PASSWORD);
+
+        String response = given()
+            .auth().preemptive()
+            .basic(limitedUser.asString(), PASSWORD)
+            .body("""
+                {
+                  "q": "%s",
+                  "objectTypes": ["user"],
+                  "limit": 10
+                }
+                """.formatted(targetUser.asString()))
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response)
+            .isArray()
+            .anySatisfy(json ->
+                assertThatJson(json)
+                    .node("emailAddresses[0].value")
+                    .isEqualTo(targetUser.asString()));
+    }
+
+    @Test
+    void shouldStillAutocompleteContactsWhenDomainIsLimited(TwakeCalendarGuiceServer server) {
+        CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
+        calendarDataProbe.addDomain(LIMITED_DOMAIN);
+
+        Username limitedUser = Username.fromLocalPartWithDomain("bob", LIMITED_DOMAIN.asString());
+        calendarDataProbe.addUser(limitedUser, PASSWORD);
+
+        MemoryAutoCompleteModule.Probe autoCompleteProbe = server.getProbe(MemoryAutoCompleteModule.Probe.class);
+        autoCompleteProbe.add(limitedUser.asString(), "alice@domain.tld", "alice", "contact");
+
+        String response = given()
+            .auth().preemptive()
+            .basic(limitedUser.asString(), PASSWORD)
+            .body("""
+                {
+                  "q": "alice",
+                  "objectTypes": ["contact"],
+                  "limit": 10
+                }
+                """)
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response)
+            .isArray()
+            .anySatisfy(json ->
+                assertThatJson(json)
+                    .node("emailAddresses[0].value")
+                    .isEqualTo("alice@domain.tld"));
     }
 
     @Test
