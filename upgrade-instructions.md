@@ -2,7 +2,11 @@
 
 This document describes breaking changes and migration steps required when upgrading to newer versions of Twake Calendar.
 
-## [UNRELEASED]
+## 2.1.0 
+
+This version is a rolling update from 2.0.0
+
+## Previous versions
 
 ### Changed document ID computation for OpenSearch indexing
 
