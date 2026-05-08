@@ -19,6 +19,7 @@
 package com.linagora.calendar.webadmin;
 
 import java.util.Optional;
+import java.util.function.Predicate;
 
 import jakarta.inject.Inject;
 
@@ -41,6 +42,7 @@ import com.linagora.calendar.storage.exception.DomainNotFoundException;
 import com.linagora.calendar.storage.exception.UserConflictException;
 import com.linagora.calendar.storage.exception.UserNotFoundException;
 
+import reactor.core.publisher.Mono;
 import spark.Request;
 import spark.Response;
 import spark.Service;
@@ -75,6 +77,7 @@ public class DomainRegisteredUsersRoutes implements Routes {
         service.post(USERS_PATH, this::addUser);
         service.head(USERS_PATH, this::headUser);
         service.patch(USERS_PATH, this::updateUser, jsonTransformer);
+        service.delete(USERS_PATH, this::deleteUser);
     }
 
     private Object getUsers(Request request, Response response) {
@@ -84,12 +87,8 @@ public class DomainRegisteredUsersRoutes implements Routes {
             String email = request.queryParams("email");
             Username username = Username.of(email);
 
-            if (!username.getDomainPart().map(domain::equals).orElse(false)) {
-                throw ErrorResponder.builder()
-                    .statusCode(HttpStatus.NOT_FOUND_404)
-                    .type(ErrorResponder.ErrorType.NOT_FOUND)
-                    .message("User does not exist")
-                    .haltError();
+            if (!userBelongsToDomain(domain).test(username)) {
+                throw userDoesNotExist();
             }
 
             OpenPaaSUser user = userDAO.retrieve(username).blockOptional()
@@ -145,16 +144,51 @@ public class DomainRegisteredUsersRoutes implements Routes {
     private boolean userExistsInDomain(CalendarUserRoutes.HeadUserRequest headUserRequest, Domain domain) {
         if (CalendarUserRoutes.Identifier.EMAIL.equals(headUserRequest.identifier())) {
             Username username = Username.of(headUserRequest.value());
-            if (!username.getDomainPart().map(domain::equals).orElse(false)) {
+            if (!userBelongsToDomain(domain).test(username)) {
                 return false;
             }
             return userDAO.retrieve(username).blockOptional().isPresent();
         } else {
             return userDAO.retrieve(new OpenPaaSId(headUserRequest.value()))
                 .blockOptional()
-                .filter(user -> user.username().getDomainPart().map(domain::equals).orElse(false))
+                .filter(user -> userBelongsToDomain(domain).test(user.username()))
                 .isPresent();
         }
+    }
+
+    private String deleteUser(Request request, Response response) {
+        Domain domain = asDomain(request);
+
+        Username deletedUser = Optional.ofNullable(request.queryParams("email"))
+            .filter(StringUtils::isNotBlank)
+            .map(Username::of)
+            .orElseThrow(() -> ErrorResponder.builder()
+                .statusCode(HttpStatus.BAD_REQUEST_400)
+                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                .message("Missing 'email' query parameter")
+                .haltError());
+
+        return Mono.just(deletedUser)
+            .filter(userBelongsToDomain(domain))
+            .switchIfEmpty(Mono.error(this::userDoesNotExist))
+            .flatMap(username -> userDAO.retrieve(username)
+                .switchIfEmpty(Mono.error(this::userDoesNotExist))
+                .then(userDAO.delete(username)))
+            .doOnSuccess(any -> response.status(HttpStatus.NO_CONTENT_204))
+            .thenReturn(Constants.EMPTY_BODY)
+            .block();
+    }
+
+    private static Predicate<Username> userBelongsToDomain(Domain domain) {
+        return username -> username.getDomainPart().map(domain::equals).orElse(false);
+    }
+
+    private RuntimeException userDoesNotExist() {
+        return ErrorResponder.builder()
+            .statusCode(HttpStatus.NOT_FOUND_404)
+            .type(ErrorResponder.ErrorType.NOT_FOUND)
+            .message("User does not exist")
+            .haltError();
     }
 
     private String updateUser(Request request, Response response) throws JsonExtractException {
@@ -194,7 +228,7 @@ public class DomainRegisteredUsersRoutes implements Routes {
     }
 
     private void validateEmailDomain(Username username, Domain domain) {
-        if (!username.getDomainPart().map(domain::equals).orElse(false)) {
+        if (!userBelongsToDomain(domain).test(username)) {
             throw ErrorResponder.builder()
                 .statusCode(HttpStatus.BAD_REQUEST_400)
                 .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
@@ -211,7 +245,7 @@ public class DomainRegisteredUsersRoutes implements Routes {
                 .message("User with id " + id + " not found")
                 .haltError());
 
-        if (!existing.username().getDomainPart().map(domain::equals).orElse(false)) {
+        if (!userBelongsToDomain(domain).test(existing.username())) {
             throw ErrorResponder.builder()
                 .statusCode(HttpStatus.NOT_FOUND_404)
                 .type(ErrorResponder.ErrorType.NOT_FOUND)

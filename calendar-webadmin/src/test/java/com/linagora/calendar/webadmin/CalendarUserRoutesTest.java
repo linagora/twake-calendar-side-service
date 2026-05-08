@@ -387,6 +387,65 @@ class CalendarUserRoutesTest {
     }
 
     @Test
+    void deleteUserShouldRemoveUser() {
+        userDAO.add(Username.of("james@linagora.com"), "James", "Bond").block();
+
+        given()
+            .queryParam("email", "james@linagora.com")
+        .when()
+            .delete()
+        .then()
+            .statusCode(204);
+
+        given()
+            .queryParam("email", "james@linagora.com")
+        .when()
+            .head()
+        .then()
+            .statusCode(404);
+    }
+
+    @Test
+    void deleteUserShouldReturn404WhenUserDoesNotExist() {
+        given()
+            .queryParam("email", "unknown@linagora.com")
+        .when()
+            .delete()
+        .then()
+            .statusCode(404)
+            .body("message", equalTo("User does not exist"));
+    }
+
+    @Test
+    void deleteUserShouldReturn400WhenEmailMissing() {
+        when()
+            .delete()
+        .then()
+            .statusCode(400)
+            .body("message", equalTo("Missing 'email' query parameter"));
+    }
+
+    @Test
+    void deleteUserShouldNotAffectOtherUsers() {
+        userDAO.add(Username.of("james@linagora.com"), "James", "Bond").block();
+        userDAO.add(Username.of("other@linagora.com"), "Other", "User").block();
+
+        given()
+            .queryParam("email", "james@linagora.com")
+        .when()
+            .delete()
+        .then()
+            .statusCode(204);
+
+        given()
+            .queryParam("email", "other@linagora.com")
+        .when()
+            .head()
+        .then()
+            .statusCode(200);
+    }
+
+    @Test
     void postWithAddMissingFieldsActionShouldSubmitTask() {
         userDAO.add(Username.of("user1@linagora.com"), "User", "One").block();
         userDAO.add(Username.of("user2@linagora.com"), "User", "Two").block();
