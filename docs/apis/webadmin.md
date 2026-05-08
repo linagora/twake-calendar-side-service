@@ -65,13 +65,26 @@ POST /registeredUsers
 
 Returns 201 created status code.
 
-### Testing existance of a user
+### Testing existence of a user
 
 ```
 HEAD /registeredUsers?email=james@linagora.com
 ```
 
 Returns a status code of 200 if the user is registered, 400 instead.
+
+### Deleting a registered user
+
+```
+DELETE /registeredUsers?email=james@linagora.com
+```
+
+Deletes the registered user matching the given email.
+
+Status codes:
+- 204 if deleted
+- 400 if the email query parameter is missing
+- 404 if the user does not exist
 
 ### Updating a user registration
 
@@ -545,6 +558,19 @@ Status codes:
 - 400 if required fields are missing
 - 404 if the user does not exist or belongs to another domain
 - 409 if the new email is already taken
+
+### Deleting a user within a domain
+
+```
+DELETE /domains/linagora.com/registeredUsers?email=james@linagora.com
+```
+
+Deletes the registered user matching the given email when the user belongs to the domain in the URL.
+
+Status codes:
+- 204 if deleted
+- 400 if the domain name is malformed or the email query parameter is missing
+- 404 if the domain does not exist, the user does not exist, or the user belongs to another domain
 
 ## Domain admins routes
 

@@ -427,4 +427,119 @@ class DomainRegisteredUsersRoutesTest {
         .then()
             .statusCode(409);
     }
+
+    @Test
+    void deleteShouldRemoveUserInDomain() {
+        domainDAO.add(Domain.of("linagora.com")).block();
+        userDAO.add(Username.of("james@linagora.com"), "James", "Bond").block();
+
+        given()
+            .queryParam("email", "james@linagora.com")
+        .when()
+            .delete("/domains/linagora.com/registeredUsers")
+        .then()
+            .statusCode(204);
+
+        given()
+            .queryParam("email", "james@linagora.com")
+        .when()
+            .head("/domains/linagora.com/registeredUsers")
+        .then()
+            .statusCode(404);
+    }
+
+    @Test
+    void deleteShouldReturn404WhenUserBelongsToOtherDomain() {
+        domainDAO.add(Domain.of("linagora.com")).block();
+        domainDAO.add(Domain.of("twake.app")).block();
+        userDAO.add(Username.of("james@twake.app"), "James", "Bond").block();
+
+        given()
+            .queryParam("email", "james@twake.app")
+        .when()
+            .delete("/domains/linagora.com/registeredUsers")
+        .then()
+            .statusCode(404);
+
+        given()
+            .queryParam("email", "james@twake.app")
+        .when()
+            .head("/domains/twake.app/registeredUsers")
+        .then()
+            .statusCode(200);
+    }
+
+    @Test
+    void deleteShouldReturn404WhenUserNotFound() {
+        domainDAO.add(Domain.of("linagora.com")).block();
+
+        given()
+            .queryParam("email", "unknown@linagora.com")
+        .when()
+            .delete("/domains/linagora.com/registeredUsers")
+        .then()
+            .statusCode(404)
+            .body("message", equalTo("User does not exist"));
+    }
+
+    @Test
+    void deleteShouldReturn400WhenEmailMissing() {
+        domainDAO.add(Domain.of("linagora.com")).block();
+
+        when()
+            .delete("/domains/linagora.com/registeredUsers")
+        .then()
+            .statusCode(400)
+            .body("message", equalTo("Missing 'email' query parameter"));
+    }
+
+    @Test
+    void deleteShouldReturn404WhenDomainNotFound() {
+        given()
+            .queryParam("email", "james@notfound.com")
+        .when()
+            .delete("/domains/notfound.com/registeredUsers")
+        .then()
+            .statusCode(404);
+    }
+
+    @Test
+    void deleteShouldReturn400WhenDomainMalformed() {
+        given()
+            .queryParam("email", "james@bad@domain")
+        .when()
+            .delete("/domains/bad@domain/registeredUsers")
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
+    void deleteShouldNotAffectOtherUsers() {
+        domainDAO.add(Domain.of("linagora.com")).block();
+        domainDAO.add(Domain.of("twake.app")).block();
+        userDAO.add(Username.of("james@linagora.com"), "James", "Bond").block();
+        userDAO.add(Username.of("other@linagora.com"), "Other", "User").block();
+        userDAO.add(Username.of("other@twake.app"), "Other", "Domain").block();
+
+        given()
+            .queryParam("email", "james@linagora.com")
+        .when()
+            .delete("/domains/linagora.com/registeredUsers")
+        .then()
+            .statusCode(204);
+
+        given()
+            .queryParam("email", "other@linagora.com")
+        .when()
+            .head("/domains/linagora.com/registeredUsers")
+        .then()
+            .statusCode(200);
+
+        given()
+            .queryParam("email", "other@twake.app")
+        .when()
+            .head("/domains/twake.app/registeredUsers")
+        .then()
+            .statusCode(200);
+    }
 }

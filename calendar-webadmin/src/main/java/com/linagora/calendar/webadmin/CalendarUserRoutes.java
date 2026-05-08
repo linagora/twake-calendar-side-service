@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.webadmin;
 
+import java.util.Optional;
+
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
@@ -41,6 +43,7 @@ import com.linagora.calendar.storage.exception.UserConflictException;
 import com.linagora.calendar.storage.exception.UserNotFoundException;
 import com.linagora.calendar.webadmin.task.AddMissingFieldsTask;
 
+import reactor.core.publisher.Mono;
 import spark.Request;
 import spark.Response;
 import spark.Service;
@@ -120,6 +123,8 @@ public class CalendarUserRoutes implements Routes {
         service.head(BASE_PATH, this::headUser);
 
         service.patch(BASE_PATH, this::updateUser, jsonTransformer);
+
+        service.delete(BASE_PATH, this::deleteUser);
     }
 
     private Object getUsers(Request request, Response response) {
@@ -214,6 +219,28 @@ public class CalendarUserRoutes implements Routes {
         } else {
             return userDAO.retrieve(new OpenPaaSId(headUserRequest.value())).blockOptional().isPresent();
         }
+    }
+
+    private String deleteUser(Request request, Response response) {
+        Username deletedUser = Optional.ofNullable(request.queryParams("email"))
+            .filter(StringUtils::isNotBlank)
+            .map(Username::of)
+            .orElseThrow(() -> ErrorResponder.builder()
+                .statusCode(HttpStatus.BAD_REQUEST_400)
+                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                .message("Missing 'email' query parameter")
+                .haltError());
+
+        return userDAO.retrieve(deletedUser)
+            .switchIfEmpty(Mono.error(() -> ErrorResponder.builder()
+                .statusCode(HttpStatus.NOT_FOUND_404)
+                .type(ErrorResponder.ErrorType.NOT_FOUND)
+                .message("User does not exist")
+                .haltError()))
+            .then(userDAO.delete(deletedUser))
+            .doOnSuccess(any -> response.status(HttpStatus.NO_CONTENT_204))
+            .thenReturn(Constants.EMPTY_BODY)
+            .block();
     }
 
     private String updateUser(Request request, Response response) throws JsonExtractException {
