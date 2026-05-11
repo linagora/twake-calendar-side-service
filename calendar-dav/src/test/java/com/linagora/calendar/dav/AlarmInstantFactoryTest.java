@@ -1163,6 +1163,121 @@ public class AlarmInstantFactoryTest {
         }
 
         @Test
+        void shouldUseNewestDtStampWhenRecurringOverridesHaveSameRecurrenceId() {
+            String ics = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:duplicate-recurrence-id
+                DTSTART:20260511T093000Z
+                DTEND:20260511T103000Z
+                RRULE:FREQ=DAILY;COUNT=1
+                ATTENDEE;PARTSTAT=ACCEPTED:mailto:jane@example.com
+                BEGIN:VALARM
+                ACTION:EMAIL
+                ATTENDEE:mailto:jane@example.com
+                TRIGGER:-PT15M
+                END:VALARM
+                END:VEVENT
+                BEGIN:VEVENT
+                UID:duplicate-recurrence-id
+                DTSTART:20260511T093000Z
+                DTEND:20260511T103000Z
+                RECURRENCE-ID:20260511T093000Z
+                SEQUENCE:2
+                DTSTAMP:20260510T182419Z
+                ATTENDEE;PARTSTAT=DECLINED:mailto:jane@example.com
+                BEGIN:VALARM
+                ACTION:EMAIL
+                ATTENDEE:mailto:jane@example.com
+                TRIGGER:-PT15M
+                END:VALARM
+                END:VEVENT
+                BEGIN:VEVENT
+                UID:duplicate-recurrence-id
+                DTSTART:20260511T093000Z
+                DTEND:20260511T103000Z
+                RECURRENCE-ID:20260511T093000Z
+                SEQUENCE:1
+                DTSTAMP:20260510T182440Z
+                ATTENDEE;PARTSTAT=ACCEPTED:mailto:jane@example.com
+                BEGIN:VALARM
+                ACTION:EMAIL
+                ATTENDEE:mailto:jane@example.com
+                TRIGGER:-PT15M
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """;
+
+            Optional<AlarmInstant> result = testee(Instant.parse("2026-05-10T00:00:00Z"))
+                .computeNextAlarmInstant(CalendarUtil.parseIcs(ics), Username.of("jane@example.com"));
+
+            assertThat(result)
+                .describedAs("The override with the latest DTSTAMP should win, even when its SEQUENCE is lower")
+                .isPresent()
+                .get()
+                .extracting(AlarmInstant::alarmTime)
+                .isEqualTo(Instant.parse("2026-05-11T09:15:00Z"));
+        }
+
+        @Test
+        void shouldUseNewestSequenceWhenDuplicateRecurringOverridesHaveSameDtStamp() {
+            String ics = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:duplicate-recurrence-id-same-dtstamp
+                DTSTART:20260511T093000Z
+                DTEND:20260511T103000Z
+                RRULE:FREQ=DAILY;COUNT=1
+                ATTENDEE;PARTSTAT=ACCEPTED:mailto:jane@example.com
+                BEGIN:VALARM
+                ACTION:EMAIL
+                ATTENDEE:mailto:jane@example.com
+                TRIGGER:-PT15M
+                END:VALARM
+                END:VEVENT
+                BEGIN:VEVENT
+                UID:duplicate-recurrence-id-same-dtstamp
+                DTSTART:20260511T093000Z
+                DTEND:20260511T103000Z
+                RECURRENCE-ID:20260511T093000Z
+                SEQUENCE:1
+                DTSTAMP:20260510T182440Z
+                ATTENDEE;PARTSTAT=ACCEPTED:mailto:jane@example.com
+                BEGIN:VALARM
+                ACTION:EMAIL
+                ATTENDEE:mailto:jane@example.com
+                TRIGGER:-PT15M
+                END:VALARM
+                END:VEVENT
+                BEGIN:VEVENT
+                UID:duplicate-recurrence-id-same-dtstamp
+                DTSTART:20260511T093000Z
+                DTEND:20260511T103000Z
+                RECURRENCE-ID:20260511T093000Z
+                SEQUENCE:2
+                DTSTAMP:20260510T182440Z
+                ATTENDEE;PARTSTAT=DECLINED:mailto:jane@example.com
+                BEGIN:VALARM
+                ACTION:EMAIL
+                ATTENDEE:mailto:jane@example.com
+                TRIGGER:-PT15M
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """;
+
+            Optional<AlarmInstant> result = testee(Instant.parse("2026-05-10T00:00:00Z"))
+                .computeNextAlarmInstant(CalendarUtil.parseIcs(ics), Username.of("jane@example.com"));
+
+            assertThat(result)
+                .describedAs("When DTSTAMP is equal, the override with the highest SEQUENCE should win")
+                .isEmpty();
+        }
+
+        @Test
         void shouldIterativelyReturnNextAlarmsAcrossMultipleVALARMsInRecurringEvent() {
             String ics = """
                 BEGIN:VCALENDAR

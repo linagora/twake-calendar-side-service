@@ -91,6 +91,9 @@ public interface AlarmInstantFactory {
             Comparator.comparing(AlarmInstant::alarmTime);
         private static final Comparator<VEvent> EARLIEST_FIRST_EVENT_COMPARATOR =
             Comparator.comparing(e -> EventParseUtils.getStartTime(e).toInstant());
+        private static final Comparator<VEvent> LATEST_OVERRIDE_EVENT_COMPARATOR =
+            Comparator.comparing(Default::extractDtStamp, Comparator.nullsFirst(Comparator.naturalOrder()))
+                .thenComparing(Default::extractSequence);
 
         private final Clock clock;
 
@@ -238,7 +241,8 @@ public interface AlarmInstantFactory {
 
             Map<Temporal, VEvent> overrideMap = overrideEvents.stream()
                 .collect(Collectors.toMap(event -> normalizeTemporal(event.getRecurrenceId().getDate()),
-                    Function.identity()));
+                    Function.identity(),
+                    Default::selectLatestOverride));
 
             Instant now = clock.instant();
             Predicate<Temporal> isAfterPredicate = temporal -> {
@@ -301,6 +305,20 @@ public interface AlarmInstantFactory {
             return EventParseUtils.temporalToZonedDateTime(temporal)
                 .map(ZonedDateTime::toInstant)
                 .orElseThrow(() -> new IllegalArgumentException("Cannot convert: " + temporal));
+        }
+
+        private static VEvent selectLatestOverride(VEvent first, VEvent second) {
+            return LATEST_OVERRIDE_EVENT_COMPARATOR.compare(first, second) >= 0 ? first : second;
+        }
+
+        private static Instant extractDtStamp(VEvent event) {
+            return event.getProperty(Property.DTSTAMP)
+                .flatMap(EventParseUtils::parseTimeAsInstant)
+                .orElse(null);
+        }
+
+        private static int extractSequence(VEvent event) {
+            return event.getSequence() == null ? 0 : event.getSequence().getSequenceNo();
         }
 
     }
