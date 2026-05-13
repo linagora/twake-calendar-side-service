@@ -21,14 +21,18 @@ package com.linagora.calendar.storage.mongodb;
 import java.util.List;
 import java.util.UUID;
 
-import org.apache.james.metrics.tests.RecordingMetricFactory;
 import org.bson.Document;
+import org.bson.UuidRepresentation;
 import org.junit.jupiter.api.extension.AfterAllCallback;
 import org.junit.jupiter.api.extension.AfterEachCallback;
 import org.junit.jupiter.api.extension.BeforeAllCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.testcontainers.containers.MongoDBContainer;
 
+import com.mongodb.ConnectionString;
+import com.mongodb.MongoClientSettings;
+import com.mongodb.reactivestreams.client.MongoClient;
+import com.mongodb.reactivestreams.client.MongoClients;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
 import reactor.core.publisher.Mono;
@@ -63,6 +67,9 @@ public class DockerMongoDBExtension implements BeforeAllCallback, AfterAllCallba
 
     @Override
     public void afterAll(ExtensionContext extensionContext) throws Exception {
+        if (mongoClient != null) {
+            mongoClient.close();
+        }
         mongoDBContainer.stop();
     }
 
@@ -84,11 +91,22 @@ public class DockerMongoDBExtension implements BeforeAllCallback, AfterAllCallba
     }
 
     private static MongoDatabase db;
+    private static MongoClient mongoClient;
 
     static void init() {
         mongoDBConfiguration = new MongoDBConfiguration(mongoDBContainer.getConnectionString() + "/?socketTimeoutMS=3000", "esn_docker");
-        db = MongoDBConnectionFactory.instantiateDB(mongoDBConfiguration, new RecordingMetricFactory());
+        mongoClient = instantiateClient(mongoDBConfiguration);
+        db = mongoClient.getDatabase(mongoDBConfiguration.database());
         MongoDBCollectionFactory.initialize(db);
+    }
+
+    private static MongoClient instantiateClient(MongoDBConfiguration configuration) {
+        MongoClientSettings settings = MongoClientSettings.builder()
+            .applyConnectionString(new ConnectionString(configuration.mongoURL()))
+            .uuidRepresentation(UuidRepresentation.STANDARD)
+            .build();
+
+        return MongoClients.create(settings);
     }
 
     public static MongoDBConfiguration getMongoDBConfiguration() {

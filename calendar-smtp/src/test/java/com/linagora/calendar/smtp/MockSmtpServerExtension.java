@@ -25,8 +25,8 @@ import org.apache.james.util.Host;
 import org.apache.james.util.docker.DockerContainer;
 import org.apache.james.util.docker.Images;
 import org.junit.jupiter.api.extension.AfterAllCallback;
-import org.junit.jupiter.api.extension.AfterEachCallback;
 import org.junit.jupiter.api.extension.BeforeAllCallback;
+import org.junit.jupiter.api.extension.BeforeEachCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.extension.ParameterContext;
 import org.junit.jupiter.api.extension.ParameterResolutionException;
@@ -35,7 +35,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.wait.strategy.Wait;
 
-public class MockSmtpServerExtension implements AfterEachCallback, BeforeAllCallback,
+public class MockSmtpServerExtension implements BeforeEachCallback, BeforeAllCallback,
     AfterAllCallback, ParameterResolver {
 
     public static class DockerMockSmtp {
@@ -90,7 +90,11 @@ public class MockSmtpServerExtension implements AfterEachCallback, BeforeAllCall
     }
 
     @Override
-    public void afterEach(ExtensionContext extensionContext) throws Exception {
+    public void beforeEach(ExtensionContext extensionContext) throws Exception {
+        clear();
+    }
+
+    public void clear() {
         dockerMockSmtp.getConfigurationClient()
             .cleanServer();
     }
