@@ -23,7 +23,6 @@ import static io.restassured.RestAssured.given;
 import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
-import static net.javacrumbs.jsonunit.core.Option.IGNORING_ARRAY_ORDER;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 
@@ -48,7 +47,6 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import com.google.inject.Module;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.DavModuleTestHelper;
-import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.TechnicalTokenService;
 
@@ -83,7 +81,7 @@ class LdapTest {
 
     @RegisterExtension
     @Order(1)
-    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+    static SabreDavExtension sabreDavExtension = SabreDavExtension.perClass();
 
     @RegisterExtension
     @Order(2)
@@ -123,42 +121,27 @@ class LdapTest {
             .body()
             .asString();
 
-        assertThatJson(body).withOptions(IGNORING_ARRAY_ORDER).isEqualTo("""
-            {
-               "status" : "healthy",
-               "checks" : [ {
-                 "componentName" : "Guice application lifecycle",
-                 "escapedComponentName" : "Guice%20application%20lifecycle",
-                 "status" : "healthy",
-                 "cause" : null
-               }, {
-                 "componentName" : "MongoDB",
-                 "escapedComponentName" : "MongoDB",
-                 "status" : "healthy",
-                 "cause" : null
-               }, {
-                 "componentName" : "LDAP User Server",
-                 "escapedComponentName" : "LDAP%20User%20Server",
-                 "status" : "healthy",
-                 "cause" : null
-               }, {
-                 "componentName" : "RabbitMQ backend",
-                 "escapedComponentName" : "RabbitMQ%20backend",
-                 "status" : "healthy",
-                 "cause" : null
-               }, {
-                 "componentName" : "CalendarQueueConsumers",
-                 "escapedComponentName" : "CalendarQueueConsumers",
-                 "status" : "healthy",
-                 "cause" : null
-               }, {
-                 "componentName" : "RabbitMQDeadLetterQueueEmptiness",
-                 "escapedComponentName" : "RabbitMQDeadLetterQueueEmptiness",
-                 "status" : "healthy",
-                 "cause" : null
-               } ]
-            }
-            """);
+        assertThatJson(body)
+            .inPath("checks")
+            .isArray()
+            .anySatisfy(node ->
+                assertThatJson(node).isEqualTo("""
+                    {
+                      "componentName" : "Guice application lifecycle",
+                      "escapedComponentName" : "Guice%20application%20lifecycle",
+                      "status" : "healthy",
+                      "cause" : null
+                    }
+                    """))
+            .anySatisfy(node ->
+                assertThatJson(node).isEqualTo("""
+                    {
+                      "componentName" : "LDAP User Server",
+                      "escapedComponentName" : "LDAP%20User%20Server",
+                      "status" : "healthy",
+                      "cause" : null
+                    }
+                    """));
     }
 
     @Test

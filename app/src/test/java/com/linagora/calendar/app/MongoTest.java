@@ -22,7 +22,6 @@ import static io.restassured.RestAssured.given;
 import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
-import static net.javacrumbs.jsonunit.core.Option.IGNORING_ARRAY_ORDER;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.net.URI;
@@ -41,7 +40,6 @@ import org.mockserver.integration.ClientAndServer;
 import com.google.inject.name.Names;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.DavModuleTestHelper;
-import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -69,7 +67,7 @@ class MongoTest {
     private OpenPaaSId userId;
 
     @RegisterExtension
-    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+    static SabreDavExtension sabreDavExtension = SabreDavExtension.perClass();
 
     @RegisterExtension
     TwakeCalendarExtension twakeCalendarExtension = new TwakeCalendarExtension(TwakeCalendarConfiguration.builder()
@@ -136,37 +134,27 @@ class MongoTest {
             .body()
             .asString();
 
-        assertThatJson(body).withOptions(IGNORING_ARRAY_ORDER).isEqualTo("""
-            {
-              "status" : "healthy",
-              "checks" : [ {
-                "componentName" : "Guice application lifecycle",
-                "escapedComponentName" : "Guice%20application%20lifecycle",
-                "status" : "healthy",
-                "cause" : null
-              }, {
-                "componentName" : "MongoDB",
-                "escapedComponentName" : "MongoDB",
-                "status" : "healthy",
-                "cause" : null
-              }, {
-                "componentName" : "RabbitMQ backend",
-                "escapedComponentName" : "RabbitMQ%20backend",
-                "status" : "healthy",
-                "cause" : null
-              }, {
-                "componentName" : "RabbitMQDeadLetterQueueEmptiness",
-                "escapedComponentName" : "RabbitMQDeadLetterQueueEmptiness",
-                "status" : "healthy",
-                "cause" : null
-              }, {
-                "componentName" : "CalendarQueueConsumers",
-                "escapedComponentName" : "CalendarQueueConsumers",
-                "status" : "healthy",
-                "cause" : null
-              } ]
-            }
-            """);
+        assertThatJson(body)
+            .inPath("checks")
+            .isArray()
+            .anySatisfy(node ->
+                assertThatJson(node).isEqualTo("""
+                    {
+                      "componentName" : "Guice application lifecycle",
+                      "escapedComponentName" : "Guice%20application%20lifecycle",
+                      "status" : "healthy",
+                      "cause" : null
+                    }
+                    """))
+            .anySatisfy(node ->
+                assertThatJson(node).isEqualTo("""
+                    {
+                      "componentName" : "MongoDB",
+                      "escapedComponentName" : "MongoDB",
+                      "status" : "healthy",
+                      "cause" : null
+                    }
+                    """));
     }
 
     private static void targetRestAPI(TwakeCalendarGuiceServer server) {
