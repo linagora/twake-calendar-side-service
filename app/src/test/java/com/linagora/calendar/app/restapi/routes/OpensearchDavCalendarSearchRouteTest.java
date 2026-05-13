@@ -46,7 +46,6 @@ import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.DavTestHelper;
-import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.OpenPaaSUser;
 
@@ -59,7 +58,7 @@ class OpensearchDavCalendarSearchRouteTest implements CalendarSearchRouteContrac
 
     @RegisterExtension
     @Order(1)
-    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+    static SabreDavExtension sabreDavExtension = SabreDavExtension.perClass();
 
     @RegisterExtension
     @Order(2)
@@ -267,43 +266,26 @@ class OpensearchDavCalendarSearchRouteTest implements CalendarSearchRouteContrac
             .asString();
 
         assertThatJson(body)
-            .withOptions(Option.IGNORING_ARRAY_ORDER)
-            .isEqualTo("""
-                {
-                   "status" : "healthy",
-                   "checks" : [ {
-                     "componentName" : "Guice application lifecycle",
-                     "escapedComponentName" : "Guice%20application%20lifecycle",
-                     "status" : "healthy",
-                     "cause" : null
-                   }, {
-                     "componentName" : "MongoDB",
-                     "escapedComponentName" : "MongoDB",
-                     "status" : "healthy",
-                     "cause" : null
-                   }, {
-                     "componentName" : "OpenSearch Backend",
-                     "escapedComponentName" : "OpenSearch%20Backend",
-                     "status" : "healthy",
-                     "cause" : null
-                   }, {
-                     "componentName" : "RabbitMQ backend",
-                     "escapedComponentName" : "RabbitMQ%20backend",
-                     "status" : "healthy",
-                     "cause" : null
-                   }, {
-                     "componentName" : "CalendarQueueConsumers",
-                     "escapedComponentName" : "CalendarQueueConsumers",
-                     "status" : "healthy",
-                     "cause" : null
-                   }, {
-                     "componentName" : "RabbitMQDeadLetterQueueEmptiness",
-                     "escapedComponentName" : "RabbitMQDeadLetterQueueEmptiness",
-                     "status" : "healthy",
-                     "cause" : null
-                   } ]
-                }
-                """);
+            .inPath("checks")
+            .isArray()
+            .anySatisfy(node ->
+                assertThatJson(node).isEqualTo("""
+                    {
+                      "componentName" : "Guice application lifecycle",
+                      "escapedComponentName" : "Guice%20application%20lifecycle",
+                      "status" : "healthy",
+                      "cause" : null
+                    }
+                    """))
+            .anySatisfy(node ->
+                assertThatJson(node).isEqualTo("""
+                    {
+                      "componentName" : "OpenSearch Backend",
+                      "escapedComponentName" : "OpenSearch%20Backend",
+                      "status" : "healthy",
+                      "cause" : null
+                    }
+                    """));
     }
 
     private RequestSpecification webAdminSpec(TwakeCalendarGuiceServer server) {

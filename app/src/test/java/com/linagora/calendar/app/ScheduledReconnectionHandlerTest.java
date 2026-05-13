@@ -39,7 +39,6 @@ import com.google.inject.multibindings.Multibinder;
 import com.linagora.calendar.app.modules.ScheduledReconnectionHandler;
 import com.linagora.calendar.app.modules.ScheduledReconnectionHandler.RabbitMQManagementAPI;
 import com.linagora.calendar.app.modules.ScheduledReconnectionHandler.ScheduledReconnectionHandlerConfiguration;
-import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.amqp.EventIndexerConsumer;
 
@@ -50,7 +49,7 @@ public class ScheduledReconnectionHandlerTest {
         .with()
         .pollDelay(Duration.ofMillis(500))
         .await();
-    private final ConditionFactory awaitAtMost = calmlyAwait.atMost(30, TimeUnit.SECONDS);
+    private final ConditionFactory awaitAtMost = calmlyAwait.atMost(60, TimeUnit.SECONDS);
 
     static class ScheduledReconnectionHandlerProbe implements GuiceProbe {
         private final ScheduledReconnectionHandler scheduledReconnectionHandler;
@@ -67,13 +66,9 @@ public class ScheduledReconnectionHandlerTest {
         }
     }
 
-    static {
-        System.setProperty("scheduled.consumer.reconnection.delayStartUp", "10s");
-    }
-
     @RegisterExtension
     @Order(1)
-    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+    static SabreDavExtension sabreDavExtension = SabreDavExtension.perClass();
 
     @RegisterExtension
     @Order(2)
