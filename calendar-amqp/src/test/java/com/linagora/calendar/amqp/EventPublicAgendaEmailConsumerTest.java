@@ -36,7 +36,6 @@ import java.nio.file.Paths;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.ZoneId;
-import java.util.Arrays;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Locale;
@@ -101,7 +100,6 @@ import io.restassured.specification.RequestSpecification;
 import net.fortuna.ical4j.model.parameter.PartStat;
 import reactor.core.publisher.Mono;
 import reactor.rabbitmq.OutboundMessage;
-import reactor.rabbitmq.QueueSpecification;
 import reactor.rabbitmq.Sender;
 
 public class EventPublicAgendaEmailConsumerTest {
@@ -178,8 +176,8 @@ public class EventPublicAgendaEmailConsumerTest {
                     LANGUAGE_IDENTIFIER, Locale.ENGLISH,
                     TIMEZONE_IDENTIFIER, ZoneId.of("Asia/Ho_Chi_Minh")))));
 
+        sabreDavExtension.deleteRabbitMQQueues(EventEmailConsumer.QUEUE_NAME, EventEmailConsumer.DEAD_LETTER_QUEUE);
         setupEventEmailConsumer();
-        clearSmtpMock();
     }
 
     @AfterEach
@@ -187,11 +185,6 @@ public class EventPublicAgendaEmailConsumerTest {
         if (consumer != null) {
             consumer.close();
         }
-
-        Arrays.stream(EventIndexerConsumer.Queue.values())
-            .map(EventIndexerConsumer.Queue::queueName)
-            .forEach(queueName -> sender.delete(QueueSpecification.queue().name(queueName)).block());
-
         Mockito.reset(settingsResolver);
         Mockito.reset(eventEmailFilter);
     }
@@ -250,11 +243,6 @@ public class EventPublicAgendaEmailConsumerTest {
         sender = channelPool.getSender();
     }
 
-    private void clearSmtpMock() {
-        given(mockSMTPRequestSpecification()).delete("/smtpMails").then();
-        given(mockSMTPRequestSpecification()).delete("/smtpBehaviors").then();
-    }
-
     static RequestSpecification mockSMTPRequestSpecification() {
         return new RequestSpecBuilder()
             .setPort(mockSmtpExtension.getMockSmtp().getRestApiPort())
@@ -283,7 +271,7 @@ public class EventPublicAgendaEmailConsumerTest {
         calmlyAwaitDuringNoEmail
             .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).isEmpty());
 
-        clearSmtpMock();
+        mockSmtpExtension.clear();
         String updatedCalendarData = generatePublicAgendaCalendar(eventUid, organizer.username().asString(),
             attendee.username().asString(), PartStat.ACCEPTED, UPDATED_SEQUENCE);
         davTestHelper.upsertCalendar(organizer, updatedCalendarData, eventUid);
@@ -320,7 +308,7 @@ public class EventPublicAgendaEmailConsumerTest {
         calmlyAwaitDuringNoEmail
             .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).isEmpty());
 
-        clearSmtpMock();
+        mockSmtpExtension.clear();
         String updatedCalendarData = generatePublicAgendaCalendar(eventUid, organizer.username().asString(),
             attendee.username().asString(), PartStat.NEEDS_ACTION, UPDATED_SEQUENCE);
         davTestHelper.upsertCalendar(organizer, updatedCalendarData, eventUid);
@@ -345,7 +333,7 @@ public class EventPublicAgendaEmailConsumerTest {
         calmlyAwaitDuringNoEmail
             .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).isEmpty());
 
-        clearSmtpMock();
+        mockSmtpExtension.clear();
         String updatedCalendarData = generatePublicAgendaCalendar(eventUid, organizer.username().asString(),
             attendee.username().asString(), PartStat.ACCEPTED, UPDATED_SEQUENCE);
         davTestHelper.upsertCalendar(organizer, updatedCalendarData, eventUid);
@@ -377,7 +365,7 @@ public class EventPublicAgendaEmailConsumerTest {
             .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).isEmpty());
 
         // When: organizer updates participation from NEEDS_ACTION to ACCEPTED.
-        clearSmtpMock();
+        mockSmtpExtension.clear();
         String updatedCalendarData = generatePublicAgendaCalendar(eventUid, organizer.username().asString(),
             attendee.username().asString(), PartStat.ACCEPTED, UPDATED_SEQUENCE, externalAttendeeEmail);
         davTestHelper.upsertCalendar(organizer, updatedCalendarData, eventUid);
@@ -415,7 +403,7 @@ public class EventPublicAgendaEmailConsumerTest {
             .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).isEmpty());
 
         // When: organizer accepts the booking.
-        clearSmtpMock();
+        mockSmtpExtension.clear();
         String updatedCalendarData = generatePublicAgendaCalendar(eventUid, organizer.username().asString(),
             attendee.username().asString(), PartStat.ACCEPTED, UPDATED_SEQUENCE, additionalAttendeeEmail);
         davTestHelper.upsertCalendar(organizer, updatedCalendarData, eventUid);

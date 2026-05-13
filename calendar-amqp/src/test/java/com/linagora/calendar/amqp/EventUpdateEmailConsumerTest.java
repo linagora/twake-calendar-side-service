@@ -37,7 +37,6 @@ import java.nio.file.Paths;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.ZoneId;
-import java.util.Arrays;
 import java.util.Base64;
 import java.util.Locale;
 import java.util.Map;
@@ -98,8 +97,6 @@ import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.path.json.JsonPath;
 import io.restassured.specification.RequestSpecification;
 import reactor.core.publisher.Mono;
-import reactor.rabbitmq.QueueSpecification;
-import reactor.rabbitmq.Sender;
 
 public class EventUpdateEmailConsumerTest {
     private final ConditionFactory calmlyAwait = Awaitility.with()
@@ -153,7 +150,7 @@ public class EventUpdateEmailConsumerTest {
 
     private OpenPaaSUser organizer;
     private OpenPaaSUser attendee;
-    private Sender sender;
+    private EventEmailConsumer consumer;
 
     @BeforeEach
     public void setUp() throws Exception {
@@ -166,18 +163,15 @@ public class EventUpdateEmailConsumerTest {
                     LANGUAGE_IDENTIFIER, Locale.ENGLISH,
                     TIMEZONE_IDENTIFIER, ZoneId.of("Asia/Ho_Chi_Minh")))));
 
+        sabreDavExtension.deleteRabbitMQQueues(EventEmailConsumer.QUEUE_NAME, EventEmailConsumer.DEAD_LETTER_QUEUE);
         setupEventEmailConsumer();
-        clearSmtpMock();
     }
 
     @AfterEach
     void afterEach() {
-        Arrays.stream(EventIndexerConsumer.Queue
-                .values())
-            .map(EventIndexerConsumer.Queue::queueName)
-            .forEach(queueName -> sender.delete(QueueSpecification.queue().name(queueName))
-                .block());
-
+        if (consumer != null) {
+            consumer.close();
+        }
         Mockito.reset(settingsResolver);
         Mockito.reset(eventEmailFilter);
     }
@@ -230,16 +224,10 @@ public class EventUpdateEmailConsumerTest {
             settingsResolver,
             actionLinkFactory);
 
-        EventEmailConsumer consumer = new EventEmailConsumer(channelPool, QueueArguments.Builder::new, mailHandler,
+        consumer = new EventEmailConsumer(channelPool, QueueArguments.Builder::new, mailHandler,
             eventEmailFilter, new RecordingMetricFactory());
         consumer.init();
 
-        sender = channelPool.getSender();
-    }
-
-    private void clearSmtpMock() {
-        given(mockSMTPRequestSpecification()).delete("/smtpMails").then();
-        given(mockSMTPRequestSpecification()).delete("/smtpBehaviors").then();
     }
 
     static RequestSpecification mockSMTPRequestSpecification() {
@@ -267,7 +255,7 @@ public class EventUpdateEmailConsumerTest {
         awaitAtMost.atMost(Duration.ofSeconds(20))
             .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
 
-        clearSmtpMock();
+        mockSmtpExtension.clear();
 
         String updatedCalendarData = generateCalendarData(
             eventUid,

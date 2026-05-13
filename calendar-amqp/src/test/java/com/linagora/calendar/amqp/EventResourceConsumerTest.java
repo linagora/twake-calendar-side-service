@@ -186,7 +186,6 @@ public class EventResourceConsumerTest {
                     LANGUAGE_IDENTIFIER, Locale.ENGLISH,
                     TIMEZONE_IDENTIFIER, ZoneId.of("Asia/Ho_Chi_Minh")))));
         setupEventResourceConsumer();
-        clearSmtpMock();
     }
 
     @AfterEach
@@ -247,11 +246,6 @@ public class EventResourceConsumerTest {
         consumer.init();
 
         sender = channelPool.getSender();
-    }
-
-    private void clearSmtpMock() {
-        given(mockSMTPRequestSpecification()).delete("/smtpMails").then();
-        given(mockSMTPRequestSpecification()).delete("/smtpBehaviors").then();
     }
 
     static RequestSpecification mockSMTPRequestSpecification() {

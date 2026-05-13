@@ -40,7 +40,6 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -79,7 +78,6 @@ import org.testcontainers.shaded.org.awaitility.Awaitility;
 import org.testcontainers.shaded.org.awaitility.core.ConditionFactory;
 
 import com.github.fge.lambdas.Throwing;
-import com.linagora.calendar.smtp.EventEmailFilter;
 import com.linagora.calendar.api.EventParticipationActionLinkFactory;
 import com.linagora.calendar.api.Participation;
 import com.linagora.calendar.api.ParticipationTokenSigner;
@@ -89,6 +87,7 @@ import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.Fixture;
 import com.linagora.calendar.dav.SabreDavExtension;
+import com.linagora.calendar.smtp.EventEmailFilter;
 import com.linagora.calendar.smtp.MailSender;
 import com.linagora.calendar.smtp.MailSenderConfiguration;
 import com.linagora.calendar.smtp.MockSmtpServerExtension;
@@ -113,8 +112,6 @@ import io.restassured.specification.RequestSpecification;
 import net.fortuna.ical4j.model.parameter.PartStat;
 import reactor.core.publisher.Mono;
 import reactor.rabbitmq.OutboundMessage;
-import reactor.rabbitmq.QueueSpecification;
-import reactor.rabbitmq.Sender;
 
 public class EventReplyEmailConsumerTest {
     private final ConditionFactory calmlyAwait = Awaitility.with()
@@ -170,7 +167,7 @@ public class EventReplyEmailConsumerTest {
     private MongoDBResourceDAO resourceDAO;
     private OpenPaaSUser organizer;
     private OpenPaaSUser attendee;
-    private Sender sender;
+    private EventEmailConsumer consumer;
 
     @BeforeEach
     public void setUp() throws Exception {
@@ -179,18 +176,15 @@ public class EventReplyEmailConsumerTest {
 
         when(settingsResolver.resolveOrDefault(any(Username.class), any(Username.class)))
             .thenReturn(Mono.just(SettingsBasedResolver.ResolvedSettings.DEFAULT));
+        sabreDavExtension.deleteRabbitMQQueues(EventEmailConsumer.QUEUE_NAME, EventEmailConsumer.DEAD_LETTER_QUEUE);
         setupEventEmailConsumer();
-        clearSmtpMock();
     }
 
     @AfterEach
     void afterEach() {
-        Arrays.stream(EventIndexerConsumer.Queue
-                .values())
-            .map(EventIndexerConsumer.Queue::queueName)
-            .forEach(queueName -> sender.delete(QueueSpecification.queue().name(queueName))
-                .block());
-
+        if (consumer != null) {
+            consumer.close();
+        }
         Mockito.reset(settingsResolver);
         Mockito.reset(eventEmailFilter);
     }
@@ -240,16 +234,10 @@ public class EventReplyEmailConsumerTest {
             settingsResolver,
             actionLinkFactory);
 
-        EventEmailConsumer consumer = new EventEmailConsumer(channelPool, QueueArguments.Builder::new, mailHandler,
+        consumer = new EventEmailConsumer(channelPool, QueueArguments.Builder::new, mailHandler,
             eventEmailFilter, new RecordingMetricFactory());
         consumer.init();
 
-        sender = channelPool.getSender();
-    }
-
-    private void clearSmtpMock() {
-        given(mockSMTPRequestSpecification()).delete("/smtpMails").then();
-        given(mockSMTPRequestSpecification()).delete("/smtpBehaviors").then();
     }
 
     static RequestSpecification mockSMTPRequestSpecification() {
