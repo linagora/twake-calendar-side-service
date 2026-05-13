@@ -36,7 +36,6 @@ import java.nio.file.Paths;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.ZoneId;
-import java.util.Arrays;
 import java.util.Base64;
 import java.util.Locale;
 import java.util.Map;
@@ -100,8 +99,6 @@ import io.restassured.path.json.JsonPath;
 import io.restassured.specification.RequestSpecification;
 import net.fortuna.ical4j.model.parameter.PartStat;
 import reactor.core.publisher.Mono;
-import reactor.rabbitmq.QueueSpecification;
-import reactor.rabbitmq.Sender;
 
 public class EventInviteEmailConsumerTest {
     static final boolean INTERNAL_USER = true;
@@ -158,7 +155,6 @@ public class EventInviteEmailConsumerTest {
 
     private OpenPaaSUser organizer;
     private OpenPaaSUser attendee;
-    private Sender sender;
     private UsersRepository usersRepository;
     private EventEmailConsumer consumer;
 
@@ -172,8 +168,8 @@ public class EventInviteEmailConsumerTest {
                 Map.of(
                     LANGUAGE_IDENTIFIER, Locale.ENGLISH,
                     TIMEZONE_IDENTIFIER, ZoneId.of("Asia/Ho_Chi_Minh")))));
+        sabreDavExtension.deleteRabbitMQQueues(EventEmailConsumer.QUEUE_NAME, EventEmailConsumer.DEAD_LETTER_QUEUE);
         setupEventEmailConsumer();
-        clearSmtpMock();
     }
 
     @AfterEach
@@ -181,13 +177,6 @@ public class EventInviteEmailConsumerTest {
         if (consumer != null) {
             consumer.close();
         }
-
-        Arrays.stream(EventIndexerConsumer.Queue
-                .values())
-            .map(EventIndexerConsumer.Queue::queueName)
-            .forEach(queueName -> sender.delete(QueueSpecification.queue().name(queueName))
-                .block());
-
         Mockito.reset(settingsResolver);
         Mockito.reset(eventEmailFilter);
     }
@@ -245,12 +234,6 @@ public class EventInviteEmailConsumerTest {
             eventEmailFilter, new RecordingMetricFactory());
         consumer.init();
 
-        sender = channelPool.getSender();
-    }
-
-    private void clearSmtpMock() {
-        given(mockSMTPRequestSpecification()).delete("/smtpMails").then();
-        given(mockSMTPRequestSpecification()).delete("/smtpBehaviors").then();
     }
 
     static RequestSpecification mockSMTPRequestSpecification() {

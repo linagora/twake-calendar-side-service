@@ -163,7 +163,6 @@ public class CalendarDelegatedNotificationConsumerTest {
             .thenReturn(Mono.just(new SettingsBasedResolver.ResolvedSettings(
                 Map.of(LANGUAGE_IDENTIFIER, Locale.ENGLISH))));
         setupConsumer();
-        clearSmtpMock();
     }
 
     @AfterEach
@@ -209,11 +208,6 @@ public class CalendarDelegatedNotificationConsumerTest {
     private final Supplier<JsonPath> smtpMailsResponseSupplier = () -> given(mockSMTPRequestSpecification())
         .get("/smtpMails")
         .jsonPath();
-
-    private void clearSmtpMock() {
-        given(mockSMTPRequestSpecification()).delete("/smtpMails").then();
-        given(mockSMTPRequestSpecification()).delete("/smtpBehaviors").then();
-    }
 
     static RequestSpecification mockSMTPRequestSpecification() {
         return new RequestSpecBuilder()
