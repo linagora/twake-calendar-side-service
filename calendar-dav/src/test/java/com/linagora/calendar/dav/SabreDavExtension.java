@@ -26,12 +26,13 @@
 
 package com.linagora.calendar.dav;
 
-import static com.linagora.calendar.dav.DockerSabreDavSetup.DockerService.MOCK_ESN;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static com.rabbitmq.client.BuiltinExchangeType.FANOUT;
-import static org.mockserver.model.HttpResponse.response;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 import javax.net.ssl.SSLException;
@@ -44,15 +45,10 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.extension.ParameterContext;
 import org.junit.jupiter.api.extension.ParameterResolutionException;
 import org.junit.jupiter.api.extension.ParameterResolver;
-import org.mockserver.client.MockServerClient;
-import org.mockserver.model.HttpRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.storage.OpenPaaSUser;
-import com.linagora.calendar.storage.TechnicalTokenService;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
@@ -67,37 +63,89 @@ import reactor.rabbitmq.RabbitFlux;
 import reactor.rabbitmq.Sender;
 import reactor.rabbitmq.SenderOptions;
 
-public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup) implements BeforeAllCallback, AfterAllCallback,
+public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup, DockerLifecycle dockerLifecycle) implements BeforeAllCallback, AfterAllCallback,
     AfterEachCallback, ParameterResolver {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(SabreDavExtension.class);
+    private static final String DEFAULT_VHOST = "%2F";
     private static final List<String> CLEANUP_COLLECTIONS = List.of(
         MongoDBOpenPaaSDomainDAO.COLLECTION,
         MongoDBOpenPaaSUserDAO.COLLECTION,
         MongoDBUploadedFileDAO.COLLECTION,
         MongoDBSecretLinkStore.COLLECTION,
         MongoDBResourceDAO.COLLECTION);
-    private static final ObjectMapper objectMapper = new ObjectMapper();
-    private static MockServerClient mockServerClient;
+
+    public enum DockerLifecycle {
+        SHARED {
+            @Override
+            void beforeAll(DockerSabreDavSetup dockerSabreDavSetup) {
+                dockerSabreDavSetup.start();
+                dockerSabreDavSetup.stopOnJvmExit();
+            }
+
+            @Override
+            void afterAll(DockerSabreDavSetup dockerSabreDavSetup) {
+            }
+        },
+        PER_CLASS {
+            @Override
+            void beforeAll(DockerSabreDavSetup dockerSabreDavSetup) {
+                dockerSabreDavSetup.start();
+            }
+
+            @Override
+            void afterAll(DockerSabreDavSetup dockerSabreDavSetup) {
+                dockerSabreDavSetup.stop();
+            }
+        };
+
+        abstract void beforeAll(DockerSabreDavSetup dockerSabreDavSetup);
+
+        abstract void afterAll(DockerSabreDavSetup dockerSabreDavSetup);
+    }
+
+    public SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup) {
+        this(dockerSabreDavSetup, DockerLifecycle.SHARED);
+    }
+
+    public static SabreDavExtension shared() {
+        return new SabreDavExtension(DockerSabreDavSetup.SINGLETON, DockerLifecycle.SHARED);
+    }
+
+    public static SabreDavExtension perClass() {
+        return new SabreDavExtension(new DockerSabreDavSetup(), DockerLifecycle.PER_CLASS);
+    }
+
+    public SabreDavExtension {
+        Objects.requireNonNull(dockerSabreDavSetup);
+        Objects.requireNonNull(dockerLifecycle);
+        if (dockerLifecycle == DockerLifecycle.SHARED && dockerSabreDavSetup != DockerSabreDavSetup.SINGLETON) {
+            throw new IllegalArgumentException("SHARED requires DockerSabreDavSetup.SINGLETON. Use SabreDavExtension.perClass() for a dedicated stack.");
+        }
+        if (dockerLifecycle == DockerLifecycle.PER_CLASS && dockerSabreDavSetup == DockerSabreDavSetup.SINGLETON) {
+            throw new IllegalArgumentException("PER_CLASS requires a dedicated DockerSabreDavSetup. Use SabreDavExtension.perClass().");
+        }
+    }
 
     @Override
     public void beforeAll(ExtensionContext extensionContext) {
-        dockerSabreDavSetup.start();
-        mockServerClient = new MockServerClient(dockerSabreDavSetup.getHost(MOCK_ESN), dockerSabreDavSetup.getPort(MOCK_ESN));
+        dockerLifecycle.beforeAll(dockerSabreDavSetup);
         provisionQueueExchanges();
-        setupMockAuthenticationTokenEndpoint();
+        dockerSabreDavSetup.setupMockAuthenticationTokenEndpoint();
     }
 
     @Override
     public void afterAll(ExtensionContext extensionContext) {
-        if (mockServerClient != null) {
-            mockServerClient.close();
-        }
-        dockerSabreDavSetup.stop();
+        dockerLifecycle.afterAll(dockerSabreDavSetup);
     }
 
     @Override
     public void afterEach(ExtensionContext extensionContext) throws Exception {
+        cleanupMongoCollections();
+        provisionQueueExchanges();
+    }
+
+    private void cleanupMongoCollections() {
         MongoDatabase mongoDatabase = dockerSabreDavSetup.getMongoDB();
         for (String collection : CLEANUP_COLLECTIONS) {
             Mono.from(mongoDatabase.getCollection(collection).deleteMany(new Document())).block();
@@ -127,23 +175,6 @@ public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup) impleme
         return openPaasUser;
     }
 
-    private void setupMockAuthenticationTokenEndpoint() {
-        mockServerClient
-            .when(HttpRequest.request()
-                .withMethod("GET")
-                .withPath("/api/technicalToken/introspect"))
-            .respond(httpRequest -> {
-                String token = httpRequest.getFirstHeader("X-TECHNICAL-TOKEN");
-                return response()
-                    .withStatusCode(200)
-                    .withHeader("Content-Type", "application/json")
-                    .withBody(TECHNICAL_TOKEN_SERVICE_TESTING.claim(new TechnicalTokenService.JwtToken(token))
-                        .map(Throwing.function(tokenInfo -> objectMapper.writeValueAsString(tokenInfo.data())))
-                        .onErrorResume(e -> Mono.just("error: " + e.getMessage()))
-                        .block());
-            });
-    }
-
     private void provisionQueueExchanges() {
         LOGGER.debug("Provisioning RabbitMQ exchanges...");
         try {
@@ -165,6 +196,33 @@ public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup) impleme
         } catch (Exception e) {
             throw new RuntimeException("Failed to provision RabbitMQ exchanges", e);
         }
+    }
+
+    public void deleteRabbitMQQueues(String... queueNames) {
+        for (String queueName : queueNames) {
+            deleteRabbitMQQueue(queueName);
+        }
+    }
+
+    private void deleteRabbitMQQueue(String queueName) {
+        dockerSabreDavSetup.rabbitmqAdminHttpclient()
+            .delete()
+            .uri("/api/queues/" + DEFAULT_VHOST + "/" + encode(queueName))
+            .responseSingle((response, body) -> {
+                int statusCode = response.status().code();
+                if (statusCode == 204 || statusCode == 404) {
+                    return Mono.empty();
+                }
+                return body.asString(StandardCharsets.UTF_8)
+                    .defaultIfEmpty("")
+                    .flatMap(errorBody -> Mono.error(new IllegalStateException(
+                        "Failed to delete RabbitMQ queue " + queueName + ": " + statusCode + " " + errorBody)));
+            })
+            .block();
+    }
+
+    private String encode(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
     public DavTestHelper davTestHelper() {

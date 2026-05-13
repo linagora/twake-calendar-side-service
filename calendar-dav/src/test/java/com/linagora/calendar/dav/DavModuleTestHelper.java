@@ -61,7 +61,7 @@ public class DavModuleTestHelper {
                 .maxRetries(3)
                 .minDelayInMs(10)
                 .connectionTimeoutInMs(100)
-                .channelRpcTimeoutInMs(100)
+                .channelRpcTimeoutInMs(5000)
                 .handshakeTimeoutInMs(100)
                 .shutdownTimeoutInMs(100)
                 .networkRecoveryIntervalInMs(100)

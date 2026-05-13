@@ -36,7 +36,6 @@ import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
-import com.mongodb.reactivestreams.client.MongoClients;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
 import reactor.core.publisher.Mono;
@@ -47,10 +46,6 @@ public class SabreDavProvisioningService {
 
     private final MongoDBOpenPaaSDomainDAO domainDAO;
     private final MongoDBOpenPaaSUserDAO userDAO;
-
-    public SabreDavProvisioningService(String mongoUri) {
-        this(MongoClients.create(mongoUri).getDatabase(DATABASE));
-    }
 
     public SabreDavProvisioningService(MongoDatabase database) {
         domainDAO = new MongoDBOpenPaaSDomainDAO(database);

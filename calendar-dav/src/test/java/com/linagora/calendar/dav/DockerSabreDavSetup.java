@@ -19,6 +19,9 @@
 
 package com.linagora.calendar.dav;
 
+import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
+import static org.mockserver.model.HttpResponse.response;
+
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -33,24 +36,35 @@ import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
 import org.apache.james.metrics.tests.RecordingMetricFactory;
+import org.bson.UuidRepresentation;
+import org.mockserver.client.MockServerClient;
+import org.mockserver.model.HttpRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.ComposeContainer;
 import org.testcontainers.containers.ContainerState;
 import org.testcontainers.containers.wait.strategy.Wait;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
+import com.linagora.calendar.storage.TechnicalTokenService;
 import com.linagora.calendar.storage.mongodb.MongoDBConfiguration;
-import com.linagora.calendar.storage.mongodb.MongoDBConnectionFactory;
+import com.linagora.calendar.storage.mongodb.MongoCommandMetricsListener;
+import com.mongodb.ConnectionString;
+import com.mongodb.MongoClientSettings;
+import com.mongodb.reactivestreams.client.MongoClient;
+import com.mongodb.reactivestreams.client.MongoClients;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
+import reactor.core.publisher.Mono;
 import reactor.netty.http.client.HttpClient;
 
 public class DockerSabreDavSetup {
     public static final DockerSabreDavSetup SINGLETON = new DockerSabreDavSetup();
 
     private static final Logger LOGGER = LoggerFactory.getLogger(DockerSabreDavSetup.class);
+    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     public enum DockerService {
         MOCK_ESN("esn", 1080),
@@ -82,6 +96,13 @@ public class DockerSabreDavSetup {
 
     private final ComposeContainer environment;
     private SabreDavProvisioningService sabreDavProvisioningService;
+    private MockServerClient mockServerClient;
+    private MongoClient mongoClient;
+    private MongoDatabase mongoDatabase;
+    private volatile boolean started;
+    private volatile boolean stopped;
+    private boolean mockAuthenticationTokenEndpointConfigured;
+    private volatile Thread shutdownHook;
 
     public DockerSabreDavSetup() {
         try {
@@ -103,20 +124,88 @@ public class DockerSabreDavSetup {
         }
     }
 
-    public void start() {
-        environment.start();
-        for (DockerService dockerService : DockerService.values()) {
-            LOGGER.debug("Started service: {} with mapping port: {}", dockerService.serviceName(), getPort(dockerService));
+    public synchronized void start() {
+        if (started) {
+            LOGGER.debug("Sabre DAV Docker Compose stack already started");
+            return;
         }
-        sabreDavProvisioningService = new SabreDavProvisioningService(getMongoDbIpAddress().toString());
+        Preconditions.checkState(!stopped, "DockerSabreDavSetup was already stopped and cannot be reused.");
+        
+        try {
+            environment.start();
+            for (DockerService dockerService : DockerService.values()) {
+                LOGGER.debug("Started service: {} with mapping port: {}", dockerService.serviceName(), getPort(dockerService));
+            }
+            mongoClient = newMongoClient();
+            mongoDatabase = mongoClient.getDatabase(SabreDavProvisioningService.DATABASE);
+            sabreDavProvisioningService = new SabreDavProvisioningService(mongoDatabase);
+            started = true;
+        } catch (RuntimeException e) {
+            stopNow();
+            throw e;
+        }
     }
 
     public void stop() {
+        stopNow();
+    }
+
+    private synchronized void stopNow() {
+        if (mockServerClient != null) {
+            mockServerClient.close();
+            mockServerClient = null;
+        }
+        mockAuthenticationTokenEndpointConfigured = false;
+        if (mongoClient != null) {
+            mongoClient.close();
+            mongoClient = null;
+            mongoDatabase = null;
+        }
         environment.stop();
+        sabreDavProvisioningService = null;
+        started = false;
+        stopped = true;
+    }
+
+    synchronized void stopOnJvmExit() {
+        if (shutdownHook == null) {
+            shutdownHook = new Thread(this::stopNow, "calendar-dav-docker-compose-shutdown");
+            Runtime.getRuntime().addShutdownHook(shutdownHook);
+        }
     }
 
     public ContainerState getRabbitMqContainer() {
         return environment.getContainerByServiceName(DockerService.RABBITMQ.serviceName()).orElseThrow();
+    }
+
+    public synchronized MockServerClient getMockServerClient() {
+        Preconditions.checkState(started, "Sabre DAV Docker Compose stack should be started before creating MockServerClient");
+        if (mockServerClient == null) {
+            mockServerClient = new MockServerClient(getHost(DockerService.MOCK_ESN), getPort(DockerService.MOCK_ESN));
+        }
+        return mockServerClient;
+    }
+
+    public synchronized void setupMockAuthenticationTokenEndpoint() {
+        if (mockAuthenticationTokenEndpointConfigured) {
+            return;
+        }
+
+        MockServerClient client = getMockServerClient();
+        client.when(HttpRequest.request()
+                .withMethod("GET")
+                .withPath("/api/technicalToken/introspect"))
+            .respond(httpRequest -> {
+                String token = httpRequest.getFirstHeader("X-TECHNICAL-TOKEN");
+                return response()
+                    .withStatusCode(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(TECHNICAL_TOKEN_SERVICE_TESTING.claim(new TechnicalTokenService.JwtToken(token))
+                        .map(Throwing.function(tokenInfo -> objectMapper.writeValueAsString(tokenInfo.data())))
+                        .onErrorResume(e -> Mono.just("error: " + e.getMessage()))
+                        .block());
+            });
+        mockAuthenticationTokenEndpointConfigured = true;
     }
 
     public URI rabbitMqUri() {
@@ -192,7 +281,18 @@ public class DockerSabreDavSetup {
     }
 
     public MongoDatabase getMongoDB() {
-        return MongoDBConnectionFactory.instantiateDB(mongoDBConfiguration(), new RecordingMetricFactory());
+        return Preconditions.checkNotNull(mongoDatabase, "MongoDB not initialized");
+    }
+
+    private MongoClient newMongoClient() {
+        MongoDBConfiguration configuration = mongoDBConfiguration();
+        MongoClientSettings settings = MongoClientSettings.builder()
+            .applyConnectionString(new ConnectionString(configuration.mongoURL()))
+            .addCommandListener(new MongoCommandMetricsListener(new RecordingMetricFactory()))
+            .uuidRepresentation(UuidRepresentation.STANDARD)
+            .build();
+
+        return MongoClients.create(settings);
     }
 
     public RabbitMQConfiguration rabbitMQConfiguration() {
@@ -203,7 +303,7 @@ public class DockerSabreDavSetup {
             .maxRetries(3)
             .minDelayInMs(10)
             .connectionTimeoutInMs(100)
-            .channelRpcTimeoutInMs(100)
+            .channelRpcTimeoutInMs(5000)
             .handshakeTimeoutInMs(100)
             .shutdownTimeoutInMs(100)
             .networkRecoveryIntervalInMs(100)
