@@ -101,6 +101,10 @@ class WebsocketRouteTest {
     private static final ConditionFactory NEGATIVE_AWAIT = await()
         .during(1, SECONDS)
         .pollInterval(200, MILLISECONDS);
+    private static final OkHttpClient WS_CLIENT = new OkHttpClient.Builder()
+        .connectTimeout(5, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
+        .build();
 
     static class EventBusProbe implements GuiceProbe {
         private final EventBus eventBus;
@@ -154,6 +158,9 @@ class WebsocketRouteTest {
     @AfterAll
     static void afterAll() {
         RestAssured.reset();
+        WS_CLIENT.dispatcher().cancelAll();
+        WS_CLIENT.connectionPool().evictAll();
+        WS_CLIENT.dispatcher().executorService().close();
     }
 
     private CalDavClient calDavClient;
@@ -186,9 +193,9 @@ class WebsocketRouteTest {
 
     @AfterEach
     void tearDown() {
-        if (webSocket != null) {
-            webSocket.close(1000, "test finished");
-        }
+        closeWebSocket(webSocket);
+        webSocket = null;
+        WS_CLIENT.dispatcher().cancelAll();
     }
 
     @Test
@@ -216,22 +223,24 @@ class WebsocketRouteTest {
     void websocketShouldRejectInvalidTicket() throws Exception {
         BlockingQueue<Throwable> errors = new LinkedBlockingQueue<>();
 
-        OkHttpClient client = new OkHttpClient.Builder().build();
-
         Request wsRequest = new Request.Builder()
             .url("ws://localhost:" + restApiPort + "/ws?ticket=INVALID")
             .build();
 
-        client.newWebSocket(wsRequest, new WebSocketListener() {
+        WebSocket invalidTicketWebSocket = WS_CLIENT.newWebSocket(wsRequest, new WebSocketListener() {
             @Override
             public void onFailure(@NotNull WebSocket webSocket, Throwable throwable, Response response) {
                 errors.offer(throwable);
             }
         });
 
-        Throwable result = errors.poll(3, TimeUnit.SECONDS);
-        assertThat(result)
-            .isNotNull();
+        try {
+            Throwable result = errors.poll(3, TimeUnit.SECONDS);
+            assertThat(result)
+                .isNotNull();
+        } finally {
+            closeWebSocket(invalidTicketWebSocket);
+        }
     }
 
     @Test
@@ -873,10 +882,12 @@ class WebsocketRouteTest {
         BlockingQueue<String> messages1 = new LinkedBlockingQueue<>();
         BlockingQueue<String> messages2 = new LinkedBlockingQueue<>();
 
-        WebSocket ws1 = connectWebSocket(restApiPort, generateTicket(bob), messages1);
-        WebSocket ws2 = connectWebSocket(restApiPort, generateTicket(bob), messages2);
-
+        WebSocket ws1 = null;
+        WebSocket ws2 = null;
         try {
+            ws1 = connectWebSocket(restApiPort, generateTicket(bob), messages1);
+            ws2 = connectWebSocket(restApiPort, generateTicket(bob), messages2);
+
             // And: both WS1 & WS2 register the same calendar
             ws1.send("""
                 { "register": ["%s"] }
@@ -925,8 +936,8 @@ class WebsocketRouteTest {
                     { "%s" : { "syncToken" : "${json-unit.ignore}" } }
                     """.formatted(calendarUri));
         } finally {
-            ws1.close(1000, "done");
-            ws2.close(1000, "done");
+            closeWebSocket(ws1);
+            closeWebSocket(ws2);
         }
     }
 
@@ -940,10 +951,12 @@ class WebsocketRouteTest {
         BlockingQueue<String> messages1 = new LinkedBlockingQueue<>();
         BlockingQueue<String> messages2 = new LinkedBlockingQueue<>();
 
-        WebSocket ws1 = connectWebSocket(restApiPort, generateTicket(bob), messages1);
-        WebSocket ws2 = connectWebSocket(restApiPort, generateTicket(bob), messages2);
-
+        WebSocket ws1 = null;
+        WebSocket ws2 = null;
         try {
+            ws1 = connectWebSocket(restApiPort, generateTicket(bob), messages1);
+            ws2 = connectWebSocket(restApiPort, generateTicket(bob), messages2);
+
             // And: WS1 registers calendar
             ws1.send("""
                 { "register": ["%s"] }
@@ -999,8 +1012,8 @@ class WebsocketRouteTest {
                     { "%s" : { "syncToken" : "${json-unit.ignore}" } }
                     """.formatted(calendarUri));
         } finally {
-            ws1.close(1000, "done");
-            ws2.close(1000, "done");
+            closeWebSocket(ws1);
+            closeWebSocket(ws2);
         }
     }
 
@@ -1179,10 +1192,12 @@ class WebsocketRouteTest {
         BlockingQueue<String> messages1 = new LinkedBlockingQueue<>();
         BlockingQueue<String> messages2 = new LinkedBlockingQueue<>();
 
-        WebSocket ws1 = connectWebSocket(restApiPort, generateTicket(bob), messages1);
-        WebSocket ws2 = connectWebSocket(restApiPort, generateTicket(bob), messages2);
-
+        WebSocket ws1 = null;
+        WebSocket ws2 = null;
         try {
+            ws1 = connectWebSocket(restApiPort, generateTicket(bob), messages1);
+            ws2 = connectWebSocket(restApiPort, generateTicket(bob), messages2);
+
             // WS1 enables display notification
             ws1.send("{\"enableDisplayNotification\": true}");
             awaitMessage(messages1, msg -> msg.contains("displayNotificationEnabled"));
@@ -1215,8 +1230,8 @@ class WebsocketRouteTest {
                         .noneSatisfy(msg -> assertThat(msg).contains("\"alarms\""));
                 });
         } finally {
-            ws1.close(1000, "done");
-            ws2.close(1000, "done");
+            closeWebSocket(ws1);
+            closeWebSocket(ws2);
         }
     }
 
@@ -1225,10 +1240,12 @@ class WebsocketRouteTest {
         BlockingQueue<String> messages1 = new LinkedBlockingQueue<>();
         BlockingQueue<String> messages2 = new LinkedBlockingQueue<>();
 
-        WebSocket ws1 = connectWebSocket(restApiPort, generateTicket(bob), messages1);
-        WebSocket ws2 = connectWebSocket(restApiPort, generateTicket(bob), messages2);
-
+        WebSocket ws1 = null;
+        WebSocket ws2 = null;
         try {
+            ws1 = connectWebSocket(restApiPort, generateTicket(bob), messages1);
+            ws2 = connectWebSocket(restApiPort, generateTicket(bob), messages2);
+
             // Both clients enable display notification
             ws1.send("{\"enableDisplayNotification\": true}");
             String ack1 = awaitMessage(messages1, msg -> msg.contains("displayNotificationEnabled"));
@@ -1259,8 +1276,8 @@ class WebsocketRouteTest {
                 .node("alarms[0].eventSummary")
                 .isStringEqualTo("Test Meeting");
         } finally {
-            ws1.close(1000, "done");
-            ws2.close(1000, "done");
+            closeWebSocket(ws1);
+            closeWebSocket(ws2);
         }
     }
 
@@ -1428,14 +1445,10 @@ class WebsocketRouteTest {
     }
 
     private WebSocket connectWebSocket(int port, String ticket, BlockingQueue<String> messages) {
-        OkHttpClient client = new OkHttpClient.Builder()
-            .connectTimeout(5, TimeUnit.SECONDS)
-            .readTimeout(10, TimeUnit.SECONDS)
-            .build();
         Request wsRequest = new Request.Builder()
             .url("ws://localhost:" + port + "/ws?ticket=" + ticket)
             .build();
-        WebSocket webSocket=  client.newWebSocket(wsRequest, new WebSocketListener() {
+        WebSocket webSocket = WS_CLIENT.newWebSocket(wsRequest, new WebSocketListener() {
             @Override
             public void onMessage(WebSocket webSocket, String text) {
                 messages.offer(text);
@@ -1445,6 +1458,14 @@ class WebsocketRouteTest {
         // warm up
         awaitMessage(messages, msg -> msg.contains("\"calendarListRegistered\""));
         return webSocket;
+    }
+
+    private void closeWebSocket(WebSocket webSocket) {
+        if (webSocket == null) {
+            return;
+        }
+        webSocket.close(1000, "test finished");
+        webSocket.cancel();
     }
 
     @Test
