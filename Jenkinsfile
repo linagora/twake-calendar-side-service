@@ -23,12 +23,48 @@ pipeline {
                 sh 'mkdir .build'
                 dir(".build") {
                     withCredentials([gitUsernamePassword(credentialsId: 'github')]) {
-                        sh 'git clone https://github.com/linagora/tmail-backend.git'
+                        sh 'git clone --depth 1 https://github.com/linagora/tmail-backend.git'
                     }
                     dir("tmail-backend") {
-                        sh 'git submodule init'
-                        sh 'git submodule update'
-                        sh 'mvn clean install -Dmaven.javadoc.skip=true -DskipTests -T1C'
+                        sh 'git submodule update --init --depth 1 james-project'
+                        script {
+                            def tmailBackendModules = [
+                                ':tmail-backend-parent',
+                                ':james-project',
+                                ':james-server-guice',
+                                ':logback-json-classic',
+                                ':tmail-saas-rabbitmq',
+                                ':jmap-extensions',
+                                ':apache-james-backends-opensearch',
+                                ':apache-james-backends-rabbitmq',
+                                ':apache-james-backends-redis',
+                                ':james-server-data-ldap',
+                                ':james-server-data-memory',
+                                ':james-server-guice-common',
+                                ':james-server-guice-data-ldap',
+                                ':james-server-guice-opensearch',
+                                ':james-server-guice-webadmin',
+                                ':james-server-testing',
+                                ':james-server-webadmin-data',
+                                ':mock-smtp-server',
+                                ':queue-rabbitmq-guice',
+                                ':testing-base',
+                                ':james-core',
+                                ':james-server-core',
+                                ':james-server-jwt',
+                                ':metrics-api',
+                                ':metrics-tests',
+                                ':event-bus-api',
+                                ':james-server-jmap',
+                                ':james-server-guice-configuration',
+                                ':james-server-webadmin-core',
+                                ':apache-james-mailbox-store',
+                                ':james-server-data-api',
+                                ':james-server-util'
+                            ].join(',')
+
+                            sh "mvn clean install -Dmaven.javadoc.skip=true -DskipTests -T1C -pl ${tmailBackendModules} -am"
+                        }
                     }
                 }
             }
