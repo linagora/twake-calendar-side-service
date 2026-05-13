@@ -229,6 +229,7 @@ public class EventFieldConverterTest {
             .organizer(EventFields.Person.of("John1 Doe1", "user1@open-paas.org"))
             .addAttendee(EventFields.Person.of("John2 Doe2", "user2@open-paas.org"))
             .addAttendee(EventFields.Person.of(null, "user1@open-paas.org"))
+            .resourceName("a0b5a363-e56f-490b-bfa7-89111b0fdd9b.ics")
             .build();
 
         assertThat(eventFieldsActual).isEqualTo(eventFieldsExpected);
@@ -1370,6 +1371,7 @@ public class EventFieldConverterTest {
             .dtStamp(Instant.parse("2025-05-14T06:08:28Z"))
             .organizer(EventFields.Person.of("John1 Doe1", "user1@open-paas.org"))
             .addAttendee(EventFields.Person.of(null, "user1@open-paas.org"))
+            .resourceName("87d9d3ab-e2f5-4613-8e9c-dbc11afa69e6.ics")
             .build();
 
         EventFields recurrenceEvent = EventFields.builder()
@@ -1385,6 +1387,7 @@ public class EventFieldConverterTest {
             .addAttendee(EventFields.Person.of("John1 Doe1", "user1@open-paas.org"))
             .dtStamp(Instant.parse("2025-05-14T06:08:28Z"))
             .sequence(1)
+            .resourceName("87d9d3ab-e2f5-4613-8e9c-dbc11afa69e6.ics")
             .build();
 
         assertThat(calendarEvents)
@@ -1580,6 +1583,7 @@ public class EventFieldConverterTest {
             .organizer(EventFields.Person.of("John1 Doe1", "user1@open-paas.org"))
             .addAttendee(EventFields.Person.of("John2 Doe2", "user2@open-paas.org"))
             .addAttendee(EventFields.Person.of(null, "user1@open-paas.org"))
+            .resourceName("a0b5a363-e56f-490b-bfa7-89111b0fdd9b.ics")
             .build();
 
         assertThat(eventFieldsActual).isEqualTo(eventFieldsExpected);
