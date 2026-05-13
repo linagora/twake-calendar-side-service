@@ -31,6 +31,8 @@ import org.junit.rules.TemporaryFolder;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Module;
 
+import io.restassured.RestAssured;
+
 public class TwakeCalendarExtension implements BeforeEachCallback, AfterEachCallback, ParameterResolver {
 
     private final TwakeCalendarConfiguration.Builder configuration;
@@ -53,8 +55,16 @@ public class TwakeCalendarExtension implements BeforeEachCallback, AfterEachCall
     }
 
     @Override
-    public void afterEach(ExtensionContext extensionContext){
-        temporaryFolder.delete();
+    public void afterEach(ExtensionContext extensionContext) {
+        try {
+            if (server != null) {
+                server.stop();
+            }
+        } finally {
+            RestAssured.reset();
+            temporaryFolder.delete();
+            server = null;
+        }
     }
 
     @Override
