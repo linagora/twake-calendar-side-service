@@ -71,7 +71,7 @@ pipeline {
         }
         stage('Compile') {
             steps {
-                sh 'mvn clean install -Dmaven.javadoc.skip=true -DskipTests -Djib.skip=true -T1C'
+                sh 'mvn clean install -Dmaven.javadoc.skip=true -DskipTests -T1C'
             }
         }
         stage('Test') {
@@ -104,7 +104,7 @@ pipeline {
 
               echo "Docker tag: ${env.DOCKER_TAG}"
 
-              sh 'mvn -B -pl app -DskipTests -Dmaven.javadoc.skip=true jib:dockerBuild'
+              sh 'docker load -i app/target/jib-image.tar'
               sh 'docker tag linagora/twake-calendar-side-service:latest linagora/twake-calendar-side-service:$DOCKER_TAG'
               sh 'docker login -u $DOCKER_HUB_CREDENTIAL_USR -p $DOCKER_HUB_CREDENTIAL_PSW'
               sh 'docker push linagora/twake-calendar-side-service:$DOCKER_TAG'
