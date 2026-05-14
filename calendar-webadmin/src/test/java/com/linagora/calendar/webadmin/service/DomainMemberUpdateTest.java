@@ -75,6 +75,80 @@ public class DomainMemberUpdateTest {
     }
 
     @Test
+    void computeShouldExtractGivenNameFromCommonNameWhenGivenNameIsMissing() {
+        // Given an LDAP user without givenName but with cn and sn
+        LdapUser ldap = LdapUser.builder()
+            .uid("uid123")
+            .cn("James User2")
+            .sn("User2")
+            .mail(mailAddress("james-user2@james.org"))
+            .telephoneNumber("123")
+            .build();
+
+        // When computing the CardDAV contact projection
+        DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(ldap), List.of());
+
+        // Then givenName is extracted from cn after removing sn, while displayName falls back to cn
+        assertThat(result.added())
+            .containsExactly(AddressBookContact.builder()
+                .uid("uid123")
+                .mail(mailAddress("james-user2@james.org"))
+                .familyName("User2")
+                .givenName("James")
+                .displayName("James User2")
+                .telephoneNumber("123")
+                .build());
+    }
+
+    @Test
+    void computeShouldFallbackDisplayNameToCommonNameWhenDisplayNameIsMissing() {
+        // Given an LDAP user without displayName but with cn
+        LdapUser ldap = LdapUser.builder()
+            .uid("uid123")
+            .cn("James User")
+            .sn("User")
+            .mail(mailAddress("james-user@james.org"))
+            .telephoneNumber("123")
+            .build();
+
+        // When computing the CardDAV contact projection
+        DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(ldap), List.of());
+
+        // Then displayName falls back to cn so the vCard formatted name remains readable
+        assertThat(result.added())
+            .containsExactly(AddressBookContact.builder()
+                .uid("uid123")
+                .mail(mailAddress("james-user@james.org"))
+                .familyName("User")
+                .givenName("James")
+                .displayName("James User")
+                .telephoneNumber("123")
+                .build());
+    }
+
+    @Test
+    void computeShouldFallbackDisplayNameToEmailWhenNameFieldsAreMissing() {
+        // Given an LDAP user without displayName, cn, givenName and sn but with mail
+        LdapUser ldap = LdapUser.builder()
+            .uid("uid123")
+            .mail(mailAddress("user@example.com"))
+            .telephoneNumber("123")
+            .build();
+
+        // When computing the CardDAV contact projection
+        DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(ldap), List.of());
+
+        // Then displayName falls back to email, without using email as givenName or familyName
+        assertThat(result.added())
+            .containsExactly(AddressBookContact.builder()
+                .uid("uid123")
+                .mail(mailAddress("user@example.com"))
+                .displayName("user@example.com")
+                .telephoneNumber("123")
+                .build());
+    }
+
+    @Test
     void computeShouldDetectDeletedMember() {
         AddressBookContact dav = davCard("uid123", "user2@example.com", "Tran", "B", "Tran B", "456");
 
