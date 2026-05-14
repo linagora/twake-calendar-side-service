@@ -25,8 +25,11 @@ import static io.restassured.RestAssured.given;
 import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.awaitility.Durations.ONE_HUNDRED_MILLISECONDS;
+import static org.hamcrest.Matchers.equalTo;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
@@ -45,7 +48,10 @@ import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
+import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.DavCalendarObject;
 import com.linagora.calendar.dav.DavTestHelper;
+import com.linagora.calendar.dav.Fixture;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.OpenPaaSUser;
 
@@ -77,10 +83,12 @@ class OpensearchDavCalendarSearchRouteTest implements CalendarSearchRouteContrac
         OPENSEARCH_TEST_MODULE.apply(openSearchExtension));
 
     private static DavTestHelper davTestHelper;
+    private static CalDavClient calDavClient;
 
     @BeforeAll
     static void beforeAll() throws Exception {
         davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
+        calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
     }
 
     @DisplayName("Should response index events in OpenSearch when created via CalDAV")
@@ -253,6 +261,76 @@ class OpensearchDavCalendarSearchRouteTest implements CalendarSearchRouteContrac
                     .withOptions(Option.IGNORING_ARRAY_ORDER, Option.TREATING_NULL_AS_ABSENT)
                     .isEqualTo(expectedResponse);
             });
+    }
+
+    @Test
+    void shouldReturnFetchableDavResourceHrefWhenResourceNameDiffersFromEventUid(TwakeCalendarGuiceServer server) {
+        // Given a CalDAV event whose DAV resource filename differs from the VEVENT UID
+        OpenPaaSUser openPaasUser = sabreDavExtension.newTestUser();
+
+        server.getProbe(CalendarDataProbe.class).addDomain(openPaasUser.username().getDomainPart().get());
+        server.getProbe(CalendarDataProbe.class).addUserToRepository(openPaasUser.username(), PASSWORD);
+
+        String eventUid = UUID.randomUUID().toString();
+        String resourceName = "sabredav-" + UUID.randomUUID() + ".ics";
+        String summary = "Searchable meeting " + UUID.randomUUID();
+        String eventHref = "/calendars/%s/%s/%s".formatted(openPaasUser.id().value(), openPaasUser.id().value(), resourceName);
+        String uidBasedHref = "/calendars/%s/%s/%s.ics".formatted(openPaasUser.id().value(), openPaasUser.id().value(), eventUid);
+        String calendarData =
+            """
+                BEGIN:VCALENDAR\r
+                VERSION:2.0\r
+                CALSCALE:GREGORIAN\r
+                PRODID:-//SabreDAV//SabreDAV 3.2.2//EN\r
+                BEGIN:VEVENT\r
+                UID:{eventUid}\r
+                DTSTART:20250512T100000Z\r
+                DTEND:20250512T103000Z\r
+                CLASS:PUBLIC\r
+                SUMMARY:{summary}\r
+                ORGANIZER;CN=John1 Doe1:mailto:{organizer}\r
+                DTSTAMP:20250515T091619Z\r
+                END:VEVENT\r
+                END:VCALENDAR\r
+                """.replace("{eventUid}", eventUid)
+                .replace("{summary}", summary)
+                .replace("{organizer}", openPaasUser.username().asString());
+
+        davTestHelper.upsertCalendar(openPaasUser.username(), URI.create(eventHref), calendarData).block();
+
+        // When searching for the event through the indexed search API
+        String requestBody = """
+            {
+                "calendars": [
+                    { "userId": "%s", "calendarId": "%s" }
+                ],
+                "query": "%s"
+            }
+            """.formatted(openPaasUser.id().value(), openPaasUser.id().value(), summary);
+
+        Fixture.awaitAtMost.untilAsserted(() -> {
+            String actualHref = given()
+                .auth().preemptive()
+                .basic(openPaasUser.username().asString(), PASSWORD)
+                .body(requestBody)
+                .post("/calendar/api/events/search")
+            .then()
+                .statusCode(200)
+                .contentType(ContentType.JSON)
+                .body("_total_hits", equalTo(1))
+                .extract()
+                .path("_embedded.events[0]._links.self.href");
+
+            // Then the search result must expose the actual DAV resource href
+            assertThat(actualHref)
+                .isEqualTo(eventHref)
+                .isNotEqualTo(uidBasedHref);
+
+            // And the returned href must be directly usable to fetch the CalDAV event
+            DavCalendarObject calendarObject = calDavClient.fetchCalendarEvent(openPaasUser.username(), URI.create(actualHref)).block();
+            assertThat(calendarObject).isNotNull();
+            assertThat(calendarObject.calendarData().toString()).contains("UID:" + eventUid);
+        });
     }
 
     @Test
