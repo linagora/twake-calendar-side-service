@@ -118,6 +118,57 @@ public class LdapToDavDomainMembersSyncServiceTest {
                 TEL;TYPE=work:123""".trim());
     }
 
+    @Test
+    void shouldCreateDavContactWithDecentNamesWhenLdapGivenNameAndDisplayNameAreMissing() {
+        // Given an LDAP member without givenName and displayName but with cn and sn
+        LdapUser ldap = LdapUser.builder()
+            .uid("james-user2")
+            .cn("James User2")
+            .sn("User2")
+            .mail(Throwing.supplier(() -> new MailAddress("james-user2@james.org")).get())
+            .telephoneNumber("123")
+            .build();
+        when(ldapDomainMemberProvider.domainMembers(openPaaSDomain.domain()))
+            .thenReturn(Flux.just(ldap));
+
+        // When syncing domain members from LDAP to the CardDAV address book
+        UpdateResult updateResult = testee.syncDomainMembers(openPaaSDomain, new ContactUpdateContext()).block();
+
+        // Then the exported vCard has a readable FN from cn and a structured N with givenName extracted from cn
+        assertThat(updateResult.addedCount()).isEqualTo(1);
+        assertThat(listContactDomainMembersAsVcard(openPaaSDomain))
+            .containsIgnoringNewLines("""
+                UID:james-user2
+                FN:James User2
+                N:User2;James;;;
+                EMAIL:james-user2@james.org
+                TEL;TYPE=work:123""".trim());
+    }
+
+    @Test
+    void shouldCreateDavContactWithEmailFormattedNameWhenLdapNameFieldsAreMissing() {
+        // Given an LDAP member without givenName, displayName, cn and sn but with mail
+        LdapUser ldap = LdapUser.builder()
+            .uid("no-name-user")
+            .mail(Throwing.supplier(() -> new MailAddress("no-name-user@james.org")).get())
+            .telephoneNumber("123")
+            .build();
+        when(ldapDomainMemberProvider.domainMembers(openPaaSDomain.domain()))
+            .thenReturn(Flux.just(ldap));
+
+        // When syncing domain members from LDAP to the CardDAV address book
+        UpdateResult updateResult = testee.syncDomainMembers(openPaaSDomain, new ContactUpdateContext()).block();
+
+        // Then the exported vCard has a readable FN from email without inventing a structured name
+        assertThat(updateResult.addedCount()).isEqualTo(1);
+        assertThat(listContactDomainMembersAsVcard(openPaaSDomain))
+            .containsIgnoringNewLines("""
+                UID:no-name-user
+                FN:no-name-user@james.org
+                EMAIL:no-name-user@james.org
+                TEL;TYPE=work:123""".trim());
+    }
+
     static Stream<Arguments> ldapSample() {
         LdapUser fullFields = LdapUser.builder()
             .uid(UUID.randomUUID().toString())

@@ -28,6 +28,8 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.apache.james.core.MailAddress;
 
 import com.google.common.collect.Sets;
@@ -95,10 +97,27 @@ public record DomainMemberUpdate(Set<AddressBookContact> added,
         return AddressBookContact.builder()
             .uid(uid)
             .familyName(ldap.sn())
-            .givenName(ldap.givenName())
-            .displayName(ldap.displayName())
+            .givenName(resolveGivenName(ldap))
+            .displayName(resolveDisplayName(ldap))
             .mail(ldap.mail())
             .telephoneNumber(ldap.telephoneNumber())
             .build();
+    }
+
+    private static Optional<String> resolveDisplayName(LdapUser ldap) {
+        return ldap.displayName()
+            .or(ldap::cn)
+            .or(() -> ldap.mail().map(MailAddress::asString));
+    }
+
+    private static Optional<String> resolveGivenName(LdapUser ldap) {
+        return ldap.givenName()
+            .or(() -> extractGivenNameFromCommonName(ldap));
+    }
+
+    private static Optional<String> extractGivenNameFromCommonName(LdapUser ldap) {
+        return ldap.cn()
+            .map(cn -> Strings.CS.remove(cn, ldap.sn().orElse("")))
+            .map(StringUtils::trimToNull);
     }
 }
