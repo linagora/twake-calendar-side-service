@@ -54,15 +54,23 @@ public class EventFieldConverter {
         .registerModule(new SimpleModule().addDeserializer(EventProperty.class, new EventPropertyDeserializer()));
 
     public static CalendarEvents from(CalendarEventMessage eventMessage) {
-        CalendarURL calendarURL = extractCalendarURL(eventMessage.eventPath);
+        List<String> paths = splitEventPath(eventMessage.eventPath);
+        CalendarURL calendarURL = extractCalendarURL(paths, eventMessage.eventPath);
+        String resourceName = paths.get(3);
 
         return CalendarEvents.of(extractVEventProperties(eventMessage.calendarEvent).stream()
             .map(listEventProperties -> from(listEventProperties)
-                .calendarURL(calendarURL).build())
+                .calendarURL(calendarURL)
+                .resourceName(resourceName)
+                .build())
             .collect(Collectors.toSet()));
     }
 
     public static CalendarURL extractCalendarURL(String eventPath) {
+        return extractCalendarURL(splitEventPath(eventPath), eventPath);
+    }
+
+    private static List<String> splitEventPath(String eventPath) {
         List<String> paths = Splitter.on('/')
             .omitEmptyStrings()
             .splitToList(eventPath);
@@ -70,6 +78,10 @@ public class EventFieldConverter {
         if (paths.size() != 4 || !"calendars".equals(paths.get(0))) {
             throw new CalendarEventDeserializeException("Invalid event path: " + eventPath);
         }
+        return paths;
+    }
+
+    private static CalendarURL extractCalendarURL(List<String> paths, String eventPath) {
         return new CalendarURL(new OpenPaaSId(paths.get(1)), new OpenPaaSId(paths.get(2)));
     }
 

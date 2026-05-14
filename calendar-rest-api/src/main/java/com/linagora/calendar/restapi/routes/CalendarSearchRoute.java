@@ -123,7 +123,8 @@ public class CalendarSearchRoute extends CalendarRoute {
             public static EventResource from(EventFields event) {
                 String userId = event.calendarURL().base().value();
                 String calendarId = event.calendarURL().calendarId().value();
-                String href = "/calendars/" + userId + "/" + calendarId + "/" + event.uid().value() + ".ics";
+                String filename = event.resourceName().orElse(event.uid().value() + ".ics");
+                String href = "/calendars/" + userId + "/" + calendarId + "/" + filename;
                 return new EventResource(new Links(new Link(href)),
                     Data.from(event, userId, calendarId));
             }

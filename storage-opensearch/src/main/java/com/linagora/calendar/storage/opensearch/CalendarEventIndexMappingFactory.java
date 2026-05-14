@@ -78,6 +78,7 @@ public class CalendarEventIndexMappingFactory {
         String CLAZZ = "clazz";
         String VIDEOCONFERENCE_URL = "videoconferenceUrl";
         String SEQUENCE = "sequence";
+        String RESOURCE_NAME = "resourceName";
     }
 
     interface MultiField {
@@ -205,6 +206,7 @@ public class CalendarEventIndexMappingFactory {
                 .put(CalendarFields.IS_RECURRENT_MASTER, nonIndexedBooleanProperty)
                 .put(CalendarFields.VIDEOCONFERENCE_URL, nonIndexedKeywordProperty)
                 .put(CalendarFields.SEQUENCE, nonIndexedIntegerProperty)
+                .put(CalendarFields.RESOURCE_NAME, nonIndexedKeywordProperty)
                 .build())
             .build();
     }

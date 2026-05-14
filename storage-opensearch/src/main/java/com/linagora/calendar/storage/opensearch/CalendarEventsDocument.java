@@ -47,7 +47,8 @@ public record CalendarEventsDocument(@JsonProperty(CalendarFields.ACCOUNT_ID) St
                                      @JsonProperty(CalendarFields.RESOURCES) List<SimplePerson> resources,
                                      @JsonProperty(CalendarFields.VIDEOCONFERENCE_URL) String videoconferenceUrl,
                                      @JsonProperty(CalendarFields.CALENDAR_URL) String calendarURL,
-                                     @JsonProperty(CalendarFields.SEQUENCE) Integer sequence) {
+                                     @JsonProperty(CalendarFields.SEQUENCE) Integer sequence,
+                                     @JsonProperty(CalendarFields.RESOURCE_NAME) String resourceName) {
 
     public static class DeserializeException extends RuntimeException {
         public DeserializeException(String message, Throwable cause) {
@@ -95,7 +96,8 @@ public record CalendarEventsDocument(@JsonProperty(CalendarFields.ACCOUNT_ID) St
                 .toList(),
             eventFields.videoconferenceUrl(),
             eventFields.calendarURL().serialize(),
-            eventFields.sequence().orElse(null));
+            eventFields.sequence().orElse(null),
+            eventFields.resourceName().orElse(null));
     }
 
     public EventFields toEventFields() {
@@ -128,6 +130,9 @@ public record CalendarEventsDocument(@JsonProperty(CalendarFields.ACCOUNT_ID) St
         }
         if (sequence != null) {
             builder.sequence(sequence);
+        }
+        if (resourceName != null) {
+            builder.resourceName(resourceName);
         }
 
         return builder.build();

@@ -266,6 +266,7 @@ public class EventIndexerConsumerTest {
                 .addAttendee(EventFields.Person.of("John3 Doe3", attendee2.username().asString()))
                 .addAttendee(EventFields.Person.of(null, openPaasUser.username().asString()))
                 .addResource(EventFields.Person.of("Test resource", attendee3.username().asString()))
+                .resourceName(eventUid + ".ics")
                 .build());
     }
 
@@ -363,6 +364,7 @@ public class EventIndexerConsumerTest {
             .organizer(EventFields.Person.of("John1 Doe1", openPaasUser.username().asString()))
             .addAttendee(EventFields.Person.of("John2 Doe2", attendee1.username().asString()))
             .addAttendee(EventFields.Person.of(null, openPaasUser.username().asString()))
+            .resourceName(eventUid + ".ics")
             .build();
 
         EventFields recurrenceEvent = EventFields.builder()
@@ -381,6 +383,7 @@ public class EventIndexerConsumerTest {
             .addAttendee(EventFields.Person.of("John2 Doe2", attendee1.username().asString()))
             .addAttendee(EventFields.Person.of("John1 Doe1", openPaasUser.username().asString()))
             .sequence(1)
+            .resourceName(eventUid + ".ics")
             .build();
 
         assertThat(eventFields)
