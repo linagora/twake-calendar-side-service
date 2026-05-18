@@ -33,6 +33,7 @@ import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
 import org.apache.james.mailbox.model.ContentType;
 import org.apache.james.mime4j.dom.Message;
+import org.apache.james.mime4j.stream.RawField;
 import org.apache.james.user.api.UsersRepository;
 import org.apache.james.util.AuditTrail;
 import org.slf4j.Logger;
@@ -275,6 +276,10 @@ public class EventMailHandler {
                 .flatMap(fromInternetAddress -> {
                     Map<String, Object> model = modelBuilder.senderDisplayName(fromInternetAddress.getPersonal()).buildAsMap();
                     return messageGenerator.generate(recipientUser, fromInternetAddress, model, attachments);
+                })
+                .map(message -> {
+                    message.getHeader().addField(new RawField("Auto-Submitted", "auto-generated"));
+                    return message;
                 });
         }
     }
