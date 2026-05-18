@@ -292,6 +292,25 @@ public class EventCancelEmailConsumerTest {
         }));
     }
 
+    @Test
+    void shouldIncludeAutoSubmittedHeaderInCancelEmail() {
+        String eventUid = UUID.randomUUID().toString();
+        davTestHelper.upsertCalendar(organizer, generateCalendarData(
+            eventUid, organizer.username().asString(), attendee.username().asString(), PartStat.NEEDS_ACTION), eventUid);
+
+        awaitAtMost.atMost(Duration.ofSeconds(20))
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+        mockSmtpExtension.clear();
+
+        davTestHelper.deleteCalendar(organizer, eventUid);
+
+        awaitAtMost.atMost(Duration.ofSeconds(20))
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        assertThat(smtpMailsResponseSupplier.get().getString("[0].message"))
+            .contains("Auto-Submitted: auto-generated");
+    }
+
     private String getHtml(String message) {
         Pattern htmlPattern = Pattern.compile(
             "Content-Transfer-Encoding: base64\r?\nContent-Type: text/html; charset=UTF-8\r?\nContent-Language: [^\r\n]+\r?\n\r?\n([A-Za-z0-9+/=\r\n]+)\r?\n---=Part",

@@ -238,7 +238,11 @@ public class EventMailHandler {
 
             MailAddress fromAddress = event.base().senderEmail();
             return messageGenerator.generate(recipientUser, fromAddress,
-                event.toPugModel(resolvedSettings.locale(), resolvedSettings.zoneId(), eventInCalendarLinkFactory, isInternalUser), attachments);
+                    event.toPugModel(resolvedSettings.locale(), resolvedSettings.zoneId(), eventInCalendarLinkFactory, isInternalUser), attachments)
+                .map(message -> {
+                    message.getHeader().addField(new RawField("Auto-Submitted", "auto-generated"));
+                    return message;
+                });
         }
     }
 
