@@ -1588,4 +1588,78 @@ public class EventFieldConverterTest {
 
         assertThat(eventFieldsActual).isEqualTo(eventFieldsExpected);
     }
+
+    @Test
+    void fromCreatedMessageShouldKeepEventFieldsWhenOnlyAttendeesAreMalformed() throws AddressException {
+        String json = """
+            {
+                "eventPath": "/calendars/6801fcef72cc50005a04e5fb/6801fcef72cc50005a04e5fb/malformed-attendee-event.ics",
+                "event": [
+                    "vcalendar",
+                    [["version", {}, "text", "2.0"]],
+                    [[
+                        "vevent",
+                        [
+                            ["uid", {}, "text", "malformed-attendee-event"],
+                            ["dtstart", {"tzid": "Asia/Saigon"}, "date-time", "2025-04-19T11:00:00"],
+                            ["dtend", {"tzid": "Asia/Saigon"}, "date-time", "2025-04-19T11:30:00"],
+                            ["summary", {}, "text", "Malformed attendee event"],
+                            ["organizer", {"cn": "John1 Doe1"}, "cal-address", "mailto:user1@open-paas.org"],
+                            ["attendee", {"cutype": "INDIVIDUAL", "cn": "Radia OUBRAHAM"}, "cal-address", "mailto:Radia%20OUBRAHAM%20%3Croubraham@example.ltd%3E"],
+                            ["dtstamp", {}, "date-time", "2025-04-18T07:47:48Z"]
+                        ],
+                        []
+                    ]]
+                ],
+                "import": false
+            }""";
+
+        CalendarEventMessage createdMessage = CalendarEventMessage.CreatedOrUpdated.deserialize(json.getBytes(StandardCharsets.UTF_8));
+
+        Set<EventFields> eventProperties = EventFieldConverter.from(createdMessage).events();
+
+        assertThat(eventProperties).hasSize(1);
+        EventFields eventFieldsActual = eventProperties.iterator().next();
+        EventFields.Person expectedOrganizer = EventFields.Person.of("John1 Doe1", "user1@open-paas.org");
+        assertSoftly(softly -> {
+            softly.assertThat(eventFieldsActual.uid()).isEqualTo(new EventUid("malformed-attendee-event"));
+            softly.assertThat(eventFieldsActual.summary()).isEqualTo("Malformed attendee event");
+            softly.assertThat(eventFieldsActual.start()).isEqualTo(Instant.parse("2025-04-19T04:00:00Z"));
+            softly.assertThat(eventFieldsActual.end()).isEqualTo(Instant.parse("2025-04-19T04:30:00Z"));
+            softly.assertThat(eventFieldsActual.dtStamp()).isEqualTo(Instant.parse("2025-04-18T07:47:48Z"));
+            softly.assertThat(eventFieldsActual.organizer()).isEqualTo(expectedOrganizer);
+            softly.assertThat(eventFieldsActual.attendees()).isEmpty();
+        });
+    }
+
+    @Test
+    void fromDeletedMessageShouldExtractUidWhenAttendeeIsMalformed() {
+        String json = """
+            {
+                "eventPath": "/calendars/6801fcef72cc50005a04e5fb/6801fcef72cc50005a04e5fb/malformed-attendee-event.ics",
+                "event": [
+                    "vcalendar",
+                    [["version", {}, "text", "2.0"]],
+                    [[
+                        "vevent",
+                        [
+                            ["uid", {}, "text", "malformed-attendee-event"],
+                            ["dtstart", {"tzid": "Asia/Saigon"}, "date-time", "2025-04-19T11:00:00"],
+                            ["dtend", {"tzid": "Asia/Saigon"}, "date-time", "2025-04-19T11:30:00"],
+                            ["summary", {}, "text", "Malformed attendee event"],
+                            ["organizer", {"cn": "John1 Doe1"}, "cal-address", "mailto:user1@open-paas.org"],
+                            ["attendee", {"cutype": "INDIVIDUAL", "cn": "Radia OUBRAHAM"}, "cal-address", "mailto:Radia%20OUBRAHAM%20%3Croubraham@example.ltd%3E"],
+                            ["dtstamp", {}, "date-time", "2025-04-18T07:47:48Z"]
+                        ],
+                        []
+                    ]]
+                ],
+                "import": false
+            }""";
+
+        CalendarEventMessage.Deleted deletedMessage = CalendarEventMessage.Deleted.deserialize(json.getBytes(StandardCharsets.UTF_8));
+
+        assertThat(deletedMessage.extractEventUid())
+            .containsExactly(new EventUid("malformed-attendee-event"));
+    }
 }
