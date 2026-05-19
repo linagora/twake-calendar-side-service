@@ -161,7 +161,7 @@ public class EventAlarmHandler {
     }
 
     private EventUid extractEventUid(CalendarAlarmMessageDTO alarmMessageDTO) {
-        return EventFieldConverter.extractVEventProperties(alarmMessageDTO.calendarEvent())
+        return EventFieldConverter.extractVEventProperties(alarmMessageDTO.calendarEvent(), EventProperty.UID_PROPERTY)
             .stream().flatMap(List::stream)
             .filter(property -> property instanceof EventProperty.EventUidProperty)
             .map(property -> ((EventProperty.EventUidProperty) property).getEventUid())

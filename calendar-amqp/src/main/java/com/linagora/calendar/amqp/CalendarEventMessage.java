@@ -94,7 +94,7 @@ public abstract class CalendarEventMessage {
         }
 
         public List<EventUid> extractEventUid() {
-            return EventFieldConverter.extractVEventProperties(calendarEvent)
+            return EventFieldConverter.extractVEventProperties(calendarEvent, EventProperty.UID_PROPERTY)
                 .stream().flatMap(List::stream)
                 .filter(property -> property instanceof EventProperty.EventUidProperty)
                 .map(property -> ((EventProperty.EventUidProperty) property).getEventUid())

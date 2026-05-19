@@ -138,6 +138,14 @@ public class EventFieldConverter {
     }
 
     public static List<List<EventProperty>> extractVEventProperties(JsonNode calendarEvent) {
+        return extractVEventProperties(calendarEvent, List.of());
+    }
+
+    public static List<List<EventProperty>> extractVEventProperties(JsonNode calendarEvent, String... propertyNames) {
+        return extractVEventProperties(calendarEvent, List.of(propertyNames));
+    }
+
+    private static List<List<EventProperty>> extractVEventProperties(JsonNode calendarEvent, List<String> propertyNames) {
         if (!calendarEvent.isArray() || calendarEvent.size() < 3 || !"vcalendar".equalsIgnoreCase(calendarEvent.get(0).asText())) {
             throw new CalendarEventDeserializeException("Not a valid vcalendar array structure" + calendarEvent.toPrettyString());
         }
@@ -150,11 +158,18 @@ public class EventFieldConverter {
             .map(component -> {
                 ArrayNode veventProps = (ArrayNode) component.get(1);
                 return StreamSupport.stream(veventProps.spliterator(), false)
+                    .filter(node -> shouldExtractEventProperty(node, propertyNames))
                     .map(EventFieldConverter::deserializeEventProperty)
                     .flatMap(Optional::stream)
                     .collect(Collectors.toList());
             })
             .collect(Collectors.toList());
+    }
+
+    private static boolean shouldExtractEventProperty(JsonNode node, List<String> propertyNames) {
+        return propertyNames.isEmpty()
+            || propertyNames.stream()
+            .anyMatch(propertyName -> isEventProperty(node, propertyName));
     }
 
     private static Optional<EventProperty> deserializeEventProperty(JsonNode node) {
