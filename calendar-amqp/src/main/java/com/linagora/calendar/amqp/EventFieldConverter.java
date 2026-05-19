@@ -28,6 +28,8 @@ import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
 import org.apache.commons.lang3.Strings;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -50,6 +52,8 @@ import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.eventsearch.CalendarEvents;
 
 public class EventFieldConverter {
+    private static final Logger LOGGER = LoggerFactory.getLogger(EventFieldConverter.class);
+
     private static final ObjectMapper MAPPER = new ObjectMapper()
         .registerModule(new SimpleModule().addDeserializer(EventProperty.class, new EventPropertyDeserializer()));
 
@@ -147,17 +151,29 @@ public class EventFieldConverter {
                 ArrayNode veventProps = (ArrayNode) component.get(1);
                 return StreamSupport.stream(veventProps.spliterator(), false)
                     .map(EventFieldConverter::deserializeEventProperty)
+                    .flatMap(Optional::stream)
                     .collect(Collectors.toList());
             })
             .collect(Collectors.toList());
     }
 
-    private static EventProperty deserializeEventProperty(JsonNode node) {
+    private static Optional<EventProperty> deserializeEventProperty(JsonNode node) {
         try {
-            return MAPPER.treeToValue(node, EventProperty.class);
-        } catch (JsonProcessingException e) {
+            return Optional.of(MAPPER.treeToValue(node, EventProperty.class));
+        } catch (JsonProcessingException | RuntimeException e) {
+            if (isEventProperty(node, EventProperty.ATTENDEE_PROPERTY)) {
+                LOGGER.warn("Skipping invalid attendee event property: {}", node, e);
+                return Optional.empty();
+            }
             throw new CalendarEventDeserializeException("Cannot deserialize EventProperty" + node.toPrettyString(), e);
         }
+    }
+
+    private static boolean isEventProperty(JsonNode node, String propertyName) {
+        return node.isArray()
+            && !node.isEmpty()
+            && node.get(0).isTextual()
+            && propertyName.equalsIgnoreCase(node.get(0).asText());
     }
 
     public static class EventPropertyDeserializer extends JsonDeserializer<EventProperty> {
