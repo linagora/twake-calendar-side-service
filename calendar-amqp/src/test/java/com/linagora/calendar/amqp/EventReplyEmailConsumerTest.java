@@ -308,6 +308,14 @@ public class EventReplyEmailConsumerTest {
     }
 
     @Test
+    void shouldIncludeAutoSubmittedHeaderInReplyEmail() {
+        JsonPath smtpMailsResponse = simulateAcceptedReplyAndWaitForEmail();
+
+        assertThat(smtpMailsResponse.getString("[1].message"))
+            .contains("Auto-Submitted: auto-generated");
+    }
+
+    @Test
     void shouldDisplayUserFullNameInEmailWhenAttendeeCNIsEmpty() {
         String eventUid = UUID.randomUUID().toString();
         DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss");
