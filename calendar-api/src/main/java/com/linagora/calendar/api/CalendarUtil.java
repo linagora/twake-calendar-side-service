@@ -81,7 +81,7 @@ public class CalendarUtil {
     public static Calendar parseIcs(byte[] icsContent) {
         CalendarBuilder builder = new CalendarBuilder(
             CalendarParserFactory.getInstance().get(),
-            new ContentHandlerContext().withSupressInvalidProperties(true),
+            new ContentHandlerContext().withSuppressInvalidProperties(true),
             new CustomizedTimeZoneRegistry());
         try {
             ByteArrayInputStream inputStream = new ByteArrayInputStream(icsContent);

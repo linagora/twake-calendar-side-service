@@ -55,6 +55,7 @@
     <properties>
         <james.groupId>org.apache.james</james.groupId>
         <james.version>3.10.0-SNAPSHOT</james.version>
+        <ical4j.version>4.2.5</ical4j.version>
         <scala.base>2.13</scala.base>
     </properties>
 
@@ -151,6 +152,11 @@
                 <groupId>${project.groupId}</groupId>
                 <artifactId>calendar-scheduling</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.mnode.ical4j</groupId>
+                <artifactId>ical4j</artifactId>
+                <version>${ical4j.version}</version>
             </dependency>
             <dependency>
                 <groupId>${james.groupId}</groupId>
