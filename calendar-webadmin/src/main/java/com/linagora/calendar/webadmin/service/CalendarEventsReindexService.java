@@ -19,7 +19,6 @@
 package com.linagora.calendar.webadmin.service;
 
 import static com.linagora.calendar.webadmin.CalendarRoutes.CalendarEventsReindexRequestToTask.TASK_NAME;
-import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.time.Duration;
 import java.util.List;
@@ -43,6 +42,7 @@ import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.eventsearch.CalendarEvents;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
+import com.linagora.calendar.webadmin.task.CalendarEventsReindexTask;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.component.VEvent;
@@ -114,11 +114,11 @@ public class CalendarEventsReindexService {
         this.calDavClient = calDavClient;
     }
 
-    public Mono<Task.Result> reindex(Context context, int eventsPerSecond) {
+    public Mono<Task.Result> reindex(Context context, CalendarEventsReindexTask.RunningOptions runningOptions) {
         return userDAO.list()
-            .flatMap(user -> collectEvents(context, user), DEFAULT_CONCURRENCY)
+            .concatMap(user -> collectEvents(context, user, runningOptions.calendarsConcurrency()))
             .transform(ReactorUtils.<IndexItem, Task.Result>throttle()
-                .elements(eventsPerSecond)
+                .elements(runningOptions.eventsPerSecond())
                 .per(Duration.ofSeconds(1))
                 .forOperation(indexItem -> reindex(context, indexItem)))
             .reduce(Task.Result.COMPLETED, Task::combine)
@@ -149,11 +149,11 @@ public class CalendarEventsReindexService {
             });
     }
 
-    private Flux<IndexItem> collectEvents(Context context, OpenPaaSUser user) {
+    private Flux<IndexItem> collectEvents(Context context, OpenPaaSUser user, int calendarsConcurrency) {
         return calendarSearchService.deleteAll(AccountId.fromUsername(user.username()))
             .then(Mono.fromRunnable(() -> LOGGER.info("{} task deleted all events of user {}", TASK_NAME.asString(), user.username())))
             .thenMany(calDavClient.findUserCalendars(user.username(), user.id())
-                .flatMap(calendarURL -> collectEvents(context, user, calendarURL)))
+                .flatMap(calendarURL -> collectEvents(context, user, calendarURL), calendarsConcurrency))
             .onErrorResume(e -> {
                 LOGGER.error("Error while doing task {} for user {}", TASK_NAME.asString(), user.username().asString(), e);
                 context.incrementFailedUser();
@@ -163,6 +163,8 @@ public class CalendarEventsReindexService {
 
     private Flux<IndexItem> collectEvents(Context context, OpenPaaSUser user, CalendarURL calendarURL) {
         return calDavClient.export(calendarURL, user.username())
+            .doOnNext(bytes -> LOGGER.debug("{} task exported calendar {} for user {} with {} bytes",
+                TASK_NAME.asString(), calendarURL.serialize(), user.username().asString(), bytes.length))
             .flatMap(bytes -> Mono.fromCallable(() -> CalendarUtil.parseIcs(bytes))
                 .subscribeOn(Schedulers.boundedElastic()))
             .flatMapMany(calendar -> collectEvents(context, user, calendarURL, calendar))

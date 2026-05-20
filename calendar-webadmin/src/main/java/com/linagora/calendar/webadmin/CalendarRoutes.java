@@ -20,6 +20,7 @@ package com.linagora.calendar.webadmin;
 
 import static com.linagora.calendar.webadmin.CalendarRoutesModule.USER_CALENDAR_TASKS_KEY;
 import static com.linagora.calendar.webadmin.EventArchivalCriteriaRequestParser.extractEventArchivalCriteria;
+import static com.linagora.calendar.webadmin.task.CalendarEventsReindexTask.RunningOptions.DEFAULT_CALENDARS_CONCURRENCY;
 import static com.linagora.calendar.webadmin.task.RunningOptions.DEFAULT_EVENTS_PER_SECOND;
 
 import java.time.Clock;
@@ -57,6 +58,7 @@ import spark.Service;
 
 public class CalendarRoutes implements Routes {
     private static final String EVENTS_PER_SECOND_PARAMETER = "eventsPerSecond";
+    private static final String CALENDARS_CONCURRENCY_PARAMETER = "calendarsConcurrency";
     private static final String TASK_PARAMETER = "task";
 
     public static class CalendarEventsReindexRequestToTask extends TaskFromRequestRegistry.TaskRegistration {
@@ -65,8 +67,10 @@ public class CalendarRoutes implements Routes {
         @Inject
         public CalendarEventsReindexRequestToTask(CalendarEventsReindexService reindexService) {
             super(TASK_NAME, request -> {
-                int usersPerSecond = extractEventsPerSecond(request);
-                return new CalendarEventsReindexTask(reindexService, RunningOptions.of(usersPerSecond));
+                int eventsPerSecond = extractEventsPerSecond(request);
+                int calendarsConcurrency = extractCalendarsConcurrency(request);
+                return new CalendarEventsReindexTask(reindexService,
+                    CalendarEventsReindexTask.RunningOptions.of(eventsPerSecond, calendarsConcurrency));
             });
         }
     }
@@ -171,19 +175,27 @@ public class CalendarRoutes implements Routes {
     }
 
     private static Integer extractEventsPerSecond(Request request) {
+        return extractPositiveIntegerParameter(request, EVENTS_PER_SECOND_PARAMETER, DEFAULT_EVENTS_PER_SECOND);
+    }
+
+    private static Integer extractCalendarsConcurrency(Request request) {
+        return extractPositiveIntegerParameter(request, CALENDARS_CONCURRENCY_PARAMETER, DEFAULT_CALENDARS_CONCURRENCY);
+    }
+
+    private static Integer extractPositiveIntegerParameter(Request request, String parameterName, int defaultValue) {
         try {
-            return Optional.ofNullable(request.queryParams(EVENTS_PER_SECOND_PARAMETER))
+            return Optional.ofNullable(request.queryParams(parameterName))
                 .map(Integer::parseInt)
-                .map(eventPerSecond -> {
-                    Preconditions.checkArgument(eventPerSecond > 0,
-                        "Query parameter '%s' must be strictly positive, got: %d", EVENTS_PER_SECOND_PARAMETER, eventPerSecond);
-                    return eventPerSecond;
+                .map(value -> {
+                    Preconditions.checkArgument(value > 0,
+                        "Query parameter '%s' must be strictly positive, got: %d", parameterName, value);
+                    return value;
                 })
-                .orElse(DEFAULT_EVENTS_PER_SECOND);
+                .orElse(defaultValue);
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException(String.format(
                 "Illegal value supplied for query parameter '%s', expecting an integer",
-                EVENTS_PER_SECOND_PARAMETER), e);
+                parameterName), e);
         }
     }
 
