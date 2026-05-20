@@ -26,6 +26,7 @@ import org.apache.james.task.Task;
 import org.apache.james.task.TaskExecutionDetails;
 import org.apache.james.task.TaskType;
 
+import com.google.common.base.Preconditions;
 import com.linagora.calendar.webadmin.service.CalendarEventsReindexService;
 
 public class CalendarEventsReindexTask implements Task {
@@ -33,6 +34,25 @@ public class CalendarEventsReindexTask implements Task {
         @Override
         public Instant timestamp() {
             return instant;
+        }
+    }
+
+    public record RunningOptions(int eventsPerSecond,
+                                 int calendarsConcurrency) {
+        public static final int DEFAULT_EVENTS_PER_SECOND = com.linagora.calendar.webadmin.task.RunningOptions.DEFAULT_EVENTS_PER_SECOND;
+        public static final int DEFAULT_CALENDARS_CONCURRENCY = 1;
+
+        public static final RunningOptions DEFAULT = of(
+            DEFAULT_EVENTS_PER_SECOND,
+            DEFAULT_CALENDARS_CONCURRENCY);
+
+        public RunningOptions {
+            Preconditions.checkArgument(eventsPerSecond > 0, "eventsPerSecond must be strictly positive");
+            Preconditions.checkArgument(calendarsConcurrency > 0, "calendarsConcurrency must be strictly positive");
+        }
+
+        public static RunningOptions of(int eventsPerSecond, int calendarsConcurrency) {
+            return new RunningOptions(eventsPerSecond, calendarsConcurrency);
         }
     }
 
@@ -50,7 +70,7 @@ public class CalendarEventsReindexTask implements Task {
 
     @Override
     public Result run() {
-        return reindexService.reindex(context, runningOptions.eventsPerSecond()).block();
+        return reindexService.reindex(context, runningOptions).block();
     }
 
     @Override

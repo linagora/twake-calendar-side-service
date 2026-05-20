@@ -200,12 +200,14 @@ Both endpoints will return a webadmin task with the following additional informa
 ### Calendar event reindexing
 
 ```
-POST /calendars?task=reindex?eventsPerSecond=100
+POST /calendars?task=reindex&eventsPerSecond=100&calendarsConcurrency=1
 ```
 
-Will iterate all registered user calendar and reindex their events.
+Will iterate all registered user calendars and reindex their events.
 
-The query parameter `eventsPerSecond` controls the concurrency. Defaults to 100.
+The query parameter `eventsPerSecond` controls the indexing rate. Defaults to 100.
+
+The query parameter `calendarsConcurrency` controls how many calendars can be exported and parsed concurrently for a user. Defaults to 1.
 
 This endpoint returns a webdmin task with the following additional information:
 
