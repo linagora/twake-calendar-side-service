@@ -21,7 +21,6 @@ package com.linagora.calendar.webadmin.service;
 import static com.linagora.calendar.webadmin.CalendarRoutes.CalendarEventsReindexRequestToTask.TASK_NAME;
 
 import java.time.Duration;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
 import jakarta.inject.Inject;
@@ -45,7 +44,6 @@ import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
 import com.linagora.calendar.webadmin.task.CalendarEventsReindexTask;
 
 import net.fortuna.ical4j.model.Calendar;
-import net.fortuna.ical4j.model.component.VEvent;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -180,12 +178,12 @@ public class CalendarEventsReindexService {
             .flatMapMany(map -> Flux.fromIterable(map.entrySet()))
             .flatMap(entry -> {
                 String eventId = entry.getKey();
-                List<VEvent> vEvents = entry.getValue();
 
-                return Flux.fromIterable(vEvents)
-                    .map(vEvent -> EventFields.fromVEvent(vEvent, calendarURL))
-                    .collectList()
-                    .filter(list -> !list.isEmpty())
+                return Mono.fromCallable(() -> entry.getValue()
+                        .stream()
+                        .map(vEvent -> EventFields.fromVEvent(vEvent, calendarURL))
+                        .toList())
+                    .filter(events -> !events.isEmpty())
                     .map(CalendarEvents::of)
                     .map(calendarEvents -> new IndexItem(user, calendarURL, calendarEvents))
                     .onErrorResume(e -> {
