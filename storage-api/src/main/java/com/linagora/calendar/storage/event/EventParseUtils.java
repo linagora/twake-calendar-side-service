@@ -230,8 +230,8 @@ public class EventParseUtils {
             Optional<PartStat> partStat = property.getParameter(Parameter.PARTSTAT)
                 .map(value -> (PartStat) value);
             return Optional.of(new EventFields.Person(cn, email, partStat));
-        } catch (AddressException | MalformedURLException e) {
-            LOGGER.error("Invalid person: {}", property.getValue());
+        } catch (Exception e) {
+            LOGGER.error("Invalid person property {} with value {}: {}", property.getName(), property.getValue(), e.getMessage());
             return Optional.empty();
         }
     }

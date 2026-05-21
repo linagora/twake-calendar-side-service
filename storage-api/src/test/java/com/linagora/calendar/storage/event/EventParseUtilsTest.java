@@ -252,6 +252,48 @@ class EventParseUtilsTest {
     }
 
     @Test
+    void getOrganizerShouldReturnCorrectPersonWhenMailToStringHasEncodedPlusAddress() throws AddressException {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:event-1
+            DTSTART:20250911T100000Z
+            DTEND:20250911T120000Z
+            SUMMARY:Meeting with encoded organizer
+            ORGANIZER;CN=Test Organizer:mailto:Test%20Organizer%20%3Corganizer%2Bcalendar@abc.com%3E
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+        VEvent event = (VEvent) calendar.getComponent(Component.VEVENT).get();
+
+        assertThat(EventParseUtils.getOrganizer(event)).isEqualTo(new EventFields.Person("Test Organizer", new MailAddress("organizer+calendar@abc.com")));
+    }
+
+    @Test
+    void getOrganizerShouldIgnoreInvalidRelativePersonValue() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:event-1
+            DTSTART:20250911T100000Z
+            DTEND:20250911T120000Z
+            SUMMARY:Meeting with malformed organizer
+            ORGANIZER;CN=Test Organizer:not-an-email
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+        VEvent event = (VEvent) calendar.getComponent(Component.VEVENT).get();
+
+        assertThat(EventParseUtils.getOrganizer(event)).isNull();
+    }
+
+    @Test
     void findAttendeePartStatShouldMatchAttendeeCaseInsensitive() throws AddressException {
         String ics = """
             BEGIN:VCALENDAR
