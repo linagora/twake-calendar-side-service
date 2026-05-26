@@ -48,8 +48,10 @@ import org.testcontainers.containers.wait.strategy.Wait;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.storage.TechnicalTokenService;
 import com.linagora.calendar.storage.mongodb.MongoDBConfiguration;
+import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoCommandMetricsListener;
 import com.mongodb.ConnectionString;
 import com.mongodb.MongoClientSettings;
@@ -200,12 +202,21 @@ public class DockerSabreDavSetup {
                 return response()
                     .withStatusCode(200)
                     .withHeader("Content-Type", "application/json")
-                    .withBody(TECHNICAL_TOKEN_SERVICE_TESTING.claim(new TechnicalTokenService.JwtToken(token))
-                        .map(Throwing.function(tokenInfo -> objectMapper.writeValueAsString(tokenInfo.data())))
-                        .onErrorResume(e -> Mono.just("error: " + e.getMessage()))
-                        .block());
+                    .withBody(buildTechnicalTokenIntrospectionResponseBody(token));
             });
         mockAuthenticationTokenEndpointConfigured = true;
+    }
+
+    private String buildTechnicalTokenIntrospectionResponseBody(String token) {
+        return TECHNICAL_TOKEN_SERVICE_TESTING.claim(new TechnicalTokenService.JwtToken(token))
+            .flatMap(tokenInfo -> new MongoDBOpenPaaSDomainDAO(mongoDatabase).retrieve(tokenInfo.domainId())
+                .map(domain -> ImmutableMap.<String, Object>builder()
+                    .put("domain", domain.domain().asString())
+                    .putAll(tokenInfo.data())
+                    .build()))
+            .map(Throwing.function(objectMapper::writeValueAsString))
+            .onErrorResume(e -> Mono.just("error: " + e.getMessage()))
+            .block();
     }
 
     public URI rabbitMqUri() {
