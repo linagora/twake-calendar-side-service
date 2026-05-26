@@ -258,7 +258,9 @@ public class CardDavClient extends DavClient {
     private boolean isNotFoundPathResourceError(DavClientException ex) {
         return Strings.CI.startsWith(ex.getMessage(), "Unexpected status code: 404")
             && (Strings.CI.contains(ex.getMessage(), "Could not find node at path: calendars/")
-            || Strings.CI.contains(ex.getMessage(), "Could not find node at path: addressbooks/"));
+            || Strings.CI.contains(ex.getMessage(), "Could not find node at path: addressbooks/")
+            || (Strings.CI.contains(ex.getMessage(), "Addressbook with name '")
+                && Strings.CI.contains(ex.getMessage(), "' could not be found")));
     }
 
     private Mono<byte[]> tryListContactDomainMembers(OpenPaaSId domainId) {
