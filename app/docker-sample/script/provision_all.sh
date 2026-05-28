@@ -16,5 +16,4 @@ done
 # Run user provisioning
 echo "Provisioning users..."
 sh /provision/provision_users.sh
-echo "Provisioning resources..."
-sh /provision/provision_resources.sh
+

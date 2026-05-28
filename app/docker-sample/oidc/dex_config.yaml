@@ -7,6 +7,7 @@ web:
   http: 0.0.0.0:5556
   allowedOrigins:
     - http://localhost:3000
+    - https://calendar-ng.linagora.local
     - https://calendar.linagora.local
     - https://contacts.linagora.local
     - https://account.linagora.local
@@ -17,6 +18,7 @@ staticClients:
   - id: twake-calendar
     redirectURIs:
       - 'http://localhost:3000/callback'
+      - 'https://calendar-ng.linagora.local/callback'
       - 'https://calendar.linagora.local/calendar/auth/oidc/callback'
       - 'https://contacts.linagora.local/contacts/auth/oidc/callback'
       - 'https://account.linagora.local/account/auth/oidc/callback'
