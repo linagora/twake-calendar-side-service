@@ -20,7 +20,7 @@ It includes:
 📝 **Before you start**, make sure to edit your `/etc/hosts` file and add the following line:
 ```
 127.0.0.1 tcalendar-side-service.linagora.local sso.linagora.local sabre-dav.linagora.local
-127.0.0.1 calendar.linagora.local contacts.linagora.local account.linagora.local excal.linagora.local
+127.0.0.1 calendar-ng.linagora.local calendar.linagora.local contacts.linagora.local account.linagora.local excal.linagora.local
 ```
 Then:
 ```bash
@@ -28,7 +28,7 @@ docker-compose up -d
 ```
 After running the Docker Compose setup, open your browser and visit:
 
-👉 http://localhost:3000
+👉 https://calendar-ng.linagora.local
 👉 https://calendar.linagora.local
 At this address, the Twake Calendar frontend app will automatically redirect you to the SSO login page (OIDC login via Dex).
 
