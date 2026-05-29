@@ -20,13 +20,13 @@ package com.linagora.calendar.storage;
 
 import java.util.Optional;
 
-public record DomainSettings(UserSearchMode userSearchMode,
-                             boolean resourceSearchEnabled,
-                             DefaultCalendarPublicVisibility defaultCalendarPublicVisibility) {
+public record DomainSettings(Optional<UserSearchMode> userSearchMode,
+                             Optional<Boolean> resourceSearchEnabled,
+                             Optional<DefaultCalendarPublicVisibility> defaultCalendarPublicVisibility) {
     public static final UserSearchMode DEFAULT_USER_SEARCH_MODE = UserSearchMode.ENABLED;
     public static final boolean DEFAULT_RESOURCE_SEARCH_ENABLED = true;
     public static final DefaultCalendarPublicVisibility DEFAULT_CALENDAR_PUBLIC_VISIBILITY = DefaultCalendarPublicVisibility.READ;
-    public static final DomainSettings DEFAULT_DOMAIN_SETTINGS = new DomainSettings(DEFAULT_USER_SEARCH_MODE, DEFAULT_RESOURCE_SEARCH_ENABLED, DEFAULT_CALENDAR_PUBLIC_VISIBILITY);
+    public static final DomainSettings DEFAULT_DOMAIN_SETTINGS = new DomainSettings(Optional.empty(), Optional.empty(), Optional.empty());
 
     public static class Builder {
         private Optional<UserSearchMode> userSearchMode = Optional.empty();
@@ -49,10 +49,7 @@ public record DomainSettings(UserSearchMode userSearchMode,
         }
 
         public DomainSettings build() {
-            return new DomainSettings(
-                userSearchMode.orElse(DEFAULT_USER_SEARCH_MODE),
-                resourceSearchEnabled.orElse(DEFAULT_RESOURCE_SEARCH_ENABLED),
-                defaultCalendarPublicVisibility.orElse(DEFAULT_CALENDAR_PUBLIC_VISIBILITY));
+            return new DomainSettings(userSearchMode, resourceSearchEnabled, defaultCalendarPublicVisibility);
         }
     }
 
