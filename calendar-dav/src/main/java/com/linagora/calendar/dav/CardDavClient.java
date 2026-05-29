@@ -19,7 +19,6 @@
 package com.linagora.calendar.dav;
 
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -53,7 +52,6 @@ import reactor.core.publisher.Mono;
 import reactor.netty.ByteBufMono;
 import reactor.netty.http.client.HttpClient;
 import reactor.netty.http.client.HttpClientResponse;
-import reactor.util.retry.Retry;
 
 public class CardDavClient extends DavClient {
 
@@ -83,9 +81,6 @@ public class CardDavClient extends DavClient {
     }
 
     public record AddressBook(String value, AddressBookType type) {
-    }
-
-    static class RetryableDavClientException extends RuntimeException {
     }
 
     public static final String LIMIT_PARAM = "limit";
@@ -178,25 +173,16 @@ public class CardDavClient extends DavClient {
             .post()
             .uri("/addressbooks/%s.json".formatted(domainId.value()))
             .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(CREATE_DOMAIN_MEMBERS_ADDRESS_BOOK_PAYLOAD)))
-            .responseSingle((res, buf) -> handleCreateAddressBookResponse(res, buf, domainId))
-            .retryWhen(Retry.fixedDelay(1, Duration.ofMillis(500))
-                .filter(throwable -> throwable instanceof RetryableDavClientException))
+            .responseSingle((response, byteBufMono) -> {
+                if (response.status().code() == 201) {
+                    return Mono.empty();
+                }
+                return responseBodyAsString(byteBufMono)
+                    .filter(serverResponse -> !Strings.CS.contains(serverResponse, "The resource you tried to create already exists"))
+                    .switchIfEmpty(Mono.empty())
+                    .flatMap(errorBody -> Mono.error(new DavClientException("Failed to create `domain-members` address book for domain %s: %s".formatted(domainId.value(), errorBody))));
+            })
             .then();
-    }
-
-    private Mono<Void> handleCreateAddressBookResponse(HttpClientResponse response, ByteBufMono byteBufMono, OpenPaaSId domainId) {
-        return switch (response.status().code()) {
-            case 201 -> Mono.empty();
-            case 404 ->
-                // The first request to esn-sabre may fail if the request user's calendar has not been lazy-provisioned yet
-                // https://github.com/linagora/esn-sabre/blob/master/lib/CalDAV/Backend/Esn.php#L41
-                Mono.error(new RetryableDavClientException());
-            default -> responseBodyAsString(byteBufMono)
-                .filter(serverResponse -> !Strings.CS.contains(serverResponse, "The resource you tried to create already exists"))
-                .switchIfEmpty(Mono.empty())
-                .flatMap(errorBody -> Mono.error(new DavClientException(
-                    "Failed to create `domain-members` address book for domain %s: %s".formatted(domainId.value(), errorBody))));
-        };
     }
 
     public Mono<Void> upsertContactDomainMembers(OpenPaaSId domainId, String vcardUid, byte[] vcardPayload) {

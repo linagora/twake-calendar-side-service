@@ -32,7 +32,6 @@ import java.util.Optional;
 import javax.net.ssl.SSLException;
 
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
 import org.apache.http.HttpStatus;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.james.core.Username;
@@ -70,7 +69,6 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.netty.ByteBufMono;
 import reactor.netty.http.client.HttpClient;
-import reactor.util.retry.Retry;
 
 public class CalDavClient extends DavClient {
 
@@ -615,8 +613,6 @@ public class CalDavClient extends DavClient {
                             .flatMap(body -> Mono.error(new DavClientException("Failed to patch read/write delegations. Status: " + status + ", body: " + body)));
                     }
                 })
-                .retryWhen(Retry.fixedDelay(1, Duration.ofMillis(500)) // Retry once on first creation because DAV data not be provisioned yet.
-                    .filter(error -> Strings.CI.contains(error.getMessage(), "Could not find node at path:")))
                 .then());
     }
 
