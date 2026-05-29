@@ -20,7 +20,6 @@ package com.linagora.calendar.dav;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -93,8 +92,6 @@ public class CalDavClient extends DavClient {
 
     private static final String SYNC_TOKEN_PROPERTY = "calendarserver:ctag";
 
-    protected static final Duration DEFAULT_IMIP_CALLBACK_RESPONSE_TIMEOUT = Duration.ofMinutes(3);
-
     public record NewCalendar(@JsonProperty("id") String id,
                               @JsonProperty("dav:name") String davName,
                               @JsonProperty("apple:color") String appleColor,
@@ -130,11 +127,8 @@ public class CalDavClient extends DavClient {
     private static final DateTimeFormatter CALDAV_UTC_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
         .withZone(ZoneOffset.UTC);
 
-    private final Duration imipCallbackResponseTimeout;
-
     public CalDavClient(DavConfiguration config, TechnicalTokenService technicalTokenService) throws SSLException {
         super(config, technicalTokenService);
-        imipCallbackResponseTimeout = config.imipCallbackResponseTimeout().orElse(DEFAULT_IMIP_CALLBACK_RESPONSE_TIMEOUT);
     }
 
     public Mono<byte[]> export(CalendarURL calendarURL, MailboxSession session) {
@@ -524,31 +518,6 @@ public class CalDavClient extends DavClient {
                               @JsonProperty("ical") String ical,
                               @JsonProperty("method") String method,
                               @JsonProperty("sequence") Optional<Integer> sequence) {
-    }
-
-    public Mono<Void> sendIMIPCallback(Username connectedUser, URI requestURI, byte[] payload) {
-        return httpClientWithImpersonation(connectedUser)
-            .responseTimeout(imipCallbackResponseTimeout)
-            .headers(headers -> headers
-                .add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_JSON)
-                .add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_JSON))
-            .request(HttpMethod.valueOf("IMIPCALLBACK"))
-            .uri(requestURI.toASCIIString())
-            .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(payload)))
-            .responseSingle((response, responseContent) -> {
-                if (response.status().code() == 204) {
-                    if (LOGGER.isDebugEnabled()) {
-                        LOGGER.debug("IMIP callback sent successfully with content {}", new String(payload, StandardCharsets.UTF_8));
-                    }
-                    return Mono.empty();
-                }
-                return responseContent.asString(StandardCharsets.UTF_8)
-                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
-                    .flatMap(body -> Mono.error(new RuntimeException("""
-                        Unexpected status code: %d when sending IMIP callback
-                        %s
-                        """.formatted(response.status().code(), body))));
-            });
     }
 
     private byte[] buildPatchDelegationBodyRequest(Collection<Username> addOrUpdateAdmins, Collection<Username> revokeAdmins) {
