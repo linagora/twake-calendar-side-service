@@ -31,8 +31,6 @@ import org.apache.james.core.Username;
 import org.apache.james.jmap.api.model.AccountId;
 import org.apache.james.mailbox.MailboxSession;
 
-import com.linagora.calendar.storage.UserSearchMode;
-
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -40,6 +38,7 @@ import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.restapi.routes.PeopleSearchRoute;
 import com.linagora.calendar.restapi.routes.PeopleSearchRoute.ObjectType;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.UserSearchMode;
 import com.linagora.tmail.james.jmap.contact.EmailAddressContact;
 import com.linagora.tmail.james.jmap.contact.EmailAddressContactSearchEngine;
 

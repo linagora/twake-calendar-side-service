@@ -27,6 +27,7 @@ import jakarta.inject.Inject;
 import jakarta.inject.Named;
 
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
 import org.apache.james.mailbox.MailboxSession;
 
@@ -72,12 +73,16 @@ public class UserSearchProvider implements PeopleSearchProvider {
             .flatMapMany(domain -> userSearchModeProvider.resolveUserSearchMode(domain)
                 .flatMapMany(mode -> switch (mode) {
                     case DISABLED -> Flux.empty();
-                    case LIMITED -> userDAO.retrieve(Username.of(query))
-                        .filter(user -> user.username().getDomainPart().map(domain::equals).orElse(false))
-                        .flux();
+                    case LIMITED -> searchLimited(domain, query);
                     case ENABLED -> userDAO.search(domain, query, limit);
                 }))
             .map(this::toResponseDTO);
+    }
+
+    private Flux<OpenPaaSUser> searchLimited(Domain domain, String query) {
+        return userDAO.retrieve(Username.of(query))
+            .filter(user -> user.username().getDomainPart().map(domain::equals).orElse(false))
+            .flux();
     }
 
     private ContactResponseDTO toResponseDTO(OpenPaaSUser user) {
