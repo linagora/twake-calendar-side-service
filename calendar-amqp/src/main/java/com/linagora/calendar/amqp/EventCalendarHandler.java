@@ -26,6 +26,7 @@ import org.slf4j.LoggerFactory;
 import com.google.inject.name.Named;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.DefaultCalendarPublicVisibility;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 
 import reactor.core.publisher.Mono;
@@ -35,15 +36,15 @@ public class EventCalendarHandler {
 
     private final OpenPaaSUserDAO openPaaSUserDAO;
     private final CalDavClient calDavClient;
-    private final boolean defaultCalendarPublicVisibilityEnabled;
+    private final DefaultCalendarPublicVisibility defaultCalendarPublicVisibility;
     
     @Inject
     public EventCalendarHandler(OpenPaaSUserDAO openPaaSUserDAO,
                                 CalDavClient calDavClient,
-                                @Named("defaultCalendarPublicVisibilityEnabled") boolean defaultCalendarPublicVisibilityEnabled) {
+                                @Named("defaultCalendarPublicVisibility") DefaultCalendarPublicVisibility defaultCalendarPublicVisibility) {
         this.openPaaSUserDAO = openPaaSUserDAO;
         this.calDavClient = calDavClient;
-        this.defaultCalendarPublicVisibilityEnabled = defaultCalendarPublicVisibilityEnabled;
+        this.defaultCalendarPublicVisibility = defaultCalendarPublicVisibility;
     }
 
     public Mono<Void> handleCreateEvent(CalendarMessageDTO message) {
@@ -52,7 +53,7 @@ public class EventCalendarHandler {
     }
 
     private Mono<Void> setDefaultCalendarPublicRightRead(CalendarMessageDTO message) {
-        if (defaultCalendarPublicVisibilityEnabled) {
+        if (DefaultCalendarPublicVisibility.READ == defaultCalendarPublicVisibility) {
             CalendarURL calendarURL = message.extractCalendarURL();
             return openPaaSUserDAO.retrieve(calendarURL.base())
                 .filter(openPaaSUser -> openPaaSUser.id().equals(calendarURL.calendarId()))

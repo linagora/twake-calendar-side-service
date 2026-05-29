@@ -47,6 +47,7 @@ import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
+import com.linagora.calendar.storage.DefaultCalendarPublicVisibility;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
@@ -56,7 +57,7 @@ import com.mongodb.reactivestreams.client.MongoDatabase;
 
 public class EventCalendarConsumerTest {
 
-    private static final boolean DEFAULT_CALENDAR_PUBLIC_VISIBILITY_ENABLED = true;
+    private static final DefaultCalendarPublicVisibility DEFAULT_CALENDAR_PUBLIC_VISIBILITY = DefaultCalendarPublicVisibility.READ;
 
     private final ConditionFactory calmlyAwait = Awaitility.with()
         .pollInterval(Duration.ofMillis(500))
@@ -108,13 +109,13 @@ public class EventCalendarConsumerTest {
         calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
     }
 
-    private void setupConsumer(boolean defaultCalendarPublicVisibilityEnabled) {
+    private void setupConsumer(DefaultCalendarPublicVisibility defaultCalendarPublicVisibility) {
         MongoDatabase mongoDB = sabreDavExtension.dockerSabreDavSetup().getMongoDB();
         MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
         OpenPaaSUserDAO openPaaSUserDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
 
         consumer = new EventCalendarConsumer(channelPool, QueueArguments.Builder::new,
-            new EventCalendarHandler(openPaaSUserDAO, calDavClient, defaultCalendarPublicVisibilityEnabled));
+            new EventCalendarHandler(openPaaSUserDAO, calDavClient, defaultCalendarPublicVisibility));
         consumer.init();
     }
 
@@ -127,7 +128,7 @@ public class EventCalendarConsumerTest {
 
     @Test
     void shouldSetDefaultCalendarPubliclyVisible(DockerSabreDavSetup dockerSabreDavSetup) {
-        setupConsumer(DEFAULT_CALENDAR_PUBLIC_VISIBILITY_ENABLED);
+        setupConsumer(DEFAULT_CALENDAR_PUBLIC_VISIBILITY);
 
         OpenPaaSUser user = sabreDavExtension.newTestUser();
 
@@ -152,7 +153,7 @@ public class EventCalendarConsumerTest {
 
     @Test
     void shouldNotSetNonDefaultCalendarPubliclyVisible(DockerSabreDavSetup dockerSabreDavSetup) throws InterruptedException {
-        setupConsumer(DEFAULT_CALENDAR_PUBLIC_VISIBILITY_ENABLED);
+        setupConsumer(DEFAULT_CALENDAR_PUBLIC_VISIBILITY);
 
         OpenPaaSUser user = sabreDavExtension.newTestUser();
 
@@ -193,7 +194,7 @@ public class EventCalendarConsumerTest {
 
     @Test
     void shouldNotSetDefaultCalendarPubliclyVisibleWhenItIsNotEnabledInConfig(DockerSabreDavSetup dockerSabreDavSetup) throws InterruptedException {
-        setupConsumer(!DEFAULT_CALENDAR_PUBLIC_VISIBILITY_ENABLED);
+        setupConsumer(DefaultCalendarPublicVisibility.PRIVATE);
 
         OpenPaaSUser user = sabreDavExtension.newTestUser();
 
