@@ -212,8 +212,8 @@ public class CalendarAmqpModule extends AbstractModule {
     @Named("defaultCalendarPublicVisibility")
     DefaultCalendarPublicVisibility provideDefaultCalendarPublicVisibilityEnabled(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
         Configuration config = propertiesProvider.getConfiguration("configuration");
-        return Optional.ofNullable(config.getString("default.calendar.public.visibility"))
-            .map(DefaultCalendarPublicVisibility::valueOf)
+        return Optional.ofNullable(config.getString("default.calendar.public.visibility", null))
+            .map(DefaultCalendarPublicVisibility::deserialize)
             .orElse(DefaultCalendarPublicVisibility.PRIVATE);
     }
 
