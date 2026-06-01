@@ -37,6 +37,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.restapi.routes.PeopleSearchRoute;
 import com.linagora.calendar.restapi.routes.PeopleSearchRoute.ObjectType;
+import com.linagora.calendar.storage.DomainSettingsResolver;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.UserSearchMode;
 import com.linagora.tmail.james.jmap.contact.EmailAddressContact;
@@ -101,17 +102,17 @@ public class ContactSearchProvider implements PeopleSearchProvider {
     private final EmailAddressContactSearchEngine contactSearchEngine;
     private final OpenPaaSUserDAO userDAO;
     private final URL baseAvatarUrl;
-    private final UserSearchModeProvider userSearchModeProvider;
+    private final DomainSettingsResolver domainSettingsResolver;
 
     @Inject
     public ContactSearchProvider(@Named("selfUrl") URL baseAvatarUrl,
                                  EmailAddressContactSearchEngine contactSearchEngine,
                                  OpenPaaSUserDAO userDAO,
-                                 UserSearchModeProvider userSearchModeProvider) {
+                                 DomainSettingsResolver domainSettingsResolver) {
         this.contactSearchEngine = contactSearchEngine;
         this.userDAO = userDAO;
         this.baseAvatarUrl = baseAvatarUrl;
-        this.userSearchModeProvider = userSearchModeProvider;
+        this.domainSettingsResolver = domainSettingsResolver;
     }
 
     @Override
@@ -132,7 +133,7 @@ public class ContactSearchProvider implements PeopleSearchProvider {
         boolean userTypeAllowedByClient = objectTypesFilter.isEmpty() || objectTypesFilter.contains(ObjectType.USER);
 
         return session.getUser().getDomainPart()
-            .map(domain -> userSearchModeProvider.resolveUserSearchMode(domain)
+            .map(domain -> domainSettingsResolver.resolveUserSearchMode(domain)
                 .map(mode -> userTypeAllowedByClient && mode != UserSearchMode.DISABLED))
             .orElse(Mono.just(userTypeAllowedByClient));
     }

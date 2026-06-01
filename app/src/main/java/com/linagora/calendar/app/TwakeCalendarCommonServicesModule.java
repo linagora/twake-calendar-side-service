@@ -119,6 +119,13 @@ public class TwakeCalendarCommonServicesModule extends AbstractModule {
 
     @Provides
     @Singleton
+    @Named("configuration")
+    org.apache.commons.configuration2.Configuration provideCommonsConfiguration(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
+        return propertiesProvider.getConfiguration("configuration");
+    }
+
+    @Provides
+    @Singleton
     @Named("userSearchDisabledDomains")
     Set<Domain> provideUserSearchDisabledDomains(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
         org.apache.commons.configuration2.Configuration config = propertiesProvider.getConfiguration("configuration");

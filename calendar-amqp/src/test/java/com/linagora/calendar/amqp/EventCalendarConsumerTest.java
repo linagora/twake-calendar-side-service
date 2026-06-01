@@ -22,6 +22,8 @@ import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 
 import java.time.Duration;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -43,11 +45,15 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.testcontainers.shaded.org.awaitility.Awaitility;
 import org.testcontainers.shaded.org.awaitility.core.ConditionFactory;
 
+import org.apache.commons.configuration2.MapConfiguration;
+
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.DefaultCalendarPublicVisibility;
+import com.linagora.calendar.storage.DomainSettingsResolver;
+import com.linagora.calendar.storage.MemoryDomainSettingsDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
@@ -114,8 +120,13 @@ public class EventCalendarConsumerTest {
         MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
         OpenPaaSUserDAO openPaaSUserDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
 
+        MapConfiguration config = new MapConfiguration(
+            Map.of("default.calendar.public.visibility", defaultCalendarPublicVisibility.serialize()));
+        DomainSettingsResolver domainSettingsResolver = new DomainSettingsResolver(
+            new MemoryDomainSettingsDAO(), Set.of(), Set.of(), config);
+
         consumer = new EventCalendarConsumer(channelPool, QueueArguments.Builder::new,
-            new EventCalendarHandler(openPaaSUserDAO, calDavClient, defaultCalendarPublicVisibility));
+            new EventCalendarHandler(openPaaSUserDAO, calDavClient, domainSettingsResolver));
         consumer.init();
     }
 

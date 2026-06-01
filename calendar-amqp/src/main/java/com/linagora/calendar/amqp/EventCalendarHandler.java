@@ -23,10 +23,10 @@ import jakarta.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.inject.name.Named;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.DefaultCalendarPublicVisibility;
+import com.linagora.calendar.storage.DomainSettingsResolver;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 
 import reactor.core.publisher.Mono;
@@ -36,15 +36,15 @@ public class EventCalendarHandler {
 
     private final OpenPaaSUserDAO openPaaSUserDAO;
     private final CalDavClient calDavClient;
-    private final DefaultCalendarPublicVisibility defaultCalendarPublicVisibility;
-    
+    private final DomainSettingsResolver domainSettingsResolver;
+
     @Inject
     public EventCalendarHandler(OpenPaaSUserDAO openPaaSUserDAO,
                                 CalDavClient calDavClient,
-                                @Named("defaultCalendarPublicVisibility") DefaultCalendarPublicVisibility defaultCalendarPublicVisibility) {
+                                DomainSettingsResolver domainSettingsResolver) {
         this.openPaaSUserDAO = openPaaSUserDAO;
         this.calDavClient = calDavClient;
-        this.defaultCalendarPublicVisibility = defaultCalendarPublicVisibility;
+        this.domainSettingsResolver = domainSettingsResolver;
     }
 
     public Mono<Void> handleCreateEvent(CalendarMessageDTO message) {
@@ -53,13 +53,12 @@ public class EventCalendarHandler {
     }
 
     private Mono<Void> setDefaultCalendarPublicRightRead(CalendarMessageDTO message) {
-        if (DefaultCalendarPublicVisibility.READ == defaultCalendarPublicVisibility) {
-            CalendarURL calendarURL = message.extractCalendarURL();
-            return openPaaSUserDAO.retrieve(calendarURL.base())
-                .filter(openPaaSUser -> openPaaSUser.id().equals(calendarURL.calendarId()))
-                .flatMap(openPaaSUser -> calDavClient.updateCalendarAcl(openPaaSUser, CalDavClient.PublicRight.READ));
-        } else {
-            return Mono.empty();
-        }
+        CalendarURL calendarURL = message.extractCalendarURL();
+        return openPaaSUserDAO.retrieve(calendarURL.base())
+            .filter(openPaaSUser -> openPaaSUser.id().equals(calendarURL.calendarId()))
+            .flatMap(openPaaSUser -> domainSettingsResolver.resolveDefaultCalendarPublicVisibility(openPaaSUser.username().getDomainPart()
+                    .orElseThrow(() -> new IllegalStateException("User domain part is missing for user: " + openPaaSUser.username().asString())))
+                .filter(DefaultCalendarPublicVisibility.READ::equals)
+                .flatMap(ignored -> calDavClient.updateCalendarAcl(openPaaSUser, CalDavClient.PublicRight.READ)));
     }
 }
