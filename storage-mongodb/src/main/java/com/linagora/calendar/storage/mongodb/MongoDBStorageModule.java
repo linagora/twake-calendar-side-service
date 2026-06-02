@@ -39,7 +39,6 @@ import com.linagora.calendar.storage.AlarmEventDAO;
 import com.linagora.calendar.storage.AlarmEventLeaseProvider;
 import com.linagora.calendar.storage.DomainConfiguration;
 import com.linagora.calendar.storage.DomainSettingsDAO;
-import com.linagora.calendar.storage.MemoryDomainSettingsDAO;
 import com.linagora.calendar.storage.OpenPaaSDomainAdminDAO;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSDomainList;
@@ -87,9 +86,8 @@ public class MongoDBStorageModule extends AbstractModule {
         bind(MongoDBBookingLinkDAO.class).in(Scopes.SINGLETON);
         bind(BookingLinkDAO.class).to(MongoDBBookingLinkDAO.class);
 
-        // TODO: Replace this after implementing MongoDBDomainSettingsDAO
-        bind(MemoryDomainSettingsDAO.class).in(Scopes.SINGLETON);
-        bind(DomainSettingsDAO.class).to(MemoryDomainSettingsDAO.class);
+        bind(MongoDBDomainSettingsDAO.class).in(Scopes.SINGLETON);
+        bind(DomainSettingsDAO.class).to(MongoDBDomainSettingsDAO.class);
 
         Multibinder.newSetBinder(binder(), HealthCheck.class)
             .addBinding()
