@@ -22,18 +22,22 @@ import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
+import org.apache.commons.configuration2.MapConfiguration;
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
-import org.testcontainers.shaded.com.google.common.collect.ImmutableSet;
 
 import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
+import com.linagora.calendar.storage.DomainSettingsResolver;
+import com.linagora.calendar.storage.MemoryDomainSettingsDAO;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
@@ -57,7 +61,9 @@ class SaaSUserSubscriptionHandlerTest {
         domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
         userDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
         cardDavClient = new CardDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
-        testee = new SaaSUserSubscriptionHandler(userDAO, domainDAO, cardDavClient, ImmutableSet.of(Domain.of("nonshared.tld")));
+        DomainSettingsResolver domainSettingsResolver = new DomainSettingsResolver(
+            new MemoryDomainSettingsDAO(), Set.of(Domain.of("nonshared.tld")), Set.of(), new MapConfiguration(Map.of()));
+        testee = new SaaSUserSubscriptionHandler(userDAO, domainDAO, cardDavClient, domainSettingsResolver);
         testDomain = createNewDomainWithAddressBook();
     }
 

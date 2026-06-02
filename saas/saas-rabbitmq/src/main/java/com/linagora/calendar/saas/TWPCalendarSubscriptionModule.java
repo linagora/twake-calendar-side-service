@@ -21,7 +21,6 @@ package com.linagora.calendar.saas;
 import static com.linagora.tmail.saas.rabbitmq.TWPConstants.TWP_INJECTION_KEY;
 
 import java.io.FileNotFoundException;
-import java.util.Set;
 
 import jakarta.inject.Named;
 import jakarta.inject.Singleton;
@@ -29,7 +28,6 @@ import jakarta.inject.Singleton;
 import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
-import org.apache.james.core.Domain;
 import org.apache.james.core.healthcheck.HealthCheck;
 import org.apache.james.utils.InitializationOperation;
 import org.apache.james.utils.InitilizationOperationBuilder;
@@ -40,6 +38,7 @@ import com.google.inject.Provides;
 import com.google.inject.multibindings.Multibinder;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.linagora.calendar.dav.CardDavClient;
+import com.linagora.calendar.storage.DomainSettingsResolver;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.tmail.saas.rabbitmq.TWPCommonRabbitMQConfiguration;
@@ -68,10 +67,10 @@ public class TWPCalendarSubscriptionModule extends AbstractModule {
                                                              OpenPaaSUserDAO userDAO,
                                                              OpenPaaSDomainDAO domainDAO,
                                                              CardDavClient cardDavClient,
-                                                             @Named("userSearchDisabledDomains") Set<Domain> userSearchDisabledDomains) {
+                                                             DomainSettingsResolver domainSettingsResolver) {
         return new SaaSSubscriptionConsumer(channelPool, rabbitMQConfiguration, twpCommonRabbitMQConfiguration,
             saaSSubscriptionRabbitMQConfiguration,
-            new SaaSUserSubscriptionHandler(userDAO, domainDAO, cardDavClient, userSearchDisabledDomains));
+            new SaaSUserSubscriptionHandler(userDAO, domainDAO, cardDavClient, domainSettingsResolver));
     }
 
     @Provides
