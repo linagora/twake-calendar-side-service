@@ -121,10 +121,10 @@ public class ContactSearchProvider implements PeopleSearchProvider {
 
     @Override
     public Flux<PeopleSearchRoute.ResponseDTO> search(MailboxSession session, String query, Set<ObjectType> objectTypesFilter, int limit) {
-        return Flux.from(contactSearchEngine.autoComplete(AccountId.fromString(session.getUser().asString()), query, limit))
-            .flatMap(contact -> userResolutionAllowed(session, objectTypesFilter)
-                .flatMap(allowed -> resolveUserOrContactType(contact, allowed))
-                .map(lookupResult -> toResponseDTO(lookupResult, contact)));
+        return userResolutionAllowed(session, objectTypesFilter)
+            .flatMapMany(allowed -> Flux.from(contactSearchEngine.autoComplete(AccountId.fromString(session.getUser().asString()), query, limit))
+                .flatMap(contact -> resolveUserOrContactType(contact, allowed)
+                    .map(lookupResult -> toResponseDTO(lookupResult, contact))));
     }
 
     private Mono<Boolean> userResolutionAllowed(MailboxSession session,
