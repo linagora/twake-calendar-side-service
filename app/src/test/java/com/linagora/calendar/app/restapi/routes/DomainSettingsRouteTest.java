@@ -117,7 +117,7 @@ class DomainSettingsRouteTest {
     void getShouldReturnDefaultsWhenNoSettingsSaved() {
         given()
         .when()
-            .get("/api/domainSettings")
+            .get("/api/domain/settings")
         .then()
             .statusCode(HttpStatus.SC_OK)
             .body("userSearchMode", equalTo("enabled"))
@@ -130,7 +130,7 @@ class DomainSettingsRouteTest {
         given()
             .auth().none()
         .when()
-            .get("/api/domainSettings")
+            .get("/api/domain/settings")
         .then()
             .statusCode(HttpStatus.SC_UNAUTHORIZED);
     }
@@ -146,7 +146,7 @@ class DomainSettingsRouteTest {
 
         given()
         .when()
-            .get("/api/domainSettings")
+            .get("/api/domain/settings")
         .then()
             .statusCode(HttpStatus.SC_OK)
             .body("userSearchMode", equalTo("limited"))

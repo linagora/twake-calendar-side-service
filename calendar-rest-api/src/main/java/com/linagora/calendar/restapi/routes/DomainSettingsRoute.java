@@ -64,7 +64,7 @@ public class DomainSettingsRoute extends CalendarRoute {
 
     @Override
     Endpoint endpoint() {
-        return new Endpoint(HttpMethod.GET, "/api/domainSettings");
+        return new Endpoint(HttpMethod.GET, "/api/domain/settings");
     }
 
     @Override
