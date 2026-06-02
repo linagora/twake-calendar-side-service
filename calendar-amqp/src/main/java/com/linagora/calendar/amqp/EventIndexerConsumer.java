@@ -74,11 +74,12 @@ public class EventIndexerConsumer implements Closeable, Startable {
     public enum Queue {
         ADD("calendar:event:created", "tcalendar:event:created:search", "tcalendar:event:created:search-dead-letter"),
         UPDATE("calendar:event:updated", "tcalendar:event:updated:search", "tcalendar:event:updated:search-dead-letter"),
-        DELETE("calendar:event:deleted", "tcalendar:event:deleted:search", "tcalendar:event:deleted:search-dead-letter"),
-        CANCEL("calendar:event:cancel", "tcalendar:event:cancel:search", "tcalendar:event:cancel:search-dead-letter"),
-        REQUEST("calendar:event:request", "tcalendar:event:request:search", "tcalendar:event:request:search-dead-letter");
-        /* Ignored the `calendar:event:reply`, which is triggered exclusively when an attendee updates their participation status (partstat).
-        Since eventSearch does not rely on partstat, this queue is not required. */
+        DELETE("calendar:event:deleted", "tcalendar:event:deleted:search", "tcalendar:event:deleted:search-dead-letter");
+        /* Search indexing intentionally ignores:
+         * - `calendar:event:request`: Sabre 4.7 also emits an equivalent `calendar:event:updated`
+         * - `calendar:event:cancel`: Sabre 4.7 also emits an equivalent `calendar:event:deleted`
+         * - `calendar:event:reply`: eventSearch does not rely on attendee partstat changes
+         */
 
         private final String exchangeName;
         private final String queueName;
@@ -162,8 +163,6 @@ public class EventIndexerConsumer implements Closeable, Startable {
         consumeDisposableMap.put(Queue.ADD, doConsumeCalendarEventMessages(Queue.ADD, handlerAdd));
         consumeDisposableMap.put(Queue.UPDATE, doConsumeCalendarEventMessages(Queue.UPDATE, handlerAddOrUpdate));
         consumeDisposableMap.put(Queue.DELETE, doConsumeCalendarEventMessages(Queue.DELETE, handlerDelete));
-        consumeDisposableMap.put(Queue.CANCEL, doConsumeCalendarEventMessages(Queue.CANCEL, handlerDelete));
-        consumeDisposableMap.put(Queue.REQUEST, doConsumeCalendarEventMessages(Queue.REQUEST, handlerAddOrUpdate));
     }
 
     public void restart() {
