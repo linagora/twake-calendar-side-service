@@ -25,7 +25,7 @@ public record DomainSettings(Optional<UserSearchMode> userSearchMode,
                              Optional<DefaultCalendarPublicVisibility> defaultCalendarPublicVisibility) {
     public static final UserSearchMode DEFAULT_USER_SEARCH_MODE = UserSearchMode.ENABLED;
     public static final boolean DEFAULT_RESOURCE_SEARCH_ENABLED = true;
-    public static final DefaultCalendarPublicVisibility DEFAULT_CALENDAR_PUBLIC_VISIBILITY = DefaultCalendarPublicVisibility.READ;
+    public static final DefaultCalendarPublicVisibility DEFAULT_CALENDAR_PUBLIC_VISIBILITY = DefaultCalendarPublicVisibility.PRIVATE;
     public static final DomainSettings DEFAULT_DOMAIN_SETTINGS = new DomainSettings(Optional.empty(), Optional.empty(), Optional.empty());
 
     public static class Builder {

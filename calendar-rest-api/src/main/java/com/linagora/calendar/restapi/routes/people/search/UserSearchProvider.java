@@ -35,6 +35,7 @@ import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.restapi.routes.PeopleSearchRoute;
 import com.linagora.calendar.restapi.routes.PeopleSearchRoute.ObjectType;
 import com.linagora.calendar.restapi.routes.people.search.ContactSearchProvider.ContactResponseDTO;
+import com.linagora.calendar.storage.DomainSettingsResolver;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 
@@ -47,15 +48,15 @@ public class UserSearchProvider implements PeopleSearchProvider {
 
     private final OpenPaaSUserDAO userDAO;
     private final URL baseAvatarUrl;
-    private final UserSearchModeProvider userSearchModeProvider;
+    private final DomainSettingsResolver domainSettingsResolver;
 
     @Inject
     public UserSearchProvider(OpenPaaSUserDAO userDAO,
                               @Named("selfUrl") URL baseAvatarUrl,
-                              UserSearchModeProvider userSearchModeProvider) {
+                              DomainSettingsResolver domainSettingsResolver) {
         this.userDAO = userDAO;
         this.baseAvatarUrl = baseAvatarUrl;
-        this.userSearchModeProvider = userSearchModeProvider;
+        this.domainSettingsResolver = domainSettingsResolver;
     }
 
     @Override
@@ -70,7 +71,7 @@ public class UserSearchProvider implements PeopleSearchProvider {
         }
 
         return Mono.justOrEmpty(session.getUser().getDomainPart())
-            .flatMapMany(domain -> userSearchModeProvider.resolveUserSearchMode(domain)
+            .flatMapMany(domain -> domainSettingsResolver.resolveUserSearchMode(domain)
                 .flatMapMany(mode -> switch (mode) {
                     case DISABLED -> Flux.empty();
                     case LIMITED -> searchLimited(domain, query);

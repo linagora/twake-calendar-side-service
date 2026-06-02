@@ -81,6 +81,9 @@ public class MemoryStorageModule extends AbstractModule {
 
         bind(MemoryTicketStore.class).in(Scopes.SINGLETON);
         bind(TicketStore.class).to(MemoryTicketStore.class);
+
+        bind(MemoryDomainSettingsDAO.class).in(Scopes.SINGLETON);
+        bind(DomainSettingsDAO.class).to(MemoryDomainSettingsDAO.class);
     }
 
     @Provides

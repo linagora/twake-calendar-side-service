@@ -19,7 +19,6 @@
 package com.linagora.calendar.amqp;
 
 import java.io.FileNotFoundException;
-import java.util.Optional;
 import java.util.function.Supplier;
 
 import org.apache.commons.configuration2.Configuration;
@@ -39,7 +38,6 @@ import com.google.inject.Singleton;
 import com.google.inject.multibindings.Multibinder;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.google.inject.name.Named;
-import com.linagora.calendar.storage.DefaultCalendarPublicVisibility;
 
 public class CalendarAmqpModule extends AbstractModule {
     public static final String INJECT_KEY_DAV = "dav";
@@ -205,16 +203,6 @@ public class CalendarAmqpModule extends AbstractModule {
         return InitilizationOperationBuilder
             .forClass(ItipLocalDeliveryConsumer.class)
             .init(instance::init);
-    }
-
-    @Provides
-    @Singleton
-    @Named("defaultCalendarPublicVisibility")
-    DefaultCalendarPublicVisibility provideDefaultCalendarPublicVisibilityEnabled(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
-        Configuration config = propertiesProvider.getConfiguration("configuration");
-        return Optional.ofNullable(config.getString("default.calendar.public.visibility", null))
-            .map(DefaultCalendarPublicVisibility::deserialize)
-            .orElse(DefaultCalendarPublicVisibility.PRIVATE);
     }
 
     @Provides
