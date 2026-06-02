@@ -45,7 +45,8 @@ public class DockerMongoDBExtension implements BeforeAllCallback, AfterAllCallba
         MongoDBOpenPaaSUserDAO.COLLECTION,
         MongoDBUploadedFileDAO.COLLECTION,
         MongoDBAlarmEventDAO.COLLECTION,
-        MongoDBResourceDAO.COLLECTION);
+        MongoDBResourceDAO.COLLECTION,
+        MongoDBDomainSettingsDAO.COLLECTION);
 
     private static MongoDBConfiguration mongoDBConfiguration;
 
