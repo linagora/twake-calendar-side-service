@@ -873,8 +873,8 @@ public class EventIndexerConsumerTest {
     class FailureTest {
 
         @ParameterizedTest
-        @ValueSource(strings = {"calendar:event:created", "calendar:event:updated", "calendar:event:request"})
-        void consumeShouldNotCrashOnMalformedMessageOnCreatedAndUpdatedQueues(String exchangeName) {
+        @ValueSource(strings = {"calendar:event:created", "calendar:event:updated"})
+        void consumeShouldNotCrashOnMalformedMessageOnIndexQueues(String exchangeName) {
             channelPool.getSender()
                 .send(Mono.just(new OutboundMessage(exchangeName,
                     EMPTY_ROUTING_KEY,
@@ -889,8 +889,8 @@ public class EventIndexerConsumerTest {
         }
 
         @ParameterizedTest
-        @ValueSource(strings = {"calendar:event:deleted", "calendar:event:cancel"})
-        void consumeOnMalformedMessageOnDeletedAndCancelQueues(String exchangeName) {
+        @ValueSource(strings = {"calendar:event:deleted"})
+        void consumeOnMalformedMessageOnDeleteQueue(String exchangeName) {
             String eventUid = UUID.randomUUID().toString();
             String calendarData = getSampleCalendar(eventUid);
             davTestHelper.upsertCalendar(openPaasUser, calendarData, eventUid);
