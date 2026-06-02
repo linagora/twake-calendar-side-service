@@ -702,3 +702,21 @@ POST /api/import
 ### POST /linagora.esn.dav.import/api/import (Deprecated)
 
 Deprecated in favor of `POST /api/import`, kept for OpenPaaS backward compatibility.
+
+### GET /api/domain/settings
+
+Retrieve settings of the domain which the authenticated user belongs to.
+
+```
+GET /api/domain/settings
+```
+
+Will return:
+
+```
+{
+  "userSearchMode": "limited",
+  "resourceSearchEnabled": false,
+  "defaultCalendarPublicVisibility": "read"
+} 
+```
