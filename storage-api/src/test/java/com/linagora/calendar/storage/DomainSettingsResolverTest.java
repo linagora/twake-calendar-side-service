@@ -64,7 +64,7 @@ class DomainSettingsResolverTest {
             DomainSettings saved = DomainSettings.builder()
                 .userSearchMode(UserSearchMode.LIMITED)
                 .resourceSearchEnabled(false)
-                .defaultCalendarPublicVisibility(DefaultCalendarPublicVisibility.PRIVATE)
+                .defaultCalendarPublicVisibility(DefaultCalendarPublicVisibility.READ)
                 .build();
             domainSettingsDAO.save(DOMAIN, saved).block();
 
@@ -72,21 +72,21 @@ class DomainSettingsResolverTest {
 
             assertThat(result.userSearchMode()).contains(UserSearchMode.LIMITED);
             assertThat(result.resourceSearchEnabled()).contains(false);
-            assertThat(result.defaultCalendarPublicVisibility()).contains(DefaultCalendarPublicVisibility.PRIVATE);
+            assertThat(result.defaultCalendarPublicVisibility()).contains(DefaultCalendarPublicVisibility.READ);
         }
 
         @Test
         void resolveShouldUseConfigWhenDAOSettingsNotPresent() {
             Map<String, Object> configEntries = Map.of(
                 "resource.search.enabled", "false",
-                "default.calendar.public.visibility", "private");
+                "default.calendar.public.visibility", "read");
             DomainSettingsResolver resolver = resolver(Set.of(), Set.of(DOMAIN), configEntries);
 
             DomainSettings result = resolver.resolve(DOMAIN).block();
 
             assertThat(result.userSearchMode()).contains(UserSearchMode.LIMITED);
             assertThat(result.resourceSearchEnabled()).contains(false);
-            assertThat(result.defaultCalendarPublicVisibility()).contains(DefaultCalendarPublicVisibility.PRIVATE);
+            assertThat(result.defaultCalendarPublicVisibility()).contains(DefaultCalendarPublicVisibility.READ);
         }
 
         @Test
@@ -94,20 +94,20 @@ class DomainSettingsResolverTest {
             DomainSettings saved = DomainSettings.builder()
                 .userSearchMode(UserSearchMode.LIMITED)
                 .resourceSearchEnabled(false)
-                .defaultCalendarPublicVisibility(DefaultCalendarPublicVisibility.PRIVATE)
+                .defaultCalendarPublicVisibility(DefaultCalendarPublicVisibility.READ)
                 .build();
             domainSettingsDAO.save(DOMAIN, saved).block();
 
             Map<String, Object> configEntries = Map.of(
                 "resource.search.enabled", "true",
-                "default.calendar.public.visibility", "read");
+                "default.calendar.public.visibility", "private");
             DomainSettingsResolver resolver = resolver(Set.of(DOMAIN), Set.of(), configEntries);
 
             DomainSettings result = resolver.resolve(DOMAIN).block();
 
             assertThat(result.userSearchMode()).contains(UserSearchMode.LIMITED);
             assertThat(result.resourceSearchEnabled()).contains(false);
-            assertThat(result.defaultCalendarPublicVisibility()).contains(DefaultCalendarPublicVisibility.PRIVATE);
+            assertThat(result.defaultCalendarPublicVisibility()).contains(DefaultCalendarPublicVisibility.READ);
         }
     }
 
@@ -168,20 +168,20 @@ class DomainSettingsResolverTest {
         @Test
         void resolveDefaultCalendarPublicVisibilityShouldReturnDAOValueWhenPresent() {
             domainSettingsDAO.save(DOMAIN, DomainSettings.builder()
-                .defaultCalendarPublicVisibility(DefaultCalendarPublicVisibility.PRIVATE)
+                .defaultCalendarPublicVisibility(DefaultCalendarPublicVisibility.READ)
                 .build()).block();
 
             assertThat(defaultResolver().resolveDefaultCalendarPublicVisibility(DOMAIN).block())
-                .isEqualTo(DefaultCalendarPublicVisibility.PRIVATE);
+                .isEqualTo(DefaultCalendarPublicVisibility.READ);
         }
 
         @Test
         void resolveDefaultCalendarPublicVisibilityShouldFallbackToConfigWhenDAOEmpty() {
             DomainSettingsResolver resolver = resolver(Set.of(), Set.of(),
-                Map.of("default.calendar.public.visibility", "private"));
+                Map.of("default.calendar.public.visibility", "read"));
 
             assertThat(resolver.resolveDefaultCalendarPublicVisibility(DOMAIN).block())
-                .isEqualTo(DefaultCalendarPublicVisibility.PRIVATE);
+                .isEqualTo(DefaultCalendarPublicVisibility.READ);
         }
 
         @Test

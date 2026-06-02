@@ -122,7 +122,7 @@ class DomainSettingsRouteTest {
             .statusCode(HttpStatus.SC_OK)
             .body("userSearchMode", equalTo("enabled"))
             .body("resourceSearchEnabled", equalTo(true))
-            .body("defaultCalendarPublicVisibility", equalTo("read"));
+            .body("defaultCalendarPublicVisibility", equalTo("private"));
     }
 
     @Test
