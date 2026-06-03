@@ -698,6 +698,37 @@ class CalendarDiffCalculatorTest {
         }
 
         @Test
+        void alarmOnlyUpdateReturnsNoDiff() {
+            String newIcs = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Test//Test//EN
+                METHOD:REQUEST
+                BEGIN:VEVENT
+                UID:uid-single@test
+                DTSTART:20260401T100000Z
+                DTEND:20260401T110000Z
+                SUMMARY:Team meeting
+                LOCATION:Room A
+                DESCRIPTION:Discuss roadmap
+                ATTENDEE:mailto:bob@example.com
+                ORGANIZER:mailto:alice@example.com
+                BEGIN:VALARM
+                ACTION:DISPLAY
+                DESCRIPTION:Reminder
+                TRIGGER:-PT10M
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """;
+
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(
+                RECIPIENT, parse(newIcs), parse(BASE_ICS));
+
+            assertThat(diffs).isEmpty();
+        }
+
+        @Test
         void newRecipientAddedMarksIsNewEvent() {
             String oldIcs = """
                 BEGIN:VCALENDAR
