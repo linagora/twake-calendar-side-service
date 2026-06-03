@@ -135,6 +135,13 @@ public class CalendarDiffCalculator {
         }
 
         Optional<List<PropertyChange>> changes = computePropertyChanges(previousEvent, currentEvent);
+        boolean organizerAcceptedTransition = organizerAcceptedTransition(previousEvent, currentEvent);
+        boolean attendeePartStatChanged = attendeePartStatChanged(recipient, previousEvent, currentEvent);
+        boolean hasNoRelevantChanges = recipientWasAttending && recipientIsAttendingNow && changes.isEmpty() && !organizerAcceptedTransition && !attendeePartStatChanged;
+        if (hasNoRelevantChanges) {
+            return ImmutableList.of();
+        }
+
         return List.of(new EventDiff(currentEvent, !recipientWasAttending, changes));
     }
 
@@ -173,6 +180,15 @@ public class CalendarDiffCalculator {
         }
 
         return Optional.of(new EventDiff(currentOccurrence, !recipientWasAttending, changes));
+    }
+
+    private static boolean attendeePartStatChanged(String recipient, VEvent previousEvent, VEvent currentEvent) {
+        Function<VEvent, Optional<PartStat>> attendeePartStat = event -> EventParseUtils.getAttendees(event).stream()
+            .filter(person -> Strings.CI.equals(person.email().asString(), recipient))
+            .findFirst()
+            .flatMap(Person::partStat);
+
+        return !attendeePartStat.apply(previousEvent).equals(attendeePartStat.apply(currentEvent));
     }
 
     private static Optional<VEvent> toPreviousOccurrenceFromMaster(VEvent previousMasterEvent, VEvent currentOccurrence) {

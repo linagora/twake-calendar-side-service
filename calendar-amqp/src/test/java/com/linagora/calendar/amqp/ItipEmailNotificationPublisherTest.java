@@ -204,6 +204,36 @@ class ItipEmailNotificationPublisherTest {
         }
 
         @Test
+        void requestWithOldAndOnlyAlarmChangeShouldNotGenerateNotification() {
+            String singleWithPersonalAlarm = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Test//Calendar//EN
+                METHOD:REQUEST
+                BEGIN:VEVENT
+                UID:event-uid@test
+                DTSTART:20260401T100000Z
+                DTEND:20260401T110000Z
+                SUMMARY:Sprint sync
+                ATTENDEE:mailto:alice@example.com
+                ORGANIZER:mailto:bob@example.com
+                BEGIN:VALARM
+                ACTION:DISPLAY
+                DESCRIPTION:Reminder
+                TRIGGER:-PT10M
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """;
+            ItipLocalDeliveryDTO dto = new ItipLocalDeliveryDTO("mailto:bob@example.com", Method.VALUE_REQUEST, UID, CALENDAR_ID,
+                singleWithPersonalAlarm, Optional.of(SINGLE_REQUEST_OLD), false, List.of("mailto:alice@example.com"));
+
+            List<NotificationEmailDTO> notifications = testee.buildNotificationMessages(dto, EVENT_PATH, Optional.of(parseIcs(SINGLE_REQUEST_OLD)));
+
+            assertThat(notifications).isEmpty();
+        }
+
+        @Test
         void publicAgendaRequestShouldStillNotifyWhenOnlyPartstatChanges() {
             String singlePublicAgendaNeedsAction = """
                 BEGIN:VCALENDAR
