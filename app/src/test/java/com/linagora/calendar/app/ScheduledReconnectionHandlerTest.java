@@ -117,6 +117,8 @@ public class ScheduledReconnectionHandlerTest {
             .containsExactlyInAnyOrder("tcalendar:event:created:search",
                 "tcalendar:event:updated:search",
                 "tcalendar:event:deleted:search",
+                "tcalendar:event:cancel:search",
+                "tcalendar:event:request:search",
                 "tcalendar:event:alarm:created",
                 "tcalendar:event:alarm:updated",
                 "tcalendar:event:alarm:deleted",

@@ -4,29 +4,6 @@ This document describes breaking changes and migration steps required when upgra
 
 ## 2.2.0 (upcoming)
 
-### Removed obsolete search queues
-
-Date: 02/06/2026
-
-The search indexer no longer binds the search queues
-`tcalendar:event:request:search` and `tcalendar:event:cancel:search`
-For Sabre 4.7, equivalent search payloads are already delivered through
-the existing search queues bound to exchange `calendar:event:updated` and `calendar:event:deleted`.
-
-#### Breaking Change
-
-Old deployments may still have these `:search` bindings and queues.
-If left in place, messages will keep accumulating there with no consumer.
-
-#### Required Actions
-
-After all calendar-side-service instances have been upgraded, delete these obsolete search queues:
-
-- `tcalendar:event:request:search`
-- `tcalendar:event:request:search-dead-letter`
-- `tcalendar:event:cancel:search`
-- `tcalendar:event:cancel:search-dead-letter`
-
 ### Added resourceName field to Calendar Event index mapping
 
 Date: 13/05/2026
