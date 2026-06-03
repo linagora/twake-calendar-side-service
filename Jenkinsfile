@@ -35,6 +35,8 @@ pipeline {
                                 ':logback-json-classic',
                                 ':tmail-saas-rabbitmq',
                                 ':jmap-extensions',
+                                ':jmap-extensions-opensearch',
+                                ':tmail-event-bus-redis',
                                 ':apache-james-backends-opensearch',
                                 ':apache-james-backends-rabbitmq',
                                 ':apache-james-backends-redis',
