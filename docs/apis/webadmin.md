@@ -662,20 +662,25 @@ Example:
 GET /domains/linagora.com/settings
 ```
 
-Returns the explicitly configured settings for the domain. Fields set to `null` are not configured and will fall back to system defaults at resolution time.
+Returns the explicitly configured settings for the domain alongside the effective resolved values. Fields at the top level set to `null` are not configured for this domain. The `resolved` object always contains the effective value after applying configuration file and system defaults as fallback.
 
 ```json
 {
   "userSearchMode": "limited",
-  "resourceSearchEnabled": false,
-  "defaultCalendarPublicVisibility": null
+  "resourceSearchEnabled": null,
+  "defaultCalendarPublicVisibility": null,
+  "resolved": {
+    "userSearchMode": "limited",
+    "resourceSearchEnabled": true,
+    "defaultCalendarPublicVisibility": "read"
+  }
 }
 ```
 
-**Field values**:
-- `userSearchMode`: `"enabled"` | `"limited"` | `"disabled"` | `null`
-- `resourceSearchEnabled`: `true` | `false` | `null`
-- `defaultCalendarPublicVisibility`: `"read"` | `"private"` | `null`
+**Field values** (top-level and `resolved`):
+- `userSearchMode`: `"enabled"` | `"limited"` | `"disabled"` (top-level also allows `null`)
+- `resourceSearchEnabled`: `true` | `false` (top-level also allows `null`)
+- `defaultCalendarPublicVisibility`: `"read"` | `"private"` (top-level also allows `null`)
 
 **Status codes**:
 - `200`: settings returned (all fields `null` when nothing has been configured)

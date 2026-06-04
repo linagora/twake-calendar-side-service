@@ -38,6 +38,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.linagora.calendar.storage.DefaultCalendarPublicVisibility;
 import com.linagora.calendar.storage.DomainSettings;
 import com.linagora.calendar.storage.DomainSettingsDAO;
+import com.linagora.calendar.storage.DomainSettingsResolver;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.UserSearchMode;
 
@@ -52,16 +53,9 @@ public class DomainSettingsRoutes implements Routes {
     private static final String SETTINGS = "settings";
     private static final String DOMAIN_SETTINGS_PATH = BASE_PATH + SEPARATOR + DOMAIN_PARAM + SEPARATOR + SETTINGS;
 
-    public record DomainSettingsDTO(@JsonProperty(value = "userSearchMode", required = true) @Nullable String userSearchMode,
-                                    @JsonProperty(value = "resourceSearchEnabled", required = true) @Nullable Boolean resourceSearchEnabled,
-                                    @JsonProperty(value = "defaultCalendarPublicVisibility", required = true) @Nullable String defaultCalendarPublicVisibility) {
-
-        static DomainSettingsDTO from(DomainSettings settings) {
-            return new DomainSettingsDTO(
-                settings.userSearchMode().map(UserSearchMode::serialize).orElse(null),
-                settings.resourceSearchEnabled().orElse(null),
-                settings.defaultCalendarPublicVisibility().map(DefaultCalendarPublicVisibility::serialize).orElse(null));
-        }
+    public record DomainSettingsPutRequest(@JsonProperty(value = "userSearchMode", required = true) @Nullable String userSearchMode,
+                                           @JsonProperty(value = "resourceSearchEnabled", required = true) @Nullable Boolean resourceSearchEnabled,
+                                           @JsonProperty(value = "defaultCalendarPublicVisibility", required = true) @Nullable String defaultCalendarPublicVisibility) {
 
         DomainSettings toDomainSettings() {
             DomainSettings.Builder builder = DomainSettings.builder();
@@ -74,19 +68,43 @@ public class DomainSettingsRoutes implements Routes {
         }
     }
 
+    public record DomainSettingsResponse(@JsonProperty("userSearchMode") @Nullable String userSearchMode,
+                                         @JsonProperty("resourceSearchEnabled") @Nullable Boolean resourceSearchEnabled,
+                                         @JsonProperty("defaultCalendarPublicVisibility") @Nullable String defaultCalendarPublicVisibility,
+                                         @JsonProperty("resolved") ResolvedSettings resolved) {
+
+        public record ResolvedSettings(@JsonProperty("userSearchMode") String userSearchMode,
+                                       @JsonProperty("resourceSearchEnabled") boolean resourceSearchEnabled,
+                                       @JsonProperty("defaultCalendarPublicVisibility") String defaultCalendarPublicVisibility) {}
+
+        static DomainSettingsResponse of(DomainSettings stored, DomainSettings resolved) {
+            return new DomainSettingsResponse(
+                stored.userSearchMode().map(UserSearchMode::serialize).orElse(null),
+                stored.resourceSearchEnabled().orElse(null),
+                stored.defaultCalendarPublicVisibility().map(DefaultCalendarPublicVisibility::serialize).orElse(null),
+                new ResolvedSettings(
+                    resolved.userSearchMode().orElse(DomainSettings.DEFAULT_USER_SEARCH_MODE).serialize(),
+                    resolved.resourceSearchEnabled().orElse(DomainSettings.DEFAULT_RESOURCE_SEARCH_ENABLED),
+                    resolved.defaultCalendarPublicVisibility().orElse(DomainSettings.DEFAULT_CALENDAR_PUBLIC_VISIBILITY).serialize()));
+        }
+    }
+
     private final DomainSettingsDAO domainSettingsDAO;
+    private final DomainSettingsResolver domainSettingsResolver;
     private final OpenPaaSDomainDAO domainDAO;
     private final JsonTransformer jsonTransformer;
-    private final JsonExtractor<DomainSettingsDTO> jsonExtractor;
+    private final JsonExtractor<DomainSettingsPutRequest> jsonExtractor;
 
     @Inject
     public DomainSettingsRoutes(DomainSettingsDAO domainSettingsDAO,
+                                DomainSettingsResolver domainSettingsResolver,
                                 OpenPaaSDomainDAO domainDAO,
                                 JsonTransformer jsonTransformer) {
         this.domainSettingsDAO = domainSettingsDAO;
+        this.domainSettingsResolver = domainSettingsResolver;
         this.domainDAO = domainDAO;
         this.jsonTransformer = jsonTransformer;
-        this.jsonExtractor = new JsonExtractor<>(DomainSettingsDTO.class);
+        this.jsonExtractor = new JsonExtractor<>(DomainSettingsPutRequest.class);
     }
 
     @Override
@@ -100,17 +118,18 @@ public class DomainSettingsRoutes implements Routes {
         service.put(DOMAIN_SETTINGS_PATH, this::putDomainSettings);
     }
 
-    private DomainSettingsDTO getDomainSettings(Request request, Response response) {
+    private DomainSettingsResponse getDomainSettings(Request request, Response response) {
         Domain domain = asDomain(request);
         return domainSettingsDAO.retrieve(domain)
             .defaultIfEmpty(DomainSettings.DEFAULT_DOMAIN_SETTINGS)
-            .map(DomainSettingsDTO::from)
+            .flatMap(stored -> domainSettingsResolver.resolve(domain)
+                .map(resolved -> DomainSettingsResponse.of(stored, resolved)))
             .block();
     }
 
     private String putDomainSettings(Request request, Response response) throws JsonExtractException {
         Domain domain = asDomain(request);
-        DomainSettingsDTO requestDTO = jsonExtractor.parse(request.body());
+        DomainSettingsPutRequest requestDTO = jsonExtractor.parse(request.body());
         DomainSettings settings = requestDTO.toDomainSettings();
         domainSettingsDAO.save(domain, settings).block();
         response.status(HttpStatus.NO_CONTENT_204);

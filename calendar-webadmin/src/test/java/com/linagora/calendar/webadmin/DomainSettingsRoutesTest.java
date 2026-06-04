@@ -23,7 +23,10 @@ import static io.restassured.RestAssured.when;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
+import org.apache.commons.configuration2.MapConfiguration;
 import org.apache.james.core.Domain;
 import org.apache.james.webadmin.WebAdminServer;
 import org.apache.james.webadmin.WebAdminUtils;
@@ -34,6 +37,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.linagora.calendar.storage.DomainSettingsDAO;
+import com.linagora.calendar.storage.DomainSettingsResolver;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.DockerMongoDBExtension;
 import com.linagora.calendar.storage.mongodb.MongoDBDomainSettingsDAO;
@@ -55,9 +59,10 @@ class DomainSettingsRoutesTest {
     void setUp() {
         domainDAO = new MongoDBOpenPaaSDomainDAO(mongo.getDb());
         domainSettingsDAO = new MongoDBDomainSettingsDAO(mongo.getDb());
+        DomainSettingsResolver resolver = new DomainSettingsResolver(domainSettingsDAO, Set.of(), Set.of(), new MapConfiguration(Map.of()));
 
         webAdminServer = WebAdminUtils.createWebAdminServer(
-                new DomainSettingsRoutes(domainSettingsDAO, domainDAO, new JsonTransformer()))
+                new DomainSettingsRoutes(domainSettingsDAO, resolver, domainDAO, new JsonTransformer()))
             .start();
 
         RestAssured.requestSpecification = WebAdminUtils.buildRequestSpecification(webAdminServer).build();
@@ -69,7 +74,7 @@ class DomainSettingsRoutesTest {
     }
 
     @Test
-    void getShouldReturnAllNullsWhenNoSettingsSaved() {
+    void getShouldReturnNullsWithSystemDefaultsResolvedWhenNoSettingsSaved() {
         domainDAO.add(Domain.of("linagora.com")).block();
 
         String body = when()
@@ -83,13 +88,17 @@ class DomainSettingsRoutesTest {
             {
               "userSearchMode": null,
               "resourceSearchEnabled": null,
-              "defaultCalendarPublicVisibility": null
-            }
-            """);
+              "defaultCalendarPublicVisibility": null,
+              "resolved": {
+                "userSearchMode": "enabled",
+                "resourceSearchEnabled": true,
+                "defaultCalendarPublicVisibility": "private"
+              }
+            }""");
     }
 
     @Test
-    void getShouldReturnStoredSettings() {
+    void getShouldReturnStoredSettingsWithResolvedFallbacksForUnsetFields() {
         domainDAO.add(Domain.of("linagora.com")).block();
 
         given()
@@ -116,7 +125,12 @@ class DomainSettingsRoutesTest {
             {
               "userSearchMode": "limited",
               "resourceSearchEnabled": false,
-              "defaultCalendarPublicVisibility": null
+              "defaultCalendarPublicVisibility": null,
+              "resolved": {
+                "userSearchMode": "limited",
+                "resourceSearchEnabled": false,
+                "defaultCalendarPublicVisibility": "private"
+              }
             }""");
     }
 
@@ -148,7 +162,17 @@ class DomainSettingsRoutesTest {
             .statusCode(200)
             .extract().asString();
 
-        assertThatJson(response).isEqualTo(body2);
+        assertThatJson(response).isEqualTo("""
+            {
+              "userSearchMode": "disabled",
+              "resourceSearchEnabled": true,
+              "defaultCalendarPublicVisibility": null,
+              "resolved": {
+                "userSearchMode": "disabled",
+                "resourceSearchEnabled": true,
+                "defaultCalendarPublicVisibility": "private"
+              }
+            }""");
     }
 
     @Test
@@ -160,7 +184,7 @@ class DomainSettingsRoutesTest {
             {
               "userSearchMode": "limited",
               "resourceSearchEnabled": false,
-              "defaultCalendarPublicVisibility": "private"
+              "defaultCalendarPublicVisibility": "read"
             }
             """;
         given()
@@ -185,10 +209,30 @@ class DomainSettingsRoutesTest {
             .statusCode(204);
 
         assertThatJson(when().get("/domains/linagora.com/settings").then().statusCode(200).extract().asString())
-            .isEqualTo(body1);
+            .isEqualTo("""
+                {
+                  "userSearchMode": "limited",
+                  "resourceSearchEnabled": false,
+                  "defaultCalendarPublicVisibility": "read",
+                  "resolved": {
+                    "userSearchMode": "limited",
+                    "resourceSearchEnabled": false,
+                    "defaultCalendarPublicVisibility": "read"
+                  }
+                }""");
 
         assertThatJson(when().get("/domains/other.com/settings").then().statusCode(200).extract().asString())
-            .isEqualTo(body2);
+            .isEqualTo("""
+                {
+                  "userSearchMode": "disabled",
+                  "resourceSearchEnabled": true,
+                  "defaultCalendarPublicVisibility": null,
+                  "resolved": {
+                    "userSearchMode": "disabled",
+                    "resourceSearchEnabled": true,
+                    "defaultCalendarPublicVisibility": "private"
+                  }
+                }""");
     }
 
     @Test
