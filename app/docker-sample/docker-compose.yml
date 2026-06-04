@@ -7,7 +7,7 @@ networks:
 services:
   tcalendar-frontend:
     image: linagora/twake-calendar-web:branch-master
-    container_name: twake_calendar_frontend
+    container_name: calendar-ng.linagora.local
     networks:
       - tcalendar
     ports:
@@ -163,6 +163,9 @@ services:
   web-proxy:
     image: nginx:alpine
     hostname: nginx.local
+    command: >
+      /bin/sh -c 'until getent hosts tcalendar-frontend >/dev/null;
+      do sleep 1; done; exec nginx -g "daemon off;"'
     ports:
       - "443:443"
     volumes:
