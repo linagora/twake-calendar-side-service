@@ -421,7 +421,12 @@ class TwakeCalendarGuiceServerTest  {
             {
               "userSearchMode": null,
               "resourceSearchEnabled": null,
-              "defaultCalendarPublicVisibility": null
+              "defaultCalendarPublicVisibility": null,
+              "resolved": {
+                "userSearchMode": "enabled",
+                "resourceSearchEnabled": true,
+                "defaultCalendarPublicVisibility": "private"
+              }
             }
             """);
     }
