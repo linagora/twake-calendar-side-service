@@ -408,6 +408,30 @@ class TwakeCalendarGuiceServerTest  {
     }
 
     @Test
+    void shouldExposeWebAdminDomainSettings() {
+        String body = given()
+            .when()
+            .get("/domains/linagora.com/settings")
+            .then()
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(body).isEqualTo("""
+            {
+              "userSearchMode": null,
+              "resourceSearchEnabled": null,
+              "defaultCalendarPublicVisibility": null,
+              "resolved": {
+                "userSearchMode": "enabled",
+                "resourceSearchEnabled": true,
+                "defaultCalendarPublicVisibility": "private"
+              }
+            }
+            """);
+    }
+
+    @Test
     void shouldGenerateTokens(TwakeCalendarGuiceServer server) {
         targetRestAPI(server);
 

@@ -646,6 +646,69 @@ Revokes administrator rights of user `user1@linagora.com` for domain `linagora.c
 - `404` if the domain or user does not exist.
 - `400` if `domainName` or `username` has an invalid format.
 
+## Domain settings routes
+
+Manage per-domain configuration settings.
+
+### Retrieving domain settings
+
+```
+GET /domains/{domain}/settings
+```
+
+Example:
+
+```
+GET /domains/linagora.com/settings
+```
+
+Returns the explicitly configured settings for the domain alongside the effective resolved values. Fields at the top level set to `null` are not configured for this domain. The `resolved` object always contains the effective value after applying configuration file and system defaults as fallback.
+
+```json
+{
+  "userSearchMode": "limited",
+  "resourceSearchEnabled": null,
+  "defaultCalendarPublicVisibility": null,
+  "resolved": {
+    "userSearchMode": "limited",
+    "resourceSearchEnabled": true,
+    "defaultCalendarPublicVisibility": "read"
+  }
+}
+```
+
+**Field values** (top-level and `resolved`):
+- `userSearchMode`: `"enabled"` | `"limited"` | `"disabled"` (top-level also allows `null`)
+- `resourceSearchEnabled`: `true` | `false` (top-level also allows `null`)
+- `defaultCalendarPublicVisibility`: `"read"` | `"private"` (top-level also allows `null`)
+
+**Status codes**:
+- `200`: settings returned (all fields `null` when nothing has been configured)
+- `400`: domain name has an invalid format
+- `404`: domain does not exist
+
+---
+
+### Updating domain settings
+
+```
+PUT /domains/{domain}/settings
+{
+  "userSearchMode": "limited",
+  "resourceSearchEnabled": false,
+  "defaultCalendarPublicVisibility": null
+}
+```
+
+All three fields are required. A `null` value clears the setting for that field, causing it to fall back to the system default.
+
+**Status codes**:
+- `204`: settings saved
+- `400`: a required field is missing, an unknown field is present, or a field value is invalid
+- `404`: domain does not exist
+
+---
+
 ## Domain-scoped task routes
 
 These routes provide domain-filtered access to the standard webadmin task management endpoints. They are intended for WebAdmin proxies that enforce multi-tenancy based on the domain in the URL. A task is only accessible if it belongs to the specified domain; otherwise a `404` is returned (to avoid leaking task IDs across domains).
