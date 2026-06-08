@@ -97,30 +97,8 @@ public class MongoDBDomainSettingsDAO implements DomainSettingsDAO {
 
     @Override
     public Mono<Void> patch(Domain domain, DomainSettingsPatch patch) {
-        Document setDoc = new Document();
-        Document unsetDoc = new Document();
-
-        if (!patch.userSearchMode().isKept()) {
-            if (patch.userSearchMode().isModified()) {
-                setDoc.append(FIELD_USER_SEARCH_MODE, patch.userSearchMode().get().serialize());
-            } else {
-                unsetDoc.append(FIELD_USER_SEARCH_MODE, "");
-            }
-        }
-        if (!patch.resourceSearchEnabled().isKept()) {
-            if (patch.resourceSearchEnabled().isModified()) {
-                setDoc.append(FIELD_RESOURCE_SEARCH_ENABLED, patch.resourceSearchEnabled().get());
-            } else {
-                unsetDoc.append(FIELD_RESOURCE_SEARCH_ENABLED, "");
-            }
-        }
-        if (!patch.defaultCalendarPublicVisibility().isKept()) {
-            if (patch.defaultCalendarPublicVisibility().isModified()) {
-                setDoc.append(FIELD_DEFAULT_CALENDAR_PUBLIC_VISIBILITY, patch.defaultCalendarPublicVisibility().get().serialize());
-            } else {
-                unsetDoc.append(FIELD_DEFAULT_CALENDAR_PUBLIC_VISIBILITY, "");
-            }
-        }
+        Document setDoc = setDoc(patch);
+        Document unsetDoc = unsetDoc(patch);
 
         if (setDoc.isEmpty() && unsetDoc.isEmpty()) {
             return Mono.empty();
@@ -141,6 +119,34 @@ public class MongoDBDomainSettingsDAO implements DomainSettingsDAO {
                     update,
                     new UpdateOptions().upsert(true)))
             .then();
+    }
+
+    private Document setDoc(DomainSettingsPatch patch) {
+        Document setDoc = new Document();
+        if (patch.userSearchMode().isModified()) {
+            setDoc.append(FIELD_USER_SEARCH_MODE, patch.userSearchMode().get().serialize());
+        }
+        if (patch.resourceSearchEnabled().isModified()) {
+            setDoc.append(FIELD_RESOURCE_SEARCH_ENABLED, patch.resourceSearchEnabled().get());
+        }
+        if (patch.defaultCalendarPublicVisibility().isModified()) {
+            setDoc.append(FIELD_DEFAULT_CALENDAR_PUBLIC_VISIBILITY, patch.defaultCalendarPublicVisibility().get().serialize());
+        }
+        return setDoc;
+    }
+
+    private Document unsetDoc(DomainSettingsPatch patch) {
+        Document unsetDoc = new Document();
+        if (patch.userSearchMode().isRemoved()) {
+            unsetDoc.append(FIELD_USER_SEARCH_MODE, "");
+        }
+        if (patch.resourceSearchEnabled().isRemoved()) {
+            unsetDoc.append(FIELD_RESOURCE_SEARCH_ENABLED, "");
+        }
+        if (patch.defaultCalendarPublicVisibility().isRemoved()) {
+            unsetDoc.append(FIELD_DEFAULT_CALENDAR_PUBLIC_VISIBILITY, "");
+        }
+        return unsetDoc;
     }
 
     private DomainSettings fromDocument(Document doc) {
