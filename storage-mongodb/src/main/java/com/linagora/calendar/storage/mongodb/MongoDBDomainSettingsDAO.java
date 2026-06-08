@@ -28,6 +28,7 @@ import org.bson.Document;
 import com.linagora.calendar.storage.DefaultCalendarPublicVisibility;
 import com.linagora.calendar.storage.DomainSettings;
 import com.linagora.calendar.storage.DomainSettingsDAO;
+import com.linagora.calendar.storage.DomainSettingsPatch;
 import com.linagora.calendar.storage.UserSearchMode;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.IndexOptions;
@@ -82,6 +83,54 @@ public class MongoDBDomainSettingsDAO implements DomainSettingsDAO {
             () -> unsetDoc.append(FIELD_DEFAULT_CALENDAR_PUBLIC_VISIBILITY, ""));
 
         Document update = new Document("$set", setDoc);
+        if (!unsetDoc.isEmpty()) {
+            update.append("$unset", unsetDoc);
+        }
+
+        return Mono.from(database.getCollection(COLLECTION)
+                .updateOne(
+                    Filters.eq(FIELD_DOMAIN, domain.asString()),
+                    update,
+                    new UpdateOptions().upsert(true)))
+            .then();
+    }
+
+    @Override
+    public Mono<Void> patch(Domain domain, DomainSettingsPatch patch) {
+        Document setDoc = new Document();
+        Document unsetDoc = new Document();
+
+        if (!patch.userSearchMode().isKept()) {
+            if (patch.userSearchMode().isModified()) {
+                setDoc.append(FIELD_USER_SEARCH_MODE, patch.userSearchMode().get().serialize());
+            } else {
+                unsetDoc.append(FIELD_USER_SEARCH_MODE, "");
+            }
+        }
+        if (!patch.resourceSearchEnabled().isKept()) {
+            if (patch.resourceSearchEnabled().isModified()) {
+                setDoc.append(FIELD_RESOURCE_SEARCH_ENABLED, patch.resourceSearchEnabled().get());
+            } else {
+                unsetDoc.append(FIELD_RESOURCE_SEARCH_ENABLED, "");
+            }
+        }
+        if (!patch.defaultCalendarPublicVisibility().isKept()) {
+            if (patch.defaultCalendarPublicVisibility().isModified()) {
+                setDoc.append(FIELD_DEFAULT_CALENDAR_PUBLIC_VISIBILITY, patch.defaultCalendarPublicVisibility().get().serialize());
+            } else {
+                unsetDoc.append(FIELD_DEFAULT_CALENDAR_PUBLIC_VISIBILITY, "");
+            }
+        }
+
+        if (setDoc.isEmpty() && unsetDoc.isEmpty()) {
+            return Mono.empty();
+        }
+
+        Document update = new Document();
+        if (!setDoc.isEmpty()) {
+            setDoc.append(FIELD_DOMAIN, domain.asString());
+            update.append("$set", setDoc);
+        }
         if (!unsetDoc.isEmpty()) {
             update.append("$unset", unsetDoc);
         }

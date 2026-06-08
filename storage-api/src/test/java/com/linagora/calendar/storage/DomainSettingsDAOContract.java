@@ -21,6 +21,7 @@ package com.linagora.calendar.storage;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.apache.james.core.Domain;
+import org.apache.james.util.ValuePatch;
 import org.junit.jupiter.api.Test;
 
 public interface DomainSettingsDAOContract {
@@ -80,5 +81,66 @@ public interface DomainSettingsDAOContract {
 
         assertThat(testee().retrieve(DOMAIN).block()).isEqualTo(SETTINGS);
         assertThat(testee().retrieve(DOMAIN_2).block()).isEqualTo(settings2);
+    }
+
+    @Test
+    default void patchShouldUpdateOnlyTheSpecifiedField() {
+        testee().save(DOMAIN, SETTINGS).block();
+
+        testee().patch(DOMAIN, new DomainSettingsPatch(
+            ValuePatch.modifyTo(UserSearchMode.DISABLED),
+            ValuePatch.keep(),
+            ValuePatch.keep())).block();
+
+        DomainSettings result = testee().retrieve(DOMAIN).block();
+        assertThat(result.userSearchMode()).contains(UserSearchMode.DISABLED);
+        assertThat(result.resourceSearchEnabled()).isEqualTo(SETTINGS.resourceSearchEnabled());
+        assertThat(result.defaultCalendarPublicVisibility()).isEqualTo(SETTINGS.defaultCalendarPublicVisibility());
+    }
+
+    @Test
+    default void patchShouldClearFieldWhenRemoved() {
+        testee().save(DOMAIN, SETTINGS).block();
+
+        testee().patch(DOMAIN, new DomainSettingsPatch(
+            ValuePatch.keep(),
+            ValuePatch.remove(),
+            ValuePatch.keep())).block();
+
+        DomainSettings result = testee().retrieve(DOMAIN).block();
+        assertThat(result.userSearchMode()).isEqualTo(SETTINGS.userSearchMode());
+        assertThat(result.resourceSearchEnabled()).isEmpty();
+        assertThat(result.defaultCalendarPublicVisibility()).isEqualTo(SETTINGS.defaultCalendarPublicVisibility());
+    }
+
+    @Test
+    default void patchShouldBeNoOpWhenAllFieldsKept() {
+        testee().save(DOMAIN, SETTINGS).block();
+
+        testee().patch(DOMAIN, new DomainSettingsPatch(
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep())).block();
+
+        assertThat(testee().retrieve(DOMAIN).block()).isEqualTo(SETTINGS);
+    }
+
+    @Test
+    default void patchShouldBeIndependentPerDomain() {
+        DomainSettings settings2 = DomainSettings.builder()
+            .userSearchMode(UserSearchMode.ENABLED)
+            .resourceSearchEnabled(true)
+            .build();
+
+        testee().save(DOMAIN, SETTINGS).block();
+        testee().save(DOMAIN_2, settings2).block();
+
+        testee().patch(DOMAIN, new DomainSettingsPatch(
+            ValuePatch.modifyTo(UserSearchMode.DISABLED),
+            ValuePatch.keep(),
+            ValuePatch.keep())).block();
+
+        assertThat(testee().retrieve(DOMAIN).block().userSearchMode()).contains(UserSearchMode.DISABLED);
+        assertThat(testee().retrieve(DOMAIN_2).block().userSearchMode()).contains(UserSearchMode.ENABLED);
     }
 }

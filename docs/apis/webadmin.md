@@ -709,6 +709,28 @@ All three fields are required. A `null` value clears the setting for that field,
 
 ---
 
+### Partially updating domain settings
+
+```
+PATCH /domains/{domain}/settings
+{
+  "userSearchMode": "limited",
+  "resourceSearchEnabled": null
+}
+```
+
+All fields are optional. Only the fields present in the body are updated:
+- A non-null value updates that field to the given value
+- A `null` value clears that field (reverts to system default at resolution time)
+- An absent field is left unchanged
+
+**Status codes**:
+- `204`: patch applied
+- `400`: a field value is invalid
+- `404`: domain does not exist
+
+---
+
 ## Domain-scoped task routes
 
 These routes provide domain-filtered access to the standard webadmin task management endpoints. They are intended for WebAdmin proxies that enforce multi-tenancy based on the domain in the URL. A task is only accessible if it belongs to the specified domain; otherwise a `404` is returned (to avoid leaking task IDs across domains).

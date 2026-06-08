@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.webadmin;
 
+import static com.linagora.calendar.storage.configuration.resolver.BusinessHoursSettingReader.OBJECT_MAPPER_DEFAULT;
 import static org.apache.james.webadmin.Constants.SEPARATOR;
 
 import java.util.Optional;
@@ -26,6 +27,7 @@ import jakarta.annotation.Nullable;
 import jakarta.inject.Inject;
 
 import org.apache.james.core.Domain;
+import org.apache.james.util.ValuePatch;
 import org.apache.james.webadmin.Constants;
 import org.apache.james.webadmin.Routes;
 import org.apache.james.webadmin.utils.ErrorResponder;
@@ -35,9 +37,11 @@ import org.apache.james.webadmin.utils.JsonTransformer;
 import org.eclipse.jetty.http.HttpStatus;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.linagora.calendar.storage.DefaultCalendarPublicVisibility;
 import com.linagora.calendar.storage.DomainSettings;
 import com.linagora.calendar.storage.DomainSettingsDAO;
+import com.linagora.calendar.storage.DomainSettingsPatch;
 import com.linagora.calendar.storage.DomainSettingsResolver;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.UserSearchMode;
@@ -53,6 +57,10 @@ public class DomainSettingsRoutes implements Routes {
     private static final String SETTINGS = "settings";
     private static final String DOMAIN_SETTINGS_PATH = BASE_PATH + SEPARATOR + DOMAIN_PARAM + SEPARATOR + SETTINGS;
 
+    private static final String FIELD_USER_SEARCH_MODE = "userSearchMode";
+    private static final String FIELD_RESOURCE_SEARCH_ENABLED = "resourceSearchEnabled";
+    private static final String FIELD_DEFAULT_CALENDAR_PUBLIC_VISIBILITY = "defaultCalendarPublicVisibility";
+
     public record DomainSettingsPutRequest(@JsonProperty(value = "userSearchMode", required = true) @Nullable String userSearchMode,
                                            @JsonProperty(value = "resourceSearchEnabled", required = true) @Nullable Boolean resourceSearchEnabled,
                                            @JsonProperty(value = "defaultCalendarPublicVisibility", required = true) @Nullable String defaultCalendarPublicVisibility) {
@@ -67,6 +75,10 @@ public class DomainSettingsRoutes implements Routes {
             return builder.build();
         }
     }
+
+    public record DomainSettingsPatchRequest(@JsonProperty(FIELD_USER_SEARCH_MODE) Optional<String> userSearchMode,
+                                             @JsonProperty(FIELD_RESOURCE_SEARCH_ENABLED) Optional<Boolean> resourceSearchEnabled,
+                                             @JsonProperty(FIELD_DEFAULT_CALENDAR_PUBLIC_VISIBILITY) Optional<String> defaultCalendarPublicVisibility) {}
 
     public record DomainSettingsResponse(@JsonProperty("userSearchMode") @Nullable String userSearchMode,
                                          @JsonProperty("resourceSearchEnabled") @Nullable Boolean resourceSearchEnabled,
@@ -116,6 +128,7 @@ public class DomainSettingsRoutes implements Routes {
     public void define(Service service) {
         service.get(DOMAIN_SETTINGS_PATH, this::getDomainSettings, jsonTransformer);
         service.put(DOMAIN_SETTINGS_PATH, this::putDomainSettings);
+        service.patch(DOMAIN_SETTINGS_PATH, this::patchDomainSettings);
     }
 
     private DomainSettingsResponse getDomainSettings(Request request, Response response) {
@@ -134,6 +147,66 @@ public class DomainSettingsRoutes implements Routes {
         domainSettingsDAO.save(domain, settings).block();
         response.status(HttpStatus.NO_CONTENT_204);
         return Constants.EMPTY_BODY;
+    }
+
+    private String patchDomainSettings(Request request, Response response) {
+        Domain domain = asDomain(request);
+        if (request.body() == null || request.body().isEmpty()) {
+            throw ErrorResponder.builder()
+                .statusCode(HttpStatus.BAD_REQUEST_400)
+                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                .message("Request body is required")
+                .haltError();
+        }
+        try {
+            JsonNode node = OBJECT_MAPPER_DEFAULT.readTree(request.bodyAsBytes());
+            DomainSettingsPatchRequest dto = OBJECT_MAPPER_DEFAULT.treeToValue(node, DomainSettingsPatchRequest.class);
+            DomainSettingsPatch patch = new DomainSettingsPatch(
+                parseUserSearchMode(node, dto),
+                parseResourceSearchEnabled(node, dto),
+                parseDefaultCalendarPublicVisibility(node, dto));
+            domainSettingsDAO.patch(domain, patch).block();
+        } catch (IllegalArgumentException e) {
+            throw ErrorResponder.builder()
+                .statusCode(HttpStatus.BAD_REQUEST_400)
+                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                .message(e.getMessage())
+                .haltError();
+        } catch (Exception e) {
+            throw ErrorResponder.builder()
+                .statusCode(HttpStatus.BAD_REQUEST_400)
+                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                .message("Invalid request body")
+                .haltError();
+        }
+        response.status(HttpStatus.NO_CONTENT_204);
+        return Constants.EMPTY_BODY;
+    }
+
+    private ValuePatch<UserSearchMode> parseUserSearchMode(JsonNode node, DomainSettingsPatchRequest dto) {
+        if (!node.has(FIELD_USER_SEARCH_MODE)) {
+            return ValuePatch.keep();
+        }
+        return dto.userSearchMode().map(UserSearchMode::deserialize)
+            .map(ValuePatch::modifyTo)
+            .orElseGet(ValuePatch::remove);
+    }
+
+    private ValuePatch<Boolean> parseResourceSearchEnabled(JsonNode node, DomainSettingsPatchRequest dto) {
+        if (!node.has(FIELD_RESOURCE_SEARCH_ENABLED)) {
+            return ValuePatch.keep();
+        }
+        return dto.resourceSearchEnabled().map(ValuePatch::modifyTo)
+            .orElseGet(ValuePatch::remove);
+    }
+
+    private ValuePatch<DefaultCalendarPublicVisibility> parseDefaultCalendarPublicVisibility(JsonNode node, DomainSettingsPatchRequest dto) {
+        if (!node.has(FIELD_DEFAULT_CALENDAR_PUBLIC_VISIBILITY)) {
+            return ValuePatch.keep();
+        }
+        return dto.defaultCalendarPublicVisibility().map(DefaultCalendarPublicVisibility::deserialize)
+            .map(ValuePatch::modifyTo)
+            .orElseGet(ValuePatch::remove);
     }
 
     private Domain asDomain(Request request) {

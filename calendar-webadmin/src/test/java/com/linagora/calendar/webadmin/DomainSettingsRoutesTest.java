@@ -319,4 +319,182 @@ class DomainSettingsRoutesTest {
         .then()
             .statusCode(400);
     }
+
+    @Test
+    void patchShouldUpdateFields() {
+        domainDAO.add(Domain.of("linagora.com")).block();
+        given().contentType(ContentType.JSON)
+            .body("""
+                {"userSearchMode": "limited", "resourceSearchEnabled": false, "defaultCalendarPublicVisibility": "read"}""")
+            .put("/domains/linagora.com/settings").then().statusCode(204);
+
+        given().contentType(ContentType.JSON)
+            .body("""
+                {"userSearchMode": "disabled", "resourceSearchEnabled": true, "defaultCalendarPublicVisibility": null}""")
+            .patch("/domains/linagora.com/settings").then().statusCode(204);
+
+        assertThatJson(when().get("/domains/linagora.com/settings").then().statusCode(200).extract().asString())
+            .isEqualTo("""
+                {
+                  "userSearchMode": "disabled",
+                  "resourceSearchEnabled": true,
+                  "defaultCalendarPublicVisibility": null,
+                  "resolved": {
+                    "userSearchMode": "disabled",
+                    "resourceSearchEnabled": true,
+                    "defaultCalendarPublicVisibility": "private"
+                  }
+                }""");
+    }
+
+    @Test
+    void patchShouldUpdateOnlyTheProvidedField() {
+        domainDAO.add(Domain.of("linagora.com")).block();
+        given().contentType(ContentType.JSON)
+            .body("""
+                {"userSearchMode": "limited", "resourceSearchEnabled": false, "defaultCalendarPublicVisibility": "read"}""")
+            .put("/domains/linagora.com/settings").then().statusCode(204);
+
+        given().contentType(ContentType.JSON)
+            .body("""
+                {"userSearchMode": "disabled"}""")
+            .patch("/domains/linagora.com/settings").then().statusCode(204);
+
+        assertThatJson(when().get("/domains/linagora.com/settings").then().statusCode(200).extract().asString())
+            .isEqualTo("""
+                {
+                  "userSearchMode": "disabled",
+                  "resourceSearchEnabled": false,
+                  "defaultCalendarPublicVisibility": "read",
+                  "resolved": {
+                    "userSearchMode": "disabled",
+                    "resourceSearchEnabled": false,
+                    "defaultCalendarPublicVisibility": "read"
+                  }
+                }""");
+    }
+
+    @Test
+    void patchShouldClearFieldWhenNullProvided() {
+        domainDAO.add(Domain.of("linagora.com")).block();
+        given().contentType(ContentType.JSON)
+            .body("""
+                {"userSearchMode": "limited", "resourceSearchEnabled": false, "defaultCalendarPublicVisibility": "read"}""")
+            .put("/domains/linagora.com/settings").then().statusCode(204);
+
+        given().contentType(ContentType.JSON)
+            .body("""
+                {"resourceSearchEnabled": null}""")
+            .patch("/domains/linagora.com/settings").then().statusCode(204);
+
+        assertThatJson(when().get("/domains/linagora.com/settings").then().statusCode(200).extract().asString())
+            .isEqualTo("""
+                {
+                  "userSearchMode": "limited",
+                  "resourceSearchEnabled": null,
+                  "defaultCalendarPublicVisibility": "read",
+                  "resolved": {
+                    "userSearchMode": "limited",
+                    "resourceSearchEnabled": true,
+                    "defaultCalendarPublicVisibility": "read"
+                  }
+                }""");
+    }
+
+    @Test
+    void patchShouldReturn404WhenDomainNotFound() {
+        given()
+            .contentType(ContentType.JSON)
+            .body("""
+                {"userSearchMode": "limited"}""")
+            .patch("/domains/unknown.com/settings")
+        .then()
+            .statusCode(404);
+    }
+
+    @Test
+    void patchShouldReturn400WhenBodyIsEmpty() {
+        domainDAO.add(Domain.of("linagora.com")).block();
+
+        given()
+            .contentType(ContentType.JSON)
+            .body("")
+            .patch("/domains/linagora.com/settings")
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
+    void patchShouldReturn400WhenBodyIsInvalidJson() {
+        domainDAO.add(Domain.of("linagora.com")).block();
+
+        given()
+            .contentType(ContentType.JSON)
+            .body("not-valid-json")
+            .patch("/domains/linagora.com/settings")
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
+    void patchShouldReturn400WhenUnknownFieldIsProvided() {
+        domainDAO.add(Domain.of("linagora.com")).block();
+
+        given()
+            .contentType(ContentType.JSON)
+            .body("""
+                {"unknownField": "value"}""")
+            .patch("/domains/linagora.com/settings")
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
+    void patchShouldReturn400WhenUserSearchModeIsInvalid() {
+        domainDAO.add(Domain.of("linagora.com")).block();
+
+        given()
+            .contentType(ContentType.JSON)
+            .body("""
+                {"userSearchMode": "invalid_value"}""")
+            .patch("/domains/linagora.com/settings")
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
+    void patchShouldReturn400WhenDefaultCalendarPublicVisibilityIsInvalid() {
+        domainDAO.add(Domain.of("linagora.com")).block();
+
+        given()
+            .contentType(ContentType.JSON)
+            .body("""
+                {"defaultCalendarPublicVisibility": "invalid_value"}""")
+            .patch("/domains/linagora.com/settings")
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
+    void patchShouldWorkEvenWhenNoSettingsSaved() {
+        domainDAO.add(Domain.of("linagora.com")).block();
+
+        given().contentType(ContentType.JSON)
+            .body("""
+                {"userSearchMode": "disabled"}""")
+            .patch("/domains/linagora.com/settings").then().statusCode(204);
+
+        assertThatJson(when().get("/domains/linagora.com/settings").then().statusCode(200).extract().asString())
+            .isEqualTo("""
+                {
+                  "userSearchMode": "disabled",
+                  "resourceSearchEnabled": null,
+                  "defaultCalendarPublicVisibility": null,
+                  "resolved": {
+                    "userSearchMode": "disabled",
+                    "resourceSearchEnabled": true,
+                    "defaultCalendarPublicVisibility": "private"
+                  }
+                }""");
+    }
 }
