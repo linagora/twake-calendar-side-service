@@ -234,6 +234,46 @@ class PeopleSearchRouteTest {
     }
 
     @Test
+    void shouldOrderResultsByTypeUserThenResourceThenContactAndAlphabetically(TwakeCalendarGuiceServer server) {
+        // given a user, a resource and contacts all matching the query
+        OpenPaaSUser openPaaSUser = server.getProbe(CalendarDataProbe.class).getUser(USERNAME);
+        server.getProbe(ResourceProbe.class).save(openPaaSUser, "team-room", "laptop");
+
+        String userEmail = "team-lead@" + DOMAIN;
+        addUser(server, Username.of(userEmail), "team", "lead");
+        addContact(server, userEmail, "team", "lead");
+
+        addContact(server, "team-other@" + DOMAIN, "zzz", "team");
+        addContact(server, "team-alias@" + DOMAIN, "aaa", "team");
+
+        // when
+        String response = given()
+            .body("""
+                {
+                  "q" : "team",
+                  "objectTypes" : [ "user", "resource", "contact" ],
+                  "limit" : 10
+                }""")
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract()
+            .body()
+            .asString();
+
+        // then: user first, then resource, then contacts; alphabetical within each type
+        assertThatJson(response).node("[0].objectType").isEqualTo("user");
+        assertThatJson(response).node("[0].names[0].displayName").isEqualTo("team lead");
+        assertThatJson(response).node("[1].objectType").isEqualTo("resource");
+        assertThatJson(response).node("[1].names[0].displayName").isEqualTo("team-room");
+        assertThatJson(response).node("[2].objectType").isEqualTo("contact");
+        assertThatJson(response).node("[2].names[0].displayName").isEqualTo("aaa team");
+        assertThatJson(response).node("[3].objectType").isEqualTo("contact");
+        assertThatJson(response).node("[3].names[0].displayName").isEqualTo("zzz team");
+    }
+
+    @Test
     void shouldReturnUserObjectTypeWhenUserTypeIsIncludedInFilter(TwakeCalendarGuiceServer server) {
         String username = "naruto@" + DOMAIN;
         addUser(server, Username.of(username), "naruto", "hokage");
