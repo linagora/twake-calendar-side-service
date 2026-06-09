@@ -18,7 +18,9 @@
 
 package com.linagora.calendar.restapi.routes;
 
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.UnaryOperator;
@@ -41,6 +43,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.linagora.calendar.restapi.routes.people.search.PeopleSearchProvider;
@@ -101,6 +104,14 @@ public class PeopleSearchRoute extends CalendarRoute {
             return ImmutableList.of();
         }
 
+        @JsonIgnore
+        default String getDisplayName() {
+            return getNames().stream()
+                .map(node -> node.path("displayName").asText(""))
+                .findFirst()
+                .orElse("");
+        }
+
         default List<JsonNode> buildEmailAddresses(String mailAddress, String type) {
             ObjectNode objectNode = OBJECT_MAPPER.createObjectNode();
             objectNode.put("value", mailAddress);
@@ -122,6 +133,15 @@ public class PeopleSearchRoute extends CalendarRoute {
             return ImmutableList.of(objectNode);
         }
     }
+
+    private static final Map<String, Integer> OBJECT_TYPE_ORDER = ImmutableMap.of(
+        ObjectType.USER.name().toLowerCase(), 0,
+        ObjectType.RESOURCE.name().toLowerCase(), 1,
+        ObjectType.CONTACT.name().toLowerCase(), 2);
+
+    private static final Comparator<ResponseDTO> RESULT_COMPARATOR =
+        Comparator.<ResponseDTO>comparingInt(dto -> OBJECT_TYPE_ORDER.getOrDefault(dto.getObjectType(), Integer.MAX_VALUE))
+            .thenComparing(ResponseDTO::getDisplayName, String.CASE_INSENSITIVE_ORDER);
 
     private final Set<PeopleSearchProvider> searchProviders;
 
@@ -165,6 +185,8 @@ public class PeopleSearchRoute extends CalendarRoute {
                 objectTypesFilter,
                 provider.supportedTypes()).isEmpty())
             .flatMap(provider -> provider.search(session, query, objectTypesFilter, limit))
+            .collectSortedList(RESULT_COMPARATOR)
+            .flatMapIterable(results -> results)
             .take(limit);
     }
 }
