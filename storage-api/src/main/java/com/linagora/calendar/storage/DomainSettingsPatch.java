@@ -18,14 +18,9 @@
 
 package com.linagora.calendar.storage;
 
-import org.apache.james.core.Domain;
+import org.apache.james.util.ValuePatch;
 
-import reactor.core.publisher.Mono;
-
-public interface DomainSettingsDAO {
-    Mono<DomainSettings> retrieve(Domain domain);
-
-    Mono<Void> save(Domain domain, DomainSettings settings);
-
-    Mono<Void> patch(Domain domain, DomainSettingsPatch patch);
+public record DomainSettingsPatch(ValuePatch<UserSearchMode> userSearchMode,
+                                  ValuePatch<Boolean> resourceSearchEnabled,
+                                  ValuePatch<DefaultCalendarPublicVisibility> defaultCalendarPublicVisibility) {
 }

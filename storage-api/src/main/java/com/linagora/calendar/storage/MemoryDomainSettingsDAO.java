@@ -42,4 +42,17 @@ public class MemoryDomainSettingsDAO implements DomainSettingsDAO {
     public Mono<Void> save(Domain domain, DomainSettings settings) {
         return Mono.fromRunnable(() -> store.put(domain, settings));
     }
+
+    @Override
+    public Mono<Void> patch(Domain domain, DomainSettingsPatch patch) {
+        return retrieve(domain)
+            .defaultIfEmpty(DomainSettings.DEFAULT_DOMAIN_SETTINGS)
+            .map(existing -> {
+                DomainSettings.Builder builder = DomainSettings.builder();
+                patch.userSearchMode().notKeptOrElse(existing.userSearchMode()).ifPresent(builder::userSearchMode);
+                patch.resourceSearchEnabled().notKeptOrElse(existing.resourceSearchEnabled()).ifPresent(builder::resourceSearchEnabled);
+                patch.defaultCalendarPublicVisibility().notKeptOrElse(existing.defaultCalendarPublicVisibility()).ifPresent(builder::defaultCalendarPublicVisibility);
+                return builder.build();
+            }).flatMap(merged -> save(domain, merged));
+    }
 }
