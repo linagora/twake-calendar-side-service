@@ -731,6 +731,167 @@ All fields are optional. Only the fields present in the body are updated:
 
 ---
 
+## User calendar management routes
+
+Administrative management of user calendars. These routes proxy the esn-sabre JSON API:
+each call is translated into the corresponding DAV server call, authenticated by impersonating
+the targeted user. The user is identified by his email address; the associated technical user
+id is resolved automatically.
+
+All routes return:
+- `400`: the username is invalid or the request body is malformed
+- `404`: the user is not registered (`User does not exist`)
+
+### Listing the calendars of a user
+
+```
+GET /users/{usernameToBeUsed}/calendars
+```
+
+Example:
+
+```
+GET /users/btellier@linagora.com/calendars
+```
+
+Proxies `GET /calendars/{userId}.json?personal=true&sharedDelegationStatus=accepted&sharedPublicSubscription=true&withRights=true`
+on the DAV server and returns the DAV server response verbatim. This includes personal calendars,
+accepted delegations and public subscriptions, with their rights (`acl` and `invite` fields).
+
+```json
+{
+  "_links": {"self": {"href": "/calendars/5f50a663bdaffe002629099c.json"}},
+  "_embedded": {
+    "dav:calendar": [
+      {
+        "_links": {"self": {"href": "/calendars/5f50a663bdaffe002629099c/5f50a663bdaffe002629099c.json"}},
+        "dav:name": "#default",
+        "apple:color": "#006400",
+        "caldav:description": "",
+        "acl": ["..."],
+        "invite": ["..."]
+      }
+    ]
+  }
+}
+```
+
+**Status codes**:
+- `200`: the calendar list is returned
+
+### Creating a calendar
+
+```
+POST /users/{usernameToBeUsed}/calendars
+{
+  "id": "0e26ee47-cc4b-4aaa-8447-12588fdb11f1",
+  "dav:name": "My calendar",
+  "apple:color": "#F5CFD0",
+  "caldav:description": "Some description"
+}
+```
+
+Supported fields:
+- `id` (optional): the collection identifier of the calendar to create. Generated (random UUID) when absent.
+- `dav:name` (required): display name of the calendar
+- `apple:color` (optional): color of the calendar
+- `caldav:description` (optional): description of the calendar
+
+Returns the identifier of the created calendar:
+
+```json
+{"id": "0e26ee47-cc4b-4aaa-8447-12588fdb11f1"}
+```
+
+**Status codes**:
+- `201`: the calendar was created
+- `400`: `dav:name` is missing or an unknown field is present
+
+### Deleting a calendar
+
+```
+DELETE /users/{usernameToBeUsed}/calendars/{calendarId}
+```
+
+Example:
+
+```
+DELETE /users/btellier@linagora.com/calendars/0c5413b9-2ca3-4669-ae44-0d8083344ca8
+```
+
+Where `{calendarId}` is the collection identifier of the calendar, as returned by the listing route.
+
+Also works for calendars obtained through delegation and subscriptions to public calendars:
+deleting them removes the delegated copy / the subscription of this user, not the source calendar.
+
+**Status codes**:
+- `204`: the calendar was deleted
+- `404`: the user or the calendar does not exist
+
+### Updating details of a calendar
+
+```
+PATCH /users/{usernameToBeUsed}/calendars/{calendarId}
+{
+  "dav:name": "B test 2",
+  "caldav:description": "sample desc",
+  "apple:color": "#F5CFD0"
+}
+```
+
+Proxies a `PROPPATCH` on the calendar. All fields are optional but at least one must be present.
+Unknown fields are rejected.
+
+**Status codes**:
+- `204`: the calendar was updated
+- `400`: empty body or unknown field
+- `404`: the user or the calendar does not exist
+
+### Changing the public visibility of a calendar
+
+```
+POST /users/{usernameToBeUsed}/calendars/{calendarId}/publicRight
+{
+  "public_right": "{DAV:}read"
+}
+```
+
+Supported `public_right` values:
+- `"{DAV:}read"`: anyone authenticated can read the calendar (public calendar)
+- `""`: removes public rights (private calendar)
+
+**Status codes**:
+- `204`: the public visibility was updated
+- `400`: missing or unsupported `public_right` value
+- `404`: the user or the calendar does not exist
+
+### Adding / removing invitees (delegation)
+
+```
+POST /users/{usernameToBeUsed}/calendars/{calendarId}/invitee
+{
+  "share": {
+    "set": [
+      {"dav:href": "mailto:twake-calendar-dev@linagora.com", "dav:administration": true},
+      {"dav:href": "mailto:cmoussu@linagora.com", "dav:read": true},
+      {"dav:href": "mailto:xguimard@linagora.com", "dav:read-write": true}
+    ],
+    "remove": [
+      {"dav:href": "mailto:xxx@linagora.com"}
+    ]
+  }
+}
+```
+
+The body is proxied verbatim to the DAV server. Each `set` entry grants a right to the given
+user (`dav:read`, `dav:read-write` or `dav:administration`), each `remove` entry revokes
+the sharing for the given user.
+
+**Status codes**:
+- `204`: the sharees were updated
+- `400`: missing `share` field
+- `404`: the user or the calendar does not exist
+
 ## Domain-scoped task routes
 
 These routes provide domain-filtered access to the standard webadmin task management endpoints. They are intended for WebAdmin proxies that enforce multi-tenancy based on the domain in the URL. A task is only accessible if it belongs to the specified domain; otherwise a `404` is returned (to avoid leaking task IDs across domains).

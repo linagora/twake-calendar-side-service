@@ -98,7 +98,7 @@ public class CalDavClient extends DavClient {
                               @JsonProperty("caldav:description") String caldavDescription) {
     }
 
-    private static final Map<String, String> DEFAULT_FIND_USER_CALENDARS_PARAMS = Map.of(
+    public static final Map<String, String> DEFAULT_FIND_USER_CALENDARS_PARAMS = Map.of(
         "personal", "true",
         "sharedDelegationStatus", "accepted",
         "sharedPublicSubscription", "true",
@@ -188,6 +188,11 @@ public class CalDavClient extends DavClient {
     }
 
     public Mono<CalendarListResponse> findUserCalendars(Username userRequest, OpenPaaSId userId, Map<String, String> queryParams) {
+        return findUserCalendarsAsBytes(userRequest, userId, queryParams)
+            .map(CalendarListResponse::parse);
+    }
+
+    public Mono<byte[]> findUserCalendarsAsBytes(Username userRequest, OpenPaaSId userId, Map<String, String> queryParams) {
         Preconditions.checkArgument(userRequest != null, "userRequest must not be null");
         Preconditions.checkArgument(userId != null, "userId must not be null");
         Preconditions.checkArgument(queryParams != null, "queryParams must not be null");
@@ -205,8 +210,7 @@ public class CalDavClient extends DavClient {
             .uri(uriRequest)
             .responseSingle((response, responseContent) -> {
                 if (response.status().code() == HttpStatus.SC_OK) {
-                    return responseContent.asByteArray()
-                        .map(CalendarListResponse::parse);
+                    return responseContent.asByteArray();
                 }
 
                 return responseBodyAsString(responseContent)
@@ -471,6 +475,52 @@ public class CalDavClient extends DavClient {
                     .switchIfEmpty(Mono.just(StringUtils.EMPTY))
                     .flatMap(errorBody -> Mono.error(new RuntimeException("""
                         Unexpected status code: %d when updating ACL for calendar '%s'
+                        %s
+                        """.formatted(response.status().code(), uri, errorBody))));
+            });
+    }
+
+    /**
+     * Updates calendar properties (e.g. {@code dav:name}, {@code apple:color}, {@code caldav:description})
+     * through a PROPPATCH on the calendar JSON endpoint.
+     */
+    public Mono<Void> updateCalendarProperties(Username username, CalendarURL calendarURL, byte[] jsonPayload) {
+        String uri = calendarURL.asUri() + ".json";
+        return httpClientWithImpersonation(username)
+            .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, JSON_CHARSET_UTF_8)
+                .add(HttpHeaderNames.ACCEPT, DEFAULT_JSON_ACCEPT))
+            .request(HttpMethod.valueOf("PROPPATCH"))
+            .uri(uri)
+            .send(Mono.just(Unpooled.wrappedBuffer(jsonPayload)))
+            .responseSingle((response, responseContent) -> switch (response.status().code()) {
+                case 200, 204, 207 -> Mono.empty();
+                case 404 -> Mono.error(new CalendarNotFoundException(calendarURL));
+                default -> responseBodyAsString(responseContent)
+                    .flatMap(errorBody -> Mono.error(new DavClientException("""
+                        Unexpected status code: %d when updating properties of calendar '%s'
+                        %s
+                        """.formatted(response.status().code(), uri, errorBody))));
+            });
+    }
+
+    /**
+     * Updates the sharees of a calendar. The payload follows the Sabre JSON sharing format:
+     * {@code {"share":{"set":[{"dav:href":"mailto:...","dav:read":true}],"remove":[{"dav:href":"mailto:..."}]}}}
+     */
+    public Mono<Void> updateCalendarShares(Username username, CalendarURL calendarURL, byte[] shareJsonPayload) {
+        String uri = calendarURL.asUri() + ".json";
+        return httpClientWithImpersonation(username)
+            .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, JSON_CHARSET_UTF_8)
+                .add(HttpHeaderNames.ACCEPT, DEFAULT_JSON_ACCEPT))
+            .request(HttpMethod.POST)
+            .uri(uri)
+            .send(Mono.just(Unpooled.wrappedBuffer(shareJsonPayload)))
+            .responseSingle((response, responseContent) -> switch (response.status().code()) {
+                case 200, 204 -> Mono.empty();
+                case 404 -> Mono.error(new CalendarNotFoundException(calendarURL));
+                default -> responseBodyAsString(responseContent)
+                    .flatMap(errorBody -> Mono.error(new DavClientException("""
+                        Unexpected status code: %d when updating shares of calendar '%s'
                         %s
                         """.formatted(response.status().code(), uri, errorBody))));
             });
