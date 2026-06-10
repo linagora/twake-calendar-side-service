@@ -18,11 +18,13 @@
 
 package com.linagora.calendar.dav;
 
+import static java.util.Map.entry;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Clock;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import javax.net.ssl.SSLException;
@@ -79,12 +81,12 @@ class CalendarSearchSourceResolverTest {
         CalendarURL readableCalendar = CalendarURL.from(requester.id());
 
         // When resolving the search sources.
-        List<CalendarURL> result = testee.resolve(requester, List.of(readableCalendar, notReadableCalendar)).block();
+        Map<CalendarURL, CalendarURL> result = testee.resolve(requester, List.of(readableCalendar, notReadableCalendar)).block();
 
         // Then the not readable calendar is filtered out.
         assertThat(result)
             .describedAs("Resolver should keep calendars readable by requester and filter calendars without read access")
-            .containsExactly(readableCalendar);
+            .containsExactly(entry(readableCalendar, readableCalendar));
     }
 
     @Test
@@ -94,12 +96,12 @@ class CalendarSearchSourceResolverTest {
         CalendarURL requestedCalendar = findMirrorCalendar(requester);
 
         // When resolving A/B.
-        List<CalendarURL> result = testee.resolve(requester, List.of(requestedCalendar)).block();
+        Map<CalendarURL, CalendarURL> result = testee.resolve(requester, List.of(requestedCalendar)).block();
 
         // Then D/E is returned.
         assertThat(result)
             .describedAs("Resolver should translate a subscribed mirror calendar to its source calendar")
-            .containsExactly(sourceCalendar);
+            .containsExactly(entry(requestedCalendar, sourceCalendar));
     }
 
     @Test
@@ -108,12 +110,12 @@ class CalendarSearchSourceResolverTest {
         CalendarURL sourceCalendar = createSubscribedSourceCalendar();
 
         // When resolving D/E directly.
-        List<CalendarURL> result = testee.resolve(requester, List.of(sourceCalendar)).block();
+        Map<CalendarURL, CalendarURL> result = testee.resolve(requester, List.of(sourceCalendar)).block();
 
         // Then D/E is kept.
         assertThat(result)
             .describedAs("Resolver should keep the source calendar when it is requested directly")
-            .containsExactly(sourceCalendar);
+            .containsExactly(entry(sourceCalendar, sourceCalendar));
     }
 
     @Test
@@ -123,12 +125,12 @@ class CalendarSearchSourceResolverTest {
         CalendarURL requestedCalendar = findMirrorCalendar(requester);
 
         // When resolving A/B.
-        List<CalendarURL> result = testee.resolve(requester, List.of(requestedCalendar)).block();
+        Map<CalendarURL, CalendarURL> result = testee.resolve(requester, List.of(requestedCalendar)).block();
 
         // Then D/E is returned.
         assertThat(result)
             .describedAs("Resolver should translate a delegated mirror calendar to its source calendar")
-            .containsExactly(sourceCalendar);
+            .containsExactly(entry(requestedCalendar, sourceCalendar));
     }
 
     @Test
@@ -137,12 +139,12 @@ class CalendarSearchSourceResolverTest {
         CalendarURL sourceCalendar = createDelegatedSourceCalendar(requester, PublicRight.READ);
 
         // When resolving D/E.
-        List<CalendarURL> result = testee.resolve(requester, List.of(sourceCalendar)).block();
+        Map<CalendarURL, CalendarURL> result = testee.resolve(requester, List.of(sourceCalendar)).block();
 
         // Then D/E is kept.
         assertThat(result)
             .describedAs("Resolver should keep a directly readable delegated source calendar when requested directly")
-            .containsExactly(sourceCalendar);
+            .containsExactly(entry(sourceCalendar, sourceCalendar));
     }
 
     @Test
@@ -153,7 +155,7 @@ class CalendarSearchSourceResolverTest {
         CalendarURL delegatedMirrorCalendar = findMirrorCalendar(delegate);
 
         // When another user resolves A/B.
-        List<CalendarURL> result = testee.resolve(requester, List.of(delegatedMirrorCalendar)).block();
+        Map<CalendarURL, CalendarURL> result = testee.resolve(requester, List.of(delegatedMirrorCalendar)).block();
 
         // Then the delegated mirror is filtered.
         assertThat(result)
@@ -184,13 +186,16 @@ class CalendarSearchSourceResolverTest {
         CalendarURL notReadableCalendar = createCalendar(unreadableUser, "not-readable-" + UUID.randomUUID(), PublicRight.HIDE_ALL_EVENT);
 
         // When resolving all requested calendars.
-        List<CalendarURL> result = testee.resolve(requester,
+        Map<CalendarURL, CalendarURL> result = testee.resolve(requester,
             List.of(ownCalendar, subscribedSourceCalendar, notReadableCalendar, delegatedSourceCalendar)).block();
 
         // Then all readable calendars are kept and the not readable calendar is filtered.
         assertThat(result)
             .describedAs("Resolver should keep all readable calendars in request order and filter unreadable calendars")
-            .containsExactly(ownCalendar, subscribedSourceCalendar, delegatedSourceCalendar);
+            .containsExactly(
+                entry(ownCalendar, ownCalendar),
+                entry(subscribedSourceCalendar, subscribedSourceCalendar),
+                entry(delegatedSourceCalendar, delegatedSourceCalendar));
     }
 
     @Test
@@ -205,12 +210,12 @@ class CalendarSearchSourceResolverTest {
         calDavClient.grantReadWriteRights(domain.id(), resourceId, List.of(requester.username())).block();
 
         // When resolving R/R.
-        List<CalendarURL> result = testee.resolve(requester, List.of(resourceCalendar)).block();
+        Map<CalendarURL, CalendarURL> result = testee.resolve(requester, List.of(resourceCalendar)).block();
 
         // Then R/R is kept.
         assertThat(result)
             .describedAs("Resolver should keep a resource calendar readable by its administrator")
-            .containsExactly(resourceCalendar);
+            .containsExactly(entry(resourceCalendar, resourceCalendar));
     }
 
     @Test
@@ -232,12 +237,12 @@ class CalendarSearchSourceResolverTest {
             .build());
 
         // When resolving subscribed mirror A/B.
-        List<CalendarURL> result = testee.resolve(requester, List.of(subscribedCalendar)).block();
+        Map<CalendarURL, CalendarURL> result = testee.resolve(requester, List.of(subscribedCalendar)).block();
 
         // Then R/R is returned.
         assertThat(result)
             .describedAs("Resolver should translate a subscribed resource calendar to its source resource calendar")
-            .containsExactly(resourceCalendar);
+            .containsExactly(entry(subscribedCalendar, resourceCalendar));
     }
 
     @Test
@@ -256,7 +261,7 @@ class CalendarSearchSourceResolverTest {
         calDavClient.grantReadWriteRights(foreignDomain.id(), resourceId, List.of(foreignAdmin.username())).block();
 
         // When resolving R/R as a requester from another domain.
-        List<CalendarURL> result = testee.resolve(requester, List.of(resourceCalendar)).block();
+        Map<CalendarURL, CalendarURL> result = testee.resolve(requester, List.of(resourceCalendar)).block();
 
         // Then the resource calendar is filtered.
         assertThat(result)

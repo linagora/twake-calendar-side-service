@@ -39,6 +39,7 @@ import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 
+import it.unimi.dsi.fastutil.Pair;
 import reactor.core.publisher.Mono;
 
 public class CalendarSearchSourceResolver {
@@ -66,15 +67,15 @@ public class CalendarSearchSourceResolver {
         this.calDavClient = calDavClient;
     }
 
-    public Mono<List<CalendarURL>> resolve(OpenPaaSUser requester, List<CalendarURL> requestedCalendars) {
+    public Mono<Map<CalendarURL, CalendarURL>> resolve(OpenPaaSUser requester, List<CalendarURL> requestedCalendars) {
         Preconditions.checkNotNull(requester, "requester must not be null");
         Preconditions.checkNotNull(requestedCalendars, "requestedCalendars must not be null");
 
         if (requestedCalendars.isEmpty()) {
-            return Mono.just(List.of());
+            return Mono.just(Map.of());
         }
         if (isSingleRequesterDefaultCalendar(requester.id(), requestedCalendars)) {
-            return Mono.just(requestedCalendars);
+            return Mono.just(Map.of(requestedCalendars.getFirst(), requestedCalendars.getFirst()));
         }
         return calDavClient.findUserCalendarList(requester)
             .map(this::extractCalendarListEntries)
@@ -86,8 +87,8 @@ public class CalendarSearchSourceResolver {
             && requestedCalendars.contains(CalendarURL.from(requesterId));
     }
 
-    private List<CalendarURL> resolveSearchSourceCalendarURLs(List<CalendarURL> requestedCalendars,
-                                                              List<CalendarListEntry> calendarListEntries) {
+    private Map<CalendarURL, CalendarURL> resolveSearchSourceCalendarURLs(List<CalendarURL> requestedCalendars,
+                                                                          List<CalendarListEntry> calendarListEntries) {
 
         Map<CalendarURL, CalendarURL> searchSourceByCalendarListURL = calendarListEntries.stream()
             .collect(Collectors.toMap(CalendarListEntry::calendarListURL, CalendarListEntry::searchSourceCalendarURL,
@@ -96,10 +97,9 @@ public class CalendarSearchSourceResolver {
         Set<CalendarURL> allowedSearchSourceCalendarURLs = Set.copyOf(searchSourceByCalendarListURL.values());
 
         return requestedCalendars.stream()
-            .map(requestedCalendar -> searchSourceByCalendarListURL.getOrDefault(requestedCalendar, requestedCalendar))
-            .filter(allowedSearchSourceCalendarURLs::contains)
-            .distinct()
-            .toList();
+            .map(requestedCalendar -> Pair.of(requestedCalendar, searchSourceByCalendarListURL.getOrDefault(requestedCalendar, requestedCalendar)))
+            .filter(pair -> allowedSearchSourceCalendarURLs.contains(pair.right()))
+            .collect(Collectors.toMap(Pair::left, Pair::right, (firstSearchSource, _) -> firstSearchSource));
     }
 
     private List<CalendarListEntry> extractCalendarListEntries(CalendarListResponse calendarListResponse) {
