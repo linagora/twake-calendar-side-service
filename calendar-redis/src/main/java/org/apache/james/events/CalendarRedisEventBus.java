@@ -96,7 +96,7 @@ public class CalendarRedisEventBus implements EventBus, Startable {
         if (!isRunning && !isStopping) {
             LocalListenerRegistry localListenerRegistry = new LocalListenerRegistry();
             localKeyListenerExecutor = new LocalKeyListenerExecutor(localListenerRegistry, listenerExecutor);
-            redisKeyEventDispatcher = new RedisKeyEventDispatcher(eventBusId, eventSerializer, redisPublisher, redisSetReactiveCommands, redisEventBusConfiguration);
+            redisKeyEventDispatcher = new RedisKeyEventDispatcher(eventBusId, namingStrategy, eventSerializer, redisPublisher, redisSetReactiveCommands, redisEventBusConfiguration);
             keyRegistrationHandler = new RedisKeyRegistrationHandler(namingStrategy, eventBusId, eventSerializer, routingKeyConverter,
                 localListenerRegistry, listenerExecutor, retryBackoff, metricFactory, redisEventBusClientFactory, redisSetReactiveCommands, redisEventBusConfiguration);
             keyRegistrationHandler.start();
