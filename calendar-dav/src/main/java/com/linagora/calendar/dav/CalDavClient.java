@@ -187,6 +187,10 @@ public class CalDavClient extends DavClient {
             .flatMapIterable(response -> response.calendars().keySet());
     }
 
+    public Mono<CalendarListResponse> findUserCalendarList(OpenPaaSUser user) {
+        return findUserCalendars(user.username(), user.id(), DEFAULT_FIND_USER_CALENDARS_PARAMS);
+    }
+
     public Mono<CalendarListResponse> findUserCalendars(Username userRequest, OpenPaaSId userId, Map<String, String> queryParams) {
         Preconditions.checkArgument(userRequest != null, "userRequest must not be null");
         Preconditions.checkArgument(userId != null, "userId must not be null");

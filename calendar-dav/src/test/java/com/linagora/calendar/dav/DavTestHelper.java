@@ -257,7 +257,7 @@ public class DavTestHelper extends DavClient {
             }).block();
     }
 
-    public void subscribeToSharedCalendar(OpenPaaSUser user, SubscribedCalendarRequest subscribedCalendarRequest) {
+    public CalendarURL subscribeToSharedCalendar(OpenPaaSUser user, SubscribedCalendarRequest subscribedCalendarRequest) {
         String uri = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/" + user.id().value() + ".json";
 
         httpClientWithImpersonation(user.username())
@@ -278,6 +278,8 @@ public class DavTestHelper extends DavClient {
                         %s
                         """.formatted(response.status().code(), uri, errorBody))));
             }).block();
+
+        return new CalendarURL(user.id(), new OpenPaaSId(subscribedCalendarRequest.id()));
     }
 
 
