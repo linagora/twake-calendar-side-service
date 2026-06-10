@@ -98,6 +98,58 @@ public class CalDavClient extends DavClient {
                               @JsonProperty("caldav:description") String caldavDescription) {
     }
 
+    @JsonInclude(JsonInclude.Include.NON_ABSENT)
+    public record CalendarPropertiesUpdate(@JsonProperty("dav:name") Optional<String> name,
+                                           @JsonProperty("apple:color") Optional<String> color,
+                                           @JsonProperty("caldav:description") Optional<String> description) {
+        public CalendarPropertiesUpdate {
+            name = name == null ? Optional.empty() : name;
+            color = color == null ? Optional.empty() : color;
+            description = description == null ? Optional.empty() : description;
+            Preconditions.checkArgument(name.isPresent() || color.isPresent() || description.isPresent(),
+                "At least one of 'dav:name', 'apple:color', 'caldav:description' must be provided");
+        }
+    }
+
+    public record CalendarSharingUpdate(@JsonProperty(value = "share", required = true) Share share) {
+        private static final String MAILTO_PREFIX = "mailto:";
+
+        public CalendarSharingUpdate {
+            Preconditions.checkArgument(share != null, "'share' field is required");
+        }
+
+        public record Share(@JsonProperty("set") List<AddSharee> set,
+                            @JsonProperty("remove") List<RemoveSharee> remove) {
+            public Share {
+                set = Optional.ofNullable(set).orElse(List.of());
+                remove = Optional.ofNullable(remove).orElse(List.of());
+            }
+        }
+
+        @JsonInclude(JsonInclude.Include.NON_ABSENT)
+        public record AddSharee(@JsonProperty("dav:href") String davHref,
+                                @JsonProperty("dav:read") Optional<Boolean> read,
+                                @JsonProperty("dav:read-write") Optional<Boolean> readWrite,
+                                @JsonProperty("dav:administration") Optional<Boolean> administration) {
+            public AddSharee {
+                read = read == null ? Optional.empty() : read;
+                readWrite = readWrite == null ? Optional.empty() : readWrite;
+                administration = administration == null ? Optional.empty() : administration;
+                Preconditions.checkArgument(StringUtils.startsWith(davHref, MAILTO_PREFIX),
+                    "'dav:href' must be a '" + MAILTO_PREFIX + "' URI");
+                Preconditions.checkArgument(read.isPresent() || readWrite.isPresent() || administration.isPresent(),
+                    "One of 'dav:read', 'dav:read-write', 'dav:administration' must be provided");
+            }
+        }
+
+        public record RemoveSharee(@JsonProperty("dav:href") String davHref) {
+            public RemoveSharee {
+                Preconditions.checkArgument(StringUtils.startsWith(davHref, MAILTO_PREFIX),
+                    "'dav:href' must be a '" + MAILTO_PREFIX + "' URI");
+            }
+        }
+    }
+
     public static final Map<String, String> DEFAULT_FIND_USER_CALENDARS_PARAMS = Map.of(
         "personal", "true",
         "sharedDelegationStatus", "accepted",
@@ -481,17 +533,17 @@ public class CalDavClient extends DavClient {
     }
 
     /**
-     * Updates calendar properties (e.g. {@code dav:name}, {@code apple:color}, {@code caldav:description})
+     * Updates calendar properties ({@code dav:name}, {@code apple:color}, {@code caldav:description})
      * through a PROPPATCH on the calendar JSON endpoint.
      */
-    public Mono<Void> updateCalendarProperties(Username username, CalendarURL calendarURL, byte[] jsonPayload) {
+    public Mono<Void> updateCalendarProperties(Username username, CalendarURL calendarURL, CalendarPropertiesUpdate update) {
         String uri = calendarURL.asUri() + ".json";
         return httpClientWithImpersonation(username)
             .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, JSON_CHARSET_UTF_8)
                 .add(HttpHeaderNames.ACCEPT, DEFAULT_JSON_ACCEPT))
             .request(HttpMethod.valueOf("PROPPATCH"))
             .uri(uri)
-            .send(Mono.just(Unpooled.wrappedBuffer(jsonPayload)))
+            .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(OBJECT_MAPPER.writeValueAsBytes(update))))
             .responseSingle((response, responseContent) -> switch (response.status().code()) {
                 case 200, 204, 207 -> Mono.empty();
                 case 404 -> Mono.error(new CalendarNotFoundException(calendarURL));
@@ -504,17 +556,17 @@ public class CalDavClient extends DavClient {
     }
 
     /**
-     * Updates the sharees of a calendar. The payload follows the Sabre JSON sharing format:
+     * Updates the sharees of a calendar, following the Sabre JSON sharing format:
      * {@code {"share":{"set":[{"dav:href":"mailto:...","dav:read":true}],"remove":[{"dav:href":"mailto:..."}]}}}
      */
-    public Mono<Void> updateCalendarShares(Username username, CalendarURL calendarURL, byte[] shareJsonPayload) {
+    public Mono<Void> updateCalendarShares(Username username, CalendarURL calendarURL, CalendarSharingUpdate sharingUpdate) {
         String uri = calendarURL.asUri() + ".json";
         return httpClientWithImpersonation(username)
             .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, JSON_CHARSET_UTF_8)
                 .add(HttpHeaderNames.ACCEPT, DEFAULT_JSON_ACCEPT))
             .request(HttpMethod.POST)
             .uri(uri)
-            .send(Mono.just(Unpooled.wrappedBuffer(shareJsonPayload)))
+            .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(OBJECT_MAPPER.writeValueAsBytes(sharingUpdate))))
             .responseSingle((response, responseContent) -> switch (response.status().code()) {
                 case 200, 204 -> Mono.empty();
                 case 404 -> Mono.error(new CalendarNotFoundException(calendarURL));

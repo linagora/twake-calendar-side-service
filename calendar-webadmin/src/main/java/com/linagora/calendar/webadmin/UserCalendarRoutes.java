@@ -30,6 +30,7 @@ import java.util.function.Supplier;
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.james.core.Username;
 import org.apache.james.webadmin.Constants;
 import org.apache.james.webadmin.Routes;
@@ -38,6 +39,7 @@ import org.eclipse.jetty.http.HttpStatus;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavClientException;
@@ -46,6 +48,7 @@ import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 
+import spark.HaltException;
 import spark.Request;
 import spark.Response;
 import spark.Service;
@@ -70,12 +73,10 @@ public class UserCalendarRoutes implements Routes {
     private static final String FIELD_COLOR = "apple:color";
     private static final String FIELD_DESCRIPTION = "caldav:description";
     private static final String FIELD_PUBLIC_RIGHT = "public_right";
-    private static final String FIELD_SHARE = "share";
 
     private static final Set<String> CREATE_FIELDS = ImmutableSet.of(FIELD_ID, FIELD_NAME, FIELD_COLOR, FIELD_DESCRIPTION);
-    private static final Set<String> PATCH_FIELDS = ImmutableSet.of(FIELD_NAME, FIELD_COLOR, FIELD_DESCRIPTION);
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module());
 
     private final OpenPaaSUserDAO userDAO;
     private final CalDavClient calDavClient;
@@ -154,18 +155,10 @@ public class UserCalendarRoutes implements Routes {
 
     private String updateCalendarProperties(Request request, Response response) {
         OpenPaaSUser user = retrieveUser(request);
-        JsonNode body = parseBody(request);
-        validateFields(body, PATCH_FIELDS);
-        if (body.isEmpty()) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.BAD_REQUEST_400)
-                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                .message("At least one of the fields %s is required".formatted(PATCH_FIELDS))
-                .haltError();
-        }
+        CalDavClient.CalendarPropertiesUpdate update = parseBody(request, CalDavClient.CalendarPropertiesUpdate.class);
         CalendarURL calendarURL = retrieveExistingCalendar(request, user);
 
-        wrapDavErrors(() -> calDavClient.updateCalendarProperties(user.username(), calendarURL, request.bodyAsBytes()).block());
+        wrapDavErrors(() -> calDavClient.updateCalendarProperties(user.username(), calendarURL, update).block());
 
         response.status(HttpStatus.NO_CONTENT_204);
         return Constants.EMPTY_BODY;
@@ -184,17 +177,10 @@ public class UserCalendarRoutes implements Routes {
 
     private String updateInvitees(Request request, Response response) {
         OpenPaaSUser user = retrieveUser(request);
-        JsonNode body = parseBody(request);
-        if (!body.path(FIELD_SHARE).isObject()) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.BAD_REQUEST_400)
-                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                .message("Field '%s' is required and must be an object".formatted(FIELD_SHARE))
-                .haltError();
-        }
+        CalDavClient.CalendarSharingUpdate sharingUpdate = parseBody(request, CalDavClient.CalendarSharingUpdate.class);
         CalendarURL calendarURL = retrieveExistingCalendar(request, user);
 
-        wrapDavErrors(() -> calDavClient.updateCalendarShares(user.username(), calendarURL, request.bodyAsBytes()).block());
+        wrapDavErrors(() -> calDavClient.updateCalendarShares(user.username(), calendarURL, sharingUpdate).block());
 
         response.status(HttpStatus.NO_CONTENT_204);
         return Constants.EMPTY_BODY;
@@ -266,13 +252,28 @@ public class UserCalendarRoutes implements Routes {
             }
             return body;
         } catch (Exception e) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.BAD_REQUEST_400)
-                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                .message("Invalid request body")
-                .cause(e)
-                .haltError();
+            throw invalidBody(e);
         }
+    }
+
+    private <T> T parseBody(Request request, Class<T> type) {
+        try {
+            return OBJECT_MAPPER.readValue(request.bodyAsBytes(), type);
+        } catch (Exception e) {
+            throw invalidBody(e);
+        }
+    }
+
+    private HaltException invalidBody(Exception e) {
+        String detail = Optional.ofNullable(ExceptionUtils.getRootCause(e))
+            .map(Throwable::getMessage)
+            .orElse(e.getMessage());
+        return ErrorResponder.builder()
+            .statusCode(HttpStatus.BAD_REQUEST_400)
+            .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+            .message("Invalid request body: %s".formatted(detail))
+            .cause(e)
+            .haltError();
     }
 
     private void validateFields(JsonNode body, Set<String> allowedFields) {

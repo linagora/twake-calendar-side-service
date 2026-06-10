@@ -380,6 +380,36 @@ public class UserCalendarRoutesTest {
     }
 
     @Test
+    void inviteeShouldFailWhenHrefIsNotAMailtoUri() {
+        String calendarId = createCalendar(user, "Calendar");
+
+        given()
+            .body("""
+                {"share":{"set":[{"dav:href":"http://example.com","dav:read":true}],"remove":[]}}
+                """)
+        .when()
+            .post("/users/{username}/calendars/{calendarId}/invitee", user.username().asString(), calendarId)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"));
+    }
+
+    @Test
+    void inviteeShouldFailWhenNoRightIsProvided() {
+        String calendarId = createCalendar(user, "Calendar");
+
+        given()
+            .body("""
+                {"share":{"set":[{"dav:href":"mailto:%s"}],"remove":[]}}
+                """.formatted(otherUser.username().asString()))
+        .when()
+            .post("/users/{username}/calendars/{calendarId}/invitee", user.username().asString(), calendarId)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"));
+    }
+
+    @Test
     void inviteeShouldReturn404WhenCalendarDoesNotExist() {
         given()
             .body("""
@@ -419,6 +449,19 @@ public class UserCalendarRoutesTest {
             .body("""
                 {"dav:name":"New name","id":"should-not-be-here"}
                 """)
+        .when()
+            .patch("/users/{username}/calendars/{calendarId}", user.username().asString(), calendarId)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"));
+    }
+
+    @Test
+    void patchShouldFailWhenNoFieldIsProvided() {
+        String calendarId = createCalendar(user, "Calendar");
+
+        given()
+            .body("{}")
         .when()
             .patch("/users/{username}/calendars/{calendarId}", user.username().asString(), calendarId)
         .then()

@@ -889,7 +889,7 @@ the sharing for the given user.
 
 **Status codes**:
 - `204`: the sharees were updated
-- `400`: missing `share` field
+- `400`: missing `share` field, `dav:href` is not a `mailto:` URI, or a `set` entry carries no right
 - `404`: the user or the calendar does not exist
 
 ## Domain-scoped task routes
