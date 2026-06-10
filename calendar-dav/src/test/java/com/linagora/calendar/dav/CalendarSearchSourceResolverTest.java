@@ -55,6 +55,8 @@ class CalendarSearchSourceResolverTest {
     private CalDavClient calDavClient;
     private MongoDBResourceDAO resourceDAO;
     private CalendarSearchSourceResolver testee;
+    private OpenPaaSUser requester;
+    private OpenPaaSUser sourceUser;
 
     @BeforeAll
     static void setUp() throws SSLException {
@@ -66,14 +68,14 @@ class CalendarSearchSourceResolverTest {
         calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         resourceDAO = new MongoDBResourceDAO(sabreDavExtension.dockerSabreDavSetup().getMongoDB(), Clock.systemUTC());
         testee = new CalendarSearchSourceResolver(calDavClient);
+        requester = sabreDavExtension.newTestUser();
+        sourceUser = sabreDavExtension.newTestUser();
     }
 
     @Test
     void resolveShouldFilterCalendarWithoutReadAccess() {
         // Given one readable calendar and one not readable calendar.
-        OpenPaaSUser requester = sabreDavExtension.newTestUser();
-        OpenPaaSUser other = sabreDavExtension.newTestUser();
-        CalendarURL notReadableCalendar = createCalendar(other, "not-readable-" + UUID.randomUUID(), PublicRight.HIDE_ALL_EVENT);
+        CalendarURL notReadableCalendar = createCalendar(sourceUser, "not-readable-" + UUID.randomUUID(), PublicRight.HIDE_ALL_EVENT);
         CalendarURL readableCalendar = CalendarURL.from(requester.id());
 
         // When resolving the search sources.
@@ -88,24 +90,11 @@ class CalendarSearchSourceResolverTest {
     @Test
     void resolveShouldTranslateSubscribedMirrorCalendarToSourceCalendar() {
         // Given subscribed mirror A/B points to source D/E.
-        OpenPaaSUser sourceUser = sabreDavExtension.newTestUser();
-        OpenPaaSUser subscriber = sabreDavExtension.newTestUser();
-
-        String sourceCalendarId = "source-" + UUID.randomUUID();
-        CalendarURL sourceCalendar = createCalendar(sourceUser, sourceCalendarId, PublicRight.READ);
-
-        String subscribedCalendarId = "subscribed-" + UUID.randomUUID();
-        CalendarURL requestedCalendar = davTestHelper.subscribeToSharedCalendar(subscriber, SubscribedCalendarRequest.builder()
-            .id(subscribedCalendarId)
-            .sourceUserId(sourceUser.id().value())
-            .sourceCalendarId(sourceCalendarId)
-            .name("Subscribed source")
-            .color("#123456")
-            .readOnly(true)
-            .build());
+        CalendarURL sourceCalendar = createSubscribedSourceCalendar();
+        CalendarURL requestedCalendar = findMirrorCalendar(requester);
 
         // When resolving A/B.
-        List<CalendarURL> result = testee.resolve(subscriber, List.of(requestedCalendar)).block();
+        List<CalendarURL> result = testee.resolve(requester, List.of(requestedCalendar)).block();
 
         // Then D/E is returned.
         assertThat(result)
@@ -116,23 +105,10 @@ class CalendarSearchSourceResolverTest {
     @Test
     void resolveShouldKeepSubscribedSourceCalendarWhenRequestedDirectly() {
         // Given subscriber has a mirror A/B for source D/E.
-        OpenPaaSUser sourceUser = sabreDavExtension.newTestUser();
-        OpenPaaSUser subscriber = sabreDavExtension.newTestUser();
-
-        String sourceCalendarId = "source-" + UUID.randomUUID();
-        CalendarURL sourceCalendar = createCalendar(sourceUser, sourceCalendarId, PublicRight.READ);
-
-        davTestHelper.subscribeToSharedCalendar(subscriber, SubscribedCalendarRequest.builder()
-            .id("subscribed-" + UUID.randomUUID())
-            .sourceUserId(sourceUser.id().value())
-            .sourceCalendarId(sourceCalendarId)
-            .name("Subscribed source")
-            .color("#123456")
-            .readOnly(true)
-            .build());
+        CalendarURL sourceCalendar = createSubscribedSourceCalendar();
 
         // When resolving D/E directly.
-        List<CalendarURL> result = testee.resolve(subscriber, List.of(sourceCalendar)).block();
+        List<CalendarURL> result = testee.resolve(requester, List.of(sourceCalendar)).block();
 
         // Then D/E is kept.
         assertThat(result)
@@ -143,19 +119,11 @@ class CalendarSearchSourceResolverTest {
     @Test
     void resolveShouldTranslateDelegatedMirrorCalendarToSourceCalendar() {
         // Given delegated mirror A/B points to source D/E.
-        OpenPaaSUser sourceUser = sabreDavExtension.newTestUser();
-        OpenPaaSUser delegate = sabreDavExtension.newTestUser();
-        String sourceCalendarId = "delegated-" + UUID.randomUUID();
-        CalendarURL sourceCalendar = createCalendar(sourceUser, sourceCalendarId, PublicRight.HIDE_ALL_EVENT);
-        davTestHelper.grantDelegation(sourceUser, sourceCalendar, delegate, "dav:read");
-        CalendarURL requestedCalendar = calDavClient.findUserCalendars(delegate.username(), delegate.id())
-            .filter(calendarURL -> !calendarURL.equals(CalendarURL.from(delegate.id())))
-            .next()
-            .blockOptional()
-            .orElseThrow(() -> new AssertionError("No mirror calendar found"));
+        CalendarURL sourceCalendar = createDelegatedSourceCalendar(requester, PublicRight.HIDE_ALL_EVENT);
+        CalendarURL requestedCalendar = findMirrorCalendar(requester);
 
         // When resolving A/B.
-        List<CalendarURL> result = testee.resolve(delegate, List.of(requestedCalendar)).block();
+        List<CalendarURL> result = testee.resolve(requester, List.of(requestedCalendar)).block();
 
         // Then D/E is returned.
         assertThat(result)
@@ -166,14 +134,10 @@ class CalendarSearchSourceResolverTest {
     @Test
     void resolveShouldKeepDelegatedSourceCalendarWhenRequestedDirectly() {
         // Given source D/E is directly readable and also has a delegated mirror.
-        OpenPaaSUser sourceUser = sabreDavExtension.newTestUser();
-        OpenPaaSUser delegate = sabreDavExtension.newTestUser();
-        String sourceCalendarId = "delegated-" + UUID.randomUUID();
-        CalendarURL sourceCalendar = createCalendar(sourceUser, sourceCalendarId, PublicRight.READ);
-        davTestHelper.grantDelegation(sourceUser, sourceCalendar, delegate, "dav:read");
+        CalendarURL sourceCalendar = createDelegatedSourceCalendar(requester, PublicRight.READ);
 
         // When resolving D/E.
-        List<CalendarURL> result = testee.resolve(delegate, List.of(sourceCalendar)).block();
+        List<CalendarURL> result = testee.resolve(requester, List.of(sourceCalendar)).block();
 
         // Then D/E is kept.
         assertThat(result)
@@ -184,17 +148,9 @@ class CalendarSearchSourceResolverTest {
     @Test
     void resolveShouldFilterDelegatedMirrorCalendarWhenRequesterIsNotDelegate() {
         // Given delegated mirror A/B belongs to a different delegate.
-        OpenPaaSUser sourceUser = sabreDavExtension.newTestUser();
         OpenPaaSUser delegate = sabreDavExtension.newTestUser();
-        OpenPaaSUser requester = sabreDavExtension.newTestUser();
-        String sourceCalendarId = "delegated-" + UUID.randomUUID();
-        CalendarURL sourceCalendar = createCalendar(sourceUser, sourceCalendarId, PublicRight.HIDE_ALL_EVENT);
-        davTestHelper.grantDelegation(sourceUser, sourceCalendar, delegate, "dav:read");
-        CalendarURL delegatedMirrorCalendar = calDavClient.findUserCalendars(delegate.username(), delegate.id())
-            .filter(calendarURL -> !calendarURL.equals(CalendarURL.from(delegate.id())))
-            .next()
-            .blockOptional()
-            .orElseThrow(() -> new AssertionError("No mirror calendar found"));
+        createDelegatedSourceCalendar(delegate, PublicRight.HIDE_ALL_EVENT);
+        CalendarURL delegatedMirrorCalendar = findMirrorCalendar(delegate);
 
         // When another user resolves A/B.
         List<CalendarURL> result = testee.resolve(requester, List.of(delegatedMirrorCalendar)).block();
@@ -208,26 +164,24 @@ class CalendarSearchSourceResolverTest {
     @Test
     void resolveShouldKeepMultipleReadableCalendarsAndFilterUnreadableCalendars() {
         // Given several readable calendars and one not readable calendar.
-        OpenPaaSUser requester = sabreDavExtension.newTestUser();
-        OpenPaaSUser user1 = sabreDavExtension.newTestUser();
-        OpenPaaSUser user2 = sabreDavExtension.newTestUser();
-        OpenPaaSUser user3 = sabreDavExtension.newTestUser();
+        OpenPaaSUser delegatedSourceUser = sabreDavExtension.newTestUser();
+        OpenPaaSUser unreadableUser = sabreDavExtension.newTestUser();
 
         CalendarURL ownCalendar = CalendarURL.from(requester.id());
-        CalendarURL subscribedSourceCalendar = createCalendar(user1, "subscribed-readable-" + UUID.randomUUID(), PublicRight.READ);
+        CalendarURL subscribedSourceCalendar = createCalendar(sourceUser, "subscribed-readable-" + UUID.randomUUID(), PublicRight.READ);
         davTestHelper.subscribeToSharedCalendar(requester, SubscribedCalendarRequest.builder()
             .id("subscribed-" + UUID.randomUUID())
-            .sourceUserId(user1.id().value())
+            .sourceUserId(sourceUser.id().value())
             .sourceCalendarId(subscribedSourceCalendar.calendarId().value())
             .name("Subscribed readable source")
             .color("#123456")
             .readOnly(true)
             .build());
 
-        CalendarURL delegatedSourceCalendar = createCalendar(user2, "delegated-readable-" + UUID.randomUUID(), PublicRight.HIDE_ALL_EVENT);
-        davTestHelper.grantDelegation(user2, delegatedSourceCalendar, requester, "dav:read");
+        CalendarURL delegatedSourceCalendar = createCalendar(delegatedSourceUser, "delegated-readable-" + UUID.randomUUID(), PublicRight.HIDE_ALL_EVENT);
+        davTestHelper.grantDelegation(delegatedSourceUser, delegatedSourceCalendar, requester, "dav:read");
 
-        CalendarURL notReadableCalendar = createCalendar(user3, "not-readable-" + UUID.randomUUID(), PublicRight.HIDE_ALL_EVENT);
+        CalendarURL notReadableCalendar = createCalendar(unreadableUser, "not-readable-" + UUID.randomUUID(), PublicRight.HIDE_ALL_EVENT);
 
         // When resolving all requested calendars.
         List<CalendarURL> result = testee.resolve(requester,
@@ -242,7 +196,6 @@ class CalendarSearchSourceResolverTest {
     @Test
     void resolveShouldKeepResourceCalendarWhenRequesterIsResourceAdministrator() {
         // Given requester is administrator of resource calendar R/R.
-        OpenPaaSUser requester = sabreDavExtension.newTestUser();
         OpenPaaSDomain domain = sabreDavExtension.dockerSabreDavSetup()
             .getOpenPaaSProvisioningService()
             .getDomain()
@@ -263,13 +216,11 @@ class CalendarSearchSourceResolverTest {
     @Test
     void resolveShouldTranslateSubscribedResourceCalendarToResourceCalendar() {
         // Given requester subscribed to resource calendar R/R.
-        OpenPaaSUser requester = sabreDavExtension.newTestUser();
-        OpenPaaSUser resourceCreator = sabreDavExtension.newTestUser();
         OpenPaaSDomain domain = sabreDavExtension.dockerSabreDavSetup()
             .getOpenPaaSProvisioningService()
             .getDomain()
             .block();
-        ResourceId resourceId = createResource(domain, resourceCreator, List.of());
+        ResourceId resourceId = createResource(domain, sourceUser, List.of());
         CalendarURL resourceCalendar = CalendarURL.from(resourceId.asOpenPaaSId());
         CalendarURL subscribedCalendar = davTestHelper.subscribeToSharedCalendar(requester, SubscribedCalendarRequest.builder()
             .id("subscribed-resource-" + UUID.randomUUID())
@@ -292,7 +243,6 @@ class CalendarSearchSourceResolverTest {
     @Test
     void resolveShouldFilterResourceCalendarFromAnotherDomain() {
         // Given resource calendar R/R belongs to another domain.
-        OpenPaaSUser requester = sabreDavExtension.newTestUser();
         OpenPaaSDomain foreignDomain = sabreDavExtension.dockerSabreDavSetup()
             .getOpenPaaSProvisioningService()
             .createDomainIfAbsent(Domain.of("resource-" + UUID.randomUUID() + ".tld"))
@@ -324,6 +274,35 @@ class CalendarSearchSourceResolverTest {
         CalendarURL calendarURL = new CalendarURL(calendarUser.id(), new OpenPaaSId(calendarId));
         calDavClient.updateCalendarAcl(calendarUser.username(), calendarURL, publicRight).block();
         return calendarURL;
+    }
+
+    private CalendarURL createSubscribedSourceCalendar() {
+        CalendarURL sourceCalendar = createCalendar(sourceUser, "source-" + UUID.randomUUID(), PublicRight.READ);
+        davTestHelper.subscribeToSharedCalendar(requester, SubscribedCalendarRequest.builder()
+            .id("subscribed-" + UUID.randomUUID())
+            .sourceUserId(sourceUser.id().value())
+            .sourceCalendarId(sourceCalendar.calendarId().value())
+            .name("Subscribed source")
+            .color("#123456")
+            .readOnly(true)
+            .build());
+
+        return sourceCalendar;
+    }
+
+    private CalendarURL createDelegatedSourceCalendar(OpenPaaSUser delegate, PublicRight sourcePublicRight) {
+        CalendarURL sourceCalendar = createCalendar(sourceUser, "delegated-" + UUID.randomUUID(), sourcePublicRight);
+        davTestHelper.grantDelegation(sourceUser, sourceCalendar, delegate, "dav:read");
+
+        return sourceCalendar;
+    }
+
+    private CalendarURL findMirrorCalendar(OpenPaaSUser user) {
+        return calDavClient.findUserCalendars(user.username(), user.id())
+            .filter(calendarURL -> !calendarURL.equals(CalendarURL.from(user.id())))
+            .next()
+            .blockOptional()
+            .orElseThrow(() -> new AssertionError("No mirror calendar found"));
     }
 
     private ResourceId createResource(OpenPaaSDomain domain, OpenPaaSUser creator, List<OpenPaaSUser> administrators) {
