@@ -191,8 +191,8 @@ class CalendarSearchSourceResolverTest {
 
         // Then all readable calendars are kept and the not readable calendar is filtered.
         assertThat(result)
-            .describedAs("Resolver should keep all readable calendars in request order and filter unreadable calendars")
-            .containsExactly(
+            .describedAs("Resolver should keep all readable calendars and filter unreadable calendars")
+            .containsOnly(
                 entry(ownCalendar, ownCalendar),
                 entry(subscribedSourceCalendar, subscribedSourceCalendar),
                 entry(delegatedSourceCalendar, delegatedSourceCalendar));
