@@ -52,6 +52,7 @@ public class MemoryDomainSettingsDAO implements DomainSettingsDAO {
                 patch.userSearchMode().notKeptOrElse(existing.userSearchMode()).ifPresent(builder::userSearchMode);
                 patch.resourceSearchEnabled().notKeptOrElse(existing.resourceSearchEnabled()).ifPresent(builder::resourceSearchEnabled);
                 patch.defaultCalendarPublicVisibility().notKeptOrElse(existing.defaultCalendarPublicVisibility()).ifPresent(builder::defaultCalendarPublicVisibility);
+                patch.calendarPublicVisibilitySettingEnabled().notKeptOrElse(existing.calendarPublicVisibilitySettingEnabled()).ifPresent(builder::calendarPublicVisibilitySettingEnabled);
                 return builder.build();
             }).flatMap(merged -> save(domain, merged));
     }

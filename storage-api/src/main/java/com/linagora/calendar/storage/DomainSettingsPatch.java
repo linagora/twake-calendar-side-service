@@ -22,5 +22,6 @@ import org.apache.james.util.ValuePatch;
 
 public record DomainSettingsPatch(ValuePatch<UserSearchMode> userSearchMode,
                                   ValuePatch<Boolean> resourceSearchEnabled,
-                                  ValuePatch<DefaultCalendarPublicVisibility> defaultCalendarPublicVisibility) {
+                                  ValuePatch<DefaultCalendarPublicVisibility> defaultCalendarPublicVisibility,
+                                  ValuePatch<Boolean> calendarPublicVisibilitySettingEnabled) {
 }

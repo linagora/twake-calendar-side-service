@@ -669,10 +669,12 @@ Returns the explicitly configured settings for the domain alongside the effectiv
   "userSearchMode": "limited",
   "resourceSearchEnabled": null,
   "defaultCalendarPublicVisibility": null,
+  "calendarPublicVisibilitySettingEnabled": null,
   "resolved": {
     "userSearchMode": "limited",
     "resourceSearchEnabled": true,
-    "defaultCalendarPublicVisibility": "read"
+    "defaultCalendarPublicVisibility": "read",
+    "calendarPublicVisibilitySettingEnabled": true
   }
 }
 ```
@@ -681,6 +683,7 @@ Returns the explicitly configured settings for the domain alongside the effectiv
 - `userSearchMode`: `"enabled"` | `"limited"` | `"disabled"` (top-level also allows `null`)
 - `resourceSearchEnabled`: `true` | `false` (top-level also allows `null`)
 - `defaultCalendarPublicVisibility`: `"read"` | `"private"` (top-level also allows `null`)
+- `calendarPublicVisibilitySettingEnabled`: `true` | `false` (top-level also allows `null`)
 
 **Status codes**:
 - `200`: settings returned (all fields `null` when nothing has been configured)
@@ -696,11 +699,12 @@ PUT /domains/{domain}/settings
 {
   "userSearchMode": "limited",
   "resourceSearchEnabled": false,
-  "defaultCalendarPublicVisibility": null
+  "defaultCalendarPublicVisibility": null,
+  "calendarPublicVisibilitySettingEnabled": true
 }
 ```
 
-All three fields are required. A `null` value clears the setting for that field, causing it to fall back to the system default.
+All four fields are required. A `null` value clears the setting for that field, causing it to fall back to the system default.
 
 **Status codes**:
 - `204`: settings saved
@@ -715,7 +719,8 @@ All three fields are required. A `null` value clears the setting for that field,
 PATCH /domains/{domain}/settings
 {
   "userSearchMode": "limited",
-  "resourceSearchEnabled": null
+  "resourceSearchEnabled": null,
+  "calendarPublicVisibilitySettingEnabled": false
 }
 ```
 
