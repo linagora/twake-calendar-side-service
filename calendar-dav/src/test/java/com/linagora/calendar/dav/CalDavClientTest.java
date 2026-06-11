@@ -27,6 +27,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import javax.net.ssl.SSLException;
@@ -41,6 +42,8 @@ import org.testcontainers.shaded.com.google.common.collect.ImmutableList;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linagora.calendar.api.CalendarUtil;
+import com.linagora.calendar.dav.CalDavClient.CalendarPropertiesUpdate;
+import com.linagora.calendar.dav.CalDavClient.CalendarSharingUpdate;
 import com.linagora.calendar.dav.CalDavClient.NewCalendar;
 import com.linagora.calendar.dav.FreeBusyQueryResponseObject.BusyInterval;
 import com.linagora.calendar.dav.dto.CalendarReportJsonResponse;
@@ -1414,5 +1417,101 @@ public class CalDavClientTest {
         OpenPaaSUser otherUser = createOpenPaaSUser();
 
         assertThat(testee.calendarExists(otherUser.username(), CalendarURL.from(user.id())).block()).isFalse();
+    }
+
+    @Test
+    void updateCalendarPropertiesShouldUpdateProvidedProperties() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        String calendarId = UUID.randomUUID().toString();
+        testee.createNewCalendar(user.username(), user.id(), new NewCalendar(calendarId, "Original name", "#000000", "Original description")).block();
+        CalendarURL calendarURL = new CalendarURL(user.id(), new OpenPaaSId(calendarId));
+
+        testee.updateCalendarProperties(user.username(), calendarURL,
+            new CalendarPropertiesUpdate(Optional.of("Updated name"), Optional.of("#FF0000"), Optional.of("Updated description"))).block();
+
+        String metadata = davTestHelper.getCalendarMetadata(user, new OpenPaaSId(calendarId)).block();
+        assertThatJson(metadata).node("dav:name").isEqualTo("Updated name");
+        assertThatJson(metadata).node("apple:color").isEqualTo("#FF0000");
+        assertThatJson(metadata).node("caldav:description").isEqualTo("Updated description");
+    }
+
+    @Test
+    void updateCalendarPropertiesShouldNotAlterAbsentProperties() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        String calendarId = UUID.randomUUID().toString();
+        testee.createNewCalendar(user.username(), user.id(), new NewCalendar(calendarId, "Original name", "#000000", "Original description")).block();
+        CalendarURL calendarURL = new CalendarURL(user.id(), new OpenPaaSId(calendarId));
+
+        testee.updateCalendarProperties(user.username(), calendarURL,
+            new CalendarPropertiesUpdate(Optional.of("Updated name"), Optional.empty(), Optional.empty())).block();
+
+        String metadata = davTestHelper.getCalendarMetadata(user, new OpenPaaSId(calendarId)).block();
+        assertThatJson(metadata).node("dav:name").isEqualTo("Updated name");
+        assertThatJson(metadata).node("apple:color").isEqualTo("#000000");
+        assertThatJson(metadata).node("caldav:description").isEqualTo("Original description");
+    }
+
+    @Test
+    void updateCalendarPropertiesShouldThrowWhenCalendarDoesNotExist() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL calendarURL = new CalendarURL(user.id(), new OpenPaaSId(UUID.randomUUID().toString()));
+
+        assertThatThrownBy(() -> testee.updateCalendarProperties(user.username(), calendarURL,
+            new CalendarPropertiesUpdate(Optional.of("Updated name"), Optional.empty(), Optional.empty())).block())
+            .isInstanceOf(CalendarNotFoundException.class);
+    }
+
+    @Test
+    void updateCalendarSharesShouldGrantDelegation() {
+        OpenPaaSUser owner = createOpenPaaSUser();
+        OpenPaaSUser delegate = createOpenPaaSUser();
+        String calendarId = UUID.randomUUID().toString();
+        testee.createNewCalendar(owner.username(), owner.id(), new NewCalendar(calendarId, "Shared calendar", "#0000FF", "")).block();
+        CalendarURL calendarURL = new CalendarURL(owner.id(), new OpenPaaSId(calendarId));
+
+        testee.updateCalendarShares(owner.username(), calendarURL,
+            new CalendarSharingUpdate(new CalendarSharingUpdate.Share(
+                List.of(new CalendarSharingUpdate.AddSharee("mailto:" + delegate.username().asString(),
+                    Optional.empty(), Optional.of(true), Optional.empty())),
+                List.of()))).block();
+
+        assertThat(testee.findUserCalendars(delegate.username(), delegate.id()).collectList().block())
+            .anyMatch(url -> !url.calendarId().equals(delegate.id()));
+    }
+
+    @Test
+    void updateCalendarSharesShouldRevokeDelegation() {
+        OpenPaaSUser owner = createOpenPaaSUser();
+        OpenPaaSUser delegate = createOpenPaaSUser();
+        String calendarId = UUID.randomUUID().toString();
+        testee.createNewCalendar(owner.username(), owner.id(), new NewCalendar(calendarId, "Shared calendar", "#0000FF", "")).block();
+        CalendarURL calendarURL = new CalendarURL(owner.id(), new OpenPaaSId(calendarId));
+        testee.updateCalendarShares(owner.username(), calendarURL,
+            new CalendarSharingUpdate(new CalendarSharingUpdate.Share(
+                List.of(new CalendarSharingUpdate.AddSharee("mailto:" + delegate.username().asString(),
+                    Optional.empty(), Optional.of(true), Optional.empty())),
+                List.of()))).block();
+
+        testee.updateCalendarShares(owner.username(), calendarURL,
+            new CalendarSharingUpdate(new CalendarSharingUpdate.Share(
+                List.of(),
+                List.of(new CalendarSharingUpdate.RemoveSharee("mailto:" + delegate.username().asString()))))).block();
+
+        assertThat(testee.findUserCalendars(delegate.username(), delegate.id()).collectList().block())
+            .allMatch(url -> url.calendarId().equals(delegate.id()));
+    }
+
+    @Test
+    void updateCalendarSharesShouldThrowWhenCalendarDoesNotExist() {
+        OpenPaaSUser owner = createOpenPaaSUser();
+        OpenPaaSUser delegate = createOpenPaaSUser();
+        CalendarURL calendarURL = new CalendarURL(owner.id(), new OpenPaaSId(UUID.randomUUID().toString()));
+
+        assertThatThrownBy(() -> testee.updateCalendarShares(owner.username(), calendarURL,
+            new CalendarSharingUpdate(new CalendarSharingUpdate.Share(
+                List.of(new CalendarSharingUpdate.AddSharee("mailto:" + delegate.username().asString(),
+                    Optional.of(true), Optional.empty(), Optional.empty())),
+                List.of()))).block())
+            .isInstanceOf(CalendarNotFoundException.class);
     }
 }

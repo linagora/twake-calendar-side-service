@@ -103,9 +103,6 @@ public class CalDavClient extends DavClient {
                                            @JsonProperty("apple:color") Optional<String> color,
                                            @JsonProperty("caldav:description") Optional<String> description) {
         public CalendarPropertiesUpdate {
-            name = name == null ? Optional.empty() : name;
-            color = color == null ? Optional.empty() : color;
-            description = description == null ? Optional.empty() : description;
             Preconditions.checkArgument(name.isPresent() || color.isPresent() || description.isPresent(),
                 "At least one of 'dav:name', 'apple:color', 'caldav:description' must be provided");
         }
@@ -132,9 +129,6 @@ public class CalDavClient extends DavClient {
                                 @JsonProperty("dav:read-write") Optional<Boolean> readWrite,
                                 @JsonProperty("dav:administration") Optional<Boolean> administration) {
             public AddSharee {
-                read = read == null ? Optional.empty() : read;
-                readWrite = readWrite == null ? Optional.empty() : readWrite;
-                administration = administration == null ? Optional.empty() : administration;
                 Preconditions.checkArgument(StringUtils.startsWith(davHref, MAILTO_PREFIX),
                     "'dav:href' must be a '" + MAILTO_PREFIX + "' URI");
                 Preconditions.checkArgument(read.isPresent() || readWrite.isPresent() || administration.isPresent(),

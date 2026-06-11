@@ -21,9 +21,7 @@ package com.linagora.calendar.webadmin;
 import static org.apache.james.webadmin.Constants.SEPARATOR;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Iterator;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 
@@ -37,10 +35,11 @@ import org.apache.james.webadmin.Routes;
 import org.apache.james.webadmin.utils.ErrorResponder;
 import org.eclipse.jetty.http.HttpStatus;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
-import com.google.common.collect.ImmutableSet;
+import com.google.common.base.Preconditions;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavClientException;
 import com.linagora.calendar.storage.CalendarURL;
@@ -74,9 +73,20 @@ public class UserCalendarRoutes implements Routes {
     private static final String FIELD_DESCRIPTION = "caldav:description";
     private static final String FIELD_PUBLIC_RIGHT = "public_right";
 
-    private static final Set<String> CREATE_FIELDS = ImmutableSet.of(FIELD_ID, FIELD_NAME, FIELD_COLOR, FIELD_DESCRIPTION);
-
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module());
+
+    public record CalendarCreationRequest(@JsonProperty(FIELD_ID) Optional<String> id,
+                                          @JsonProperty(value = FIELD_NAME, required = true) String name,
+                                          @JsonProperty(FIELD_COLOR) Optional<String> color,
+                                          @JsonProperty(FIELD_DESCRIPTION) Optional<String> description) {
+        public CalendarCreationRequest {
+            Preconditions.checkArgument(StringUtils.isNotBlank(name), "Field '%s' is required", FIELD_NAME);
+        }
+
+        CalDavClient.NewCalendar toNewCalendar(String calendarId) {
+            return new CalDavClient.NewCalendar(calendarId, name, color.orElse(""), description.orElse(""));
+        }
+    }
 
     private final OpenPaaSUserDAO userDAO;
     private final CalDavClient calDavClient;
@@ -116,31 +126,19 @@ public class UserCalendarRoutes implements Routes {
 
     private String createCalendar(Request request, Response response) {
         OpenPaaSUser user = retrieveUser(request);
-        JsonNode body = parseBody(request);
-        validateFields(body, CREATE_FIELDS);
+        CalendarCreationRequest creationRequest = parseBody(request, CalendarCreationRequest.class);
 
-        String name = body.path(FIELD_NAME).asText(null);
-        if (StringUtils.isBlank(name)) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.BAD_REQUEST_400)
-                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                .message("Field '%s' is required".formatted(FIELD_NAME))
-                .haltError();
-        }
-
-        String calendarId = Optional.ofNullable(StringUtils.trimToNull(body.path(FIELD_ID).asText(null)))
+        String calendarId = creationRequest.id()
+            .map(StringUtils::trimToNull)
             .orElseGet(() -> UUID.randomUUID().toString());
 
-        CalDavClient.NewCalendar newCalendar = new CalDavClient.NewCalendar(calendarId,
-            name,
-            body.path(FIELD_COLOR).asText(""),
-            body.path(FIELD_DESCRIPTION).asText(""));
-
-        wrapDavErrors(() -> calDavClient.createNewCalendar(user.username(), user.id(), newCalendar).block());
+        wrapDavErrors(() -> calDavClient.createNewCalendar(user.username(), user.id(), creationRequest.toNewCalendar(calendarId)).block());
 
         response.status(HttpStatus.CREATED_201);
         response.type(Constants.JSON_CONTENT_TYPE);
-        return "{\"id\":\"" + calendarId + "\"}";
+        return OBJECT_MAPPER.createObjectNode()
+            .put(FIELD_ID, calendarId)
+            .toString();
     }
 
     private String deleteCalendar(Request request, Response response) {
@@ -274,20 +272,6 @@ public class UserCalendarRoutes implements Routes {
             .message("Invalid request body: %s".formatted(detail))
             .cause(e)
             .haltError();
-    }
-
-    private void validateFields(JsonNode body, Set<String> allowedFields) {
-        Iterator<String> fieldNames = body.fieldNames();
-        while (fieldNames.hasNext()) {
-            String fieldName = fieldNames.next();
-            if (!allowedFields.contains(fieldName)) {
-                throw ErrorResponder.builder()
-                    .statusCode(HttpStatus.BAD_REQUEST_400)
-                    .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                    .message("Unknown field '%s'. Supported fields are: %s".formatted(fieldName, allowedFields))
-                    .haltError();
-            }
-        }
     }
 
     private <T> T wrapDavErrors(Supplier<T> supplier) {
