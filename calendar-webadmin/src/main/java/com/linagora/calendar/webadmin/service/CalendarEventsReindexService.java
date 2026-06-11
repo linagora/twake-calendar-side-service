@@ -34,16 +34,18 @@ import org.slf4j.LoggerFactory;
 import com.google.common.base.MoreObjects;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.dto.CalendarReportXmlResponse;
+import com.linagora.calendar.dav.model.CalendarQuery;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.event.EventFields;
-import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.eventsearch.CalendarEvents;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
 import com.linagora.calendar.webadmin.task.CalendarEventsReindexTask;
 
-import net.fortuna.ical4j.model.Calendar;
+import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.component.VEvent;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -160,12 +162,10 @@ public class CalendarEventsReindexService {
     }
 
     private Flux<IndexItem> collectEvents(Context context, OpenPaaSUser user, CalendarURL calendarURL) {
-        return calDavClient.export(calendarURL, user.username())
-            .doOnNext(bytes -> LOGGER.debug("{} task exported calendar {} for user {} with {} bytes",
-                TASK_NAME.asString(), calendarURL.serialize(), user.username().asString(), bytes.length))
-            .flatMap(bytes -> Mono.fromCallable(() -> CalendarUtil.parseIcs(bytes))
+        return calDavClient.calendarQueryReportXml(user.username(), calendarURL, CalendarQuery.ofFilters())
+            .flatMapMany(response -> Flux.fromIterable(response.extractCalendarObjects())
                 .subscribeOn(Schedulers.boundedElastic()))
-            .flatMapMany(calendar -> collectEvents(context, user, calendarURL, calendar))
+            .flatMap(calendarObject -> collectEvents(context, user, calendarURL, calendarObject))
             .onErrorResume(e -> {
                 LOGGER.error("Error while doing task {} for user {} and calendar url {}", TASK_NAME.asString(), user.username().asString(), calendarURL.serialize(), e);
                 context.incrementFailedCalendar();
@@ -173,25 +173,22 @@ public class CalendarEventsReindexService {
             });
     }
 
-    private Flux<IndexItem> collectEvents(Context context, OpenPaaSUser user, CalendarURL calendarURL, Calendar calendar) {
-        return Mono.fromCallable(() -> EventParseUtils.groupByUid(calendar))
-            .flatMapMany(map -> Flux.fromIterable(map.entrySet()))
-            .flatMap(entry -> {
-                String eventId = entry.getKey();
-
-                return Mono.fromCallable(() -> entry.getValue()
-                        .stream()
-                        .map(vEvent -> EventFields.fromVEvent(vEvent, calendarURL))
-                        .toList())
-                    .filter(events -> !events.isEmpty())
-                    .map(CalendarEvents::of)
-                    .map(calendarEvents -> new IndexItem(user, calendarURL, calendarEvents))
-                    .onErrorResume(e -> {
-                        LOGGER.error("Error while doing task {} for user {} and calendar {} and eventId {}",
-                            TASK_NAME.asString(), user.username().asString(), calendarURL.serialize(), eventId, e);
-                        context.incrementFailedEvent();
-                        return Mono.empty();
-                    });
+    private Mono<IndexItem> collectEvents(Context context, OpenPaaSUser user, CalendarURL calendarURL, CalendarReportXmlResponse.CalendarObject calendarObject) {
+        String resourceName = calendarObject.eventPathId();
+        return Mono.fromCallable(() -> CalendarUtil.parseIcs(calendarObject.calendarData()))
+            .subscribeOn(Schedulers.boundedElastic())
+            .map(calendar -> calendar.getComponents(Component.VEVENT).stream()
+                .map(VEvent.class::cast)
+                .map(vEvent -> EventFields.fromVEvent(vEvent, calendarURL, resourceName))
+                .toList())
+            .filter(events -> !events.isEmpty())
+            .map(CalendarEvents::of)
+            .map(calendarEvents -> new IndexItem(user, calendarURL, calendarEvents))
+            .onErrorResume(e -> {
+                LOGGER.error("Error while doing task {} for user {} and calendar {} and ics resource name {}",
+                    TASK_NAME.asString(), user.username().asString(), calendarURL.serialize(), resourceName, e);
+                context.incrementFailedEvent();
+                return Mono.empty();
             });
     }
 }
