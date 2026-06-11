@@ -177,9 +177,6 @@ public class CalendarRoutesTest {
             """.formatted(eventId, openPaaSUser.username().asString(), openPaaSUser.username().asString());
         CalendarURL calendarURL = CalendarURL.from(openPaaSUser.id());
 
-        // To trigger calendar directory activation
-        calDavClient.export(calendarURL, openPaaSUser.username()).block();
-
         calDavClient.importCalendar(calendarURL, eventId, openPaaSUser.username(), ics.getBytes(StandardCharsets.UTF_8)).block();
 
         String taskId = given()
@@ -214,6 +211,7 @@ public class CalendarRoutesTest {
             .attendees(List.of(person))
             .resources(List.of(new EventFields.Person("Projector", new MailAddress("projector@open-paas.org"))))
             .calendarURL(calendarURL)
+            .resourceName(eventId)
             .build();
 
         List<EventFields> actual = calendarSearchService.search(AccountId.fromUsername(openPaaSUser.username()), simpleQuery(""))
@@ -295,9 +293,6 @@ public class CalendarRoutesTest {
             .getBytes(StandardCharsets.UTF_8);
         CalendarURL calendarURL = CalendarURL.from(openPaaSUser.id());
 
-        // To trigger calendar directory activation
-        calDavClient.export(calendarURL, openPaaSUser.username()).block();
-
         calDavClient.importCalendar(calendarURL, uid1, openPaaSUser.username(), ics).block();
         calDavClient.importCalendar(calendarURL, uid2, openPaaSUser.username(), ics2).block();
 
@@ -334,6 +329,7 @@ public class CalendarRoutesTest {
             .attendees(List.of(person))
             .resources(List.of())
             .calendarURL(calendarURL)
+            .resourceName(uid1)
             .build();
 
         EventFields expected2 = EventFields.builder()
@@ -351,6 +347,7 @@ public class CalendarRoutesTest {
             .attendees(List.of(person))
             .resources(List.of())
             .calendarURL(calendarURL)
+            .resourceName(uid1)
             .sequence(1)
             .build();
 
@@ -368,6 +365,7 @@ public class CalendarRoutesTest {
             .attendees(List.of(person))
             .resources(List.of())
             .calendarURL(calendarURL)
+            .resourceName(uid2)
             .build();
 
         List<EventFields> actual = calendarSearchService.search(AccountId.fromUsername(openPaaSUser.username()), simpleQuery(""))
@@ -482,9 +480,6 @@ public class CalendarRoutesTest {
             .getBytes(StandardCharsets.UTF_8);
         CalendarURL calendarURL = CalendarURL.from(openPaaSUser.id());
 
-        // To trigger calendar directory activation
-        calDavClient.export(calendarURL, openPaaSUser.username()).block();
-
         calDavClient.importCalendar(calendarURL, uid1, openPaaSUser.username(), ics).block();
         calDavClient.importCalendar(calendarURL, uid2, openPaaSUser.username(), ics2).block();
 
@@ -513,6 +508,79 @@ public class CalendarRoutesTest {
             .body("type", is("reindex-calendar-events"))
             .body("additionalInformation.processedEventCount", is(1))
             .body("additionalInformation.failedEventCount", is(1));
+    }
+
+    @Test
+    void reindexShouldIndexEventWithCorrectIcsResourceName() throws AddressException {
+        // Given an event with an ics resource name that is not the same as its UID
+        String eventId = "event-1";
+        String icsResourceName = "sabre-event-1";
+        String ics = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            TRANSP:OPAQUE
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250102T120000Z
+            DTEND:20250102T130000Z
+            SUMMARY:Test Event
+            ORGANIZER;CN=john doe:mailto:%s
+            ATTENDEE;PARTSTAT=accepted;RSVP=false;ROLE=chair;CN=john doe;CUTYPE=individual:mailto:%s
+            ATTENDEE;PARTSTAT=TENTATIVE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=RESOURCE;CN=Projector;SCHEDULE-STATUS=5.1:mailto:projector@open-paas.org
+            DESCRIPTION:This is a test event
+            LOCATION:office
+            CLASS:PUBLIC
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(eventId, openPaaSUser.username().asString(), openPaaSUser.username().asString());
+        CalendarURL calendarURL = CalendarURL.from(openPaaSUser.id());
+
+        calDavClient.importCalendar(calendarURL, icsResourceName, openPaaSUser.username(), ics.getBytes(StandardCharsets.UTF_8)).block();
+
+        // When reindexing calendar events
+        String taskId = given()
+            .queryParam("task", "reindex")
+            .when()
+            .post()
+            .jsonPath()
+            .get("taskId");
+
+        given()
+            .basePath(TasksRoutes.BASE)
+            .when()
+            .get(taskId + "/await")
+            .then()
+            .body("status", is("completed"))
+            .body("type", is("reindex-calendar-events"))
+            .body("additionalInformation.processedEventCount", is(1))
+            .body("additionalInformation.failedEventCount", is(0));
+
+        // Then the event should be indexed with the correct ics resource name
+        EventFields.Person person = new EventFields.Person("john doe", new MailAddress(openPaaSUser.username().asString()));
+        EventFields expected = EventFields.builder()
+            .uid(eventId)
+            .summary("Test Event")
+            .location("office")
+            .description("This is a test event")
+            .clazz("PUBLIC")
+            .dtStamp(Instant.from(UTC_DATE_TIME_FORMATTER.parse("20250101T100000Z")))
+            .start(Instant.from(UTC_DATE_TIME_FORMATTER.parse("20250102T120000Z")))
+            .end(Instant.from(UTC_DATE_TIME_FORMATTER.parse("20250102T130000Z")))
+            .allDay(false)
+            .organizer(person)
+            .attendees(List.of(person))
+            .resources(List.of(new EventFields.Person("Projector", new MailAddress("projector@open-paas.org"))))
+            .calendarURL(calendarURL)
+            .resourceName(icsResourceName)
+            .build();
+
+        List<EventFields> actual = calendarSearchService.search(AccountId.fromUsername(openPaaSUser.username()), simpleQuery(""))
+            .collectList().block();
+        assertThat(actual).hasSize(1);
+        assertThat(actual.getFirst())
+            .usingRecursiveComparison()
+            .ignoringFields("attendees.partStat", "resources.partStat", "organizer.partStat")
+            .isEqualTo(expected);
     }
 
     private EventSearchQuery simpleQuery(String query) {

@@ -246,9 +246,10 @@ public record EventFields(EventUid uid,
         }
     }
 
-    public static EventFields fromVEvent(VEvent vEvent, CalendarURL calendarURL) {
+    public static EventFields fromVEvent(VEvent vEvent, CalendarURL calendarURL, String resourceName) {
         EventFields.Builder builder = EventFields.builder()
-            .calendarURL(calendarURL);
+            .calendarURL(calendarURL)
+            .resourceName(resourceName);
 
         vEvent.getUid().ifPresent(uid -> builder.uid(uid.getValue()));
         EventParseUtils.getSummary(vEvent).ifPresent(builder::summary);
