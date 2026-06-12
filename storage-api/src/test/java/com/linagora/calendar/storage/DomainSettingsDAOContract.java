@@ -33,6 +33,7 @@ public interface DomainSettingsDAOContract {
         .userSearchMode(UserSearchMode.LIMITED)
         .resourceSearchEnabled(false)
         .defaultCalendarPublicVisibility(DefaultCalendarPublicVisibility.READ)
+        .calendarPublicVisibilitySettingEnabled(false)
         .build();
 
     DomainSettingsDAO testee();
@@ -90,12 +91,14 @@ public interface DomainSettingsDAOContract {
         testee().patch(DOMAIN, new DomainSettingsPatch(
             ValuePatch.modifyTo(UserSearchMode.DISABLED),
             ValuePatch.keep(),
+            ValuePatch.keep(),
             ValuePatch.keep())).block();
 
         DomainSettings result = testee().retrieve(DOMAIN).block();
         assertThat(result.userSearchMode()).contains(UserSearchMode.DISABLED);
         assertThat(result.resourceSearchEnabled()).isEqualTo(SETTINGS.resourceSearchEnabled());
         assertThat(result.defaultCalendarPublicVisibility()).isEqualTo(SETTINGS.defaultCalendarPublicVisibility());
+        assertThat(result.calendarPublicVisibilitySettingEnabled()).isEqualTo(SETTINGS.calendarPublicVisibilitySettingEnabled());
     }
 
     @Test
@@ -105,12 +108,14 @@ public interface DomainSettingsDAOContract {
         testee().patch(DOMAIN, new DomainSettingsPatch(
             ValuePatch.keep(),
             ValuePatch.remove(),
+            ValuePatch.keep(),
             ValuePatch.keep())).block();
 
         DomainSettings result = testee().retrieve(DOMAIN).block();
         assertThat(result.userSearchMode()).isEqualTo(SETTINGS.userSearchMode());
         assertThat(result.resourceSearchEnabled()).isEmpty();
         assertThat(result.defaultCalendarPublicVisibility()).isEqualTo(SETTINGS.defaultCalendarPublicVisibility());
+        assertThat(result.calendarPublicVisibilitySettingEnabled()).isEqualTo(SETTINGS.calendarPublicVisibilitySettingEnabled());
     }
 
     @Test
@@ -118,6 +123,7 @@ public interface DomainSettingsDAOContract {
         testee().save(DOMAIN, SETTINGS).block();
 
         testee().patch(DOMAIN, new DomainSettingsPatch(
+            ValuePatch.keep(),
             ValuePatch.keep(),
             ValuePatch.keep(),
             ValuePatch.keep())).block();
@@ -137,6 +143,7 @@ public interface DomainSettingsDAOContract {
 
         testee().patch(DOMAIN, new DomainSettingsPatch(
             ValuePatch.modifyTo(UserSearchMode.DISABLED),
+            ValuePatch.keep(),
             ValuePatch.keep(),
             ValuePatch.keep())).block();
 

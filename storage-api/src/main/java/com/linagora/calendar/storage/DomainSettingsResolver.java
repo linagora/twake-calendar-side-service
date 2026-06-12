@@ -72,6 +72,8 @@ public class DomainSettingsResolver {
                 .orElse(configuredResourceSearchEnabled()))
             .defaultCalendarPublicVisibility(settings.defaultCalendarPublicVisibility()
                 .orElse(configuredDefaultCalendarPublicVisibility()))
+            .calendarPublicVisibilitySettingEnabled(settings.calendarPublicVisibilitySettingEnabled()
+                .orElse(configuredCalendarPublicVisibilitySettingEnabled()))
             .build();
     }
 
@@ -95,5 +97,11 @@ public class DomainSettingsResolver {
         return Optional.ofNullable(config.getString("default.calendar.public.visibility"))
             .map(DefaultCalendarPublicVisibility::deserialize)
             .orElse(DomainSettings.DEFAULT_CALENDAR_PUBLIC_VISIBILITY);
+    }
+
+    private Boolean configuredCalendarPublicVisibilitySettingEnabled() {
+        return Optional.ofNullable(config.getString("calendar.public.visibility.setting.enabled"))
+            .map(Boolean::parseBoolean)
+            .orElse(DomainSettings.DEFAULT_CALENDAR_PUBLIC_VISIBILITY_SETTING_ENABLED);
     }
 }

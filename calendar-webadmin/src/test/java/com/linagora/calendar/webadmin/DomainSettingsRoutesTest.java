@@ -89,10 +89,12 @@ class DomainSettingsRoutesTest {
               "userSearchMode": null,
               "resourceSearchEnabled": null,
               "defaultCalendarPublicVisibility": null,
+              "calendarPublicVisibilitySettingEnabled": null,
               "resolved": {
                 "userSearchMode": "enabled",
                 "resourceSearchEnabled": true,
-                "defaultCalendarPublicVisibility": "private"
+                "defaultCalendarPublicVisibility": "private",
+                "calendarPublicVisibilitySettingEnabled": true
               }
             }""");
     }
@@ -107,7 +109,8 @@ class DomainSettingsRoutesTest {
                 {
                   "userSearchMode": "limited",
                   "resourceSearchEnabled": false,
-                  "defaultCalendarPublicVisibility": null
+                  "defaultCalendarPublicVisibility": null,
+                  "calendarPublicVisibilitySettingEnabled": null
                 }
                 """)
             .put("/domains/linagora.com/settings")
@@ -126,10 +129,12 @@ class DomainSettingsRoutesTest {
               "userSearchMode": "limited",
               "resourceSearchEnabled": false,
               "defaultCalendarPublicVisibility": null,
+              "calendarPublicVisibilitySettingEnabled": null,
               "resolved": {
                 "userSearchMode": "limited",
                 "resourceSearchEnabled": false,
-                "defaultCalendarPublicVisibility": "private"
+                "defaultCalendarPublicVisibility": "private",
+                "calendarPublicVisibilitySettingEnabled": true
               }
             }""");
     }
@@ -142,14 +147,16 @@ class DomainSettingsRoutesTest {
             {
               "userSearchMode": "limited",
               "resourceSearchEnabled": false,
-              "defaultCalendarPublicVisibility": "private"
+              "defaultCalendarPublicVisibility": "private",
+              "calendarPublicVisibilitySettingEnabled": true
             }
             """;
         String body2 = """
             {
               "userSearchMode": "disabled",
               "resourceSearchEnabled": true,
-              "defaultCalendarPublicVisibility": null
+              "defaultCalendarPublicVisibility": null,
+              "calendarPublicVisibilitySettingEnabled": false
             }
             """;
 
@@ -167,10 +174,12 @@ class DomainSettingsRoutesTest {
               "userSearchMode": "disabled",
               "resourceSearchEnabled": true,
               "defaultCalendarPublicVisibility": null,
+              "calendarPublicVisibilitySettingEnabled": false,
               "resolved": {
                 "userSearchMode": "disabled",
                 "resourceSearchEnabled": true,
-                "defaultCalendarPublicVisibility": "private"
+                "defaultCalendarPublicVisibility": "private",
+                "calendarPublicVisibilitySettingEnabled": false
               }
             }""");
     }
@@ -184,7 +193,8 @@ class DomainSettingsRoutesTest {
             {
               "userSearchMode": "limited",
               "resourceSearchEnabled": false,
-              "defaultCalendarPublicVisibility": "read"
+              "defaultCalendarPublicVisibility": "read",
+              "calendarPublicVisibilitySettingEnabled": false
             }
             """;
         given()
@@ -198,7 +208,8 @@ class DomainSettingsRoutesTest {
             {
               "userSearchMode": "disabled",
               "resourceSearchEnabled": true,
-              "defaultCalendarPublicVisibility": null
+              "defaultCalendarPublicVisibility": null,
+              "calendarPublicVisibilitySettingEnabled": null
             }
             """;
         given()
@@ -214,10 +225,12 @@ class DomainSettingsRoutesTest {
                   "userSearchMode": "limited",
                   "resourceSearchEnabled": false,
                   "defaultCalendarPublicVisibility": "read",
+                  "calendarPublicVisibilitySettingEnabled": false,
                   "resolved": {
                     "userSearchMode": "limited",
                     "resourceSearchEnabled": false,
-                    "defaultCalendarPublicVisibility": "read"
+                    "defaultCalendarPublicVisibility": "read",
+                    "calendarPublicVisibilitySettingEnabled": false
                   }
                 }""");
 
@@ -227,10 +240,12 @@ class DomainSettingsRoutesTest {
                   "userSearchMode": "disabled",
                   "resourceSearchEnabled": true,
                   "defaultCalendarPublicVisibility": null,
+                  "calendarPublicVisibilitySettingEnabled": null,
                   "resolved": {
                     "userSearchMode": "disabled",
                     "resourceSearchEnabled": true,
-                    "defaultCalendarPublicVisibility": "private"
+                    "defaultCalendarPublicVisibility": "private",
+                    "calendarPublicVisibilitySettingEnabled": true
                   }
                 }""");
     }
@@ -248,7 +263,7 @@ class DomainSettingsRoutesTest {
         given()
             .contentType(ContentType.JSON)
             .body("""
-                {"userSearchMode": "enabled", "resourceSearchEnabled": true, "defaultCalendarPublicVisibility": null}""")
+                {"userSearchMode": "enabled", "resourceSearchEnabled": true, "defaultCalendarPublicVisibility": null, "calendarPublicVisibilitySettingEnabled": null}""")
             .put("/domains/unknown.com/settings")
         .then()
             .statusCode(404);
@@ -269,7 +284,7 @@ class DomainSettingsRoutesTest {
         given()
             .contentType(ContentType.JSON)
             .body("""
-                {"resourceSearchEnabled": false, "defaultCalendarPublicVisibility": null}""")
+                {"resourceSearchEnabled": false, "defaultCalendarPublicVisibility": null, "calendarPublicVisibilitySettingEnabled": null}""")
             .put("/domains/linagora.com/settings")
         .then()
             .statusCode(400);
@@ -282,7 +297,7 @@ class DomainSettingsRoutesTest {
         given()
             .contentType(ContentType.JSON)
             .body("""
-                {"userSearchMode": "limited", "defaultCalendarPublicVisibility": null}""")
+                {"userSearchMode": "limited", "defaultCalendarPublicVisibility": null, "calendarPublicVisibilitySettingEnabled": null}""")
             .put("/domains/linagora.com/settings")
         .then()
             .statusCode(400);
@@ -295,7 +310,20 @@ class DomainSettingsRoutesTest {
         given()
             .contentType(ContentType.JSON)
             .body("""
-                {"userSearchMode": "limited", "resourceSearchEnabled": false}""")
+                {"userSearchMode": "limited", "resourceSearchEnabled": false, "calendarPublicVisibilitySettingEnabled": null}""")
+            .put("/domains/linagora.com/settings")
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
+    void putShouldReturn400WhenMissingCalendarPublicVisibilitySettingEnabled() {
+        domainDAO.add(Domain.of("linagora.com")).block();
+
+        given()
+            .contentType(ContentType.JSON)
+            .body("""
+                {"userSearchMode": "limited", "resourceSearchEnabled": false, "defaultCalendarPublicVisibility": null}""")
             .put("/domains/linagora.com/settings")
         .then()
             .statusCode(400);
@@ -312,6 +340,7 @@ class DomainSettingsRoutesTest {
                   "userSearchMode": "limited",
                   "resourceSearchEnabled": false,
                   "defaultCalendarPublicVisibility": null,
+                  "calendarPublicVisibilitySettingEnabled": null,
                   "unknownField": "value"
                 }
                 """)
@@ -325,12 +354,24 @@ class DomainSettingsRoutesTest {
         domainDAO.add(Domain.of("linagora.com")).block();
         given().contentType(ContentType.JSON)
             .body("""
-                {"userSearchMode": "limited", "resourceSearchEnabled": false, "defaultCalendarPublicVisibility": "read"}""")
+                {
+                  "userSearchMode": "limited",
+                  "resourceSearchEnabled": false,
+                  "defaultCalendarPublicVisibility": "read",
+                  "calendarPublicVisibilitySettingEnabled": true
+                }
+                """)
             .put("/domains/linagora.com/settings").then().statusCode(204);
 
         given().contentType(ContentType.JSON)
             .body("""
-                {"userSearchMode": "disabled", "resourceSearchEnabled": true, "defaultCalendarPublicVisibility": null}""")
+                {
+                  "userSearchMode": "disabled",
+                  "resourceSearchEnabled": true,
+                  "defaultCalendarPublicVisibility": null,
+                  "calendarPublicVisibilitySettingEnabled": false
+                }
+                """)
             .patch("/domains/linagora.com/settings").then().statusCode(204);
 
         assertThatJson(when().get("/domains/linagora.com/settings").then().statusCode(200).extract().asString())
@@ -339,10 +380,12 @@ class DomainSettingsRoutesTest {
                   "userSearchMode": "disabled",
                   "resourceSearchEnabled": true,
                   "defaultCalendarPublicVisibility": null,
+                  "calendarPublicVisibilitySettingEnabled": false,
                   "resolved": {
                     "userSearchMode": "disabled",
                     "resourceSearchEnabled": true,
-                    "defaultCalendarPublicVisibility": "private"
+                    "defaultCalendarPublicVisibility": "private",
+                    "calendarPublicVisibilitySettingEnabled": false
                   }
                 }""");
     }
@@ -352,7 +395,13 @@ class DomainSettingsRoutesTest {
         domainDAO.add(Domain.of("linagora.com")).block();
         given().contentType(ContentType.JSON)
             .body("""
-                {"userSearchMode": "limited", "resourceSearchEnabled": false, "defaultCalendarPublicVisibility": "read"}""")
+                {
+                  "userSearchMode": "limited",
+                  "resourceSearchEnabled": false,
+                  "defaultCalendarPublicVisibility": "read",
+                  "calendarPublicVisibilitySettingEnabled": true
+                }
+                """)
             .put("/domains/linagora.com/settings").then().statusCode(204);
 
         given().contentType(ContentType.JSON)
@@ -366,10 +415,12 @@ class DomainSettingsRoutesTest {
                   "userSearchMode": "disabled",
                   "resourceSearchEnabled": false,
                   "defaultCalendarPublicVisibility": "read",
+                  "calendarPublicVisibilitySettingEnabled": true,
                   "resolved": {
                     "userSearchMode": "disabled",
                     "resourceSearchEnabled": false,
-                    "defaultCalendarPublicVisibility": "read"
+                    "defaultCalendarPublicVisibility": "read",
+                    "calendarPublicVisibilitySettingEnabled": true
                   }
                 }""");
     }
@@ -379,7 +430,13 @@ class DomainSettingsRoutesTest {
         domainDAO.add(Domain.of("linagora.com")).block();
         given().contentType(ContentType.JSON)
             .body("""
-                {"userSearchMode": "limited", "resourceSearchEnabled": false, "defaultCalendarPublicVisibility": "read"}""")
+                {
+                  "userSearchMode": "limited",
+                  "resourceSearchEnabled": false,
+                  "defaultCalendarPublicVisibility": "read",
+                  "calendarPublicVisibilitySettingEnabled": true
+                }
+                """)
             .put("/domains/linagora.com/settings").then().statusCode(204);
 
         given().contentType(ContentType.JSON)
@@ -393,10 +450,12 @@ class DomainSettingsRoutesTest {
                   "userSearchMode": "limited",
                   "resourceSearchEnabled": null,
                   "defaultCalendarPublicVisibility": "read",
+                  "calendarPublicVisibilitySettingEnabled": true,
                   "resolved": {
                     "userSearchMode": "limited",
                     "resourceSearchEnabled": true,
-                    "defaultCalendarPublicVisibility": "read"
+                    "defaultCalendarPublicVisibility": "read",
+                    "calendarPublicVisibilitySettingEnabled": true
                   }
                 }""");
     }
@@ -476,6 +535,19 @@ class DomainSettingsRoutesTest {
     }
 
     @Test
+    void patchShouldReturn400WhenCalendarPublicVisibilitySettingEnabledIsInvalid() {
+        domainDAO.add(Domain.of("linagora.com")).block();
+
+        given()
+            .contentType(ContentType.JSON)
+            .body("""
+                {"calendarPublicVisibilitySettingEnabled": "invalid_value"}""")
+            .patch("/domains/linagora.com/settings")
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
     void patchShouldWorkEvenWhenNoSettingsSaved() {
         domainDAO.add(Domain.of("linagora.com")).block();
 
@@ -490,10 +562,12 @@ class DomainSettingsRoutesTest {
                   "userSearchMode": "disabled",
                   "resourceSearchEnabled": null,
                   "defaultCalendarPublicVisibility": null,
+                  "calendarPublicVisibilitySettingEnabled": null,
                   "resolved": {
                     "userSearchMode": "disabled",
                     "resourceSearchEnabled": true,
-                    "defaultCalendarPublicVisibility": "private"
+                    "defaultCalendarPublicVisibility": "private",
+                    "calendarPublicVisibilitySettingEnabled": true
                   }
                 }""");
     }

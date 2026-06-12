@@ -22,16 +22,19 @@ import java.util.Optional;
 
 public record DomainSettings(Optional<UserSearchMode> userSearchMode,
                              Optional<Boolean> resourceSearchEnabled,
-                             Optional<DefaultCalendarPublicVisibility> defaultCalendarPublicVisibility) {
+                             Optional<DefaultCalendarPublicVisibility> defaultCalendarPublicVisibility,
+                             Optional<Boolean> calendarPublicVisibilitySettingEnabled) {
     public static final UserSearchMode DEFAULT_USER_SEARCH_MODE = UserSearchMode.ENABLED;
     public static final boolean DEFAULT_RESOURCE_SEARCH_ENABLED = true;
     public static final DefaultCalendarPublicVisibility DEFAULT_CALENDAR_PUBLIC_VISIBILITY = DefaultCalendarPublicVisibility.PRIVATE;
-    public static final DomainSettings DEFAULT_DOMAIN_SETTINGS = new DomainSettings(Optional.empty(), Optional.empty(), Optional.empty());
+    public static final boolean DEFAULT_CALENDAR_PUBLIC_VISIBILITY_SETTING_ENABLED = true;
+    public static final DomainSettings DEFAULT_DOMAIN_SETTINGS = new DomainSettings(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
 
     public static class Builder {
         private Optional<UserSearchMode> userSearchMode = Optional.empty();
         private Optional<Boolean> resourceSearchEnabled = Optional.empty();
         private Optional<DefaultCalendarPublicVisibility> defaultCalendarPublicVisibility = Optional.empty();
+        private Optional<Boolean> calendarPublicVisibilitySettingEnabled = Optional.empty();
 
         public Builder userSearchMode(UserSearchMode userSearchMode) {
             this.userSearchMode = Optional.of(userSearchMode);
@@ -48,8 +51,13 @@ public record DomainSettings(Optional<UserSearchMode> userSearchMode,
             return this;
         }
 
+        public Builder calendarPublicVisibilitySettingEnabled(boolean calendarPublicVisibilitySettingEnabled) {
+            this.calendarPublicVisibilitySettingEnabled = Optional.of(calendarPublicVisibilitySettingEnabled);
+            return this;
+        }
+
         public DomainSettings build() {
-            return new DomainSettings(userSearchMode, resourceSearchEnabled, defaultCalendarPublicVisibility);
+            return new DomainSettings(userSearchMode, resourceSearchEnabled, defaultCalendarPublicVisibility, calendarPublicVisibilitySettingEnabled);
         }
     }
 

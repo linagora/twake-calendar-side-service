@@ -60,10 +60,12 @@ public class DomainSettingsRoutes implements Routes {
     private static final String FIELD_USER_SEARCH_MODE = "userSearchMode";
     private static final String FIELD_RESOURCE_SEARCH_ENABLED = "resourceSearchEnabled";
     private static final String FIELD_DEFAULT_CALENDAR_PUBLIC_VISIBILITY = "defaultCalendarPublicVisibility";
+    private static final String FIELD_CALENDAR_PUBLIC_VISIBILITY_SETTING_ENABLED = "calendarPublicVisibilitySettingEnabled";
 
     public record DomainSettingsPutRequest(@JsonProperty(value = "userSearchMode", required = true) @Nullable String userSearchMode,
                                            @JsonProperty(value = "resourceSearchEnabled", required = true) @Nullable Boolean resourceSearchEnabled,
-                                           @JsonProperty(value = "defaultCalendarPublicVisibility", required = true) @Nullable String defaultCalendarPublicVisibility) {
+                                           @JsonProperty(value = "defaultCalendarPublicVisibility", required = true) @Nullable String defaultCalendarPublicVisibility,
+                                           @JsonProperty(value = "calendarPublicVisibilitySettingEnabled", required = true) @Nullable Boolean calendarPublicVisibilitySettingEnabled) {
 
         DomainSettings toDomainSettings() {
             DomainSettings.Builder builder = DomainSettings.builder();
@@ -72,32 +74,38 @@ public class DomainSettingsRoutes implements Routes {
             Optional.ofNullable(defaultCalendarPublicVisibility)
                 .map(DefaultCalendarPublicVisibility::deserialize)
                 .ifPresent(builder::defaultCalendarPublicVisibility);
+            Optional.ofNullable(calendarPublicVisibilitySettingEnabled).ifPresent(builder::calendarPublicVisibilitySettingEnabled);
             return builder.build();
         }
     }
 
     public record DomainSettingsPatchRequest(@JsonProperty(FIELD_USER_SEARCH_MODE) Optional<String> userSearchMode,
                                              @JsonProperty(FIELD_RESOURCE_SEARCH_ENABLED) Optional<Boolean> resourceSearchEnabled,
-                                             @JsonProperty(FIELD_DEFAULT_CALENDAR_PUBLIC_VISIBILITY) Optional<String> defaultCalendarPublicVisibility) {}
+                                             @JsonProperty(FIELD_DEFAULT_CALENDAR_PUBLIC_VISIBILITY) Optional<String> defaultCalendarPublicVisibility,
+                                             @JsonProperty(FIELD_CALENDAR_PUBLIC_VISIBILITY_SETTING_ENABLED) Optional<Boolean> calendarPublicVisibilitySettingEnabled) {}
 
     public record DomainSettingsResponse(@JsonProperty("userSearchMode") @Nullable String userSearchMode,
                                          @JsonProperty("resourceSearchEnabled") @Nullable Boolean resourceSearchEnabled,
                                          @JsonProperty("defaultCalendarPublicVisibility") @Nullable String defaultCalendarPublicVisibility,
+                                         @JsonProperty("calendarPublicVisibilitySettingEnabled") @Nullable Boolean calendarPublicVisibilitySettingEnabled,
                                          @JsonProperty("resolved") ResolvedSettings resolved) {
 
         public record ResolvedSettings(@JsonProperty("userSearchMode") String userSearchMode,
                                        @JsonProperty("resourceSearchEnabled") boolean resourceSearchEnabled,
-                                       @JsonProperty("defaultCalendarPublicVisibility") String defaultCalendarPublicVisibility) {}
+                                       @JsonProperty("defaultCalendarPublicVisibility") String defaultCalendarPublicVisibility,
+                                       @JsonProperty("calendarPublicVisibilitySettingEnabled") boolean calendarPublicVisibilitySettingEnabled) {}
 
         static DomainSettingsResponse of(DomainSettings stored, DomainSettings resolved) {
             return new DomainSettingsResponse(
                 stored.userSearchMode().map(UserSearchMode::serialize).orElse(null),
                 stored.resourceSearchEnabled().orElse(null),
                 stored.defaultCalendarPublicVisibility().map(DefaultCalendarPublicVisibility::serialize).orElse(null),
+                stored.calendarPublicVisibilitySettingEnabled().orElse(null),
                 new ResolvedSettings(
                     resolved.userSearchMode().orElse(DomainSettings.DEFAULT_USER_SEARCH_MODE).serialize(),
                     resolved.resourceSearchEnabled().orElse(DomainSettings.DEFAULT_RESOURCE_SEARCH_ENABLED),
-                    resolved.defaultCalendarPublicVisibility().orElse(DomainSettings.DEFAULT_CALENDAR_PUBLIC_VISIBILITY).serialize()));
+                    resolved.defaultCalendarPublicVisibility().orElse(DomainSettings.DEFAULT_CALENDAR_PUBLIC_VISIBILITY).serialize(),
+                    resolved.calendarPublicVisibilitySettingEnabled().orElse(DomainSettings.DEFAULT_CALENDAR_PUBLIC_VISIBILITY_SETTING_ENABLED)));
         }
     }
 
@@ -164,7 +172,8 @@ public class DomainSettingsRoutes implements Routes {
             DomainSettingsPatch patch = new DomainSettingsPatch(
                 parseUserSearchMode(node, dto),
                 parseResourceSearchEnabled(node, dto),
-                parseDefaultCalendarPublicVisibility(node, dto));
+                parseDefaultCalendarPublicVisibility(node, dto),
+                parseCalendarPublicVisibilitySettingEnabled(node, dto));
             domainSettingsDAO.patch(domain, patch).block();
         } catch (IllegalArgumentException e) {
             throw ErrorResponder.builder()
@@ -206,6 +215,14 @@ public class DomainSettingsRoutes implements Routes {
         }
         return dto.defaultCalendarPublicVisibility().map(DefaultCalendarPublicVisibility::deserialize)
             .map(ValuePatch::modifyTo)
+            .orElseGet(ValuePatch::remove);
+    }
+
+    private ValuePatch<Boolean> parseCalendarPublicVisibilitySettingEnabled(JsonNode node, DomainSettingsPatchRequest dto) {
+        if (!node.has(FIELD_CALENDAR_PUBLIC_VISIBILITY_SETTING_ENABLED)) {
+            return ValuePatch.keep();
+        }
+        return dto.calendarPublicVisibilitySettingEnabled().map(ValuePatch::modifyTo)
             .orElseGet(ValuePatch::remove);
     }
 

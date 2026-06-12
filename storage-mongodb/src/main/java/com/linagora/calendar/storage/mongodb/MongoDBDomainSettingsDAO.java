@@ -47,6 +47,7 @@ public class MongoDBDomainSettingsDAO implements DomainSettingsDAO {
     private static final String FIELD_USER_SEARCH_MODE = "userSearchMode";
     private static final String FIELD_RESOURCE_SEARCH_ENABLED = "resourceSearchEnabled";
     private static final String FIELD_DEFAULT_CALENDAR_PUBLIC_VISIBILITY = "defaultCalendarPublicVisibility";
+    private static final String FIELD_CALENDAR_PUBLIC_VISIBILITY_SETTING_ENABLED = "calendarPublicVisibilitySettingEnabled";
 
     private final MongoDatabase database;
 
@@ -81,6 +82,9 @@ public class MongoDBDomainSettingsDAO implements DomainSettingsDAO {
         settings.defaultCalendarPublicVisibility().ifPresentOrElse(
             visibility -> setDoc.append(FIELD_DEFAULT_CALENDAR_PUBLIC_VISIBILITY, visibility.serialize()),
             () -> unsetDoc.append(FIELD_DEFAULT_CALENDAR_PUBLIC_VISIBILITY, ""));
+        settings.calendarPublicVisibilitySettingEnabled().ifPresentOrElse(
+            enabled -> setDoc.append(FIELD_CALENDAR_PUBLIC_VISIBILITY_SETTING_ENABLED, enabled),
+            () -> unsetDoc.append(FIELD_CALENDAR_PUBLIC_VISIBILITY_SETTING_ENABLED, ""));
 
         Document update = new Document("$set", setDoc);
         if (!unsetDoc.isEmpty()) {
@@ -132,6 +136,9 @@ public class MongoDBDomainSettingsDAO implements DomainSettingsDAO {
         if (patch.defaultCalendarPublicVisibility().isModified()) {
             setDoc.append(FIELD_DEFAULT_CALENDAR_PUBLIC_VISIBILITY, patch.defaultCalendarPublicVisibility().get().serialize());
         }
+        if (patch.calendarPublicVisibilitySettingEnabled().isModified()) {
+            setDoc.append(FIELD_CALENDAR_PUBLIC_VISIBILITY_SETTING_ENABLED, patch.calendarPublicVisibilitySettingEnabled().get());
+        }
         return setDoc;
     }
 
@@ -146,6 +153,9 @@ public class MongoDBDomainSettingsDAO implements DomainSettingsDAO {
         if (patch.defaultCalendarPublicVisibility().isRemoved()) {
             unsetDoc.append(FIELD_DEFAULT_CALENDAR_PUBLIC_VISIBILITY, "");
         }
+        if (patch.calendarPublicVisibilitySettingEnabled().isRemoved()) {
+            unsetDoc.append(FIELD_CALENDAR_PUBLIC_VISIBILITY_SETTING_ENABLED, "");
+        }
         return unsetDoc;
     }
 
@@ -159,6 +169,8 @@ public class MongoDBDomainSettingsDAO implements DomainSettingsDAO {
         Optional.ofNullable(doc.getString(FIELD_DEFAULT_CALENDAR_PUBLIC_VISIBILITY))
             .map(DefaultCalendarPublicVisibility::deserialize)
             .ifPresent(builder::defaultCalendarPublicVisibility);
+        Optional.ofNullable(doc.getBoolean(FIELD_CALENDAR_PUBLIC_VISIBILITY_SETTING_ENABLED))
+            .ifPresent(builder::calendarPublicVisibilitySettingEnabled);
         return builder.build();
     }
 }
