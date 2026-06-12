@@ -25,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -33,6 +34,7 @@ import java.util.UUID;
 import javax.net.ssl.SSLException;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.james.core.Username;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -57,7 +59,11 @@ import com.linagora.calendar.storage.MailboxSessionUtil;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
+import com.linagora.calendar.storage.ResourceInsertRequest;
+import com.linagora.calendar.storage.model.ResourceAdministrator;
+import com.linagora.calendar.storage.model.ResourceId;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
+import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
@@ -1039,6 +1045,60 @@ public class CalDavClientTest {
         assertThat(items).extracting(calendarObject -> calendarObject.href().toString())
             .anyMatch(path -> path.equals("/calendars/" + user.id() + "/" + user.id() + "/" + uid1 + ".ics"))
             .anyMatch(path -> path.equals("/calendars/" + user.id() + "/" + user.id() + "/" + uid2 + ".ics"));
+    }
+
+    @Test
+    void calendarQueryReportXmlShouldQueryResourceCalendar() {
+        // Given a resource calendar receives an event from an organizer invitation.
+        OpenPaaSUser admin = createOpenPaaSUser();
+        OpenPaaSDomain domain = new MongoDBOpenPaaSDomainDAO(sabreDavExtension.dockerSabreDavSetup().getMongoDB())
+            .retrieve(admin.username().getDomainPart().get())
+            .block();
+        ResourceId resourceId = new MongoDBResourceDAO(sabreDavExtension.dockerSabreDavSetup().getMongoDB(), Clock.systemUTC())
+            .insert(new ResourceInsertRequest(
+                List.of(new ResourceAdministrator(admin.id(), "user")),
+                admin.id(),
+                "Resource calendar used by CalDAV REPORT tests",
+                domain.id(),
+                "projector",
+                "Projector"))
+            .block();
+        String uid = UUID.randomUUID().toString();
+        String resourceEmail = Username.fromLocalPartWithDomain(resourceId.value(), domain.domain()).asString();
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            CALSCALE:GREGORIAN
+            PRODID:-//SabreDAV//SabreDAV 3.2.2//EN
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250102T120000Z
+            DTEND:20250102T130000Z
+            SUMMARY:Test Event
+            ORGANIZER:mailto:%s
+            ATTENDEE;PARTSTAT=TENTATIVE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=RESOURCE;CN=Projector:mailto:%s
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uid, admin.username().asString(), resourceEmail);
+
+        davTestHelper.upsertCalendar(admin, ics, uid);
+        String resourceEventId = Fixture.awaitAtMost.until(
+            () -> davTestHelper.findFirstEventId(resourceId, domain.id()),
+            Optional::isPresent).get();
+
+        // When querying the resource calendar through the domain technical token.
+        CalendarURL resourceCalendarURL = CalendarURL.from(resourceId.asOpenPaaSId());
+        List<CalendarObject> items = testee.calendarQueryReportXml(domain.id(), resourceCalendarURL, CalendarQuery.ofFilters())
+            .block()
+            .extractCalendarObjects();
+
+        // Then the REPORT returns the resource calendar object created by SabreDAV.
+        assertThat(items).hasSize(1);
+        assertThat(items).extracting(calendarObject -> calendarObject.href().toString())
+            .containsExactly("/calendars/" + resourceId.value() + "/" + resourceId.value() + "/" + resourceEventId + ".ics");
+        assertThat(items).extracting(CalendarObject::calendarData)
+            .anySatisfy(calendarData -> assertThat(calendarData).contains("UID:" + uid));
     }
 
     @Test
