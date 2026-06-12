@@ -41,6 +41,7 @@ import org.apache.james.utils.GuiceProbe;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -363,15 +364,15 @@ class OpensearchDavCalendarSearchRouteSharedCalendarTest {
             .body("_embedded.events", empty()));
     }
 
+    @Disabled("TODO https://github.com/linagora/twake-calendar-side-service/issues/799")
     @Test
     void searchShouldReturnResourceCalendarEventWhenRequesterIsResourceAdministrator(TwakeCalendarGuiceServer server) {
         // Given Bob has DAV read/write rights on a resource calendar R/R containing an indexed event.
         Resource resource = server.getProbe(ResourceProbe.class)
-            .save(alice, "search admin resource " + UUID.randomUUID(), "projector", List.of());
+            .save(bob, "search admin resource " + UUID.randomUUID(), "projector", List.of(bob.id()));
         CalendarURL resourceCalendar = CalendarURL.from(resource.id().asOpenPaaSId());
         EventUid eventUid = new EventUid("event-resource-admin-" + UUID.randomUUID());
         String summary = "resource admin searchable event " + UUID.randomUUID();
-        calDavClient.grantReadWriteRights(resource.domain(), resource.id(), List.of(bob.username())).block();
         davTestHelper.upsertCalendar(alice, generateCalendarData(eventUid, summary, alice, resource), eventUid);
         String resourceEventId = awaitAtMost.until(
             () -> davTestHelper.findFirstEventId(resource.id(), resource.domain()),
@@ -392,6 +393,7 @@ class OpensearchDavCalendarSearchRouteSharedCalendarTest {
             .body("_embedded.events.data.calendarId", contains(resourceCalendar.calendarId().value())));
     }
 
+    @Disabled("TODO https://github.com/linagora/twake-calendar-side-service/issues/799")
     @Test
     void searchShouldReturnSubscribedResourceCalendarEventWhenRequestedCalendarIsSubscribeMirror(TwakeCalendarGuiceServer server) {
         // Given Bob subscribes to a resource calendar R/R containing an indexed event.

@@ -178,6 +178,9 @@ public class EventIndexerConsumer implements Closeable, Startable {
     private final CalendarEventHandler handlerAdd = new CalendarEventHandler() {
         @Override
         public Mono<?> handle(CalendarEventMessage calendarEventMessage) {
+            if (shouldSkipIndexing(calendarEventMessage)) {
+                return Mono.empty();
+            }
             return Mono.fromCallable(calendarEventMessage::extractCalendarEvents)
                 .flatMap(calendarSearchService::index)
                 .then();
@@ -193,6 +196,9 @@ public class EventIndexerConsumer implements Closeable, Startable {
 
         @Override
         public Mono<?> handle(CalendarEventMessage calendarEventMessage) {
+            if (shouldSkipIndexing(calendarEventMessage)) {
+                return Mono.empty();
+            }
             return Mono.fromCallable(calendarEventMessage::extractCalendarEvents)
                 .flatMap(this::indexEvents)
                 .then();
@@ -233,6 +239,9 @@ public class EventIndexerConsumer implements Closeable, Startable {
     private final CalendarEventHandler handlerDelete = new CalendarEventHandler() {
         @Override
         public Mono<?> handle(CalendarEventMessage calendarEventMessage) {
+            if (shouldSkipIndexing(calendarEventMessage)) {
+                return Mono.empty();
+            }
             return Flux.fromIterable(((CalendarEventMessage.Deleted) calendarEventMessage).extractEventUid())
                 .flatMap(eventUid -> calendarSearchService.delete(calendarEventMessage.extractCalendarURL(), eventUid)
                     .onErrorResume(error -> {
@@ -262,6 +271,12 @@ public class EventIndexerConsumer implements Closeable, Startable {
         return Flux.using(receiverProvider::createReceiver,
             receiver -> receiver.consumeManualAck(queue, new ConsumeOptions().qos(DEFAULT_CONCURRENCY)),
             Receiver::close);
+    }
+
+    private boolean shouldSkipIndexing(CalendarEventMessage message) {
+        // Resource calendar messages does not expose `event`.
+        // Keep them out of the regular indexer until resource indexing supports that payload.
+        return message.isResourceEvent();
     }
 
     private Mono<?> messageConsume(AcknowledgableDelivery ackDelivery, Mono<CalendarEventMessage> messagePublisher, CalendarEventHandler calendarEventHandler) {
