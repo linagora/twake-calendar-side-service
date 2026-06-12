@@ -20,20 +20,30 @@ package com.linagora.calendar.storage.eventsearch;
 
 import org.junit.jupiter.api.BeforeEach;
 
+import com.linagora.calendar.storage.MemoryOpenPaaSUserDAO;
+import com.linagora.calendar.storage.OpenPaaSUserDAO;
+
 public class MemoryCalendarSearchDeletionTaskStepTest implements CalendarSearchDeletionTaskStepContract {
 
     private CalendarSearchService calendarSearchService;
+    private MemoryOpenPaaSUserDAO userDAO;
     private CalendarSearchDeletionTaskStep testee;
 
     @BeforeEach
     void setup() {
         calendarSearchService = new MemoryCalendarSearchService();
-        testee = new CalendarSearchDeletionTaskStep(calendarSearchService);
+        userDAO = new MemoryOpenPaaSUserDAO();
+        testee = new CalendarSearchDeletionTaskStep(calendarSearchService, userDAO);
     }
 
     @Override
     public CalendarSearchService calendarSearchService() {
         return calendarSearchService;
+    }
+
+    @Override
+    public OpenPaaSUserDAO userDAO() {
+        return userDAO;
     }
 
     @Override

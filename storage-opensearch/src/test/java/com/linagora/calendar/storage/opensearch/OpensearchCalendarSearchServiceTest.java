@@ -85,22 +85,22 @@ public class OpensearchCalendarSearchServiceTest implements CalendarSearchServic
             .calendarURL(generateCalendarURL())
             .build();
 
-        testee().index(accountId, CalendarEvents.of(event)).block();
+        testee().index(CalendarEvents.of(event)).block();
 
         // Search for a prefix that is not over the max n-gram length
-        EventSearchQuery query = simpleQuery("anticon");
+        EventSearchQuery query = simpleQuery("anticon", event.calendarURL());
 
         // Search for a prefix that is over the max n-gram length
-        EventSearchQuery query2 = simpleQuery("anticons");
+        EventSearchQuery query2 = simpleQuery("anticons", event.calendarURL());
 
         CALMLY_AWAIT.untilAsserted(() -> {
-            List<EventFields> searchResults = testee().search(accountId, query)
+            List<EventFields> searchResults = testee().search(query)
                 .collectList().block();
 
             assertThat(searchResults).hasSize(1)
                 .containsExactly(event);
 
-            List<EventFields> searchResults2 = testee().search(accountId, query2)
+            List<EventFields> searchResults2 = testee().search(query2)
                 .collectList().block();
 
             assertThat(searchResults2).hasSize(0);
@@ -118,12 +118,12 @@ public class OpensearchCalendarSearchServiceTest implements CalendarSearchServic
             .calendarURL(generateCalendarURL())
             .build();
 
-        testee().index(accountId, CalendarEvents.of(event)).block();
+        testee().index(CalendarEvents.of(event)).block();
 
-        EventSearchQuery query = simpleQuery(search);
+        EventSearchQuery query = simpleQuery(search, event.calendarURL());
 
         CALMLY_AWAIT.untilAsserted(() -> {
-            List<EventFields> searchResults = testee().search(accountId, query)
+            List<EventFields> searchResults = testee().search(query)
                 .collectList().block();
 
             assertThat(searchResults).hasSize(1)
@@ -142,12 +142,12 @@ public class OpensearchCalendarSearchServiceTest implements CalendarSearchServic
             .calendarURL(generateCalendarURL())
             .build();
 
-        testee().index(accountId, CalendarEvents.of(event)).block();
+        testee().index(CalendarEvents.of(event)).block();
 
         // Verify that document has been indexed
-        EventSearchQuery query = simpleQuery("sprint");
+        EventSearchQuery query = simpleQuery("sprint", event.calendarURL());
         CALMLY_AWAIT.untilAsserted(() -> {
-            List<EventFields> searchResults = testee().search(accountId, query)
+            List<EventFields> searchResults = testee().search(query)
                 .collectList().block();
 
             assertThat(searchResults).hasSize(1)
@@ -155,9 +155,9 @@ public class OpensearchCalendarSearchServiceTest implements CalendarSearchServic
         });
 
         // Now test with fuzzy input
-        EventSearchQuery query2 = simpleQuery(search);
+        EventSearchQuery query2 = simpleQuery(search, event.calendarURL());
 
-        List<EventFields> searchResults = testee().search(accountId, query2)
+        List<EventFields> searchResults = testee().search(query2)
             .collectList().block();
 
         assertThat(searchResults).hasSize(0);
@@ -172,12 +172,12 @@ public class OpensearchCalendarSearchServiceTest implements CalendarSearchServic
             .calendarURL(generateCalendarURL())
             .build();
 
-        testee().index(accountId, CalendarEvents.of(event)).block();
+        testee().index(CalendarEvents.of(event)).block();
 
-        EventSearchQuery query = simpleQuery(search);
+        EventSearchQuery query = simpleQuery(search, event.calendarURL());
 
         CALMLY_AWAIT.untilAsserted(() -> {
-            List<EventFields> searchResults = testee().search(accountId, query)
+            List<EventFields> searchResults = testee().search(query)
                 .collectList().block();
 
             assertThat(searchResults).hasSize(1)
@@ -194,12 +194,12 @@ public class OpensearchCalendarSearchServiceTest implements CalendarSearchServic
             .calendarURL(generateCalendarURL())
             .build();
 
-        testee().index(accountId, CalendarEvents.of(event)).block();
+        testee().index(CalendarEvents.of(event)).block();
 
         // Verify that document has been indexed
-        EventSearchQuery query = simpleQuery("sprint");
+        EventSearchQuery query = simpleQuery("sprint", event.calendarURL());
         CALMLY_AWAIT.untilAsserted(() -> {
-            List<EventFields> searchResults = testee().search(accountId, query)
+            List<EventFields> searchResults = testee().search(query)
                 .collectList().block();
 
             assertThat(searchResults).hasSize(1)
@@ -207,9 +207,9 @@ public class OpensearchCalendarSearchServiceTest implements CalendarSearchServic
         });
 
         // Now test with query string query
-        EventSearchQuery query2 = simpleQuery(search);
+        EventSearchQuery query2 = simpleQuery(search, event.calendarURL());
 
-        List<EventFields> searchResults = testee().search(accountId, query2)
+        List<EventFields> searchResults = testee().search(query2)
             .collectList().block();
 
         assertThat(searchResults).hasSize(0);

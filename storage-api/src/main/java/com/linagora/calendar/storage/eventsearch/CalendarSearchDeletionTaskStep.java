@@ -22,17 +22,20 @@ import jakarta.inject.Inject;
 
 import org.apache.james.core.Username;
 import org.apache.james.user.api.DeleteUserDataTaskStep;
-import org.apache.james.vacation.api.AccountId;
+
+import com.linagora.calendar.storage.OpenPaaSUserDAO;
 
 import reactor.core.publisher.Mono;
 
 public class CalendarSearchDeletionTaskStep implements DeleteUserDataTaskStep {
 
     private final CalendarSearchService calendarSearchService;
+    private final OpenPaaSUserDAO openPaaSUserDAO;
 
     @Inject
-    public CalendarSearchDeletionTaskStep(CalendarSearchService calendarSearchService) {
+    public CalendarSearchDeletionTaskStep(CalendarSearchService calendarSearchService, OpenPaaSUserDAO openPaaSUserDAO) {
         this.calendarSearchService = calendarSearchService;
+        this.openPaaSUserDAO = openPaaSUserDAO;
     }
 
     @Override
@@ -47,6 +50,8 @@ public class CalendarSearchDeletionTaskStep implements DeleteUserDataTaskStep {
 
     @Override
     public Mono<Void> deleteUserData(Username username) {
-        return calendarSearchService.deleteAll(AccountId.fromUsername(username));
+        return openPaaSUserDAO.retrieve(username)
+            .flatMap(user -> calendarSearchService.deleteAll(user.id()))
+            .then();
     }
 }

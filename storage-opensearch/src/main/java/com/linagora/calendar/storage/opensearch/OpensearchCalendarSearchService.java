@@ -37,7 +37,6 @@ import org.apache.james.backends.opensearch.ReactorOpenSearchClient;
 import org.apache.james.backends.opensearch.RoutingKey;
 import org.apache.james.core.MailAddress;
 import org.apache.james.util.ReactorUtils;
-import org.apache.james.vacation.api.AccountId;
 import org.opensearch.client.json.JsonData;
 import org.opensearch.client.opensearch.OpenSearchAsyncClient;
 import org.opensearch.client.opensearch._types.FieldValue;
@@ -63,6 +62,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.eventsearch.CalendarEvents;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
@@ -91,11 +91,12 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
                 .params("doc", JsonData.of(doc)))
             .build();
 
-    private static final Function<AccountId, RoutingKey> ROUTING_KEY =
-        accountId -> RoutingKey.fromString(accountId.getIdentifier());
+    private static final Function<OpenPaaSId, RoutingKey> ROUTING_KEY =
+        baseCalendarId -> RoutingKey.fromString(baseCalendarId.value());
     private static final String DELIMITER = ":";
     private static final boolean INDEX_CHECK_SEQUENCE = true;
     private static final CharMatcher QUERY_STRING_CONTROL_CHAR = CharMatcher.anyOf("\"~|*");
+    private static final int MAX_SOURCE_CALENDARS_PER_SEARCH = 256;
 
     private final OpenSearchIndexer indexer;
     private final ReactorOpenSearchClient client;
@@ -116,47 +117,48 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     }
 
-    private DocumentId buildDocumentIdForEvent(AccountId accountId, EventFields eventFields) {
+    private DocumentId buildDocumentIdForEvent(CalendarURL sourceCalendarURL, EventFields eventFields) {
         if (eventFields.isRecurrentMaster() == null) {
-            return DocumentId.fromString(String.join(DELIMITER, accountId.getIdentifier(), eventFields.uid().value(), "single"));
+            return DocumentId.fromString(String.join(DELIMITER, sourceCalendarURL.base().value(), sourceCalendarURL.calendarId().value(), eventFields.uid().value(), "single"));
         }
         if (eventFields.isRecurrentMaster()) {
-            return DocumentId.fromString(String.join(DELIMITER, accountId.getIdentifier(), eventFields.uid().value(), "master"));
+            return DocumentId.fromString(String.join(DELIMITER, sourceCalendarURL.base().value(), sourceCalendarURL.calendarId().value(), eventFields.uid().value(), "master"));
         }
-        return DocumentId.fromString(String.join(DELIMITER, accountId.getIdentifier(), eventFields.uid().value(), "recurrence",
+        return DocumentId.fromString(String.join(DELIMITER, sourceCalendarURL.base().value(), sourceCalendarURL.calendarId().value(), eventFields.uid().value(), "recurrence",
             eventFields.recurrenceId().orElse(null)));
     }
 
     @Override
-    public Mono<Void> index(AccountId accountId, CalendarEvents fields) {
-        return doIndex(accountId, fields, INDEX_CHECK_SEQUENCE);
+    public Mono<Void> index(CalendarEvents fields) {
+        return doIndex(fields, INDEX_CHECK_SEQUENCE);
     }
 
     @Override
-    public Mono<Void> reindex(AccountId accountId, CalendarEvents fields) {
-        return doIndex(accountId, fields, !INDEX_CHECK_SEQUENCE);
+    public Mono<Void> reindex(CalendarEvents fields) {
+        return doIndex(fields, !INDEX_CHECK_SEQUENCE);
     }
 
-    private Mono<Void> doIndex(AccountId accountId, CalendarEvents fields, boolean checkSequence) {
+    private Mono<Void> doIndex(CalendarEvents fields, boolean checkSequence) {
         if (fields.events().isEmpty()) {
             return Mono.empty();
         }
 
         return Flux.fromIterable(fields.events())
-            .flatMap(event -> indexSingleEvent(accountId, event, checkSequence)
-                    .onErrorResume(err -> Mono.error(CalendarSearchIndexingException.of("Error while indexing event", accountId, event.uid(), err))),
+            .flatMap(event -> indexSingleEvent(event, checkSequence)
+                    .onErrorResume(error -> Mono.error(CalendarSearchIndexingException.of("Failed to index calendar event",
+                        fields.calendarURL(), fields.eventUid(), error))),
                 ReactorUtils.DEFAULT_CONCURRENCY)
             .then();
     }
 
-    private Mono<WriteResponseBase> indexSingleEvent(AccountId accountId,
-                                                     EventFields eventFields,
+    private Mono<WriteResponseBase> indexSingleEvent(EventFields eventFields,
                                                      boolean checkSequence) {
 
-        DocumentId documentId = buildDocumentIdForEvent(accountId, eventFields);
-        RoutingKey routingKey = ROUTING_KEY.apply(accountId);
+        CalendarURL sourceCalendarURL = eventFields.calendarURL();
+        DocumentId documentId = buildDocumentIdForEvent(sourceCalendarURL, eventFields);
+        RoutingKey routingKey = ROUTING_KEY.apply(sourceCalendarURL.base());
 
-        return Mono.fromCallable(() -> CalendarEventsDocument.fromEventFields(accountId, eventFields))
+        return Mono.fromCallable(() -> CalendarEventsDocument.fromEventFields(eventFields))
             .flatMap(eventsDocument -> {
                 if (checkSequence && eventFields.sequence().isPresent()) {
                     return Throwing.supplier(() -> indexWithSequence(documentId, routingKey, eventFields.sequence().get(), eventsDocument)).get();
@@ -166,12 +168,12 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
     }
 
     @Override
-    public Mono<Void> delete(AccountId accountId, EventUid eventUid) {
+    public Mono<Void> delete(CalendarURL calendarURL, EventUid eventUid) {
+        Preconditions.checkArgument(calendarURL != null, "calendarURL can not be null");
         Preconditions.checkArgument(eventUid != null, "eventUid can not be null");
-        Preconditions.checkArgument(accountId != null, "accountId can not be null");
 
         Query query = QueryBuilders.bool()
-            .must(accountIdQuery(accountId))
+            .must(calendarURLQuery(calendarURL))
             .must(QueryBuilders.term()
                 .field(CalendarFields.EVENT_UID)
                 .value(FieldValue.of(eventUid.value()))
@@ -180,20 +182,23 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
             .build()
             .toQuery();
 
-        return indexer.deleteAllMatchingQuery(query, ROUTING_KEY.apply(accountId))
-            .onErrorResume(throwable
-                -> Mono.error(CalendarSearchIndexingException.of("Error while deleting eventUid " + eventUid.value(), accountId, eventUid, throwable)))
+        return indexer.deleteAllMatchingQuery(query, ROUTING_KEY.apply(calendarURL.base()))
+            .onErrorResume(error -> Mono.error(CalendarSearchIndexingException.of("Failed to delete calendar event",
+                calendarURL, eventUid, error)))
             .then();
     }
 
     @Override
-    public Flux<EventFields> search(AccountId accountId, EventSearchQuery query) {
-        List<Query> mustClauses = new ArrayList<>();
-        mustClauses.add(accountIdQuery(accountId));
-        buildSearchStringQuery(query).ifPresent(mustClauses::add);
+    public Flux<EventFields> search(EventSearchQuery query) {
+        List<CalendarURL> calendars = validateSourceSearchCalendars(query);
+        if (calendars.isEmpty()) {
+            return Flux.empty();
+        }
 
-        query.calendars().ifPresent(calendarURLList
-            -> mustClauses.add(buildCalendarFilter(calendarURLList)));
+        List<Query> mustClauses = new ArrayList<>();
+        mustClauses.add(buildCalendarFilter(calendars));
+
+        buildSearchStringQuery(query).ifPresent(mustClauses::add);
         query.organizers().ifPresent(organizerList ->
             mustClauses.add(buildAddressFilter(organizerList, CalendarFields.ORGANIZER)));
         query.attendees().ifPresent(attendeeList ->
@@ -225,24 +230,41 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
             .filter(hit -> hit.source() != null)
             .map(hit -> mapper.convertValue(hit.source(), CalendarEventsDocument.class))
             .mapNotNull(CalendarEventsDocument::toEventFields)
-            .onErrorResume(throwable
-                -> Flux.error(CalendarSearchIndexingException.of("Error while searching events", accountId, throwable)));
+            .onErrorResume(error -> Flux.error(CalendarSearchIndexingException.of("Failed to search calendar events",
+                calendars, error)));
     }
 
     @Override
-    public Mono<Void> deleteAll(AccountId accountId) {
-        Preconditions.checkArgument(accountId != null, "accountId can not be null");
+    public Mono<Void> deleteAll(OpenPaaSId baseCalendarId) {
+        Preconditions.checkArgument(baseCalendarId != null, "baseCalendarId can not be null");
 
-        return indexer.deleteAllMatchingQuery(accountIdQuery(accountId), ROUTING_KEY.apply(accountId))
-            .onErrorResume(throwable
-                -> Mono.error(CalendarSearchIndexingException.of("Error while deleting all events for account " + accountId.getIdentifier(), accountId, throwable)))
+        return indexer.deleteAllMatchingQuery(baseCalendarIdQuery(baseCalendarId), ROUTING_KEY.apply(baseCalendarId))
+            .onErrorResume(error -> Mono.error(CalendarSearchIndexingException.of("Failed to delete calendar events",
+                baseCalendarId, error)))
             .then();
     }
 
-    private Query accountIdQuery(AccountId accountId) {
+    static List<CalendarURL> validateSourceSearchCalendars(EventSearchQuery query) {
+        Preconditions.checkArgument(query.calendars().isPresent(), "calendars must be provided for source-based search");
+
+        List<CalendarURL> calendars = query.calendars().get();
+        Preconditions.checkArgument(calendars.size() <= MAX_SOURCE_CALENDARS_PER_SEARCH,
+            "source-based search supports at most %s calendars", MAX_SOURCE_CALENDARS_PER_SEARCH);
+        return calendars;
+    }
+
+    private Query calendarURLQuery(CalendarURL calendarURL) {
         return QueryBuilders.term()
-            .field(CalendarFields.ACCOUNT_ID)
-            .value(FieldValue.of(accountId.getIdentifier()))
+            .field(CalendarFields.CALENDAR_URL)
+            .value(FieldValue.of(calendarURL.serialize()))
+            .build()
+            .toQuery();
+    }
+
+    private Query baseCalendarIdQuery(OpenPaaSId baseCalendarId) {
+        return QueryBuilders.term()
+            .field(CalendarFields.BASE_CALENDAR_ID)
+            .value(FieldValue.of(baseCalendarId.value()))
             .build()
             .toQuery();
     }

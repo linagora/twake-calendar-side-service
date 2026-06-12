@@ -18,8 +18,8 @@
 
 package com.linagora.calendar.storage.eventsearch;
 
-import org.apache.james.vacation.api.AccountId;
-
+import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.event.EventFields;
 
 import reactor.core.publisher.Flux;
@@ -27,13 +27,13 @@ import reactor.core.publisher.Mono;
 
 public interface CalendarSearchService {
 
-    Mono<Void> index(AccountId accountId, CalendarEvents fields);
+    Mono<Void> index(CalendarEvents fields);
 
-    Mono<Void> reindex(AccountId accountId, CalendarEvents fields);
+    Mono<Void> reindex(CalendarEvents fields);
 
-    Mono<Void> delete(AccountId accountId, EventUid eventUid);
+    Mono<Void> delete(CalendarURL calendarURL, EventUid eventUid);
 
-    Flux<EventFields> search(AccountId accountId, EventSearchQuery query);
+    Flux<EventFields> search(EventSearchQuery query);
 
-    Mono<Void> deleteAll(AccountId accountId);
+    Mono<Void> deleteAll(OpenPaaSId baseCalendarId);
 }
