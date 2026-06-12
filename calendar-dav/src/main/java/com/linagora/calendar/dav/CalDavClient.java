@@ -759,35 +759,46 @@ public class CalDavClient extends DavClient {
 
     public Mono<CalendarReportXmlResponse> calendarQueryReportXml(Username username, CalendarURL calendarURL, CalendarQuery calendarQuery) {
         Preconditions.checkArgument(username != null, "username must not be null");
+        return calendarQueryReportXml(Mono.just(httpClientWithImpersonation(username)), calendarURL, calendarQuery);
+    }
+
+    // Use a domain technical token for resource calendars
+    public Mono<CalendarReportXmlResponse> calendarQueryReportXml(OpenPaaSId domainId, CalendarURL calendarURL, CalendarQuery calendarQuery) {
+        Preconditions.checkArgument(domainId != null, "domainId must not be null");
+        return calendarQueryReportXml(httpClientWithTechnicalToken(domainId), calendarURL, calendarQuery);
+    }
+
+    private Mono<CalendarReportXmlResponse> calendarQueryReportXml(Mono<HttpClient> httpClientPublisher, CalendarURL calendarURL, CalendarQuery calendarQuery) {
+        Preconditions.checkArgument(httpClientPublisher != null, "httpClientPublisher must not be null");
         Preconditions.checkArgument(calendarURL != null, "calendarURL must not be null");
         Preconditions.checkArgument(calendarQuery != null, "calendarQuery must not be null");
 
-        return httpClientWithImpersonation(username)
-            .headers(headers -> {
-                headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_XML);
-                headers.add(HEADER_DEPTH, "1");
-            })
-            .request(REPORT_METHOD)
-            .uri(calendarURL.asUri().toASCIIString())
-            .send(ByteBufMono.fromString(Mono.fromCallable(calendarQuery::toCalendarQueryReport)))
-            .responseSingle((response, body) -> {
-                int statusCode = response.status().code();
+        return httpClientPublisher.flatMap(client ->
+            client.headers(headers -> {
+                    headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_XML);
+                    headers.add(HEADER_DEPTH, "1");
+                })
+                .request(REPORT_METHOD)
+                .uri(calendarURL.asUri().toASCIIString())
+                .send(ByteBufMono.fromString(Mono.fromCallable(calendarQuery::toCalendarQueryReport)))
+                .responseSingle((response, body) -> {
+                    int statusCode = response.status().code();
 
-                if (statusCode == HttpStatus.SC_MULTI_STATUS) {
-                    return body.asByteArray()
-                        .map(CalendarReportXmlResponse::new);
-                }
+                    if (statusCode == HttpStatus.SC_MULTI_STATUS) {
+                        return body.asByteArray()
+                            .map(CalendarReportXmlResponse::new);
+                    }
 
-                return body.asString(StandardCharsets.UTF_8)
-                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
-                    .flatMap(errorBody -> Mono.error(new DavClientException("""
-                        Unexpected status code: %d when executing RFC 4791 calendar-query REPORT on '%s'
-                        %s
-                        """.formatted(
-                        statusCode,
-                        calendarURL.asUri().toASCIIString(),
-                        errorBody))));
-            });
+                    return body.asString(StandardCharsets.UTF_8)
+                        .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                        .flatMap(errorBody -> Mono.error(new DavClientException("""
+                            Unexpected status code: %d when executing RFC 4791 calendar-query REPORT on '%s'
+                            %s
+                            """.formatted(
+                            statusCode,
+                            calendarURL.asUri().toASCIIString(),
+                            errorBody))));
+                }));
     }
 
     public Flux<FreeBusyQueryResponseObject.BusyInterval> findBusyIntervals(Username username, CalendarURL calendarURL, Instant from, Instant to) {
