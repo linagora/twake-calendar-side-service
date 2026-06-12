@@ -245,8 +245,7 @@ class TwakeCalendarGuiceServerTest  {
 
     @Test
     void shouldExposeWebAdminCalendarDeleteUserDataRoutes(TwakeCalendarGuiceServer server) throws AddressException {
-        String userId = "6053022c9da5ef001f430b43";
-        String calendarId = "6053022c9da5ef001f430b43";
+        CalendarURL calendarURL = CalendarURL.from(userId);
         String organizerEmail = "organizer@linagora.com";
         String attendeeEmail = "attendee@linagora.com";
         EventFields event = EventFields.builder()
@@ -262,10 +261,10 @@ class TwakeCalendarGuiceServerTest  {
             .organizer(EventFields.Person.of("organizer", organizerEmail))
             .addAttendee(EventFields.Person.of("attendee", attendeeEmail))
             .addResource(new EventFields.Person("resource 1", new MailAddress("resource1@linagora.com")))
-            .calendarURL(new CalendarURL(new OpenPaaSId(userId), new OpenPaaSId(calendarId)))
+            .calendarURL(calendarURL)
             .dtStamp(Instant.parse("2025-04-18T07:47:48Z"))
             .build();
-        server.getProbe(CalendarDataProbe.class).indexCalendar(USERNAME, CalendarEvents.of(event));
+        server.getProbe(CalendarDataProbe.class).indexCalendar(CalendarEvents.of(event));
 
         String taskId = with()
             .queryParam("action", "deleteData")
@@ -288,7 +287,7 @@ class TwakeCalendarGuiceServerTest  {
             .body("additionalInformation.status.CalendarSearchDeletionTaskStep", is("DONE"))
             .body("additionalInformation.status.OpenPaaSUserDeletionTaskStep", is("DONE"));
 
-        assertThat(server.getProbe(CalendarDataProbe.class).searchEvents(USERNAME, "")).isEmpty();
+        assertThat(server.getProbe(CalendarDataProbe.class).searchEvents(calendarURL, "")).isEmpty();
         assertThat(server.getProbe(CalendarDataProbe.class).getUser(USERNAME)).isNull();
     }
 

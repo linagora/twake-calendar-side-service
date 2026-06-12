@@ -49,7 +49,6 @@ import org.apache.james.task.Hostname;
 import org.apache.james.task.MemoryTaskManager;
 import org.apache.james.task.TaskExecutionDetails;
 import org.apache.james.task.TaskManager;
-import org.apache.james.vacation.api.AccountId;
 import org.apache.james.webadmin.WebAdminServer;
 import org.apache.james.webadmin.WebAdminUtils;
 import org.apache.james.webadmin.routes.TasksRoutes;
@@ -214,7 +213,7 @@ public class CalendarRoutesTest {
             .resourceName(eventId)
             .build();
 
-        List<EventFields> actual = calendarSearchService.search(AccountId.fromUsername(openPaaSUser.username()), simpleQuery(""))
+        List<EventFields> actual = calendarSearchService.search(simpleQuery("", calendarURL))
             .collectList().block();
         assertThat(actual).hasSize(1);
         assertThat(actual.getFirst())
@@ -368,7 +367,7 @@ public class CalendarRoutesTest {
             .resourceName(uid2)
             .build();
 
-        List<EventFields> actual = calendarSearchService.search(AccountId.fromUsername(openPaaSUser.username()), simpleQuery(""))
+        List<EventFields> actual = calendarSearchService.search(simpleQuery("", calendarURL))
             .collectList().block();
         assertThat(actual)
             .usingRecursiveFieldByFieldElementComparator(builder()
@@ -380,13 +379,12 @@ public class CalendarRoutesTest {
     @Test
     void reindexShouldRemoveOldEvents() {
         CalendarURL calendarURL = CalendarURL.from(openPaaSUser.id());
-        AccountId accountId = AccountId.fromUsername(openPaaSUser.username());
         EventFields event1 = EventFields.builder()
             .uid("event-1")
             .summary("Event1")
             .calendarURL(calendarURL)
             .build();
-        calendarSearchService.index(accountId, CalendarEvents.of(event1)).block();
+        calendarSearchService.index(CalendarEvents.of(event1)).block();
 
         String taskId = given()
             .queryParam("task", "reindex")
@@ -405,7 +403,7 @@ public class CalendarRoutesTest {
             .body("additionalInformation.processedEventCount", is(0))
             .body("additionalInformation.failedEventCount", is(0));
 
-        List<EventFields> actual = calendarSearchService.search(accountId, simpleQuery(""))
+        List<EventFields> actual = calendarSearchService.search(simpleQuery("", calendarURL))
             .collectList().block();
         assertThat(actual).isEmpty();
     }
@@ -484,13 +482,12 @@ public class CalendarRoutesTest {
         calDavClient.importCalendar(calendarURL, uid2, openPaaSUser.username(), ics2).block();
 
         doAnswer(invocation -> {
-            AccountId accountId = invocation.getArgument(0);
-            CalendarEvents events = invocation.getArgument(1);
+            CalendarEvents events = invocation.getArgument(0);
             if (events.eventUid().value().equals(uid2)) {
                 return Mono.error(new RuntimeException("Simulated failure for uid2"));
             }
             return Mono.empty();
-        }).when(calendarSearchService).reindex(any(), any());
+        }).when(calendarSearchService).reindex(any(CalendarEvents.class));
 
         String taskId = given()
             .queryParam("task", "reindex")
@@ -574,7 +571,7 @@ public class CalendarRoutesTest {
             .resourceName(icsResourceName)
             .build();
 
-        List<EventFields> actual = calendarSearchService.search(AccountId.fromUsername(openPaaSUser.username()), simpleQuery(""))
+        List<EventFields> actual = calendarSearchService.search(simpleQuery("", calendarURL))
             .collectList().block();
         assertThat(actual).hasSize(1);
         assertThat(actual.getFirst())
@@ -583,8 +580,8 @@ public class CalendarRoutesTest {
             .isEqualTo(expected);
     }
 
-    private EventSearchQuery simpleQuery(String query) {
-        return new EventSearchQuery(query, Optional.empty(),
+    private EventSearchQuery simpleQuery(String query, CalendarURL calendarURL) {
+        return new EventSearchQuery(query, Optional.of(List.of(calendarURL)),
             Optional.empty(), Optional.empty(),
             MAX_LIMIT, 0);
     }

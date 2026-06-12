@@ -33,15 +33,16 @@ import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.http.Authenticator;
 import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.metrics.api.MetricFactory;
-import org.apache.james.vacation.api.AccountId;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.github.fge.lambdas.Throwing;
+import com.linagora.calendar.dav.CalendarSearchSourceResolver;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
 import com.linagora.calendar.storage.eventsearch.EventSearchQuery;
@@ -218,12 +219,19 @@ public class CalendarSearchRoute extends CalendarRoute {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module());
 
     private final CalendarSearchService searchService;
+    private final OpenPaaSUserDAO openPaaSUserDAO;
+    private final CalendarSearchSourceResolver calendarSearchSourceResolver;
 
     @Inject
-    public CalendarSearchRoute(Authenticator authenticator, MetricFactory metricFactory,
-                               CalendarSearchService searchService) {
+    public CalendarSearchRoute(Authenticator authenticator,
+                               MetricFactory metricFactory,
+                               CalendarSearchService searchService,
+                               OpenPaaSUserDAO openPaaSUserDAO,
+                               CalendarSearchSourceResolver calendarSearchSourceResolver) {
         super(authenticator, metricFactory);
         this.searchService = searchService;
+        this.openPaaSUserDAO = openPaaSUserDAO;
+        this.calendarSearchSourceResolver = calendarSearchSourceResolver;
     }
 
     @Override
@@ -240,16 +248,11 @@ public class CalendarSearchRoute extends CalendarRoute {
         return request.receive().aggregate().asString()
             .map(Throwing.function(string -> OBJECT_MAPPER.readValue(string, SearchRequest.class)))
             .flatMap(searchRequest -> {
-                EventSearchQuery.Builder queryBuilder = EventSearchQuery.builder()
-                    .query(Optional.ofNullable(searchRequest.query).orElse(""))
-                    .limit(limit)
-                    .offset(offset);
-                extractCalendarUrls(searchRequest).ifPresent(queryBuilder::calendars);
-                extractOrganizers(searchRequest).ifPresent(queryBuilder::organizers);
-                extractAttendees(searchRequest).ifPresent(queryBuilder::attendees);
-                EventSearchQuery query = queryBuilder.build();
+                List<CalendarURL> requestedCalendars = extractCalendarUrls(searchRequest);
 
-                return searchService.search(AccountId.fromUsername(session.getUser()), query)
+                return resolveSearchSourceCalendars(session, requestedCalendars)
+                    .map(searchSourceCalendars -> toEventSearchQuery(searchRequest, searchSourceCalendars, limit, offset))
+                    .flatMapMany(searchService::search)
                     .collectList()
                     .map(Throwing.function(events -> OBJECT_MAPPER.writeValueAsString(SearchResponse.from(events, limit, offset, request.uri()))))
                     .flatMap(responseBody -> response.status(200)
@@ -257,6 +260,31 @@ public class CalendarSearchRoute extends CalendarRoute {
                         .sendString(Mono.just(responseBody))
                         .then());
             });
+    }
+
+    private Mono<List<CalendarURL>> resolveSearchSourceCalendars(MailboxSession session, List<CalendarURL> requestedCalendars) {
+        if (requestedCalendars.isEmpty()) {
+            return Mono.just(List.of());
+        }
+
+        return openPaaSUserDAO.retrieve(session.getUser())
+            .flatMap(requester -> calendarSearchSourceResolver.resolve(requester, requestedCalendars))
+            .map(searchSourceCalendarByRequested -> List.copyOf(searchSourceCalendarByRequested.values()))
+            .switchIfEmpty(Mono.just(List.of()));
+    }
+
+    private EventSearchQuery toEventSearchQuery(SearchRequest searchRequest,
+                                                List<CalendarURL> searchSourceCalendars,
+                                                int limit,
+                                                int offset) {
+        EventSearchQuery.Builder queryBuilder = EventSearchQuery.builder()
+            .query(Optional.ofNullable(searchRequest.query).orElse(""))
+            .calendars(searchSourceCalendars)
+            .limit(limit)
+            .offset(offset);
+        extractOrganizers(searchRequest).ifPresent(queryBuilder::organizers);
+        extractAttendees(searchRequest).ifPresent(queryBuilder::attendees);
+        return queryBuilder.build();
     }
 
     private int extractLimit(QueryStringDecoder queryStringDecoder) {
@@ -295,9 +323,8 @@ public class CalendarSearchRoute extends CalendarRoute {
             }).orElse(DEFAULT_OFFSET);
     }
 
-    private Optional<List<CalendarURL>> extractCalendarUrls(SearchRequest searchRequest) {
+    private List<CalendarURL> extractCalendarUrls(SearchRequest searchRequest) {
         return Optional.ofNullable(searchRequest.calendars)
-            .filter(calendars -> !calendars.isEmpty())
             .map(calendars -> calendars.stream()
                 .map(calendarRef -> {
                     if (StringUtils.isBlank(calendarRef.userId)) {
@@ -308,7 +335,8 @@ public class CalendarSearchRoute extends CalendarRoute {
                     }
                     return new CalendarURL(new OpenPaaSId(calendarRef.userId), new OpenPaaSId(calendarRef.calendarId));
                 })
-                .collect(Collectors.toList()));
+                .collect(Collectors.toList()))
+            .orElse(List.of());
     }
 
     private Optional<List<MailAddress>> extractOrganizers(SearchRequest searchRequest) {

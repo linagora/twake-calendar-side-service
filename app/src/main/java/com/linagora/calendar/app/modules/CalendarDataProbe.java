@@ -33,7 +33,6 @@ import org.apache.james.domainlist.api.DomainList;
 import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.user.api.UsersRepository;
 import org.apache.james.utils.GuiceProbe;
-import org.apache.james.vacation.api.AccountId;
 import org.awaitility.Awaitility;
 import org.awaitility.Durations;
 import org.awaitility.core.ConditionFactory;
@@ -48,7 +47,6 @@ import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.UploadedFileDAO;
-import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.configuration.ConfigurationEntry;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
 import com.linagora.calendar.storage.event.EventFields;
@@ -74,7 +72,6 @@ public class CalendarDataProbe implements GuiceProbe {
     private final CalDavClient calDavClient;
     private final CardDavClient cardDavClient;
     private final CalendarSearchService calendarSearchService;
-    private final BookingLinkDAO bookingLinkDAO;
 
     @Inject
     public CalendarDataProbe(UsersRepository usersRepository,
@@ -85,8 +82,7 @@ public class CalendarDataProbe implements GuiceProbe {
                              UploadedFileDAO uploadedFileDAO,
                              CalDavClient calDavClient,
                              CardDavClient cardDavClient,
-                             CalendarSearchService calendarSearchService,
-                             BookingLinkDAO bookingLinkDAO) {
+                             CalendarSearchService calendarSearchService) {
         this.usersRepository = usersRepository;
         this.domainList = domainList;
         this.usersDAO = usersDAO;
@@ -96,7 +92,6 @@ public class CalendarDataProbe implements GuiceProbe {
         this.calDavClient = calDavClient;
         this.cardDavClient = cardDavClient;
         this.calendarSearchService = calendarSearchService;
-        this.bookingLinkDAO = bookingLinkDAO;
     }
 
     public CalendarDataProbe addDomain(Domain domain) {
@@ -175,25 +170,21 @@ public class CalendarDataProbe implements GuiceProbe {
         return cardDavClient.exportContact(username, new AddressBookURL(userId, addressBook)).block();
     }
 
-    public void indexCalendar(Username username, CalendarEvents calendarEvents) {
-        AccountId accountId = AccountId.fromUsername(username);
-        calendarSearchService.index(accountId, calendarEvents).block();
+    public void indexCalendar(CalendarEvents calendarEvents) {
+        calendarSearchService.index(calendarEvents).block();
 
-        CALMLY_AWAIT.until(() -> !calendarSearchService.search(accountId,
-                new EventSearchQuery(calendarEvents.events().iterator().next().summary(), Optional.empty(),
-                    Optional.empty(), Optional.empty(),
-                    MAX_LIMIT, 0))
+        CALMLY_AWAIT.until(() -> !calendarSearchService.search(
+                simpleQuery(calendarEvents.events().iterator().next().summary(), calendarEvents.calendarURL()))
             .collectList().block().isEmpty());
     }
 
-    public List<EventFields> searchEvents(Username username, String query) {
-        AccountId accountId = AccountId.fromUsername(username);
-        return calendarSearchService.search(accountId, simpleQuery(query))
+    public List<EventFields> searchEvents(CalendarURL calendarURL, String query) {
+        return calendarSearchService.search(simpleQuery(query, calendarURL))
             .collectList().block();
     }
 
-    private EventSearchQuery simpleQuery(String query) {
-        return new EventSearchQuery(query, Optional.empty(),
+    private EventSearchQuery simpleQuery(String query, CalendarURL calendarURL) {
+        return new EventSearchQuery(query, Optional.of(List.of(calendarURL)),
             Optional.empty(), Optional.empty(),
             MAX_LIMIT, 0);
     }
