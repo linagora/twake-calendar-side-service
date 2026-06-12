@@ -73,8 +73,9 @@ public interface CalendarSearchRouteContract {
 
     @Test
     default void shouldSearchCalendarSuccessfully(TwakeCalendarGuiceServer server) throws Exception {
-        String userId = "6053022c9da5ef001f430b43";
-        String calendarId = "6053022c9da5ef001f430b43";
+        CalendarURL calendarURL = defaultCalendarURL(server);
+        String userId = calendarURL.base().value();
+        String calendarId = calendarURL.calendarId().value();
         String organizerEmail = "organizer@linagora.com";
         String attendeeEmail = "attendee@linagora.com";
 
@@ -92,7 +93,7 @@ public interface CalendarSearchRouteContract {
             .organizer(EventFields.Person.of("organizer", organizerEmail))
             .addAttendee(EventFields.Person.of("attendee", attendeeEmail))
             .addResource(new EventFields.Person("resource 1", new MailAddress("resource1@linagora.com")))
-            .calendarURL(new CalendarURL(new OpenPaaSId(userId), new OpenPaaSId(calendarId)))
+            .calendarURL(calendarURL)
             .dtStamp(Instant.parse("2025-04-18T07:47:48Z"))
             .build();
 
@@ -109,7 +110,7 @@ public interface CalendarSearchRouteContract {
             .isRecurrentMaster(true)
             .organizer(EventFields.Person.of("organizer", organizerEmail))
             .addAttendee(EventFields.Person.of("attendee", attendeeEmail))
-            .calendarURL(new CalendarURL(new OpenPaaSId(userId), new OpenPaaSId(calendarId)))
+            .calendarURL(calendarURL)
             .dtStamp(Instant.parse("2025-04-18T07:47:48Z"))
             .build();
 
@@ -125,7 +126,7 @@ public interface CalendarSearchRouteContract {
             .isRecurrentMaster(true)
             .organizer(EventFields.Person.of("organizer", "wrong@linagora.com"))
             .addAttendee(EventFields.Person.of("attendee", attendeeEmail))
-            .calendarURL(new CalendarURL(new OpenPaaSId(userId), new OpenPaaSId(calendarId)))
+            .calendarURL(calendarURL)
             .dtStamp(Instant.parse("2025-04-18T07:47:48Z"))
             .build();
 
@@ -141,7 +142,7 @@ public interface CalendarSearchRouteContract {
             .isRecurrentMaster(true)
             .organizer(EventFields.Person.of("organizer", organizerEmail))
             .addAttendee(EventFields.Person.of("attendee", "wrong@linagora.com"))
-            .calendarURL(new CalendarURL(new OpenPaaSId(userId), new OpenPaaSId(calendarId)))
+            .calendarURL(calendarURL)
             .dtStamp(Instant.parse("2025-04-18T07:47:48Z"))
             .build();
 
@@ -157,15 +158,15 @@ public interface CalendarSearchRouteContract {
             .isRecurrentMaster(true)
             .organizer(EventFields.Person.of("organizer", organizerEmail))
             .addAttendee(EventFields.Person.of("attendee", attendeeEmail))
-            .calendarURL(new CalendarURL(new OpenPaaSId(userId), new OpenPaaSId("not-existed")))
+            .calendarURL(new CalendarURL(calendarURL.base(), new OpenPaaSId("not-existed")))
             .dtStamp(Instant.parse("2025-04-18T07:47:48Z"))
             .build();
 
-        server.getProbe(CalendarDataProbe.class).indexCalendar(USERNAME, CalendarEvents.of(event));
-        server.getProbe(CalendarDataProbe.class).indexCalendar(USERNAME, CalendarEvents.of(event2));
-        server.getProbe(CalendarDataProbe.class).indexCalendar(USERNAME, CalendarEvents.of(event3));
-        server.getProbe(CalendarDataProbe.class).indexCalendar(USERNAME, CalendarEvents.of(event4));
-        server.getProbe(CalendarDataProbe.class).indexCalendar(USERNAME, CalendarEvents.of(event5));
+        server.getProbe(CalendarDataProbe.class).indexCalendar(CalendarEvents.of(event));
+        server.getProbe(CalendarDataProbe.class).indexCalendar(CalendarEvents.of(event2));
+        server.getProbe(CalendarDataProbe.class).indexCalendar(CalendarEvents.of(event3));
+        server.getProbe(CalendarDataProbe.class).indexCalendar(CalendarEvents.of(event4));
+        server.getProbe(CalendarDataProbe.class).indexCalendar(CalendarEvents.of(event5));
 
         String requestBody = """
             {
@@ -206,8 +207,9 @@ public interface CalendarSearchRouteContract {
 
     @Test
     default void shouldSupportWithoutOrganizer(TwakeCalendarGuiceServer server) throws Exception {
-        String userId = "6053022c9da5ef001f430b43";
-        String calendarId = "6053022c9da5ef001f430b43";
+        CalendarURL calendarURL = defaultCalendarURL(server);
+        String userId = calendarURL.base().value();
+        String calendarId = calendarURL.calendarId().value();
         String attendeeEmail = "attendee@linagora.com";
 
         // Match all search criteria
@@ -223,11 +225,11 @@ public interface CalendarSearchRouteContract {
             .isRecurrentMaster(true)
             .addAttendee(EventFields.Person.of("attendee", attendeeEmail))
             .addResource(new EventFields.Person("resource 1", new MailAddress("resource1@linagora.com")))
-            .calendarURL(new CalendarURL(new OpenPaaSId(userId), new OpenPaaSId(calendarId)))
+            .calendarURL(calendarURL)
             .dtStamp(Instant.parse("2025-04-18T07:47:48Z"))
             .build();
 
-        server.getProbe(CalendarDataProbe.class).indexCalendar(USERNAME, CalendarEvents.of(event));
+        server.getProbe(CalendarDataProbe.class).indexCalendar(CalendarEvents.of(event));
 
         String requestBody = """
             {
@@ -248,8 +250,9 @@ public interface CalendarSearchRouteContract {
 
     @Test
     default void shouldReturnResultsBasedOnLimitAndOffset(TwakeCalendarGuiceServer server) throws Exception {
-        String userId = "6053022c9da5ef001f430b43";
-        String calendarId = "6053022c9da5ef001f430b43";
+        CalendarURL calendarURL = defaultCalendarURL(server);
+        String userId = calendarURL.base().value();
+        String calendarId = calendarURL.calendarId().value();
         String organizerEmail = "organizer@linagora.com";
         String attendeeEmail = "attendee@linagora.com";
 
@@ -265,10 +268,10 @@ public interface CalendarSearchRouteContract {
                 .isRecurrentMaster(false)
                 .organizer(EventFields.Person.of("organizer", organizerEmail))
                 .addAttendee(EventFields.Person.of("attendee", attendeeEmail))
-                .calendarURL(new CalendarURL(new OpenPaaSId(userId), new OpenPaaSId(calendarId)))
+                .calendarURL(calendarURL)
                 .dtStamp(Instant.parse("2025-04-18T0" + i + ":47:48Z"))
                 .build();
-            server.getProbe(CalendarDataProbe.class).indexCalendar(USERNAME, CalendarEvents.of(event));
+            server.getProbe(CalendarDataProbe.class).indexCalendar(CalendarEvents.of(event));
         }
 
         String requestBody = """
@@ -315,8 +318,9 @@ public interface CalendarSearchRouteContract {
     @Test
     default void shouldNotReturnResultsFromUnauthorizedCalendars(TwakeCalendarGuiceServer server) throws Exception {
         Username alice = Username.fromLocalPartWithDomain("alice", DOMAIN);
-        String userId = "6053022c9da5ef001f430b43";
-        String calendarId = "6053022c9da5ef001f430b43";
+        CalendarURL calendarURL = CalendarURL.from(server.getProbe(CalendarDataProbe.class).addUser(alice, PASSWORD));
+        String userId = calendarURL.base().value();
+        String calendarId = calendarURL.calendarId().value();
         String organizerEmail = "organizer@linagora.com";
         String attendeeEmail = "attendee@linagora.com";
 
@@ -332,11 +336,11 @@ public interface CalendarSearchRouteContract {
             .isRecurrentMaster(true)
             .organizer(EventFields.Person.of("organizer", organizerEmail))
             .addAttendee(EventFields.Person.of("attendee", attendeeEmail))
-            .calendarURL(new CalendarURL(new OpenPaaSId(userId), new OpenPaaSId(calendarId)))
+            .calendarURL(calendarURL)
             .dtStamp(Instant.parse("2025-04-18T07:47:48Z"))
             .build();
 
-        server.getProbe(CalendarDataProbe.class).indexCalendar(alice, CalendarEvents.of(event));
+        server.getProbe(CalendarDataProbe.class).indexCalendar(CalendarEvents.of(event));
 
         String requestBody = """
             {
@@ -360,8 +364,9 @@ public interface CalendarSearchRouteContract {
 
     @Test
     default void shouldReturn200WhenQueryFieldIsMissing(TwakeCalendarGuiceServer server) {
-        String userId = "6053022c9da5ef001f430b43";
-        String calendarId = "6053022c9da5ef001f430b43";
+        CalendarURL calendarURL = defaultCalendarURL(server);
+        String userId = calendarURL.base().value();
+        String calendarId = calendarURL.calendarId().value();
         String organizerEmail = "organizer@linagora.com";
         String attendeeEmail = "attendee@linagora.com";
 
@@ -416,8 +421,9 @@ public interface CalendarSearchRouteContract {
 
     @Test
     default void shouldReturn400WhenOrganizerEmailIsInvalid(TwakeCalendarGuiceServer server) {
-        String userId = "6053022c9da5ef001f430b43";
-        String calendarId = "6053022c9da5ef001f430b43";
+        CalendarURL calendarURL = defaultCalendarURL(server);
+        String userId = calendarURL.base().value();
+        String calendarId = calendarURL.calendarId().value();
 
         String requestBody = """
             {
@@ -441,8 +447,9 @@ public interface CalendarSearchRouteContract {
 
     @Test
     default void shouldReturn400WhenAttendeeEmailIsInvalid(TwakeCalendarGuiceServer server) {
-        String userId = "6053022c9da5ef001f430b43";
-        String calendarId = "6053022c9da5ef001f430b43";
+        CalendarURL calendarURL = defaultCalendarURL(server);
+        String userId = calendarURL.base().value();
+        String calendarId = calendarURL.calendarId().value();
 
         String requestBody = """
             {
@@ -608,8 +615,9 @@ public interface CalendarSearchRouteContract {
 
     @Test
     default void shouldReturnVideoconferenceUrlInSearchResults(TwakeCalendarGuiceServer server) {
-        String userId = "6053022c9da5ef001f430b43";
-        String calendarId = "6053022c9da5ef001f430b43";
+        CalendarURL calendarURL = defaultCalendarURL(server);
+        String userId = calendarURL.base().value();
+        String calendarId = calendarURL.calendarId().value();
         String videoconferenceUrl = "https://meet.linagora.com/sje-ntan-voo";
 
         EventFields event = EventFields.builder()
@@ -622,11 +630,11 @@ public interface CalendarSearchRouteContract {
             .allDay(false)
             .isRecurrentMaster(false)
             .videoconferenceUrl(videoconferenceUrl)
-            .calendarURL(new CalendarURL(new OpenPaaSId(userId), new OpenPaaSId(calendarId)))
+            .calendarURL(calendarURL)
             .dtStamp(Instant.parse("2025-04-18T07:47:48Z"))
             .build();
 
-        server.getProbe(CalendarDataProbe.class).indexCalendar(USERNAME, CalendarEvents.of(event));
+        server.getProbe(CalendarDataProbe.class).indexCalendar(CalendarEvents.of(event));
 
         String requestBody = """
             {
@@ -646,6 +654,10 @@ public interface CalendarSearchRouteContract {
             .body("_total_hits", equalTo(1))
             .body("_embedded.events[0].data.uid", equalTo("event-with-video"))
             .body("_embedded.events[0].data.x-openpaas-videoconference", equalTo(videoconferenceUrl));
+    }
+
+    private CalendarURL defaultCalendarURL(TwakeCalendarGuiceServer server) {
+        return CalendarURL.from(server.getProbe(CalendarDataProbe.class).userId(USERNAME));
     }
 }
 
