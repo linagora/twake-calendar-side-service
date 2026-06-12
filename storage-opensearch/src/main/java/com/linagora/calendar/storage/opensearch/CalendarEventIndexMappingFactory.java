@@ -55,7 +55,7 @@ public class CalendarEventIndexMappingFactory {
 
     interface CalendarFields {
 
-        String ACCOUNT_ID = "accountId";
+        String BASE_CALENDAR_ID = "baseCalendarId";
         String EVENT_UID = "eventUid";
         String OPENPAAS_USER_ID = "userId";
         String CALENDAR_URL = "calendarURL";
@@ -187,7 +187,7 @@ public class CalendarEventIndexMappingFactory {
 
         return new TypeMapping.Builder()
             .properties(new ImmutableMap.Builder<String, Property>()
-                .put(CalendarFields.ACCOUNT_ID, indexedKeywordProperty)
+                .put(CalendarFields.BASE_CALENDAR_ID, indexedKeywordProperty)
                 .put(CalendarFields.EVENT_UID, indexedKeywordProperty)
                 .put(CalendarFields.CALENDAR_URL, indexedKeywordProperty)
                 .put(CalendarFields.SUMMARY, summaryProperty(configuration.searchSummaryPrefix()))

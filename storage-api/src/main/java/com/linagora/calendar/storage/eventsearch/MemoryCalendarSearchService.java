@@ -29,8 +29,8 @@ import java.util.function.Predicate;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import org.apache.james.core.MailAddress;
-import org.apache.james.vacation.api.AccountId;
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.HashBasedTable;
 import com.google.common.collect.Table;
 import com.google.common.collect.Tables;
@@ -38,6 +38,7 @@ import com.google.inject.AbstractModule;
 import com.google.inject.Module;
 import com.google.inject.Scopes;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.event.EventFields;
 
 import reactor.core.publisher.Flux;
@@ -45,6 +46,7 @@ import reactor.core.publisher.Mono;
 
 public class MemoryCalendarSearchService implements CalendarSearchService {
     private static final String DELIMITER = ":";
+    private static final int MAX_SOURCE_CALENDARS_PER_SEARCH = 256;
 
     public static Module MODULE = new AbstractModule() {
         @Override
@@ -54,32 +56,37 @@ public class MemoryCalendarSearchService implements CalendarSearchService {
         }
     };
 
-    private final Table<AccountId, EventUid, CalendarEventsDTO> indexStore = Tables.synchronizedTable(HashBasedTable.create());
+    private final Table<CalendarURL, EventUid, CalendarEventsDTO> indexStore = Tables.synchronizedTable(HashBasedTable.create());
 
     @Override
-    public Mono<Void> index(AccountId accountId, CalendarEvents calendarEvents) {
+    public Mono<Void> index(CalendarEvents calendarEvents) {
         return Mono.fromRunnable(() -> {
-            CalendarEventsDTO calendarEventsDTO = Optional.ofNullable(indexStore.get(accountId, calendarEvents.eventUid()))
+            CalendarEventsDTO calendarEventsDTO = Optional.ofNullable(indexStore.get(calendarEvents.calendarURL(), calendarEvents.eventUid()))
                 .map(dto -> dto.replaceWith(calendarEvents.events()))
                 .orElseGet(() -> CalendarEventsDTO.from(calendarEvents));
 
-            indexStore.put(accountId, calendarEvents.eventUid(), calendarEventsDTO);
+            indexStore.put(calendarEvents.calendarURL(), calendarEvents.eventUid(), calendarEventsDTO);
         });
     }
 
     @Override
-    public Mono<Void> reindex(AccountId accountId, CalendarEvents calendarEvents) {
-        return Mono.fromRunnable(() -> indexStore.put(accountId, calendarEvents.eventUid(), CalendarEventsDTO.from(calendarEvents)));
+    public Mono<Void> reindex(CalendarEvents calendarEvents) {
+        return Mono.fromRunnable(() -> indexStore.put(calendarEvents.calendarURL(), calendarEvents.eventUid(), CalendarEventsDTO.from(calendarEvents)));
     }
 
     @Override
-    public Mono<Void> delete(AccountId accountId, EventUid eventUid) {
-        return Mono.fromRunnable(() -> indexStore.remove(accountId, eventUid));
+    public Mono<Void> delete(CalendarURL calendarURL, EventUid eventUid) {
+        return Mono.fromRunnable(() -> indexStore.remove(calendarURL, eventUid));
     }
 
     @Override
-    public Flux<EventFields> search(AccountId accountId, EventSearchQuery query) {
-        return Flux.fromIterable(indexStore.row(accountId).values())
+    public Flux<EventFields> search(EventSearchQuery query) {
+        List<CalendarURL> calendars = validateSourceSearchCalendars(query);
+        if (calendars.isEmpty()) {
+            return Flux.empty();
+        }
+
+        return Flux.fromIterable(indexStore.values())
             .flatMapIterable(CalendarEventsDTO::visibleEvents)
             .filter(event -> matchesQuery(event, query))
             .sort(Comparator.comparing(EventFields::start, Comparator.nullsLast(Comparator.reverseOrder())))
@@ -88,8 +95,18 @@ public class MemoryCalendarSearchService implements CalendarSearchService {
     }
 
     @Override
-    public Mono<Void> deleteAll(AccountId accountId) {
-        return Mono.fromRunnable(() -> indexStore.rowKeySet().removeIf(accountId::equals));
+    public Mono<Void> deleteAll(OpenPaaSId baseCalendarId) {
+        return Mono.fromRunnable(() -> indexStore.rowKeySet()
+            .removeIf(calendarURL -> calendarURL.base().equals(baseCalendarId)));
+    }
+
+    static List<CalendarURL> validateSourceSearchCalendars(EventSearchQuery query) {
+        Preconditions.checkArgument(query.calendars().isPresent(), "calendars must be provided for source-based search");
+
+        List<CalendarURL> calendars = query.calendars().get();
+        Preconditions.checkArgument(calendars.size() <= MAX_SOURCE_CALENDARS_PER_SEARCH,
+            "source-based search supports at most %s calendars", MAX_SOURCE_CALENDARS_PER_SEARCH);
+        return calendars;
     }
 
     private boolean matchesQuery(EventFields event, EventSearchQuery query) {

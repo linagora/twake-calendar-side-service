@@ -31,6 +31,8 @@ import org.opensearch.client.json.jackson.JacksonJsonpMapper;
 import org.opensearch.client.opensearch.OpenSearchAsyncClient;
 import org.opensearch.client.transport.rest_client.RestClientTransport;
 
+import com.linagora.calendar.storage.MemoryOpenPaaSUserDAO;
+import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchDeletionTaskStep;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchDeletionTaskStepContract;
@@ -43,6 +45,7 @@ public class OpenSearchCalendarDeletionTaskStepTest implements CalendarSearchDel
 
     private CalendarSearchDeletionTaskStep testee;
     private OpensearchCalendarSearchService calendarSearchService;
+    private MemoryOpenPaaSUserDAO userDAO;
 
     @BeforeEach
     void setup() {
@@ -61,7 +64,8 @@ public class OpenSearchCalendarDeletionTaskStepTest implements CalendarSearchDel
         OpenSearchAsyncClient openSearchAsyncClient = new OpenSearchAsyncClient(transport);
 
         calendarSearchService = new OpensearchCalendarSearchService(client, openSearchAsyncClient, CALENDAR_EVENT_OPENSEARCH_CONFIGURATION);
-        testee = new CalendarSearchDeletionTaskStep(calendarSearchService);
+        userDAO = new MemoryOpenPaaSUserDAO();
+        testee = new CalendarSearchDeletionTaskStep(calendarSearchService, userDAO);
     }
 
     @Override
@@ -70,8 +74,12 @@ public class OpenSearchCalendarDeletionTaskStepTest implements CalendarSearchDel
     }
 
     @Override
+    public OpenPaaSUserDAO userDAO() {
+        return userDAO;
+    }
+
+    @Override
     public CalendarSearchDeletionTaskStep testee() {
         return testee;
     }
 }
-

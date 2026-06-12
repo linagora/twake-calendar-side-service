@@ -18,25 +18,31 @@
 
 package com.linagora.calendar.storage.exception;
 
-import java.util.Optional;
+import java.util.List;
+import java.util.stream.Collectors;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.james.vacation.api.AccountId;
-
+import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.eventsearch.EventUid;
 
 public class CalendarSearchIndexingException extends RuntimeException {
 
-    public static CalendarSearchIndexingException of(String message, AccountId accountId, EventUid eventUid, Throwable cause) {
-        return new CalendarSearchIndexingException(message, accountId, Optional.of(eventUid), cause);
+    public static CalendarSearchIndexingException of(String message, CalendarURL calendarURL, EventUid eventUid, Throwable cause) {
+        return new CalendarSearchIndexingException(message, "CalendarURL = " + calendarURL.serialize() +
+            ", eventUid = " + eventUid.value(), cause);
     }
 
-    public static CalendarSearchIndexingException of(String message, AccountId accountId, Throwable cause) {
-        return new CalendarSearchIndexingException(message, accountId, Optional.empty(), cause);
+    public static CalendarSearchIndexingException of(String message, List<CalendarURL> calendarURLs, Throwable cause) {
+        return new CalendarSearchIndexingException(message, "CalendarURLs = " + calendarURLs.stream()
+            .map(CalendarURL::serialize)
+            .collect(Collectors.joining(", ")), cause);
     }
 
-    public CalendarSearchIndexingException(String message, AccountId accountId, Optional<EventUid> eventUid, Throwable cause) {
-        super(message + ". AccountId = " + accountId.getIdentifier() +
-            eventUid.map(v -> ", eventUid = " + v.value()).orElse(StringUtils.EMPTY), cause);
+    public static CalendarSearchIndexingException of(String message, OpenPaaSId baseCalendarId, Throwable cause) {
+        return new CalendarSearchIndexingException(message, "baseCalendarId = " + baseCalendarId.value(), cause);
+    }
+
+    private CalendarSearchIndexingException(String message, String context, Throwable cause) {
+        super(message + ". " + context, cause);
     }
 }

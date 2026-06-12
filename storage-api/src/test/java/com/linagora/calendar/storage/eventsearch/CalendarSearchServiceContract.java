@@ -19,6 +19,7 @@
 package com.linagora.calendar.storage.eventsearch;
 
 import static com.linagora.calendar.storage.eventsearch.EventSearchQuery.MAX_LIMIT;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatCode;
 import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
 import static org.awaitility.Durations.ONE_HUNDRED_MILLISECONDS;
@@ -36,8 +37,6 @@ import java.util.stream.Stream;
 import jakarta.mail.internet.AddressException;
 
 import org.apache.james.core.MailAddress;
-import org.apache.james.core.Username;
-import org.apache.james.vacation.api.AccountId;
 import org.awaitility.Awaitility;
 import org.awaitility.Durations;
 import org.awaitility.core.ConditionFactory;
@@ -53,11 +52,6 @@ import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.event.EventFields.Person;
 
 public interface CalendarSearchServiceContract {
-    Username username = Username.of("user@domain.tld");
-    Username username2 = Username.of("user2@domain.tld");
-    AccountId accountId = AccountId.fromUsername(username);
-    AccountId accountId2 = AccountId.fromUsername(username2);
-
     ConditionFactory CALMLY_AWAIT = Awaitility
         .with().pollInterval(ONE_HUNDRED_MILLISECONDS)
         .and().pollDelay(ONE_HUNDRED_MILLISECONDS)
@@ -74,12 +68,12 @@ public interface CalendarSearchServiceContract {
             .calendarURL(generateCalendarURL())
             .build();
 
-        EventSearchQuery query = simpleQuery("planning");
+        EventSearchQuery query = simpleQuery("planning", event.calendarURL());
 
-        testee().index(accountId, CalendarEvents.of(event)).block();
+        testee().index(CalendarEvents.of(event)).block();
 
         CALMLY_AWAIT.untilAsserted(() -> {
-            List<EventFields> searchResults = testee().search(accountId, query)
+            List<EventFields> searchResults = testee().search(query)
                 .collectList().block();
 
             assertThat(searchResults).hasSize(1)
@@ -96,12 +90,12 @@ public interface CalendarSearchServiceContract {
             .calendarURL(generateCalendarURL())
             .build();
 
-        EventSearchQuery query = simpleQuery(search);
+        EventSearchQuery query = simpleQuery(search, event.calendarURL());
 
-        testee().index(accountId, CalendarEvents.of(event)).block();
+        testee().index(CalendarEvents.of(event)).block();
 
         CALMLY_AWAIT.untilAsserted(() -> {
-            List<EventFields> searchResults = testee().search(accountId, query)
+            List<EventFields> searchResults = testee().search(query)
                 .collectList().block();
 
             assertThat(searchResults).hasSize(1)
@@ -119,13 +113,13 @@ public interface CalendarSearchServiceContract {
 
         CalendarEvents calendarEvents = CalendarEvents.of(event);
 
-        testee().index(accountId, calendarEvents).block();
+        testee().index(calendarEvents).block();
         for (int i = 0; i < 3; i++) {
-            assertThatCode(() -> testee().index(accountId, calendarEvents).block())
+            assertThatCode(() -> testee().index(calendarEvents).block())
                 .doesNotThrowAnyException();
         }
 
-        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(accountId, simpleQuery("planning"))
+        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(simpleQuery("planning", event.calendarURL()))
             .map(EventFields::uid)
             .collectList().block()).hasSize(1)
             .containsExactly(event.uid()));
@@ -141,7 +135,7 @@ public interface CalendarSearchServiceContract {
             .calendarURL(calendarURL)
             .build();
 
-        testee().index(accountId, CalendarEvents.of(original)).block();
+        testee().index(CalendarEvents.of(original)).block();
 
         EventFields updated = EventFields.builder()
             .uid(eventUid)
@@ -149,10 +143,10 @@ public interface CalendarSearchServiceContract {
             .calendarURL(calendarURL)
             .build();
 
-        testee().index(accountId, CalendarEvents.of(updated)).block();
+        testee().index(CalendarEvents.of(updated)).block();
 
         CALMLY_AWAIT.untilAsserted(() -> {
-            List<EventFields> result = testee().search(accountId, simpleQuery("Title"))
+            List<EventFields> result = testee().search(simpleQuery("Title", calendarURL))
                 .collectList().block();
 
             assertThat(result).extracting(EventFields::uid).containsExactly(eventUid);
@@ -181,7 +175,7 @@ public interface CalendarSearchServiceContract {
             .calendarURL(calendarURL)
             .build();
 
-        testee().index(accountId, CalendarEvents.of(initial)).block();
+        testee().index(CalendarEvents.of(initial)).block();
 
         EventFields updated = EventFields.builder()
             .uid(eventUid)
@@ -202,41 +196,11 @@ public interface CalendarSearchServiceContract {
             .calendarURL(calendarURL)
             .build();
 
-        testee().index(accountId, CalendarEvents.of(updated)).block();
+        testee().index(CalendarEvents.of(updated)).block();
 
-        EventSearchQuery query = simpleQuery("Updated");
-        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(accountId, query)
+        EventSearchQuery query = simpleQuery("Updated", calendarURL);
+        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(query)
             .collectList().block()).containsExactly(updated));
-    }
-
-    @Test
-    default void indexShouldNotAffectOtherAccounts() {
-        EventUid eventUid = generateEventUid();
-        EventFields event = EventFields.builder()
-            .uid(eventUid)
-            .summary("Original")
-            .calendarURL(generateCalendarURL())
-            .build();
-
-        EventFields updated = EventFields.builder()
-            .uid(eventUid)
-            .summary("Updated")
-            .calendarURL(generateCalendarURL())
-            .build();
-
-        testee().index(accountId2, CalendarEvents.of(event)).block();
-        testee().index(accountId, CalendarEvents.of(updated)).block();
-
-        CALMLY_AWAIT.untilAsserted(() -> {
-            assertThat(testee().search(accountId2, simpleQuery("Original"))
-                .collectList().block()).hasSize(1);
-            assertThat(testee().search(accountId2, simpleQuery("Updated"))
-                .collectList().block()).isEmpty();
-            assertThat(testee().search(accountId, simpleQuery("Updated"))
-                .collectList().block()).hasSize(1);
-            assertThat(testee().search(accountId, simpleQuery("Original"))
-                .collectList().block()).isEmpty();
-        });
     }
 
     @Test
@@ -261,11 +225,11 @@ public interface CalendarSearchServiceContract {
             .calendarURL(generateCalendarURL())
             .build();
 
-        indexEvents(accountId, event1);
-        indexEvents(accountId, event2);
-        indexEvents(accountId, updated2);
+        indexEvents(event1);
+        indexEvents(event2);
+        indexEvents(updated2);
 
-        List<String> results = testee().search(accountId, simpleQuery("Keep"))
+        List<String> results = testee().search(simpleQuery("Keep", event1.calendarURL()))
             .map(EventFields::summary)
             .collectList().block();
 
@@ -283,12 +247,12 @@ public interface CalendarSearchServiceContract {
         CalendarEvents calendarEvents = CalendarEvents.of(event);
 
         for (int i = 0; i < 3; i++) {
-            assertThatCode(() -> testee().index(accountId, calendarEvents).block())
+            assertThatCode(() -> testee().index(calendarEvents).block())
                 .doesNotThrowAnyException();
         }
 
         CALMLY_AWAIT.untilAsserted(() -> {
-            List<EventUid> result = testee().search(accountId, simpleQuery("Stable"))
+            List<EventUid> result = testee().search(simpleQuery("Stable", event.calendarURL()))
                 .map(EventFields::uid)
                 .collectList().block();
 
@@ -315,9 +279,9 @@ public interface CalendarSearchServiceContract {
             .isRecurrentMaster(false)
             .build();
 
-        testee().index(accountId, CalendarEvents.of(masterEvent, recurrenceEvent)).block();
+        testee().index(CalendarEvents.of(masterEvent, recurrenceEvent)).block();
 
-        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(accountId, simpleQuery("Recurrence"))
+        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(simpleQuery("Recurrence", calendarURL))
             .collectList().block()).containsExactlyInAnyOrder(masterEvent, recurrenceEvent));
     }
 
@@ -333,9 +297,9 @@ public interface CalendarSearchServiceContract {
             .isRecurrentMaster(true)
             .build();
 
-        indexEvents(accountId, masterEvent);
+        indexEvents(masterEvent);
 
-        Supplier<List<EventFields>> query = () -> testee().search(accountId, simpleQuery("Recurrence"))
+        Supplier<List<EventFields>> query = () -> testee().search(simpleQuery("Recurrence", calendarURL))
             .collectList().block();
         assertThat(query.get()).containsExactly(masterEvent);
 
@@ -346,7 +310,7 @@ public interface CalendarSearchServiceContract {
             .isRecurrentMaster(false)
             .build();
 
-        testee().index(accountId, CalendarEvents.of(masterEvent, recurrenceEvent)).block();
+        testee().index(CalendarEvents.of(masterEvent, recurrenceEvent)).block();
 
         CALMLY_AWAIT.untilAsserted(() -> assertThat(query.get())
             .containsExactlyInAnyOrder(masterEvent, recurrenceEvent));
@@ -360,39 +324,70 @@ public interface CalendarSearchServiceContract {
             .calendarURL(generateCalendarURL())
             .build();
 
-        indexEvents(accountId, event);
-        testee().delete(accountId, event.uid()).block();
+        indexEvents(event);
+        testee().delete(event.calendarURL(), event.uid()).block();
 
-        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(accountId, simpleQuery(event.summary()))
+        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(simpleQuery(event.summary(), event.calendarURL()))
             .collectList().block()).isEmpty());
     }
 
     @Test
     default void deleteShouldNotThrowWhenEventDoesNotExist() {
-        assertThatCode(() -> testee().delete(accountId, new EventUid("non-existing" + UUID.randomUUID())).block())
+        assertThatCode(() -> testee().delete(generateCalendarURL(), new EventUid("non-existing" + UUID.randomUUID())).block())
             .doesNotThrowAnyException();
     }
 
     @Test
-    default void deleteShouldNotAffectOtherAccountEvents() {
+    default void deleteShouldNotAffectOtherCalendarEvents() {
         EventFields event = EventFields.builder()
             .uid(generateEventUid())
             .summary("Team lunch")
             .calendarURL(generateCalendarURL())
             .build();
 
-        indexEvents(accountId2, event);
+        indexEvents(event);
 
-        EventSearchQuery searchQuery = simpleQuery(event.summary());
-        testee().delete(accountId, event.uid()).block();
+        EventSearchQuery searchQuery = EventSearchQuery.builder()
+            .query(event.summary())
+            .calendars(event.calendarURL())
+            .build();
+        testee().delete(generateCalendarURL(), event.uid()).block();
 
+        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(searchQuery)
+            .collectList().block()).extracting(EventFields::uid)
+            .containsExactly(event.uid()));
+    }
+
+    @Test
+    default void deleteShouldNotRemoveSameEventUidFromAnotherCalendarOfSameBaseCalendarId() {
+        // Given two calendars share the same base calendar id and contain events with the same uid.
+        OpenPaaSId baseCalendarId = new OpenPaaSId("base-id-" + UUID.randomUUID());
+        CalendarURL firstCalendarURL = new CalendarURL(baseCalendarId, new OpenPaaSId("calendar-id-1-" + UUID.randomUUID()));
+        CalendarURL secondCalendarURL = new CalendarURL(baseCalendarId, new OpenPaaSId("calendar-id-2-" + UUID.randomUUID()));
+        EventUid eventUid = generateEventUid();
+        EventFields firstCalendarEvent = EventFields.builder()
+            .uid(eventUid)
+            .summary("First same base")
+            .calendarURL(firstCalendarURL)
+            .build();
+        EventFields secondCalendarEvent = EventFields.builder()
+            .uid(eventUid)
+            .summary("Second same base")
+            .calendarURL(secondCalendarURL)
+            .build();
+
+        indexEvents(firstCalendarEvent);
+        indexEvents(secondCalendarEvent);
+
+        // When deleting the event uid from the first calendar only.
+        testee().delete(firstCalendarURL, eventUid).block();
+
+        // Then the second calendar still keeps its own event with the same uid.
         CALMLY_AWAIT.untilAsserted(() -> {
-            assertThat(testee().search(accountId, searchQuery)
+            assertThat(testee().search(simpleQuery("", firstCalendarURL))
                 .collectList().block()).isEmpty();
-
-            assertThat(testee().search(accountId2, searchQuery)
-                .collectList().block()).extracting(EventFields::uid)
-                .containsExactly(event.uid());
+            assertThat(testee().search(simpleQuery("", secondCalendarURL))
+                .collectList().block()).containsExactly(secondCalendarEvent);
         });
     }
 
@@ -410,12 +405,12 @@ public interface CalendarSearchServiceContract {
             .calendarURL(generateCalendarURL())
             .build();
 
-        indexEvents(accountId, event1);
-        indexEvents(accountId, event2);
+        indexEvents(event1);
+        indexEvents(event2);
 
-        testee().delete(accountId, event1.uid()).block();
+        testee().delete(event1.calendarURL(), event1.uid()).block();
 
-        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(accountId, simpleQuery(""))
+        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(simpleQuery("", event1.calendarURL(), event2.calendarURL()))
             .map(EventFields::uid)
             .collectList().block())
             .containsExactly(event2.uid())
@@ -446,11 +441,11 @@ public interface CalendarSearchServiceContract {
             .calendarURL(generateCalendarURL())
             .build();
 
-        testee().index(accountId, CalendarEvents.of(event)).block();
+        testee().index(CalendarEvents.of(event)).block();
 
-        EventSearchQuery query = simpleQuery("Quarterly");
+        EventSearchQuery query = simpleQuery("Quarterly", event.calendarURL());
 
-        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(accountId, query)
+        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(query)
             .collectList().block()).containsExactly(event));
     }
 
@@ -462,11 +457,11 @@ public interface CalendarSearchServiceContract {
             .calendarURL(generateCalendarURL())
             .build();
 
-        indexEvents(accountId, event);
+        indexEvents(event);
 
-        EventSearchQuery query = simpleQuery(UUID.randomUUID().toString());
+        EventSearchQuery query = simpleQuery(UUID.randomUUID().toString(), event.calendarURL());
 
-        List<EventUid> searchResults = testee().search(accountId, query)
+        List<EventUid> searchResults = testee().search(query)
             .map(EventFields::uid)
             .collectList().block();
 
@@ -556,10 +551,10 @@ public interface CalendarSearchServiceContract {
     @ParameterizedTest(name = "{index} => {1}")
     @MethodSource("eventFieldForKeywordSearchSample")
     default void searchShouldReturnExpectedEventBasedOnKeywordMatch(EventFields eventFields, String ignored) {
-        testee().index(accountId, CalendarEvents.of(eventFields)).block();
+        testee().index(CalendarEvents.of(eventFields)).block();
 
         CALMLY_AWAIT.untilAsserted(() -> {
-            List<EventFields> searchResults = testee().search(accountId, simpleQuery("Bob"))
+            List<EventFields> searchResults = testee().search(simpleQuery("Bob", eventFields.calendarURL()))
                 .collectList().block();
 
             assertThat(searchResults).hasSize(1)
@@ -568,18 +563,21 @@ public interface CalendarSearchServiceContract {
     }
 
     @Test
-    default void searchShouldReturnEmptyWhenNoMatchWithDifferentAccount() {
+    default void searchShouldReturnEmptyWhenNoMatchWithDifferentCalendar() {
         EventFields event = EventFields.builder()
             .uid(generateEventUid())
             .summary("Team lunch")
             .calendarURL(generateCalendarURL())
             .build();
 
-        indexEvents(accountId2, event);
+        indexEvents(event);
 
-        EventSearchQuery query = simpleQuery("lunch");
+        EventSearchQuery query = EventSearchQuery.builder()
+            .query("lunch")
+            .calendars(generateCalendarURL())
+            .build();
 
-        List<EventUid> searchResults = testee().search(accountId, query)
+        List<EventUid> searchResults = testee().search(query)
             .map(EventFields::uid)
             .collectList().block();
 
@@ -600,15 +598,16 @@ public interface CalendarSearchServiceContract {
             .calendarURL(generateCalendarURL())
             .build();
 
-        indexEvents(accountId, event1);
-        indexEvents(accountId, event2);
-        indexEvents(accountId2, event2);
+        indexEvents(event1);
+        indexEvents(event2);
+        indexEvents(event2);
 
         EventSearchQuery query = EventSearchQuery.builder()
             .query("")
+            .calendars(event1.calendarURL(), event2.calendarURL())
             .build();
 
-        List<EventUid> searchResults = testee().search(accountId, query)
+        List<EventUid> searchResults = testee().search(query)
             .map(EventFields::uid)
             .collectList().block();
 
@@ -628,18 +627,19 @@ public interface CalendarSearchServiceContract {
                 .calendarURL(calendarURL)
                 .start(Instant.now().plus(i, ChronoUnit.MINUTES))
                 .build())
-            .peek(event -> testee().index(accountId, CalendarEvents.of(event)).block())
+            .peek(event -> testee().index(CalendarEvents.of(event)).block())
             .toList();
 
-        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(accountId, simpleQuery("Sync")).collectList().block())
+        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(simpleQuery("Sync", calendarURL)).collectList().block())
             .hasSize(sampleSize));
 
         EventSearchQuery query = EventSearchQuery.builder()
             .query("Sync")
+            .calendars(calendarURL)
             .limit(3)
             .build();
 
-        List<EventUid> result = testee().search(accountId, query)
+        List<EventUid> result = testee().search(query)
             .map(EventFields::uid)
             .collectList().block();
 
@@ -660,20 +660,21 @@ public interface CalendarSearchServiceContract {
                 .start(now.plus(i, ChronoUnit.HOURS))
                 .calendarURL(calendarURL)
                 .build())
-            .peek(event -> testee().index(accountId, CalendarEvents.of(event)).block())
+            .peek(event -> testee().index(CalendarEvents.of(event)).block())
             .toList();
 
-        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(accountId, simpleQuery("daily"))
+        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(simpleQuery("daily", calendarURL))
             .map(EventFields::uid)
             .collectList().block()).hasSize(sampleSize));
 
         EventSearchQuery query = EventSearchQuery.builder()
             .query("daily")
+            .calendars(calendarURL)
             .limit(2)
             .offset(1)
             .build();
 
-        List<EventUid> result = testee().search(accountId, query)
+        List<EventUid> result = testee().search(query)
             .map(EventFields::uid)
             .collectList().block();
 
@@ -691,15 +692,16 @@ public interface CalendarSearchServiceContract {
             .calendarURL(generateCalendarURL())
             .build();
 
-        testee().index(accountId, CalendarEvents.of(event)).block();
+        testee().index(CalendarEvents.of(event)).block();
 
         // Offset = 10 while we only have 1 matching event
         EventSearchQuery query = EventSearchQuery.builder()
             .query("meeting")
+            .calendars(event.calendarURL())
             .offset(10)
             .build();
 
-        List<EventUid> searchResults = testee().search(accountId, query)
+        List<EventUid> searchResults = testee().search(query)
             .map(EventFields::uid)
             .collectList().block();
 
@@ -715,11 +717,11 @@ public interface CalendarSearchServiceContract {
             .calendarURL(generateCalendarURL())
             .build();
 
-        indexEvents(accountId, event);
+        indexEvents(event);
 
-        EventSearchQuery query = simpleQuery("planning");
+        EventSearchQuery query = simpleQuery("planning", event.calendarURL());
 
-        List<EventUid> searchResults = testee().search(accountId, query)
+        List<EventUid> searchResults = testee().search(query)
             .map(EventFields::uid)
             .collectList().block();
 
@@ -736,14 +738,15 @@ public interface CalendarSearchServiceContract {
             .calendarURL(generateCalendarURL())
             .build();
 
-        indexEvents(accountId, event);
+        indexEvents(event);
 
         EventSearchQuery query = EventSearchQuery.builder()
             .query("Planning")
+            .calendars(event.calendarURL())
             .attendees(new MailAddress(mail.toLowerCase(Locale.US)))
             .build();
 
-        List<EventFields> searchResults = testee().search(accountId, query)
+        List<EventFields> searchResults = testee().search(query)
             .collectList().block();
 
         assertThat(searchResults).extracting(EventFields::uid).containsExactly(event.uid());
@@ -766,15 +769,15 @@ public interface CalendarSearchServiceContract {
             .calendarURL(generateCalendarURL())
             .build();
 
-        indexEvents(accountId, event1);
-        indexEvents(accountId, event2);
+        indexEvents(event1);
+        indexEvents(event2);
 
         EventSearchQuery query = EventSearchQuery.builder()
             .query("Meeting")
             .calendars(calendarURL)
             .build();
 
-        List<EventUid> searchResults = testee().search(accountId, query)
+        List<EventUid> searchResults = testee().search(query)
             .map(EventFields::uid)
             .collectList().block();
 
@@ -805,21 +808,100 @@ public interface CalendarSearchServiceContract {
             .calendarURL(calendarURL1)
             .build();
 
-        indexEvents(accountId, event1);
-        indexEvents(accountId, event2);
-        indexEvents(accountId, event3);
+        indexEvents(event1);
+        indexEvents(event2);
+        indexEvents(event3);
 
         EventSearchQuery query = EventSearchQuery.builder()
             .query("Team")
             .calendars(calendarURL1, calendarURL2)
             .build();
 
-        List<EventUid> searchResults = testee().search(accountId, query)
+        List<EventUid> searchResults = testee().search(query)
             .map(EventFields::uid)
             .collectList().block();
 
         assertThat(searchResults).containsExactlyInAnyOrder(event1.uid(), event2.uid())
             .doesNotContain(event3.uid());
+    }
+
+    @Test
+    default void searchShouldFilterByCalendarIdWhenCalendarsShareSameBaseCalendarId() {
+        // Given two calendars share the same base calendar id and both contain matching events.
+        OpenPaaSId baseCalendarId = new OpenPaaSId("base-id-" + UUID.randomUUID());
+        CalendarURL firstCalendarURL = new CalendarURL(baseCalendarId, new OpenPaaSId("calendar-id-1-" + UUID.randomUUID()));
+        CalendarURL secondCalendarURL = new CalendarURL(baseCalendarId, new OpenPaaSId("calendar-id-2-" + UUID.randomUUID()));
+        EventFields firstCalendarEvent = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("Same base meeting first")
+            .calendarURL(firstCalendarURL)
+            .build();
+        EventFields secondCalendarEvent = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("Same base meeting second")
+            .calendarURL(secondCalendarURL)
+            .build();
+
+        indexEvents(firstCalendarEvent);
+        indexEvents(secondCalendarEvent);
+
+        // When searching only the first calendar.
+        EventSearchQuery query = EventSearchQuery.builder()
+            .query("Same base meeting")
+            .calendars(firstCalendarURL)
+            .build();
+
+        List<EventFields> searchResults = testee().search(query)
+            .collectList().block();
+
+        // Then events from the second calendar are not returned.
+        assertThat(searchResults).containsExactly(firstCalendarEvent);
+    }
+
+    @Test
+    default void searchShouldReturnEmptyWhenCalendarListIsEmpty() {
+        EventFields event = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("Meeting A")
+            .calendarURL(generateCalendarURL())
+            .build();
+
+        indexEvents(event);
+
+        EventSearchQuery query = EventSearchQuery.builder()
+            .query("Meeting")
+            .calendars(List.of())
+            .build();
+
+        List<EventFields> searchResults = testee().search(query)
+            .collectList().block();
+
+        assertThat(searchResults).isEmpty();
+    }
+
+    @Test
+    default void searchShouldRejectTooManyCalendars() {
+        List<CalendarURL> calendarURLs = IntStream.rangeClosed(0, MAX_LIMIT)
+            .mapToObj(ignored -> generateCalendarURL())
+            .toList();
+
+        EventSearchQuery query = EventSearchQuery.builder()
+            .query("Meeting")
+            .calendars(calendarURLs)
+            .build();
+
+        assertThatThrownBy(() -> testee().search(query).collectList().block())
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    default void searchShouldRejectWhenCalendarsAreNotProvided() {
+        EventSearchQuery query = EventSearchQuery.builder()
+            .query("Meeting")
+            .build();
+
+        assertThatThrownBy(() -> testee().search(query).collectList().block())
+            .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -842,15 +924,16 @@ public interface CalendarSearchServiceContract {
             .calendarURL(calendarURL)
             .build();
 
-        indexEvents(accountId, event1);
-        indexEvents(accountId, event2);
+        indexEvents(event1);
+        indexEvents(event2);
 
         EventSearchQuery query = EventSearchQuery.builder()
             .query("Team")
+            .calendars(calendarURL)
             .organizers(organizer1.email())
             .build();
 
-        List<EventUid> searchResults = testee().search(accountId, query)
+        List<EventUid> searchResults = testee().search(query)
             .map(EventFields::uid)
             .collectList().block();
 
@@ -885,19 +968,20 @@ public interface CalendarSearchServiceContract {
             .calendarURL(generateCalendarURL())
             .build();
 
-        indexEvents(accountId, event1);
-        indexEvents(accountId, event2);
-        indexEvents(accountId, event3);
+        indexEvents(event1);
+        indexEvents(event2);
+        indexEvents(event3);
 
         EventSearchQuery query = EventSearchQuery.builder()
             .query("Event")
+            .calendars(event1.calendarURL(), event2.calendarURL(), event3.calendarURL())
             .organizers(
                 new MailAddress("alice@domain.tld"),
                 new MailAddress("bob@domain.tld"))
             .build();
 
         CALMLY_AWAIT.untilAsserted(() -> {
-            List<EventUid> result = testee().search(accountId, query)
+            List<EventUid> result = testee().search(query)
                 .map(EventFields::uid)
                 .collectList().block();
 
@@ -939,19 +1023,20 @@ public interface CalendarSearchServiceContract {
             .calendarURL(generateCalendarURL())
             .build();
 
-        indexEvents(accountId, event1);
-        indexEvents(accountId, event2);
-        indexEvents(accountId, event3);
+        indexEvents(event1);
+        indexEvents(event2);
+        indexEvents(event3);
 
         EventSearchQuery query = EventSearchQuery.builder()
             .query("Mix")
+            .calendars(event1.calendarURL(), event2.calendarURL(), event3.calendarURL())
             .organizers(new MailAddress("alice@domain.tld"))
             .attendees(
                 new MailAddress("charlie@domain.tld"),
                 new MailAddress("dave@domain.tld"))
             .build();
 
-        List<EventUid> result = testee().search(accountId, query)
+        List<EventUid> result = testee().search(query)
             .map(EventFields::uid)
             .collectList().block();
 
@@ -987,13 +1072,14 @@ public interface CalendarSearchServiceContract {
             .calendarURL(generateCalendarURL())
             .build();
 
-        indexEvents(accountId, event1);
-        indexEvents(accountId, event2);
-        indexEvents(accountId, event3);
+        indexEvents(event1);
+        indexEvents(event2);
+        indexEvents(event3);
 
         CALMLY_AWAIT.untilAsserted(() -> {
-            List<EventUid> searchSingleResults = testee().search(accountId, EventSearchQuery.builder()
+            List<EventUid> searchSingleResults = testee().search(EventSearchQuery.builder()
                     .query("Sync")
+                    .calendars(event1.calendarURL(), event2.calendarURL(), event3.calendarURL())
                     .attendees(attendee2.email())
                     .build())
                 .map(EventFields::uid)
@@ -1001,8 +1087,9 @@ public interface CalendarSearchServiceContract {
 
             assertThat(searchSingleResults).containsExactly(event2.uid());
 
-            List<EventUid> searchMultipleResults = testee().search(accountId, EventSearchQuery.builder()
+            List<EventUid> searchMultipleResults = testee().search(EventSearchQuery.builder()
                     .query("Sync")
+                    .calendars(event1.calendarURL(), event2.calendarURL(), event3.calendarURL())
                     .attendees(attendee2.email(), attendee1.email())
                     .build())
                 .map(EventFields::uid)
@@ -1024,14 +1111,14 @@ public interface CalendarSearchServiceContract {
             .calendarURL(calendarURL1)
             .build();
 
-        testee().index(accountId, CalendarEvents.of(event)).block();
+        testee().index(CalendarEvents.of(event)).block();
 
         EventSearchQuery query = EventSearchQuery.builder()
             .query("Sync")
             .calendars(calendarURL2)
             .build();
 
-        List<EventUid> searchResults = testee().search(accountId, query)
+        List<EventUid> searchResults = testee().search(query)
             .map(EventFields::uid)
             .collectList().block();
 
@@ -1048,7 +1135,7 @@ public interface CalendarSearchServiceContract {
             .calendarURL(generateCalendarURL())
             .build();
 
-        testee().index(accountId, CalendarEvents.of(event)).block();
+        testee().index(CalendarEvents.of(event)).block();
 
         EventSearchQuery query = EventSearchQuery.builder()
             .query("Planning")
@@ -1057,7 +1144,7 @@ public interface CalendarSearchServiceContract {
             .calendars(new CalendarURL(new OpenPaaSId("x"), new OpenPaaSId("y")))
             .build();
 
-        List<EventUid> result = testee().search(accountId, query)
+        List<EventUid> result = testee().search(query)
             .map(EventFields::uid)
             .collectList().block();
 
@@ -1085,17 +1172,18 @@ public interface CalendarSearchServiceContract {
             .calendarURL(generateCalendarURL())
             .build();
 
-        indexEvents(accountId, event1);
-        indexEvents(accountId, event2);
+        indexEvents(event1);
+        indexEvents(event2);
 
         EventSearchQuery query = EventSearchQuery.builder()
             .query("Weekly")
+            .calendars(event1.calendarURL(), event2.calendarURL())
             .organizers(new MailAddress("alice@domain.tld"))
             .attendees(new MailAddress("bob@domain.tld"))
             .build();
 
         CALMLY_AWAIT.untilAsserted(() ->
-            assertThat(testee().search(accountId, query)
+            assertThat(testee().search(query)
                 .map(EventFields::uid)
                 .collectList().block()).containsExactly(event1.uid())
                 .doesNotContain(event2.uid()));
@@ -1113,11 +1201,11 @@ public interface CalendarSearchServiceContract {
             .calendarURL(generateCalendarURL())
             .build();
 
-        testee().index(accountId, CalendarEvents.of(event)).block();
+        testee().index(CalendarEvents.of(event)).block();
 
-        EventSearchQuery query = simpleQuery("Bob");
+        EventSearchQuery query = simpleQuery("Bob", event.calendarURL());
 
-        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(accountId, query)
+        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(query)
             .map(EventFields::uid)
             .collectList().block())
             .containsExactly(event.uid()));
@@ -1134,11 +1222,11 @@ public interface CalendarSearchServiceContract {
             .calendarURL(generateCalendarURL())
             .build();
 
-        testee().index(accountId, CalendarEvents.of(event)).block();
+        testee().index(CalendarEvents.of(event)).block();
 
-        EventSearchQuery query = simpleQuery("bob.smith@domain.tld");
+        EventSearchQuery query = simpleQuery("bob.smith@domain.tld", event.calendarURL());
 
-        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(accountId, query)
+        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(query)
             .map(EventFields::uid)
             .collectList().block())
             .containsExactly(event.uid()));
@@ -1157,36 +1245,37 @@ public interface CalendarSearchServiceContract {
             .build();
 
         assertThatCode(() -> {
-            testee().index(accountId, CalendarEvents.of(event)).block();
-            testee().search(accountId, simpleQuery("Planning")).collectList().block();
+            testee().index(CalendarEvents.of(event)).block();
+            testee().search(simpleQuery("Planning", event.calendarURL())).collectList().block();
         }).doesNotThrowAnyException();
     }
 
     @Test
-    default void deleteAllShouldRemoveAllEventsForAccount() {
+    default void deleteAllShouldRemoveAllEventsForBaseCalendarId() {
+        OpenPaaSId baseCalendarId = new OpenPaaSId("base-id-" + UUID.randomUUID());
         EventFields event1 = EventFields.builder()
             .uid(generateEventUid())
             .summary("Event1")
-            .calendarURL(generateCalendarURL())
+            .calendarURL(new CalendarURL(baseCalendarId, new OpenPaaSId("calendar-id-" + UUID.randomUUID())))
             .build();
 
         EventFields event2 = EventFields.builder()
             .uid(generateEventUid())
             .summary("Event2")
-            .calendarURL(generateCalendarURL())
+            .calendarURL(new CalendarURL(baseCalendarId, new OpenPaaSId("calendar-id-" + UUID.randomUUID())))
             .build();
 
-        indexEvents(accountId, event1);
-        indexEvents(accountId, event2);
+        indexEvents(event1);
+        indexEvents(event2);
 
-        testee().deleteAll(accountId).block();
+        testee().deleteAll(baseCalendarId).block();
 
-        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(accountId, simpleQuery(""))
+        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(simpleQuery("", event1.calendarURL(), event2.calendarURL()))
             .collectList().block()).isEmpty());
     }
 
     @Test
-    default void deleteAllShouldNotAffectOtherAccounts() {
+    default void deleteAllShouldNotAffectOtherBaseCalendarIds() {
         EventFields event1 = EventFields.builder()
             .uid(generateEventUid())
             .summary("Event1")
@@ -1199,14 +1288,20 @@ public interface CalendarSearchServiceContract {
             .calendarURL(generateCalendarURL())
             .build();
 
-        indexEvents(accountId, event1);
-        indexEvents(accountId2, event2);
+        indexEvents(event1);
+        indexEvents(event2);
 
-        testee().deleteAll(accountId).block();
+        testee().deleteAll(event1.calendarURL().base()).block();
 
         CALMLY_AWAIT.untilAsserted(() -> {
-            assertThat(testee().search(accountId, simpleQuery("")).collectList().block()).isEmpty();
-            assertThat(testee().search(accountId2, simpleQuery("")).collectList().block())
+            assertThat(testee().search(EventSearchQuery.builder()
+                    .query("")
+                    .calendars(event1.calendarURL())
+                    .build()).collectList().block()).isEmpty();
+            assertThat(testee().search(EventSearchQuery.builder()
+                    .query("")
+                    .calendars(event2.calendarURL())
+                    .build()).collectList().block())
                 .extracting(EventFields::uid).containsExactly(event2.uid());
         });
     }
@@ -1230,15 +1325,15 @@ public interface CalendarSearchServiceContract {
             .calendarURL(url)
             .build();
 
-        indexEvents(accountId, v1);
-        testee().index(accountId, CalendarEvents.of(v2)).block();
+        indexEvents(v1);
+        testee().index(CalendarEvents.of(v2)).block();
 
         CALMLY_AWAIT.untilAsserted(() ->
-            assertThat(testee().search(accountId, simpleQuery("v2"))
+            assertThat(testee().search(simpleQuery("v2", url))
                 .collectList().block())
                 .containsExactly(v2));
 
-        assertThat(testee().search(accountId, simpleQuery("v1"))
+        assertThat(testee().search(simpleQuery("v1", url))
             .collectList().block()).isEmpty();
     }
 
@@ -1253,7 +1348,7 @@ public interface CalendarSearchServiceContract {
             .summary("v2")
             .calendarURL(url)
             .build();
-        indexEvents(accountId, v2);
+        indexEvents(v2);
 
         EventFields v1 = EventFields.builder()
             .uid(uid)
@@ -1261,10 +1356,10 @@ public interface CalendarSearchServiceContract {
             .summary("v1")
             .calendarURL(url)
             .build();
-        testee().index(accountId, CalendarEvents.of(v1)).block();
+        testee().index(CalendarEvents.of(v1)).block();
 
         CALMLY_AWAIT.untilAsserted(() ->
-            assertThat(testee().search(accountId, simpleQuery("v2"))
+            assertThat(testee().search(simpleQuery("v2", url))
                 .collectList().block())
                 .containsExactly(v2));
     }
@@ -1288,15 +1383,15 @@ public interface CalendarSearchServiceContract {
             .calendarURL(url)
             .build();
 
-        indexEvents(accountId, v1);
-        testee().index(accountId, CalendarEvents.of(sameSeq)).block();
+        indexEvents(v1);
+        testee().index(CalendarEvents.of(sameSeq)).block();
 
         CALMLY_AWAIT.untilAsserted(() ->
-            assertThat(testee().search(accountId, simpleQuery("original"))
+            assertThat(testee().search(simpleQuery("original", url))
                 .collectList().block())
                 .containsExactly(v1));
 
-        assertThat(testee().search(accountId, simpleQuery("ignored"))
+        assertThat(testee().search(simpleQuery("ignored", url))
             .collectList().block()).isEmpty();
     }
 
@@ -1310,7 +1405,7 @@ public interface CalendarSearchServiceContract {
             .summary("noSeq")
             .calendarURL(url)
             .build();
-        indexEvents(accountId, noSeq);
+        indexEvents(noSeq);
 
         EventFields newSeq = EventFields.builder()
             .uid(uid)
@@ -1318,14 +1413,14 @@ public interface CalendarSearchServiceContract {
             .summary("withSeq")
             .calendarURL(url)
             .build();
-        testee().index(accountId, CalendarEvents.of(newSeq)).block();
+        testee().index(CalendarEvents.of(newSeq)).block();
 
         CALMLY_AWAIT.untilAsserted(() ->
-            assertThat(testee().search(accountId, simpleQuery("withSeq"))
+            assertThat(testee().search(simpleQuery("withSeq", url))
                 .collectList().block())
                 .containsExactly(newSeq));
 
-        assertThat(testee().search(accountId, simpleQuery("noSeq"))
+        assertThat(testee().search(simpleQuery("noSeq", url))
             .collectList().block()).isEmpty();
     }
 
@@ -1348,15 +1443,15 @@ public interface CalendarSearchServiceContract {
             .calendarURL(url)
             .build();
 
-        indexEvents(accountId, small);
-        testee().index(accountId, CalendarEvents.of(big)).block();
+        indexEvents(small);
+        testee().index(CalendarEvents.of(big)).block();
 
         CALMLY_AWAIT.untilAsserted(() ->
-            assertThat(testee().search(accountId, simpleQuery("new"))
+            assertThat(testee().search(simpleQuery("new", url))
                 .collectList().block())
                 .containsExactly(big));
 
-        assertThat(testee().search(accountId, simpleQuery("old"))
+        assertThat(testee().search(simpleQuery("old", url))
             .collectList().block()).isEmpty();
     }
 
@@ -1389,11 +1484,11 @@ public interface CalendarSearchServiceContract {
             .calendarURL(url)
             .build();
 
-        testee().index(accountId, CalendarEvents.of(masterV1, recurrence)).block();
-        testee().index(accountId, CalendarEvents.of(masterV2, recurrence)).block();
+        testee().index(CalendarEvents.of(masterV1, recurrence)).block();
+        testee().index(CalendarEvents.of(masterV2, recurrence)).block();
 
         CALMLY_AWAIT.untilAsserted(() -> {
-            List<EventFields> results = testee().search(accountId, simpleQuery(""))
+            List<EventFields> results = testee().search(simpleQuery("", url))
                 .collectList().block();
 
             assertThat(results).extracting(EventFields::summary)
@@ -1422,11 +1517,11 @@ public interface CalendarSearchServiceContract {
             .calendarURL(url)
             .build();
 
-        indexEvents(accountId, v1);
-        testee().index(accountId, CalendarEvents.of(v2)).block();
+        indexEvents(v1);
+        testee().index(CalendarEvents.of(v2)).block();
 
         CALMLY_AWAIT.untilAsserted(() -> {
-            List<EventFields> result = testee().search(accountId, simpleQuery("new"))
+            List<EventFields> result = testee().search(simpleQuery("new", url))
                 .collectList().block();
 
             assertThat(result).hasSize(1);
@@ -1453,11 +1548,11 @@ public interface CalendarSearchServiceContract {
             .calendarURL(url)
             .build();
 
-        indexEvents(accountId, v1);
-        testee().index(accountId, CalendarEvents.of(v2)).block();
+        indexEvents(v1);
+        testee().index(CalendarEvents.of(v2)).block();
 
         CALMLY_AWAIT.untilAsserted(() ->
-            assertThat(testee().search(accountId, simpleQuery("beta"))
+            assertThat(testee().search(simpleQuery("beta", url))
                 .collectList().block())
                 .containsExactly(v2));
     }
@@ -1482,17 +1577,17 @@ public interface CalendarSearchServiceContract {
             .build();
 
         // index initial high sequence
-        indexEvents(accountId, oldSeq);
+        indexEvents(oldSeq);
 
         // reindex with lower sequence => MUST override
-        testee().reindex(accountId, CalendarEvents.of(newSeq)).block();
+        testee().reindex(CalendarEvents.of(newSeq)).block();
 
         CALMLY_AWAIT.untilAsserted(() ->
-            assertThat(testee().search(accountId, simpleQuery("new"))
+            assertThat(testee().search(simpleQuery("new", url))
                 .collectList().block())
                 .containsExactly(newSeq));
 
-        assertThat(testee().search(accountId, simpleQuery("old"))
+        assertThat(testee().search(simpleQuery("old", url))
             .collectList().block())
             .isEmpty();
     }
@@ -1519,13 +1614,13 @@ public interface CalendarSearchServiceContract {
             .build();
 
         // index high sequence
-        indexEvents(accountId, masterHigh);
+        indexEvents(masterHigh);
 
         // reindex lower => MUST replace
-        testee().reindex(accountId, CalendarEvents.of(masterLow)).block();
+        testee().reindex(CalendarEvents.of(masterLow)).block();
 
         CALMLY_AWAIT.untilAsserted(() -> {
-            List<EventFields> results = testee().search(accountId, simpleQuery(""))
+            List<EventFields> results = testee().search(simpleQuery("", url))
                 .collectList().block();
 
             assertThat(results)
@@ -1535,44 +1630,38 @@ public interface CalendarSearchServiceContract {
     }
 
     @Test
-    default void reindexShouldNotAffectOtherAccounts() {
-        CalendarURL url = generateCalendarURL();
-
-        EventUid uid1 = generateEventUid();
-        EventFields eventAcc1 = EventFields.builder()
-            .uid(uid1)
-            .summary("acc1")
-            .calendarURL(url)
+    default void reindexShouldNotAffectSameEventUidInOtherCalendar() {
+        EventUid uid = generateEventUid();
+        CalendarURL firstCalendarURL = generateCalendarURL();
+        CalendarURL secondCalendarURL = generateCalendarURL();
+        EventFields firstCalendarEvent = EventFields.builder()
+            .uid(uid)
+            .summary("first-calendar")
+            .calendarURL(firstCalendarURL)
             .build();
 
-        EventFields eventAcc2 = EventFields.builder()
-            .uid(generateEventUid())
-            .summary("acc2")
-            .calendarURL(url)
+        EventFields secondCalendarEvent = EventFields.builder()
+            .uid(uid)
+            .summary("second-calendar")
+            .calendarURL(secondCalendarURL)
             .build();
 
-        indexEvents(accountId, eventAcc1);
-        indexEvents(accountId2, eventAcc2);
+        indexEvents(firstCalendarEvent);
+        indexEvents(secondCalendarEvent);
 
-        EventFields newAcc1 = EventFields.builder()
-            .uid(uid1)
-            .summary("new-acc1")
-            .calendarURL(url)
+        EventFields updatedFirstCalendarEvent = EventFields.builder()
+            .uid(uid)
+            .summary("updated-first-calendar")
+            .calendarURL(firstCalendarURL)
             .build();
 
-        testee().reindex(accountId, CalendarEvents.of(newAcc1)).block();
+        testee().reindex(CalendarEvents.of(updatedFirstCalendarEvent)).block();
 
         CALMLY_AWAIT.untilAsserted(() -> {
-            // account1 must see only new event
-            assertThat(testee().search(accountId, simpleQuery(""))
-                .collectList().block())
-                .containsExactly(newAcc1);
-
-            // account2 must remain unchanged
-            assertThat(testee().search(accountId2, simpleQuery(""))
-                .collectList().block())
-                .extracting(EventFields::summary)
-                .containsExactly("acc2");
+            assertThat(testee().search(simpleQuery("", firstCalendarURL))
+                .collectList().block()).containsExactly(updatedFirstCalendarEvent);
+            assertThat(testee().search(simpleQuery("", secondCalendarURL))
+                .collectList().block()).containsExactly(secondCalendarEvent);
         });
     }
 
@@ -1590,7 +1679,7 @@ public interface CalendarSearchServiceContract {
             .build();
 
         // index initial
-        testee().index(accountId, CalendarEvents.of(v1)).block();
+        testee().index(CalendarEvents.of(v1)).block();
 
         EventFields v2 = EventFields.builder()
             .uid(uid)
@@ -1601,10 +1690,10 @@ public interface CalendarSearchServiceContract {
             .build();
 
         // update with new DTSTART
-        testee().index(accountId, CalendarEvents.of(v2)).block();
+        testee().index(CalendarEvents.of(v2)).block();
 
         CALMLY_AWAIT.untilAsserted(() -> {
-            List<EventFields> results = testee().search(accountId, simpleQuery("single"))
+            List<EventFields> results = testee().search(simpleQuery("single", url))
                 .collectList().block();
 
             assertThat(results)
@@ -1638,7 +1727,7 @@ public interface CalendarSearchServiceContract {
             .build();
 
         // index initial recurrence
-        testee().index(accountId, CalendarEvents.of(master, instanceV1)).block();
+        testee().index(CalendarEvents.of(master, instanceV1)).block();
 
         EventFields instanceV2 = EventFields.builder()
             .uid(uid)
@@ -1651,10 +1740,10 @@ public interface CalendarSearchServiceContract {
             .build();
 
         // update instance
-        testee().index(accountId, CalendarEvents.of(master, instanceV2)).block();
+        testee().index(CalendarEvents.of(master, instanceV2)).block();
 
         CALMLY_AWAIT.untilAsserted(() -> {
-            List<EventFields> results = testee().search(accountId, simpleQuery("recur"))
+            List<EventFields> results = testee().search(simpleQuery("recur", url))
                 .collectList().block();
 
             assertThat(results)
@@ -1663,16 +1752,110 @@ public interface CalendarSearchServiceContract {
         });
     }
 
-    // private helper
-    private void indexEvents(AccountId accountId, EventFields events) {
-        testee().index(accountId, CalendarEvents.of(events)).block();
+    @Test
+    default void indexShouldNotAffectSameEventUidInOtherCalendar() {
+        EventUid eventUid = generateEventUid();
+        CalendarURL firstCalendarURL = generateCalendarURL();
+        CalendarURL secondCalendarURL = generateCalendarURL();
+        EventFields event = EventFields.builder()
+            .uid(eventUid)
+            .summary("Original")
+            .calendarURL(firstCalendarURL)
+            .build();
 
-        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(accountId, simpleQuery(events.summary())).collectList().block())
+        EventFields updated = EventFields.builder()
+            .uid(eventUid)
+            .summary("Updated")
+            .calendarURL(secondCalendarURL)
+            .build();
+
+        testee().index(CalendarEvents.of(event)).block();
+        testee().index(CalendarEvents.of(updated)).block();
+
+        CALMLY_AWAIT.untilAsserted(() -> {
+            assertThat(testee().search(EventSearchQuery.builder()
+                    .query("Original")
+                    .calendars(firstCalendarURL)
+                    .build())
+                .collectList().block()).containsExactly(event);
+            assertThat(testee().search(EventSearchQuery.builder()
+                    .query("Updated")
+                    .calendars(firstCalendarURL)
+                    .build())
+                .collectList().block()).isEmpty();
+            assertThat(testee().search(EventSearchQuery.builder()
+                    .query("Updated")
+                    .calendars(secondCalendarURL)
+                    .build())
+                .collectList().block()).containsExactly(updated);
+            assertThat(testee().search(EventSearchQuery.builder()
+                    .query("Original")
+                    .calendars(secondCalendarURL)
+                    .build())
+                .collectList().block()).isEmpty();
+        });
+    }
+
+    @Test
+    default void indexShouldNotAffectSameEventUidInAnotherCalendarOfSameBaseCalendarId() {
+        // Given two calendars share the same base calendar id and use the same event uid.
+        OpenPaaSId baseCalendarId = new OpenPaaSId("base-id-" + UUID.randomUUID());
+        CalendarURL firstCalendarURL = new CalendarURL(baseCalendarId, new OpenPaaSId("calendar-id-1-" + UUID.randomUUID()));
+        CalendarURL secondCalendarURL = new CalendarURL(baseCalendarId, new OpenPaaSId("calendar-id-2-" + UUID.randomUUID()));
+        EventUid eventUid = generateEventUid();
+        EventFields firstCalendarEvent = EventFields.builder()
+            .uid(eventUid)
+            .summary("alphaoriginal")
+            .calendarURL(firstCalendarURL)
+            .build();
+        EventFields secondCalendarEvent = EventFields.builder()
+            .uid(eventUid)
+            .summary("betaupdated")
+            .calendarURL(secondCalendarURL)
+            .build();
+
+        // When indexing both events.
+        testee().index(CalendarEvents.of(firstCalendarEvent)).block();
+        testee().index(CalendarEvents.of(secondCalendarEvent)).block();
+
+        // Then each calendar keeps its own indexed event and does not expose the other one.
+        CALMLY_AWAIT.untilAsserted(() -> {
+            assertThat(testee().search(EventSearchQuery.builder()
+                    .query("alphaoriginal")
+                    .calendars(firstCalendarURL)
+                    .build())
+                .collectList().block()).containsExactly(firstCalendarEvent);
+            assertThat(testee().search(EventSearchQuery.builder()
+                    .query("betaupdated")
+                    .calendars(firstCalendarURL)
+                    .build())
+                .collectList().block()).isEmpty();
+            assertThat(testee().search(EventSearchQuery.builder()
+                    .query("betaupdated")
+                    .calendars(secondCalendarURL)
+                    .build())
+                .collectList().block()).containsExactly(secondCalendarEvent);
+            assertThat(testee().search(EventSearchQuery.builder()
+                    .query("alphaoriginal")
+                    .calendars(secondCalendarURL)
+                    .build())
+                .collectList().block()).isEmpty();
+        });
+    }
+
+    private void indexEvents(EventFields events) {
+        testee().index(CalendarEvents.of(events)).block();
+
+        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(simpleQuery(events.summary(), events.calendarURL()))
+            .collectList().block())
             .isNotEmpty());
     }
 
-    default EventSearchQuery simpleQuery(String query) {
-        return new EventSearchQuery(query, Optional.empty(),
+    default EventSearchQuery simpleQuery(String query, CalendarURL calendarURL, CalendarURL... otherCalendarURLs) {
+        List<CalendarURL> calendarURLs = Stream.concat(Stream.of(calendarURL), Stream.of(otherCalendarURLs))
+            .toList();
+
+        return new EventSearchQuery(query, Optional.of(calendarURLs),
             Optional.empty(), Optional.empty(),
             MAX_LIMIT, 0);
     }

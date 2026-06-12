@@ -24,14 +24,12 @@ import java.util.Optional;
 
 import jakarta.mail.internet.AddressException;
 
-import org.apache.james.vacation.api.AccountId;
-
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.opensearch.CalendarEventIndexMappingFactory.CalendarFields;
 
-public record CalendarEventsDocument(@JsonProperty(CalendarFields.ACCOUNT_ID) String accountId,
+public record CalendarEventsDocument(@JsonProperty(CalendarFields.BASE_CALENDAR_ID) String baseCalendarId,
                                      @JsonProperty(CalendarFields.EVENT_UID) String eventUid,
                                      @JsonProperty(CalendarFields.SUMMARY) String summary,
                                      @JsonProperty(CalendarFields.LOCATION) String location,
@@ -74,9 +72,9 @@ public record CalendarEventsDocument(@JsonProperty(CalendarFields.ACCOUNT_ID) St
         }
     }
 
-    public static CalendarEventsDocument fromEventFields(AccountId accountId, EventFields eventFields) {
+    public static CalendarEventsDocument fromEventFields(EventFields eventFields) {
         return new CalendarEventsDocument(
-            accountId.getIdentifier(),
+            eventFields.calendarURL().base().value(),
             eventFields.uid().value(),
             eventFields.summary(),
             eventFields.location(),
