@@ -2,7 +2,58 @@
 
 This document describes breaking changes and migration steps required when upgrading to newer versions of Twake Calendar.
 
-## 2.2.0 (upcoming)
+## 2.4.0 (upcoming)
+
+### Rebuilt calendar event search index around source calendars
+
+Date: 12/06/2026
+
+Calendar event search indexing now uses the event source calendar as the indexing scope instead of the
+OpenPaaS account. This allows searching events from personal calendars, subscribed calendars, delegated
+calendars and resource calendars through their resolved source `CalendarURL`.
+
+The OpenSearch document identity and routing changed accordingly:
+
+- old document IDs were based on `accountId`;
+- new document IDs are based on `baseCalendarId`;
+- new documents store and query `baseCalendarId` instead of `accountId`;
+- full reindexing now covers both user calendars and resource calendars.
+
+#### Breaking Change
+
+Existing OpenSearch documents are not compatible with the new indexer. They still contain `accountId`,
+use old document IDs, and do not contain `baseCalendarId`. Reusing the existing calendar event index can
+lead to stale or duplicated search results.
+
+#### Required Actions
+
+Before deploying the upgraded calendar-side-service, configure a new calendar event index and new aliases
+in `opensearch.properties` to avoid conflicts with the old index:
+
+```properties
+opensearch.index.calendar.events.name=calendar-events-v2
+opensearch.alias.read.calendar.events.name=calendar-events-v2-read
+opensearch.alias.write.calendar.events.name=calendar-events-v2-write
+```
+
+Use values different from the previous ones.
+
+After deploying the upgraded service with the new OpenSearch settings and confirming it starts without
+OpenSearch index or alias errors, run a full reindex so that user calendar events and resource calendar
+events are indexed into the new index:
+
+```
+POST {webadminBaseURL}/calendars?task=reindex
+```
+
+After reindexing, verify that event search works with the new index. Then delete the old calendar event
+index only after confirming no calendar-side-service instance still uses the old aliases:
+
+```bash
+DELETE /calendar-events
+```
+
+## 2.2.0
 
 ### Removed obsolete search queues
 
