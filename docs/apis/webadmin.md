@@ -704,7 +704,7 @@ PUT /domains/{domain}/settings
 }
 ```
 
-All four fields are required. A `null` value clears the setting for that field, causing it to fall back to the system default.
+All fields are required. A `null` value clears the setting for that field, causing it to fall back to the system default.
 
 **Status codes**:
 - `204`: settings saved

@@ -705,7 +705,7 @@ Deprecated in favor of `POST /api/import`, kept for OpenPaaS backward compatibil
 
 ### GET /api/domain/settings
 
-Retrieve settings of the domain which the authenticated user belongs to.
+Retrieve the effective (resolved) settings of the domain which the authenticated user belongs to. All fields always have a value — unset domain settings fall back to configuration file defaults, then system defaults.
 
 ```
 GET /api/domain/settings
@@ -713,10 +713,21 @@ GET /api/domain/settings
 
 Will return:
 
-```
+```json
 {
   "userSearchMode": "limited",
   "resourceSearchEnabled": false,
-  "defaultCalendarPublicVisibility": "read"
-} 
+  "defaultCalendarPublicVisibility": "read",
+  "calendarPublicVisibilitySettingEnabled": true
+}
 ```
+
+**Field values**:
+- `userSearchMode`: `"enabled"` | `"limited"` | `"disabled"`
+- `resourceSearchEnabled`: `true` | `false`
+- `defaultCalendarPublicVisibility`: `"read"` | `"private"`
+- `calendarPublicVisibilitySettingEnabled`: `true` | `false`
+
+**Status codes**:
+- `200`: settings returned
+- `401`: unauthenticated
