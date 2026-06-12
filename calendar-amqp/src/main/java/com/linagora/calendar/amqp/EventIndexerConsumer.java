@@ -27,31 +27,26 @@ import java.io.Closeable;
 import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
-import org.apache.commons.lang3.BooleanUtils;
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.ReceiverProvider;
 import org.apache.james.lifecycle.api.Startable;
 import org.apache.james.metrics.api.MetricFactory;
 import org.apache.james.util.ReactorUtils;
-import org.apache.james.vacation.api.AccountId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.inject.name.Named;
-import com.linagora.calendar.storage.OpenPaaSId;
-import com.linagora.calendar.storage.OpenPaaSUserDAO;
-import com.linagora.calendar.storage.ResourceDAO;
 import com.linagora.calendar.storage.eventsearch.CalendarEvents;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
 import com.linagora.calendar.storage.exception.CalendarSearchIndexingException;
-import com.linagora.calendar.storage.model.ResourceId;
 import com.rabbitmq.client.BuiltinExchangeType;
 
 import reactor.core.Disposable;
@@ -67,7 +62,6 @@ import reactor.rabbitmq.Receiver;
 import reactor.rabbitmq.Sender;
 
 public class EventIndexerConsumer implements Closeable, Startable {
-    private static final boolean IGNORE_EVENT_IF_USER_NOT_FOUND = BooleanUtils.toBoolean(System.getProperty("calendar.event.consumer.ignoreIfUserNotFound", "false"));
     private static final Logger LOGGER = LoggerFactory.getLogger(EventIndexerConsumer.class);
     private static final boolean REQUEUE_ON_NACK = true;
 
@@ -103,8 +97,6 @@ public class EventIndexerConsumer implements Closeable, Startable {
     private final ReceiverProvider receiverProvider;
     private final Consumer<Queue> declareExchangeAndQueue;
     private final CalendarSearchService calendarSearchService;
-    private final OpenPaaSUserDAO openPaaSUserDAO;
-    private final ResourceDAO resourceDAO;
     private final MetricFactory metricFactory;
     private final Map<Queue, Disposable> consumeDisposableMap;
 
@@ -112,13 +104,10 @@ public class EventIndexerConsumer implements Closeable, Startable {
     @Singleton
     public EventIndexerConsumer(ReactorRabbitMQChannelPool channelPool,
                                 CalendarSearchService calendarSearchService,
-                                OpenPaaSUserDAO openPaaSUserDAO,
-                                @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier, ResourceDAO resourceDAO,
+                                @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier,
                                 MetricFactory metricFactory) {
         this.receiverProvider = channelPool::createReceiver;
         this.calendarSearchService = calendarSearchService;
-        this.openPaaSUserDAO = openPaaSUserDAO;
-        this.resourceDAO = resourceDAO;
         this.metricFactory = metricFactory;
 
         Sender sender = channelPool.getSender();
@@ -181,16 +170,16 @@ public class EventIndexerConsumer implements Closeable, Startable {
     }
 
     public interface CalendarEventHandler {
-        Mono<?> handle(AccountId ownerAccountId, CalendarEventMessage calendarEventMessage);
+        Mono<?> handle(CalendarEventMessage calendarEventMessage);
 
         Mono<CalendarEventMessage> deserialize(byte[] messagesAsBytes);
     }
 
     private final CalendarEventHandler handlerAdd = new CalendarEventHandler() {
         @Override
-        public Mono<?> handle(AccountId ownerAccountId, CalendarEventMessage calendarEventMessage) {
+        public Mono<?> handle(CalendarEventMessage calendarEventMessage) {
             return Mono.fromCallable(calendarEventMessage::extractCalendarEvents)
-                .flatMap(calendarEvents -> calendarSearchService.index(ownerAccountId, calendarEvents))
+                .flatMap(calendarSearchService::index)
                 .then();
         }
 
@@ -203,29 +192,36 @@ public class EventIndexerConsumer implements Closeable, Startable {
     private final CalendarEventHandler handlerAddOrUpdate = new CalendarEventHandler() {
 
         @Override
-        public Mono<?> handle(AccountId ownerAccountId, CalendarEventMessage calendarEventMessage) {
+        public Mono<?> handle(CalendarEventMessage calendarEventMessage) {
             return Mono.fromCallable(calendarEventMessage::extractCalendarEvents)
-                .flatMap(calendarEvents -> indexEvents(ownerAccountId, calendarEvents))
+                .flatMap(this::indexEvents)
                 .then();
         }
 
-        private Mono<Void> indexEvents(AccountId ownerAccountId, CalendarEvents calendarEvents) {
+        private Mono<Void> indexEvents(CalendarEvents calendarEvents) {
            if (hasRecurrenceEvents(calendarEvents)) {
-                return calendarSearchService.delete(ownerAccountId, calendarEvents.eventUid())
-                    .then(calendarSearchService.index(ownerAccountId, calendarEvents))
-                    .onErrorResume(error -> error instanceof CalendarSearchIndexingException && error.getCause().getMessage().contains("version conflict, required seqNo"),
-                        error -> {
-                        LOGGER.info("Failed to delete recurring eventId: {} for accountId {} due to receiving duplicated messages from dav",
-                            calendarEvents.eventUid().value(), ownerAccountId.getIdentifier(), error);
+                return calendarSearchService.delete(calendarEvents.calendarURL(), calendarEvents.eventUid())
+                    .then(calendarSearchService.index(calendarEvents))
+                    .onErrorResume(this::isVersionConflict, error -> {
+                        LOGGER.info("Ignoring duplicated DAV recurring event message for eventUid {} in calendarURL {}",
+                            calendarEvents.eventUid().value(), calendarEvents.calendarURL().serialize(), error);
                         return Mono.empty();
                     });
             } else {
-                return calendarSearchService.index(ownerAccountId, calendarEvents);
+                return calendarSearchService.index(calendarEvents);
            }
         }
 
         private boolean hasRecurrenceEvents(CalendarEvents calendarEvents) {
             return calendarEvents.events().size() > 1;
+        }
+
+        private boolean isVersionConflict(Throwable error) {
+            return error instanceof CalendarSearchIndexingException
+                && Optional.ofNullable(error.getCause())
+                .map(Throwable::getMessage)
+                .filter(message -> message.contains("version conflict, required seqNo"))
+                .isPresent();
         }
 
         @Override
@@ -236,11 +232,12 @@ public class EventIndexerConsumer implements Closeable, Startable {
 
     private final CalendarEventHandler handlerDelete = new CalendarEventHandler() {
         @Override
-        public Mono<?> handle(AccountId ownerAccountId, CalendarEventMessage calendarEventMessage) {
+        public Mono<?> handle(CalendarEventMessage calendarEventMessage) {
             return Flux.fromIterable(((CalendarEventMessage.Deleted) calendarEventMessage).extractEventUid())
-                .flatMap(eventUid -> calendarSearchService.delete(ownerAccountId, eventUid)
+                .flatMap(eventUid -> calendarSearchService.delete(calendarEventMessage.extractCalendarURL(), eventUid)
                     .onErrorResume(error -> {
-                        LOGGER.warn("Failed to delete eventId: {} for accountId {} ", eventUid.value(), ownerAccountId.getIdentifier(), error);
+                        LOGGER.warn("Failed to delete eventUid {} from calendarURL {}",
+                            eventUid.value(), calendarEventMessage.extractCalendarURL().serialize(), error);
                         return Mono.empty();
                     }))
                 .then();
@@ -270,35 +267,13 @@ public class EventIndexerConsumer implements Closeable, Startable {
     private Mono<?> messageConsume(AcknowledgableDelivery ackDelivery, Mono<CalendarEventMessage> messagePublisher, CalendarEventHandler calendarEventHandler) {
         return messagePublisher
             .flatMap(message -> Mono.from(metricFactory.decoratePublisherWithTimerMetric("calendar.event.indexing",
-                getAccountId(message.extractCalendarURL().base())
-                    .flatMap(accountId -> calendarEventHandler.handle(accountId, message))
-                    .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed calendar event successfully {} '{}'", message.getClass().getSimpleName(), message.eventPath))))))
-            .doOnSuccess(result -> ackDelivery.ack())
+                calendarEventHandler.handle(message)
+                    .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed calendar event message successfully {} '{}'", message.getClass().getSimpleName(), message.eventPath))))))
+            .doOnSuccess(_ -> ackDelivery.ack())
             .onErrorResume(error -> {
-                LOGGER.error("Error when consume calendar event", error);
+                LOGGER.error("Failed to consume calendar event message", error);
                 ackDelivery.nack(!REQUEUE_ON_NACK);
                 return Mono.empty();
             });
-    }
-
-    private Mono<AccountId> getAccountId(OpenPaaSId openPaaSId) {
-        return openPaaSUserDAO.retrieve(openPaaSId)
-            .map(user -> AccountId.fromUsername(user.username()))
-            .switchIfEmpty(Mono.defer(() -> handleMissingUser(openPaaSId)));
-    }
-
-    private Mono<AccountId> handleMissingUser(OpenPaaSId openPaaSId) {
-        if (IGNORE_EVENT_IF_USER_NOT_FOUND) {
-            LOGGER.warn("Ignoring calendar event for calendar id '{}', as the user was not found", openPaaSId.value());
-            return Mono.empty();
-        }
-
-        return Mono.defer(() -> resourceDAO.findById(ResourceId.from(openPaaSId)))
-            .switchIfEmpty(Mono.defer(() -> {
-                String msg = "Unable to find account with calendar id '%s'".formatted(openPaaSId.value());
-                LOGGER.error(msg);
-                return Mono.error(new CalendarEventConsumerException(msg));
-            }))
-            .then(Mono.empty());
     }
 }
