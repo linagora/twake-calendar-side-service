@@ -210,6 +210,16 @@ class TwakeCalendarGuiceServerTest  {
     }
 
     @Test
+    void shouldExposeWebAdminUserCalendarRoutes() {
+        given()
+        .when()
+            .get("/users/notfound@linagora.com/calendars")
+        .then()
+            .statusCode(404)
+            .body("message", is("User does not exist"));
+    }
+
+    @Test
     void shouldExposeWebAdminCalendarEventReindexTask() {
         String taskId = given()
             .when()
