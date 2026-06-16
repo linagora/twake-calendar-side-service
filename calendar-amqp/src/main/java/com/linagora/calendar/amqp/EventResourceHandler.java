@@ -140,13 +140,25 @@ public class EventResourceHandler {
             message.resourceId(), message.eventId(), message.eventPath());
         return resourceDAO.findById(new ResourceId(message.resourceId()))
             .filter(resource -> !resource.deleted())
-            .flatMap(resource -> {
-                if (resource.administrators().isEmpty()) {
-                    return acceptInvite(message, resource);
-                } else {
-                    return sendValidationEmailToAdministrators(message, resource);
-                }
-            });
+            .flatMap(resource -> shouldAutoAccept(message, resource)
+                .flatMap(autoAccept -> autoAccept
+                    ? acceptInvite(message, resource)
+                    : sendValidationEmailToAdministrators(message, resource)));
+    }
+
+    private Mono<Boolean> shouldAutoAccept(CalendarResourceMessageDTO message, Resource resource) {
+        if (resource.administrators().isEmpty()) {
+            return Mono.just(true);
+        }
+        return Mono.justOrEmpty(getOrganizerEmail(message))
+            .flatMap(organizerEmail -> isOrganizerAdmin(resource, organizerEmail));
+    }
+
+    private Mono<Boolean> isOrganizerAdmin(Resource resource, MailAddress organizerEmail) {
+        Username organizerUsername = Username.fromMailAddress(organizerEmail);
+        return userDAO.retrieve(organizerUsername)
+            .map(organizer -> resource.administrators().stream()
+                .anyMatch(admin -> admin.refId().equals(organizer.id())));
     }
 
     private Mono<Void> acceptInvite(CalendarResourceMessageDTO message, Resource resource) {
@@ -178,7 +190,9 @@ public class EventResourceHandler {
             .filter(resource -> !resource.administrators().isEmpty())
             .flatMap(resource -> Mono.justOrEmpty(getOrganizerEmail(message))
                 .filter(eventEmailFilter::shouldProcess)
-                .flatMap(organizerEmail -> sendReplyMail(message, resource.name(), organizerEmail, approved)));
+                .flatMap(organizerEmail -> isOrganizerAdmin(resource, organizerEmail)
+                    .filter(isAdmin -> !isAdmin)
+                    .flatMap(ignored -> sendReplyMail(message, resource.name(), organizerEmail, approved))));
     }
 
     private Optional<MailAddress> getOrganizerEmail(CalendarResourceMessageDTO calendarResourceMessageDTO) {
