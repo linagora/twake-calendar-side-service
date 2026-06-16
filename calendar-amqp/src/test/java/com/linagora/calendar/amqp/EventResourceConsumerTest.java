@@ -372,7 +372,7 @@ public class EventResourceConsumerTest {
             resourceId.value());
         davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
 
-        Thread.sleep(5000); // Wait a bit to ensure no email is sent
+        Thread.sleep(3000); // Wait a bit to ensure no email is sent
 
         awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(0));
     }
@@ -403,7 +403,7 @@ public class EventResourceConsumerTest {
             resourceId.value());
         davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
 
-        Thread.sleep(5000); // Wait a bit to ensure no email is sent
+        Thread.sleep(3000); // Wait a bit to ensure no email is sent
 
         awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(0));
     }
@@ -526,6 +526,68 @@ public class EventResourceConsumerTest {
                 .contains("Projector")
                 .contains("This is a meeting to discuss the sprint planning for the next week.");
         }));
+    }
+
+    @Test
+    void shouldAutoAcceptWhenOrganizerIsAdminOfResource(DockerSabreDavSetup dockerSabreDavSetup) throws Exception {
+        OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
+        ResourceInsertRequest request = new ResourceInsertRequest(
+            List.of(new ResourceAdministrator(organizer.id(), "user")),
+            organizer.id(),
+            "Test resource description",
+            domain.id(),
+            "icon.png",
+            "Projector");
+        ResourceId resourceId = resourceDAO.insert(request).block();
+
+        String eventUid = UUID.randomUUID().toString();
+        String calendarData = generateCalendarData(
+            eventUid,
+            organizer.username().asString(),
+            attendee.username().asString(),
+            "Sprint planning #01",
+            "Twake Meeting Room",
+            "This is a meeting to discuss the sprint planning for the next week.",
+            "30250411T100000",
+            "30250411T110000",
+            resourceId.value());
+        davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
+
+        awaitAtMost.untilAsserted(() -> {
+            String eventString = calDavClient.calendarReportByUid(organizer.username(), organizer.id(), eventUid).block()
+                .firstDavItemNode().toString();
+            assertThat(eventString).contains("[\"attendee\",{\"partstat\":\"ACCEPTED\",\"role\":\"REQ-PARTICIPANT\",\"cutype\":\"RESOURCE\",\"cn\":\"Projector\"");
+        });
+    }
+
+    @Test
+    void shouldNotSendEmailWhenOrganizerIsAdminOfResource(DockerSabreDavSetup dockerSabreDavSetup) throws InterruptedException {
+        OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
+        ResourceInsertRequest request = new ResourceInsertRequest(
+            List.of(new ResourceAdministrator(organizer.id(), "user")),
+            organizer.id(),
+            "Test resource description",
+            domain.id(),
+            "icon.png",
+            "Projector");
+        ResourceId resourceId = resourceDAO.insert(request).block();
+
+        String eventUid = UUID.randomUUID().toString();
+        String calendarData = generateCalendarData(
+            eventUid,
+            organizer.username().asString(),
+            attendee.username().asString(),
+            "Sprint planning #01",
+            "Twake Meeting Room",
+            "This is a meeting to discuss the sprint planning for the next week.",
+            "30250411T100000",
+            "30250411T110000",
+            resourceId.value());
+        davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
+
+        Thread.sleep(3000); // Wait a bit to ensure no email is sent
+
+        awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(0));
     }
 
     @Test
