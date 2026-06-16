@@ -38,22 +38,18 @@ public abstract class CalendarEventMessage {
 
     static {
         MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-        MAPPER.configure(DeserializationFeature.FAIL_ON_MISSING_CREATOR_PROPERTIES, false);
     }
 
     protected final String eventPath;
     protected final JsonNode calendarEvent;
     protected final boolean isImport;
-    private final String resourceId;
 
     public CalendarEventMessage(String eventPath,
                                 JsonNode calendarEvent,
-                                boolean isImport,
-                                String resourceId) {
+                                boolean isImport) {
         this.eventPath = eventPath;
         this.calendarEvent = calendarEvent;
         this.isImport = isImport;
-        this.resourceId = resourceId;
     }
 
     public CalendarURL extractCalendarURL() {
@@ -62,10 +58,6 @@ public abstract class CalendarEventMessage {
 
     public CalendarEvents extractCalendarEvents() {
         return EventFieldConverter.from(this);
-    }
-
-    public boolean isResourceEvent() {
-        return resourceId != null;
     }
 
     protected static <T extends CalendarEventMessage> T deserialize(byte[] json, Class<T> clazz) {
@@ -85,9 +77,8 @@ public abstract class CalendarEventMessage {
 
         public CreatedOrUpdated(@JsonProperty("eventPath") String eventPath,
                                 @JsonProperty("event") JsonNode calendarEvent,
-                                @JsonProperty("import") boolean isImport,
-                                @JsonProperty("resourceId") String resourceId) {
-            super(eventPath, calendarEvent, isImport, resourceId);
+                                @JsonProperty("import") boolean isImport) {
+            super(eventPath, calendarEvent, isImport);
         }
     }
 
@@ -98,9 +89,8 @@ public abstract class CalendarEventMessage {
 
         public Deleted(@JsonProperty("eventPath") String eventPath,
                        @JsonProperty("event") JsonNode calendarEvent,
-                       @JsonProperty("import") boolean isImport,
-                       @JsonProperty("resourceId") String resourceId) {
-            super(eventPath, calendarEvent, isImport, resourceId);
+                       @JsonProperty("import") boolean isImport) {
+            super(eventPath, calendarEvent, isImport);
         }
 
         public List<EventUid> extractEventUid() {

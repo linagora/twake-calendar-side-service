@@ -53,7 +53,6 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -696,7 +695,6 @@ public class EventIndexerConsumerTest {
             .isEqualTo(videoconferenceUrl);
     }
 
-    @Disabled("TODO https://github.com/linagora/twake-calendar-side-service/issues/799")
     @Test
     void shouldHandleResourceEvent(DockerSabreDavSetup dockerSabreDavSetup) {
         OpenPaaSUser bob = openPaasUser;
