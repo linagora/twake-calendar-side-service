@@ -195,10 +195,9 @@ public class EventParseUtils {
         return resources;
     }
 
-    public static EventFields.Person getOrganizer(VEvent vEvent) {
+    public static Optional<EventFields.Person> getOrganizer(VEvent vEvent) {
         return vEvent.getProperty(Property.ORGANIZER)
-            .flatMap(EventParseUtils::toPerson)
-            .orElse(null);
+            .flatMap(EventParseUtils::toPerson);
     }
 
     private static Predicate<Property> attendeeFilter(boolean getResource) {

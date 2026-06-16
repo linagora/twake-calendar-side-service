@@ -27,7 +27,6 @@ import java.io.Closeable;
 import java.net.URI;
 import java.util.List;
 import java.util.Locale;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
@@ -325,7 +324,7 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     private Set<Username> extractOrganizer(Calendar calendar) {
         return calendar.getComponents(Component.VEVENT).stream()
             .map(vEvent -> EventParseUtils.getOrganizer((VEvent) vEvent))
-            .filter(Objects::nonNull)
+            .flatMap(Optional::stream)
             .map(person -> person.email().asString())
             .filter(StringUtils::isNotBlank)
             .map(email -> Username.of(normalizeEmail(email)))

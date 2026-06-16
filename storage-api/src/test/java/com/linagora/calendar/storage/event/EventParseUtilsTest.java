@@ -34,6 +34,8 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import com.linagora.calendar.api.CalendarUtil;
+import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.OpenPaaSId;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
@@ -204,7 +206,7 @@ class EventParseUtilsTest {
         Calendar calendar = CalendarUtil.parseIcs(ics);
         VEvent event = (VEvent) calendar.getComponent(Component.VEVENT).get();
 
-        assertThat(EventParseUtils.getOrganizer(event)).isEqualTo(new EventFields.Person("Test Organizer", new MailAddress("organizer@abc.com")));
+        assertThat(EventParseUtils.getOrganizer(event)).contains(new EventFields.Person("Test Organizer", new MailAddress("organizer@abc.com")));
     }
 
     @Test
@@ -226,7 +228,7 @@ class EventParseUtilsTest {
         Calendar calendar = CalendarUtil.parseIcs(ics);
         VEvent event = (VEvent) calendar.getComponent(Component.VEVENT).get();
 
-        assertThat(EventParseUtils.getOrganizer(event)).isEqualTo(new EventFields.Person("Test Organizer", new MailAddress("organizer+calendar@abc.com")));
+        assertThat(EventParseUtils.getOrganizer(event)).contains(new EventFields.Person("Test Organizer", new MailAddress("organizer+calendar@abc.com")));
     }
 
     @Test
@@ -248,7 +250,7 @@ class EventParseUtilsTest {
         Calendar calendar = CalendarUtil.parseIcs(ics);
         VEvent event = (VEvent) calendar.getComponent(Component.VEVENT).get();
 
-        assertThat(EventParseUtils.getOrganizer(event)).isEqualTo(new EventFields.Person("Test Organizer", new MailAddress("organizer@abc.com")));
+        assertThat(EventParseUtils.getOrganizer(event)).contains(new EventFields.Person("Test Organizer", new MailAddress("organizer@abc.com")));
     }
 
     @Test
@@ -269,7 +271,7 @@ class EventParseUtilsTest {
         Calendar calendar = CalendarUtil.parseIcs(ics);
         VEvent event = (VEvent) calendar.getComponent(Component.VEVENT).get();
 
-        assertThat(EventParseUtils.getOrganizer(event)).isEqualTo(new EventFields.Person("Test Organizer", new MailAddress("organizer+calendar@abc.com")));
+        assertThat(EventParseUtils.getOrganizer(event)).contains(new EventFields.Person("Test Organizer", new MailAddress("organizer+calendar@abc.com")));
     }
 
     @Test
@@ -290,7 +292,30 @@ class EventParseUtilsTest {
         Calendar calendar = CalendarUtil.parseIcs(ics);
         VEvent event = (VEvent) calendar.getComponent(Component.VEVENT).get();
 
-        assertThat(EventParseUtils.getOrganizer(event)).isNull();
+        assertThat(EventParseUtils.getOrganizer(event)).isEmpty();
+    }
+
+    @Test
+    void fromVEventShouldLeaveOrganizerUnsetWhenOrganizerIsAbsent() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:event-1
+            DTSTART:20250911T100000Z
+            DTEND:20250911T120000Z
+            SUMMARY:Meeting without organizer
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+        VEvent event = (VEvent) calendar.getComponent(Component.VEVENT).get();
+
+        CalendarURL calendarURL = new CalendarURL(new OpenPaaSId("base-id"), new OpenPaaSId("calendar-id"));
+        EventFields eventFields = EventFields.fromVEvent(event, calendarURL, "resource");
+
+        assertThat(eventFields.organizer()).isNull();
     }
 
     @Test

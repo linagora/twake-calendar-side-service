@@ -22,6 +22,7 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 
 import org.apache.commons.lang3.StringUtils;
 
@@ -44,17 +45,18 @@ public record CalendarEventInviteNotificationEmail(CalendarEventNotificationEmai
                                           ZoneId zoneToDisplay,
                                           EventInCalendarLinkFactory eventInCalendarLinkFactory,
                                           boolean isInternalUser,
-                                          ActionLinks actionLinks) {
+                                          Optional<ActionLinks> actionLinks) {
         VEvent vEvent = base.getFirstVEvent();
         PersonModel organizer = PersonModel.from(EventParseUtils.getOrganizer(vEvent));
         String summary = EventParseUtils.getSummary(vEvent).orElse(StringUtils.EMPTY);
         ZonedDateTime startDate = EventParseUtils.getStartTime(vEvent);
 
         ImmutableMap.Builder<String, Object> contentBuilder = ImmutableMap.builder();
-        contentBuilder.put("event", base.toPugModel(locale, zoneToDisplay))
-            .put("yesLink", actionLinks.yes())
-            .put("noLink", actionLinks.no())
-            .put("maybeLink", actionLinks.maybe());
+        contentBuilder.put("event", base.toPugModel(locale, zoneToDisplay));
+        actionLinks.ifPresent(links -> contentBuilder
+            .put("yesLink", links.yes())
+            .put("noLink", links.no())
+            .put("maybeLink", links.maybe()));
 
         if (isInternalUser) {
             contentBuilder.put("seeInCalendarLink", eventInCalendarLinkFactory.getEventInCalendarLink(startDate));
