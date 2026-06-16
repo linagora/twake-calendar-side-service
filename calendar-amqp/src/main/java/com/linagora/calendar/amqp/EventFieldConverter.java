@@ -176,6 +176,10 @@ public class EventFieldConverter {
         try {
             return Optional.of(MAPPER.treeToValue(node, EventProperty.class));
         } catch (JsonProcessingException | RuntimeException e) {
+            if (isEventProperty(node, EventProperty.ORGANIZER_PROPERTY)) {
+                LOGGER.warn("Skipping invalid organizer event property: {}", node, e);
+                return Optional.empty();
+            }
             if (isEventProperty(node, EventProperty.ATTENDEE_PROPERTY)) {
                 LOGGER.warn("Skipping invalid attendee event property: {}", node, e);
                 return Optional.empty();
