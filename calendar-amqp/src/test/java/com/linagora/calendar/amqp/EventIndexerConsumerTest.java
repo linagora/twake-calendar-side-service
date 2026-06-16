@@ -54,6 +54,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -94,7 +95,12 @@ public class EventIndexerConsumerTest {
     private final ConditionFactory awaitAtMost = calmlyAwait.atMost(30, TimeUnit.SECONDS);
 
     @RegisterExtension
+    @Order(1)
     static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+
+    @RegisterExtension
+    @Order(2)
+    static SabreAsyncSchedulingExtension sabreAsyncSchedulingExtension = new SabreAsyncSchedulingExtension(sabreDavExtension);
 
     private static ReactorRabbitMQChannelPool channelPool;
     private static SimpleConnectionPool connectionPool;
@@ -132,23 +138,26 @@ public class EventIndexerConsumerTest {
     private OpenPaaSUser attendee2;
     private CalendarSearchService calendarSearchService;
     private Sender sender;
+    private EventIndexerConsumer eventIndexerConsumer;
 
     @BeforeEach
-    public void setUp(DockerSabreDavSetup dockerSabreDavSetup) {
+    public void setUp() {
         openPaasUser = sabreDavExtension.newTestUser();
         attendee1 = sabreDavExtension.newTestUser();
         attendee2 = sabreDavExtension.newTestUser();
         calendarSearchService = Mockito.spy(new MemoryCalendarSearchService());
 
-        EventIndexerConsumer calendarEventConsumer = new EventIndexerConsumer(channelPool, calendarSearchService,
+        eventIndexerConsumer = new EventIndexerConsumer(channelPool, calendarSearchService,
             QueueArguments.Builder::new, new RecordingMetricFactory());
-        calendarEventConsumer.init();
+        eventIndexerConsumer.init();
 
         sender = channelPool.getSender();
     }
 
     @AfterEach
     void afterEach() {
+        eventIndexerConsumer.close();
+
         Arrays.stream(EventIndexerConsumer.Queue
                 .values())
             .map(EventIndexerConsumer.Queue::queueName)
