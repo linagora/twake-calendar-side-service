@@ -26,6 +26,7 @@ import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
@@ -175,14 +176,15 @@ public class EventResourceHandler {
         return resourceDAO.findById(new ResourceId(message.resourceId()))
             .filter(resource -> !resource.deleted())
             .filter(resource -> !resource.administrators().isEmpty())
-            .flatMap(resource -> Mono.just(getOrganizerEmail(message))
+            .flatMap(resource -> Mono.justOrEmpty(getOrganizerEmail(message))
                 .filter(eventEmailFilter::shouldProcess)
                 .flatMap(organizerEmail -> sendReplyMail(message, resource.name(), organizerEmail, approved)));
     }
 
-    private MailAddress getOrganizerEmail(CalendarResourceMessageDTO calendarResourceMessageDTO) {
+    private Optional<MailAddress> getOrganizerEmail(CalendarResourceMessageDTO calendarResourceMessageDTO) {
         VEvent vEvent = GET_FIRST_VEVENT_FUNCTION.apply(calendarResourceMessageDTO.ics());
-        return EventParseUtils.getOrganizer(vEvent).email();
+        return EventParseUtils.getOrganizer(vEvent)
+            .map(EventFields.Person::email);
     }
 
     private Mono<Void> sendRequestMail(CalendarResourceMessageDTO calendarResourceMessageDTO, String resourceName, MailAddress recipient) {
@@ -304,7 +306,7 @@ public class EventResourceHandler {
         List<EventFields.Person> resourceList = EventParseUtils.getResources(vEvent, KEEP_FIRST);
 
         ImmutableMap.Builder<String, Object> eventBuilder = ImmutableMap.builder();
-        eventBuilder.put("organizer", toPugModel(EventParseUtils.getOrganizer(vEvent)))
+        eventBuilder.put("organizer", PersonModel.from(EventParseUtils.getOrganizer(vEvent)).toPugModel())
             .put("attendees", toPeoplePugModel(attendees))
             .put("summary", summary)
             .put("allDay", EventParseUtils.isAllDay(vEvent))

@@ -264,7 +264,7 @@ public record EventFields(EventUid uid,
         vEvent.getProperty(Property.DTSTAMP).flatMap(EventParseUtils::parseTimeAsInstant).ifPresent(builder::dtStamp);
         EventParseUtils.isRecurrentMaster(vEvent).ifPresent(builder::isRecurrentMaster);
         EventParseUtils.getPropertyValueIgnoreCase(vEvent, "X-OPENPAAS-VIDEOCONFERENCE").ifPresent(builder::videoconferenceUrl);
-        builder.organizer(EventParseUtils.getOrganizer(vEvent));
+        EventParseUtils.getOrganizer(vEvent).ifPresent(builder::organizer);
         builder.attendees(EventParseUtils.getAttendees(vEvent));
         builder.resources(EventParseUtils.getResources(vEvent));
         EventParseUtils.getRecurrenceId(vEvent).ifPresent(builder::recurrenceId);

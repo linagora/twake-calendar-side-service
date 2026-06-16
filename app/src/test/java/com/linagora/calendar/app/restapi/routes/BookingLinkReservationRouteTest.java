@@ -291,6 +291,7 @@ class BookingLinkReservationRouteTest {
             softly.assertThat(getPropertyValue.apply(Property.DURATION))
                 .isEqualTo("PT30M");
             softly.assertThat(EventParseUtils.getOrganizer(event))
+                .get()
                 .extracting(Person::cn, person -> person.email().asString(), Person::partStat)
                 .containsExactly(openPaaSUser.fullName(), openPaaSUser.username().asString(), Optional.empty());
             softly.assertThat(EventParseUtils.getAttendees(event))

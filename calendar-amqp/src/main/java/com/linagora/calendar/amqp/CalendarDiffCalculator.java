@@ -206,21 +206,23 @@ public class CalendarDiffCalculator {
     }
 
     private static boolean organizerAcceptedTransition(VEvent previousEvent, VEvent currentEvent) {
-        Person organizer = EventParseUtils.getOrganizer(previousEvent);
+        return EventParseUtils.getOrganizer(previousEvent)
+            .map(organizer -> {
+                boolean wasDeclinedOrNeedAction = EventParseUtils.getAttendees(previousEvent)
+                    .stream()
+                    .filter(person -> person.email().equals(organizer.email()))
+                    .flatMap(person -> person.partStat().stream())
+                    .anyMatch(stat -> stat.equals(PartStat.NEEDS_ACTION) || stat.equals(PartStat.DECLINED));
 
-        boolean wasDeclinedOrNeedAction = EventParseUtils.getAttendees(previousEvent)
-            .stream()
-            .filter(person -> person.email().equals(organizer.email()))
-            .flatMap(person -> person.partStat().stream())
-            .anyMatch(stat -> stat.equals(PartStat.NEEDS_ACTION) || stat.equals(PartStat.DECLINED));
+                boolean isNowAccepted = EventParseUtils.getAttendees(currentEvent)
+                    .stream()
+                    .filter(person -> person.email().equals(organizer.email()))
+                    .flatMap(person -> person.partStat().stream())
+                    .anyMatch(stat -> stat.equals(PartStat.ACCEPTED) || stat.equals(PartStat.TENTATIVE));
 
-        boolean isNowAccepted = EventParseUtils.getAttendees(currentEvent)
-            .stream()
-            .filter(person -> person.email().equals(organizer.email()))
-            .flatMap(person -> person.partStat().stream())
-            .anyMatch(stat -> stat.equals(PartStat.ACCEPTED) || stat.equals(PartStat.TENTATIVE));
-
-        return wasDeclinedOrNeedAction && isNowAccepted;
+                return wasDeclinedOrNeedAction && isNowAccepted;
+            })
+            .orElse(false);
     }
 
     private static Map<String, VEvent> indexByRecurrenceId(Calendar calendar) {

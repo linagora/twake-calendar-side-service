@@ -21,12 +21,15 @@ package com.linagora.calendar.smtp.template.content.model;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.apache.commons.lang3.StringUtils;
 
 import com.linagora.calendar.storage.event.EventFields.Person;
 
 public record PersonModel(String cn, String email) {
+
+    public static final PersonModel EMPTY = new PersonModel("", "");
 
     public Map<String, Object> toPugModel() {
         return Map.of("cn", cn,
@@ -35,6 +38,10 @@ public record PersonModel(String cn, String email) {
 
     public static PersonModel from(Person person) {
         return new PersonModel(person.cn(), person.email().asString());
+    }
+
+    public static PersonModel from(Optional<Person> person) {
+        return person.map(PersonModel::from).orElse(EMPTY);
     }
 
     public static List<PersonModel> fromList(List<Person> people) {

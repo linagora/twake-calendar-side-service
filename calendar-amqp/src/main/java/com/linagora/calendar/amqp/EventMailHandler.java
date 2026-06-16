@@ -23,6 +23,7 @@ import static com.linagora.calendar.smtp.template.MimeAttachment.ATTACHMENT_DISP
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
@@ -64,6 +65,7 @@ import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.ResourceDAO;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.ResolvedSettings;
+import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.model.ResourceId;
 
@@ -140,15 +142,18 @@ public class EventMailHandler {
             );
         }
 
-        static Mono<ActionLinks> generateActionLinks(EventParticipationActionLinkFactory participationActionLinkFactory, CalendarEventNotificationEmail event) {
+        static Mono<Optional<ActionLinks>> generateActionLinks(EventParticipationActionLinkFactory participationActionLinkFactory, CalendarEventNotificationEmail event) {
             return Mono.just(event.getFirstVEvent())
-                .flatMap(vEvent -> {
-                    MailAddress organizerMail = EventParseUtils.getOrganizer(vEvent).email();
-                    MailAddress attendeeMail = event.recipientEmail();
-                    String eventUid = vEvent.getUid().map(Uid::getValue).orElseThrow();
-                    OpenPaaSId attendeeCalendarBaseId = extractCalendarURL(event.eventPath()).base();
-                    return participationActionLinkFactory.generateLinks(organizerMail, attendeeMail, eventUid, attendeeCalendarBaseId.value());
-                });
+                .flatMap(vEvent -> EventParseUtils.getOrganizer(vEvent)
+                    .map(EventFields.Person::email)
+                    .map(organizerMail -> {
+                        MailAddress attendeeMail = event.recipientEmail();
+                        String eventUid = vEvent.getUid().map(Uid::getValue).orElseThrow();
+                        OpenPaaSId attendeeCalendarBaseId = extractCalendarURL(event.eventPath()).base();
+                        return participationActionLinkFactory.generateLinks(organizerMail, attendeeMail, eventUid, attendeeCalendarBaseId.value())
+                            .map(Optional::of);
+                    })
+                    .orElseGet(() -> Mono.just(Optional.empty())));
         }
     }
 

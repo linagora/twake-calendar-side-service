@@ -77,7 +77,7 @@ public record CalendarEventNotificationEmail(MailAddress senderEmail,
         List<EventFields.Person> resourceList = EventParseUtils.getResources(vEvent, KEEP_FIRST);
 
         ImmutableMap.Builder<String, Object> eventBuilder = ImmutableMap.builder();
-        eventBuilder.put("organizer", toPugModel(EventParseUtils.getOrganizer(vEvent)))
+        eventBuilder.put("organizer", PersonModel.from(EventParseUtils.getOrganizer(vEvent)).toPugModel())
             .put("attendees", toPeoplePugModel(attendees))
             .put("summary", summary)
             .put("allDay", EventParseUtils.isAllDay(vEvent))

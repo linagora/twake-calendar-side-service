@@ -923,4 +923,45 @@ class CalendarDiffCalculatorTest {
                 });
         }
     }
+
+    @Test
+    void calculateShouldNotFailWhenOrganizerIsAbsent() {
+        // organizerAcceptedTransition is evaluated for any update the recipient attends:
+        // a missing ORGANIZER must not crash the diff computation.
+        String oldIcs = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Test//Test//EN
+            METHOD:REQUEST
+            BEGIN:VEVENT
+            UID:uid-no-organizer@test
+            DTSTART:20260401T100000Z
+            DTEND:20260401T110000Z
+            SUMMARY:Old summary
+            SEQUENCE:1
+            ATTENDEE:mailto:bob@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """;
+        String newIcs = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Test//Test//EN
+            METHOD:REQUEST
+            BEGIN:VEVENT
+            UID:uid-no-organizer@test
+            DTSTART:20260401T100000Z
+            DTEND:20260401T110000Z
+            SUMMARY:New summary
+            SEQUENCE:2
+            ATTENDEE:mailto:bob@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        List<EventDiff> diffs = CalendarDiffCalculator.calculate(RECIPIENT, parse(newIcs), parse(oldIcs));
+
+        assertThat(diffs).singleElement()
+            .satisfies(diff -> assertThat(diff.serializeChanges().orElseThrow().toString()).contains("summary"));
+    }
 }
