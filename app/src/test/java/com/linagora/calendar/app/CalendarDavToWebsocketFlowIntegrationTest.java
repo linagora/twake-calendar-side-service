@@ -134,7 +134,7 @@ class CalendarDavToWebsocketFlowIntegrationTest {
     }
 
     @Test
-    void bobShouldReceiveWebsocketPushWhenAliceInvitesHim() {
+    void bobShouldReceiveWebsocketPushWhenHaveANewEvent() {
         // GIVEN: Bob opens WebSocket
         String bobTicket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
@@ -154,11 +154,11 @@ class CalendarDavToWebsocketFlowIntegrationTest {
             .isArray()
             .contains(bobCalendarUrl);
 
-        // WHEN: Alice creates ICS event and invites Bob
+        // WHEN: Bob's calendar changes
         String eventUid = "event-" + System.currentTimeMillis();
         String ics = buildEventICS(eventUid, alice.username().asString(), bob.username().asString());
 
-        davTestHelper.upsertCalendar(alice, ics, eventUid);
+        davTestHelper.upsertCalendar(bob, ics, eventUid);
 
         String pushMessage = awaitMessage(messages, msg -> msg.contains("syncToken") && msg.contains(bobCalendarUrl));
 
@@ -185,11 +185,12 @@ class CalendarDavToWebsocketFlowIntegrationTest {
                 "register": ["%s"]
             }
             """.formatted(bobCalendarUrl));
+        awaitMessage(messages, msg -> msg.contains("\"registered\""));
 
-        // WHEN: Alice creates an event
+        // WHEN: Bob's calendar changes
         String eventUid = "event-" + System.currentTimeMillis();
         String ics = buildEventICS(eventUid, alice.username().asString(), bob.username().asString());
-        davTestHelper.upsertCalendar(alice, ics, eventUid);
+        davTestHelper.upsertCalendar(bob, ics, eventUid);
 
         // Bob receives websocket notification (skip unrelated messages)
         String pushMessage = awaitMessage(messages, msg -> msg.contains("syncToken"));

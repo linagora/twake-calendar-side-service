@@ -260,7 +260,7 @@ class EventParticipationRouteTest {
                                     ["dtstart", {"tzid": "Asia/Ho_Chi_Minh"}, "date-time", "${json-unit.ignore}"],
                                     ["dtend", {"tzid": "Asia/Ho_Chi_Minh"}, "date-time", "${json-unit.ignore}"],
                                     ["summary", {}, "text", "Twake Calendar - Sprint planning #04"],
-                                    ["organizer", {"cn": "Van Tung TRAN", "schedule-status": "1.1"}, "cal-address", "${json-unit.ignore}"],
+                                    ["organizer", {"cn": "Van Tung TRAN", "schedule-status": "${json-unit.ignore}"}, "cal-address", "${json-unit.ignore}"],
                                     ["attendee", {"cn": "Benoît TELLIER", "partstat": "ACCEPTED"}, "cal-address", "${json-unit.ignore}"]
                                 ],
                                 []
@@ -687,7 +687,7 @@ class EventParticipationRouteTest {
 
     private void upsertCalendarForTest(String eventUid) {
         davTestHelper.upsertCalendar(
-            organizer,
+            attendee,
             generateCalendarData(eventUid, organizer.username().asString(), attendee.username().asString()),
             eventUid);
 
