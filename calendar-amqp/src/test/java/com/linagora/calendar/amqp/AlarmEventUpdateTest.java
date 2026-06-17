@@ -68,7 +68,6 @@ import com.linagora.calendar.dav.CalendarEventModifier;
 import com.linagora.calendar.dav.CalendarEventUpdatePatch;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
-import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.AlarmEventDAO;
 import com.linagora.calendar.storage.AlarmEventFactory;
@@ -93,7 +92,7 @@ import reactor.rabbitmq.Sender;
 public class AlarmEventUpdateTest {
 
     @RegisterExtension
-    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+    static SabreDavWithAsyncSchedulingExtension sabreDavExtension = new SabreDavWithAsyncSchedulingExtension();
 
     private static final SettingsBasedResolver settingsResolver = mock(SettingsBasedResolver.class);
 

@@ -64,7 +64,6 @@ import org.testcontainers.shaded.org.awaitility.core.ConditionFactory;
 
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
-import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -94,7 +93,7 @@ public class EventIndexerConsumerTest {
     private final ConditionFactory awaitAtMost = calmlyAwait.atMost(30, TimeUnit.SECONDS);
 
     @RegisterExtension
-    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+    static SabreDavWithAsyncSchedulingExtension sabreDavExtension = new SabreDavWithAsyncSchedulingExtension();
 
     private static ReactorRabbitMQChannelPool channelPool;
     private static SimpleConnectionPool connectionPool;
@@ -132,23 +131,26 @@ public class EventIndexerConsumerTest {
     private OpenPaaSUser attendee2;
     private CalendarSearchService calendarSearchService;
     private Sender sender;
+    private EventIndexerConsumer eventIndexerConsumer;
 
     @BeforeEach
-    public void setUp(DockerSabreDavSetup dockerSabreDavSetup) {
+    public void setUp() {
         openPaasUser = sabreDavExtension.newTestUser();
         attendee1 = sabreDavExtension.newTestUser();
         attendee2 = sabreDavExtension.newTestUser();
         calendarSearchService = Mockito.spy(new MemoryCalendarSearchService());
 
-        EventIndexerConsumer calendarEventConsumer = new EventIndexerConsumer(channelPool, calendarSearchService,
+        eventIndexerConsumer = new EventIndexerConsumer(channelPool, calendarSearchService,
             QueueArguments.Builder::new, new RecordingMetricFactory());
-        calendarEventConsumer.init();
+        eventIndexerConsumer.init();
 
         sender = channelPool.getSender();
     }
 
     @AfterEach
     void afterEach() {
+        eventIndexerConsumer.close();
+
         Arrays.stream(EventIndexerConsumer.Queue
                 .values())
             .map(EventIndexerConsumer.Queue::queueName)
