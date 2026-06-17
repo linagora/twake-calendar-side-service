@@ -125,6 +125,10 @@ public class EventResourceConsumerTest {
 
     @RegisterExtension
     @Order(2)
+    static SabreAsyncSchedulingExtension sabreAsyncSchedulingExtension = new SabreAsyncSchedulingExtension(sabreDavExtension);
+
+    @RegisterExtension
+    @Order(3)
     static final MockSmtpServerExtension mockSmtpExtension = new MockSmtpServerExtension();
 
     private static final SettingsBasedResolver settingsResolver = mock(SettingsBasedResolver.class);
@@ -678,4 +682,3 @@ public class EventResourceConsumerTest {
         channel.basicPublish(exchange, EMPTY_ROUTING_KEY, basicProperties, message.getBytes(StandardCharsets.UTF_8));
     }
 }
-

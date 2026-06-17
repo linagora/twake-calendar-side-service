@@ -56,6 +56,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -89,7 +90,12 @@ import reactor.rabbitmq.Sender;
 public class AlarmEventCancellationTest {
 
     @RegisterExtension
+    @Order(1)
     static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+
+    @RegisterExtension
+    @Order(2)
+    static SabreAsyncSchedulingExtension sabreAsyncSchedulingExtension = new SabreAsyncSchedulingExtension(sabreDavExtension);
 
     private static final SettingsBasedResolver settingsResolver = mock(SettingsBasedResolver.class);
 

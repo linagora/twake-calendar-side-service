@@ -19,7 +19,6 @@
 package com.linagora.calendar.amqp;
 
 import static com.linagora.calendar.amqp.EventInviteEmailConsumerTest.INTERNAL_USER;
-import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static com.linagora.calendar.storage.configuration.EntryIdentifier.LANGUAGE_IDENTIFIER;
 import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -73,8 +72,6 @@ import com.linagora.calendar.smtp.EventEmailFilter;
 import com.linagora.calendar.api.EventParticipationActionLinkFactory;
 import com.linagora.calendar.api.Participation;
 import com.linagora.calendar.api.ParticipationTokenSigner;
-import com.linagora.calendar.dav.DavTestHelper;
-import com.linagora.calendar.dav.DavTestHelper.CounterRequest;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.smtp.MailSender;
@@ -96,6 +93,7 @@ import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.path.json.JsonPath;
 import io.restassured.specification.RequestSpecification;
 import reactor.core.publisher.Mono;
+import reactor.rabbitmq.OutboundMessage;
 
 public class EventCounterEmailConsumerTest {
     private final ConditionFactory calmlyAwait = Awaitility.with()
@@ -118,7 +116,6 @@ public class EventCounterEmailConsumerTest {
     private static final EventEmailFilter eventEmailFilter = spy(EventEmailFilter.acceptAll());
     private static ReactorRabbitMQChannelPool channelPool;
     private static SimpleConnectionPool connectionPool;
-    private static DavTestHelper davTestHelper;
 
     @BeforeAll
     static void beforeAll(DockerSabreDavSetup dockerSabreDavSetup) throws Exception {
@@ -137,8 +134,6 @@ public class EventCounterEmailConsumerTest {
             new RecordingMetricFactory(),
             new NoopGaugeRegistry());
         channelPool.start();
-
-        davTestHelper = new DavTestHelper(dockerSabreDavSetup.davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
     }
 
     @AfterAll
@@ -232,8 +227,6 @@ public class EventCounterEmailConsumerTest {
     void shouldSendEmailWhenProposeCounterEvent() {
         when(settingsResolver.resolveOrDefault(any(Username.class), any(Username.class)))
             .thenReturn(Mono.just(SettingsBasedResolver.ResolvedSettings.DEFAULT));
-        // Ensure no event exists initially for attendee
-        assertThat(davTestHelper.findFirstEventId(attendee)).isEmpty();
 
         JsonPath smtpMailsResponse = simulateProposeCounterAndWaitForEmail();
         int counterIndex = findCounterMailIndex(smtpMailsResponse);
@@ -290,10 +283,6 @@ public class EventCounterEmailConsumerTest {
             LocalDateTime.now().plusDays(1).plusHours(1),
             false,
             Optional.empty());
-        davTestHelper.upsertCalendar(organizer, initialCalendarData, eventUid);
-
-        // When: Attendee propose counter event
-        String eventDavIdOnAttendee = waitForEventCreation(attendee);
         String counterEvent = generateCalendarData(
             eventUid,
             organizer.username().asString(),
@@ -303,34 +292,46 @@ public class EventCounterEmailConsumerTest {
             true,
             Optional.of("I propose a counter event"));
 
-        CounterRequest  counterRequest = new CounterRequest(
-            counterEvent,
-            attendee.username().asString(),
-            organizer.username().asString(),
-            eventUid,
-            1);
-
-        davTestHelper.postCounter(attendee, eventDavIdOnAttendee, counterRequest).block();
+        publishCounterEmailNotification(counterEvent, initialCalendarData, eventUid);
 
         // Wait for the mail to be received via mock SMTP
         awaitAtMost
             .atMost(Duration.ofSeconds(20))
-            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(2));
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
 
         // Then: Received mail
         return  smtpMailsResponseSupplier.get();
     }
 
+    private void publishCounterEmailNotification(String counterEvent, String oldEvent, String eventUid) {
+        String eventPath = "/calendars/%s/%s/%s.ics".formatted(attendee.id().value(), attendee.id().value(), eventUid);
+        String payload = """
+            {
+              "senderEmail": "%s",
+              "recipientEmail": "%s",
+              "method": "COUNTER",
+              "event": "%s",
+              "notify": true,
+              "calendarURI": "%s",
+              "eventPath": "%s",
+              "oldEvent": "%s"
+            }
+            """.formatted(
+            attendee.username().asString(),
+            organizer.username().asString(),
+            counterEvent.replace("\n", "\\r\\n"),
+            attendee.id().value(),
+            eventPath,
+            oldEvent.replace("\n", "\\r\\n"));
+
+        channelPool.getSender()
+            .send(Mono.just(new OutboundMessage(EventEmailConsumer.EXCHANGE_NAME, "", payload.getBytes())))
+            .block();
+    }
+
     private static final Supplier<JsonPath> smtpMailsResponseSupplier = () -> given(mockSMTPRequestSpecification())
         .get("/smtpMails")
         .jsonPath();
-
-    private String waitForEventCreation(OpenPaaSUser user) {
-        awaitAtMost.untilAsserted(() ->
-            assertThat(davTestHelper.findFirstEventId(user)).isPresent());
-
-        return davTestHelper.findFirstEventId(user).get();
-    }
 
     private String generateCalendarData(String eventUid,
                                         String organizerEmail,
