@@ -60,9 +60,45 @@ Here is the detail of the configuration entries:
 | upload.expiration | Optional. Defaulting to 1 hour. After this amount of time uploads are removed.                                                                                                                                                                                                              | upload.expiration=1h                                                                 |
 | basic.auth.enabled | Optional. Defaults to false (basic auth disabled). Alows regular user to use bsic auth mecanism. While implemented by OpenPaaS it shall not be needed by the SPAs.                                                                                                                          | basic.auth.enabled=true |
 | default.calendar.public.visibility | Optional. Defaults to private. One of private, read. If it is set to read, default calendars will be set publicly visible upon creation.                                                                                                                                                                                     | default.calendar.public.visibility=read |
-| twp.settings.enabled | Optional. Defaults to `false`. Enables synchronization of user settings from Twake Workplace. When enabled, some settings become read-only via REST APIs. | twp.settings.enabled=true |
+| twp.settings.enabled | Optional. Defaults to `false`. Enables synchronization of user settings from Twake Workplace. When enabled, some settings become read-only via REST APIs. The related broker properties are described in [Twake Workplace RabbitMQ properties](#twake-workplace-rabbitmq-properties). | twp.settings.enabled=true |
+| saas.subscription.enabled | Optional. Defaults to `false`. Enables the SaaS subscription consumers that listen to the Twake Workplace RabbitMQ broker for domain and user subscription messages, and automatically provision domains and register users with their calendar features. Requires `twp.settings.enabled=true` (startup fails otherwise). The related broker properties are described in [Twake Workplace RabbitMQ properties](#twake-workplace-rabbitmq-properties). | saas.subscription.enabled=true |
 
 Please find hereby a [working example](../../app/src/main/conf/configuration.properties).
+
+## Twake Workplace RabbitMQ properties
+
+The TWP settings synchronization (`twp.settings.enabled`) and the SaaS subscription consumers (`saas.subscription.enabled`)
+consume messages from the Twake Workplace RabbitMQ broker. These integrations read the following additional properties from
+[rabbitmq.properties](https://james.staged.apache.org/james-project/3.9.0/servers/distributed/configure/rabbitmq.html),
+in addition to the standard `uri`, `management.uri`, ... entries. All of them are optional and fall back to the defaults below.
+
+### Connection to the Twake Workplace broker
+
+These properties are shared by both the settings and the SaaS subscription integrations. By default the consumers reuse the
+standard RabbitMQ connection (`uri`, ...); set `twp.rabbitmq.uri` only when Twake Workplace runs on a separate broker.
+
+| Configuration entry | Explanation | Example |
+|---------------------|-------------|---------|
+| twp.rabbitmq.uri | Optional. Comma separated list of AMQP URIs of the Twake Workplace broker. If omitted, the standard `uri` connection is reused. | twp.rabbitmq.uri=amqp://twp:twp@twp-rabbitmq:5672 |
+| twp.rabbitmq.management.uri | Optional. Management URI of the Twake Workplace broker. | twp.rabbitmq.management.uri=http://twp-rabbitmq:15672 |
+| twp.queues.quorum.bypass | Optional. Defaults to `false`. When `true`, classic queues are used instead of quorum queues. | twp.queues.quorum.bypass=false |
+
+### TWP settings synchronization (`twp.settings.enabled=true`)
+
+| Configuration entry | Explanation | Example |
+|---------------------|-------------|---------|
+| twp.settings.exchange | Optional. Defaults to `settings`. Exchange the user settings updates are consumed from. | twp.settings.exchange=settings |
+| twp.settings.routingKey | Optional. Defaults to `user.settings.updated`. Routing key bound for user settings updates. | twp.settings.routingKey=user.settings.updated |
+
+### SaaS subscription (`saas.subscription.enabled=true`)
+
+| Configuration entry | Explanation | Example |
+|---------------------|-------------|---------|
+| twp.saas.subscription.exchange | Optional. Defaults to `saas.subscription`. Exchange the user subscription messages are consumed from. | twp.saas.subscription.exchange=saas.subscription |
+| twp.saas.subscription.routingKey | Optional. Defaults to `saas.subscription.routingKey`. Routing key bound for user subscription messages. | twp.saas.subscription.routingKey=saas.subscription.routingKey |
+| twp.saas.domain.subscription.routingKey | Optional. Defaults to `domain.subscription.changed`. Routing key bound for domain subscription messages. | twp.saas.domain.subscription.routingKey=domain.subscription.changed |
+| twp.saas.configuration.exchange | Optional. Defaults to `configuration`. Exchange the domain configuration messages are consumed from. | twp.saas.configuration.exchange=configuration |
+| twp.saas.configuration.routingKey | Optional. Defaults to `domain.dns.configuration.status`. Routing key bound for domain DNS configuration status messages. | twp.saas.configuration.routingKey=domain.dns.configuration.status |
 
 ## Notes on JWT key generation
 
