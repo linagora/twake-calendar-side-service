@@ -31,6 +31,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.spy;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
@@ -270,9 +271,9 @@ public class CalendarRoutesTest {
             END:VCALENDAR
             """.formatted(eventId, openPaaSUser.username().asString(), resourceEmail);
         davTestHelper.upsertCalendar(openPaaSUser, ics, eventId);
-        String resourceEventId = awaitAtMost.until(
-            () -> davTestHelper.findFirstEventId(resourceId, domain.id()),
-            Optional::isPresent).get();
+        URI resourceEventUri = URI.create("/calendars/" + resourceId.value() + "/" + resourceId.value() + "/" + eventId + ".ics");
+        davTestHelper.upsertCalendar(domain.id(), resourceEventUri, ics).block();
+        String resourceEventId = eventId;
 
         String taskId = given()
             .queryParam("task", "reindex")
