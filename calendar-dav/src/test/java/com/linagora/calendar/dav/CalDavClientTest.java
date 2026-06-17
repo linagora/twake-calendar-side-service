@@ -24,6 +24,7 @@ import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
@@ -1049,7 +1050,7 @@ public class CalDavClientTest {
 
     @Test
     void calendarQueryReportXmlShouldQueryResourceCalendar() {
-        // Given a resource calendar receives an event from an organizer invitation.
+        // Given a resource calendar already contains an event.
         OpenPaaSUser admin = createOpenPaaSUser();
         OpenPaaSDomain domain = new MongoDBOpenPaaSDomainDAO(sabreDavExtension.dockerSabreDavSetup().getMongoDB())
             .retrieve(admin.username().getDomainPart().get())
@@ -1082,13 +1083,12 @@ public class CalDavClientTest {
             END:VCALENDAR
             """.formatted(uid, admin.username().asString(), resourceEmail);
 
-        davTestHelper.upsertCalendar(admin, ics, uid);
-        String resourceEventId = Fixture.awaitAtMost.until(
-            () -> davTestHelper.findFirstEventId(resourceId, domain.id()),
-            Optional::isPresent).get();
+        CalendarURL resourceCalendarURL = CalendarURL.from(resourceId.asOpenPaaSId());
+        URI resourceEventUri = URI.create("/calendars/" + resourceId.value() + "/" + resourceId.value() + "/" + uid + ".ics");
+        davTestHelper.upsertCalendar(domain.id(), resourceEventUri, ics).block();
+        String resourceEventId = uid;
 
         // When querying the resource calendar through the domain technical token.
-        CalendarURL resourceCalendarURL = CalendarURL.from(resourceId.asOpenPaaSId());
         List<CalendarObject> items = testee.calendarQueryReportXml(domain.id(), resourceCalendarURL, CalendarQuery.ofFilters())
             .block()
             .extractCalendarObjects();

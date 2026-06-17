@@ -52,7 +52,7 @@ public class DavExchangeNames {
         "calendar:event:deleted",
         "calendar:event:cancel",
         "calendar:event:request",
-        "calendar:itip:deliver",
+        "calendar:itip:localDelivery",
         "resource:calendar:event:created",
         "resource:calendar:event:accepted",
         "resource:calendar:event:declined");
