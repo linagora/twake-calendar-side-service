@@ -30,6 +30,7 @@ import org.apache.james.core.Domain;
 import org.apache.james.task.Task;
 import org.apache.james.task.TaskManager;
 import org.apache.james.webadmin.Routes;
+import org.apache.james.webadmin.tasks.TaskFromRequest;
 import org.apache.james.webadmin.tasks.TaskFromRequestRegistry;
 import org.apache.james.webadmin.tasks.TaskRegistrationKey;
 import org.apache.james.webadmin.utils.ErrorResponder;
@@ -39,7 +40,9 @@ import org.eclipse.jetty.http.HttpStatus;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
+import com.linagora.calendar.webadmin.service.DavDomainMembersClearService;
 import com.linagora.calendar.webadmin.service.LdapToDavDomainMembersSyncService;
+import com.linagora.calendar.webadmin.task.ClearDavDomainMembersTask;
 import com.linagora.calendar.webadmin.task.LdapToDavDomainMembersSyncTask;
 
 import reactor.core.publisher.Mono;
@@ -111,14 +114,20 @@ public class DomainMembersAddressBookRoutes implements Routes {
     private final JsonTransformer jsonTransformer;
     private final TaskManager taskManager;
     private final Set<TaskFromRequestRegistry.TaskRegistration> taskRegistrations;
+    private final OpenPaaSDomainDAO openPaaSDomainDAO;
+    private final DavDomainMembersClearService clearService;
 
     @Inject
     public DomainMembersAddressBookRoutes(JsonTransformer jsonTransformer,
                                           TaskManager taskManager,
-                                          Set<TaskFromRequestRegistry.TaskRegistration> taskRegistrations) {
+                                          Set<TaskFromRequestRegistry.TaskRegistration> taskRegistrations,
+                                          OpenPaaSDomainDAO openPaaSDomainDAO,
+                                          DavDomainMembersClearService clearService) {
         this.jsonTransformer = jsonTransformer;
         this.taskManager = taskManager;
         this.taskRegistrations = taskRegistrations;
+        this.openPaaSDomainDAO = openPaaSDomainDAO;
+        this.clearService = clearService;
     }
 
     @Override
@@ -132,6 +141,38 @@ public class DomainMembersAddressBookRoutes implements Routes {
             .ifPresent(route -> service.post(BASE_PATH, route, jsonTransformer));
         syncDomainMembersContactsRoute()
             .ifPresent(route -> service.post(SINGLE_DOMAIN_PATH, route, jsonTransformer));
+
+        service.delete(BASE_PATH, clearAllDomainsTaskFromRequest().asRoute(taskManager), jsonTransformer);
+        service.delete(SINGLE_DOMAIN_PATH, clearSingleDomainTaskFromRequest().asRoute(taskManager), jsonTransformer);
+    }
+
+    private TaskFromRequest clearAllDomainsTaskFromRequest() {
+        return request -> ClearDavDomainMembersTask.allDomains(clearService, openPaaSDomainDAO, extractIgnoredDomains(request));
+    }
+
+    private TaskFromRequest clearSingleDomainTaskFromRequest() {
+        return request -> {
+            Domain domain = Domain.of(request.params(TARGET_DOMAIN_PARAMETER));
+            return openPaaSDomainDAO.retrieve(domain)
+                .switchIfEmpty(Mono.defer(() -> Mono.error(ErrorResponder.builder()
+                    .statusCode(HttpStatus.NOT_FOUND_404)
+                    .type(ErrorResponder.ErrorType.NOT_FOUND)
+                    .message("domain not found: " + domain.asString())
+                    .haltError())))
+                .map(openPaaSDomain -> ClearDavDomainMembersTask.singleDomain(openPaaSDomain, clearService, openPaaSDomainDAO))
+                .block();
+        };
+    }
+
+    private static ImmutableSet<Domain> extractIgnoredDomains(Request request) {
+        return Optional.ofNullable(StringUtils.trimToNull(request.queryParams(IGNORED_DOMAINS_PARAMETER)))
+            .map(domains -> Splitter.on(DOMAIN_SEPARATOR)
+                .trimResults()
+                .omitEmptyStrings()
+                .splitToStream(domains)
+                .map(Domain::of)
+                .collect(ImmutableSet.toImmutableSet()))
+            .orElse(ImmutableSet.of());
     }
 
     private Optional<Route> syncDomainMembersContactsRoute() {
