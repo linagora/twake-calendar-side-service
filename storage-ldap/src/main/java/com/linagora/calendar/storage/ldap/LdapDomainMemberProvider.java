@@ -19,12 +19,18 @@
 package com.linagora.calendar.storage.ldap;
 
 
+import java.util.Optional;
+
 import org.apache.james.core.Domain;
 
 import reactor.core.publisher.Flux;
 
 public interface LdapDomainMemberProvider {
 
-    Flux<LdapUser> domainMembers(Domain domain);
+    Flux<LdapUser> domainMembers(Domain domain, Optional<LdapFilter> additionalFilter);
+
+    default Flux<LdapUser> domainMembers(Domain domain) {
+        return domainMembers(domain, Optional.empty());
+    }
 
 }

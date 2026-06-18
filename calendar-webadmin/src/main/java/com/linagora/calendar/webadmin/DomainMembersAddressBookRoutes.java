@@ -40,6 +40,7 @@ import org.eclipse.jetty.http.HttpStatus;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
+import com.linagora.calendar.storage.ldap.LdapFilter;
 import com.linagora.calendar.webadmin.service.DavDomainMembersClearService;
 import com.linagora.calendar.webadmin.service.LdapToDavDomainMembersSyncService;
 import com.linagora.calendar.webadmin.task.ClearDavDomainMembersTask;
@@ -62,9 +63,10 @@ public class DomainMembersAddressBookRoutes implements Routes {
         }
 
         private static Task taskFromRequest(Request request, OpenPaaSDomainDAO openPaaSDomainDAO, LdapToDavDomainMembersSyncService syncService) {
+            Optional<LdapFilter> ldapFilter = extractLdapFilter(request);
             return extractDomain(request)
-                .map(domain -> buildSingleDomainTask(domain, openPaaSDomainDAO, syncService))
-                .orElseGet(() -> buildAllDomainsTask(request, openPaaSDomainDAO, syncService));
+                .map(domain -> buildSingleDomainTask(domain, ldapFilter, openPaaSDomainDAO, syncService))
+                .orElseGet(() -> buildAllDomainsTask(request, ldapFilter, openPaaSDomainDAO, syncService));
         }
 
         private static Optional<Domain> extractDomain(Request request) {
@@ -74,6 +76,7 @@ public class DomainMembersAddressBookRoutes implements Routes {
         }
 
         private static Task buildSingleDomainTask(Domain domain,
+                                                  Optional<LdapFilter> ldapFilter,
                                                   OpenPaaSDomainDAO openPaaSDomainDAO,
                                                   LdapToDavDomainMembersSyncService syncService) {
             return openPaaSDomainDAO.retrieve(domain)
@@ -82,15 +85,16 @@ public class DomainMembersAddressBookRoutes implements Routes {
                     .type(ErrorResponder.ErrorType.NOT_FOUND)
                     .message("domain not found: " + domain.asString())
                     .haltError())))
-                .map(openPaaSDomain -> LdapToDavDomainMembersSyncTask.singleDomain(openPaaSDomain, syncService, openPaaSDomainDAO))
+                .map(openPaaSDomain -> LdapToDavDomainMembersSyncTask.singleDomain(openPaaSDomain, ldapFilter, syncService, openPaaSDomainDAO))
                 .block();
         }
 
         private static Task buildAllDomainsTask(Request request,
+                                                Optional<LdapFilter> ldapFilter,
                                                 OpenPaaSDomainDAO openPaaSDomainDAO,
                                                 LdapToDavDomainMembersSyncService syncService) {
             ImmutableSet<Domain> ignoredDomains = extractIgnoredDomains(request);
-            return LdapToDavDomainMembersSyncTask.allDomains(syncService, openPaaSDomainDAO, ignoredDomains);
+            return LdapToDavDomainMembersSyncTask.allDomains(syncService, openPaaSDomainDAO, ignoredDomains, ldapFilter);
         }
 
         private static ImmutableSet<Domain> extractIgnoredDomains(Request request) {
@@ -105,9 +109,26 @@ public class DomainMembersAddressBookRoutes implements Routes {
         }
     }
 
+    private static Optional<LdapFilter> extractLdapFilter(Request request) {
+        return Optional.ofNullable(StringUtils.trimToNull(request.queryParams(LDAP_FILTER_PARAMETER)))
+            .map(rawFilter -> {
+                try {
+                    return LdapFilter.of(rawFilter);
+                } catch (LdapFilter.InvalidLdapFilterException e) {
+                    throw ErrorResponder.builder()
+                        .statusCode(HttpStatus.BAD_REQUEST_400)
+                        .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                        .message("Invalid '" + LDAP_FILTER_PARAMETER + "' parameter: " + rawFilter)
+                        .cause(e)
+                        .haltError();
+                }
+            });
+    }
+
     public static final String BASE_PATH = "/addressbook/domain-members";
     private static final String TARGET_DOMAIN_PARAMETER = "targetDomain";
     private static final String IGNORED_DOMAINS_PARAMETER = "ignoredDomains";
+    private static final String LDAP_FILTER_PARAMETER = "ldapFilter";
     private static final String SINGLE_DOMAIN_PATH = BASE_PATH + SEPARATOR + ":" + TARGET_DOMAIN_PARAMETER;
     private static final char DOMAIN_SEPARATOR = ',';
 
