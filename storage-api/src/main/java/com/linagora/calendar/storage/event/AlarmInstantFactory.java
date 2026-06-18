@@ -36,11 +36,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
-
-import jakarta.mail.internet.AddressException;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
@@ -60,6 +59,7 @@ import net.fortuna.ical4j.model.Recur;
 import net.fortuna.ical4j.model.component.VAlarm;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
+import net.fortuna.ical4j.model.property.Attendee;
 import net.fortuna.ical4j.model.property.ExDate;
 import net.fortuna.ical4j.model.property.RRule;
 import net.fortuna.ical4j.model.property.RecurrenceId;
@@ -75,6 +75,10 @@ public interface AlarmInstantFactory {
             Preconditions.checkArgument(alarmTime != null, "alarmTime must not be null");
             Preconditions.checkArgument(eventStartTime != null, "eventStartTime must not be null");
             Preconditions.checkArgument(action != null, "action must not be null");
+        }
+
+        public AlarmInstant withRecipients(List<MailAddress> recipients) {
+            return new AlarmInstant(alarmTime, eventStartTime, recurrenceId, recipients, action);
         }
     }
 
@@ -103,15 +107,33 @@ public interface AlarmInstantFactory {
 
         @Override
         public Optional<AlarmInstant> computeNextAlarmInstant(Calendar calendar, Username username, Optional<Instant> sinceInstant) {
-            Instant sinceInstantValue = sinceInstant
-                .orElse(clock.instant());
+            Instant sinceInstantValue = sinceInstant.orElse(clock.instant());
+            MailAddress userMailAddress = Throwing.supplier(username::asMailAddress).get();
             return listUpcomingAcceptedVEvents(calendar, username).stream()
                 .filter(event -> !EventParseUtils.isCancelled(event))
-                .flatMap(event -> computeAlarmInstants(event).stream())
+                .flatMap(event -> computeAlarmInstants(event).stream()
+                    .map(alarmInstant -> filterRecipientsForUser(event, alarmInstant, userMailAddress))
+                    .flatMap(Optional::stream))
                 .filter(alarmInstant -> alarmInstant.alarmTime().isAfter(sinceInstantValue))
-                .filter(Throwing.predicate(alarmInstant -> alarmInstant.recipients().isEmpty()
-                    || alarmInstant.recipients().contains(username.asMailAddress())))
                 .min(EARLIEST_FIRST_ALARM_COMPARATOR);
+        }
+
+        private Optional<AlarmInstant> filterRecipientsForUser(VEvent event, AlarmInstant alarmInstant, MailAddress userMailAddress) {
+            if (alarmInstant.recipients().isEmpty()) {
+                return Optional.of(alarmInstant);
+            }
+
+            Set<MailAddress> otherEventAttendeeMailAddresses = EventParseUtils.getAttendees(event).stream()
+                .map(EventFields.Person::email)
+                .filter(attendee -> !attendee.equals(userMailAddress))
+                .collect(Collectors.toSet());
+
+            return Optional.of(alarmInstant.recipients().stream()
+                    .filter(Predicate.not(otherEventAttendeeMailAddresses::contains))
+                    .distinct()
+                    .toList())
+                .filter(Predicate.not(List::isEmpty))
+                .map(alarmInstant::withRecipients);
         }
 
         private List<AlarmInstant> computeAlarmInstants(VEvent event) {
@@ -137,13 +159,17 @@ public interface AlarmInstantFactory {
 
         private List<MailAddress> extractRecipients(VAlarm vAlarm) {
             return vAlarm.getProperties(ATTENDEE).stream()
-                .map(property -> Strings.CS.replace(property.getValue(), "mailto:", ""))
-                .filter(StringUtils::isNotBlank)
-                .map(mailAddressValue -> {
+                .flatMap(property -> {
                     try {
-                        return new MailAddress(mailAddressValue);
-                    } catch (AddressException e) {
-                        throw new IllegalArgumentException("Invalid email address in ATTENDEE property: " + mailAddressValue, e);
+                        return Optional.ofNullable(((Attendee) property).getCalAddress())
+                            .map(Object::toString)
+                            .map(value -> Strings.CI.removeStart(value, "mailto:"))
+                            .filter(StringUtils::isNotEmpty)
+                            .map(Throwing.function(MailAddress::new))
+                            .stream();
+                    } catch (Exception e) {
+                        LOGGER.warn("Invalid email address in VALARM ATTENDEE property: {}. Skipping", property, e);
+                        return Optional.<MailAddress>empty().stream();
                     }
                 })
                 .toList();
