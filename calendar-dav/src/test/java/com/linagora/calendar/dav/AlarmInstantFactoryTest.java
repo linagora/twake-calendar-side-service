@@ -1335,6 +1335,32 @@ public class AlarmInstantFactoryTest {
                 .describedAs("No more alarms after all occurrences processed")
                 .isEmpty();
         }
+
+        @Test
+        void shouldSupportRecurringEventWithTzidUtcDTSTARTFormat() {
+            String ics = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:recurring-tzid-utc
+                DTSTART;TZID=UTC:20260608T083000
+                DTEND;TZID=UTC:20260608T093000
+                RRULE:FREQ=WEEKLY
+                SUMMARY:Weekly Meeting
+                ATTENDEE;CN=John Doe;PARTSTAT=ACCEPTED:mailto:john@example.com
+                BEGIN:VALARM
+                ACTION:EMAIL
+                TRIGGER:-PT15M
+                DESCRIPTION:Reminder
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """;
+
+            Optional<Instant> result = computeNextAlarmTime(ics, Instant.parse("2026-06-08T09:00:00Z"), Username.of("john@example.com"));
+
+            assertThat(result).contains(Instant.parse("2026-06-15T08:15:00Z"));
+        }
     }
 
     @Test

@@ -437,12 +437,7 @@ public class EventParseUtils {
     public static Period calculateRecurrenceSet(VEvent master, Temporal recurrenceDate) {
         try {
             Period period = switch (recurrenceDate) {
-                case Instant instant -> {
-                    ZonedDateTime startOfDay = instant.atZone(ZoneOffset.UTC)
-                        .toLocalDate()
-                        .atStartOfDay(ZoneOffset.UTC);
-                    yield new Period(startOfDay, startOfDay.plusDays(1));
-                }
+                case Instant instant -> datetimePeriod(master, instant);
                 case LocalDate localDate -> {
                     LocalDate nextDay = localDate.plusDays(1);
                     yield new Period(nextDay, nextDay);
@@ -457,6 +452,22 @@ public class EventParseUtils {
             throw new IllegalArgumentException("Cannot calculateRecurrenceSet for recurrenceDate: " + recurrenceDate
                 + " of event: " + master, exception);
         }
+    }
+
+    private static Period datetimePeriod(VEvent master, Instant recurrenceDate) {
+        // When DTSTART is a floating LocalDateTime (e.g. TZID=UTC stripped by relaxed parsing),
+        // ical4j's TemporalComparator cannot compare LocalDateTime with ZonedDateTime.
+        // Use a LocalDateTime period so all temporals stay the same type.
+        if (master.getDateTimeStart().getDate() instanceof LocalDateTime) {
+            LocalDateTime ldt = recurrenceDate.atZone(ZoneOffset.UTC)
+                .toLocalDate()
+                .atStartOfDay();
+            return new Period(ldt, ldt.plusDays(1));
+        }
+        ZonedDateTime startOfDay = recurrenceDate.atZone(ZoneOffset.UTC)
+            .toLocalDate()
+            .atStartOfDay(ZoneOffset.UTC);
+        return new Period(startOfDay, startOfDay.plusDays(1));
     }
 
     public static void addProperties(VEvent vEvent, Property... properties) {
