@@ -61,8 +61,11 @@ public record CalendarReportXmlResponse(byte[] xml) {
         }
 
         public String eventPathId() {
-            return StringUtils.substringAfterLast(href.getPath(), "/")
-                .replace(ICS_EXTENSION,"");
+            return icsResourceFullName().replace(ICS_EXTENSION,"");
+        }
+
+        public String icsResourceFullName() {
+            return StringUtils.substringAfterLast(href.getPath(), "/");
         }
     }
 
