@@ -33,6 +33,7 @@ import org.slf4j.LoggerFactory;
 import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.dav.AddressBookContact;
 import com.linagora.calendar.dav.CardDavClient;
+import com.linagora.calendar.dav.CardDavClient.DomainMemberCard;
 import com.linagora.calendar.storage.OpenPaaSId;
 
 import reactor.core.publisher.Flux;
@@ -117,9 +118,15 @@ public interface DavDomainMemberUpdateApplier {
         @Override
         public Mono<UpdateResult> apply(DomainMemberUpdate memberUpdate, ContactUpdateContext context) {
             return Mono.when(
-                    processContacts(memberUpdate.deleted(), deleteContactOperation(), context, OperationType.DELETE),
-                    processContacts(memberUpdate.updated(), upsertContactOperation(), context, OperationType.UPDATE),
-                    processContacts(memberUpdate.added(), upsertContactOperation(), context, OperationType.ADD))
+                    processCards(memberUpdate.deleted(),
+                        card -> davClient.deleteContactDomainMembers(domainId, card.resourceName()),
+                        context, OperationType.DELETE),
+                    processCards(memberUpdate.updated(),
+                        card -> davClient.upsertContactDomainMembers(domainId, card.resourceName(), card.contact().toVcardBytes()),
+                        context, OperationType.UPDATE),
+                    processContacts(memberUpdate.added(),
+                        contact -> davClient.upsertContactDomainMembers(domainId, contact.vcardUid(), contact.toVcardBytes()),
+                        context, OperationType.ADD))
                 .then(Mono.defer(() -> Mono.just(context.toUpdateResult())));
         }
 
@@ -128,12 +135,9 @@ public interface DavDomainMemberUpdateApplier {
             Mono<Void> process(AddressBookContact contact);
         }
 
-        private ContactOperation upsertContactOperation() {
-            return contact -> davClient.upsertContactDomainMembers(domainId, contact.vcardUid(), contact.toVcardBytes());
-        }
-
-        private ContactOperation deleteContactOperation() {
-            return contact -> davClient.deleteContactDomainMembers(domainId, contact.vcardUid());
+        @FunctionalInterface
+        interface CardOperation {
+            Mono<Void> process(DomainMemberCard card);
         }
 
         private Mono<Void> processContacts(Iterable<AddressBookContact> contacts,
@@ -150,6 +154,28 @@ public interface DavDomainMemberUpdateApplier {
                             LOGGER.error("Failed to {} contact {} for domain {}",
                                 type.name().toLowerCase(),
                                 contact.mail().map(MailAddress::asString).orElse(null),
+                                domainId.value(),
+                                e);
+                            return Mono.empty();
+                        }), ReactorUtils.LOW_CONCURRENCY)
+                .then();
+        }
+
+        private Mono<Void> processCards(Iterable<DomainMemberCard> cards,
+                                        CardOperation operation,
+                                        ContactUpdateContext context,
+                                        OperationType type) {
+
+            return Flux.fromIterable(cards)
+                .flatMap(card ->
+                    operation.process(card)
+                        .doOnSuccess(ignored -> context.recordSuccess(type))
+                        .onErrorResume(e -> {
+                            context.recordFailure(type, card.contact());
+                            LOGGER.error("Failed to {} contact {} (resource {}) for domain {}",
+                                type.name().toLowerCase(),
+                                card.contact().mail().map(MailAddress::asString).orElse(null),
+                                card.resourceName(),
                                 domainId.value(),
                                 e);
                             return Mono.empty();

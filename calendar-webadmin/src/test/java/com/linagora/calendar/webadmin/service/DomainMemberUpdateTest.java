@@ -23,12 +23,14 @@ import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.apache.james.core.MailAddress;
 import org.junit.jupiter.api.Test;
 
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.dav.AddressBookContact;
+import com.linagora.calendar.dav.CardDavClient.DomainMemberCard;
 import com.linagora.calendar.storage.ldap.LdapUser;
 
 public class DomainMemberUpdateTest {
@@ -49,7 +51,7 @@ public class DomainMemberUpdateTest {
             .build();
     }
 
-    private AddressBookContact davCard(String uid, String mail, String familyName, String givenName, String displayName, String tel) {
+    private AddressBookContact contact(String uid, String mail, String familyName, String givenName, String displayName, String tel) {
         return AddressBookContact.builder()
             .uid(uid)
             .mail(mailAddress(mail))
@@ -60,6 +62,10 @@ public class DomainMemberUpdateTest {
             .build();
     }
 
+    private DomainMemberCard davCard(String resourceName, String mail, String familyName, String givenName, String displayName, String tel) {
+        return new DomainMemberCard(resourceName, contact(resourceName, mail, familyName, givenName, displayName, tel));
+    }
+
     @Test
     void computeShouldDetectAddedMember() {
         LdapUser ldap = ldapMember("uid123", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "123");
@@ -68,7 +74,7 @@ public class DomainMemberUpdateTest {
 
         assertSoftly(softly -> {
             softly.assertThat(result.added())
-                .containsExactly(davCard("uid123", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "123"));
+                .containsExactly(contact("uid123", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "123"));
             softly.assertThat(result.deleted()).isEmpty();
             softly.assertThat(result.updated()).isEmpty();
         });
@@ -150,7 +156,7 @@ public class DomainMemberUpdateTest {
 
     @Test
     void computeShouldDetectDeletedMember() {
-        AddressBookContact dav = davCard("uid123", "user2@example.com", "Tran", "B", "Tran B", "456");
+        DomainMemberCard dav = davCard("res-1", "user2@example.com", "Tran", "B", "Tran B", "456");
 
         DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(), List.of(dav));
 
@@ -164,7 +170,7 @@ public class DomainMemberUpdateTest {
     @Test
     void computeShouldDetectNoChangeIfFieldsAreEqual() {
         LdapUser ldap = ldapMember("uid123", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "123");
-        AddressBookContact dav = davCard("uid123", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "123");
+        DomainMemberCard dav = davCard("uid123", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "123");
 
         DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(ldap), List.of(dav));
 
@@ -178,71 +184,73 @@ public class DomainMemberUpdateTest {
     @Test
     void computeShouldDetectUpdatedMemberWhenTelephoneChanged() {
         LdapUser ldap = ldapMember("uid123", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "123");
-        AddressBookContact dav = davCard("uid456", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "456");
+        DomainMemberCard dav = davCard("res-456", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "456");
 
         DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(ldap), List.of(dav));
 
         assertSoftly(softly -> {
             softly.assertThat(result.added()).isEmpty();
             softly.assertThat(result.deleted()).isEmpty();
-            softly.assertThat(result.updated()).containsExactly(toAddressBookContact(ldap, dav.uid()));
+            softly.assertThat(result.updated()).containsExactly(
+                new DomainMemberCard("res-456", toAddressBookContact(ldap, dav.contact().uid())));
         });
     }
 
     @Test
     void computeShouldDetectUpdatedWhenDisplayNameChanged() {
         LdapUser ldap = ldapMember("uid123", "user3@example.com", "Le", "C", "Le C", "789");
-        AddressBookContact dav = davCard("uid456", "user3@example.com", "Le", "C", "Different Display Name", "789");
+        DomainMemberCard dav = davCard("res-456", "user3@example.com", "Le", "C", "Different Display Name", "789");
 
         DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(ldap), List.of(dav));
 
         assertSoftly(softly -> {
             softly.assertThat(result.added()).isEmpty();
             softly.assertThat(result.deleted()).isEmpty();
-            softly.assertThat(result.updated()).containsExactly(toAddressBookContact(ldap, dav.uid()));
+            softly.assertThat(result.updated()).containsExactly(
+                new DomainMemberCard("res-456", toAddressBookContact(ldap, dav.contact().uid())));
         });
     }
 
     @Test
     void computeShouldDetectUpdatedWhenGivenNameChanged() {
         LdapUser ldap = ldapMember("uid123", "user5@example.com", "Vo", "E", "Vo E", "111");
-        AddressBookContact dav = davCard("uid456", "user5@example.com", "Vo", "E_updated", "Vo E", "111");
+        DomainMemberCard dav = davCard("res-456", "user5@example.com", "Vo", "E_updated", "Vo E", "111");
 
         DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(ldap), List.of(dav));
 
-        assertThat(result.updated()).containsExactly(toAddressBookContact(ldap, dav.uid()));
+        assertThat(result.updated()).containsExactly(
+            new DomainMemberCard("res-456", toAddressBookContact(ldap, dav.contact().uid())));
     }
 
     @Test
     void computeShouldDetectUpdatedWhenFamilyNameChanged() {
         LdapUser ldap = ldapMember("uid123", "user6@example.com", "Ho", "F", "Ho F", "222");
-        AddressBookContact dav = davCard("uid456", "user6@example.com", "Different", "F", "Ho F", "222");
+        DomainMemberCard dav = davCard("res-456", "user6@example.com", "Different", "F", "Ho F", "222");
 
         DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(ldap), List.of(dav));
 
-        assertThat(result.updated()).containsExactly(toAddressBookContact(ldap, dav.uid()));
+        assertThat(result.updated()).containsExactly(
+            new DomainMemberCard("res-456", toAddressBookContact(ldap, dav.contact().uid())));
     }
 
     @Test
-    void computeShouldDetectAddedDeletedAndUpdatedMembers() {
-        LdapUser addedLdap = ldapMember("uid1", "added@example.com", "Nguyen", "A", "Nguyen A", "111");
-        AddressBookContact deletedDav = davCard("uid2", "deleted@example.com", "Tran", "B", "Tran B", "222");
-        LdapUser updatedLdap = ldapMember("uid3", "common@example.com", "Le", "C", "Le C", "333");
-        AddressBookContact outdatedDav = davCard("uid4", "common@example.com", "Le", "C", "Different Display", "333");
+    void computeShouldUpdateExistingResourceInPlaceWhenResourceNameDiffersFromUid() {
+        // The DAV resource lives under a name unrelated to its vCard uid (as created by other tools).
+        // The update must target the real resource name so it is rewritten in place, not duplicated.
+        LdapUser ldap = ldapMember("uid123", "user7@example.com", "Smith", "Anna", "Anna Smith", "999");
+        DomainMemberCard dav = new DomainMemberCard("random-resource-name",
+            contact("internal-uid", "user7@example.com", "Smith", "Anna", "Outdated", "999"));
 
-        DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(addedLdap, updatedLdap),
-            List.of(deletedDav, outdatedDav));
+        DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(ldap), List.of(dav));
 
-        assertSoftly(softly -> {
-            softly.assertThat(result.added()).containsExactly(toAddressBookContact(addedLdap, addedLdap.uid()));
-            softly.assertThat(result.deleted()).containsExactly(deletedDav);
-            softly.assertThat(result.updated()).containsExactly(toAddressBookContact(updatedLdap, outdatedDav.uid()));
-        });
+        assertThat(result.updated())
+            .extracting(DomainMemberCard::resourceName)
+            .containsExactly("random-resource-name");
     }
 
     @Test
     void computeShouldDeduplicateLdapMembersSharingTheSameMail() {
-        // Two distinct LDAP accounts sharing the same mail must not crash the computation
+        // Two distinct LDAP accounts sharing the same mail must not crash and keep a single source
         LdapUser first = ldapMember("deploy_gsafe", "shared@example.com", "gSafe", "Deploy", "gSafe Deploy", null);
         LdapUser second = ldapMember("deploy_gsafe_snapshots", "shared@example.com", "gSafe", "Deploy", "gSafe Deploy", null);
 
@@ -256,10 +264,10 @@ public class DomainMemberUpdateTest {
     }
 
     @Test
-    void computeShouldDeleteAllDavContactsSharingAMailNoLongerInLdap() {
-        // Two DAV contacts share a mail that is no longer backed by any LDAP user: both must be deleted
-        AddressBookContact first = davCard("uid1", "shared@example.com", "gSafe", "Deploy", "gSafe Deploy", "111");
-        AddressBookContact second = davCard("uid2", "shared@example.com", "gSafe", "Deploy", "gSafe Deploy", "111");
+    void computeShouldDeleteAllDavResourcesSharingAMailNoLongerInLdap() {
+        // Two DAV resources share a mail no longer backed by LDAP: both must be deleted by resource name
+        DomainMemberCard first = davCard("res-1", "shared@example.com", "gSafe", "Deploy", "gSafe Deploy", "111");
+        DomainMemberCard second = davCard("res-2", "shared@example.com", "gSafe", "Deploy", "gSafe Deploy", "111");
 
         DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(), List.of(first, second));
 
@@ -271,20 +279,54 @@ public class DomainMemberUpdateTest {
     }
 
     @Test
-    void computeShouldDeleteSurplusDavDuplicatesForAMailStillInLdap() {
-        // The address book holds two duplicate contacts for a mail still present in LDAP.
-        // One representative must be kept (matching the LDAP uid) while the surplus duplicate is deleted.
+    void computeShouldDeleteSurplusDuplicateResourcesForAMailStillInLdap() {
+        // Two duplicate resources for a mail still in LDAP: keep the representative, delete the surplus.
         LdapUser ldap = ldapMember("deploy_gsafe", "shared@example.com", "gSafe", "Deploy", "gSafe Deploy", "111");
-        AddressBookContact canonical = davCard("deploy_gsafe", "shared@example.com", "gSafe", "Deploy", "gSafe Deploy", "111");
-        AddressBookContact duplicate = davCard("deploy_gsafe_snapshots", "shared@example.com", "gSafe", "Deploy", "gSafe Deploy", "111");
+        DomainMemberCard representative = davCard("res-1", "shared@example.com", "gSafe", "Deploy", "gSafe Deploy", "111");
+        DomainMemberCard duplicate = davCard("res-2", "shared@example.com", "gSafe", "Deploy", "gSafe Deploy", "111");
 
-        DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(ldap), List.of(canonical, duplicate));
+        DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(ldap), List.of(representative, duplicate));
 
         assertSoftly(softly -> {
             softly.assertThat(result.added()).isEmpty();
             softly.assertThat(result.deleted()).containsExactly(duplicate);
-            // canonical is unchanged compared to LDAP, so no update is emitted
             softly.assertThat(result.updated()).isEmpty();
+        });
+    }
+
+    @Test
+    void computeShouldDeleteStrictlyIdenticalDuplicateResources() {
+        // Two resources with identical vCard content (same uid, same fields) but distinct resource names.
+        LdapUser ldap = ldapMember("frederic", "frederic@example.com", "Martin", "Frederic", "Frederic Martin", "1");
+        AddressBookContact identical = contact("shared-uid", "frederic@example.com", "Martin", "Frederic", "Frederic Martin", "1");
+        DomainMemberCard cardA = new DomainMemberCard("res-a", identical);
+        DomainMemberCard cardB = new DomainMemberCard("res-b", identical);
+
+        DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(ldap), List.of(cardA, cardB));
+
+        assertSoftly(softly -> {
+            softly.assertThat(result.added()).isEmpty();
+            // res-a is kept (lowest resource name), res-b deleted even though content is identical
+            softly.assertThat(result.deleted()).containsExactly(cardB);
+            softly.assertThat(result.updated()).isEmpty();
+        });
+    }
+
+    @Test
+    void computeShouldDetectAddedDeletedAndUpdatedMembers() {
+        LdapUser addedLdap = ldapMember("uid1", "added@example.com", "Nguyen", "A", "Nguyen A", "111");
+        DomainMemberCard deletedDav = davCard("res-2", "deleted@example.com", "Tran", "B", "Tran B", "222");
+        LdapUser updatedLdap = ldapMember("uid3", "common@example.com", "Le", "C", "Le C", "333");
+        DomainMemberCard outdatedDav = davCard("res-4", "common@example.com", "Le", "C", "Different Display", "333");
+
+        DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(addedLdap, updatedLdap),
+            List.of(deletedDav, outdatedDav));
+
+        assertSoftly(softly -> {
+            softly.assertThat(result.added()).containsExactly(toAddressBookContact(addedLdap, addedLdap.uid()));
+            softly.assertThat(result.deleted()).containsExactly(deletedDav);
+            softly.assertThat(result.updated()).containsExactly(
+                new DomainMemberCard("res-4", toAddressBookContact(updatedLdap, outdatedDav.contact().uid())));
         });
     }
 
@@ -295,15 +337,15 @@ public class DomainMemberUpdateTest {
         LdapUser added2 = ldapMember("uid2", "added2@example.com", "Tran", "B", "Tran B", "222");
 
         // Deleted members
-        AddressBookContact deleted1 = davCard("uid3", "deleted1@example.com", "Le", "C", "Le C", "333");
-        AddressBookContact deleted2 = davCard("uid4", "deleted2@example.com", "Pham", "D", "Pham D", "444");
+        DomainMemberCard deleted1 = davCard("res-3", "deleted1@example.com", "Le", "C", "Le C", "333");
+        DomainMemberCard deleted2 = davCard("res-4", "deleted2@example.com", "Pham", "D", "Pham D", "444");
 
         // Updated members (same email, different fields)
         LdapUser updated1Ldap = ldapMember("uid5", "update1@example.com", "Vo", "E", "Vo E", "555");
-        AddressBookContact outdated1Dav = davCard("uid6", "update1@example.com", "Vo", "E_updated", "Vo E", "555");
+        DomainMemberCard outdated1Dav = davCard("res-6", "update1@example.com", "Vo", "E_updated", "Vo E", "555");
 
         LdapUser updated2Ldap = ldapMember("uid7", "update2@example.com", "Dang", "F", "Dang F", "666");
-        AddressBookContact outdated2Dav = davCard("uid8", "update2@example.com", "Dang", "F", "Different Display", "666");
+        DomainMemberCard outdated2Dav = davCard("res-8", "update2@example.com", "Dang", "F", "Different Display", "666");
 
         DomainMemberUpdate result = DomainMemberUpdate.compute(
             List.of(added1, added2, updated1Ldap, updated2Ldap),
@@ -315,9 +357,17 @@ public class DomainMemberUpdateTest {
                 toAddressBookContact(added2, added2.uid()));
             softly.assertThat(result.deleted()).containsExactlyInAnyOrder(deleted1, deleted2);
             softly.assertThat(result.updated()).containsExactlyInAnyOrder(
-                toAddressBookContact(updated1Ldap, outdated1Dav.uid()),
-                toAddressBookContact(updated2Ldap, outdated2Dav.uid()));
+                new DomainMemberCard("res-6", toAddressBookContact(updated1Ldap, outdated1Dav.contact().uid())),
+                new DomainMemberCard("res-8", toAddressBookContact(updated2Ldap, outdated2Dav.contact().uid())));
         });
+    }
+
+    @Test
+    void toAddressBookContactShouldBuildFromUid() {
+        LdapUser ldap = ldapMember("uid123", "user@example.com", "Nguyen", "Van A", "Nguyen Van A", "123");
+
+        assertThat(toAddressBookContact(ldap, Optional.of("uid123")))
+            .isEqualTo(contact("uid123", "user@example.com", "Nguyen", "Van A", "Nguyen Van A", "123"));
     }
 
 }
