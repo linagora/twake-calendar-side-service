@@ -49,9 +49,9 @@ import com.google.inject.Provides;
 import com.google.inject.Singleton;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.CalDavClient.ItipRequest;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DavTestHelper;
-import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.CalendarURL;
@@ -69,7 +69,7 @@ class CalendarDavToWebsocketFlowIntegrationTest {
 
     @RegisterExtension
     @Order(1)
-    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+    static SabreDavExtension sabreDavExtension = SabreDavExtension.perClass();
 
     @Order(2)
     @RegisterExtension
@@ -134,7 +134,7 @@ class CalendarDavToWebsocketFlowIntegrationTest {
     }
 
     @Test
-    void bobShouldReceiveWebsocketPushWhenAliceInvitesHim() {
+    void bobShouldReceiveWebsocketPushWhenHaveANewEvent() {
         // GIVEN: Bob opens WebSocket
         String bobTicket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
@@ -154,11 +154,11 @@ class CalendarDavToWebsocketFlowIntegrationTest {
             .isArray()
             .contains(bobCalendarUrl);
 
-        // WHEN: Alice creates ICS event and invites Bob
+        // WHEN: Bob's calendar changes
         String eventUid = "event-" + System.currentTimeMillis();
         String ics = buildEventICS(eventUid, alice.username().asString(), bob.username().asString());
 
-        davTestHelper.upsertCalendar(alice, ics, eventUid);
+        sendItipRequestToBob(eventUid, ics);
 
         String pushMessage = awaitMessage(messages, msg -> msg.contains("syncToken") && msg.contains(bobCalendarUrl));
 
@@ -185,11 +185,12 @@ class CalendarDavToWebsocketFlowIntegrationTest {
                 "register": ["%s"]
             }
             """.formatted(bobCalendarUrl));
+        awaitMessage(messages, msg -> msg.contains("\"registered\""));
 
-        // WHEN: Alice creates an event
+        // WHEN: Bob's calendar changes
         String eventUid = "event-" + System.currentTimeMillis();
         String ics = buildEventICS(eventUid, alice.username().asString(), bob.username().asString());
-        davTestHelper.upsertCalendar(alice, ics, eventUid);
+        sendItipRequestToBob(eventUid, ics);
 
         // Bob receives websocket notification (skip unrelated messages)
         String pushMessage = awaitMessage(messages, msg -> msg.contains("syncToken"));
@@ -232,6 +233,19 @@ class CalendarDavToWebsocketFlowIntegrationTest {
         return Pair.of(CalendarURL.deserialize(Strings.CS.removeStart(calendarUrlString, "/calendars/")), syncToken);
     }
 
+    private void sendItipRequestToBob(String eventUid, String ics) {
+        Boolean deliveredLocally = calDavClient.sendItip(bob.username(), new ItipRequest(
+                eventUid,
+                alice.username().asString(),
+                bob.username().asString(),
+                ics,
+                "REQUEST",
+                Optional.of(0)))
+            .block();
+
+        assertThat(deliveredLocally).isTrue();
+    }
+
     private String buildEventICS(String eventUid, String organizer, String attendee) {
         String now = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss"));
         String next = LocalDateTime.now().plusHours(1).format(DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss"));
@@ -242,6 +256,7 @@ class CalendarDavToWebsocketFlowIntegrationTest {
             VERSION:2.0
             PRODID:-//Sabre//Sabre VObject 4.2.2//EN
             CALSCALE:GREGORIAN
+            METHOD:REQUEST
             BEGIN:VEVENT
             UID:{UID}
             DTSTAMP:{DTSTAMP}Z
@@ -249,7 +264,7 @@ class CalendarDavToWebsocketFlowIntegrationTest {
             DTEND;TZID=Asia/Ho_Chi_Minh:{END}
             SUMMARY:WebSocket Flow Test
             ORGANIZER:mailto:{ORGANIZER}
-            ATTENDEE;PARTSTAT=ACCEPTED:mailto:{ATTENDEE}
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:{ATTENDEE}
             END:VEVENT
             END:VCALENDAR
             """;

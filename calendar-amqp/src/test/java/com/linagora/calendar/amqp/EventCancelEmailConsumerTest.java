@@ -77,7 +77,6 @@ import com.linagora.calendar.api.Participation;
 import com.linagora.calendar.api.ParticipationTokenSigner;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
-import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.smtp.MailSender;
 import com.linagora.calendar.smtp.MailSenderConfiguration;
 import com.linagora.calendar.smtp.MockSmtpServerExtension;
@@ -110,7 +109,7 @@ public class EventCancelEmailConsumerTest {
 
     @RegisterExtension
     @Order(1)
-    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+    static SabreDavWithAsyncSchedulingExtension sabreDavExtension = new SabreDavWithAsyncSchedulingExtension();
 
     @RegisterExtension
     @Order(2)

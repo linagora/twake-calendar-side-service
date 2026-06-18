@@ -140,7 +140,7 @@ public class CalDavEventRepositoryTest {
                         ["dtstart", { "tzid": "Asia/Ho_Chi_Minh" }, "date-time", "${json-unit.any-string}"],
                         ["dtend", { "tzid": "Asia/Ho_Chi_Minh" }, "date-time", "${json-unit.any-string}"],
                         ["summary", {}, "text", "Twake Calendar - Sprint planning #04"],
-                        ["organizer", { "cn": "Van Tung TRAN", "schedule-status": "1.1" }, "cal-address", "mailto:%s"],
+                        ["organizer", { "cn": "Van Tung TRAN", "schedule-status": "1.0" }, "cal-address", "mailto:%s"],
                         ["attendee", { "cn": "Benoît TELLIER", "partstat": "ACCEPTED" }, "cal-address", "mailto:%s"]
                       ],
                       []
@@ -244,6 +244,7 @@ public class CalDavEventRepositoryTest {
                 BEGIN:VCALENDAR
                 VERSION:2.0
                 PRODID:-//Twake//Recurrence Test//EN
+                CALSCALE:GREGORIAN
                 BEGIN:VEVENT
                 UID:%1$s
                 DTSTAMP:%2$sZ
@@ -276,8 +277,7 @@ public class CalDavEventRepositoryTest {
             dateTime(1, 11, 0),
             dateTime(1, 11, 30));
 
-        davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
-        waitForEventCreation(attendee);
+        davTestHelper.upsertCalendar(attendee, calendarData, eventUid);
 
         CalendarReportJsonResponse result = testee.updatePartStat(
             attendee.username(), attendee.id(), new EventUid(eventUid), PartStat.ACCEPTED).block();
@@ -303,7 +303,7 @@ public class CalDavEventRepositoryTest {
                         ["dtend", { "tzid": "Asia/Ho_Chi_Minh" }, "date-time", "${json-unit.any-string}"],
                         ["rrule", {}, "recur", { "freq": "DAILY", "count": 3 }],
                         ["summary", {}, "text", "Recurring Standup Meeting"],
-                        ["organizer", { "cn": "Van Tung TRAN", "schedule-status": "1.1" }, "cal-address", "mailto:%s"],
+                        ["organizer", { "cn": "Van Tung TRAN", "schedule-status": "1.0" }, "cal-address", "mailto:%s"],
                         ["sequence", {}, "integer", 1],
                         ["attendee", { "cn": "Benoît TELLIER", "partstat": "ACCEPTED" }, "cal-address", "mailto:%s"]
                       ],
@@ -396,27 +396,21 @@ public class CalDavEventRepositoryTest {
 
 
         davTestHelper.upsertCalendar(organizer, icalData, eventUid);
-
-        // Wait until resource calendar sees the event
-        Fixture.awaitAtMost.untilAsserted(() ->
-            assertThat(davTestHelper.findFirstEventId(resourceId, domain.id()))
-                .withFailMessage("Event not created for resource: " + resourceId.value())
-                .isPresent());
+        upsertResourceCalendar(domain.id(), resourceId, icalData, eventUid);
 
         String eventPathId = davTestHelper.findFirstEventId(resourceId, domain.id()).get();
 
         // When: update participation status of the resource to ACCEPTED
         testee.updatePartStat(domain, resourceId, eventPathId, PartStat.ACCEPTED).block();
 
-        // Then: verify that resource attendee in organizer’s calendar has been updated
-
-        URI organizerEventHref = URI.create("/calendars/")
-            .resolve(organizer.id().value() + "/")
-            .resolve(organizer.id().value() + "/")
-            .resolve(eventUid + ".ics");
+        // Then: verify the resource calendar event has been updated.
+        URI resourceEventHref = URI.create("/calendars/")
+            .resolve(resourceId.value() + "/")
+            .resolve(resourceId.value() + "/")
+            .resolve(eventPathId + ".ics");
 
         Fixture.awaitAtMost.untilAsserted(() -> {
-            DavCalendarObject calendarObject = calDavClient.fetchCalendarEvent(organizer.username(), organizerEventHref).block();
+            DavCalendarObject calendarObject = davTestHelper.fetchCalendarEvent(domain.id(), resourceEventHref).block();
             EventFields.Person resourceAttendee = getFirstResource(calendarObject);
             assertThat(resourceAttendee.partStat()).contains(PartStat.ACCEPTED);
         });
@@ -425,13 +419,6 @@ public class CalDavEventRepositoryTest {
     private EventFields.Person getFirstResource(DavCalendarObject calendarObject) {
         VEvent vEvent = (VEvent) calendarObject.calendarData().getComponent(Component.VEVENT).get();
         return EventParseUtils.getResources(vEvent).getFirst();
-    }
-
-    private void waitForEventCreation(OpenPaaSUser user) {
-        Fixture.awaitAtMost.untilAsserted(() ->
-            assertThat(davTestHelper.findFirstEventId(user))
-                .withFailMessage("Event not created for user: " + user.username())
-                .isPresent());
     }
 
     private String generateCalendarData(String eventUid, String organizerEmail, String attendeeEmail,
@@ -493,9 +480,13 @@ public class CalDavEventRepositoryTest {
 
     private void upsertCalendarForTest(String eventUid, PartStat partStat) {
         davTestHelper.upsertCalendar(
-            organizer,
+            attendee,
             generateCalendarData(eventUid, organizer.username().asString(), attendee.username().asString(), partStat),
             eventUid);
-        waitForEventCreation(attendee);
+    }
+
+    private void upsertResourceCalendar(OpenPaaSId domainId, ResourceId resourceId, String calendarData, String eventUid) {
+        URI davCalendarUri = URI.create("/calendars/" + resourceId.value() + "/" + resourceId.value() + "/" + eventUid + ".ics");
+        davTestHelper.upsertCalendar(domainId, davCalendarUri, calendarData).block();
     }
 }

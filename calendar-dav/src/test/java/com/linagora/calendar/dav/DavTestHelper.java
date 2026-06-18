@@ -121,6 +121,30 @@ public class DavTestHelper extends DavClient {
             });
     }
 
+    public Mono<Void> upsertCalendar(OpenPaaSId domainId, URI uri, String calendarData) {
+        return httpClientWithTechnicalToken(domainId)
+            .flatMap(client -> client.headers(headers ->
+                    headers.add(HttpHeaderNames.CONTENT_TYPE, "text/plain"))
+                .request(HttpMethod.PUT)
+                .uri(uri.toString())
+                .send(Mono.just(Unpooled.wrappedBuffer(calendarData.getBytes(StandardCharsets.UTF_8))))
+                .responseSingle((response, responseContent) -> {
+                    if (response.status().code() == 201 || response.status().code() == 204) {
+                        return Mono.empty();
+                    }
+                    return responseContent.asString(StandardCharsets.UTF_8)
+                        .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                        .flatMap(responseBody -> Mono.error(new DavClientException("""
+                            Unexpected status code: %d when create/update calendar object '%s'
+                            %s
+                            """.formatted(response.status().code(), uri.toString(), responseBody))));
+                }));
+    }
+
+    public Mono<DavCalendarObject> fetchCalendarEvent(OpenPaaSId domainId, URI calendarEventHref) {
+        return calDavClient.fetchCalendarEvent(httpClientWithTechnicalToken(domainId), calendarEventHref);
+    }
+
     public Mono<Void> postCounter(OpenPaaSUser openPaaSUser, String attendeeEventUid, CounterRequest counterRequest) {
         URI uri = URI.create("/calendars/" + openPaaSUser.id().value() + "/" + openPaaSUser.id().value() + "/" + attendeeEventUid + ".ics");
         return httpClientWithImpersonation(openPaaSUser.username()).headers(headers -> headers
