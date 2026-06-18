@@ -92,6 +92,41 @@ public class DefaultLdapDomainMemberProviderTest {
         assertThat(actual).isEmpty();
     }
 
+    @Test
+    void getDomainMembersShouldApplyAdditionalFilterWhenProvided() throws AddressException {
+        LdapUser expected1 = LdapUser.builder()
+            .uid("james-user")
+            .cn("James User")
+            .sn("User")
+            .givenName("James")
+            .mail(new MailAddress("james-user@james.org"))
+            .telephoneNumber("+33612345678")
+            .displayName("James User")
+            .build();
+
+        var actual = ldapDomainMemberProvider.domainMembers(Domain.of("james.org"), Optional.of(LdapFilter.of("(givenName=James)")))
+            .collectList()
+            .block();
+
+        assertThat(actual).containsExactly(expected1);
+    }
+
+    @Test
+    void getDomainMembersShouldExcludeMembersMatchingNegatedFilter() throws AddressException {
+        LdapUser expected2 = LdapUser.builder()
+            .uid("james-user2")
+            .cn("James User2")
+            .sn("User2")
+            .mail(new MailAddress("james-user2@james.org"))
+            .build();
+
+        var actual = ldapDomainMemberProvider.domainMembers(Domain.of("james.org"), Optional.of(LdapFilter.of("(!(uid=james-user))")))
+            .collectList()
+            .block();
+
+        assertThat(actual).containsExactly(expected2);
+    }
+
     private HierarchicalConfiguration<ImmutableNode> ldapRepositoryConfiguration(LdapGenericContainer ldapContainer, Optional<Username> administrator) {
         PropertyListConfiguration configuration = baseConfiguration(ldapContainer);
         configuration.addProperty("[@userIdAttribute]", "mail");

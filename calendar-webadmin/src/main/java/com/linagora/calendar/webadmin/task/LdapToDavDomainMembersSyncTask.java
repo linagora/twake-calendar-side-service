@@ -38,6 +38,7 @@ import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.dav.AddressBookContact;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
+import com.linagora.calendar.storage.ldap.LdapFilter;
 import com.linagora.calendar.webadmin.service.DavDomainMemberUpdateApplier;
 import com.linagora.calendar.webadmin.service.LdapToDavDomainMembersSyncService;
 
@@ -48,6 +49,7 @@ public class LdapToDavDomainMembersSyncTask implements Task {
     public record Details(Instant timestamp,
                           Optional<String> domain,
                           Optional<Set<String>> ignoredDomains,
+                          Optional<String> ldapFilter,
                           int addedCount,
                           ImmutableList<String> addFailureContacts,
                           int updatedCount,
@@ -57,6 +59,7 @@ public class LdapToDavDomainMembersSyncTask implements Task {
 
         public static Details from(Optional<OpenPaaSDomain> domain,
                                    Optional<Set<Domain>> ignoredDomains,
+                                   Optional<LdapFilter> ldapFilter,
                                    DavDomainMemberUpdateApplier.UpdateResult updateResult,
                                    Instant instant) {
 
@@ -71,6 +74,7 @@ public class LdapToDavDomainMembersSyncTask implements Task {
                 ignoredDomains.map(domains -> domains.stream()
                     .map(Domain::asString)
                     .collect(ImmutableSet.toImmutableSet())),
+                ldapFilter.map(LdapFilter::asString),
                 updateResult.addedCount(),
                 getEmails.apply(updateResult.addFailureContacts()),
                 updateResult.updatedCount(),
@@ -88,23 +92,26 @@ public class LdapToDavDomainMembersSyncTask implements Task {
     public static final TaskType TASK_TYPE = TaskType.of("sync-domain-members-contacts-ldap-to-dav");
     private static final Logger LOGGER = LoggerFactory.getLogger(LdapToDavDomainMembersSyncTask.class);
 
-    public static LdapToDavDomainMembersSyncTask singleDomain(OpenPaaSDomain domain, LdapToDavDomainMembersSyncService syncService,
+    public static LdapToDavDomainMembersSyncTask singleDomain(OpenPaaSDomain domain, Optional<LdapFilter> ldapFilter,
+                                                              LdapToDavDomainMembersSyncService syncService,
                                                               OpenPaaSDomainDAO openPaaSDomainDAO) {
-        return new LdapToDavDomainMembersSyncTask(new SingleDomain(domain), syncService, openPaaSDomainDAO);
+        return new LdapToDavDomainMembersSyncTask(new SingleDomain(domain, ldapFilter), syncService, openPaaSDomainDAO);
     }
 
     public static LdapToDavDomainMembersSyncTask allDomains(LdapToDavDomainMembersSyncService syncService,
-                                                            OpenPaaSDomainDAO openPaaSDomainDAO, ImmutableSet<Domain> ignoredDomains) {
-        return new LdapToDavDomainMembersSyncTask(new AllDomain(ignoredDomains), syncService, openPaaSDomainDAO);
+                                                            OpenPaaSDomainDAO openPaaSDomainDAO, ImmutableSet<Domain> ignoredDomains,
+                                                            Optional<LdapFilter> ldapFilter) {
+        return new LdapToDavDomainMembersSyncTask(new AllDomain(ignoredDomains, ldapFilter), syncService, openPaaSDomainDAO);
     }
 
     public sealed interface SyncTaskRequest permits SingleDomain, AllDomain {
+        Optional<LdapFilter> ldapFilter();
     }
 
-    record SingleDomain(OpenPaaSDomain domain) implements SyncTaskRequest {
+    record SingleDomain(OpenPaaSDomain domain, Optional<LdapFilter> ldapFilter) implements SyncTaskRequest {
     }
 
-    record AllDomain(ImmutableSet<Domain> ignoredDomains) implements SyncTaskRequest {
+    record AllDomain(ImmutableSet<Domain> ignoredDomains, Optional<LdapFilter> ldapFilter) implements SyncTaskRequest {
     }
 
     private final LdapToDavDomainMembersSyncService syncService;
@@ -123,16 +130,19 @@ public class LdapToDavDomainMembersSyncTask implements Task {
 
     @Override
     public Result run() {
+        Optional<LdapFilter> ldapFilter = syncTaskRequest.ldapFilter();
         return switch (syncTaskRequest) {
             case SingleDomain singleDomain -> {
-                LOGGER.info("Starting domain members sync for single domain: {}",
-                    singleDomain.domain().domain().asString());
-                yield singleDomainSyncProcessor(singleDomain.domain()).process().block();
+                LOGGER.info("Starting domain members sync for single domain: {}{}",
+                    singleDomain.domain().domain().asString(),
+                    ldapFilter.map(filter -> " with LDAP filter " + filter.asString()).orElse(""));
+                yield singleDomainSyncProcessor(singleDomain.domain(), ldapFilter).process().block();
             }
             case AllDomain allDomains -> {
-                LOGGER.info("Starting domain members sync for all domains, ignoredDomains={}",
-                    allDomains.ignoredDomains().stream().map(Domain::asString).collect(ImmutableSet.toImmutableSet()));
-                yield allDomainsSyncProcessor(allDomains.ignoredDomains()).process().block();
+                LOGGER.info("Starting domain members sync for all domains, ignoredDomains={}{}",
+                    allDomains.ignoredDomains().stream().map(Domain::asString).collect(ImmutableSet.toImmutableSet()),
+                    ldapFilter.map(filter -> ", ldapFilter=" + filter.asString()).orElse(""));
+                yield allDomainsSyncProcessor(allDomains.ignoredDomains(), ldapFilter).process().block();
             }
         };
     }
@@ -142,14 +152,14 @@ public class LdapToDavDomainMembersSyncTask implements Task {
         Mono<Result> process();
     }
 
-    private SyncProcessor singleDomainSyncProcessor(OpenPaaSDomain domain) {
-        return () -> syncDomainMembers(domain);
+    private SyncProcessor singleDomainSyncProcessor(OpenPaaSDomain domain, Optional<LdapFilter> ldapFilter) {
+        return () -> syncDomainMembers(domain, ldapFilter);
     }
 
-    private SyncProcessor allDomainsSyncProcessor(ImmutableSet<Domain> ignoredDomains) {
+    private SyncProcessor allDomainsSyncProcessor(ImmutableSet<Domain> ignoredDomains, Optional<LdapFilter> ldapFilter) {
         return () -> openPaaSDomainDAO.list()
             .filter(openPaaSDomain -> !ignoredDomains.contains(openPaaSDomain.domain()))
-            .concatMap(openPaaSDomain -> syncDomainMembers(openPaaSDomain)
+            .concatMap(openPaaSDomain -> syncDomainMembers(openPaaSDomain, ldapFilter)
                 .onErrorResume(error -> {
                     LOGGER.error("Failed to sync domain members for domain: {}", openPaaSDomain.domain(), error);
                     return Mono.just(Result.PARTIAL);
@@ -157,8 +167,8 @@ public class LdapToDavDomainMembersSyncTask implements Task {
             .reduce(Task.Result.COMPLETED, Task::combine);
     }
 
-    private Mono<Result> syncDomainMembers(OpenPaaSDomain domain) {
-        return syncService.syncDomainMembers(domain, context)
+    private Mono<Result> syncDomainMembers(OpenPaaSDomain domain, Optional<LdapFilter> ldapFilter) {
+        return syncService.syncDomainMembers(domain, context, ldapFilter)
             .map(updateResult -> {
                 if (updateResult.hasFailures()) {
                     return Result.PARTIAL;
@@ -184,6 +194,6 @@ public class LdapToDavDomainMembersSyncTask implements Task {
             case AllDomain allDomains -> Optional.of(allDomains.ignoredDomains());
         };
 
-        return Optional.of(Details.from(targetDomain, ignoredDomains, context.toUpdateResult(), Clock.systemUTC().instant()));
+        return Optional.of(Details.from(targetDomain, ignoredDomains, syncTaskRequest.ldapFilter(), context.toUpdateResult(), Clock.systemUTC().instant()));
     }
 }

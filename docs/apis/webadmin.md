@@ -162,6 +162,7 @@ Synchronizes LDAP members for **all existing domains**.
 
 Optional query parameters:
 - `ignoredDomains` : [String] Comma-separated list of domains to exclude from synchronization
+- `ldapFilter` : [String] Optional, URL-encoded LDAP search filter (RFC 4515). See [Restricting members with an LDAP filter](#restricting-members-with-an-ldap-filter).
 
 Example:
 
@@ -176,6 +177,29 @@ POST /addressbook/domain-members/{domain}?task=sync
 
 Synchronizes LDAP members only for the specified domain.
 
+Optional query parameters:
+- `ldapFilter` : [String] Optional, URL-encoded LDAP search filter (RFC 4515). See [Restricting members with an LDAP filter](#restricting-members-with-an-ldap-filter).
+
+### Restricting members with an LDAP filter
+
+By default the synchronization selects every LDAP entry whose `objectClass` matches the configured user
+object class and whose `mail` belongs to the domain. The optional `ldapFilter` parameter lets you narrow
+that selection: the provided filter is **AND-combined** with the default one.
+
+A typical use case is hiding a *secret department* from the global `Domain Members` address book while still
+synchronizing everyone else. Pass an exclusion filter so the secret department is never projected:
+
+```
+POST /addressbook/domain-members?task=sync&ldapFilter=(!(departmentNumber=SECRET))
+```
+
+> ⚠️ The synchronization computes a diff and **removes** from the `Domain Members` address book every
+> contact that is no longer returned by LDAP. As a consequence, a filtered synchronization deletes the
+> excluded members from the address book. You must therefore **always** run the synchronization with the
+> same filter — a subsequent unfiltered synchronization would re-add the previously excluded members.
+
+An invalid `ldapFilter` value results in a `400 Bad Request`.
+
 ### Task additional information
 
 Both endpoints will return a webadmin task with the following additional information:
@@ -185,6 +209,7 @@ Both endpoints will return a webadmin task with the following additional informa
     "type": "sync-domain-members-contacts-ldap-to-dav",
     "domain": null,
     "ignoredDomains": [ "twake.app" ],
+    "ldapFilter": "(!(departmentNumber=SECRET))",
     "timestamp": "${json-unit.any-string}",
     "addedCount": 1,
     "addFailureContacts": [],
@@ -194,6 +219,8 @@ Both endpoints will return a webadmin task with the following additional informa
     "deleteFailureContacts": []
 }
 ```
+
+`ldapFilter` is only present when the parameter was supplied.
 
 ## Delete domain members contacts
 

@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.storage.ldap;
 
+import java.util.Optional;
+
 import jakarta.inject.Inject;
 
 import org.apache.james.core.Domain;
@@ -52,14 +54,11 @@ public class DefaultLdapDomainMemberProvider implements LdapDomainMemberProvider
     }
 
     @Override
-    public Flux<LdapUser> domainMembers(Domain domain) {
+    public Flux<LdapUser> domainMembers(Domain domain, Optional<LdapFilter> additionalFilter) {
         return Flux.defer(() -> {
             String baseDn = ldapRepositoryConfiguration.getUserBase();
             try {
-                Filter filter = Filter.createANDFilter(
-                    Filter.createEqualityFilter("objectClass", ldapRepositoryConfiguration.getUserObjectClass()),
-                    Filter.createSubstringFilter("mail", EMPTY_SUB_INITIAL, EMPTY_SUB_ANY, "@" + domain.name())
-                );
+                Filter filter = buildFilter(domain, additionalFilter);
                 SearchResult searchResult = ldapConnectionPool.search(baseDn, SearchScope.SUB, filter);
                 return Flux.fromIterable(searchResult.getSearchEntries())
                     .flatMap(entry -> Mono.fromCallable(() -> LdapUser.fromLdapEntry(entry)));
@@ -67,5 +66,15 @@ public class DefaultLdapDomainMemberProvider implements LdapDomainMemberProvider
                 return Flux.error(e);
             }
         });
+    }
+
+    private Filter buildFilter(Domain domain, Optional<LdapFilter> additionalFilter) {
+        Filter baseFilter = Filter.createANDFilter(
+            Filter.createEqualityFilter("objectClass", ldapRepositoryConfiguration.getUserObjectClass()),
+            Filter.createSubstringFilter("mail", EMPTY_SUB_INITIAL, EMPTY_SUB_ANY, "@" + domain.name()));
+
+        return additionalFilter
+            .map(extraFilter -> Filter.createANDFilter(baseFilter, extraFilter.asFilter()))
+            .orElse(baseFilter);
     }
 }

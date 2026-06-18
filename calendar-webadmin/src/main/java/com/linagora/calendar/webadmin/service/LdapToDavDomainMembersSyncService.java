@@ -19,6 +19,7 @@
 package com.linagora.calendar.webadmin.service;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Function;
 
 import jakarta.inject.Inject;
@@ -31,6 +32,7 @@ import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.ldap.LdapDomainMemberProvider;
+import com.linagora.calendar.storage.ldap.LdapFilter;
 import com.linagora.calendar.storage.ldap.LdapUser;
 import com.linagora.calendar.webadmin.service.DavDomainMemberUpdateApplier.ContactUpdateContext;
 import com.linagora.calendar.webadmin.service.DavDomainMemberUpdateApplier.UpdateResult;
@@ -54,14 +56,19 @@ public class LdapToDavDomainMembersSyncService {
     }
 
     public Mono<UpdateResult> syncDomainMembers(OpenPaaSDomain openPaaSDomain, ContactUpdateContext contexts) {
-        return Mono.zip(fetchLdapDomainMembers(openPaaSDomain), fetchDavDomainMembers(openPaaSDomain))
+        return syncDomainMembers(openPaaSDomain, contexts, Optional.empty());
+    }
+
+    public Mono<UpdateResult> syncDomainMembers(OpenPaaSDomain openPaaSDomain, ContactUpdateContext contexts, Optional<LdapFilter> ldapFilter) {
+        return Mono.zip(fetchLdapDomainMembers(openPaaSDomain, ldapFilter), fetchDavDomainMembers(openPaaSDomain))
             .flatMap(tuple -> {
                 List<LdapUser> ldapMembers = tuple.getT1();
                 List<AddressBookContact> davContacts = tuple.getT2();
                 DomainMemberUpdate domainMemberUpdate = DomainMemberUpdate.compute(ldapMembers, davContacts);
                 return davDomainMemberUpdateApplierFactory.apply(openPaaSDomain.id()).apply(domainMemberUpdate, contexts);
             })
-            .doOnSubscribe(sub -> LOGGER.info("Syncing domain: {}", openPaaSDomain.domain()));
+            .doOnSubscribe(sub -> LOGGER.info("Syncing domain: {}{}", openPaaSDomain.domain(),
+                ldapFilter.map(filter -> " with LDAP filter " + filter.asString()).orElse("")));
     }
 
     private Mono<List<AddressBookContact>> fetchDavDomainMembers(OpenPaaSDomain openPaaSDomain) {
@@ -71,8 +78,10 @@ public class LdapToDavDomainMembersSyncService {
             .doOnError(throwable -> LOGGER.error("Error fetching DAV domain members for domain: {}", openPaaSDomain.domain(), throwable));
     }
 
-    private Mono<List<LdapUser>> fetchLdapDomainMembers(OpenPaaSDomain openPaaSDomain) {
-        return ldapDomainMemberProvider.domainMembers(openPaaSDomain.domain())
+    private Mono<List<LdapUser>> fetchLdapDomainMembers(OpenPaaSDomain openPaaSDomain, Optional<LdapFilter> ldapFilter) {
+        return ldapFilter
+            .map(filter -> ldapDomainMemberProvider.domainMembers(openPaaSDomain.domain(), Optional.of(filter)))
+            .orElseGet(() -> ldapDomainMemberProvider.domainMembers(openPaaSDomain.domain()))
             .collectList()
             .defaultIfEmpty(List.of())
             .doOnError(throwable -> LOGGER.error("Error fetching LDAP domain members for domain: {}", openPaaSDomain.domain(), throwable));

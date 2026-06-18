@@ -562,6 +562,81 @@ public class DomainMembersAddressBookRoutesTest {
     }
 
     @Test
+    void singleDomainSyncShouldApplyLdapFilterAndReportItInAdditionalInformation() {
+        LdapUser ldap = ldapMember("uid123", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "123");
+        when(ldapDomainMemberProvider.domainMembers(any(), any()))
+            .thenReturn(Flux.just(ldap));
+
+        String taskId = given()
+            .queryParam("task", "sync")
+            .queryParam("ldapFilter", "(!(departmentNumber=SECRET))")
+            .post(DomainMembersAddressBookRoutes.BASE_PATH + "/" + openPaaSDomain.domain().asString())
+        .then()
+            .statusCode(201)
+            .extract()
+            .jsonPath()
+            .getString("taskId");
+
+        given()
+            .basePath(TasksRoutes.BASE)
+        .when()
+            .get(taskId + "/await")
+        .then()
+            .statusCode(200)
+            .body("status", is("completed"))
+            .body("additionalInformation.addedCount", is(1))
+            .body("additionalInformation.ldapFilter", is("(!(departmentNumber=SECRET))"));
+    }
+
+    @Test
+    void allDomainsSyncShouldReportLdapFilterInAdditionalInformation() {
+        when(ldapDomainMemberProvider.domainMembers(any(), any()))
+            .thenReturn(Flux.empty());
+
+        String taskId = given()
+            .queryParam("task", "sync")
+            .queryParam("ldapFilter", "(!(departmentNumber=SECRET))")
+            .post(DomainMembersAddressBookRoutes.BASE_PATH)
+        .then()
+            .statusCode(201)
+            .extract()
+            .jsonPath()
+            .getString("taskId");
+
+        given()
+            .basePath(TasksRoutes.BASE)
+        .when()
+            .get(taskId + "/await")
+        .then()
+            .statusCode(200)
+            .body("status", is("completed"))
+            .body("additionalInformation.ldapFilter", is("(!(departmentNumber=SECRET))"));
+    }
+
+    @Test
+    void syncShouldReturnBadRequestWhenLdapFilterIsInvalid() {
+        String response = given()
+            .queryParam("task", "sync")
+            .queryParam("ldapFilter", "(((")
+            .post(DomainMembersAddressBookRoutes.BASE_PATH)
+        .then()
+            .statusCode(400)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response)
+            .withOptions(Option.IGNORING_EXTRA_FIELDS)
+            .isEqualTo("""
+                {
+                  "statusCode": 400,
+                  "type": "InvalidArgument",
+                  "message": "${json-unit.any-string}"
+                }
+                """);
+    }
+
+    @Test
     void clearSingleDomainShouldReturnNotFoundWhenDomainDoesNotExist() {
         String nonExistentDomain = "non-existent-" + UUID.randomUUID() + ".tld";
 
