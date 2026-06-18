@@ -37,6 +37,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.linagora.calendar.dav.AddressBookContact;
 import com.linagora.calendar.dav.CardDavClient;
+import com.linagora.calendar.dav.CardDavClient.DomainMemberCard;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.OpenPaaSDomain;
@@ -113,7 +114,7 @@ public class DavDomainMemberUpdateApplierTest {
         assertThat(listContactDomainMembersAsVcard(openPaaSDomain))
             .contains("john.doe@example.com");
 
-        DomainMemberUpdate deleteUpdate = new DomainMemberUpdate(Set.of(), Set.of(contact), Set.of());
+        DomainMemberUpdate deleteUpdate = new DomainMemberUpdate(Set.of(), Set.of(card(contact)), Set.of());
         UpdateResult deleteResult = testee.apply(deleteUpdate).block();
 
         assertSoftly(softly -> {
@@ -149,7 +150,7 @@ public class DavDomainMemberUpdateApplierTest {
             .mail("jane.doe@example.com")
             .build();
 
-        DomainMemberUpdate update = new DomainMemberUpdate(Set.of(), Set.of(), Set.of(updatedContact));
+        DomainMemberUpdate update = new DomainMemberUpdate(Set.of(), Set.of(), Set.of(card(updatedContact)));
         UpdateResult updateResult = testee.apply(update).block();
 
         assertSoftly(softly -> {
@@ -219,7 +220,7 @@ public class DavDomainMemberUpdateApplierTest {
             .build();
         insertContact(openPaaSDomain, contact2);
 
-        DomainMemberUpdate update = new DomainMemberUpdate(Set.of(), Set.of(contact1, contact2), Set.of());
+        DomainMemberUpdate update = new DomainMemberUpdate(Set.of(), Set.of(card(contact1), card(contact2)), Set.of());
         UpdateResult updateResult = testee.apply(update).block();
 
         assertSoftly(softly -> {
@@ -274,7 +275,7 @@ public class DavDomainMemberUpdateApplierTest {
             .uid("uid-upd-3")
             .build();
 
-        DomainMemberUpdate update = new DomainMemberUpdate(Set.of(), Set.of(), Set.of(updated1, updated2, invalidUpdate));
+        DomainMemberUpdate update = new DomainMemberUpdate(Set.of(), Set.of(), Set.of(card(updated1), card(updated2), card(invalidUpdate)));
         UpdateResult result = testee.apply(update).block();
 
         assertSoftly(softly -> {
@@ -343,8 +344,8 @@ public class DavDomainMemberUpdateApplierTest {
 
         DomainMemberUpdate update = new DomainMemberUpdate(
             Set.of(addSuccess, addFail),
-            Set.of(toBeDeleted1, toBeDeleted2),
-            Set.of(updatedSuccess, updatedFail));
+            Set.of(card(toBeDeleted1), card(toBeDeleted2)),
+            Set.of(card(updatedSuccess), card(updatedFail)));
 
         UpdateResult result = testee.apply(update).block();
 
@@ -371,6 +372,65 @@ public class DavDomainMemberUpdateApplierTest {
             .doesNotContain("uid-add-2");
     }
 
+    @Test
+    void shouldDeleteResourceWhoseNameDiffersFromVcardUid() {
+        // Reproduce a contact created by another tool: the resource name is NOT the vCard UID.
+        cardDavClient.upsertContactDomainMembers(openPaaSDomain.id(), "arbitrary-resource-name",
+            ("""
+                BEGIN:VCARD
+                VERSION:4.0
+                UID:internal-uid-not-matching
+                FN:Ghost Contact
+                EMAIL:ghost@example.com
+                END:VCARD
+                """).getBytes(StandardCharsets.UTF_8)).block();
+
+        assertThat(listContactDomainMembersAsVcard(openPaaSDomain)).contains("ghost@example.com");
+
+        // Report exposes the real resource name; deleting by it actually removes the contact.
+        DomainMemberCard ghost = cardDavClient.reportContactDomainMembers(openPaaSDomain.id())
+            .filter(card -> card.contact().mail().map(m -> m.asString().equals("ghost@example.com")).orElse(false))
+            .blockFirst();
+        assertThat(ghost.resourceName()).isEqualTo("arbitrary-resource-name");
+
+        DomainMemberUpdate update = new DomainMemberUpdate(Set.of(), Set.of(ghost), Set.of());
+        UpdateResult result = testee.apply(update).block();
+
+        assertSoftly(softly -> {
+            softly.assertThat(result.deletedCount()).isEqualTo(1);
+            softly.assertThat(result.deleteFailureCount()).isEqualTo(0);
+        });
+        assertThat(listContactDomainMembersAsVcard(openPaaSDomain)).doesNotContain("ghost@example.com");
+    }
+
+    @Test
+    void shouldDeleteStrictlyIdenticalDuplicateResources() {
+        // Two resources, different names, identical vCard content (same UID) -> both must be removable.
+        byte[] vcard = ("""
+            BEGIN:VCARD
+            VERSION:4.0
+            UID:shared-uid
+            FN:Dup Contact
+            EMAIL:dup@example.com
+            END:VCARD
+            """).getBytes(StandardCharsets.UTF_8);
+        cardDavClient.upsertContactDomainMembers(openPaaSDomain.id(), "dup-res-1", vcard).block();
+        cardDavClient.upsertContactDomainMembers(openPaaSDomain.id(), "dup-res-2", vcard).block();
+
+        Set<DomainMemberCard> duplicates = cardDavClient.reportContactDomainMembers(openPaaSDomain.id())
+            .collect(java.util.stream.Collectors.toSet())
+            .block();
+        assertThat(duplicates.size()).isEqualTo(2);
+
+        UpdateResult result = testee.apply(new DomainMemberUpdate(Set.of(), duplicates, Set.of())).block();
+
+        assertSoftly(softly -> {
+            softly.assertThat(result.deletedCount()).isEqualTo(2);
+            softly.assertThat(result.deleteFailureCount()).isEqualTo(0);
+        });
+        assertThat(listContactDomainMembersAsVcard(openPaaSDomain)).doesNotContain("dup@example.com");
+    }
+
     private String listContactDomainMembersAsVcard(OpenPaaSDomain domain) {
         return cardDavClient.listContactDomainMembers(domain.id())
             .blockOptional()
@@ -380,5 +440,9 @@ public class DavDomainMemberUpdateApplierTest {
 
     private void insertContact(OpenPaaSDomain domain, AddressBookContact contact) {
         cardDavClient.upsertContactDomainMembers(domain.id(), contact.vcardUid(), contact.toVcardBytes()).block();
+    }
+
+    private static DomainMemberCard card(AddressBookContact contact) {
+        return new DomainMemberCard(contact.vcardUid(), contact);
     }
 }

@@ -47,6 +47,7 @@ import com.linagora.calendar.storage.TechnicalTokenService;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
+import io.netty.handler.codec.http.HttpMethod;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.netty.ByteBufMono;
@@ -83,7 +84,28 @@ public class CardDavClient extends DavClient {
     public record AddressBook(String value, AddressBookType type) {
     }
 
+    /**
+     * A contact of the domain-members address book together with the name of the DAV resource that
+     * holds it. The resource name is the last path segment of the resource href (without the
+     * {@code .vcf} extension) and is NOT necessarily equal to the vCard {@code UID}: resources
+     * created by other tools (ESN provisioning, imports) can live under an arbitrary name. It is the
+     * only reliable handle to update or delete the underlying resource.
+     */
+    public record DomainMemberCard(String resourceName, AddressBookContact contact) {
+    }
+
     public static final String LIMIT_PARAM = "limit";
+
+    private static final HttpMethod REPORT_METHOD = HttpMethod.valueOf("REPORT");
+    private static final String ADDRESS_BOOK_QUERY_REPORT = """
+        <card:addressbook-query xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">
+          <d:prop>
+            <d:getetag/>
+            <card:address-data/>
+          </d:prop>
+          <card:filter/>
+        </card:addressbook-query>
+        """;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CardDavClient.class);
 
@@ -239,6 +261,71 @@ public class CardDavClient extends DavClient {
                 }
                 return Mono.error(exception);
             });
+    }
+
+    /**
+     * Lists the domain-members contacts together with their real DAV resource name (see
+     * {@link DomainMemberCard}). Unlike {@link #listContactDomainMembers(OpenPaaSId)} (which relies
+     * on {@code ?export} and only exposes vCard content), this is the only way to reliably update or
+     * delete a contact when its resource name differs from its vCard {@code UID}.
+     */
+    public Flux<DomainMemberCard> reportContactDomainMembers(OpenPaaSId domainId) {
+        return tryReportContactDomainMembers(domainId)
+            .onErrorResume(DavClientException.class, exception -> {
+                if (isNotFoundPathResourceError(exception)) {
+                    return createDomainMembersAddressBook(domainId)
+                        .thenMany(tryReportContactDomainMembers(domainId))
+                        .doOnSubscribe(s
+                            -> LOGGER.info("Creating domain members address book for domain {} and retrying to report contacts", domainId.value()));
+                }
+                return Flux.error(exception);
+            });
+    }
+
+    private Flux<DomainMemberCard> tryReportContactDomainMembers(OpenPaaSId domainId) {
+        AddressBookURL url = new AddressBookURL(domainId, DOMAIN_MEMBERS_ADDRESS_BOOK_ID);
+        return httpClientWithTechnicalToken(domainId)
+            .flatMap(authenticatedClient -> authenticatedClient
+                .headers(headers -> {
+                    headers.add(HttpHeaderNames.CONTENT_TYPE, "application/xml");
+                    headers.add("Depth", "1");
+                })
+                .request(REPORT_METHOD)
+                .uri(url.asUri().toASCIIString())
+                .send(Mono.just(Unpooled.wrappedBuffer(ADDRESS_BOOK_QUERY_REPORT.getBytes(StandardCharsets.UTF_8))))
+                .responseSingle((response, byteBufMono) -> {
+                    int statusCode = response.status().code();
+                    if (statusCode == HttpStatus.SC_MULTI_STATUS) {
+                        return byteBufMono.asByteArray();
+                    }
+                    return responseBodyAsString(byteBufMono)
+                        .flatMap(bodyStr -> Mono.error(new DavClientException(String.format(
+                            "Unexpected status code: %d when reporting contacts for addressBookURL %s\n%s",
+                            statusCode, url, bodyStr))));
+                }))
+            .flatMapIterable(this::parseDomainMemberCards);
+    }
+
+    private List<DomainMemberCard> parseDomainMemberCards(byte[] multiStatusXml) {
+        try {
+            return XMLUtil.extractAddressDataResponses(multiStatusXml).stream()
+                .filter(response -> StringUtils.isNotBlank(response.addressData()))
+                .flatMap(response -> {
+                    String resourceName = resourceNameFromHref(response.href());
+                    return AddressBookContact.parse(response.addressData().getBytes(StandardCharsets.UTF_8)).stream()
+                        .map(contact -> new DomainMemberCard(resourceName, contact));
+                })
+                .toList();
+        } catch (Exception e) {
+            throw new DavClientException("Failed to parse domain members report response", e);
+        }
+    }
+
+    private static String resourceNameFromHref(String href) {
+        String decoded = java.net.URLDecoder.decode(href, StandardCharsets.UTF_8);
+        String trimmed = Strings.CS.removeEnd(decoded, "/");
+        String lastSegment = trimmed.substring(trimmed.lastIndexOf('/') + 1);
+        return Strings.CS.removeEnd(lastSegment, ".vcf");
     }
 
     private boolean isNotFoundPathResourceError(DavClientException ex) {

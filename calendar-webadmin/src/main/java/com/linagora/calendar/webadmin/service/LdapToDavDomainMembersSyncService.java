@@ -26,8 +26,8 @@ import jakarta.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.linagora.calendar.dav.AddressBookContact;
 import com.linagora.calendar.dav.CardDavClient;
+import com.linagora.calendar.dav.CardDavClient.DomainMemberCard;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.ldap.LdapDomainMemberProvider;
@@ -57,16 +57,16 @@ public class LdapToDavDomainMembersSyncService {
         return Mono.zip(fetchLdapDomainMembers(openPaaSDomain), fetchDavDomainMembers(openPaaSDomain))
             .flatMap(tuple -> {
                 List<LdapUser> ldapMembers = tuple.getT1();
-                List<AddressBookContact> davContacts = tuple.getT2();
+                List<DomainMemberCard> davContacts = tuple.getT2();
                 DomainMemberUpdate domainMemberUpdate = DomainMemberUpdate.compute(ldapMembers, davContacts);
                 return davDomainMemberUpdateApplierFactory.apply(openPaaSDomain.id()).apply(domainMemberUpdate, contexts);
             })
             .doOnSubscribe(sub -> LOGGER.info("Syncing domain: {}", openPaaSDomain.domain()));
     }
 
-    private Mono<List<AddressBookContact>> fetchDavDomainMembers(OpenPaaSDomain openPaaSDomain) {
-        return davClient.listContactDomainMembers(openPaaSDomain.id())
-            .map(AddressBookContact::parse)
+    private Mono<List<DomainMemberCard>> fetchDavDomainMembers(OpenPaaSDomain openPaaSDomain) {
+        return davClient.reportContactDomainMembers(openPaaSDomain.id())
+            .collectList()
             .defaultIfEmpty(List.of())
             .doOnError(throwable -> LOGGER.error("Error fetching DAV domain members for domain: {}", openPaaSDomain.domain(), throwable));
     }

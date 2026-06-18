@@ -38,11 +38,17 @@ import com.google.common.collect.ImmutableList;
 
 public class XMLUtil {
 
+    public record MultiStatusResponse(String href, String addressData) {
+    }
+
     public static class DavNamespaceContext implements NamespaceContext {
         @Override
         public String getNamespaceURI(String prefix) {
             if ("d".equals(prefix)) {
                 return "DAV:";
+            }
+            if ("card".equals(prefix)) {
+                return "urn:ietf:params:xml:ns:carddav";
             }
             return javax.xml.XMLConstants.NULL_NS_URI;
         }
@@ -85,6 +91,21 @@ public class XMLUtil {
         } catch (ParserConfigurationException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public static List<MultiStatusResponse> extractAddressDataResponses(byte[] xml) throws ParserConfigurationException, IOException, SAXException, XPathExpressionException {
+        Document doc = DOCUMENT_BUILDER_FACTORY.newDocumentBuilder()
+            .parse(new java.io.ByteArrayInputStream(xml));
+        XPath xpath = XPathFactory.newInstance().newXPath();
+        xpath.setNamespaceContext(new DavNamespaceContext());
+        NodeList responses = (NodeList) xpath.evaluate("/d:multistatus/d:response", doc, XPathConstants.NODESET);
+        ImmutableList.Builder<MultiStatusResponse> result = new ImmutableList.Builder<>();
+        for (int i = 0; i < responses.getLength(); i++) {
+            String href = xpath.evaluate("d:href", responses.item(i));
+            String addressData = xpath.evaluate(".//card:address-data", responses.item(i));
+            result.add(new MultiStatusResponse(href, addressData));
+        }
+        return result.build();
     }
 
     public static List<String> extractEventIdsFromXml(byte[] xml) throws ParserConfigurationException, IOException, SAXException, XPathExpressionException {
