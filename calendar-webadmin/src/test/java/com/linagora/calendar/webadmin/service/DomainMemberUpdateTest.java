@@ -241,6 +241,36 @@ public class DomainMemberUpdateTest {
     }
 
     @Test
+    void computeShouldDeduplicateLdapMembersSharingTheSameMail() {
+        // Two distinct LDAP accounts sharing the same mail must not crash the computation
+        LdapUser first = ldapMember("deploy_gsafe", "shared@example.com", "gSafe", "Deploy", "gSafe Deploy", null);
+        LdapUser second = ldapMember("deploy_gsafe_snapshots", "shared@example.com", "gSafe", "Deploy", "gSafe Deploy", null);
+
+        DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(first, second), List.of());
+
+        assertSoftly(softly -> {
+            softly.assertThat(result.added()).containsExactly(toAddressBookContact(first, first.uid()));
+            softly.assertThat(result.deleted()).isEmpty();
+            softly.assertThat(result.updated()).isEmpty();
+        });
+    }
+
+    @Test
+    void computeShouldDeduplicateDavContactsSharingTheSameMail() {
+        // Two DAV contacts sharing the same mail must not crash the computation
+        AddressBookContact first = davCard("uid1", "shared@example.com", "gSafe", "Deploy", "gSafe Deploy", "111");
+        AddressBookContact second = davCard("uid2", "shared@example.com", "gSafe", "Deploy", "gSafe Deploy", "111");
+
+        DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(), List.of(first, second));
+
+        assertSoftly(softly -> {
+            softly.assertThat(result.added()).isEmpty();
+            softly.assertThat(result.deleted()).containsExactly(first);
+            softly.assertThat(result.updated()).isEmpty();
+        });
+    }
+
+    @Test
     void computeShouldHandleMultipleAddedDeletedAndUpdatedMembers() {
         // Added members
         LdapUser added1 = ldapMember("uid1", "added1@example.com", "Nguyen", "A", "Nguyen A", "111");
