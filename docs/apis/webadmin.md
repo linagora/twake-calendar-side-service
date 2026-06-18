@@ -195,6 +195,58 @@ Both endpoints will return a webadmin task with the following additional informa
 }
 ```
 
+## Delete domain members contacts
+
+Removes the contacts stored in the `Domain Members` address book. This does **not** touch LDAP; it only
+clears the contacts that were projected into the DAV (CardDav) `domain-members` address book.
+
+Only enabled if LDAP is configured.
+
+### 1. Delete contacts of all domains
+```
+DELETE /addressbook/domain-members
+```
+
+Removes the `Domain Members` contacts of **all existing domains**.
+
+Optional query parameters:
+- `ignoredDomains` : [String] Comma-separated list of domains to exclude from the deletion
+
+Example:
+
+```
+DELETE /addressbook/domain-members?ignoredDomains=twake.app,example.org
+```
+
+### 2. Delete contacts of a single domain
+```
+DELETE /addressbook/domain-members/{domain}
+```
+
+Removes the `Domain Members` contacts only for the specified domain.
+
+Status codes:
+- `201`: Task successfully submitted
+- `400`: Invalid domain or `ignoredDomains` parameter
+- `404`: The specified domain does not exist (single-domain endpoint only)
+
+### Task additional information
+
+Both endpoints will return a webadmin task with the following additional information:
+
+```
+"additionalInformation": {
+    "type": "clear-domain-members-contacts-dav",
+    "domain": "twake.app",
+    "ignoredDomains": null,
+    "timestamp": "${json-unit.any-string}",
+    "deletedCount": 12,
+    "deleteFailureContacts": []
+}
+```
+
+Where `domain` is set for the single-domain endpoint and `ignoredDomains` is set for the all-domains endpoint.
+
 ## Calendar events
 
 ### Calendar event reindexing
@@ -908,6 +960,7 @@ The following task types are domain-scoped:
 | `calendar-archival` (single-user) | domain extracted from `targetUser` |
 | `DeleteUserDataTask` | domain extracted from `username` |
 | `sync-domain-members-contacts-ldap-to-dav` (single-domain) | `domain` field in additional information |
+| `clear-domain-members-contacts-dav` (single-domain) | `domain` field in additional information |
 
 Multi-domain tasks (e.g. archive all users, sync all domains) are not attributed to any specific domain and are therefore not accessible through these routes.
 

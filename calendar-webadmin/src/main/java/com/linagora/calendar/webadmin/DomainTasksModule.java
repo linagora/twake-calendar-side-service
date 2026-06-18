@@ -24,6 +24,7 @@ import org.apache.james.webadmin.Routes;
 import com.google.inject.AbstractModule;
 import com.google.inject.multibindings.Multibinder;
 import com.linagora.calendar.webadmin.task.CalendarArchivalTask;
+import com.linagora.calendar.webadmin.task.ClearDavDomainMembersTask;
 import com.linagora.calendar.webadmin.task.LdapToDavDomainMembersSyncTask;
 
 public class DomainTasksModule extends AbstractModule {
@@ -49,6 +50,14 @@ public class DomainTasksModule extends AbstractModule {
                 .filter(info -> info instanceof LdapToDavDomainMembersSyncTask.Details)
                 .map(info -> (LdapToDavDomainMembersSyncTask.Details) info)
                 .flatMap(LdapToDavDomainMembersSyncTask.Details::domain)
+                .map(domainString -> domainString.equals(domain.asString()))
+                .orElse(false));
+
+        predicates.addBinding().toInstance(
+            (domain, details) -> details.getAdditionalInformation()
+                .filter(info -> info instanceof ClearDavDomainMembersTask.Details)
+                .map(info -> (ClearDavDomainMembersTask.Details) info)
+                .flatMap(ClearDavDomainMembersTask.Details::domain)
                 .map(domainString -> domainString.equals(domain.asString()))
                 .orElse(false));
     }
