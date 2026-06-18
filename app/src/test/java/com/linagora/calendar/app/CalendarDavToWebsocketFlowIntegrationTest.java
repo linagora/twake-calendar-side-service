@@ -52,7 +52,6 @@ import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalDavClient.ItipRequest;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DavTestHelper;
-import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.CalendarURL;
@@ -70,7 +69,7 @@ class CalendarDavToWebsocketFlowIntegrationTest {
 
     @RegisterExtension
     @Order(1)
-    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+    static SabreDavExtension sabreDavExtension = SabreDavExtension.perClass();
 
     @Order(2)
     @RegisterExtension
@@ -257,6 +256,7 @@ class CalendarDavToWebsocketFlowIntegrationTest {
             VERSION:2.0
             PRODID:-//Sabre//Sabre VObject 4.2.2//EN
             CALSCALE:GREGORIAN
+            METHOD:REQUEST
             BEGIN:VEVENT
             UID:{UID}
             DTSTAMP:{DTSTAMP}Z
@@ -264,7 +264,7 @@ class CalendarDavToWebsocketFlowIntegrationTest {
             DTEND;TZID=Asia/Ho_Chi_Minh:{END}
             SUMMARY:WebSocket Flow Test
             ORGANIZER:mailto:{ORGANIZER}
-            ATTENDEE;PARTSTAT=ACCEPTED:mailto:{ATTENDEE}
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:{ATTENDEE}
             END:VEVENT
             END:VCALENDAR
             """;
