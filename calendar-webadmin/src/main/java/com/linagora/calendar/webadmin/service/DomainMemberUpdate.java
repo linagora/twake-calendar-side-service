@@ -31,6 +31,8 @@ import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import org.apache.james.core.MailAddress;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Sets;
 import com.linagora.calendar.dav.AddressBookContact;
@@ -40,16 +42,28 @@ public record DomainMemberUpdate(Set<AddressBookContact> added,
                                  Set<AddressBookContact> deleted,
                                  Set<AddressBookContact> updated) {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(DomainMemberUpdate.class);
+
     public static DomainMemberUpdate compute(Collection<LdapUser> sourceOfTruth,
                                              Collection<AddressBookContact> projectionContent) {
 
         Map<MailAddress, LdapUser> sourceByMail = sourceOfTruth.stream()
             .filter(m -> m.mail().isPresent())
-            .collect(Collectors.toMap(member -> member.mail().get(), Function.identity()));
+            .collect(Collectors.toMap(member -> member.mail().get(), Function.identity(),
+                (first, second) -> {
+                    LOGGER.warn("Duplicate mail {} among LDAP domain members (uids {} and {}), keeping the first one",
+                        first.mail().get().asString(), first.uid(), second.uid());
+                    return first;
+                }));
 
         Map<MailAddress, AddressBookContact> projectionByMail = projectionContent.stream()
             .filter(c -> c.mail().isPresent())
-            .collect(Collectors.toMap(contact -> contact.mail().get(), Function.identity()));
+            .collect(Collectors.toMap(contact -> contact.mail().get(), Function.identity(),
+                (first, second) -> {
+                    LOGGER.warn("Duplicate mail {} among DAV domain members, keeping the first one",
+                        first.mail().get().asString());
+                    return first;
+                }));
 
         Set<MailAddress> srcKeys = sourceByMail.keySet();
         Set<MailAddress> projKeys = projectionByMail.keySet();
