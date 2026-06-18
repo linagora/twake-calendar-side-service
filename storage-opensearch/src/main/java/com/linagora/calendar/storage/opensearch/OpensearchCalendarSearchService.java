@@ -97,6 +97,8 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
     private static final boolean INDEX_CHECK_SEQUENCE = true;
     private static final CharMatcher QUERY_STRING_CONTROL_CHAR = CharMatcher.anyOf("\"~|*");
     private static final int MAX_SOURCE_CALENDARS_PER_SEARCH = 256;
+    // Retry optimistic concurrency conflicts when concurrent messages update the same event document.
+    private static final int MAX_RETRY_ON_CONFLICT = 3;
 
     private final OpenSearchIndexer indexer;
     private final ReactorOpenSearchClient client;
@@ -382,6 +384,7 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
                 .script(UPSERT_WITH_SEQUENCE_SCRIPT.apply(sequence, docMap))
                 .scriptedUpsert(false)
                 .upsert(docMap)
+                .retryOnConflict(MAX_RETRY_ON_CONFLICT)
                 .build();
 
         return toReactor(opensearchAsyncClient.update(request, ObjectNode.class))
