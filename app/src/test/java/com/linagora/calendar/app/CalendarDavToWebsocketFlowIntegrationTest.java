@@ -49,6 +49,7 @@ import com.google.inject.Provides;
 import com.google.inject.Singleton;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.CalDavClient.ItipRequest;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
@@ -158,7 +159,7 @@ class CalendarDavToWebsocketFlowIntegrationTest {
         String eventUid = "event-" + System.currentTimeMillis();
         String ics = buildEventICS(eventUid, alice.username().asString(), bob.username().asString());
 
-        davTestHelper.upsertCalendar(bob, ics, eventUid);
+        sendItipRequestToBob(eventUid, ics);
 
         String pushMessage = awaitMessage(messages, msg -> msg.contains("syncToken") && msg.contains(bobCalendarUrl));
 
@@ -190,7 +191,7 @@ class CalendarDavToWebsocketFlowIntegrationTest {
         // WHEN: Bob's calendar changes
         String eventUid = "event-" + System.currentTimeMillis();
         String ics = buildEventICS(eventUid, alice.username().asString(), bob.username().asString());
-        davTestHelper.upsertCalendar(bob, ics, eventUid);
+        sendItipRequestToBob(eventUid, ics);
 
         // Bob receives websocket notification (skip unrelated messages)
         String pushMessage = awaitMessage(messages, msg -> msg.contains("syncToken"));
@@ -231,6 +232,19 @@ class CalendarDavToWebsocketFlowIntegrationTest {
         Map<String, Object> inner = (Map<String, Object>) entry.getValue();
         String syncToken = (String) inner.get("syncToken");
         return Pair.of(CalendarURL.deserialize(Strings.CS.removeStart(calendarUrlString, "/calendars/")), syncToken);
+    }
+
+    private void sendItipRequestToBob(String eventUid, String ics) {
+        Boolean deliveredLocally = calDavClient.sendItip(bob.username(), new ItipRequest(
+                eventUid,
+                alice.username().asString(),
+                bob.username().asString(),
+                ics,
+                "REQUEST",
+                Optional.of(0)))
+            .block();
+
+        assertThat(deliveredLocally).isTrue();
     }
 
     private String buildEventICS(String eventUid, String organizer, String attendee) {
