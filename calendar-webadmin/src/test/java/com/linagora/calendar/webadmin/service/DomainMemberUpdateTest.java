@@ -256,8 +256,8 @@ public class DomainMemberUpdateTest {
     }
 
     @Test
-    void computeShouldDeduplicateDavContactsSharingTheSameMail() {
-        // Two DAV contacts sharing the same mail must not crash the computation
+    void computeShouldDeleteAllDavContactsSharingAMailNoLongerInLdap() {
+        // Two DAV contacts share a mail that is no longer backed by any LDAP user: both must be deleted
         AddressBookContact first = davCard("uid1", "shared@example.com", "gSafe", "Deploy", "gSafe Deploy", "111");
         AddressBookContact second = davCard("uid2", "shared@example.com", "gSafe", "Deploy", "gSafe Deploy", "111");
 
@@ -265,7 +265,25 @@ public class DomainMemberUpdateTest {
 
         assertSoftly(softly -> {
             softly.assertThat(result.added()).isEmpty();
-            softly.assertThat(result.deleted()).containsExactly(first);
+            softly.assertThat(result.deleted()).containsExactlyInAnyOrder(first, second);
+            softly.assertThat(result.updated()).isEmpty();
+        });
+    }
+
+    @Test
+    void computeShouldDeleteSurplusDavDuplicatesForAMailStillInLdap() {
+        // The address book holds two duplicate contacts for a mail still present in LDAP.
+        // One representative must be kept (matching the LDAP uid) while the surplus duplicate is deleted.
+        LdapUser ldap = ldapMember("deploy_gsafe", "shared@example.com", "gSafe", "Deploy", "gSafe Deploy", "111");
+        AddressBookContact canonical = davCard("deploy_gsafe", "shared@example.com", "gSafe", "Deploy", "gSafe Deploy", "111");
+        AddressBookContact duplicate = davCard("deploy_gsafe_snapshots", "shared@example.com", "gSafe", "Deploy", "gSafe Deploy", "111");
+
+        DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(ldap), List.of(canonical, duplicate));
+
+        assertSoftly(softly -> {
+            softly.assertThat(result.added()).isEmpty();
+            softly.assertThat(result.deleted()).containsExactly(duplicate);
+            // canonical is unchanged compared to LDAP, so no update is emitted
             softly.assertThat(result.updated()).isEmpty();
         });
     }
