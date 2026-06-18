@@ -226,7 +226,7 @@ public class CalendarEventsReindexService {
     }
 
     private Mono<IndexItem> collectEvents(Context context, String owner, CalendarURL calendarURL, CalendarReportXmlResponse.CalendarObject calendarObject) {
-        String resourceName = calendarObject.eventPathId();
+        String resourceName = calendarObject.icsResourceFullName();
         return Mono.fromCallable(() -> CalendarUtil.parseIcs(calendarObject.calendarData()))
             .subscribeOn(Schedulers.boundedElastic())
             .map(calendar -> calendar.getComponents(Component.VEVENT).stream()

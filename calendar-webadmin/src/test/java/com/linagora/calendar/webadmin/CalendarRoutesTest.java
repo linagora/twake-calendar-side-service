@@ -18,10 +18,10 @@
 
 package com.linagora.calendar.webadmin;
 
+import static com.linagora.calendar.dav.CalDavClient.ICS_EXTENSION;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static com.linagora.calendar.storage.event.EventParseUtils.UTC_DATE_TIME_FORMATTER;
 import static com.linagora.calendar.storage.eventsearch.EventSearchQuery.MAX_LIMIT;
-import static com.linagora.calendar.dav.Fixture.awaitAtMost;
 import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.recursive.comparison.RecursiveComparisonConfiguration.builder;
@@ -104,7 +104,6 @@ public class CalendarRoutesTest {
     private CalendarEventsReindexService reindexService;
 
     private OpenPaaSUser openPaaSUser;
-    private OpenPaaSUser openPaaSUser2;
 
     @BeforeEach
     void setUp() throws SSLException {
@@ -118,7 +117,6 @@ public class CalendarRoutesTest {
         reindexService = new CalendarEventsReindexService(userDAO, resourceDAO, calendarSearchService, calDavClient);
 
         this.openPaaSUser = sabreDavExtension.newTestUser();
-        this.openPaaSUser2 = sabreDavExtension.newTestUser();
 
         TaskManager taskManager = new MemoryTaskManager(new Hostname("foo"));
 
@@ -225,7 +223,7 @@ public class CalendarRoutesTest {
             .attendees(List.of(person))
             .resources(List.of(new EventFields.Person("Projector", new MailAddress("projector@open-paas.org"))))
             .calendarURL(calendarURL)
-            .resourceName(eventId)
+            .resourceName(eventId + ICS_EXTENSION)
             .build();
 
         List<EventFields> actual = calendarSearchService.search(simpleQuery("", calendarURL))
@@ -271,7 +269,7 @@ public class CalendarRoutesTest {
             END:VCALENDAR
             """.formatted(eventId, openPaaSUser.username().asString(), resourceEmail);
         davTestHelper.upsertCalendar(openPaaSUser, ics, eventId);
-        URI resourceEventUri = URI.create("/calendars/" + resourceId.value() + "/" + resourceId.value() + "/" + eventId + ".ics");
+        URI resourceEventUri = URI.create("/calendars/" + resourceId.value() + "/" + resourceId.value() + "/" + eventId + ICS_EXTENSION);
         davTestHelper.upsertCalendar(domain.id(), resourceEventUri, ics).block();
         String resourceEventId = eventId;
 
@@ -298,7 +296,7 @@ public class CalendarRoutesTest {
         assertThat(actual.getFirst().uid().value()).isEqualTo(eventId);
         assertThat(actual.getFirst().summary()).isEqualTo("Resource Test Event");
         assertThat(actual.getFirst().calendarURL()).isEqualTo(resourceCalendarURL);
-        assertThat(actual.getFirst().resourceName()).contains(resourceEventId);
+        assertThat(actual.getFirst().resourceName()).contains(resourceEventId + ICS_EXTENSION);
     }
 
     @Test
@@ -407,7 +405,7 @@ public class CalendarRoutesTest {
             .attendees(List.of(person))
             .resources(List.of())
             .calendarURL(calendarURL)
-            .resourceName(uid1)
+            .resourceName(uid1 + ICS_EXTENSION)
             .build();
 
         EventFields expected2 = EventFields.builder()
@@ -425,7 +423,7 @@ public class CalendarRoutesTest {
             .attendees(List.of(person))
             .resources(List.of())
             .calendarURL(calendarURL)
-            .resourceName(uid1)
+            .resourceName(uid1 + ICS_EXTENSION)
             .sequence(1)
             .build();
 
@@ -443,7 +441,7 @@ public class CalendarRoutesTest {
             .attendees(List.of(person))
             .resources(List.of())
             .calendarURL(calendarURL)
-            .resourceName(uid2)
+            .resourceName(uid2 + ICS_EXTENSION)
             .build();
 
         List<EventFields> actual = calendarSearchService.search(simpleQuery("", calendarURL))
@@ -690,7 +688,7 @@ public class CalendarRoutesTest {
             .attendees(List.of(person))
             .resources(List.of(new EventFields.Person("Projector", new MailAddress("projector@open-paas.org"))))
             .calendarURL(calendarURL)
-            .resourceName(icsResourceName)
+            .resourceName(icsResourceName + ICS_EXTENSION)
             .build();
 
         List<EventFields> actual = calendarSearchService.search(simpleQuery("", calendarURL))
