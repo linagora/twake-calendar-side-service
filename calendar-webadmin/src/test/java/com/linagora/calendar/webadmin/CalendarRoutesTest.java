@@ -37,7 +37,6 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 
 import javax.net.ssl.SSLException;
@@ -122,7 +121,8 @@ public class CalendarRoutesTest {
 
         webAdminServer = WebAdminUtils.createWebAdminServer(new CalendarRoutes(new JsonTransformer(),
                 taskManager,
-                ImmutableSet.of(new CalendarRoutes.CalendarEventsReindexRequestToTask(reindexService)), Set.of()),
+                ImmutableSet.of(new CalendarRoutes.CalendarEventsReindexRequestToTask(reindexService)),
+                ImmutableSet.of(new CalendarRoutes.UserCalendarEventsReindexRequestToTask(reindexService))),
             new TasksRoutes(taskManager,
                 new JsonTransformer(),
                 new DTOConverter<>(ImmutableSet.<AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO>>builder()
@@ -233,6 +233,86 @@ public class CalendarRoutesTest {
             .usingRecursiveComparison()
             .ignoringFields("attendees.partStat", "resources.partStat", "organizer.partStat")
             .isEqualTo(expected);
+    }
+
+    @Test
+    void userReindexShouldOnlyIndexTargetUserEvents() {
+        OpenPaaSUser otherUser = sabreDavExtension.newTestUser();
+
+        CalendarURL targetCalendarURL = CalendarURL.from(openPaaSUser.id());
+        CalendarURL otherCalendarURL = CalendarURL.from(otherUser.id());
+        String targetEventId = "target-event-" + UUID.randomUUID();
+        String otherEventId = "other-event-" + UUID.randomUUID();
+        String targetIcs = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250102T120000Z
+            DTEND:20250102T130000Z
+            SUMMARY:Target user event
+            ORGANIZER;CN=target:mailto:%s
+            CLASS:PUBLIC
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(targetEventId, openPaaSUser.username().asString());
+        String otherIcs = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250102T120000Z
+            DTEND:20250102T130000Z
+            SUMMARY:Other user event
+            ORGANIZER;CN=other:mailto:%s
+            CLASS:PUBLIC
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(otherEventId, otherUser.username().asString());
+
+        calDavClient.importCalendar(targetCalendarURL, targetEventId, openPaaSUser.username(), targetIcs.getBytes(StandardCharsets.UTF_8)).block();
+        calDavClient.importCalendar(otherCalendarURL, otherEventId, otherUser.username(), otherIcs.getBytes(StandardCharsets.UTF_8)).block();
+
+        EventFields staleTargetEvent = EventFields.builder()
+            .uid("stale-target-event")
+            .summary("Stale target event")
+            .calendarURL(targetCalendarURL)
+            .build();
+        EventFields untouchedOtherEvent = EventFields.builder()
+            .uid("untouched-other-event")
+            .summary("Untouched other event")
+            .calendarURL(otherCalendarURL)
+            .build();
+        calendarSearchService.index(CalendarEvents.of(staleTargetEvent)).block();
+        calendarSearchService.index(CalendarEvents.of(untouchedOtherEvent)).block();
+
+        String taskId = given()
+            .basePath(CalendarRoutes.BASE_PATH + "/" + openPaaSUser.username().asString())
+            .queryParam("task", "reindex")
+            .when()
+            .post()
+            .jsonPath()
+            .get("taskId");
+
+        given()
+            .basePath(TasksRoutes.BASE)
+            .when()
+            .get(taskId + "/await")
+            .then()
+            .body("status", is("completed"))
+            .body("type", is("reindex-calendar-events"))
+            .body("additionalInformation.processedEventCount", is(1))
+            .body("additionalInformation.failedEventCount", is(0));
+
+        List<EventFields> targetEvents = calendarSearchService.search(simpleQuery("", targetCalendarURL))
+            .collectList().block();
+        assertThat(targetEvents).hasSize(1);
+        assertThat(targetEvents.getFirst().uid().value()).isEqualTo(targetEventId);
+
+        List<EventFields> otherEvents = calendarSearchService.search(simpleQuery("", otherCalendarURL))
+            .collectList().block();
+        assertThat(otherEvents).hasSize(1);
+        assertThat(otherEvents.getFirst().uid().value()).isEqualTo("untouched-other-event");
     }
 
     @Test

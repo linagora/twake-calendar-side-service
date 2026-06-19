@@ -209,6 +209,18 @@ The query parameter `eventsPerSecond` controls the indexing rate. Defaults to 10
 
 The query parameter `calendarsConcurrency` controls how many calendars can be exported and parsed concurrently for a user. Defaults to 1.
 
+### Calendar event reindexing for one user
+
+```
+POST /calendars/{userName}?task=reindex&eventsPerSecond=100
+```
+
+Will iterate the personal calendars of the targeted user and reindex their events.
+
+This endpoint deletes and rebuilds indexed calendar events only for the targeted user. It does not reindex resource calendars or other users' calendars.
+
+The query parameter `eventsPerSecond` controls the indexing rate. Defaults to 100.
+
 This endpoint returns a webdmin task with the following additional information:
 
  - processedEventCount: integer

@@ -75,6 +75,20 @@ public class CalendarRoutes implements Routes {
         }
     }
 
+    public static class UserCalendarEventsReindexRequestToTask extends TaskFromRequestRegistry.TaskRegistration {
+        public static final TaskRegistrationKey TASK_NAME = CalendarEventsReindexRequestToTask.TASK_NAME;
+
+        @Inject
+        public UserCalendarEventsReindexRequestToTask(CalendarEventsReindexService reindexService) {
+            super(TASK_NAME, request -> {
+                int eventsPerSecond = extractEventsPerSecond(request);
+                return new CalendarEventsReindexTask(reindexService,
+                    CalendarEventsReindexTask.RunningOptions.of(eventsPerSecond, DEFAULT_CALENDARS_CONCURRENCY),
+                    Username.of(request.params(USER_PARAM)));
+            });
+        }
+    }
+
     public static class AlarmScheduleRequestToTask extends TaskFromRequestRegistry.TaskRegistration {
         public static final TaskRegistrationKey TASK_NAME = TaskRegistrationKey.of("scheduleAlarms");
 
@@ -114,14 +128,7 @@ public class CalendarRoutes implements Routes {
                 int eventsPerSecond = extractEventsPerSecond(request);
                 EventArchivalCriteria criteria = extractEventArchivalCriteria(request, clock);
 
-                OpenPaaSUser openPaaSUser = Optional.ofNullable(request.params(USER_PARAM))
-                    .flatMap(rawValue -> userDAO.retrieve(Username.of(rawValue))
-                        .blockOptional())
-                    .orElseThrow(() -> ErrorResponder.builder()
-                        .statusCode(HttpStatus.NOT_FOUND_404)
-                        .type(ErrorResponder.ErrorType.NOT_FOUND)
-                        .message("User does not exist")
-                        .haltError());
+                OpenPaaSUser openPaaSUser = extractOpenPaaSUser(request, userDAO);
                 return new CalendarArchivalTask(archivalService, RunningOptions.of(eventsPerSecond), criteria, Optional.of(openPaaSUser.username()));
             };
         }
@@ -180,6 +187,17 @@ public class CalendarRoutes implements Routes {
 
     private static Integer extractCalendarsConcurrency(Request request) {
         return extractPositiveIntegerParameter(request, CALENDARS_CONCURRENCY_PARAMETER, DEFAULT_CALENDARS_CONCURRENCY);
+    }
+
+    private static OpenPaaSUser extractOpenPaaSUser(Request request, OpenPaaSUserDAO userDAO) {
+        return Optional.ofNullable(request.params(USER_PARAM))
+            .flatMap(rawValue -> userDAO.retrieve(Username.of(rawValue))
+                .blockOptional())
+            .orElseThrow(() -> ErrorResponder.builder()
+                .statusCode(HttpStatus.NOT_FOUND_404)
+                .type(ErrorResponder.ErrorType.NOT_FOUND)
+                .message("User does not exist")
+                .haltError());
     }
 
     private static Integer extractPositiveIntegerParameter(Request request, String parameterName, int defaultValue) {

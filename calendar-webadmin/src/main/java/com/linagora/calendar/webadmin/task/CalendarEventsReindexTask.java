@@ -22,6 +22,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
 
+import org.apache.james.core.Username;
 import org.apache.james.task.Task;
 import org.apache.james.task.TaskExecutionDetails;
 import org.apache.james.task.TaskType;
@@ -61,16 +62,29 @@ public class CalendarEventsReindexTask implements Task {
     private final CalendarEventsReindexService reindexService;
     private final RunningOptions runningOptions;
     private final CalendarEventsReindexService.Context context;
+    private final Optional<Username> targetUsername;
 
     public CalendarEventsReindexTask(CalendarEventsReindexService reindexService, RunningOptions runningOptions) {
+        this(reindexService, runningOptions, Optional.empty());
+    }
+
+    public CalendarEventsReindexTask(CalendarEventsReindexService reindexService, RunningOptions runningOptions, Username targetUsername) {
+        this(reindexService, runningOptions, Optional.of(targetUsername));
+    }
+
+    private CalendarEventsReindexTask(CalendarEventsReindexService reindexService, RunningOptions runningOptions, Optional<Username> targetUsername) {
         this.reindexService = reindexService;
         this.runningOptions = runningOptions;
         this.context = new CalendarEventsReindexService.Context();
+        this.targetUsername = targetUsername;
     }
 
     @Override
     public Result run() {
-        return reindexService.reindex(context, runningOptions).block();
+        return targetUsername
+            .map(username -> reindexService.reindex(context, runningOptions, username))
+            .orElseGet(() -> reindexService.reindex(context, runningOptions))
+            .block();
     }
 
     @Override

@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import jakarta.inject.Inject;
 
+import org.apache.james.core.Username;
 import org.apache.james.task.Task;
 import org.apache.james.util.ReactorUtils;
 import org.slf4j.Logger;
@@ -154,6 +155,35 @@ public class CalendarEventsReindexService {
                 }
             }).onErrorResume(e -> {
                 LOGGER.error("Task {} is incomplete", TASK_NAME.asString(), e);
+                return Mono.just(Task.Result.PARTIAL);
+            });
+    }
+
+    public Mono<Task.Result> reindex(Context context, CalendarEventsReindexTask.RunningOptions runningOptions, Username username) {
+        return userDAO.retrieve(username)
+            .switchIfEmpty(Mono.defer(() -> {
+                LOGGER.error("Cannot run task {}: user {} does not exist", TASK_NAME.asString(), username.asString());
+                context.incrementFailedUser();
+                return Mono.empty();
+            }))
+            .flatMapMany(user -> collectEvents(context, user, runningOptions.calendarsConcurrency()))
+            .transform(ReactorUtils.<IndexItem, Task.Result>throttle()
+                .elements(runningOptions.eventsPerSecond())
+                .per(Duration.ofSeconds(1))
+                .forOperation(indexItem -> reindex(context, indexItem)))
+            .reduce(Task.Result.COMPLETED, Task::combine)
+            .map(result -> {
+                if (context.hasFailures()) {
+                    LOGGER.info("{} task result for user {}: {}. Detail:\n{}",
+                        TASK_NAME.asString(), username.asString(), Task.Result.PARTIAL, context.snapshot());
+                    return Task.Result.PARTIAL;
+                } else {
+                    LOGGER.info("{} task result for user {}: {}. Detail:\n{}",
+                        TASK_NAME.asString(), username.asString(), result.toString(), context.snapshot());
+                    return result;
+                }
+            }).onErrorResume(e -> {
+                LOGGER.error("Task {} is incomplete for user {}", TASK_NAME.asString(), username.asString(), e);
                 return Mono.just(Task.Result.PARTIAL);
             });
     }

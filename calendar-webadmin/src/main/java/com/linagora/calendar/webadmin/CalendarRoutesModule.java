@@ -61,6 +61,7 @@ public class CalendarRoutesModule extends AbstractModule {
         bind(TaskManager.class).to(MemoryTaskManager.class);
 
         bind(CalendarRoutes.CalendarEventsReindexRequestToTask.class).in(Scopes.SINGLETON);
+        bind(CalendarRoutes.UserCalendarEventsReindexRequestToTask.class).in(Scopes.SINGLETON);
         bind(CalendarRoutes.AlarmScheduleRequestToTask.class).in(Scopes.SINGLETON);
         bind(CalendarRoutes.ArchiveRequestToTask.class).in(Scopes.SINGLETON);
         bind(CalendarRoutes.UserArchiveRequestToTask.class).in(Scopes.SINGLETON);
@@ -73,6 +74,7 @@ public class CalendarRoutesModule extends AbstractModule {
         Multibinder.newSetBinder(binder(), TaskFromRequestRegistry.TaskRegistration.class, Names.named(USER_TASKS));
 
         Multibinder<TaskFromRequestRegistry.TaskRegistration> userCalendarTaskRegistrationMultibinder = Multibinder.newSetBinder(binder(), TaskFromRequestRegistry.TaskRegistration.class, Names.named(USER_CALENDAR_TASKS_KEY));
+        userCalendarTaskRegistrationMultibinder.addBinding().to(CalendarRoutes.UserCalendarEventsReindexRequestToTask.class);
         userCalendarTaskRegistrationMultibinder.addBinding().to(CalendarRoutes.UserArchiveRequestToTask.class);
     }
 
