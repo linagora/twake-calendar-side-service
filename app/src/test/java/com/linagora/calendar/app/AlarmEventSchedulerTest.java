@@ -136,7 +136,8 @@ public class AlarmEventSchedulerTest {
 
 
     @BeforeEach
-    void setUp(TwakeCalendarGuiceServer server) throws Exception {
+    void setUp() throws Exception {
+        clock.setInstant(Instant.now());
         this.organizer = sabreDavExtension.newTestUser(Optional.of("organizer_"));
         davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         calDavEventRepository = new CalDavEventRepository(new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING));
@@ -221,10 +222,13 @@ public class AlarmEventSchedulerTest {
             BEGIN:VALARM
             TRIGGER:-PT15M
             ACTION:EMAIL
-            ATTENDEE:mailto:%s
+            %s
             SUMMARY:Test multi attendees
             DESCRIPTION:This is an automatic alarm sent by OpenPaas
-            END:VALARM""".formatted(organizer.username().asString());
+            END:VALARM""".formatted(alarmAttendeeLines(List.of(
+            attendee1.username().asString(),
+            attendee2.username().asString(),
+            attendee3.username().asString())));
 
         // Event ICS with 3 attendees
         String calendarData = generateEventWithVALARM(
@@ -337,6 +341,12 @@ public class AlarmEventSchedulerTest {
             organizerEmail,
             attendeeLines,
             vAlarm);
+    }
+
+    private String alarmAttendeeLines(List<String> emails) {
+        return emails.stream()
+            .map("ATTENDEE:mailto:%s"::formatted)
+            .collect(Collectors.joining("\n"));
     }
 
 }
