@@ -19,6 +19,7 @@
 package com.linagora.calendar.app.restapi.routes;
 
 import static com.linagora.calendar.app.restapi.routes.ImportRouteTest.mailSenderConfigurationFunction;
+import static com.linagora.calendar.dav.Fixture.awaitAtMost;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static io.restassured.RestAssured.given;
 import static io.restassured.config.EncoderConfig.encoderConfig;
@@ -43,6 +44,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
@@ -84,7 +86,6 @@ import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
-import com.linagora.calendar.dav.Fixture;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.dav.dto.CalendarReportJsonResponse;
 import com.linagora.calendar.restapi.RestApiServerProbe;
@@ -98,6 +99,10 @@ import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.http.ContentType;
 import io.restassured.path.json.JsonPath;
 import io.restassured.specification.RequestSpecification;
+import net.fortuna.ical4j.model.Calendar;
+import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.Property;
+import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
 import net.javacrumbs.jsonunit.core.Option;
 
@@ -168,6 +173,7 @@ class EventParticipationRouteTest {
     private int restApiPort;
 
     private DavTestHelper davTestHelper;
+    private CalDavClient calDavClient;
 
     private RequestSpecification attendeeRequestSpecification;
 
@@ -180,6 +186,7 @@ class EventParticipationRouteTest {
         davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         server.getProbe(CalendarDataProbe.class).addUserToRepository(attendee.username(), password);
         server.getProbe(CalendarDataProbe.class).addUserToRepository(organizer.username(), password);
+        calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
 
         restApiPort = server.getProbe(RestApiServerProbe.class).getPort().getValue();
 
@@ -573,6 +580,50 @@ class EventParticipationRouteTest {
     }
 
     @Test
+    void shouldReturn404WhenOrganizerDeletedMeeting(TwakeCalendarGuiceServer server) {
+        String eventUid = UUID.randomUUID().toString();
+
+        davTestHelper.upsertCalendar(organizer,
+            generateCalendarData(eventUid, organizer.username().asString(), attendee.username().asString()),
+            eventUid);
+
+        String attendeeEventId = awaitAtMost.until(() -> davTestHelper.findFirstEventId(attendee), Optional::isPresent).get();
+
+        davTestHelper.deleteCalendar(organizer, eventUid);
+
+        awaitAtMost.until(() ->
+            calDavClient.fetchCalendarEvent(attendee.username(),
+                URI.create(String.format("/calendars/%s/%s/%s.ics", attendee.id().value(), attendee.id().value(), attendeeEventId)))
+                .block()
+                .calendarData(),
+            this::isEventCancelled);
+
+        Participation participation = getParticipation(eventUid, ParticipantAction.ACCEPTED);
+        URL participationTokenUrl = getParticipationTokenUrl(participation, server);
+
+        String response = RestAssured
+            .given()
+            .when()
+            .get(participationTokenUrl)
+            .then()
+            .statusCode(404)
+            .contentType(ContentType.JSON)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response).isEqualTo("""
+            {
+                "error": {
+                    "code": 404,
+                    "message": "Not found",
+                    "details": "${json-unit.ignore}"
+                }
+            }
+            """);
+    }
+
+    @Test
     void jwtInLinkResponseShouldNotHaveExpAttribute(TwakeCalendarGuiceServer server) {
         String eventUid = UUID.randomUUID().toString();
         upsertCalendarForTest(eventUid);
@@ -691,7 +742,7 @@ class EventParticipationRouteTest {
             generateCalendarData(eventUid, organizer.username().asString(), attendee.username().asString()),
             eventUid);
 
-        Fixture.awaitAtMost.untilAsserted(() ->
+        awaitAtMost.untilAsserted(() ->
             assertThat(davTestHelper.findFirstEventId(attendee))
                 .withFailMessage("Event not created for user: " + attendee.username())
                 .isPresent());
@@ -704,6 +755,17 @@ class EventParticipationRouteTest {
             eventUid,
             attendee.id().value(),
             action)).get();
+    }
+
+    private boolean isEventCancelled(Calendar calendar) {
+        return calendar.getComponents(Component.VEVENT).stream()
+            .map(component -> (VEvent) component)
+            .findFirst()
+            .map(vEvent -> vEvent.getProperty(Property.STATUS)
+                .map(Property::getValue)
+                .filter("CANCELLED"::equals)
+                .isPresent())
+            .orElse(false);
     }
 
     private String getCalendarEventReportResponse(String eventUid) throws Exception {

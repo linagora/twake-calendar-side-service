@@ -34,6 +34,9 @@ import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.eventsearch.EventUid;
 import com.linagora.calendar.storage.model.ResourceId;
 
+import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.Property;
+import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.client.HttpClient;
@@ -107,10 +110,23 @@ public class CalDavEventRepository {
         return client.fetchCalendarEvent(httpClientPublisher, calendarEventHref)
             .switchIfEmpty(Mono.error(new CalendarEventNotFoundException(calendarEventHref)))
             .retryWhen(RETRY_NOT_FOUND)
-            .map(calendarObject -> calendarObject.withUpdatePatches(modifier))
+            .flatMap(calendarObject -> isEventCancelled(calendarObject)
+                ? Mono.error(new CalendarEventNotFoundException(calendarEventHref))
+                : Mono.just(calendarObject.withUpdatePatches(modifier)))
             .flatMap(updated -> client.updateCalendarEvent(httpClientPublisher, updated))
             .retryWhen(RETRY_UPDATE)
             .onErrorResume(CalendarEventModifier.NoUpdateRequiredException.class, e -> Mono.empty());
+    }
+
+    private boolean isEventCancelled(DavCalendarObject calendarObject) {
+        return calendarObject.calendarData().getComponents(Component.VEVENT).stream()
+            .map(component -> (VEvent) component)
+            .findFirst()
+            .map(vEvent -> vEvent.getProperty(Property.STATUS)
+                .map(Property::getValue)
+                .filter("CANCELLED"::equals)
+                .isPresent())
+            .orElse(false);
     }
 
 }
