@@ -318,10 +318,10 @@ public class AlarmEventCancellationTest {
                 BEGIN:VALARM
                 TRIGGER:-PT10M
                 ACTION:EMAIL
-                ATTENDEE:mailto:%s
+                %s
                 SUMMARY:Meeting Reminder
                 DESCRIPTION:This is an automatic alarm
-                END:VALARM""".formatted(organizer.username().asString()))
+                END:VALARM""".formatted(alarmAttendeeLines(List.of(organizer.username().asString(), attendee.username().asString()))))
             .replaceAll("(?m)^SEQUENCE:.*$", "")
             .replaceFirst("(?m)^(DTSTAMP:.*$)", "$1\nSEQUENCE:2");
 
@@ -392,10 +392,11 @@ public class AlarmEventCancellationTest {
             BEGIN:VALARM
             TRIGGER:-PT10M
             ACTION:EMAIL
-            ATTENDEE:mailto:%s
+            %s
             SUMMARY:Meeting Reminder
             DESCRIPTION:This is an automatic alarm
-            END:VALARM""".formatted(organizerEmail);
+            END:VALARM""".formatted(alarmAttendeeLines(Stream.concat(Stream.of(organizerEmail), attendeeEmails.stream())
+            .toList()));
 
         String ics = generateEventWithValarm(
             eventUid,
@@ -469,6 +470,12 @@ public class AlarmEventCancellationTest {
             organizerEmail, organizerEmail,
             attendeeLines,
             vAlarm);
+    }
+
+    private String alarmAttendeeLines(List<String> emails) {
+        return emails.stream()
+            .map("ATTENDEE:mailto:%s"::formatted)
+            .collect(Collectors.joining("\n"));
     }
 
     private String waitForFirstEventCreation(OpenPaaSUser user) {

@@ -246,10 +246,10 @@ public class AlarmEventCreateTest {
             BEGIN:VALARM
             TRIGGER:-PT10M
             ACTION:EMAIL
-            ATTENDEE:mailto:%s
+            %s
             SUMMARY:Meeting Reminder
             DESCRIPTION:You have a meeting
-            END:VALARM""".formatted(organizer.username().asString());
+            END:VALARM""".formatted(alarmAttendeeLines(List.of(attendee.username().asString())));
 
         // Organizer creates a calendar event; attendee has not accepted yet
         String initialCalendar = generateEventWithValarm(
@@ -301,10 +301,10 @@ public class AlarmEventCreateTest {
             BEGIN:VALARM
             TRIGGER:-PT10M
             ACTION:EMAIL
-            ATTENDEE:mailto:%s
+            %s
             SUMMARY:Meeting Reminder
             DESCRIPTION:This is an automatic alarm sent by OpenPaas
-            END:VALARM""".formatted(organizer.username().asString());
+            END:VALARM""".formatted(alarmAttendeeLines(List.of(attendee1Email, attendee2Email)));
 
         String calendarData = generateEventWithValarm(
             eventUid,
@@ -354,10 +354,10 @@ public class AlarmEventCreateTest {
             BEGIN:VALARM
             TRIGGER:-PT10M
             ACTION:EMAIL
-            ATTENDEE:mailto:%s
+            %s
             SUMMARY:Meeting Reminder
             DESCRIPTION:This is an automatic alarm sent by OpenPaas
-            END:VALARM""".formatted(organizer.username().asString());
+            END:VALARM""".formatted(alarmAttendeeLines(List.of(attendee1Email, attendee2Email)));
 
         String calendarData = generateEventWithValarm(
             eventUid,
@@ -402,10 +402,10 @@ public class AlarmEventCreateTest {
             BEGIN:VALARM
             TRIGGER:-PT5M
             ACTION:EMAIL
-            ATTENDEE:mailto:%s
+            %s
             SUMMARY:Recurring Meeting Reminder
             DESCRIPTION:This is an automatic recurring alarm
-            END:VALARM""".formatted(organizerEmail);
+            END:VALARM""".formatted(alarmAttendeeLines(List.of(organizerEmail, attendeeEmail)));
 
         String calendarData = generateRecurringEventWithValarm(
             eventUid,
@@ -767,7 +767,7 @@ public class AlarmEventCreateTest {
 
             String calendarData = generateDailyRecurringEventWithValarm(
                 eventUid, organizerEmail, List.of(attendeeEmail), PartStat.NEEDS_ACTION,
-                valarmFor(organizerEmail));
+                valarmFor(attendeeEmail));
 
             Instant firstOccurrenceStart = extractStartTime(calendarData);
             Instant secondOccurrenceStart = firstOccurrenceStart.plus(1, ChronoUnit.DAYS);
@@ -810,7 +810,7 @@ public class AlarmEventCreateTest {
 
             String organizerIcs = generateDailyRecurringEventWithValarm(
                 eventUid, organizerEmail, List.of(attendeeEmail), PartStat.NEEDS_ACTION,
-                valarmFor(organizerEmail));
+                valarmFor(attendeeEmail));
 
             Instant firstOccurrenceStart = extractStartTime(organizerIcs);
             Instant secondOccurrenceStart = firstOccurrenceStart.plus(1, ChronoUnit.DAYS);
@@ -855,6 +855,12 @@ public class AlarmEventCreateTest {
             SUMMARY:Daily Standup Reminder
             DESCRIPTION:This is an automatic alarm sent by OpenPaas
             END:VALARM""".formatted(email);
+    }
+
+    private String alarmAttendeeLines(List<String> emails) {
+        return emails.stream()
+            .map("ATTENDEE:mailto:%s"::formatted)
+            .collect(Collectors.joining("\n"));
     }
 
     private String generateDailyRecurringEventWithValarm(String eventUid, String organizerEmail,

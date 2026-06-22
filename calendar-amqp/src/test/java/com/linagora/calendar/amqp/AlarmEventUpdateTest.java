@@ -42,6 +42,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
@@ -812,10 +813,11 @@ public class AlarmEventUpdateTest {
                 BEGIN:VALARM
                 TRIGGER:-PT10M
                 ACTION:EMAIL
-                ATTENDEE:mailto:%s
+                %s
                 SUMMARY:Meeting Reminder
                 DESCRIPTION:This is an automatic alarm
-                END:VALARM""".formatted(organizerEmail));
+                END:VALARM""".formatted(alarmAttendeeLines(Stream.concat(Stream.of(organizerEmail), attendeeEmails.stream())
+                .toList())));
 
         davTestHelper.upsertCalendar(organizer, ics, eventUid);
         return new EventUid(eventUid);
@@ -881,6 +883,12 @@ public class AlarmEventUpdateTest {
             organizerEmail,
             attendeeLines,
             vAlarm);
+    }
+
+    private String alarmAttendeeLines(List<String> emails) {
+        return emails.stream()
+            .map("ATTENDEE:mailto:%s"::formatted)
+            .collect(Collectors.joining("\n"));
     }
 
     private void attendeeAcceptsEvent(OpenPaaSUser attendee, EventUid eventUid) {

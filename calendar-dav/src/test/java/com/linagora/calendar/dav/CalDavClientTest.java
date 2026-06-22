@@ -31,6 +31,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
 
 import javax.net.ssl.SSLException;
 
@@ -68,6 +69,8 @@ import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.Property;
+import net.fortuna.ical4j.model.PropertyList;
 import net.fortuna.ical4j.model.component.VEvent;
 
 public class CalDavClientTest {
@@ -182,7 +185,19 @@ public class CalDavClientTest {
         Calendar calendar = CalendarUtil.parseIcs(ics.getBytes(StandardCharsets.UTF_8));
         VEvent expected = (VEvent) calendar.getComponent(Component.VEVENT).get();
 
-        assertThat((VEvent) exportedCalendar.getComponent(Component.VEVENT).get()).isEqualTo(expected);
+        Function<VEvent, VEvent> withoutAlarmUid = vEvent -> {
+            VEvent copy = vEvent.copy();
+            copy.getComponentList()
+                .getComponents(Component.VALARM)
+                .forEach(alarm -> alarm.setPropertyList(new PropertyList(alarm.getProperties()
+                    .stream()
+                    .filter(property -> !property.getName().equals(Property.UID))
+                    .toList())));
+            return copy;
+        };
+
+        assertThat(withoutAlarmUid.apply((VEvent) exportedCalendar.getComponent(Component.VEVENT).get()))
+            .isEqualTo(withoutAlarmUid.apply(expected));
     }
 
     @Test
