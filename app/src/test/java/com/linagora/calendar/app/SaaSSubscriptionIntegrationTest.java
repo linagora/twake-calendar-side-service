@@ -158,8 +158,8 @@ class SaaSSubscriptionIntegrationTest {
     private void purgeSaaSSubscriptionDeadLetterQueues() {
         try {
             RabbitMQManagementAPI rabbitMQManagementAPI = RabbitMQManagementAPI.from(sabreDavExtension.dockerSabreDavSetup().rabbitMQConfiguration());
-            rabbitMQManagementAPI.purgeQueue("/", SaaSSubscriptionConsumer.SAAS_SUBSCRIPTION_DEAD_LETTER_QUEUE);
-            rabbitMQManagementAPI.purgeQueue("/", SaaSDomainSubscriptionConsumer.SAAS_DOMAIN_SUBSCRIPTION_DEAD_LETTER_QUEUE);
+            rabbitMQManagementAPI.purgeQueue("/", "tcalendar-saas-subscription-dead-letter");
+            rabbitMQManagementAPI.purgeQueue("/", "tcalendar-saas-domain-subscription-dead-letter");
         } catch (Exception e) {
             throw new RuntimeException("Unable to purge SaaS subscription dead letter queues before test", e);
         }

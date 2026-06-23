@@ -43,7 +43,9 @@ import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.tmail.saas.rabbitmq.TWPCommonRabbitMQConfiguration;
 import com.linagora.tmail.saas.rabbitmq.subscription.SaaSDomainSubscriptionConsumer;
+import com.linagora.tmail.saas.rabbitmq.subscription.SaaSDomainSubscriptionConsumer.DomainSubscriptionConsumerConfig;
 import com.linagora.tmail.saas.rabbitmq.subscription.SaaSSubscriptionConsumer;
+import com.linagora.tmail.saas.rabbitmq.subscription.SaaSSubscriptionConsumer.SubscriptionConsumerConfig;
 import com.linagora.tmail.saas.rabbitmq.subscription.SaaSSubscriptionDeadLetterQueueHealthCheck;
 import com.linagora.tmail.saas.rabbitmq.subscription.SaaSSubscriptionQueueConsumerHealthCheck;
 import com.linagora.tmail.saas.rabbitmq.subscription.SaaSSubscriptionRabbitMQConfiguration;
@@ -68,9 +70,11 @@ public class TWPCalendarSubscriptionModule extends AbstractModule {
                                                              OpenPaaSDomainDAO domainDAO,
                                                              CardDavClient cardDavClient,
                                                              DomainSettingsResolver domainSettingsResolver) {
+        SubscriptionConsumerConfig subscriptionConsumerConfig = new SubscriptionConsumerConfig("tcalendar-saas-subscription", "tcalendar-saas-subscription-dead-letter");
+
         return new SaaSSubscriptionConsumer(channelPool, rabbitMQConfiguration, twpCommonRabbitMQConfiguration,
             saaSSubscriptionRabbitMQConfiguration,
-            new SaaSUserSubscriptionHandler(userDAO, domainDAO, cardDavClient, domainSettingsResolver));
+            new SaaSUserSubscriptionHandler(userDAO, domainDAO, cardDavClient, domainSettingsResolver), subscriptionConsumerConfig);
     }
 
     @Provides
@@ -80,9 +84,11 @@ public class TWPCalendarSubscriptionModule extends AbstractModule {
                                                                          TWPCommonRabbitMQConfiguration twpCommonRabbitMQConfiguration,
                                                                          SaaSSubscriptionRabbitMQConfiguration saaSSubscriptionRabbitMQConfiguration,
                                                                          OpenPaaSDomainDAO domainDAO) {
+        DomainSubscriptionConsumerConfig consumerConfig = new DomainSubscriptionConsumerConfig("tcalendar-saas-domain-subscription", "tcalendar-saas-domain-subscription-dead-letter");
+
         return new SaaSDomainSubscriptionConsumer(channelPool, rabbitMQConfiguration, twpCommonRabbitMQConfiguration,
             saaSSubscriptionRabbitMQConfiguration,
-            new SaaSDomainSubscriptionHandler(domainDAO));
+            new SaaSDomainSubscriptionHandler(domainDAO), consumerConfig);
     }
 
     @ProvidesIntoSet
