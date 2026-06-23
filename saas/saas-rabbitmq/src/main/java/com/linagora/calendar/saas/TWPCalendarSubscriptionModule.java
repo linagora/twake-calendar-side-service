@@ -21,6 +21,7 @@ package com.linagora.calendar.saas;
 import static com.linagora.tmail.saas.rabbitmq.TWPConstants.TWP_INJECTION_KEY;
 
 import java.io.FileNotFoundException;
+import java.util.List;
 
 import jakarta.inject.Named;
 import jakarta.inject.Singleton;
@@ -35,7 +36,6 @@ import org.apache.james.utils.PropertiesProvider;
 
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
-import com.google.inject.multibindings.Multibinder;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.storage.DomainSettingsResolver;
@@ -51,14 +51,12 @@ import com.linagora.tmail.saas.rabbitmq.subscription.SaaSSubscriptionQueueConsum
 import com.linagora.tmail.saas.rabbitmq.subscription.SaaSSubscriptionRabbitMQConfiguration;
 
 public class TWPCalendarSubscriptionModule extends AbstractModule {
-
-    @Override
-    protected void configure() {
-        Multibinder.newSetBinder(binder(), HealthCheck.class).addBinding()
-            .to(SaaSSubscriptionDeadLetterQueueHealthCheck.class);
-        Multibinder.newSetBinder(binder(), HealthCheck.class).addBinding()
-            .to(SaaSSubscriptionQueueConsumerHealthCheck.class);
-    }
+    private static final SubscriptionConsumerConfig SUBSCRIPTION_CONSUMER_CONFIG =
+        new SubscriptionConsumerConfig("tcalendar-saas-subscription", "tcalendar-saas-subscription-dead-letter");
+    private static final DomainSubscriptionConsumerConfig DOMAIN_SUBSCRIPTION_CONSUMER_CONFIG =
+        new DomainSubscriptionConsumerConfig("tcalendar-saas-domain-subscription", "tcalendar-saas-domain-subscription-dead-letter");
+    private static final List<String> SUBSCRIPTION_QUEUES = List.of(SUBSCRIPTION_CONSUMER_CONFIG.queue(), DOMAIN_SUBSCRIPTION_CONSUMER_CONFIG.queue());
+    private static final List<String> SUBSCRIPTION_DEAD_LETTER_QUEUES = List.of(SUBSCRIPTION_CONSUMER_CONFIG.deadLetterQueue(), DOMAIN_SUBSCRIPTION_CONSUMER_CONFIG.deadLetterQueue());
 
     @Provides
     @Singleton
@@ -70,11 +68,9 @@ public class TWPCalendarSubscriptionModule extends AbstractModule {
                                                              OpenPaaSDomainDAO domainDAO,
                                                              CardDavClient cardDavClient,
                                                              DomainSettingsResolver domainSettingsResolver) {
-        SubscriptionConsumerConfig subscriptionConsumerConfig = new SubscriptionConsumerConfig("tcalendar-saas-subscription", "tcalendar-saas-subscription-dead-letter");
-
         return new SaaSSubscriptionConsumer(channelPool, rabbitMQConfiguration, twpCommonRabbitMQConfiguration,
             saaSSubscriptionRabbitMQConfiguration,
-            new SaaSUserSubscriptionHandler(userDAO, domainDAO, cardDavClient, domainSettingsResolver), subscriptionConsumerConfig);
+            new SaaSUserSubscriptionHandler(userDAO, domainDAO, cardDavClient, domainSettingsResolver), SUBSCRIPTION_CONSUMER_CONFIG);
     }
 
     @Provides
@@ -84,11 +80,23 @@ public class TWPCalendarSubscriptionModule extends AbstractModule {
                                                                          TWPCommonRabbitMQConfiguration twpCommonRabbitMQConfiguration,
                                                                          SaaSSubscriptionRabbitMQConfiguration saaSSubscriptionRabbitMQConfiguration,
                                                                          OpenPaaSDomainDAO domainDAO) {
-        DomainSubscriptionConsumerConfig consumerConfig = new DomainSubscriptionConsumerConfig("tcalendar-saas-domain-subscription", "tcalendar-saas-domain-subscription-dead-letter");
-
         return new SaaSDomainSubscriptionConsumer(channelPool, rabbitMQConfiguration, twpCommonRabbitMQConfiguration,
             saaSSubscriptionRabbitMQConfiguration,
-            new SaaSDomainSubscriptionHandler(domainDAO), consumerConfig);
+            new SaaSDomainSubscriptionHandler(domainDAO), DOMAIN_SUBSCRIPTION_CONSUMER_CONFIG);
+    }
+
+    @ProvidesIntoSet
+    @Singleton
+    HealthCheck provideSaaSSubscriptionQueueConsumerHealthCheck(@Named(TWP_INJECTION_KEY) RabbitMQConfiguration twpRabbitMQConfiguration,
+                                                                SaaSSubscriptionConsumer saaSSubscriptionConsumer,
+                                                                SaaSDomainSubscriptionConsumer saaSDomainSubscriptionConsumer) {
+        return new SaaSSubscriptionQueueConsumerHealthCheck(twpRabbitMQConfiguration, saaSSubscriptionConsumer, saaSDomainSubscriptionConsumer, SUBSCRIPTION_QUEUES);
+    }
+
+    @ProvidesIntoSet
+    @Singleton
+    HealthCheck provideSaaSSubscriptionDeadLetterQueueHealthCheck(@Named(TWP_INJECTION_KEY) RabbitMQConfiguration twpRabbitMQConfiguration) {
+        return new SaaSSubscriptionDeadLetterQueueHealthCheck(twpRabbitMQConfiguration, SUBSCRIPTION_DEAD_LETTER_QUEUES);
     }
 
     @ProvidesIntoSet

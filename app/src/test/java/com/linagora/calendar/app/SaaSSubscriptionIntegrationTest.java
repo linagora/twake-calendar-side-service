@@ -71,6 +71,10 @@ class SaaSSubscriptionIntegrationTest {
     private static final String SUBSCRIPTION_EXCHANGE = "saas.subscription";
     private static final String USER_ROUTING_KEY = "saas.subscription.routingKey";
     private static final String DOMAIN_ROUTING_KEY = "domain.subscription.changed";
+    private static final String USER_SUBSCRIPTION_QUEUE = "tcalendar-saas-subscription";
+    private static final String USER_SUBSCRIPTION_DEAD_LETTER_QUEUE = "tcalendar-saas-subscription-dead-letter";
+    private static final String DOMAIN_SUBSCRIPTION_QUEUE = "tcalendar-saas-domain-subscription";
+    private static final String DOMAIN_SUBSCRIPTION_DEAD_LETTER_QUEUE = "tcalendar-saas-domain-subscription-dead-letter";
 
     public static class SaaSSubscriptionProbe implements GuiceProbe {
         @Inject
@@ -135,7 +139,7 @@ class SaaSSubscriptionIntegrationTest {
 
     @BeforeEach
     void setUp(TwakeCalendarGuiceServer server) {
-        purgeSaaSSubscriptionDeadLetterQueues();
+        purgeSaaSSubscriptionQueues();
 
         sender = channelPool.getSender();
 
@@ -155,13 +159,15 @@ class SaaSSubscriptionIntegrationTest {
                 equalTo("healthy")));
     }
 
-    private void purgeSaaSSubscriptionDeadLetterQueues() {
+    private void purgeSaaSSubscriptionQueues() {
         try {
             RabbitMQManagementAPI rabbitMQManagementAPI = RabbitMQManagementAPI.from(sabreDavExtension.dockerSabreDavSetup().rabbitMQConfiguration());
-            rabbitMQManagementAPI.purgeQueue("/", "tcalendar-saas-subscription-dead-letter");
-            rabbitMQManagementAPI.purgeQueue("/", "tcalendar-saas-domain-subscription-dead-letter");
+            rabbitMQManagementAPI.purgeQueue("/", USER_SUBSCRIPTION_QUEUE);
+            rabbitMQManagementAPI.purgeQueue("/", USER_SUBSCRIPTION_DEAD_LETTER_QUEUE);
+            rabbitMQManagementAPI.purgeQueue("/", DOMAIN_SUBSCRIPTION_QUEUE);
+            rabbitMQManagementAPI.purgeQueue("/", DOMAIN_SUBSCRIPTION_DEAD_LETTER_QUEUE);
         } catch (Exception e) {
-            throw new RuntimeException("Unable to purge SaaS subscription dead letter queues before test", e);
+            throw new RuntimeException("Unable to purge SaaS subscription queues before test", e);
         }
     }
 
