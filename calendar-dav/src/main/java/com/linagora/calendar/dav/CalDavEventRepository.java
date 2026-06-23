@@ -51,11 +51,6 @@ public class CalDavEventRepository {
         .map(Duration::ofMillis)
         .orElse(Duration.ofMillis(100));
 
-    private static final Retry RETRY_NOT_FOUND =
-        Retry.backoff(1, Duration.ofSeconds(1))
-            .filter(CalendarEventNotFoundException.class::isInstance)
-            .onRetryExhaustedThrow((retrySpec, retrySignal) -> retrySignal.failure());
-
     private static final Retry RETRY_UPDATE =
         Retry.backoff(MAX_CALENDAR_OBJECT_UPDATE_RETRIES, CALENDAR_OBJECT_UPDATE_RETRY_BACKOFF)
             .filter(CalDavClient.RetriableDavClientException.class::isInstance)
@@ -109,7 +104,6 @@ public class CalDavEventRepository {
                                             CalendarEventModifier modifier) {
         return client.fetchCalendarEvent(httpClientPublisher, calendarEventHref)
             .switchIfEmpty(Mono.error(new CalendarEventNotFoundException(calendarEventHref)))
-            .retryWhen(RETRY_NOT_FOUND)
             .flatMap(calendarObject -> isEventCancelled(calendarObject)
                 ? Mono.error(new CalendarEventNotFoundException(calendarEventHref))
                 : Mono.just(calendarObject.withUpdatePatches(modifier)))
