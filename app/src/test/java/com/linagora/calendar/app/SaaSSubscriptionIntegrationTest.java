@@ -57,6 +57,7 @@ import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.Fixture;
 import com.linagora.calendar.dav.SabreDavExtension;
+import com.linagora.calendar.saas.TWPCalendarSubscriptionModule;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.tmail.saas.rabbitmq.subscription.SaaSDomainSubscriptionConsumer;
 import com.linagora.tmail.saas.rabbitmq.subscription.SaaSSubscriptionConsumer;
@@ -158,8 +159,8 @@ class SaaSSubscriptionIntegrationTest {
     private void purgeSaaSSubscriptionDeadLetterQueues() {
         try {
             RabbitMQManagementAPI rabbitMQManagementAPI = RabbitMQManagementAPI.from(sabreDavExtension.dockerSabreDavSetup().rabbitMQConfiguration());
-            rabbitMQManagementAPI.purgeQueue("/", SaaSSubscriptionConsumer.SAAS_SUBSCRIPTION_DEAD_LETTER_QUEUE);
-            rabbitMQManagementAPI.purgeQueue("/", SaaSDomainSubscriptionConsumer.SAAS_DOMAIN_SUBSCRIPTION_DEAD_LETTER_QUEUE);
+            rabbitMQManagementAPI.purgeQueue("/", TWPCalendarSubscriptionModule.SUBSCRIPTION_CONSUMER_CONFIG.deadLetterQueue());
+            rabbitMQManagementAPI.purgeQueue("/", TWPCalendarSubscriptionModule.DOMAIN_SUBSCRIPTION_CONSUMER_CONFIG.deadLetterQueue());
         } catch (Exception e) {
             throw new RuntimeException("Unable to purge SaaS subscription dead letter queues before test", e);
         }
