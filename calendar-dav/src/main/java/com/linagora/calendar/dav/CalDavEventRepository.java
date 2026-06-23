@@ -21,10 +21,12 @@ package com.linagora.calendar.dav;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.function.Predicate;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
+import org.apache.commons.lang3.Strings;
 import org.apache.james.core.Username;
 
 import com.linagora.calendar.dav.CalendarEventUpdatePatch.AttendeePartStatusUpdatePatch;
@@ -103,10 +105,9 @@ public class CalDavEventRepository {
                                             URI calendarEventHref,
                                             CalendarEventModifier modifier) {
         return client.fetchCalendarEvent(httpClientPublisher, calendarEventHref)
+            .filter(Predicate.not(this::isEventCancelled))
             .switchIfEmpty(Mono.error(new CalendarEventNotFoundException(calendarEventHref)))
-            .flatMap(calendarObject -> isEventCancelled(calendarObject)
-                ? Mono.error(new CalendarEventNotFoundException(calendarEventHref))
-                : Mono.just(calendarObject.withUpdatePatches(modifier)))
+            .map(calendarObject -> calendarObject.withUpdatePatches(modifier))
             .flatMap(updated -> client.updateCalendarEvent(httpClientPublisher, updated))
             .retryWhen(RETRY_UPDATE)
             .onErrorResume(CalendarEventModifier.NoUpdateRequiredException.class, e -> Mono.empty());
@@ -118,7 +119,7 @@ public class CalDavEventRepository {
             .findFirst()
             .map(vEvent -> vEvent.getProperty(Property.STATUS)
                 .map(Property::getValue)
-                .filter("CANCELLED"::equals)
+                .filter(value -> Strings.CI.equals("CANCELLED", value))
                 .isPresent())
             .orElse(false);
     }
