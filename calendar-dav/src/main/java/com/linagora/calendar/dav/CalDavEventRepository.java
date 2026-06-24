@@ -21,10 +21,12 @@ package com.linagora.calendar.dav;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.function.Predicate;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
+import org.apache.commons.lang3.Strings;
 import org.apache.james.core.Username;
 
 import com.linagora.calendar.dav.CalendarEventUpdatePatch.AttendeePartStatusUpdatePatch;
@@ -34,6 +36,9 @@ import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.eventsearch.EventUid;
 import com.linagora.calendar.storage.model.ResourceId;
 
+import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.Property;
+import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.client.HttpClient;
@@ -47,11 +52,6 @@ public class CalDavEventRepository {
         .map(Long::parseLong)
         .map(Duration::ofMillis)
         .orElse(Duration.ofMillis(100));
-
-    private static final Retry RETRY_NOT_FOUND =
-        Retry.backoff(1, Duration.ofSeconds(1))
-            .filter(CalendarEventNotFoundException.class::isInstance)
-            .onRetryExhaustedThrow((retrySpec, retrySignal) -> retrySignal.failure());
 
     private static final Retry RETRY_UPDATE =
         Retry.backoff(MAX_CALENDAR_OBJECT_UPDATE_RETRIES, CALENDAR_OBJECT_UPDATE_RETRY_BACKOFF)
@@ -105,12 +105,23 @@ public class CalDavEventRepository {
                                             URI calendarEventHref,
                                             CalendarEventModifier modifier) {
         return client.fetchCalendarEvent(httpClientPublisher, calendarEventHref)
+            .filter(Predicate.not(this::isEventCancelled))
             .switchIfEmpty(Mono.error(new CalendarEventNotFoundException(calendarEventHref)))
-            .retryWhen(RETRY_NOT_FOUND)
             .map(calendarObject -> calendarObject.withUpdatePatches(modifier))
             .flatMap(updated -> client.updateCalendarEvent(httpClientPublisher, updated))
             .retryWhen(RETRY_UPDATE)
             .onErrorResume(CalendarEventModifier.NoUpdateRequiredException.class, e -> Mono.empty());
+    }
+
+    private boolean isEventCancelled(DavCalendarObject calendarObject) {
+        return calendarObject.calendarData().getComponents(Component.VEVENT).stream()
+            .map(component -> (VEvent) component)
+            .findFirst()
+            .map(vEvent -> vEvent.getProperty(Property.STATUS)
+                .map(Property::getValue)
+                .filter(value -> Strings.CI.equals("CANCELLED", value))
+                .isPresent())
+            .orElse(false);
     }
 
 }
