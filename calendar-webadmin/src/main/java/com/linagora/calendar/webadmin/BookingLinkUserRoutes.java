@@ -22,7 +22,6 @@ import static org.apache.james.webadmin.Constants.SEPARATOR;
 
 import java.time.Duration;
 import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -90,7 +89,7 @@ public class BookingLinkUserRoutes implements Routes {
     private static final String FIELD_ACTIVE = "active";
     private static final String FIELD_AVAILABILITY_RULES = "availabilityRules";
     private static final String FIELD_PUBLIC_ID = "bookingLinkPublicId";
-    private static final ZoneId DEFAULT_ZONE = ZoneOffset.UTC;
+    private static final ZoneId DEFAULT_ZONE = ZoneId.of("UTC");
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module());
 

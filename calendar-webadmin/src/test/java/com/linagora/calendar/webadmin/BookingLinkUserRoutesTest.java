@@ -331,4 +331,205 @@ public class BookingLinkUserRoutesTest {
         .then()
             .statusCode(404);
     }
+
+    private String getBookingLinkJson(String publicId) {
+        return given()
+        .when()
+            .get("/users/{username}/booking-links/{publicId}", user.username().asString(), publicId)
+        .then()
+            .statusCode(200)
+            .extract().body().asString();
+    }
+
+    @Test
+    void createShouldStoreComplexAvailabilityRules() {
+        String publicId = given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "availabilityRules": [
+                        { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "timeZone": "Europe/Paris" },
+                        { "type": "weekly", "dayOfWeek": "WED", "start": "13:00", "end": "17:00", "timeZone": "Europe/London" },
+                        { "type": "fixed", "start": "2026-01-26T02:00:00", "end": "2026-01-30T02:00:00", "timeZone": "UTC" }
+                    ]
+                }
+                """.formatted(defaultCalendarUrl(user)))
+        .when()
+            .post("/users/{username}/booking-links", user.username().asString())
+        .then()
+            .statusCode(201)
+            .extract().jsonPath().getString("bookingLinkPublicId");
+
+        assertThatJson(getBookingLinkJson(publicId))
+            .node("availabilityRules")
+            .isEqualTo("""
+                [
+                    { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "timeZone": "Europe/Paris" },
+                    { "type": "weekly", "dayOfWeek": "WED", "start": "13:00", "end": "17:00", "timeZone": "Europe/London" },
+                    { "type": "fixed", "start": "2026-01-26T02:00:00", "end": "2026-01-30T02:00:00", "timeZone": "UTC" }
+                ]
+                """);
+    }
+
+    @Test
+    void createShouldDefaultRuleTimeZoneToUtcWhenOmitted() {
+        String publicId = given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "availabilityRules": [
+                        { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "17:00" }
+                    ]
+                }
+                """.formatted(defaultCalendarUrl(user)))
+        .when()
+            .post("/users/{username}/booking-links", user.username().asString())
+        .then()
+            .statusCode(201)
+            .extract().jsonPath().getString("bookingLinkPublicId");
+
+        assertThatJson(getBookingLinkJson(publicId))
+            .node("availabilityRules[0].timeZone")
+            .isEqualTo("UTC");
+    }
+
+    @Test
+    void patchShouldReplaceAvailabilityRules() {
+        BookingLink bookingLink = insertBookingLink(user);
+
+        given()
+            .body("""
+                {
+                    "availabilityRules": [
+                        { "type": "weekly", "dayOfWeek": "FRI", "start": "14:00", "end": "18:00", "timeZone": "Europe/Paris" }
+                    ]
+                }
+                """)
+        .when()
+            .patch("/users/{username}/booking-links/{publicId}", user.username().asString(), bookingLink.publicId().value().toString())
+        .then()
+            .statusCode(204);
+
+        assertThatJson(getBookingLinkJson(bookingLink.publicId().value().toString()))
+            .node("availabilityRules")
+            .isEqualTo("""
+                [
+                    { "type": "weekly", "dayOfWeek": "FRI", "start": "14:00", "end": "18:00", "timeZone": "Europe/Paris" }
+                ]
+                """);
+    }
+
+    @Test
+    void patchShouldRemoveAvailabilityRulesWhenNull() {
+        BookingLink bookingLink = insertBookingLink(user);
+
+        given()
+            .body("""
+                { "availabilityRules": null }
+                """)
+        .when()
+            .patch("/users/{username}/booking-links/{publicId}", user.username().asString(), bookingLink.publicId().value().toString())
+        .then()
+            .statusCode(204);
+
+        assertThatJson(getBookingLinkJson(bookingLink.publicId().value().toString()))
+            .node("availabilityRules")
+            .isAbsent();
+        assertThat(bookingLinkDAO.findByPublicId(user.username(), bookingLink.publicId()).block().availabilityRules())
+            .isEmpty();
+    }
+
+    @Test
+    void patchShouldReturn400WhenAvailabilityRulesEmptyArray() {
+        BookingLink bookingLink = insertBookingLink(user);
+
+        given()
+            .body("""
+                { "availabilityRules": [] }
+                """)
+        .when()
+            .patch("/users/{username}/booking-links/{publicId}", user.username().asString(), bookingLink.publicId().value().toString())
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
+    void createShouldReturn400WhenUnknownRuleType() {
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "availabilityRules": [
+                        { "type": "monthly", "dayOfWeek": "MON", "start": "09:00", "end": "12:00" }
+                    ]
+                }
+                """.formatted(defaultCalendarUrl(user)))
+        .when()
+            .post("/users/{username}/booking-links", user.username().asString())
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
+    void createShouldReturn400WhenWeeklyRuleMissingDayOfWeek() {
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "availabilityRules": [
+                        { "type": "weekly", "start": "09:00", "end": "12:00" }
+                    ]
+                }
+                """.formatted(defaultCalendarUrl(user)))
+        .when()
+            .post("/users/{username}/booking-links", user.username().asString())
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
+    void createShouldReturn400WhenInvalidTimeZone() {
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "availabilityRules": [
+                        { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "timeZone": "Invalid/Zone" }
+                    ]
+                }
+                """.formatted(defaultCalendarUrl(user)))
+        .when()
+            .post("/users/{username}/booking-links", user.username().asString())
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
+    void createShouldReturn400WhenFixedRuleStartAfterEnd() {
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "availabilityRules": [
+                        { "type": "fixed", "start": "2026-01-30T02:00:00", "end": "2026-01-26T02:00:00", "timeZone": "UTC" }
+                    ]
+                }
+                """.formatted(defaultCalendarUrl(user)))
+        .when()
+            .post("/users/{username}/booking-links", user.username().asString())
+        .then()
+            .statusCode(400);
+    }
 }
