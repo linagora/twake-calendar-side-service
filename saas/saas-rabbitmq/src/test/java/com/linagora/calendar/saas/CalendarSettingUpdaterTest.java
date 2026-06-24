@@ -24,10 +24,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
+import org.apache.commons.configuration2.MapConfiguration;
 import org.apache.james.core.Username;
 import org.apache.james.mailbox.store.RandomMailboxSessionIdGenerator;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,6 +39,9 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import com.fasterxml.jackson.databind.node.LongNode;
 import com.fasterxml.jackson.databind.node.TextNode;
+import com.linagora.calendar.storage.DomainSettingsResolver;
+import com.linagora.calendar.storage.MemoryDomainSettingsDAO;
+import com.linagora.calendar.storage.MemoryOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.MemoryOpenPaaSUserDAO;
 import com.linagora.calendar.storage.MemoryUserConfigurationDAO;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
@@ -44,7 +49,6 @@ import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.ConfigurationEntry;
 import com.linagora.calendar.storage.configuration.EntryIdentifier;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
-import com.linagora.calendar.storage.exception.UserNotFoundException;
 import com.linagora.tmail.saas.rabbitmq.settings.TWPCommonSettingsMessage;
 
 public class CalendarSettingUpdaterTest {
@@ -60,7 +64,13 @@ public class CalendarSettingUpdaterTest {
     void setup() {
         openPaaSUserDAO = new MemoryOpenPaaSUserDAO();
         userConfigurationDAO = new MemoryUserConfigurationDAO(openPaaSUserDAO);
-        testee = new CalendarSettingUpdater(userConfigurationDAO, openPaaSUserDAO, sessionProvider);
+        // Disable user search for the test domain so the provisioner skips the (CardDav) address book step,
+        // keeping this an in-memory test. Auto-provisioning thus only creates the OpenPaaSUser.
+        DomainSettingsResolver domainSettingsResolver = new DomainSettingsResolver(
+            new MemoryDomainSettingsDAO(), Set.of(USER.getDomainPart().get()), Set.of(), new MapConfiguration(Map.of()));
+        SaaSUserProvisioner userProvisioner = new SaaSUserProvisioner(openPaaSUserDAO,
+            new MemoryOpenPaaSDomainDAO(), null, domainSettingsResolver);
+        testee = new CalendarSettingUpdater(userConfigurationDAO, openPaaSUserDAO, userProvisioner, sessionProvider);
         openPaaSUserDAO.add(USER).block();
     }
 
@@ -169,14 +179,24 @@ public class CalendarSettingUpdaterTest {
     }
 
     @Test
-    void shouldThrowWhenUserNotFound() {
-        String unknownUser = UUID.randomUUID() + "@domain.tld";
+    void shouldAutoProvisionUserWhenUserNotFound() {
+        Username unknownUser = Username.of(UUID.randomUUID() + "@domain.tld");
         TWPCommonSettingsMessage message = new TWPCommonSettingsMessage("source", "nick", "req-404",
             System.currentTimeMillis(), 3L,
-            new TWPCommonSettingsMessage.Payload(unknownUser, Optional.of("en")));
+            new TWPCommonSettingsMessage.Payload(unknownUser.asString(), Optional.of("en")));
 
-        assertThatThrownBy(() -> testee.updateSettings(message).block())
-            .isInstanceOf(UserNotFoundException.class);
+        testee.updateSettings(message).block();
+
+        assertThat(openPaaSUserDAO.retrieve(unknownUser).block()).isNotNull();
+
+        List<ConfigurationEntry> entries = userConfigurationDAO
+            .retrieveConfiguration(sessionProvider.createSession(unknownUser))
+            .collectList()
+            .block();
+
+        assertThat(entries)
+            .containsExactlyInAnyOrder(ConfigurationEntry.of(EntryIdentifier.LANGUAGE_IDENTIFIER, TextNode.valueOf("en")),
+                ConfigurationEntry.of(LANGUAGE_VERSION_IDENTIFIER, LongNode.valueOf(3)));
     }
 
     @Test

@@ -63,8 +63,9 @@ public class TWPCalendarSettingsModule extends AbstractModule {
     @Named(TWP_INJECTION_KEY)
     TWPSettingsUpdater provideTWPSettingsUpdater(UserConfigurationDAO userConfigurationDAO,
                                                  OpenPaaSUserDAO openPaaSUserDAO,
+                                                 SaaSUserProvisioner userProvisioner,
                                                  SimpleSessionProvider sessionProvider) {
-        return new CalendarSettingUpdater(userConfigurationDAO, openPaaSUserDAO, sessionProvider);
+        return new CalendarSettingUpdater(userConfigurationDAO, openPaaSUserDAO, userProvisioner, sessionProvider);
     }
 
     @Provides
