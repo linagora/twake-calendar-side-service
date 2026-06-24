@@ -976,6 +976,147 @@ the sharing for the given user.
 - `400`: missing `share` field, `dav:href` is not a `mailto:` URI, or a `set` entry carries no right
 - `404`: the user or the calendar does not exist
 
+## User booking link routes
+
+These routes let an administrator manage the [booking links](bookingLink.md) of a given user.
+They mirror the end-user `/api/booking-links` API but are scoped to an explicit `{username}`
+path parameter.
+
+Differences with the end-user API:
+
+- No per-user settings resolution happens here. Availability rules without an explicit
+  `timeZone` are interpreted in **UTC**, and an omitted `availabilityRules` on creation stores
+  no rule (instead of defaulting to the user's business hours).
+- Authentication is the standard WebAdmin one (not the end-user token).
+
+The booking link object and the availability rule object share the same shape as the
+[Booking Link API](bookingLink.md#data-model).
+
+### Listing the booking links of a user
+
+```
+GET /users/{username}/booking-links
+```
+
+Returns the booking links of the user, sorted by update time (most recent first).
+
+```
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+[
+  {
+    "publicId": "550e8400-e29b-41d4-a716-446655440000",
+    "calendarUrl": "/calendars/67c3a792e4b0884b05ef8aef/67c3a792e4b0884b05ef8aef",
+    "durationMinutes": 30,
+    "active": true,
+    "availabilityRules": [
+      { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "17:00", "timeZone": "UTC" }
+    ]
+  }
+]
+```
+
+`availabilityRules` is omitted from an entry when not set.
+
+**Status codes**:
+- `200`: the list is returned (possibly empty)
+- `400`: invalid `username`
+- `404`: the user does not exist
+
+### Getting a booking link
+
+```
+GET /users/{username}/booking-links/{publicId}
+```
+
+**Status codes**:
+- `200`: the booking link is returned
+- `400`: invalid `username` or `publicId` (not a UUID)
+- `404`: the user does not exist, or the booking link does not exist for that user
+
+### Creating a booking link
+
+```
+POST /users/{username}/booking-links
+{
+  "calendarUrl": "/calendars/67c3a792e4b0884b05ef8aef/67c3a792e4b0884b05ef8aef",
+  "durationMinutes": 30,
+  "active": true,
+  "availabilityRules": [
+    { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "timeZone": "Europe/Paris" }
+  ]
+}
+```
+
+`calendarUrl`, `durationMinutes` and `active` are required. `availabilityRules` is optional.
+
+```
+HTTP/1.1 201 Created
+Location: /users/{username}/booking-links/550e8400-e29b-41d4-a716-446655440000
+Content-Type: application/json
+
+{
+  "bookingLinkPublicId": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+**Status codes**:
+- `201`: the booking link was created
+- `400`: invalid `username`, missing/invalid field, unknown rule type, invalid `timeZone`, or the calendar does not exist for that user
+- `404`: the user does not exist
+
+### Updating a booking link
+
+```
+PATCH /users/{username}/booking-links/{publicId}
+{
+  "durationMinutes": 60,
+  "active": false
+}
+```
+
+Only the fields present in the body are updated. At least one field must be provided.
+Set `availabilityRules` to `null` to remove all rules.
+
+**Status codes**:
+- `204`: the booking link was updated
+- `400`: invalid `username` or `publicId`, no field provided, invalid value, invalid `timeZone`, or the calendar does not exist for that user
+- `404`: the user does not exist, or the booking link does not exist for that user
+
+### Deleting a booking link
+
+```
+DELETE /users/{username}/booking-links/{publicId}
+```
+
+**Status codes**:
+- `204`: the booking link was deleted
+- `400`: invalid `username` or `publicId`
+- `404`: the user does not exist, or the booking link does not exist for that user
+
+### Resetting the public id of a booking link
+
+```
+POST /users/{username}/booking-links/{publicId}/reset
+```
+
+Generates a new public id for the booking link, invalidating the old one.
+
+```
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "bookingLinkPublicId": "9f4f2166-95c4-4d3e-b421-23dc5e8a1fbb"
+}
+```
+
+**Status codes**:
+- `200`: a new public id was generated and returned
+- `400`: invalid `username` or `publicId`
+- `404`: the user does not exist, or the booking link does not exist for that user
+
 ## Domain-scoped task routes
 
 These routes provide domain-filtered access to the standard webadmin task management endpoints. They are intended for WebAdmin proxies that enforce multi-tenancy based on the domain in the URL. A task is only accessible if it belongs to the specified domain; otherwise a `404` is returned (to avoid leaking task IDs across domains).
