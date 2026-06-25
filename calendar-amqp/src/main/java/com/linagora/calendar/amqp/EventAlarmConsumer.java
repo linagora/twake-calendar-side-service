@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
+import jakarta.annotation.PreDestroy;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
@@ -160,7 +161,9 @@ public class EventAlarmConsumer implements Closeable, Startable {
     }
 
     @Override
+    @PreDestroy
     public void close() {
+        LOGGER.info("Trying to stop event alarm consumer");
         consumeDisposableMap.values().forEach(disposable -> {
             if (!disposable.isDisposed()) {
                 disposable.dispose();

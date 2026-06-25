@@ -27,6 +27,7 @@ import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 import java.io.Closeable;
 import java.util.function.Supplier;
 
+import jakarta.annotation.PreDestroy;
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.BooleanUtils;
@@ -149,7 +150,9 @@ public class EventEmailConsumer implements Closeable, Startable {
     }
 
     @Override
+    @PreDestroy
     public void close() {
+        LOGGER.info("Trying to stop event email consumer");
         if (consumeDisposable != null && !consumeDisposable.isDisposed()) {
             consumeDisposable.dispose();
         }
