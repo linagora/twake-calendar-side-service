@@ -1,5 +1,7 @@
 # Twake Calendar Side service
 
+> Why did the Java programmer quit? Because he didn't get arrays.
+
 ![LOGO](assets/calendar.svg)
 
 ## Goals
