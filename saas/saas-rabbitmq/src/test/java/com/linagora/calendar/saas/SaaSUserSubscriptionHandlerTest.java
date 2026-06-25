@@ -63,7 +63,7 @@ class SaaSUserSubscriptionHandlerTest {
         cardDavClient = new CardDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         DomainSettingsResolver domainSettingsResolver = new DomainSettingsResolver(
             new MemoryDomainSettingsDAO(), Set.of(Domain.of("nonshared.tld")), Set.of(), new MapConfiguration(Map.of()));
-        testee = new SaaSUserSubscriptionHandler(userDAO, domainDAO, cardDavClient, domainSettingsResolver);
+        testee = new SaaSUserSubscriptionHandler(new SaaSUserProvisioner(userDAO, domainDAO, cardDavClient, domainSettingsResolver));
         testDomain = createNewDomainWithAddressBook();
     }
 

@@ -39,10 +39,7 @@ import com.google.inject.Module;
 import com.google.inject.Provides;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.google.inject.util.Modules;
-import com.linagora.calendar.dav.CardDavClient;
-import com.linagora.calendar.storage.DomainSettingsResolver;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
-import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.tmail.saas.rabbitmq.TWPCommonRabbitMQConfiguration;
 import com.linagora.tmail.saas.rabbitmq.subscription.SaaSDomainSubscriptionConsumer;
 import com.linagora.tmail.saas.rabbitmq.subscription.SaaSSubscriptionConsumer;
@@ -67,13 +64,10 @@ public class TWPCalendarSubscriptionModule extends AbstractModule {
                                                              @Named(TWP_INJECTION_KEY) RabbitMQConfiguration rabbitMQConfiguration,
                                                              TWPCommonRabbitMQConfiguration twpCommonRabbitMQConfiguration,
                                                              SaaSSubscriptionRabbitMQConfiguration saaSSubscriptionRabbitMQConfiguration,
-                                                             OpenPaaSUserDAO userDAO,
-                                                             OpenPaaSDomainDAO domainDAO,
-                                                             CardDavClient cardDavClient,
-                                                             DomainSettingsResolver domainSettingsResolver) {
+                                                             SaaSUserProvisioner userProvisioner) {
         return new SaaSSubscriptionConsumer(channelPool, rabbitMQConfiguration, twpCommonRabbitMQConfiguration,
             saaSSubscriptionRabbitMQConfiguration,
-            new SaaSUserSubscriptionHandler(userDAO, domainDAO, cardDavClient, domainSettingsResolver),
+            new SaaSUserSubscriptionHandler(userProvisioner),
             SUBSCRIPTION_CONSUMER_CONFIG);
     }
 

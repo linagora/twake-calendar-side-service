@@ -46,7 +46,6 @@ import com.linagora.calendar.storage.configuration.EntryIdentifier;
 import com.linagora.calendar.storage.configuration.ModuleName;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.LanguageSettingReader;
-import com.linagora.calendar.storage.exception.UserNotFoundException;
 import com.linagora.tmail.saas.rabbitmq.settings.TWPCommonSettingsMessage;
 import com.linagora.tmail.saas.rabbitmq.settings.TWPCommonSettingsMessage.IncomingLanguageSetting;
 import com.linagora.tmail.saas.rabbitmq.settings.TWPSettingsUpdater;
@@ -63,13 +62,16 @@ public class CalendarSettingUpdater implements TWPSettingsUpdater {
 
     private final UserConfigurationDAO userConfigurationDAO;
     private final OpenPaaSUserDAO openPaaSUserDAO;
+    private final SaaSUserProvisioner userProvisioner;
     private final SimpleSessionProvider sessionProvider;
 
     public CalendarSettingUpdater(UserConfigurationDAO userConfigurationDAO,
                                   OpenPaaSUserDAO openPaaSUserDAO,
+                                  SaaSUserProvisioner userProvisioner,
                                   SimpleSessionProvider sessionProvider) {
         this.userConfigurationDAO = userConfigurationDAO;
         this.openPaaSUserDAO = openPaaSUserDAO;
+        this.userProvisioner = userProvisioner;
         this.sessionProvider = sessionProvider;
     }
 
@@ -117,9 +119,9 @@ public class CalendarSettingUpdater implements TWPSettingsUpdater {
     private Mono<MailboxSession> resolveUsername(TWPCommonSettingsMessage message) {
         Username username = Username.of(message.payload().email());
         return openPaaSUserDAO.retrieve(username)
+            .switchIfEmpty(Mono.defer(() -> userProvisioner.provisionUser(username)))
             .map(OpenPaaSUser::username)
-            .map(sessionProvider::createSession)
-            .switchIfEmpty(Mono.defer(() -> Mono.error(new UserNotFoundException(username))));
+            .map(sessionProvider::createSession);
     }
 
     record StoredLanguageSetting(Locale locale, Optional<Long> version) {

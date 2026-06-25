@@ -18,69 +18,22 @@
 
 package com.linagora.calendar.saas;
 
-import org.apache.james.core.Username;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import com.github.fge.lambdas.Throwing;
-import com.linagora.calendar.dav.AddressBookContact;
-import com.linagora.calendar.dav.CardDavClient;
-import com.linagora.calendar.storage.DomainSettingsResolver;
-import com.linagora.calendar.storage.OpenPaaSDomain;
-import com.linagora.calendar.storage.OpenPaaSDomainDAO;
-import com.linagora.calendar.storage.OpenPaaSUser;
-import com.linagora.calendar.storage.OpenPaaSUserDAO;
-import com.linagora.calendar.storage.UserSearchMode;
 import com.linagora.tmail.saas.rabbitmq.subscription.SaaSMessageHandler;
 
 import reactor.core.publisher.Mono;
 
 public class SaaSUserSubscriptionHandler implements SaaSMessageHandler {
-    private static final Logger LOGGER = LoggerFactory.getLogger(SaaSUserSubscriptionHandler.class);
+    private final SaaSUserProvisioner userProvisioner;
 
-    private final OpenPaaSUserDAO userDAO;
-    private final OpenPaaSDomainDAO domainDAO;
-    private final CardDavClient cardDavClient;
-    private final DomainSettingsResolver domainSettingsResolver;
-
-    public SaaSUserSubscriptionHandler(OpenPaaSUserDAO userDAO,
-                                       OpenPaaSDomainDAO domainDAO,
-                                       CardDavClient cardDavClient,
-                                       DomainSettingsResolver domainSettingsResolver) {
-        this.userDAO = userDAO;
-        this.domainDAO = domainDAO;
-        this.cardDavClient = cardDavClient;
-        this.domainSettingsResolver = domainSettingsResolver;
+    public SaaSUserSubscriptionHandler(SaaSUserProvisioner userProvisioner) {
+        this.userProvisioner = userProvisioner;
     }
 
     @Override
     public Mono<Void> handleMessage(byte[] message) {
         return Mono.fromCallable(() -> SaaSCalendarSubscriptionDeserializer.parseUserMessage(message))
             .filter(UserSubscriptionMessage::hasCalendarFeature)
-            .flatMap(userMessage -> registerUser(userMessage.username())
-                .flatMap(this::addUserToDomainAddressBook))
+            .flatMap(userMessage -> userProvisioner.provisionUser(userMessage.username()))
             .then();
-    }
-
-    private Mono<OpenPaaSUser> registerUser(Username username) {
-        return userDAO.retrieve(username)
-            .doOnNext(existingUser -> LOGGER.debug("User {} already exists, skipping registration", username.asString()))
-            .switchIfEmpty(userDAO.add(username)
-                .doOnSuccess(created -> LOGGER.info("Registered user {} from SaaS subscription", username.asString())));
-    }
-
-    private Mono<Void> addUserToDomainAddressBook(OpenPaaSUser user) {
-        return Mono.justOrEmpty(user.username().getDomainPart())
-            .flatMap(domain -> domainSettingsResolver.resolveUserSearchMode(domain)
-                .filter(mode -> mode != UserSearchMode.DISABLED)
-                .flatMap(ignored -> domainDAO.retrieve(domain))
-                .flatMap(openPaaSDomain -> upsertUserContact(openPaaSDomain, user)));
-    }
-
-    private Mono<Void> upsertUserContact(OpenPaaSDomain domain, OpenPaaSUser user) {
-        return Mono.fromSupplier(Throwing.supplier(() -> AddressBookContact.builder().mail(user.username().asMailAddress()).build()))
-            .flatMap(contact -> cardDavClient.upsertContactDomainMembers(domain.id(), contact.vcardUid(), contact.toVcardBytes()))
-            .doOnSuccess(ignored -> LOGGER.info("Added user {} to domain member addressbook of domain {}",
-                user.username().asString(), domain.domain().asString()));
     }
 }
