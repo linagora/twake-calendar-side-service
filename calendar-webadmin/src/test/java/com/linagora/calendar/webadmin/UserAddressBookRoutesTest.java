@@ -230,32 +230,22 @@ public class UserAddressBookRoutesTest {
             .statusCode(204);
     }
 
-    @Test
-    void publicRightShouldRejectUnsupportedValue() {
-        String addressBookId = createAddressBook(user, "Address book");
-
+    @ParameterizedTest
+    @MethodSource("publicRightErrorCases")
+    void publicRightShouldReturnErrorForInvalidCases(String body, int statusCode, String type) {
         given()
-            .body("""
-                {"public_right":"{DAV:}write"}
-                """)
-        .when()
-            .post("/users/{username}/addressbooks/{addressBookId}/publicRight", user.username().asString(), addressBookId)
-        .then()
-            .statusCode(400)
-            .body("type", is("InvalidArgument"));
-    }
-
-    @Test
-    void publicRightShouldReturn404WhenAddressBookDoesNotExist() {
-        given()
-            .body("""
-                {"public_right":"{DAV:}read"}
-                """)
+            .body(body)
         .when()
             .post("/users/{username}/addressbooks/{addressBookId}/publicRight", user.username().asString(), UUID.randomUUID().toString())
         .then()
-            .statusCode(404)
-            .body("type", is("notFound"));
+            .statusCode(statusCode)
+            .body("type", is(type));
+    }
+
+    static Stream<Arguments> publicRightErrorCases() {
+        return Stream.of(
+            Arguments.of("{\"public_right\":\"{DAV:}write\"}", 400, "InvalidArgument"),
+            Arguments.of("{\"public_right\":\"{DAV:}read\"}", 404, "notFound"));
     }
 
     @Test
