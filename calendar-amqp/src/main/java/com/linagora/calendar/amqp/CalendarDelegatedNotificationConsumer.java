@@ -30,6 +30,7 @@ import java.util.Optional;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
+import jakarta.annotation.PreDestroy;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
@@ -100,7 +101,9 @@ public class CalendarDelegatedNotificationConsumer implements Closeable, Startab
     }
 
     @Override
+    @PreDestroy
     public void close() {
+        LOGGER.info("Trying to stop delegated calendar notification consumer");
         if (consumeDisposable != null && !consumeDisposable.isDisposed()) {
             consumeDisposable.dispose();
         }

@@ -32,6 +32,7 @@ import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
+import jakarta.annotation.PreDestroy;
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
@@ -163,7 +164,9 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     }
 
     @Override
+    @PreDestroy
     public void close() {
+        LOGGER.info("Trying to stop iTIP local delivery consumer");
         if (consumeDisposable != null && !consumeDisposable.isDisposed()) {
             consumeDisposable.dispose();
         }

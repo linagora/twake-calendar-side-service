@@ -32,6 +32,7 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
+import jakarta.annotation.PreDestroy;
 import jakarta.inject.Inject;
 
 import org.apache.james.backends.rabbitmq.QueueArguments;
@@ -163,7 +164,9 @@ public class CalendarListNotificationConsumer implements Closeable, Startable {
     }
 
     @Override
+    @PreDestroy
     public void close() {
+        LOGGER.info("Trying to stop calendar list notification consumer");
         if (consumeDisposable != null && !consumeDisposable.isDisposed()) {
             consumeDisposable.dispose();
         }
