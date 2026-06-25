@@ -43,7 +43,6 @@ import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.dav.DavClientException;
-import com.linagora.calendar.dav.SystemAddressBookException;
 import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
@@ -138,25 +137,29 @@ public class UserAddressBookRoutes implements Routes {
 
     private String deleteAddressBook(Request request, Response response) {
         OpenPaaSUser user = retrieveUser(request);
-        AddressBookURL addressBookURL = retrieveExistingAddressBook(request, user);
+        String addressBookId = request.params(ADDRESSBOOK_ID_PARAM);
 
-        try {
-            cardDavClient.deleteUserAddressBook(user.username(), addressBookURL).block();
-        } catch (SystemAddressBookException e) {
+        CardDavClient.AddressBook addressBook = wrapDavErrors(() ->
+            cardDavClient.listUserAddressBookIds(user.username(), user.id())
+                .filter(book -> book.value().equals(addressBookId))
+                .next()
+                .blockOptional()
+                .orElseThrow(() -> ErrorResponder.builder()
+                    .statusCode(HttpStatus.NOT_FOUND_404)
+                    .type(ErrorResponder.ErrorType.NOT_FOUND)
+                    .message("Address book does not exist")
+                    .haltError()));
+
+        if (addressBook.type() == CardDavClient.AddressBookType.SYSTEM) {
             throw ErrorResponder.builder()
                 .statusCode(HttpStatus.BAD_REQUEST_400)
                 .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
                 .message("Cannot delete system address book")
-                .cause(e)
-                .haltError();
-        } catch (DavClientException e) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.INTERNAL_SERVER_ERROR_500)
-                .type(ErrorResponder.ErrorType.SERVER_ERROR)
-                .message("Error while calling the DAV server")
-                .cause(e)
                 .haltError();
         }
+
+        wrapDavErrors(() -> cardDavClient.deleteUserAddressBook(user.username(),
+            new AddressBookURL(user.id(), addressBookId)).block());
 
         response.status(HttpStatus.NO_CONTENT_204);
         return Constants.EMPTY_BODY;
