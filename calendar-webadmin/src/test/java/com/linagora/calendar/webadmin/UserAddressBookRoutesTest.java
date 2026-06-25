@@ -27,6 +27,7 @@ import static org.hamcrest.Matchers.not;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import javax.net.ssl.SSLException;
 
@@ -36,6 +37,10 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
@@ -178,26 +183,22 @@ public class UserAddressBookRoutesTest {
             .doesNotContain("/addressbooks/%s/%s.json".formatted(user.id().value(), addressBookId));
     }
 
-    @Test
-    void deleteAddressBookShouldReturn404WhenAddressBookDoesNotExist() {
+    @ParameterizedTest
+    @MethodSource("deleteAddressBookErrorCases")
+    void deleteAddressBookShouldReturnErrorForInvalidCases(String addressBookId, int statusCode, String type, String message) {
         given()
         .when()
-            .delete("/users/{username}/addressbooks/{addressBookId}", user.username().asString(), UUID.randomUUID().toString())
+            .delete("/users/{username}/addressbooks/{addressBookId}", user.username().asString(), addressBookId)
         .then()
-            .statusCode(404)
-            .body("type", is("notFound"))
-            .body("message", is("Address book does not exist"));
+            .statusCode(statusCode)
+            .body("type", is(type))
+            .body("message", is(message));
     }
 
-    @Test
-    void deleteAddressBookShouldReturn400WhenDeletingSystemAddressBook() {
-        given()
-        .when()
-            .delete("/users/{username}/addressbooks/{addressBookId}", user.username().asString(), "contacts")
-        .then()
-            .statusCode(400)
-            .body("type", is("InvalidArgument"))
-            .body("message", is("Cannot delete system address book"));
+    static Stream<Arguments> deleteAddressBookErrorCases() {
+        return Stream.of(
+            Arguments.of("00000000-0000-0000-0000-000000000000", 404, "notFound", "Address book does not exist"),
+            Arguments.of("contacts", 400, "InvalidArgument", "Cannot delete system address book"));
     }
 
     @Test
@@ -300,27 +301,16 @@ public class UserAddressBookRoutesTest {
             .body("type", is("notFound"));
     }
 
-    @Test
-    void inviteeShouldFailWhenShareeFieldIsMissing() {
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "{}",
+        "{\"dav:sharee\":[{\"dav:href\":\"mailto:anyone@linagora.com\",\"dav:share-access\":99}]}"
+    })
+    void inviteeShouldFailWhenPayloadIsInvalid(String body) {
         String addressBookId = createAddressBook(user, "Address book");
 
         given()
-            .body("{}")
-        .when()
-            .post("/users/{username}/addressbooks/{addressBookId}/invitee", user.username().asString(), addressBookId)
-        .then()
-            .statusCode(400)
-            .body("type", is("InvalidArgument"));
-    }
-
-    @Test
-    void inviteeShouldFailWhenShareAccessIsInvalid() {
-        String addressBookId = createAddressBook(user, "Address book");
-
-        given()
-            .body("""
-                {"dav:sharee":[{"dav:href":"mailto:%s","dav:share-access":99}]}
-                """.formatted(otherUser.username().asString()))
+            .body(body)
         .when()
             .post("/users/{username}/addressbooks/{addressBookId}/invitee", user.username().asString(), addressBookId)
         .then()
