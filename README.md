@@ -1,5 +1,7 @@
 # Twake Calendar Side service
 
+> Why do Java developers wear glasses? Because they don't C#.
+
 ![LOGO](assets/calendar.svg)
 
 ## Goals
