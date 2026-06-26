@@ -31,11 +31,14 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
 import org.apache.james.metrics.tests.RecordingMetricFactory;
+import org.awaitility.Awaitility;
+import org.bson.Document;
 import org.bson.UuidRepresentation;
 import org.mockserver.client.MockServerClient;
 import org.mockserver.model.HttpRequest;
@@ -95,6 +98,9 @@ public class DockerSabreDavSetup {
     public static final String DAV_ADMIN = "admin";
     public static final String DAV_ADMIN_PASSWORD = "secret123";
     private static final boolean TRUST_ALL_SSL_CERTS = true;
+    private static final Duration MONGO_HEALTH_CHECK_TIMEOUT = Duration.ofMinutes(1);
+    private static final Duration MONGO_HEALTH_CHECK_POLL_INTERVAL = Duration.ofMillis(500);
+    private static final Duration MONGO_PING_ATTEMPT_TIMEOUT = Duration.ofSeconds(2);
 
     private final ComposeContainer environment;
     private SabreDavProvisioningService sabreDavProvisioningService;
@@ -129,6 +135,7 @@ public class DockerSabreDavSetup {
     public synchronized void start() {
         if (started) {
             LOGGER.debug("Sabre DAV Docker Compose stack already started");
+            assertMongoIsHealthy();
             return;
         }
         Preconditions.checkState(!stopped, "DockerSabreDavSetup was already stopped and cannot be reused.");
@@ -140,6 +147,7 @@ public class DockerSabreDavSetup {
             }
             mongoClient = newMongoClient();
             mongoDatabase = mongoClient.getDatabase(SabreDavProvisioningService.DATABASE);
+            assertMongoIsHealthy();
             sabreDavProvisioningService = new SabreDavProvisioningService(mongoDatabase);
             started = true;
         } catch (RuntimeException e) {
@@ -299,11 +307,32 @@ public class DockerSabreDavSetup {
         MongoDBConfiguration configuration = mongoDBConfiguration();
         MongoClientSettings settings = MongoClientSettings.builder()
             .applyConnectionString(new ConnectionString(configuration.mongoURL()))
+            .applyToClusterSettings(builder -> builder.serverSelectionTimeout(MONGO_PING_ATTEMPT_TIMEOUT.toSeconds(), TimeUnit.SECONDS))
+            .applyToSocketSettings(builder -> builder
+                .connectTimeout((int) MONGO_PING_ATTEMPT_TIMEOUT.toSeconds(), TimeUnit.SECONDS)
+                .readTimeout((int) MONGO_PING_ATTEMPT_TIMEOUT.toSeconds(), TimeUnit.SECONDS))
             .addCommandListener(new MongoCommandMetricsListener(new RecordingMetricFactory()))
             .uuidRepresentation(UuidRepresentation.STANDARD)
             .build();
 
         return MongoClients.create(settings);
+    }
+
+    private void assertMongoIsHealthy() {
+        MongoDatabase database = Preconditions.checkNotNull(mongoDatabase, "MongoDB not initialized");
+
+        // SabreDAV readiness does not guarantee the host-mapped Mongo endpoint is usable yet.
+        Awaitility.await()
+            .pollInterval(MONGO_HEALTH_CHECK_POLL_INTERVAL)
+            .atMost(MONGO_HEALTH_CHECK_TIMEOUT)
+            .ignoreExceptions()
+            .untilAsserted(() -> {
+                ContainerState mongoContainer = getMongoDBContainer();
+                Preconditions.checkState(mongoContainer.isRunning(), "MongoDB container should be running");
+                Preconditions.checkState(mongoContainer.isHealthy(), "MongoDB container should be healthy");
+                Mono.from(database.runCommand(new Document("ping", 1)))
+                    .block(MONGO_PING_ATTEMPT_TIMEOUT);
+            });
     }
 
     public RabbitMQConfiguration rabbitMQConfiguration() {

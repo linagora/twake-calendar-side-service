@@ -27,6 +27,7 @@
 package com.linagora.calendar.dav;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatCode;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
@@ -44,6 +45,11 @@ public class SabreDavExtensionTest {
     void allServersShouldStartSuccessfully() {
        assertTrue(sabreDavExtension.dockerSabreDavSetup().getAllContainers()
            .stream().allMatch(ContainerState::isRunning));
+    }
+
+    @Test
+    void startShouldHealthCheckAlreadyStartedStack() {
+        assertThatCode(() -> sabreDavExtension.dockerSabreDavSetup().start()).doesNotThrowAnyException();
     }
 
     @Test
