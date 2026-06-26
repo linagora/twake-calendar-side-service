@@ -28,6 +28,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 
@@ -35,6 +36,7 @@ import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.restapi.routes.BookingLinkEventIcsBuilder.BuildResult;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingRequest;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingRequest.BookingAttendee;
+import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 
 import net.fortuna.ical4j.model.property.Uid;
 import net.fortuna.ical4j.util.UidGenerator;
@@ -45,6 +47,7 @@ public class BookingLinkEventIcsBuilderTest {
     private static final URL VISIO_URL = Throwing.supplier(() -> URI.create("https://jitsi.example.com").toURL()).get();
     private static final UidGenerator FIXED_UID_GENERATOR = () -> new Uid("event-123");
     private static final BookingAttendee OWNER = BookingAttendee.from("Alice Owner", "owner@example.com");
+    private static final BookingLinkPublicId BOOKING_LINK_PUBLIC_ID = new BookingLinkPublicId(UUID.fromString("a1b2c3d4-e5f6-4a5b-8c7d-0e1f2a3b4c5d"));
 
     @Test
     void buildShouldIncludeRequiredPublicBookingProperties() {
@@ -58,7 +61,7 @@ public class BookingLinkEventIcsBuilderTest {
             true,
             "Please call via Zoom.");
 
-        BuildResult result = testee.build(request, OWNER, Duration.ofMinutes(30));
+        BuildResult result = testee.build(request, OWNER, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID);
         String ics = new String(result.icsBytes(), StandardCharsets.UTF_8);
 
         String expected = """
@@ -81,6 +84,7 @@ public class BookingLinkEventIcsBuilderTest {
             CLASS:PUBLIC
             X-PUBLICLY-CREATED:true
             X-PUBLICLY-CREATOR:creator@example.com
+            X-OPENPAAS-BOOKING-LINK:a1b2c3d4-e5f6-4a5b-8c7d-0e1f2a3b4c5d
             X-OPENPAAS-VIDEOCONFERENCE:https://jitsi.example.com
             END:VEVENT
             END:VCALENDAR
@@ -104,7 +108,7 @@ public class BookingLinkEventIcsBuilderTest {
             false,
             "");
 
-        BuildResult result = testee.build(request, OWNER, Duration.ofMinutes(30));
+        BuildResult result = testee.build(request, OWNER, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID);
         String ics = new String(result.icsBytes(), StandardCharsets.UTF_8);
 
         String expected = """
@@ -126,6 +130,7 @@ public class BookingLinkEventIcsBuilderTest {
             CLASS:PUBLIC
             X-PUBLICLY-CREATED:true
             X-PUBLICLY-CREATOR:creator@example.com
+            X-OPENPAAS-BOOKING-LINK:a1b2c3d4-e5f6-4a5b-8c7d-0e1f2a3b4c5d
             END:VEVENT
             END:VCALENDAR
             """;
@@ -148,7 +153,7 @@ public class BookingLinkEventIcsBuilderTest {
             true,
             null);
 
-        String ics = new String(testee.build(request, OWNER, Duration.ofMinutes(30)).icsBytes(), StandardCharsets.UTF_8);
+        String ics = new String(testee.build(request, OWNER, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID).icsBytes(), StandardCharsets.UTF_8);
 
         assertThat(ics)
             .contains("DESCRIPTION:Visio: https://jitsi.example.com");
@@ -168,7 +173,7 @@ public class BookingLinkEventIcsBuilderTest {
             false,
             null);
 
-        BuildResult result = testee.build(request, BookingAttendee.from(null, "owner@example.com"), Duration.ofMinutes(30));
+        BuildResult result = testee.build(request, BookingAttendee.from(null, "owner@example.com"), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID);
         String ics = new String(result.icsBytes(), StandardCharsets.UTF_8);
 
         String expected = """
@@ -189,6 +194,7 @@ public class BookingLinkEventIcsBuilderTest {
             CLASS:PUBLIC
             X-PUBLICLY-CREATED:true
             X-PUBLICLY-CREATOR:creator@example.com
+            X-OPENPAAS-BOOKING-LINK:a1b2c3d4-e5f6-4a5b-8c7d-0e1f2a3b4c5d
             END:VEVENT
             END:VCALENDAR
             """;
@@ -211,12 +217,30 @@ public class BookingLinkEventIcsBuilderTest {
             false,
             null);
 
-        String ics = new String(testee.build(request, OWNER, Duration.ofMinutes(30)).icsBytes(), StandardCharsets.UTF_8);
+        String ics = new String(testee.build(request, OWNER, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID).icsBytes(), StandardCharsets.UTF_8);
 
         assertThat(ics)
             .contains("ORGANIZER;CN=Alice Owner:mailto:owner@example.com");
         assertThat(ics)
             .contains("ATTENDEE;RSVP=TRUE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=Alice Owner:mailto:owner@example.com");
+    }
+
+    @Test
+    void buildShouldReferenceTheBookingLink() {
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+
+        BookingRequest request = new BookingRequest(
+            Instant.parse("2036-01-26T09:30:00Z"),
+            BookingAttendee.from("BOB", "creator@example.com"),
+            List.of(),
+            "eventTitle",
+            false,
+            null);
+
+        String ics = new String(testee.build(request, OWNER, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID).icsBytes(), StandardCharsets.UTF_8);
+
+        assertThat(ics)
+            .contains("X-OPENPAAS-BOOKING-LINK:a1b2c3d4-e5f6-4a5b-8c7d-0e1f2a3b4c5d");
     }
 
 }
