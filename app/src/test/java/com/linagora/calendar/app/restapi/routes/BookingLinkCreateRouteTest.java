@@ -169,6 +169,8 @@ class BookingLinkCreateRouteTest {
         assertThat(stored.calendarUrl()).isEqualTo(CalendarURL.from(openPaaSUser.id()));
         assertThat(stored.duration()).isEqualTo(Duration.ofMinutes(30));
         assertThat(stored.active()).isTrue();
+        assertThat(stored.name()).isEmpty();
+        assertThat(stored.description()).isEmpty();
 
         // Default availability rules should be set when not provided, based on the default business hours and timezone
         assertThat(stored.availabilityRules()).isEqualTo(Optional.of(AvailabilityRules.of(
@@ -178,6 +180,30 @@ class BookingLinkCreateRouteTest {
             new WeeklyAvailabilityRule(DayOfWeek.THURSDAY, businessStart, businessEnd, europeParis),
             new WeeklyAvailabilityRule(DayOfWeek.FRIDAY, businessStart, businessEnd, europeParis)
         )));
+    }
+
+    @Test
+    void shouldPersistBookingLinkWithNameAndDescription() {
+        String publicId = given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "name": "30-min intro call",
+                    "description": "Book a quick introduction call"
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED)
+            .extract().jsonPath().getString("bookingLinkPublicId");
+
+        BookingLink stored = bookingLinkProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
+
+        assertThat(stored.name()).contains("30-min intro call");
+        assertThat(stored.description()).contains("Book a quick introduction call");
     }
 
     @Test
