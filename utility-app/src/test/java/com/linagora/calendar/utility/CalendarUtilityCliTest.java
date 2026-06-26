@@ -57,8 +57,8 @@ class CalendarUtilityCliTest {
     private static final String COLLECTION_NAME = "schedulingobjects";
 
     @Container
-    static final MongoDBContainer mongo = new MongoDBContainer("mongo:4.0.10")
-        .withCommand("--setParameter", "ttlMonitorSleepSecs=5")
+    static final MongoDBContainer mongo = new MongoDBContainer("mongo:8.0.6")
+        .withCommand("--replSet", "docker-rs", "--setParameter", "ttlMonitorSleepSecs=5")
         .withCreateContainerCmdModifier(createContainerCmd -> createContainerCmd.withName("tcalendar-utility-mongo-test-" + UUID.randomUUID()))
         .withNetwork(SHARED_NETWORK)
         .withNetworkAliases("mongo");
