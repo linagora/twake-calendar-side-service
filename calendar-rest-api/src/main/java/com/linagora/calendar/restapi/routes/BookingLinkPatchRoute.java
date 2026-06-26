@@ -60,6 +60,7 @@ public class BookingLinkPatchRoute extends CalendarRoute {
     private static final String FIELD_CALENDAR_URL = "calendarUrl";
     private static final String FIELD_DURATION_MINUTES = "durationMinutes";
     private static final String FIELD_ACTIVE = "active";
+    private static final String FIELD_AUTO_ACCEPT = "autoAccept";
     private static final String FIELD_AVAILABILITY_RULES = "availabilityRules";
     private static final String FIELD_NAME = "name";
     private static final String FIELD_DESCRIPTION = "description";
@@ -67,6 +68,7 @@ public class BookingLinkPatchRoute extends CalendarRoute {
     public record PatchDto(@JsonProperty(FIELD_CALENDAR_URL) Optional<String> calendarUrl,
                            @JsonProperty(FIELD_DURATION_MINUTES) Optional<Integer> durationMinutes,
                            @JsonProperty(FIELD_ACTIVE) Optional<Boolean> active,
+                           @JsonProperty(FIELD_AUTO_ACCEPT) Optional<Boolean> autoAccept,
                            @JsonProperty(FIELD_AVAILABILITY_RULES) Optional<List<AvailabilityRuleDTO>> availabilityRules,
                            @JsonProperty(FIELD_NAME) Optional<String> name,
                            @JsonProperty(FIELD_DESCRIPTION) Optional<String> description) {
@@ -128,6 +130,7 @@ public class BookingLinkPatchRoute extends CalendarRoute {
                 parseCalendarUrl(node, dto),
                 parseDuration(node, dto),
                 parseActive(node, dto),
+                parseAutoAccept(node, dto),
                 parseAvailabilityRules(node, dto, defaultTimeZone),
                 parseName(node, dto),
                 parseDescription(node, dto));
@@ -174,6 +177,13 @@ public class BookingLinkPatchRoute extends CalendarRoute {
             return ValuePatch.keep();
         }
         return dto.active.map(ValuePatch::modifyTo).orElseThrow(() -> new IllegalArgumentException("'active' cannot be removed"));
+    }
+
+    private ValuePatch<Boolean> parseAutoAccept(JsonNode node, PatchDto dto) {
+        if (!node.has(FIELD_AUTO_ACCEPT)) {
+            return ValuePatch.keep();
+        }
+        return dto.autoAccept.map(ValuePatch::modifyTo).orElseThrow(() -> new IllegalArgumentException("'autoAccept' cannot be removed"));
     }
 
     private ValuePatch<AvailabilityRules> parseAvailabilityRules(JsonNode node, PatchDto dto, ZoneId defaultTimeZone) {

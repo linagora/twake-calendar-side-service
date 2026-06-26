@@ -403,6 +403,41 @@ class BookingLinkReservationRouteTest {
     }
 
     @Test
+    void shouldAutoAcceptOrganizerAndSkipNotificationsWhenAutoAcceptEnabled(TwakeCalendarGuiceServer server) {
+        // Given: an active booking link that auto-accepts bookings.
+        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(
+            CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES, BookingLinkInsertRequest.ACTIVE, true,
+            Optional.of(AVAILABILITY_RULE), Optional.empty(), Optional.empty());
+        BookingLink inserted = server.getProbe(BookingLinkReservationProbe.class)
+            .insert(openPaaSUser.username(), insertRequest);
+        String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();
+
+        // When: a booking is created.
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body(bodyRequest(slotStartUtc))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED);
+
+        // Then: the organizer auto-accepts on the persisted event.
+        String unfoldedCalendar = exportCalendar(openPaaSUser).replace("\r\n ", "");
+        assertThat(unfoldedCalendar)
+            .contains("ATTENDEE;RSVP=TRUE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED;CN=%s:mailto:%s"
+                .formatted(openPaaSUser.fullName(), openPaaSUser.username().asString()));
+
+        // And: no proposal nor acknowledgement email is sent.
+        JsonPath smtpMails = given(mockSMTPRequestSpecification())
+            .get("/smtpMails")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract()
+            .jsonPath();
+        assertThat(smtpMails.getList("")).isEmpty();
+    }
+
+    @Test
     void shouldIncludeThreeParticipationActionLinksInProposalEmail(TwakeCalendarGuiceServer server) {
         BookingLink inserted = insertActiveBookingLink(server);
         String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();

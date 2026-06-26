@@ -69,6 +69,7 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
     private static final String FIELD_CALENDAR_ID = "calendarId";
     private static final String FIELD_DURATION_SECONDS = "durationSeconds";
     private static final String FIELD_ACTIVE = "active";
+    private static final String FIELD_AUTO_ACCEPT = "autoAccept";
     private static final String FIELD_AVAILABILITY_RULES = "availabilityRules";
     private static final String FIELD_NAME = "name";
     private static final String FIELD_DESCRIPTION = "description";
@@ -110,6 +111,7 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
                 .calendarUrl(request.calendarUrl())
                 .duration(request.eventDuration())
                 .active(request.active())
+                .autoAccept(request.autoAccept())
                 .availabilityRules(request.availabilityRules())
                 .name(request.name())
                 .description(request.description())
@@ -202,6 +204,9 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
         if (request.active().isModified()) {
             setFields.append(FIELD_ACTIVE, request.active().get());
         }
+        if (request.autoAccept().isModified()) {
+            setFields.append(FIELD_AUTO_ACCEPT, request.autoAccept().get());
+        }
         if (request.availabilityRules().isModified()) {
             setFields.append(FIELD_AVAILABILITY_RULES, serializeRules(request.availabilityRules().get()));
         } else if (request.availabilityRules().isRemoved()) {
@@ -233,6 +238,7 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
             .append(FIELD_CALENDAR_ID, bookingLink.calendarUrl().calendarId().value())
             .append(FIELD_DURATION_SECONDS, bookingLink.duration().getSeconds())
             .append(FIELD_ACTIVE, bookingLink.active())
+            .append(FIELD_AUTO_ACCEPT, bookingLink.autoAccept())
             .append(FIELD_CREATED_AT, Date.from(bookingLink.createdAt()))
             .append(FIELD_UPDATED_AT, Date.from(bookingLink.updatedAt()));
 
@@ -272,6 +278,7 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
         CalendarURL calendarURL = new CalendarURL(new OpenPaaSId(doc.getString(FIELD_PRINCIPAL_ID)), new OpenPaaSId(doc.getString(FIELD_CALENDAR_ID)));
         Duration duration = Duration.ofSeconds(doc.getLong(FIELD_DURATION_SECONDS));
         boolean active = doc.getBoolean(FIELD_ACTIVE);
+        boolean autoAccept = doc.getBoolean(FIELD_AUTO_ACCEPT, false);
         Instant createdAt = doc.getDate(FIELD_CREATED_AT).toInstant();
         Instant updatedAt = doc.getDate(FIELD_UPDATED_AT).toInstant();
         Optional<AvailabilityRules> availabilityRules = Optional.ofNullable(doc.getList(FIELD_AVAILABILITY_RULES, Document.class))
@@ -286,6 +293,7 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
             .calendarUrl(calendarURL)
             .duration(duration)
             .active(active)
+            .autoAccept(autoAccept)
             .availabilityRules(availabilityRules)
             .name(name)
             .description(description)

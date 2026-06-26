@@ -142,7 +142,8 @@ class BookingLinkGetRouteTest {
                     "publicId": "%s",
                     "calendarUrl": "%s",
                     "durationMinutes": 30,
-                    "active": true
+                    "active": true,
+                    "autoAccept": false
                 }
                 """.formatted(inserted.publicId().value(), CalendarURL.from(openPaaSUser.id()).asUri().toString()));
     }
@@ -170,6 +171,7 @@ class BookingLinkGetRouteTest {
                     "calendarUrl": "%s",
                     "durationMinutes": 30,
                     "active": true,
+                    "autoAccept": false,
                     "availabilityRules": [
                         { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "timeZone": "Asia/Ho_Chi_Minh" },
                         { "type": "weekly", "dayOfWeek": "MON", "start": "13:00", "end": "17:00", "timeZone": "Europe/London" }
@@ -202,6 +204,7 @@ class BookingLinkGetRouteTest {
                     "calendarUrl": "%s",
                     "durationMinutes": 60,
                     "active": false,
+                    "autoAccept": false,
                     "availabilityRules": [
                         { "type": "fixed", "start": "2026-01-26T02:00:00", "end": "2026-01-30T02:00:00", "timeZone": "UTC" }
                     ]
@@ -234,6 +237,7 @@ class BookingLinkGetRouteTest {
                     "calendarUrl": "%s",
                     "durationMinutes": 30,
                     "active": true,
+                    "autoAccept": false,
                     "availabilityRules": [
                         { "type": "weekly", "dayOfWeek": "TUE", "start": "09:00", "end": "17:00", "timeZone": "Asia/Ho_Chi_Minh" },
                         { "type": "fixed", "start": "2026-01-26T00:00:00", "end": "2026-01-30T00:00:00", "timeZone": "Europe/London" }
@@ -263,8 +267,35 @@ class BookingLinkGetRouteTest {
                     "calendarUrl": "%s",
                     "durationMinutes": 30,
                     "active": true,
+                    "autoAccept": false,
                     "name": "Intro call",
                     "description": "Book a 30-minute introduction call"
+                }
+                """.formatted(inserted.publicId().value(), CalendarURL.from(openPaaSUser.id()).asUri().toString()));
+    }
+
+    @Test
+    void shouldReturn200WithAutoAccept() {
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, true,
+                Optional.empty(), Optional.empty(), Optional.empty()));
+
+        String response = given()
+        .when()
+            .get("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(ContentType.JSON)
+            .extract().body().asString();
+
+        assertThatJson(response)
+            .isEqualTo("""
+                {
+                    "publicId": "%s",
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "autoAccept": true
                 }
                 """.formatted(inserted.publicId().value(), CalendarURL.from(openPaaSUser.id()).asUri().toString()));
     }

@@ -243,4 +243,24 @@ public class BookingLinkEventIcsBuilderTest {
             .contains("X-OPENPAAS-BOOKING-LINK:a1b2c3d4-e5f6-4a5b-8c7d-0e1f2a3b4c5d");
     }
 
+    @Test
+    void buildShouldSetOrganizerPartStatAcceptedWhenAutoAccept() {
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+
+        BookingRequest request = new BookingRequest(
+            Instant.parse("2036-01-26T09:30:00Z"),
+            BookingAttendee.from("BOB", "creator@example.com"),
+            List.of(),
+            "eventTitle",
+            false,
+            null);
+
+        String ics = new String(testee.build(request, OWNER, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, true).icsBytes(), StandardCharsets.UTF_8);
+
+        assertThat(ics)
+            .contains("ORGANIZER;CN=Alice Owner:mailto:owner@example.com");
+        assertThat(ics)
+            .contains("ATTENDEE;RSVP=TRUE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED;CN=Alice Owner:mailto:owner@example.com");
+    }
+
 }

@@ -56,6 +56,7 @@ public class MemoryBookingLinkDAO implements BookingLinkDAO {
                 .calendarUrl(request.calendarUrl())
                 .duration(request.eventDuration())
                 .active(request.active())
+                .autoAccept(request.autoAccept())
                 .availabilityRules(request.availabilityRules())
                 .name(request.name())
                 .description(request.description())
@@ -93,6 +94,7 @@ public class MemoryBookingLinkDAO implements BookingLinkDAO {
                 builder.calendarUrl(request.calendarUrl().getOrElse(existing.calendarUrl()));
                 builder.duration(request.duration().getOrElse(existing.duration()));
                 builder.active(request.active().getOrElse(existing.active()));
+                builder.autoAccept(request.autoAccept().getOrElse(existing.autoAccept()));
                 builder.availabilityRules(request.availabilityRules().notKeptOrElse(existing.availabilityRules()));
                 builder.name(request.name().notKeptOrElse(existing.name()));
                 builder.description(request.description().notKeptOrElse(existing.description()));

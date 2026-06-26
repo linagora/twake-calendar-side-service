@@ -87,6 +87,7 @@ public class BookingLinkUserRoutes implements Routes {
     private static final String FIELD_CALENDAR_URL = "calendarUrl";
     private static final String FIELD_DURATION_MINUTES = "durationMinutes";
     private static final String FIELD_ACTIVE = "active";
+    private static final String FIELD_AUTO_ACCEPT = "autoAccept";
     private static final String FIELD_AVAILABILITY_RULES = "availabilityRules";
     private static final String FIELD_NAME = "name";
     private static final String FIELD_DESCRIPTION = "description";
@@ -222,6 +223,7 @@ public class BookingLinkUserRoutes implements Routes {
                 parseCalendarUrl(node, dto),
                 parseDuration(node, dto),
                 parseActive(node, dto),
+                parseAutoAccept(node, dto),
                 parseAvailabilityRules(node, dto),
                 parseName(node, dto),
                 parseDescription(node, dto));
@@ -258,6 +260,14 @@ public class BookingLinkUserRoutes implements Routes {
         }
         return dto.active().map(ValuePatch::modifyTo)
             .orElseThrow(() -> new IllegalArgumentException("'active' cannot be removed"));
+    }
+
+    private ValuePatch<Boolean> parseAutoAccept(JsonNode node, PatchDto dto) {
+        if (!node.has(FIELD_AUTO_ACCEPT)) {
+            return ValuePatch.keep();
+        }
+        return dto.autoAccept().map(ValuePatch::modifyTo)
+            .orElseThrow(() -> new IllegalArgumentException("'autoAccept' cannot be removed"));
     }
 
     private ValuePatch<AvailabilityRules> parseAvailabilityRules(JsonNode node, PatchDto dto) {

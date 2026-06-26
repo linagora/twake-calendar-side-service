@@ -337,6 +337,43 @@ public interface BookingLinkDAOContract {
     }
 
     @Test
+    default void insertShouldPersistAutoAccept() {
+        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, true,
+            Optional.of(AVAILABILITY_RULES), Optional.empty(), Optional.empty());
+
+        BookingLink created = testee().insert(USER_1, request).block();
+
+        assertThat(created.autoAccept()).isTrue();
+
+        BookingLink found = testee().findByPublicId(USER_1, created.publicId()).block();
+        assertThat(found).isEqualTo(created);
+    }
+
+    @Test
+    default void insertShouldDefaultAutoAcceptToFalse() {
+        BookingLink created = testee().insert(USER_1, INSERT_REQUEST).block();
+
+        assertThat(created.autoAccept()).isFalse();
+    }
+
+    @Test
+    default void updateShouldApplyAutoAccept() {
+        BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
+        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.modifyTo(true),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep());
+
+        BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
+
+        assertThat(updated.autoAccept()).isTrue();
+    }
+
+    @Test
     default void resetPublicIdShouldFailWhenPublicIdDoesNotExist() {
         assertThatThrownBy(() -> testee().resetPublicId(USER_1, new BookingLinkPublicId(UUID.randomUUID())).block())
             .isInstanceOf(BookingLinkNotFoundException.class);
