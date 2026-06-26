@@ -392,7 +392,7 @@ class BookingLinkReservationRouteTest {
             softly.assertThat(rawMessage).contains("Subject: Booking request received");
             softly.assertThat(html)
                 .contains("Your booking request has been received")
-                .contains("We have registered your booking link request on")
+                .contains("We have registered your booking request on")
                 .contains("The organizer was notified about it and will validate it in a timely manner.")
                 .contains("<strong>Saturday, 26 January 2036");
             softly.assertThat(html)
