@@ -1138,6 +1138,7 @@ Content-Type: application/json
     "calendarUrl": "/calendars/67c3a792e4b0884b05ef8aef/67c3a792e4b0884b05ef8aef",
     "durationMinutes": 30,
     "active": true,
+    "autoAccept": false,
     "name": "Intro call",
     "description": "Book a 30-minute introduction call",
     "availabilityRules": [
@@ -1173,6 +1174,7 @@ POST /users/{username}/booking-links
   "calendarUrl": "/calendars/67c3a792e4b0884b05ef8aef/67c3a792e4b0884b05ef8aef",
   "durationMinutes": 30,
   "active": true,
+  "autoAccept": false,
   "name": "Intro call",
   "description": "Book a 30-minute introduction call",
   "availabilityRules": [
@@ -1181,7 +1183,7 @@ POST /users/{username}/booking-links
 }
 ```
 
-`calendarUrl`, `durationMinutes` and `active` are required. `availabilityRules`, `name` and `description` are optional.
+`calendarUrl`, `durationMinutes` and `active` are required. `autoAccept` (default `false`), `availabilityRules`, `name` and `description` are optional.
 
 ```
 HTTP/1.1 201 Created

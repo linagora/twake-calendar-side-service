@@ -153,13 +153,15 @@ class BookingLinkListRouteTest {
                         "publicId": "%s",
                         "calendarUrl": "%s",
                         "durationMinutes": 60,
-                        "active": false
+                        "active": false,
+                        "autoAccept": false
                     },
                     {
                         "publicId": "%s",
                         "calendarUrl": "%s",
                         "durationMinutes": 30,
-                        "active": true
+                        "active": true,
+                        "autoAccept": false
                     }
                 ]
                 """.formatted(
@@ -190,6 +192,7 @@ class BookingLinkListRouteTest {
                         "calendarUrl": "%s",
                         "durationMinutes": 30,
                         "active": true,
+                        "autoAccept": false,
                         "availabilityRules": [
                             { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "17:00", "timeZone": "UTC" }
                         ]

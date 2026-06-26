@@ -85,6 +85,10 @@ public class BookingLinkEventIcsBuilder {
     }
 
     public BuildResult build(BookingRequest request, BookingAttendee organizer, Duration eventDuration) {
+        return build(request, organizer, eventDuration, false);
+    }
+
+    public BuildResult build(BookingRequest request, BookingAttendee organizer, Duration eventDuration, boolean autoAccept) {
         Uid eventUid = uidGenerator.generateUid();
         Optional<URL> maybeMeetingLink = Optional.of(request.visioLink())
             .filter(FunctionalUtils.identityPredicate())
@@ -93,7 +97,7 @@ public class BookingLinkEventIcsBuilder {
         Calendar calendar = new Calendar()
             .withDefaults()
             .withProdId(PROD_ID)
-            .withComponent(buildEvent(request, organizer, eventUid, eventDuration, maybeMeetingLink))
+            .withComponent(buildEvent(request, organizer, eventUid, eventDuration, maybeMeetingLink, autoAccept))
             .getFluentTarget();
 
         return new BuildResult(eventUid, calendar, maybeMeetingLink);
@@ -103,7 +107,8 @@ public class BookingLinkEventIcsBuilder {
                               BookingAttendee organizer,
                               Uid eventUid,
                               Duration eventDuration,
-                              Optional<URL> maybeMeetingLink) {
+                              Optional<URL> maybeMeetingLink,
+                              boolean autoAccept) {
         ImmutableList.Builder<Property> properties = ImmutableList.<Property>builder()
             .add(eventUid)
             .add(TRANSP_OPAQUE)
@@ -111,7 +116,7 @@ public class BookingLinkEventIcsBuilder {
             .add(new DtStamp(clock.instant()))
             .add(new DtStart<>(request.slotStartUtc()))
             .add(new net.fortuna.ical4j.model.property.Duration(eventDuration))
-            .addAll(buildOrganizer(organizer))
+            .addAll(buildOrganizer(organizer, autoAccept))
             .add(buildAttendee(request.creator()))
             .addAll(request.additionalAttendees().stream()
                 .map(this::buildAttendee)
@@ -158,14 +163,14 @@ public class BookingLinkEventIcsBuilder {
         return builtAttendee;
     }
 
-    private List<Property> buildOrganizer(BookingAttendee attendee) {
+    private List<Property> buildOrganizer(BookingAttendee attendee, boolean autoAccept) {
         Organizer organizer = new Organizer(URI.create(MAIL_TO_PREFIX + attendee.email().asString()));
 
         Attendee builtAttendee = (Attendee) new Attendee(URI.create(MAIL_TO_PREFIX + attendee.email().asString()))
             .withParameter(Rsvp.TRUE)
             .withParameter(Role.CHAIR)
             .withParameter(CuType.INDIVIDUAL)
-            .withParameter(PartStat.NEEDS_ACTION)
+            .withParameter(autoAccept ? PartStat.ACCEPTED : PartStat.NEEDS_ACTION)
             .getFluentTarget();
 
         if (StringUtils.isNotBlank(attendee.name())) {
