@@ -39,6 +39,7 @@ public class MongoDBCollectionFactory {
     public static final String AUTH_TICKETS = MongoDBTicketDAO.COLLECTION;
     public static final String BOOKING_LINKS = MongoDBBookingLinkDAO.COLLECTION;
     public static final String DOMAIN_SETTINGS = MongoDBDomainSettingsDAO.COLLECTION;
+    public static final String TEAM_CALENDAR = MongoDBTeamCalendarRepository.COLLECTION;
 
     public static void initialize(MongoDatabase database) {
         createUsersCollection(database);
@@ -48,6 +49,7 @@ public class MongoDBCollectionFactory {
         createAuthTicketsCollection(database);
         createBookingLinksCollection(database);
         createDomainSettingsCollection(database);
+        createTeamCalendarCollection(database);
     }
 
     private static void createUsersCollection(MongoDatabase database) {
@@ -145,6 +147,13 @@ public class MongoDBCollectionFactory {
             Mono.from(database.createCollection(DOMAIN_SETTINGS)).block();
         }
         MongoDBDomainSettingsDAO.declareIndex(database.getCollection(DOMAIN_SETTINGS)).block();
+    }
+
+    private static void createTeamCalendarCollection(MongoDatabase database) {
+        if (!collectionExists(database, TEAM_CALENDAR)) {
+            Mono.from(database.createCollection(TEAM_CALENDAR)).block();
+        }
+        MongoDBTeamCalendarRepository.declareIndex(database.getCollection(TEAM_CALENDAR)).block();
     }
 
     private static boolean collectionExists(MongoDatabase database, String collectionName) {

@@ -44,6 +44,7 @@ import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSDomainList;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.ResourceDAO;
+import com.linagora.calendar.storage.TeamCalendarRepository;
 import com.linagora.calendar.storage.UploadedFileDAO;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
@@ -79,6 +80,9 @@ public class MongoDBStorageModule extends AbstractModule {
         bind(AlarmEventLeaseProvider.class).to(MongoAlarmEventLeaseProvider.class);
 
         bind(ResourceDAO.class).to(MongoDBResourceDAO.class);
+
+        bind(MongoDBTeamCalendarRepository.class).in(Scopes.SINGLETON);
+        bind(TeamCalendarRepository.class).to(MongoDBTeamCalendarRepository.class);
 
         bind(MongoDBTicketDAO.class).in(Scopes.SINGLETON);
         bind(TicketStore.class).to(MongoDBTicketDAO.class);
