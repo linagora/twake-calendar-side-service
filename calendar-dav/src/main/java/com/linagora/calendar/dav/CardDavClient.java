@@ -33,10 +33,13 @@ import org.apache.james.core.Username;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Streams;
@@ -83,9 +86,21 @@ public class CardDavClient extends DavClient {
     public record AddressBook(String value, AddressBookType type) {
     }
 
+    public record NewAddressBook(String id, String name, String description) {
+    }
+
+    public record AddressBookSharee(@JsonProperty("dav:href") String davHref,
+                                    @JsonProperty("dav:share-access") int shareAccess) {
+        public AddressBookSharee {
+            Preconditions.checkArgument(StringUtils.isNotBlank(davHref), "'dav:href' must not be blank");
+            Preconditions.checkArgument(shareAccess >= 2 && shareAccess <= 5, "'dav:share-access' must be between 2 and 5");
+        }
+    }
+
     public static final String LIMIT_PARAM = "limit";
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CardDavClient.class);
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private static final String CONTENT_TYPE_VCARD = "application/vcard";
     private static final String CONTENT_TYPE_VCARD_JSON = "application/vcard+json";
@@ -311,8 +326,7 @@ public class CardDavClient extends DavClient {
                     return Mono.empty();
                 }
                 if (response.status().code() == HttpStatus.SC_NOT_IMPLEMENTED) {
-                    LOGGER.info("Could not delete address book {}", addressBookURL.asUri().toASCIIString());
-                    return Mono.empty();
+                    return Mono.error(new SystemAddressBookException(addressBookURL));
                 }
                 return buf.asString(StandardCharsets.UTF_8)
                     .switchIfEmpty(Mono.just(StringUtils.EMPTY))
@@ -338,6 +352,125 @@ public class CardDavClient extends DavClient {
                             .formatted(response.status().code(),
                                 addressBookURL.vcardUri(vcardUid).toASCIIString(),
                                 errorBody))));
+            });
+    }
+
+    public Mono<byte[]> listUserAddressBooksAsBytes(Username username, OpenPaaSId userId) {
+        String uri = "/addressbooks/%s.json?contactsCount=true&inviteStatus=2&personal=true&shared=true&subscribed=true"
+            .formatted(userId.value());
+        return httpClientWithImpersonation(username)
+            .headers(headers -> headers.add(HttpHeaderNames.ACCEPT, "application/json"))
+            .get()
+            .uri(uri)
+            .responseSingle((response, buf) -> {
+                if (response.status().code() == HttpStatus.SC_OK) {
+                    return buf.asByteArray();
+                }
+                return buf.asString(StandardCharsets.UTF_8)
+                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .flatMap(errorBody -> Mono.error(new DavClientException(
+                        "Unexpected status code: %d when listing address books for user %s\n%s"
+                            .formatted(response.status().code(), userId.value(), errorBody))));
+            });
+    }
+
+    public Mono<Boolean> addressBookExists(Username username, OpenPaaSId userId, String addressBookId) {
+        String uri = new AddressBookURL(userId, addressBookId).asUri().toASCIIString() + ".json";
+        return httpClientWithImpersonation(username)
+            .headers(headers -> headers.add(HttpHeaderNames.ACCEPT, "application/json"))
+            .get()
+            .uri(uri)
+            .responseSingle((response, buf) -> switch (response.status().code()) {
+                case HttpStatus.SC_OK -> Mono.just(true);
+                case HttpStatus.SC_NOT_FOUND, HttpStatus.SC_UNAUTHORIZED, HttpStatus.SC_FORBIDDEN -> Mono.just(false);
+                default -> buf.asString(StandardCharsets.UTF_8)
+                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .flatMap(errorBody -> Mono.error(new DavClientException(
+                        "Unexpected status code: %d when checking existence of address book %s/%s\n%s"
+                            .formatted(response.status().code(), userId.value(), addressBookId, errorBody))));
+            });
+    }
+
+    public Mono<Void> createUserAddressBook(Username username, OpenPaaSId userId, NewAddressBook newAddressBook) {
+        String description = newAddressBook.description().isBlank() ? "" : newAddressBook.description();
+        byte[] payload = ("""
+        {
+            "id": "%s",
+            "dav:name": "%s",
+            "carddav:description": "%s",
+            "dav:acl": ["dav:read","dav:write"],
+            "type": "user"
+        }
+        """.formatted(newAddressBook.id(), newAddressBook.name(), description)).getBytes(StandardCharsets.UTF_8);
+
+        return httpClientWithImpersonation(username).headers(headers -> headers
+                .add(HttpHeaderNames.CONTENT_TYPE, "application/json")
+                .add(HttpHeaderNames.ACCEPT, "application/json"))
+            .post()
+            .uri("/addressbooks/%s.json".formatted(userId.value()))
+            .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(payload)))
+            .responseSingle((response, buf) -> {
+                if (response.status().code() == HttpStatus.SC_CREATED) {
+                    return Mono.empty();
+                }
+                return buf.asString(StandardCharsets.UTF_8)
+                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .flatMap(errorBody -> Mono.error(new DavClientException(
+                        "Unexpected status code: %d when creating address book for user %s\n%s"
+                            .formatted(response.status().code(), userId.value(), errorBody))));
+            });
+    }
+
+    public Mono<Void> updateAddressBookPublicRight(Username username, AddressBookURL addressBookURL, boolean publish) {
+        String uri = addressBookURL.asUri().toASCIIString() + ".json";
+        byte[] payload = publish
+            ? "{\"dav:publish-addressbook\":{\"privilege\":\"{DAV:}read\"}}".getBytes(StandardCharsets.UTF_8)
+            : "{\"dav:unpublish-addressbook\":true}".getBytes(StandardCharsets.UTF_8);
+
+        return httpClientWithImpersonation(username)
+            .headers(headers -> headers
+                .add(HttpHeaderNames.CONTENT_TYPE, "application/json")
+                .add(HttpHeaderNames.ACCEPT, "application/json"))
+            .post()
+            .uri(uri)
+            .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(payload)))
+            .responseSingle((response, buf) -> switch (response.status().code()) {
+                case HttpStatus.SC_OK, HttpStatus.SC_NO_CONTENT -> Mono.empty();
+                default -> buf.asString(StandardCharsets.UTF_8)
+                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .flatMap(errorBody -> Mono.error(new DavClientException(
+                        "Unexpected status code: %d when updating public right of address book %s\n%s"
+                            .formatted(response.status().code(), uri, errorBody))));
+            });
+    }
+
+    public Mono<Void> updateAddressBookShares(Username username, AddressBookURL addressBookURL,
+                                              List<AddressBookSharee> sharees) {
+        String uri = addressBookURL.asUri().toASCIIString() + ".json";
+        byte[] payload;
+        try {
+            ObjectNode body = OBJECT_MAPPER.createObjectNode()
+                .set("dav:share-resource", OBJECT_MAPPER.createObjectNode()
+                    .set("dav:sharee", OBJECT_MAPPER.valueToTree(sharees)));
+            payload = OBJECT_MAPPER.writeValueAsBytes(body);
+        } catch (JsonProcessingException e) {
+            return Mono.error(new DavClientException("Failed to serialize address book sharing request", e));
+        }
+
+        return httpClientWithImpersonation(username)
+            .headers(headers -> headers
+                .add(HttpHeaderNames.CONTENT_TYPE, "application/json")
+                .add(HttpHeaderNames.ACCEPT, "application/json"))
+            .post()
+            .uri(uri)
+            .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(payload)))
+            .responseSingle((response, buf) -> switch (response.status().code()) {
+                case HttpStatus.SC_OK, HttpStatus.SC_NO_CONTENT -> Mono.empty();
+                default -> buf.asString(StandardCharsets.UTF_8)
+                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .flatMap(errorBody -> Mono.error(new DavClientException(
+                        "Unexpected status code: %d when updating shares of address book %s\n%s"
+                            .formatted(response.status().code(), uri, errorBody))));
             });
     }
 

@@ -976,6 +976,134 @@ the sharing for the given user.
 - `400`: missing `share` field, `dav:href` is not a `mailto:` URI, or a `set` entry carries no right
 - `404`: the user or the calendar does not exist
 
+## User address book management routes
+
+Administrative management of user address books. These routes proxy the Sabre DAV server,
+impersonating the targeted user. The user is identified by their email address; the associated
+technical user id is resolved automatically.
+
+All routes return:
+- `400`: the username is invalid or the request body is malformed
+- `404`: the user is not registered (`User does not exist`)
+
+### Listing the address books of a user
+
+```
+GET /users/{username}/addressbooks
+```
+
+Example:
+
+```
+GET /users/btellier@linagora.com/addressbooks
+```
+
+Returns the DAV server response verbatim, including the default `contacts` address book and any custom ones.
+
+```json
+{
+  "_links": {"self": {"href": "/addressbooks/5f50a663bdaffe002629099c.json"}},
+  "_embedded": {
+    "dav:addressbook": [
+      {
+        "_links": {"self": {"href": "/addressbooks/5f50a663bdaffe002629099c/contacts.json"}},
+        "dav:name": "My contacts",
+        "carddav:description": ""
+      }
+    ]
+  }
+}
+```
+
+**Status codes**:
+- `200`: the address book list is returned
+
+### Creating an address book
+
+```
+POST /users/{username}/addressbooks
+{
+  "id": "0e26ee47-cc4b-4aaa-8447-12588fdb11f1",
+  "dav:name": "My Contacts",
+  "carddav:description": "Personal contacts"
+}
+```
+
+Supported fields:
+- `id` (optional): the collection identifier of the address book to create. Generated (random UUID) when absent.
+- `dav:name` (required): display name of the address book
+- `carddav:description` (optional): description of the address book
+
+Returns the identifier of the created address book:
+
+```json
+{"id": "0e26ee47-cc4b-4aaa-8447-12588fdb11f1"}
+```
+
+**Status codes**:
+- `201`: the address book was created
+- `400`: `dav:name` is missing or the request body is malformed
+- `404`: the user does not exist
+
+### Deleting an address book
+
+```
+DELETE /users/{username}/addressbooks/{addressBookId}
+```
+
+Example:
+
+```
+DELETE /users/btellier@linagora.com/addressbooks/0e26ee47-cc4b-4aaa-8447-12588fdb11f1
+```
+
+**Status codes**:
+- `204`: the address book was deleted
+- `400`: attempting to delete a system address book (e.g. `contacts`)
+- `404`: the user or the address book does not exist
+
+### Changing the public visibility of an address book
+
+```
+POST /users/{username}/addressbooks/{addressBookId}/publicRight
+{
+  "public_right": "{DAV:}read"
+}
+```
+
+Supported `public_right` values:
+- `"{DAV:}read"`: anyone authenticated can read the address book (public)
+- `""`: removes public rights (private)
+
+**Status codes**:
+- `204`: the public visibility was updated
+- `400`: missing or unsupported `public_right` value
+- `404`: the user or the address book does not exist
+
+### Adding / removing invitees (sharing)
+
+```
+POST /users/{username}/addressbooks/{addressBookId}/invitee
+{
+  "dav:sharee": [
+    {"dav:href": "mailto:alice@linagora.com", "dav:share-access": 3},
+    {"dav:href": "mailto:bob@linagora.com", "dav:share-access": 5}
+  ]
+}
+```
+
+Each entry in `dav:sharee` sets the access level for the given user. The `dav:share-access` field
+accepts integer values between 2 and 5 matching the WebDAV sharing spec:
+- `2`: read access
+- `3`: read-write access
+- `4`: administration access
+- `5`: no access (revokes sharing)
+
+**Status codes**:
+- `204`: the sharees were updated
+- `400`: missing or malformed `dav:sharee` array, or an invalid `dav:share-access` value
+- `404`: the user or the address book does not exist
+
 ## User booking link routes
 
 These routes let an administrator manage the [booking links](bookingLink.md) of a given user.
