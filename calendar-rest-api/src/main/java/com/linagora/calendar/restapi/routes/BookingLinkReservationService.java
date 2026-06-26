@@ -54,6 +54,7 @@ public class BookingLinkReservationService {
     private final CalDavClient calDavClient;
     private final OpenPaaSUserDAO openPaaSUserDAO;
     private final PublicAgendaProposalNotifier publicAgendaProposalNotifier;
+    private final BookingLinkRequestAcknowledgementNotifier bookingLinkRequestAcknowledgementNotifier;
 
     @Inject
     public BookingLinkReservationService(BookingLinkDAO bookingLinkDAO,
@@ -62,12 +63,14 @@ public class BookingLinkReservationService {
                                          RestApiConfiguration restApiConfiguration,
                                          CalDavClient calDavClient,
                                          OpenPaaSUserDAO openPaaSUserDAO,
-                                         PublicAgendaProposalNotifier publicAgendaProposalNotifier) {
+                                         PublicAgendaProposalNotifier publicAgendaProposalNotifier,
+                                         BookingLinkRequestAcknowledgementNotifier bookingLinkRequestAcknowledgementNotifier) {
         this.bookingLinkDAO = bookingLinkDAO;
         this.calDavClient = calDavClient;
         this.bookingLinkSlotsService = bookingLinkSlotsService;
         this.openPaaSUserDAO = openPaaSUserDAO;
         this.publicAgendaProposalNotifier = publicAgendaProposalNotifier;
+        this.bookingLinkRequestAcknowledgementNotifier = bookingLinkRequestAcknowledgementNotifier;
         this.bookingLinkEventIcsBuilder = new BookingLinkEventIcsBuilder(clock, new MeetingConferenceLinkResolver.Visio(restApiConfiguration));
 
     }
@@ -104,10 +107,25 @@ public class BookingLinkReservationService {
     }
 
     private Mono<Void> notifyBookingCreated(BookingCreated bookingCreated) {
+        return Mono.when(notifyOrganizer(bookingCreated), notifyRequester(bookingCreated));
+    }
+
+    private Mono<Void> notifyOrganizer(BookingCreated bookingCreated) {
         return publicAgendaProposalNotifier.notify(bookingCreated)
             .onErrorResume(error -> {
                 LOGGER.warn("Failed to send proposal notification for booking {}: {}",
                     bookingCreated.eventIcsResult().eventIdAsString(), error.getMessage(), error);
+                return Mono.empty();
+            });
+    }
+
+    private Mono<Void> notifyRequester(BookingCreated bookingCreated) {
+        return bookingLinkRequestAcknowledgementNotifier.notify(bookingCreated)
+            .onErrorResume(error -> {
+                LOGGER.warn("Failed to send request acknowledgement notification for booking {} to {}: {}",
+                    bookingCreated.eventIcsResult().eventIdAsString(),
+                    bookingCreated.request().creator().email().asString(),
+                    error.getMessage(), error);
                 return Mono.empty();
             });
     }

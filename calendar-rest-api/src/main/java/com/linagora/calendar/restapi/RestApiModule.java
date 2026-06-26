@@ -74,6 +74,7 @@ import com.linagora.calendar.restapi.routes.BookingLinkDeleteRoute;
 import com.linagora.calendar.restapi.routes.BookingLinkGetRoute;
 import com.linagora.calendar.restapi.routes.BookingLinkListRoute;
 import com.linagora.calendar.restapi.routes.BookingLinkPatchRoute;
+import com.linagora.calendar.restapi.routes.BookingLinkRequestAcknowledgementNotifier;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationRoute;
 import com.linagora.calendar.restapi.routes.BookingLinkResetPublicIdRoute;
 import com.linagora.calendar.restapi.routes.BookingLinkSlotsRoute;
@@ -213,6 +214,7 @@ public class RestApiModule extends AbstractModule {
         bind(SendMailNotifier.class).in(Scopes.SINGLETON);
         bind(BookingLinkSlotsService.class).in(Scopes.SINGLETON);
         bind(PublicAgendaProposalNotifier.class).in(Scopes.SINGLETON);
+        bind(BookingLinkRequestAcknowledgementNotifier.class).in(Scopes.SINGLETON);
 
         Multibinder<ImportResultNotifier> importResultNotifierMultibinder = Multibinder.newSetBinder(binder(), ImportResultNotifier.class);
         importResultNotifierMultibinder.addBinding().to(ImportWebSocketNotifier.class);

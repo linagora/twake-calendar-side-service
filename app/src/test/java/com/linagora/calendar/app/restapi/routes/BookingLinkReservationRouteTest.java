@@ -334,12 +334,69 @@ class BookingLinkReservationRouteTest {
         .then()
             .statusCode(HttpStatus.SC_CREATED);
 
-        JsonPath smtpMailsResponse = awaitProposalEmail();
+        JsonPath smtpMailsResponse = awaitBookingEmails();
+        int organizerMailIndex = mailIndexOfRecipient(smtpMailsResponse, openPaaSUser.username().asString());
 
         assertSoftly(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
-            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(openPaaSUser.username().asString());
-            softly.assertThat(smtpMailsResponse.getString("[0].message")).contains("Subject: New event proposition from BOB: 30-min intro call");
+            softly.assertThat(smtpMailsResponse.getString("[%d].from".formatted(organizerMailIndex)))
+                .isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[%d].recipients[0].address".formatted(organizerMailIndex)))
+                .isEqualTo(openPaaSUser.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[%d].message".formatted(organizerMailIndex)))
+                .contains("Subject: New event proposition from BOB: 30-min intro call");
+        });
+    }
+
+    @Test
+    void shouldSendAcknowledgementEmailToBookerWhenBookingCreated(TwakeCalendarGuiceServer server) {
+        // Given: an active booking link with an available slot.
+        BookingLink inserted = insertActiveBookingLink(server);
+        String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();
+
+        // When: an unauthenticated booker submits a booking request with custom content.
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body("""
+                {
+                  "startUtc": "%s",
+                  "creator": {
+                    "name": "BOB",
+                    "email": "creator@example.com"
+                  },
+                  "additional_attendees": [
+                    {
+                      "name": "Nguyen Van A",
+                      "email": "vana@example.com"
+                    }
+                  ],
+                  "eventTitle": "30-min intro call",
+                  "notes": "Please call via Zoom."
+                }
+                """.formatted(slotStartUtc))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED);
+
+        JsonPath smtpMailsResponse = awaitBookingEmails();
+        int bookerMailIndex = mailIndexOfRecipient(smtpMailsResponse, "creator@example.com");
+        String rawMessage = smtpMailsResponse.getString("[%d].message".formatted(bookerMailIndex));
+        String html = getHtml(rawMessage);
+
+        // Then: the booker receives a generic acknowledgement without unauthenticated request content.
+        assertSoftly(softly -> {
+            softly.assertThat(smtpMailsResponse.getString("[%d].from".formatted(bookerMailIndex)))
+                .isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[%d].recipients[0].address".formatted(bookerMailIndex)))
+                .isEqualTo("creator@example.com");
+            softly.assertThat(rawMessage).contains("Subject: Booking request received");
+            softly.assertThat(html)
+                .contains("Your booking request has been received")
+                .contains("We have registered your booking link request on")
+                .contains("The organizer was notified about it and will validate it in a timely manner.")
+                .contains("<strong>Saturday, 26 January 2036");
+            softly.assertThat(html)
+                .doesNotContain("Please call via Zoom.");
         });
     }
 
@@ -365,7 +422,7 @@ class BookingLinkReservationRouteTest {
         .then()
             .statusCode(HttpStatus.SC_CREATED);
 
-        String rawMessage = awaitProposalEmail().getString("[0].message");
+        String rawMessage = messageForRecipient(awaitBookingEmails(), openPaaSUser.username().asString());
         List<String> actionLinks = extractParticipationActionLinks(getHtml(rawMessage));
 
         assertSoftly(softly -> {
@@ -419,7 +476,8 @@ class BookingLinkReservationRouteTest {
         .then()
             .statusCode(HttpStatus.SC_CREATED);
 
-        List<String> actionLinks = extractParticipationActionLinks(getHtml(awaitProposalEmail().getString("[0].message")));
+        List<String> actionLinks = extractParticipationActionLinks(getHtml(
+            messageForRecipient(awaitBookingEmails(), openPaaSUser.username().asString())));
         Map<String, String> linksByLabel = Map.of(
             "yes", actionLinks.get(0),
             "maybe", actionLinks.get(1),
@@ -1132,7 +1190,11 @@ class BookingLinkReservationRouteTest {
             """.formatted(slotStartUtc);
     }
 
-    private JsonPath awaitProposalEmail() {
+    private JsonPath awaitBookingEmails() {
+        return awaitMails(2);
+    }
+
+    private JsonPath awaitMails(int count) {
         java.util.function.Supplier<JsonPath> smtpMailsResponseSupplier = () -> given(mockSMTPRequestSpecification())
             .get("/smtpMails")
         .then()
@@ -1142,9 +1204,20 @@ class BookingLinkReservationRouteTest {
 
         CALMLY_AWAIT
             .atMost(Duration.ofSeconds(10))
-            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(count));
 
         return smtpMailsResponseSupplier.get();
+    }
+
+    private String messageForRecipient(JsonPath smtpMailsResponse, String recipient) {
+        return smtpMailsResponse.getString("[%d].message".formatted(mailIndexOfRecipient(smtpMailsResponse, recipient)));
+    }
+
+    private int mailIndexOfRecipient(JsonPath smtpMailsResponse, String recipient) {
+        return IntStream.range(0, smtpMailsResponse.getList("").size())
+            .filter(index -> recipient.equals(smtpMailsResponse.getString("[%d].recipients[0].address".formatted(index))))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("Could not find email sent to " + recipient));
     }
 
     private String getHtml(String message) {
