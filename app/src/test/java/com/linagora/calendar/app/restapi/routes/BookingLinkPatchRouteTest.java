@@ -164,6 +164,24 @@ class BookingLinkPatchRouteTest {
     }
 
     @Test
+    void shouldPersistUpdatedAutoAccept() {
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+
+        given()
+            .body("""
+                { "autoAccept": true }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        BookingLink updated = bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
+        assertThat(updated.autoAccept()).isTrue();
+    }
+
+    @Test
     void shouldPersistUpdatedNameAndDescription() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));

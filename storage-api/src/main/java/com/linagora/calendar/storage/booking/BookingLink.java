@@ -33,6 +33,7 @@ public record BookingLink(Username username,
                           CalendarURL calendarUrl,
                           Duration duration,
                           boolean active,
+                          boolean autoAccept,
                           Optional<AvailabilityRules> availabilityRules,
                           Optional<String> name,
                           Optional<String> description,
@@ -62,6 +63,7 @@ public record BookingLink(Username username,
             .calendarUrl(calendarUrl)
             .duration(duration)
             .active(active)
+            .autoAccept(autoAccept)
             .availabilityRules(availabilityRules)
             .name(name)
             .description(description)
@@ -75,6 +77,7 @@ public record BookingLink(Username username,
         private CalendarURL calendarUrl;
         private Duration duration;
         private boolean active;
+        private boolean autoAccept;
         private Optional<AvailabilityRules> availabilityRules = Optional.empty();
         private Optional<String> name = Optional.empty();
         private Optional<String> description = Optional.empty();
@@ -106,6 +109,11 @@ public record BookingLink(Username username,
             return this;
         }
 
+        public Builder autoAccept(boolean autoAccept) {
+            this.autoAccept = autoAccept;
+            return this;
+        }
+
         public Builder availabilityRules(Optional<AvailabilityRules> availabilityRules) {
             this.availabilityRules = availabilityRules;
             return this;
@@ -132,7 +140,7 @@ public record BookingLink(Username username,
         }
 
         public BookingLink build() {
-            return new BookingLink(username, publicId, calendarUrl, duration, active, availabilityRules, name, description, createdAt, updatedAt);
+            return new BookingLink(username, publicId, calendarUrl, duration, active, autoAccept, availabilityRules, name, description, createdAt, updatedAt);
         }
     }
 

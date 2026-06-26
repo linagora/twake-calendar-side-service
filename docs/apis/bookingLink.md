@@ -23,6 +23,7 @@ Public users can use booking links to book events.
 | `calendarUrl`       | string           | Calendar URI in the form `/calendars/{baseId}/{calendarId}`                 |
 | `durationMinutes`   | integer          | Duration of each bookable slot in minutes (must be positive)                |
 | `active`            | boolean          | Whether the booking link is active                                          |
+| `autoAccept`        | boolean          | When `true`, the organizer accepts as soon as a booking is created: no validation mail is sent to the organizer and no acknowledgement mail to the booker, the regular IMIP flow applies. When `false` (default), the booking starts the validation flow. |
 | `availabilityRules` | array (optional) | List of availability rule objects (weekly or fixed)                         |
 | `name`              | string (optional)| Display name of the booking link                                            |
 | `description`       | string (optional)| Description of the booking link                                             |
@@ -63,6 +64,7 @@ Create a new booking link for the authenticated user.
 | `calendarUrl`       | yes      | Calendar URI (must be accessible by the user)                                                                                                            |
 | `durationMinutes`   | yes      | Slot duration in minutes, must be positive                                                                                                               |
 | `active`            | yes      | Whether the booking link is active                                                                                                                       |
+| `autoAccept`        | no       | Whether bookings are auto-accepted by the organizer. Defaults to `false` when omitted.                                                                   |
 | `availabilityRules` | no       | List of availability rules. Defaults to business hours from user settings when omitted. Each rule may specify its own `timeZone` (see availability rule object above). |
 | `name`              | no       | Display name of the booking link. Blank values are ignored.                                                                                              |
 | `description`       | no       | Description of the booking link. Blank values are ignored.                                                                                               |
@@ -77,6 +79,7 @@ Content-Type: application/json
     "calendarUrl": "/calendars/67c3a792e4b0884b05ef8aef/67c3a792e4b0884b05ef8aef",
     "durationMinutes": 30,
     "active": true,
+    "autoAccept": false,
     "name": "Intro call",
     "description": "Book a 30-minute introduction call",
     "availabilityRules": [
@@ -127,6 +130,7 @@ Content-Type: application/json
         "calendarUrl": "/calendars/67c3a792e4b0884b05ef8aef/67c3a792e4b0884b05ef8aef",
         "durationMinutes": 30,
         "active": true,
+        "autoAccept": false,
         "name": "Intro call",
         "description": "Book a 30-minute introduction call",
         "availabilityRules": [
@@ -166,6 +170,7 @@ Content-Type: application/json
     "calendarUrl": "/calendars/67c3a792e4b0884b05ef8aef/67c3a792e4b0884b05ef8aef",
     "durationMinutes": 30,
     "active": true,
+    "autoAccept": false,
     "name": "Intro call",
     "description": "Book a 30-minute introduction call",
     "availabilityRules": [
@@ -202,6 +207,7 @@ All fields are optional. Include only the fields to update.
 | `calendarUrl`       | New calendar URI                                                                                                 |
 | `durationMinutes`   | New slot duration in minutes, must be positive                                                                   |
 | `active`            | New active state                                                                                                 |
+| `autoAccept`        | New auto-accept state                                                                                            |
 | `availabilityRules` | Replaces all existing rules. Set to `null` to remove all rules. Each rule may specify its own `timeZone`. |
 | `name`              | New display name. Set to `null` or a blank value to remove it.                                                   |
 | `description`       | New description. Set to `null` or a blank value to remove it.                                                    |

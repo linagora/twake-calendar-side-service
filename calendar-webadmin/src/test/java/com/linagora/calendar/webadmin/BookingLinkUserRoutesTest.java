@@ -262,6 +262,44 @@ public class BookingLinkUserRoutesTest {
     }
 
     @Test
+    void createShouldStoreAutoAccept() {
+        String publicId = given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "autoAccept": true
+                }
+                """.formatted(defaultCalendarUrl(user)))
+        .when()
+            .post("/users/{username}/booking-links", user.username().asString())
+        .then()
+            .statusCode(201)
+            .extract().jsonPath().getString("bookingLinkPublicId");
+
+        BookingLink stored = bookingLinkDAO.findByPublicId(user.username(), new BookingLinkPublicId(UUID.fromString(publicId))).block();
+        assertThat(stored.autoAccept()).isTrue();
+    }
+
+    @Test
+    void patchShouldUpdateAutoAccept() {
+        BookingLink bookingLink = insertBookingLink(user);
+
+        given()
+            .body("""
+                { "autoAccept": true }
+                """)
+        .when()
+            .patch("/users/{username}/booking-links/{publicId}", user.username().asString(), bookingLink.publicId().value().toString())
+        .then()
+            .statusCode(204);
+
+        BookingLink updated = bookingLinkDAO.findByPublicId(user.username(), bookingLink.publicId()).block();
+        assertThat(updated.autoAccept()).isTrue();
+    }
+
+    @Test
     void patchShouldReturn404WhenUnknownPublicId() {
         given()
             .body("""

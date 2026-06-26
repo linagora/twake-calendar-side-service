@@ -28,10 +28,12 @@ import com.linagora.calendar.storage.CalendarURL;
 public record BookingLinkInsertRequest(CalendarURL calendarUrl,
                                        Duration eventDuration,
                                        boolean active,
+                                       boolean autoAccept,
                                        Optional<AvailabilityRules> availabilityRules,
                                        Optional<String> name,
                                        Optional<String> description) {
     public static final boolean ACTIVE = true;
+    public static final boolean AUTO_ACCEPT = false;
 
     public BookingLinkInsertRequest {
         Preconditions.checkNotNull(calendarUrl, "'calendarUrl' must not be null");
@@ -40,6 +42,15 @@ public record BookingLinkInsertRequest(CalendarURL calendarUrl,
         Preconditions.checkNotNull(availabilityRules, "'availabilityRules' must not be null");
         Preconditions.checkNotNull(name, "'name' must not be null");
         Preconditions.checkNotNull(description, "'description' must not be null");
+    }
+
+    public BookingLinkInsertRequest(CalendarURL calendarUrl,
+                                    Duration eventDuration,
+                                    boolean active,
+                                    Optional<AvailabilityRules> availabilityRules,
+                                    Optional<String> name,
+                                    Optional<String> description) {
+        this(calendarUrl, eventDuration, active, AUTO_ACCEPT, availabilityRules, name, description);
     }
 
     public BookingLinkInsertRequest(CalendarURL calendarUrl,
