@@ -38,9 +38,9 @@ import com.mongodb.reactivestreams.client.MongoDatabase;
 import reactor.core.publisher.Mono;
 
 public class DockerMongoDBExtension implements BeforeAllCallback, AfterAllCallback, AfterEachCallback {
-    public static final MongoDBContainer mongoDBContainer = new MongoDBContainer("mongo:4.0.10")
+    public static final MongoDBContainer mongoDBContainer = new MongoDBContainer("mongo:8.0.6")
         .withCreateContainerCmdModifier(createContainerCmd -> createContainerCmd.withName("tcalendar-mongo-test-" + UUID.randomUUID().toString().substring(0, 8)))
-        .withCommand("--setParameter", "ttlMonitorSleepSecs=5");
+        .withCommand("--replSet", "docker-rs", "--setParameter", "ttlMonitorSleepSecs=5");
     public static final List<String> CLEANUP_COLLECTIONS = List.of(MongoDBOpenPaaSDomainDAO.COLLECTION,
         MongoDBOpenPaaSUserDAO.COLLECTION,
         MongoDBUploadedFileDAO.COLLECTION,

@@ -23,7 +23,7 @@ services:
       RABBITMQ_DEFAULT_PASS: calendar
 
   mongo:
-    image: mongo
+    image: mongo:8.0.6
     networks:
       - tcalendar
     command: ["mongod", "--bind_ip", "0.0.0.0"]
