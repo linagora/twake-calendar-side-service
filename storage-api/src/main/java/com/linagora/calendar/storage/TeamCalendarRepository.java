@@ -1,0 +1,41 @@
+/********************************************************************
+ *  As a subpart of Twake Mail, this file is edited by Linagora.    *
+ *                                                                  *
+ *  https://twake-mail.com/                                         *
+ *  https://linagora.com                                            *
+ *                                                                  *
+ *  This file is subject to The Affero Gnu Public License           *
+ *  version 3.                                                      *
+ *                                                                  *
+ *  https://www.gnu.org/licenses/agpl-3.0.en.html                   *
+ *                                                                  *
+ *  This program is distributed in the hope that it will be         *
+ *  useful, but WITHOUT ANY WARRANTY; without even the implied      *
+ *  warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR         *
+ *  PURPOSE. See the GNU Affero General Public License for          *
+ *  more details.                                                   *
+ ********************************************************************/
+
+package com.linagora.calendar.storage;
+
+import com.linagora.calendar.storage.model.TeamCalendar;
+import com.linagora.calendar.storage.model.TeamCalendarId;
+
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+
+public interface TeamCalendarRepository {
+    Mono<Void> create(TeamCalendarInsertRequest teamCalendar);
+
+    Mono<Void> delete(TeamCalendarId id);
+
+    Mono<TeamCalendar> retrieve(TeamCalendarId id);
+
+    Flux<TeamCalendar> retrieve(OpenPaaSId domainId, String name);
+
+    Mono<Boolean> exists(OpenPaaSId domainId, String name);
+
+    Flux<TeamCalendar> listByDomain(OpenPaaSId domainId);
+
+    Mono<TeamCalendar> updateDisplayName(TeamCalendarId id, String displayName);
+}

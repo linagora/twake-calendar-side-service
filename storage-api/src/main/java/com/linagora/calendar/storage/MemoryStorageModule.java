@@ -76,6 +76,9 @@ public class MemoryStorageModule extends AbstractModule {
         bind(MemoryResourceDAO.class).in(Scopes.SINGLETON);
         bind(ResourceDAO.class).to(MemoryResourceDAO.class);
 
+        bind(MemoryTeamCalendarRepository.class).in(Scopes.SINGLETON);
+        bind(TeamCalendarRepository.class).to(MemoryTeamCalendarRepository.class);
+
         bind(MemoryBookingLinkDAO.class).in(Scopes.SINGLETON);
         bind(BookingLinkDAO.class).to(MemoryBookingLinkDAO.class);
 
