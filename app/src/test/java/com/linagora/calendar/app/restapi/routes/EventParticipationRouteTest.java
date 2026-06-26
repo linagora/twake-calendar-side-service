@@ -290,21 +290,19 @@ class EventParticipationRouteTest {
             .get("/smtpMails")
             .jsonPath();
 
-        CALMLY_AWAIT
-            .atMost(Duration.ofSeconds(10))
-            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
-
-        JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
-
         AtomicReference<String> actionLink = new AtomicReference<>();
 
-        assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(externalUser);
-            String message = smtpMailsResponse.getString("[0].message");
-            List<String> actionLinks = extractActionLinks(getHtml(message));
-            softly.assertThat(actionLinks).hasSize(3);
-            actionLink.set(actionLinks.getFirst());
-        }));
+        CALMLY_AWAIT
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> {
+                JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
+                assertThat(smtpMailsResponse.getList("")).hasSize(1);
+                assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(externalUser);
+                String message = smtpMailsResponse.getString("[0].message");
+                List<String> actionLinks = extractActionLinks(getHtml(message));
+                assertThat(actionLinks).hasSize(3);
+                actionLink.set(actionLinks.getFirst());
+            });
 
         String participationLink = actionLink.get()
             .replace("https://excal.linagora.com/excal/?jwt=",
@@ -338,7 +336,9 @@ class EventParticipationRouteTest {
             "Content-Transfer-Encoding: base64\r?\nContent-Type: text/html; charset=UTF-8\r?\nContent-Language: [^\r\n]+\r?\n\r?\n([A-Za-z0-9+/=\r\n]+)\r?\n---=Part",
             Pattern.DOTALL);
         Matcher matcher = htmlPattern.matcher(message);
-        matcher.find();
+        if (!matcher.find()) {
+            return "";
+        }
         String base64Html = matcher.group(1).replaceAll("\\s+", "");
         return new String(Base64.getDecoder().decode(base64Html), StandardCharsets.UTF_8);
     }
