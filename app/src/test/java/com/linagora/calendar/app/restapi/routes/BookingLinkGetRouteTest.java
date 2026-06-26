@@ -243,6 +243,33 @@ class BookingLinkGetRouteTest {
     }
 
     @Test
+    void shouldReturn200WithNameAndDescription() {
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE,
+                Optional.empty(), Optional.of("Intro call"), Optional.of("Book a 30-minute introduction call")));
+
+        String response = given()
+        .when()
+            .get("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(ContentType.JSON)
+            .extract().body().asString();
+
+        assertThatJson(response)
+            .isEqualTo("""
+                {
+                    "publicId": "%s",
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "name": "Intro call",
+                    "description": "Book a 30-minute introduction call"
+                }
+                """.formatted(inserted.publicId().value(), CalendarURL.from(openPaaSUser.id()).asUri().toString()));
+    }
+
+    @Test
     void shouldReturn404WhenBookingLinkDoesNotExist() {
         given()
         .when()

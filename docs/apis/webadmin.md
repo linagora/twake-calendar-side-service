@@ -1138,6 +1138,8 @@ Content-Type: application/json
     "calendarUrl": "/calendars/67c3a792e4b0884b05ef8aef/67c3a792e4b0884b05ef8aef",
     "durationMinutes": 30,
     "active": true,
+    "name": "Intro call",
+    "description": "Book a 30-minute introduction call",
     "availabilityRules": [
       { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "17:00", "timeZone": "UTC" }
     ]
@@ -1145,7 +1147,7 @@ Content-Type: application/json
 ]
 ```
 
-`availabilityRules` is omitted from an entry when not set.
+`availabilityRules`, `name` and `description` are omitted from an entry when not set.
 
 **Status codes**:
 - `200`: the list is returned (possibly empty)
@@ -1171,13 +1173,15 @@ POST /users/{username}/booking-links
   "calendarUrl": "/calendars/67c3a792e4b0884b05ef8aef/67c3a792e4b0884b05ef8aef",
   "durationMinutes": 30,
   "active": true,
+  "name": "Intro call",
+  "description": "Book a 30-minute introduction call",
   "availabilityRules": [
     { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "timeZone": "Europe/Paris" }
   ]
 }
 ```
 
-`calendarUrl`, `durationMinutes` and `active` are required. `availabilityRules` is optional.
+`calendarUrl`, `durationMinutes` and `active` are required. `availabilityRules`, `name` and `description` are optional.
 
 ```
 HTTP/1.1 201 Created
@@ -1205,7 +1209,8 @@ PATCH /users/{username}/booking-links/{publicId}
 ```
 
 Only the fields present in the body are updated. At least one field must be provided.
-Set `availabilityRules` to `null` to remove all rules.
+Set `availabilityRules` to `null` to remove all rules. Set `name` or `description` to `null`
+or a blank value to remove them.
 
 **Status codes**:
 - `204`: the booking link was updated

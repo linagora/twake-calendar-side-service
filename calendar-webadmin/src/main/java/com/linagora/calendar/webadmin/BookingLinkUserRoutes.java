@@ -88,6 +88,8 @@ public class BookingLinkUserRoutes implements Routes {
     private static final String FIELD_DURATION_MINUTES = "durationMinutes";
     private static final String FIELD_ACTIVE = "active";
     private static final String FIELD_AVAILABILITY_RULES = "availabilityRules";
+    private static final String FIELD_NAME = "name";
+    private static final String FIELD_DESCRIPTION = "description";
     private static final String FIELD_PUBLIC_ID = "bookingLinkPublicId";
     private static final ZoneId DEFAULT_ZONE = ZoneId.of("UTC");
 
@@ -220,7 +222,9 @@ public class BookingLinkUserRoutes implements Routes {
                 parseCalendarUrl(node, dto),
                 parseDuration(node, dto),
                 parseActive(node, dto),
-                parseAvailabilityRules(node, dto));
+                parseAvailabilityRules(node, dto),
+                parseName(node, dto),
+                parseDescription(node, dto));
         } catch (IllegalArgumentException e) {
             throw badRequest(e.getMessage(), e);
         } catch (Exception e) {
@@ -267,6 +271,24 @@ public class BookingLinkUserRoutes implements Routes {
                 Preconditions.checkArgument(!ruleList.isEmpty(), "'availabilityRules' cannot be empty if provided");
                 return new AvailabilityRules(ruleList);
             })
+            .map(ValuePatch::modifyTo)
+            .orElseGet(ValuePatch::remove);
+    }
+
+    private ValuePatch<String> parseName(JsonNode node, PatchDto dto) {
+        if (!node.has(FIELD_NAME)) {
+            return ValuePatch.keep();
+        }
+        return dto.name().map(String::trim).filter(name -> !name.isEmpty())
+            .map(ValuePatch::modifyTo)
+            .orElseGet(ValuePatch::remove);
+    }
+
+    private ValuePatch<String> parseDescription(JsonNode node, PatchDto dto) {
+        if (!node.has(FIELD_DESCRIPTION)) {
+            return ValuePatch.keep();
+        }
+        return dto.description().map(String::trim).filter(description -> !description.isEmpty())
             .map(ValuePatch::modifyTo)
             .orElseGet(ValuePatch::remove);
     }

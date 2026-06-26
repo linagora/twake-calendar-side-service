@@ -30,7 +30,9 @@ public record BookingLinkDTO(@JsonProperty("publicId") String publicId,
                              @JsonProperty("calendarUrl") String calendarUrl,
                              @JsonProperty("durationMinutes") long durationMinutes,
                              @JsonProperty("active") boolean active,
-                             @JsonProperty("availabilityRules") Optional<List<AvailabilityRuleDTO>> availabilityRules) {
+                             @JsonProperty("availabilityRules") Optional<List<AvailabilityRuleDTO>> availabilityRules,
+                             @JsonProperty("name") Optional<String> name,
+                             @JsonProperty("description") Optional<String> description) {
 
     public static BookingLinkDTO from(BookingLink bookingLink) {
         Optional<List<AvailabilityRuleDTO>> ruleDTOs = bookingLink.availabilityRules()
@@ -43,6 +45,8 @@ public record BookingLinkDTO(@JsonProperty("publicId") String publicId,
             bookingLink.calendarUrl().asUri().toString(),
             bookingLink.duration().toMinutes(),
             bookingLink.active(),
-            ruleDTOs);
+            ruleDTOs,
+            bookingLink.name(),
+            bookingLink.description());
     }
 }

@@ -64,7 +64,9 @@ public class BookingLinkCreateRoute extends CalendarRoute {
     public record CreateBookingLinkRequestDTO(@JsonProperty("calendarUrl") String calendarUrl,
                                               @JsonProperty("durationMinutes") Integer durationMinutes,
                                               @JsonProperty("active") Boolean active,
-                                              @JsonProperty("availabilityRules") Optional<List<AvailabilityRuleDTO>> availabilityRules) {
+                                              @JsonProperty("availabilityRules") Optional<List<AvailabilityRuleDTO>> availabilityRules,
+                                              @JsonProperty("name") Optional<String> name,
+                                              @JsonProperty("description") Optional<String> description) {
 
         public static BookingLinkInsertRequest toBookingLinkInsertRequest(CreateBookingLinkRequestDTO request,
                                                                           ZoneId defaultZone,
@@ -79,7 +81,12 @@ public class BookingLinkCreateRoute extends CalendarRoute {
 
             Optional<AvailabilityRules> availabilityRules = getAvailabilityRules(request, defaultZone).or(() -> defaultAvailabilityRules);
 
-            return new BookingLinkInsertRequest(calendarURL, duration, request.active, availabilityRules);
+            return new BookingLinkInsertRequest(calendarURL, duration, request.active, availabilityRules,
+                normalize(request.name), normalize(request.description));
+        }
+
+        private static Optional<String> normalize(Optional<String> value) {
+            return value.map(String::trim).filter(s -> !s.isEmpty());
         }
 
         private static Optional<AvailabilityRules> getAvailabilityRules(CreateBookingLinkRequestDTO request, ZoneId defaultZone) {

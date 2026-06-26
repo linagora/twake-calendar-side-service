@@ -270,6 +270,76 @@ class BookingLinkCreateRouteTest {
     }
 
     @Test
+    void shouldPersistBookingLinkWithNameAndDescription() {
+        String publicId = given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "name": "Intro call",
+                    "description": "Book a 30-minute introduction call"
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED)
+            .extract().jsonPath().getString("bookingLinkPublicId");
+
+        BookingLink stored = bookingLinkProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
+
+        assertThat(stored.name()).contains("Intro call");
+        assertThat(stored.description()).contains("Book a 30-minute introduction call");
+    }
+
+    @Test
+    void shouldDefaultNameAndDescriptionToEmptyWhenNotProvided() {
+        String publicId = given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED)
+            .extract().jsonPath().getString("bookingLinkPublicId");
+
+        BookingLink stored = bookingLinkProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
+
+        assertThat(stored.name()).isEmpty();
+        assertThat(stored.description()).isEmpty();
+    }
+
+    @Test
+    void shouldIgnoreBlankNameAndDescription() {
+        String publicId = given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "name": "   ",
+                    "description": ""
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED)
+            .extract().jsonPath().getString("bookingLinkPublicId");
+
+        BookingLink stored = bookingLinkProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
+
+        assertThat(stored.name()).isEmpty();
+        assertThat(stored.description()).isEmpty();
+    }
+
+    @Test
     void shouldReturnDistinctPublicIdsForSuccessiveCreations() {
         String body = """
             {
