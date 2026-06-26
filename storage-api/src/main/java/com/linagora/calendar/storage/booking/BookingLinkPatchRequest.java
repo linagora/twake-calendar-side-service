@@ -29,6 +29,7 @@ import com.linagora.calendar.storage.CalendarURL;
 public record BookingLinkPatchRequest(ValuePatch<CalendarURL> calendarUrl,
                                       ValuePatch<Duration> duration,
                                       ValuePatch<Boolean> active,
+                                      ValuePatch<Boolean> autoAccept,
                                       ValuePatch<AvailabilityRules> availabilityRules,
                                       ValuePatch<String> name,
                                       ValuePatch<String> description) {
@@ -36,12 +37,14 @@ public record BookingLinkPatchRequest(ValuePatch<CalendarURL> calendarUrl,
         Preconditions.checkNotNull(calendarUrl, "'calendarUrl' must not be null");
         Preconditions.checkNotNull(duration, "'eventDuration' must not be null");
         Preconditions.checkNotNull(active, "'active' must not be null");
+        Preconditions.checkNotNull(autoAccept, "'autoAccept' must not be null");
         Preconditions.checkNotNull(availabilityRules, "'availabilityRules' must not be null");
         Preconditions.checkNotNull(name, "'name' must not be null");
         Preconditions.checkNotNull(description, "'description' must not be null");
         Preconditions.checkArgument(!calendarUrl.isRemoved(), "'calendarUrl' can not be removed");
         Preconditions.checkArgument(!duration.isRemoved(), "'eventDuration' can not be removed");
         Preconditions.checkArgument(!active.isRemoved(), "'active' can not be removed");
+        Preconditions.checkArgument(!autoAccept.isRemoved(), "'autoAccept' can not be removed");
         if (duration.isModified()) {
             Duration value = duration.get();
             Preconditions.checkArgument(!value.isNegative() && !value.isZero(), "'eventDuration' must be positive");
@@ -50,9 +53,19 @@ public record BookingLinkPatchRequest(ValuePatch<CalendarURL> calendarUrl,
         Preconditions.checkArgument(!calendarUrl.isKept()
             || !duration.isKept()
             || !active.isKept()
+            || !autoAccept.isKept()
             || !availabilityRules.isKept()
             || !name.isKept()
             || !description.isKept(), "At least one updatable field is required");
+    }
+
+    public BookingLinkPatchRequest(ValuePatch<CalendarURL> calendarUrl,
+                                   ValuePatch<Duration> duration,
+                                   ValuePatch<Boolean> active,
+                                   ValuePatch<AvailabilityRules> availabilityRules,
+                                   ValuePatch<String> name,
+                                   ValuePatch<String> description) {
+        this(calendarUrl, duration, active, ValuePatch.keep(), availabilityRules, name, description);
     }
 
     public BookingLinkPatchRequest(ValuePatch<CalendarURL> calendarUrl,

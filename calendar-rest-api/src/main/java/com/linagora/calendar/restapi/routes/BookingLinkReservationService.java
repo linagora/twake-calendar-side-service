@@ -97,7 +97,7 @@ public class BookingLinkReservationService {
         return openPaaSUserDAO.retrieve(bookingLink.username())
             .flatMap(organizer -> {
                 BuildResult eventIcsResult = bookingLinkEventIcsBuilder.build(request,
-                    BookingAttendee.from(organizer.fullName(), organizer.username().asString()), bookingLink.duration(), bookingLink.publicId());
+                    BookingAttendee.from(organizer.fullName(), organizer.username().asString()), bookingLink.duration(), bookingLink.publicId(), bookingLink.autoAccept());
 
                 return calDavClient.importCalendar(bookingLink.calendarUrl(), eventIcsResult.eventIdAsString(), bookingLink.username(), eventIcsResult.icsBytes())
                     .onErrorMap(throwable -> BookingLinkReservationException.createEventFailed(bookingLink.publicId(), eventIcsResult.eventIdAsString(), throwable))
@@ -107,6 +107,11 @@ public class BookingLinkReservationService {
     }
 
     private Mono<Void> notifyBookingCreated(BookingCreated bookingCreated) {
+        if (bookingCreated.bookingLink().autoAccept()) {
+            // The organizer auto-accepts upon event creation: no validation proposal is sent to the organizer
+            // and no acknowledgement is sent to the booker. The regular IMIP flow applies under the hood.
+            return Mono.empty();
+        }
         return Mono.when(notifyOrganizer(bookingCreated), notifyRequester(bookingCreated));
     }
 
