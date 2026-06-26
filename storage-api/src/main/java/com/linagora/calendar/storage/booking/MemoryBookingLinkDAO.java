@@ -57,6 +57,8 @@ public class MemoryBookingLinkDAO implements BookingLinkDAO {
                 .duration(request.eventDuration())
                 .active(request.active())
                 .availabilityRules(request.availabilityRules())
+                .name(request.name())
+                .description(request.description())
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
@@ -92,6 +94,8 @@ public class MemoryBookingLinkDAO implements BookingLinkDAO {
                 builder.duration(request.duration().getOrElse(existing.duration()));
                 builder.active(request.active().getOrElse(existing.active()));
                 builder.availabilityRules(request.availabilityRules().notKeptOrElse(existing.availabilityRules()));
+                builder.name(request.name().notKeptOrElse(existing.name()));
+                builder.description(request.description().notKeptOrElse(existing.description()));
                 return builder.updatedAt(now).build();
             });
 

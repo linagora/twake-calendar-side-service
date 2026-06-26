@@ -279,6 +279,64 @@ public interface BookingLinkDAOContract {
     }
 
     @Test
+    default void insertShouldPersistNameAndDescription() {
+        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE,
+            Optional.of(AVAILABILITY_RULES), Optional.of("Intro call"), Optional.of("Book a 30-minute intro call"));
+
+        BookingLink created = testee().insert(USER_1, request).block();
+
+        assertThat(created.name()).contains("Intro call");
+        assertThat(created.description()).contains("Book a 30-minute intro call");
+
+        BookingLink found = testee().findByPublicId(USER_1, created.publicId()).block();
+        assertThat(found).isEqualTo(created);
+    }
+
+    @Test
+    default void insertShouldDefaultNameAndDescriptionToEmpty() {
+        BookingLink created = testee().insert(USER_1, INSERT_REQUEST).block();
+
+        assertThat(created.name()).isEmpty();
+        assertThat(created.description()).isEmpty();
+    }
+
+    @Test
+    default void updateShouldApplyNameAndDescription() {
+        BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
+        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.modifyTo("Updated name"),
+            ValuePatch.modifyTo("Updated description"));
+
+        BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
+
+        assertThat(updated.name()).contains("Updated name");
+        assertThat(updated.description()).contains("Updated description");
+    }
+
+    @Test
+    default void updateShouldAllowRemovingNameAndDescription() {
+        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE,
+            Optional.of(AVAILABILITY_RULES), Optional.of("Intro call"), Optional.of("Some description"));
+        BookingLink inserted = testee().insert(USER_1, request).block();
+        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.remove(),
+            ValuePatch.remove());
+
+        BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
+
+        assertThat(updated.name()).isEmpty();
+        assertThat(updated.description()).isEmpty();
+    }
+
+    @Test
     default void resetPublicIdShouldFailWhenPublicIdDoesNotExist() {
         assertThatThrownBy(() -> testee().resetPublicId(USER_1, new BookingLinkPublicId(UUID.randomUUID())).block())
             .isInstanceOf(BookingLinkNotFoundException.class);

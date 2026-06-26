@@ -61,11 +61,15 @@ public class BookingLinkPatchRoute extends CalendarRoute {
     private static final String FIELD_DURATION_MINUTES = "durationMinutes";
     private static final String FIELD_ACTIVE = "active";
     private static final String FIELD_AVAILABILITY_RULES = "availabilityRules";
+    private static final String FIELD_NAME = "name";
+    private static final String FIELD_DESCRIPTION = "description";
 
     public record PatchDto(@JsonProperty(FIELD_CALENDAR_URL) Optional<String> calendarUrl,
                            @JsonProperty(FIELD_DURATION_MINUTES) Optional<Integer> durationMinutes,
                            @JsonProperty(FIELD_ACTIVE) Optional<Boolean> active,
-                           @JsonProperty(FIELD_AVAILABILITY_RULES) Optional<List<AvailabilityRuleDTO>> availabilityRules) {
+                           @JsonProperty(FIELD_AVAILABILITY_RULES) Optional<List<AvailabilityRuleDTO>> availabilityRules,
+                           @JsonProperty(FIELD_NAME) Optional<String> name,
+                           @JsonProperty(FIELD_DESCRIPTION) Optional<String> description) {
     }
 
     private final BookingLinkDAO bookingLinkDAO;
@@ -124,7 +128,9 @@ public class BookingLinkPatchRoute extends CalendarRoute {
                 parseCalendarUrl(node, dto),
                 parseDuration(node, dto),
                 parseActive(node, dto),
-                parseAvailabilityRules(node, dto, defaultTimeZone));
+                parseAvailabilityRules(node, dto, defaultTimeZone),
+                parseName(node, dto),
+                parseDescription(node, dto));
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
@@ -181,6 +187,24 @@ public class BookingLinkPatchRoute extends CalendarRoute {
                 Preconditions.checkArgument(!ruleList.isEmpty(), "'availabilityRules' cannot be empty if provided");
                 return new AvailabilityRules(ruleList);
             })
+            .map(ValuePatch::modifyTo)
+            .orElseGet(ValuePatch::remove);
+    }
+
+    private ValuePatch<String> parseName(JsonNode node, PatchDto dto) {
+        if (!node.has(FIELD_NAME)) {
+            return ValuePatch.keep();
+        }
+        return dto.name().map(String::trim).filter(name -> !name.isEmpty())
+            .map(ValuePatch::modifyTo)
+            .orElseGet(ValuePatch::remove);
+    }
+
+    private ValuePatch<String> parseDescription(JsonNode node, PatchDto dto) {
+        if (!node.has(FIELD_DESCRIPTION)) {
+            return ValuePatch.keep();
+        }
+        return dto.description().map(String::trim).filter(description -> !description.isEmpty())
             .map(ValuePatch::modifyTo)
             .orElseGet(ValuePatch::remove);
     }

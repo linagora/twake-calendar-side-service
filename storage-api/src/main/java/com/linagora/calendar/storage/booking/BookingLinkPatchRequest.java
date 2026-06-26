@@ -29,12 +29,16 @@ import com.linagora.calendar.storage.CalendarURL;
 public record BookingLinkPatchRequest(ValuePatch<CalendarURL> calendarUrl,
                                       ValuePatch<Duration> duration,
                                       ValuePatch<Boolean> active,
-                                      ValuePatch<AvailabilityRules> availabilityRules) {
+                                      ValuePatch<AvailabilityRules> availabilityRules,
+                                      ValuePatch<String> name,
+                                      ValuePatch<String> description) {
     public BookingLinkPatchRequest {
         Preconditions.checkNotNull(calendarUrl, "'calendarUrl' must not be null");
         Preconditions.checkNotNull(duration, "'eventDuration' must not be null");
         Preconditions.checkNotNull(active, "'active' must not be null");
         Preconditions.checkNotNull(availabilityRules, "'availabilityRules' must not be null");
+        Preconditions.checkNotNull(name, "'name' must not be null");
+        Preconditions.checkNotNull(description, "'description' must not be null");
         Preconditions.checkArgument(!calendarUrl.isRemoved(), "'calendarUrl' can not be removed");
         Preconditions.checkArgument(!duration.isRemoved(), "'eventDuration' can not be removed");
         Preconditions.checkArgument(!active.isRemoved(), "'active' can not be removed");
@@ -46,6 +50,15 @@ public record BookingLinkPatchRequest(ValuePatch<CalendarURL> calendarUrl,
         Preconditions.checkArgument(!calendarUrl.isKept()
             || !duration.isKept()
             || !active.isKept()
-            || !availabilityRules.isKept(), "At least one updatable field is required");
+            || !availabilityRules.isKept()
+            || !name.isKept()
+            || !description.isKept(), "At least one updatable field is required");
+    }
+
+    public BookingLinkPatchRequest(ValuePatch<CalendarURL> calendarUrl,
+                                   ValuePatch<Duration> duration,
+                                   ValuePatch<Boolean> active,
+                                   ValuePatch<AvailabilityRules> availabilityRules) {
+        this(calendarUrl, duration, active, availabilityRules, ValuePatch.keep(), ValuePatch.keep());
     }
 }

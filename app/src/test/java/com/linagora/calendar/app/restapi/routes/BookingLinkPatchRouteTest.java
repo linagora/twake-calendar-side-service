@@ -164,6 +164,45 @@ class BookingLinkPatchRouteTest {
     }
 
     @Test
+    void shouldPersistUpdatedNameAndDescription() {
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+
+        given()
+            .body("""
+                { "name": "Intro call", "description": "Book a 30-minute introduction call" }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        BookingLink updated = bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
+        assertThat(updated.name()).contains("Intro call");
+        assertThat(updated.description()).contains("Book a 30-minute introduction call");
+    }
+
+    @Test
+    void shouldRemoveNameAndDescriptionWhenSetToNull() {
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE,
+                Optional.empty(), Optional.of("Intro call"), Optional.of("Some description")));
+
+        given()
+            .body("""
+                { "name": null, "description": null }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        BookingLink updated = bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
+        assertThat(updated.name()).isEmpty();
+        assertThat(updated.description()).isEmpty();
+    }
+
+    @Test
     void shouldPersistUpdatedDurationMinutes() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));

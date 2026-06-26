@@ -70,6 +70,8 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
     private static final String FIELD_DURATION_SECONDS = "durationSeconds";
     private static final String FIELD_ACTIVE = "active";
     private static final String FIELD_AVAILABILITY_RULES = "availabilityRules";
+    private static final String FIELD_NAME = "name";
+    private static final String FIELD_DESCRIPTION = "description";
     private static final String FIELD_CREATED_AT = "createdAt";
     private static final String FIELD_UPDATED_AT = "updatedAt";
 
@@ -203,6 +205,16 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
         } else if (request.availabilityRules().isRemoved()) {
             unsetFields.append(FIELD_AVAILABILITY_RULES, "");
         }
+        if (request.name().isModified()) {
+            setFields.append(FIELD_NAME, request.name().get());
+        } else if (request.name().isRemoved()) {
+            unsetFields.append(FIELD_NAME, "");
+        }
+        if (request.description().isModified()) {
+            setFields.append(FIELD_DESCRIPTION, request.description().get());
+        } else if (request.description().isRemoved()) {
+            unsetFields.append(FIELD_DESCRIPTION, "");
+        }
 
         Document updateBson = new Document("$set", setFields);
         if (!unsetFields.isEmpty()) {
@@ -224,6 +236,8 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
 
         bookingLink.availabilityRules().ifPresent(rules ->
             doc.append(FIELD_AVAILABILITY_RULES, serializeRules(rules)));
+        bookingLink.name().ifPresent(name -> doc.append(FIELD_NAME, name));
+        bookingLink.description().ifPresent(description -> doc.append(FIELD_DESCRIPTION, description));
 
         return doc;
     }
@@ -261,6 +275,8 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
         Optional<AvailabilityRules> availabilityRules = Optional.ofNullable(doc.getList(FIELD_AVAILABILITY_RULES, Document.class))
             .filter(rules -> !rules.isEmpty())
             .map(rules -> new AvailabilityRules(rules.stream().map(this::deserializeRule).toList()));
+        Optional<String> name = Optional.ofNullable(doc.getString(FIELD_NAME));
+        Optional<String> description = Optional.ofNullable(doc.getString(FIELD_DESCRIPTION));
 
         return BookingLink.builder()
             .username(username)
@@ -269,6 +285,8 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
             .duration(duration)
             .active(active)
             .availabilityRules(availabilityRules)
+            .name(name)
+            .description(description)
             .createdAt(createdAt)
             .updatedAt(updatedAt)
             .build();

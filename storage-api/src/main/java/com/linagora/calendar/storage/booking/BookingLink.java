@@ -34,6 +34,8 @@ public record BookingLink(Username username,
                           Duration duration,
                           boolean active,
                           Optional<AvailabilityRules> availabilityRules,
+                          Optional<String> name,
+                          Optional<String> description,
                           Instant createdAt,
                           Instant updatedAt) {
 
@@ -44,6 +46,8 @@ public record BookingLink(Username username,
         Preconditions.checkNotNull(duration, "'eventDuration' must not be null");
         Preconditions.checkArgument(!duration.isNegative() && !duration.isZero(), "'eventDuration' must be positive");
         Preconditions.checkNotNull(availabilityRules, "'availabilityRules' must not be null");
+        Preconditions.checkNotNull(name, "'name' must not be null");
+        Preconditions.checkNotNull(description, "'description' must not be null");
         Preconditions.checkNotNull(createdAt, "'createdAt' must not be null");
     }
 
@@ -59,6 +63,8 @@ public record BookingLink(Username username,
             .duration(duration)
             .active(active)
             .availabilityRules(availabilityRules)
+            .name(name)
+            .description(description)
             .createdAt(createdAt)
             .updatedAt(updatedAt);
     }
@@ -70,6 +76,8 @@ public record BookingLink(Username username,
         private Duration duration;
         private boolean active;
         private Optional<AvailabilityRules> availabilityRules = Optional.empty();
+        private Optional<String> name = Optional.empty();
+        private Optional<String> description = Optional.empty();
         private Instant createdAt;
         private Instant updatedAt;
 
@@ -103,6 +111,16 @@ public record BookingLink(Username username,
             return this;
         }
 
+        public Builder name(Optional<String> name) {
+            this.name = name;
+            return this;
+        }
+
+        public Builder description(Optional<String> description) {
+            this.description = description;
+            return this;
+        }
+
         public Builder createdAt(Instant createdAt) {
             this.createdAt = createdAt;
             return this;
@@ -114,7 +132,7 @@ public record BookingLink(Username username,
         }
 
         public BookingLink build() {
-            return new BookingLink(username, publicId, calendarUrl, duration, active, availabilityRules, createdAt, updatedAt);
+            return new BookingLink(username, publicId, calendarUrl, duration, active, availabilityRules, name, description, createdAt, updatedAt);
         }
     }
 
