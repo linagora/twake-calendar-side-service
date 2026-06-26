@@ -91,6 +91,8 @@ public class MemoryBookingLinkDAO implements BookingLinkDAO {
                 builder.calendarUrl(request.calendarUrl().getOrElse(existing.calendarUrl()));
                 builder.duration(request.duration().getOrElse(existing.duration()));
                 builder.active(request.active().getOrElse(existing.active()));
+                builder.name(request.name().notKeptOrElse(existing.name()));
+                builder.description(request.description().notKeptOrElse(existing.description()));
                 builder.availabilityRules(request.availabilityRules().notKeptOrElse(existing.availabilityRules()));
                 return builder.updatedAt(now).build();
             });

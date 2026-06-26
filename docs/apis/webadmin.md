@@ -1171,13 +1171,15 @@ POST /users/{username}/booking-links
   "calendarUrl": "/calendars/67c3a792e4b0884b05ef8aef/67c3a792e4b0884b05ef8aef",
   "durationMinutes": 30,
   "active": true,
+  "name": "30-min intro call",
+  "description": "Book a quick introduction call",
   "availabilityRules": [
     { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "timeZone": "Europe/Paris" }
   ]
 }
 ```
 
-`calendarUrl`, `durationMinutes` and `active` are required. `availabilityRules` is optional.
+`calendarUrl`, `durationMinutes` and `active` are required. `name`, `description` and `availabilityRules` are optional.
 
 ```
 HTTP/1.1 201 Created
@@ -1205,7 +1207,7 @@ PATCH /users/{username}/booking-links/{publicId}
 ```
 
 Only the fields present in the body are updated. At least one field must be provided.
-Set `availabilityRules` to `null` to remove all rules.
+Set `name`, `description` or `availabilityRules` to `null` to remove them.
 
 **Status codes**:
 - `204`: the booking link was updated

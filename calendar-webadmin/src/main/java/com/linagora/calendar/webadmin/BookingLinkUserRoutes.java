@@ -87,6 +87,8 @@ public class BookingLinkUserRoutes implements Routes {
     private static final String FIELD_CALENDAR_URL = "calendarUrl";
     private static final String FIELD_DURATION_MINUTES = "durationMinutes";
     private static final String FIELD_ACTIVE = "active";
+    private static final String FIELD_NAME = "name";
+    private static final String FIELD_DESCRIPTION = "description";
     private static final String FIELD_AVAILABILITY_RULES = "availabilityRules";
     private static final String FIELD_PUBLIC_ID = "bookingLinkPublicId";
     private static final ZoneId DEFAULT_ZONE = ZoneId.of("UTC");
@@ -220,6 +222,8 @@ public class BookingLinkUserRoutes implements Routes {
                 parseCalendarUrl(node, dto),
                 parseDuration(node, dto),
                 parseActive(node, dto),
+                parseStringField(node, dto.name(), FIELD_NAME),
+                parseStringField(node, dto.description(), FIELD_DESCRIPTION),
                 parseAvailabilityRules(node, dto));
         } catch (IllegalArgumentException e) {
             throw badRequest(e.getMessage(), e);
@@ -254,6 +258,13 @@ public class BookingLinkUserRoutes implements Routes {
         }
         return dto.active().map(ValuePatch::modifyTo)
             .orElseThrow(() -> new IllegalArgumentException("'active' cannot be removed"));
+    }
+
+    private ValuePatch<String> parseStringField(JsonNode node, Optional<String> value, String fieldName) {
+        if (!node.has(fieldName)) {
+            return ValuePatch.keep();
+        }
+        return value.map(ValuePatch::modifyTo).orElseGet(ValuePatch::remove);
     }
 
     private ValuePatch<AvailabilityRules> parseAvailabilityRules(JsonNode node, PatchDto dto) {

@@ -23,7 +23,11 @@ Public users can use booking links to book events.
 | `calendarUrl`       | string           | Calendar URI in the form `/calendars/{baseId}/{calendarId}`                 |
 | `durationMinutes`   | integer          | Duration of each bookable slot in minutes (must be positive)                |
 | `active`            | boolean          | Whether the booking link is active                                          |
+| `name`              | string (optional)| Display name of the booking link                                            |
+| `description`       | string (optional)| Description of the booking link                                             |
 | `availabilityRules` | array (optional) | List of availability rule objects (weekly or fixed)                         |
+
+Optional fields (`name`, `description`, `availabilityRules`) are omitted from responses when not set.
 
 ### Availability rule object
 
@@ -61,6 +65,8 @@ Create a new booking link for the authenticated user.
 | `calendarUrl`       | yes      | Calendar URI (must be accessible by the user)                                                                                                            |
 | `durationMinutes`   | yes      | Slot duration in minutes, must be positive                                                                                                               |
 | `active`            | yes      | Whether the booking link is active                                                                                                                       |
+| `name`              | no       | Display name of the booking link                                                                                                                         |
+| `description`       | no       | Description of the booking link                                                                                                                          |
 | `availabilityRules` | no       | List of availability rules. Defaults to business hours from user settings when omitted. Each rule may specify its own `timeZone` (see availability rule object above). |
 
 **Sample request**
@@ -73,6 +79,8 @@ Content-Type: application/json
     "calendarUrl": "/calendars/67c3a792e4b0884b05ef8aef/67c3a792e4b0884b05ef8aef",
     "durationMinutes": 30,
     "active": true,
+    "name": "30-min intro call",
+    "description": "Book a quick introduction call",
     "availabilityRules": [
         { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "timeZone": "Asia/Ho_Chi_Minh" },
         { "type": "weekly", "dayOfWeek": "MON", "start": "13:00", "end": "17:00", "timeZone": "Europe/London" },
@@ -158,6 +166,8 @@ Content-Type: application/json
     "calendarUrl": "/calendars/67c3a792e4b0884b05ef8aef/67c3a792e4b0884b05ef8aef",
     "durationMinutes": 30,
     "active": true,
+    "name": "30-min intro call",
+    "description": "Book a quick introduction call",
     "availabilityRules": [
         { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "timeZone": "Asia/Ho_Chi_Minh" },
         { "type": "weekly", "dayOfWeek": "MON", "start": "13:00", "end": "17:00", "timeZone": "Europe/London" },
@@ -166,7 +176,7 @@ Content-Type: application/json
 }
 ```
 
-Fields `availabilityRules` are omitted from the response when not set.
+Fields `name`, `description` and `availabilityRules` are omitted from the response when not set.
 
 **Error responses**
 
@@ -192,6 +202,8 @@ All fields are optional. Include only the fields to update.
 | `calendarUrl`       | New calendar URI                                                                                                 |
 | `durationMinutes`   | New slot duration in minutes, must be positive                                                                   |
 | `active`            | New active state                                                                                                 |
+| `name`              | New display name. Set to `null` to remove it.                                                                    |
+| `description`       | New description. Set to `null` to remove it.                                                                     |
 | `availabilityRules` | Replaces all existing rules. Set to `null` to remove all rules. Each rule may specify its own `timeZone`. |
 
 **Sample request — update duration and deactivate**

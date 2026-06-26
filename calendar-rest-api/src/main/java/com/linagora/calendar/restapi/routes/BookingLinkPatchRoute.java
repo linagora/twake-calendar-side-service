@@ -60,11 +60,15 @@ public class BookingLinkPatchRoute extends CalendarRoute {
     private static final String FIELD_CALENDAR_URL = "calendarUrl";
     private static final String FIELD_DURATION_MINUTES = "durationMinutes";
     private static final String FIELD_ACTIVE = "active";
+    private static final String FIELD_NAME = "name";
+    private static final String FIELD_DESCRIPTION = "description";
     private static final String FIELD_AVAILABILITY_RULES = "availabilityRules";
 
     public record PatchDto(@JsonProperty(FIELD_CALENDAR_URL) Optional<String> calendarUrl,
                            @JsonProperty(FIELD_DURATION_MINUTES) Optional<Integer> durationMinutes,
                            @JsonProperty(FIELD_ACTIVE) Optional<Boolean> active,
+                           @JsonProperty(FIELD_NAME) Optional<String> name,
+                           @JsonProperty(FIELD_DESCRIPTION) Optional<String> description,
                            @JsonProperty(FIELD_AVAILABILITY_RULES) Optional<List<AvailabilityRuleDTO>> availabilityRules) {
     }
 
@@ -124,6 +128,8 @@ public class BookingLinkPatchRoute extends CalendarRoute {
                 parseCalendarUrl(node, dto),
                 parseDuration(node, dto),
                 parseActive(node, dto),
+                parseStringField(node, dto.name(), FIELD_NAME),
+                parseStringField(node, dto.description(), FIELD_DESCRIPTION),
                 parseAvailabilityRules(node, dto, defaultTimeZone));
         } catch (IllegalArgumentException e) {
             throw e;
@@ -168,6 +174,13 @@ public class BookingLinkPatchRoute extends CalendarRoute {
             return ValuePatch.keep();
         }
         return dto.active.map(ValuePatch::modifyTo).orElseThrow(() -> new IllegalArgumentException("'active' cannot be removed"));
+    }
+
+    private ValuePatch<String> parseStringField(JsonNode node, Optional<String> value, String fieldName) {
+        if (!node.has(fieldName)) {
+            return ValuePatch.keep();
+        }
+        return value.map(ValuePatch::modifyTo).orElseGet(ValuePatch::remove);
     }
 
     private ValuePatch<AvailabilityRules> parseAvailabilityRules(JsonNode node, PatchDto dto, ZoneId defaultTimeZone) {
