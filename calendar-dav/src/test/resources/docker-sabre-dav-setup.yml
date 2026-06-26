@@ -26,6 +26,10 @@ services:
     image: mongo:8.0.6
     networks:
       - tcalendar
+    ulimits:
+      nofile:
+        soft: 64000
+        hard: 64000
     command: ["mongod", "--bind_ip", "0.0.0.0"]
     healthcheck:
       test:
