@@ -111,6 +111,8 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
                 .duration(request.eventDuration())
                 .active(request.active())
                 .availabilityRules(request.availabilityRules())
+                .name(request.name())
+                .description(request.description())
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
