@@ -1672,10 +1672,18 @@ class WebsocketRouteTest {
         // Import after unregister
         importIcsIntoCalendar(guiceServer, calendar, calendarUri, bob);
 
-        String pushed = messages.poll(3, TimeUnit.SECONDS);
-        assertThat(pushed)
-            .as("WebSocket should NOT receive import event after unregister")
-            .isNull();
+        // Must NOT receive any import event. Note that calendarList notifications are pushed
+        // independently of the per-calendar registration (see websocketShouldReceiveCalendarListCreatedEvent)
+        // so only the absence of import events is asserted here.
+        NEGATIVE_AWAIT
+            .untilAsserted(() -> {
+                List<String> received = new ArrayList<>();
+                messages.drainTo(received);
+
+                assertThat(received)
+                    .as("Should not receive calendar import events after unregister")
+                    .noneSatisfy(msg -> assertThat(msg).contains("\"imports\""));
+            });
     }
 
     @Test
