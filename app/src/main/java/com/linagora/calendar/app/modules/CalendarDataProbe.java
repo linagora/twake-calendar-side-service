@@ -185,7 +185,7 @@ public class CalendarDataProbe implements GuiceProbe {
 
     private EventSearchQuery simpleQuery(String query, CalendarURL calendarURL) {
         return new EventSearchQuery(query, Optional.of(List.of(calendarURL)),
-            Optional.empty(), Optional.empty(),
+            Optional.empty(), Optional.empty(), Optional.empty(),
             MAX_LIMIT, 0);
     }
 }
