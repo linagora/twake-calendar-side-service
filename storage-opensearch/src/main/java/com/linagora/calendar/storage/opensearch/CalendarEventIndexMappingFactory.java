@@ -77,6 +77,7 @@ public class CalendarEventIndexMappingFactory {
         String IS_RECURRENT_MASTER = "isRecurrentMaster";
         String CLAZZ = "clazz";
         String VIDEOCONFERENCE_URL = "videoconferenceUrl";
+        String BOOKING_LINK_ID = "bookingLinkId";
         String SEQUENCE = "sequence";
         String RESOURCE_NAME = "resourceName";
     }
@@ -190,6 +191,7 @@ public class CalendarEventIndexMappingFactory {
                 .put(CalendarFields.BASE_CALENDAR_ID, indexedKeywordProperty)
                 .put(CalendarFields.EVENT_UID, indexedKeywordProperty)
                 .put(CalendarFields.CALENDAR_URL, indexedKeywordProperty)
+                .put(CalendarFields.BOOKING_LINK_ID, indexedKeywordProperty)
                 .put(CalendarFields.SUMMARY, summaryProperty(configuration.searchSummaryPrefix()))
                 .put(CalendarFields.LOCATION,  new Property(new TextProperty.Builder().analyzer(CalendarAnalyzers.LOCATION_ANALYZER).build()))
                 .put(CalendarFields.DESCRIPTION,  new Property(new TextProperty.Builder().analyzer(CalendarAnalyzers.STANDARD).build()))

@@ -44,6 +44,7 @@ public record CalendarEventsDocument(@JsonProperty(CalendarFields.BASE_CALENDAR_
                                      @JsonProperty(CalendarFields.ATTENDEES) List<SimplePerson> attendees,
                                      @JsonProperty(CalendarFields.RESOURCES) List<SimplePerson> resources,
                                      @JsonProperty(CalendarFields.VIDEOCONFERENCE_URL) String videoconferenceUrl,
+                                     @JsonProperty(CalendarFields.BOOKING_LINK_ID) String bookingLinkId,
                                      @JsonProperty(CalendarFields.CALENDAR_URL) String calendarURL,
                                      @JsonProperty(CalendarFields.SEQUENCE) Integer sequence,
                                      @JsonProperty(CalendarFields.RESOURCE_NAME) String resourceName) {
@@ -93,6 +94,7 @@ public record CalendarEventsDocument(@JsonProperty(CalendarFields.BASE_CALENDAR_
                 .map(SimplePerson::from)
                 .toList(),
             eventFields.videoconferenceUrl(),
+            eventFields.bookingLinkId(),
             eventFields.calendarURL().serialize(),
             eventFields.sequence().orElse(null),
             eventFields.resourceName().orElse(null));
@@ -118,6 +120,7 @@ public record CalendarEventsDocument(@JsonProperty(CalendarFields.BASE_CALENDAR_
                 .map(SimplePerson::toEventPerson)
                 .toList())
             .videoconferenceUrl(videoconferenceUrl)
+            .bookingLinkId(bookingLinkId)
             .calendarURL(CalendarURL.deserialize(calendarURL));
 
         if (allDay != null) {

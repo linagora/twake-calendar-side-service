@@ -119,7 +119,8 @@ public class MemoryCalendarSearchService implements CalendarSearchService {
     private boolean matchesOptionalFields(EventFields event, EventSearchQuery query) {
         return query.calendars().map(calendarRefList -> matchesCalendarRef(event, calendarRefList)).orElse(true) &&
             query.organizers().map(organizers -> matchesOrganizers(event, organizers)).orElse(true) &&
-            query.attendees().map(attendees -> matchesAttendees(event, attendees)).orElse(true);
+            query.attendees().map(attendees -> matchesAttendees(event, attendees)).orElse(true) &&
+            query.bookingLink().map(bookingLink -> Strings.CS.equals(bookingLink.value().toString(), event.bookingLinkId())).orElse(true);
     }
 
     private boolean matchesQueryKeyword(EventFields event, String keyword) {

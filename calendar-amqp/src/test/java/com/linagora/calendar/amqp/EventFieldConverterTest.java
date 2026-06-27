@@ -236,6 +236,44 @@ public class EventFieldConverterTest {
     }
 
     @Test
+    void fromCreatedMessageShouldExtractBookingLink() {
+        String json = """
+            {
+                 "eventPath": "\\/calendars\\/6801fcef72cc50005a04e5fb\\/6801fcef72cc50005a04e5fb\\/booking-event.ics",
+                 "event": [
+                     "vcalendar",
+                     [
+                         [ "version", {}, "text", "2.0" ],
+                         [ "prodid", {}, "text", "-\\/\\/Twake Calendar\\/\\/Public Booking\\/\\/EN" ]
+                     ],
+                     [
+                         [
+                             "vevent",
+                             [
+                                 [ "uid", {}, "text", "booking-event" ],
+                                 [ "dtstart", {}, "date-time", "2025-04-19T11:00:00Z" ],
+                                 [ "dtstamp", {}, "date-time", "2025-04-18T07:47:48Z" ],
+                                 [ "summary", {}, "text", "Booked slot" ],
+                                 [ "x-openpaas-booking-link", {}, "text", "a1b2c3d4-e5f6-4a5b-8c7d-0e1f2a3b4c5d" ]
+                             ],
+                             []
+                         ]
+                     ]
+                 ],
+                 "import": true,
+                 "etag": "\\"f066260d3a4fca51ae0de0618e9555cc\\""
+             }""";
+
+        CalendarEventMessage createdMessage = CalendarEventMessage.CreatedOrUpdated.deserialize(json.getBytes(StandardCharsets.UTF_8));
+
+        Set<EventFields> eventProperties = EventFieldConverter.from(createdMessage).events();
+
+        assertThat(eventProperties).hasSize(1);
+        assertThat(eventProperties.iterator().next().bookingLinkId())
+            .isEqualTo("a1b2c3d4-e5f6-4a5b-8c7d-0e1f2a3b4c5d");
+    }
+
+    @Test
     void fromCreatedMessageWithRecurrenceEventShouldSucceed() {
         String json = """
             {

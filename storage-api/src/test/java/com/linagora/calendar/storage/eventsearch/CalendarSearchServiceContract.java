@@ -48,6 +48,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.event.EventFields.Person;
 
@@ -939,6 +940,50 @@ public interface CalendarSearchServiceContract {
 
         assertThat(searchResults).containsExactly(event1.uid())
             .doesNotContain(event2.uid());
+    }
+
+    @Test
+    default void searchShouldFilterByBookingLinkWhenProvided() {
+        BookingLinkPublicId bookingLink1 = BookingLinkPublicId.generate();
+        BookingLinkPublicId bookingLink2 = BookingLinkPublicId.generate();
+        CalendarURL calendarURL = generateCalendarURL();
+
+        EventFields event1 = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("Booking Sync")
+            .bookingLinkId(bookingLink1.value().toString())
+            .calendarURL(calendarURL)
+            .build();
+
+        EventFields event2 = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("Booking Marketing")
+            .bookingLinkId(bookingLink2.value().toString())
+            .calendarURL(calendarURL)
+            .build();
+
+        EventFields event3 = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("Booking Standalone")
+            .calendarURL(calendarURL)
+            .build();
+
+        indexEvents(event1);
+        indexEvents(event2);
+        indexEvents(event3);
+
+        EventSearchQuery query = EventSearchQuery.builder()
+            .query("Booking")
+            .calendars(calendarURL)
+            .bookingLink(bookingLink1)
+            .build();
+
+        List<EventUid> searchResults = testee().search(query)
+            .map(EventFields::uid)
+            .collectList().block();
+
+        assertThat(searchResults).containsExactly(event1.uid())
+            .doesNotContain(event2.uid(), event3.uid());
     }
 
     @Test
@@ -1856,7 +1901,7 @@ public interface CalendarSearchServiceContract {
             .toList();
 
         return new EventSearchQuery(query, Optional.of(calendarURLs),
-            Optional.empty(), Optional.empty(),
+            Optional.empty(), Optional.empty(), Optional.empty(),
             MAX_LIMIT, 0);
     }
 

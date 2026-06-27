@@ -67,6 +67,7 @@ public class EventProperty {
     public static final String RRULE_PROPERTY = "rrule";
     public static final String DURATION_PROPERTY = "duration";
     public static final String VIDEOCONFERENCE = "x-openpaas-videoconference";
+    public static final String BOOKING_LINK = "x-openpaas-booking-link";
 
     protected final String name;
     protected final JsonNode attributes;

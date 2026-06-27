@@ -55,6 +55,7 @@ public record EventFields(EventUid uid,
                           List<Person> attendees,
                           List<Person> resources,
                           String videoconferenceUrl,
+                          String bookingLinkId,
                           Optional<Integer> sequence,
                           Optional<String> recurrenceId,
                           Optional<String> resourceName,
@@ -101,6 +102,7 @@ public record EventFields(EventUid uid,
         private List<EventFields.Person> attendees = new ArrayList<>();
         private List<EventFields.Person> resources = new ArrayList<>();
         private String videoconferenceUrl;
+        private String bookingLinkId;
         private CalendarURL calendarURL;
         private Optional<Integer> sequence = Optional.empty();
         private Optional<String> recurrenceId = Optional.empty();
@@ -190,6 +192,11 @@ public record EventFields(EventUid uid,
             return this;
         }
 
+        public Builder bookingLinkId(String bookingLinkId) {
+            this.bookingLinkId = bookingLinkId;
+            return this;
+        }
+
         public Builder calendarURL(CalendarURL calendarURL) {
             this.calendarURL = calendarURL;
             return this;
@@ -239,6 +246,7 @@ public record EventFields(EventUid uid,
                 attendees,
                 resources,
                 videoconferenceUrl,
+                bookingLinkId,
                 sequence,
                 recurrenceId,
                 resourceName,
@@ -264,6 +272,7 @@ public record EventFields(EventUid uid,
         vEvent.getProperty(Property.DTSTAMP).flatMap(EventParseUtils::parseTimeAsInstant).ifPresent(builder::dtStamp);
         EventParseUtils.isRecurrentMaster(vEvent).ifPresent(builder::isRecurrentMaster);
         EventParseUtils.getPropertyValueIgnoreCase(vEvent, "X-OPENPAAS-VIDEOCONFERENCE").ifPresent(builder::videoconferenceUrl);
+        EventParseUtils.getPropertyValueIgnoreCase(vEvent, "X-OPENPAAS-BOOKING-LINK").ifPresent(builder::bookingLinkId);
         EventParseUtils.getOrganizer(vEvent).ifPresent(builder::organizer);
         builder.attendees(EventParseUtils.getAttendees(vEvent));
         builder.resources(EventParseUtils.getResources(vEvent));
