@@ -309,6 +309,8 @@ class BookingLinkReservationRouteTest {
                 .isEqualTo("true");
             softly.assertThat(getPropertyValue.apply("X-PUBLICLY-CREATOR"))
                 .isEqualTo("creator@example.com");
+            softly.assertThat(getPropertyValue.apply("X-OPENPAAS-BOOKING-LINK"))
+                .isEqualTo(inserted.publicId().value().toString());
         });
     }
 

@@ -35,6 +35,7 @@ import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingRequest;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingRequest.BookingAttendee;
+import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Property;
@@ -63,6 +64,7 @@ public class BookingLinkEventIcsBuilder {
 
     private static final String PROD_ID = "-//Twake Calendar//Public Booking//EN";
     private static final String X_PUBLICLY_CREATOR = "X-PUBLICLY-CREATOR";
+    private static final String X_OPENPAAS_BOOKING_LINK = "X-OPENPAAS-BOOKING-LINK";
     private static final String X_OPENPAAS_VIDEOCONFERENCE = "X-OPENPAAS-VIDEOCONFERENCE";
     private static final String VISIO_DESCRIPTION_PREFIX = "Visio: ";
     private static final Transp TRANSP_OPAQUE = new Transp(Transp.VALUE_OPAQUE);
@@ -84,7 +86,7 @@ public class BookingLinkEventIcsBuilder {
         this.uidGenerator = uidGenerator;
     }
 
-    public BuildResult build(BookingRequest request, BookingAttendee organizer, Duration eventDuration) {
+    public BuildResult build(BookingRequest request, BookingAttendee organizer, Duration eventDuration, BookingLinkPublicId bookingLinkPublicId) {
         Uid eventUid = uidGenerator.generateUid();
         Optional<URL> maybeMeetingLink = Optional.of(request.visioLink())
             .filter(FunctionalUtils.identityPredicate())
@@ -93,7 +95,7 @@ public class BookingLinkEventIcsBuilder {
         Calendar calendar = new Calendar()
             .withDefaults()
             .withProdId(PROD_ID)
-            .withComponent(buildEvent(request, organizer, eventUid, eventDuration, maybeMeetingLink))
+            .withComponent(buildEvent(request, organizer, eventUid, eventDuration, maybeMeetingLink, bookingLinkPublicId))
             .getFluentTarget();
 
         return new BuildResult(eventUid, calendar, maybeMeetingLink);
@@ -103,7 +105,8 @@ public class BookingLinkEventIcsBuilder {
                               BookingAttendee organizer,
                               Uid eventUid,
                               Duration eventDuration,
-                              Optional<URL> maybeMeetingLink) {
+                              Optional<URL> maybeMeetingLink,
+                              BookingLinkPublicId bookingLinkPublicId) {
         ImmutableList.Builder<Property> properties = ImmutableList.<Property>builder()
             .add(eventUid)
             .add(TRANSP_OPAQUE)
@@ -124,7 +127,8 @@ public class BookingLinkEventIcsBuilder {
         properties
             .add(new Clazz(Clazz.VALUE_PUBLIC))
             .add(X_PROPERTY_PUBLIC)
-            .add(new XProperty(X_PUBLICLY_CREATOR, request.creator().email().asString()));
+            .add(new XProperty(X_PUBLICLY_CREATOR, request.creator().email().asString()))
+            .add(new XProperty(X_OPENPAAS_BOOKING_LINK, bookingLinkPublicId.value().toString()));
         maybeMeetingLink.ifPresent(visioLink -> properties.add(new XProperty(X_OPENPAAS_VIDEOCONFERENCE, visioLink.toString())));
 
         VEvent event = new VEvent(new PropertyList(properties.build()));

@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 
 ## [unreleased]
 
+### New Features
+
+ - ISSUE-864 Booking links: reference the originating booking link in generated event ICS through the `X-OPENPAAS-BOOKING-LINK` property
+
 ## [2.1.0] - 2026-05-07
 
 ### New Features

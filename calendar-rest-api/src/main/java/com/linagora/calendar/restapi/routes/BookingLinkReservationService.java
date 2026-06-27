@@ -97,7 +97,7 @@ public class BookingLinkReservationService {
         return openPaaSUserDAO.retrieve(bookingLink.username())
             .flatMap(organizer -> {
                 BuildResult eventIcsResult = bookingLinkEventIcsBuilder.build(request,
-                    BookingAttendee.from(organizer.fullName(), organizer.username().asString()), bookingLink.duration());
+                    BookingAttendee.from(organizer.fullName(), organizer.username().asString()), bookingLink.duration(), bookingLink.publicId());
 
                 return calDavClient.importCalendar(bookingLink.calendarUrl(), eventIcsResult.eventIdAsString(), bookingLink.username(), eventIcsResult.icsBytes())
                     .onErrorMap(throwable -> BookingLinkReservationException.createEventFailed(bookingLink.publicId(), eventIcsResult.eventIdAsString(), throwable))
