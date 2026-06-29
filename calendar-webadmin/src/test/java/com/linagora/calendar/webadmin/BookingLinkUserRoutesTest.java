@@ -56,7 +56,6 @@ import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
-import com.linagora.calendar.storage.eventsearch.MemoryCalendarSearchService;
 import com.linagora.calendar.storage.mongodb.MongoDBBookingLinkDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
@@ -88,7 +87,7 @@ public class BookingLinkUserRoutesTest {
 
         TaskManager taskManager = new MemoryTaskManager(new Hostname("foo"));
         BookingLinkEventDeletionService eventDeletionService =
-            new BookingLinkEventDeletionService(new MemoryCalendarSearchService(), calDavClient);
+            new BookingLinkEventDeletionService(calDavClient);
 
         webAdminServer = WebAdminUtils.createWebAdminServer(
             new BookingLinkUserRoutes(userDAO, bookingLinkDAO, calDavClient, taskManager, eventDeletionService, new JsonTransformer()))
