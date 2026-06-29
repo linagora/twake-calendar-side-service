@@ -22,6 +22,8 @@ import static com.linagora.calendar.restapi.RestApiConstants.JSON_HEADER;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.stream.Stream;
 
@@ -34,6 +36,7 @@ import org.apache.james.metrics.api.MetricFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.restapi.routes.response.BookingLinkSlotsResponse;
 import com.linagora.calendar.storage.booking.BookingLinkNotFoundException;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
@@ -52,6 +55,9 @@ public class BookingLinkSlotsRoute implements JMAPRoutes {
     private static final String BOOKING_LINK_PUBLIC_ID_PARAM = "bookingLinkPublicId";
     private static final String FROM_QUERY_PARAM = "from";
     private static final String TO_QUERY_PARAM = "to";
+    private static final String TIME_ZONE_QUERY_PARAM = "timeZone";
+    private static final ZoneId DEFAULT_ZONE = ZoneOffset.UTC;
+    private static final CalendarUtil.CustomizedTimeZoneRegistry TIME_ZONE_REGISTRY = new CalendarUtil.CustomizedTimeZoneRegistry();
     private static final Duration MAX_QUERY_RANGE = Duration.ofDays(60);
 
     private final MetricFactory metricFactory;
@@ -81,11 +87,12 @@ public class BookingLinkSlotsRoute implements JMAPRoutes {
             .flatMap(queryStringDecoder -> {
                 Instant queryStart = parseRequiredInstant(queryStringDecoder, FROM_QUERY_PARAM);
                 Instant queryEnd = parseRequiredInstant(queryStringDecoder, TO_QUERY_PARAM);
+                ZoneId zoneId = parseTimeZone(queryStringDecoder);
                 validateRange(queryStart, queryEnd);
                 BookingLinkPublicId bookingLinkPublicId = BookingLinkPublicId.from(request.param(BOOKING_LINK_PUBLIC_ID_PARAM));
 
                 return bookingLinkSlotsService.computeSlots(bookingLinkPublicId, queryStart, queryEnd)
-                    .flatMap(result -> doResponse(response, queryStart, queryEnd, result));
+                    .flatMap(result -> doResponse(response, queryStart, queryEnd, zoneId, result));
             })
             .onErrorResume(Exception.class, exception -> switch (exception) {
                 case BookingLinkNotFoundException notFound -> {
@@ -112,6 +119,22 @@ public class BookingLinkSlotsRoute implements JMAPRoutes {
         }
     }
 
+    private ZoneId parseTimeZone(QueryStringDecoder queryStringDecoder) {
+        return queryStringDecoder.parameters().getOrDefault(TIME_ZONE_QUERY_PARAM, List.of())
+            .stream()
+            .findFirst()
+            .map(this::resolveZone)
+            .orElse(DEFAULT_ZONE);
+    }
+
+    private ZoneId resolveZone(String timeZone) {
+        try {
+            return TIME_ZONE_REGISTRY.getZoneId(timeZone);
+        } catch (RuntimeException e) {
+            throw new IllegalArgumentException("Invalid query parameter '%s': %s".formatted(TIME_ZONE_QUERY_PARAM, timeZone), e);
+        }
+    }
+
     private Instant parseRequiredInstant(QueryStringDecoder queryStringDecoder, String parameterName) {
         try {
             return queryStringDecoder.parameters().getOrDefault(parameterName, List.of())
@@ -128,8 +151,9 @@ public class BookingLinkSlotsRoute implements JMAPRoutes {
     private Mono<Void> doResponse(HttpServerResponse response,
                                   Instant queryStart,
                                   Instant queryEnd,
+                                  ZoneId zoneId,
                                   BookingLinkSlotsService.SlotsResult result) {
-        return Mono.fromCallable(() -> BookingLinkSlotsResponse.of(result.bookingLink(), result.owner(), queryStart, queryEnd, result.slots()).jsonAsBytes())
+        return Mono.fromCallable(() -> BookingLinkSlotsResponse.of(result.bookingLink(), result.owner(), queryStart, queryEnd, result.slots(), zoneId).jsonAsBytes())
             .flatMap(bytes -> response.status(HttpResponseStatus.OK)
                 .headers(JSON_HEADER)
                 .sendByteArray(Mono.just(bytes))

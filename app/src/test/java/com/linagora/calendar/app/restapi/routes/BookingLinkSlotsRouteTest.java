@@ -266,6 +266,115 @@ class BookingLinkSlotsRouteTest {
     }
 
     @Test
+    void shouldConvertSlotsToRequestedTimeZone(TwakeCalendarGuiceServer server) {
+        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES, AVAILABILITY_RULE);
+        BookingLink inserted = server.getProbe(BookingLinkSlotsProbe.class).insert(openPaaSUser.username(), insertRequest);
+
+        String response = given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .queryParam("from", FROM_20360126)
+            .queryParam("to", TO_20360127)
+            .queryParam("timeZone", "Europe/Paris")
+        .when()
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(JSON)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response)
+            .describedAs("should express range and slots in the requested time zone")
+            .isEqualTo("""
+                {
+                  "durationMinutes": 30,
+                  "autoAccept": false,
+                  "owner": {
+                    "displayName": "%s",
+                    "email": "%s"
+                  },
+                  "range": {
+                    "from": "2036-01-26T01:00:00+01:00",
+                    "to": "2036-01-27T01:00:00+01:00"
+                  },
+                  "slots": [
+                    { "start": "2036-01-26T10:00:00+01:00" },
+                    { "start": "2036-01-26T10:30:00+01:00" },
+                    { "start": "2036-01-26T11:00:00+01:00" },
+                    { "start": "2036-01-26T11:30:00+01:00" },
+                    { "start": "2036-01-26T12:00:00+01:00" },
+                    { "start": "2036-01-26T12:30:00+01:00" }
+                  ]
+                }
+                """.formatted(openPaaSUser.fullName(), openPaaSUser.username().asString()));
+    }
+
+    @Test
+    void shouldDefaultToUtcWhenTimeZoneIsAbsent(TwakeCalendarGuiceServer server) {
+        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES, AVAILABILITY_RULE);
+        BookingLink inserted = server.getProbe(BookingLinkSlotsProbe.class).insert(openPaaSUser.username(), insertRequest);
+
+        String response = given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .queryParam("from", FROM_20360126)
+            .queryParam("to", TO_20360127)
+        .when()
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(JSON)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response)
+            .describedAs("should default to UTC when no time zone is provided")
+            .inPath("$.slots")
+            .isEqualTo("""
+                [
+                  { "start": "2036-01-26T09:00:00Z" },
+                  { "start": "2036-01-26T09:30:00Z" },
+                  { "start": "2036-01-26T10:00:00Z" },
+                  { "start": "2036-01-26T10:30:00Z" },
+                  { "start": "2036-01-26T11:00:00Z" },
+                  { "start": "2036-01-26T11:30:00Z" }
+                ]
+                """);
+    }
+
+    @Test
+    void shouldReturnBadRequestWhenTimeZoneIsInvalid(TwakeCalendarGuiceServer server) {
+        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES, AVAILABILITY_RULE);
+        BookingLink inserted = server.getProbe(BookingLinkSlotsProbe.class).insert(openPaaSUser.username(), insertRequest);
+
+        String response = given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .queryParam("from", FROM_20360126)
+            .queryParam("to", TO_20360127)
+            .queryParam("timeZone", "Invalid/Zone")
+        .when()
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .contentType(JSON)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response)
+            .describedAs("should return bad request when 'timeZone' is not a valid time zone")
+            .isEqualTo("""
+                {
+                    "error": {
+                        "code": 400,
+                        "message": "Bad Request",
+                        "details": "Invalid query parameter 'timeZone': Invalid/Zone"
+                    }
+                }""");
+    }
+
+    @Test
     void shouldReturnSlotsWithoutAuthentication(TwakeCalendarGuiceServer server) {
         BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES, AVAILABILITY_RULE);
         BookingLink inserted = server.getProbe(BookingLinkSlotsProbe.class).insert(openPaaSUser.username(), insertRequest);

@@ -19,6 +19,8 @@
 package com.linagora.calendar.restapi.routes.response;
 
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -48,17 +50,17 @@ public record BookingLinkSlotsResponse(long durationMinutes,
         .registerModule(new Jdk8Module())
         .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
-    public static BookingLinkSlotsResponse of(BookingLink bookingLink, OpenPaaSUser owner, Instant from, Instant to, Set<AvailabilitySlot> slots) {
+    public static BookingLinkSlotsResponse of(BookingLink bookingLink, OpenPaaSUser owner, Instant from, Instant to, Set<AvailabilitySlot> slots, ZoneId zoneId) {
         return new BookingLinkSlotsResponse(bookingLink.duration().toMinutes(),
             bookingLink.autoAccept(),
             bookingLink.name(),
             bookingLink.description(),
             new OwnerDTO(owner.fullName(), owner.username().asString()),
-            new RangeDTO(from, to),
+            new RangeDTO(from.atZone(zoneId), to.atZone(zoneId)),
             slots.stream()
                 .map(AvailabilitySlot::start)
                 .sorted()
-                .map(SlotDTO::new)
+                .map(start -> new SlotDTO(start.atZone(zoneId)))
                 .toList());
     }
 
@@ -67,13 +69,13 @@ public record BookingLinkSlotsResponse(long durationMinutes,
     }
 
     public record RangeDTO(@JsonProperty("from")
-                           @JsonFormat(shape = JsonFormat.Shape.STRING) Instant from,
+                           @JsonFormat(shape = JsonFormat.Shape.STRING) ZonedDateTime from,
                            @JsonProperty("to")
-                           @JsonFormat(shape = JsonFormat.Shape.STRING) Instant to) {
+                           @JsonFormat(shape = JsonFormat.Shape.STRING) ZonedDateTime to) {
     }
 
     public record SlotDTO(@JsonProperty("start")
-                          @JsonFormat(shape = JsonFormat.Shape.STRING) Instant start) {
+                          @JsonFormat(shape = JsonFormat.Shape.STRING) ZonedDateTime start) {
     }
 
     public byte[] jsonAsBytes() throws JsonProcessingException {
