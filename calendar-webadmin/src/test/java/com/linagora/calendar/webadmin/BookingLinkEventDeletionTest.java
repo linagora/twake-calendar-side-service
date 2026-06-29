@@ -65,9 +65,6 @@ import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
-import com.linagora.calendar.storage.event.EventFields;
-import com.linagora.calendar.storage.eventsearch.CalendarEvents;
-import com.linagora.calendar.storage.eventsearch.MemoryCalendarSearchService;
 import com.linagora.calendar.storage.mongodb.MongoDBBookingLinkDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
@@ -85,7 +82,6 @@ public class BookingLinkEventDeletionTest {
     private WebAdminServer webAdminServer;
     private MongoDBBookingLinkDAO bookingLinkDAO;
     private CalDavClient calDavClient;
-    private MemoryCalendarSearchService searchService;
     private OpenPaaSUser user;
 
     @BeforeEach
@@ -95,12 +91,11 @@ public class BookingLinkEventDeletionTest {
         OpenPaaSUserDAO userDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
         calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         bookingLinkDAO = new MongoDBBookingLinkDAO(mongoDB, Clock.system(UTC));
-        searchService = new MemoryCalendarSearchService();
 
         user = sabreDavExtension.newTestUser();
 
         TaskManager taskManager = new MemoryTaskManager(new Hostname("foo"));
-        BookingLinkEventDeletionService eventDeletionService = new BookingLinkEventDeletionService(searchService, calDavClient);
+        BookingLinkEventDeletionService eventDeletionService = new BookingLinkEventDeletionService(calDavClient);
 
         webAdminServer = WebAdminUtils.createWebAdminServer(
                 new BookingLinkUserRoutes(userDAO, bookingLinkDAO, calDavClient, taskManager, eventDeletionService, new JsonTransformer()),
@@ -124,9 +119,9 @@ public class BookingLinkEventDeletionTest {
         BookingLink bookingLink = insertBookingLink();
         Instant now = Instant.now();
 
-        importAndIndexEvent("evt-1", bookingLink.publicId(), now);
-        importAndIndexEvent("evt-2", bookingLink.publicId(), now);
-        importAndIndexEventWithoutBookingLink("evt-other", now);
+        importBookingLinkEvent("evt-1", bookingLink.publicId(), now);
+        importBookingLinkEvent("evt-2", bookingLink.publicId(), now);
+        importEventWithoutBookingLink("evt-other", now);
 
         String taskId = given()
             .queryParam("action", "deleteEvents")
@@ -155,12 +150,47 @@ public class BookingLinkEventDeletionTest {
     }
 
     @Test
+    void deleteEventsShouldDeleteAllEventsWhenManyEvents() {
+        BookingLink bookingLink = insertBookingLink();
+        Instant now = Instant.now();
+
+        int eventCount = 10;
+        for (int i = 0; i < eventCount; i++) {
+            importBookingLinkEvent("evt-" + i, bookingLink.publicId(), now);
+        }
+        importEventWithoutBookingLink("evt-other", now);
+
+        String taskId = given()
+            .queryParam("action", "deleteEvents")
+        .when()
+            .post("/users/{username}/booking-links/{publicId}", user.username().asString(), bookingLink.publicId().value().toString())
+        .then()
+            .statusCode(201)
+            .extract().jsonPath().getString("taskId");
+
+        given()
+            .basePath(TasksRoutes.BASE)
+        .when()
+            .get(taskId + "/await")
+        .then()
+            .body("status", is("completed"))
+            .body("additionalInformation.deletedEventCount", is(eventCount))
+            .body("additionalInformation.failedEventCount", is(0));
+
+        String remainingEvents = listEvents(CalendarURL.from(user.id()));
+        for (int i = 0; i < eventCount; i++) {
+            assertThat(remainingEvents).doesNotContain("UID:evt-" + i);
+        }
+        assertThat(remainingEvents).contains("UID:evt-other");
+    }
+
+    @Test
     void deleteEventsShouldOnlyDeleteEventsSinceWhenProvided() {
         BookingLink bookingLink = insertBookingLink();
         Instant fixedNow = Instant.parse("2026-01-10T00:00:00Z");
 
-        importAndIndexEvent("evt-old", bookingLink.publicId(), fixedNow.minus(10, ChronoUnit.DAYS));
-        importAndIndexEvent("evt-new", bookingLink.publicId(), fixedNow.plus(1, ChronoUnit.DAYS));
+        importBookingLinkEvent("evt-old", bookingLink.publicId(), fixedNow.minus(10, ChronoUnit.DAYS));
+        importBookingLinkEvent("evt-new", bookingLink.publicId(), fixedNow.plus(1, ChronoUnit.DAYS));
 
         String taskId = given()
             .queryParam("action", "deleteEvents")
@@ -251,14 +281,12 @@ public class BookingLinkEventDeletionTest {
             .block();
     }
 
-    private void importAndIndexEvent(String uid, BookingLinkPublicId bookingLinkPublicId, Instant dtStamp) {
+    private void importBookingLinkEvent(String uid, BookingLinkPublicId bookingLinkPublicId, Instant dtStamp) {
         importEvent(uid, dtStamp, bookingLinkPublicId.value().toString());
-        indexEvent(uid, dtStamp, bookingLinkPublicId.value().toString());
     }
 
-    private void importAndIndexEventWithoutBookingLink(String uid, Instant dtStamp) {
+    private void importEventWithoutBookingLink(String uid, Instant dtStamp) {
         importEvent(uid, dtStamp, null);
-        indexEvent(uid, dtStamp, null);
     }
 
     private void importEvent(String uid, Instant dtStamp, String bookingLinkId) {
@@ -283,21 +311,6 @@ public class BookingLinkEventDeletionTest {
 
         calDavClient.importCalendar(CalendarURL.from(user.id()), uid, user.username(), ics.getBytes(StandardCharsets.UTF_8))
             .block();
-    }
-
-    private void indexEvent(String uid, Instant dtStamp, String bookingLinkId) {
-        EventFields.Builder builder = EventFields.builder()
-            .uid(uid)
-            .calendarURL(CalendarURL.from(user.id()))
-            .resourceName(uid + ".ics")
-            .summary("Booking event")
-            .start(dtStamp)
-            .end(dtStamp.plus(1, ChronoUnit.HOURS))
-            .dtStamp(dtStamp);
-        if (bookingLinkId != null) {
-            builder.bookingLinkId(bookingLinkId);
-        }
-        searchService.index(CalendarEvents.of(builder.build())).block();
     }
 
     private String listEvents(CalendarURL calendar) {
