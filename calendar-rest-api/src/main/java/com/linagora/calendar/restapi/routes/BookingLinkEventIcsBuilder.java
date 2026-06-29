@@ -46,6 +46,7 @@ import net.fortuna.ical4j.model.parameter.CuType;
 import net.fortuna.ical4j.model.parameter.PartStat;
 import net.fortuna.ical4j.model.parameter.Role;
 import net.fortuna.ical4j.model.parameter.Rsvp;
+import net.fortuna.ical4j.model.parameter.Value;
 import net.fortuna.ical4j.model.property.Attendee;
 import net.fortuna.ical4j.model.property.Clazz;
 import net.fortuna.ical4j.model.property.Description;
@@ -68,7 +69,7 @@ public class BookingLinkEventIcsBuilder {
     private static final String X_OPENPAAS_VIDEOCONFERENCE = "X-OPENPAAS-VIDEOCONFERENCE";
     private static final String VISIO_DESCRIPTION_PREFIX = "Visio: ";
     private static final Transp TRANSP_OPAQUE = new Transp(Transp.VALUE_OPAQUE);
-    private static final XProperty X_PROPERTY_PUBLIC = new XProperty("X-PUBLICLY-CREATED", "true");
+    private static final XProperty X_PROPERTY_PUBLIC = new XProperty("X-PUBLICLY-CREATED", "TRUE").add(Value.BOOLEAN);
     private static final String MAIL_TO_PREFIX = "mailto:";
 
     private final Clock clock;
@@ -129,7 +130,8 @@ public class BookingLinkEventIcsBuilder {
             .add(X_PROPERTY_PUBLIC)
             .add(new XProperty(X_PUBLICLY_CREATOR, request.creator().email().asString()))
             .add(new XProperty(X_OPENPAAS_BOOKING_LINK, bookingLinkPublicId.value().toString()));
-        maybeMeetingLink.ifPresent(visioLink -> properties.add(new XProperty(X_OPENPAAS_VIDEOCONFERENCE, visioLink.toString())));
+        maybeMeetingLink.ifPresent(visioLink -> properties.add(
+            new XProperty(X_OPENPAAS_VIDEOCONFERENCE, visioLink.toString()).add(Value.URI)));
 
         VEvent event = new VEvent(new PropertyList(properties.build()));
         ValidationResult validationResult = event.validate();

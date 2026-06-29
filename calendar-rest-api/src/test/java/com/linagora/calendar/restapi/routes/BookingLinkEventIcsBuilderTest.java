@@ -82,10 +82,10 @@ public class BookingLinkEventIcsBuilderTest {
             ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED;CN=Nguyen Van A:mailto:vana@example.com
             DESCRIPTION:Please call via Zoom.\\nVisio: https://jitsi.example.com
             CLASS:PUBLIC
-            X-PUBLICLY-CREATED:true
+            X-PUBLICLY-CREATED;VALUE=BOOLEAN:TRUE
             X-PUBLICLY-CREATOR:creator@example.com
             X-OPENPAAS-BOOKING-LINK:a1b2c3d4-e5f6-4a5b-8c7d-0e1f2a3b4c5d
-            X-OPENPAAS-VIDEOCONFERENCE:https://jitsi.example.com
+            X-OPENPAAS-VIDEOCONFERENCE;VALUE=URI:https://jitsi.example.com
             END:VEVENT
             END:VCALENDAR
             """;
@@ -128,7 +128,7 @@ public class BookingLinkEventIcsBuilderTest {
             ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED;CN=BOB:mailto:creator@example.com
             ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED;CN=Nguyen Van A:mailto:vana@example.com
             CLASS:PUBLIC
-            X-PUBLICLY-CREATED:true
+            X-PUBLICLY-CREATED;VALUE=BOOLEAN:TRUE
             X-PUBLICLY-CREATOR:creator@example.com
             X-OPENPAAS-BOOKING-LINK:a1b2c3d4-e5f6-4a5b-8c7d-0e1f2a3b4c5d
             END:VEVENT
@@ -158,7 +158,7 @@ public class BookingLinkEventIcsBuilderTest {
         assertThat(ics)
             .contains("DESCRIPTION:Visio: https://jitsi.example.com");
         assertThat(ics)
-            .contains("X-OPENPAAS-VIDEOCONFERENCE:https://jitsi.example.com");
+            .contains("X-OPENPAAS-VIDEOCONFERENCE;VALUE=URI:https://jitsi.example.com");
     }
 
     @Test
@@ -192,7 +192,7 @@ public class BookingLinkEventIcsBuilderTest {
             ATTENDEE;RSVP=TRUE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION:mailto:owner@example.com
             ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED:mailto:creator@example.com
             CLASS:PUBLIC
-            X-PUBLICLY-CREATED:true
+            X-PUBLICLY-CREATED;VALUE=BOOLEAN:TRUE
             X-PUBLICLY-CREATOR:creator@example.com
             X-OPENPAAS-BOOKING-LINK:a1b2c3d4-e5f6-4a5b-8c7d-0e1f2a3b4c5d
             END:VEVENT
