@@ -1252,6 +1252,47 @@ Content-Type: application/json
 - `400`: invalid `username` or `publicId`
 - `404`: the user does not exist, or the booking link does not exist for that user
 
+### Deleting all events created by a booking link
+
+```
+POST /users/{username}/booking-links/{publicId}?action=deleteEvents
+```
+
+Schedules an asynchronous task that deletes all events that were created through the given booking
+link (matched on the `X-OPENPAAS-BOOKING-LINK` property indexed for the booking link calendar).
+This is convenient for a mass clean up, for example after a booking link has been compromised.
+
+**Query parameters**
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `action`  | yes      | Must be `deleteEvents` |
+| `since`   | no       | ISO-8601 instant (e.g. `2026-01-26T00:00:00Z`). When provided, only events created (or last modified) at or after this instant are deleted. Defaults to no filtering, i.e. all events of the booking link are deleted. |
+
+```
+HTTP/1.1 201 Created
+Content-Type: application/json
+
+{
+  "taskId": "6d2b6c0c-9c6a-4f4f-9c2e-1b7d2b0b0a1a"
+}
+```
+
+The scheduled task has the following `additionalInformation`:
+
+| Field                  | Description                                       |
+|------------------------|---------------------------------------------------|
+| `username`             | The owner of the booking link                     |
+| `bookingLinkPublicId`  | The public id of the booking link                 |
+| `since`                | The `since` instant when provided                 |
+| `deletedEventCount`    | Number of events successfully deleted             |
+| `failedEventCount`     | Number of events that could not be deleted        |
+
+**Status codes**:
+- `201`: the task was created, the response holds its `taskId`
+- `400`: invalid `username` or `publicId`, unsupported `action`, or invalid `since`
+- `404`: the user does not exist, or the booking link does not exist for that user
+
 ## Domain-scoped task routes
 
 These routes provide domain-filtered access to the standard webadmin task management endpoints. They are intended for WebAdmin proxies that enforce multi-tenancy based on the domain in the URL. A task is only accessible if it belongs to the specified domain; otherwise a `404` is returned (to avoid leaking task IDs across domains).

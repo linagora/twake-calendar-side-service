@@ -21,7 +21,9 @@ package com.linagora.calendar.webadmin;
 import static org.apache.james.webadmin.Constants.SEPARATOR;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -32,6 +34,8 @@ import jakarta.inject.Inject;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.james.core.Username;
+import org.apache.james.task.TaskId;
+import org.apache.james.task.TaskManager;
 import org.apache.james.util.ValuePatch;
 import org.apache.james.webadmin.Constants;
 import org.apache.james.webadmin.Routes;
@@ -58,6 +62,8 @@ import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.booking.BookingLinkNotFoundException;
 import com.linagora.calendar.storage.booking.BookingLinkPatchRequest;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
+import com.linagora.calendar.webadmin.service.BookingLinkEventDeletionService;
+import com.linagora.calendar.webadmin.task.BookingLinkEventDeletionTask;
 
 import reactor.core.publisher.Mono;
 import spark.HaltException;
@@ -84,6 +90,11 @@ public class BookingLinkUserRoutes implements Routes {
     private static final String BOOKING_LINK_PATH = BOOKING_LINKS_PATH + SEPARATOR + PUBLIC_ID_PARAM;
     private static final String RESET_PATH = BOOKING_LINK_PATH + SEPARATOR + "reset";
 
+    private static final String ACTION_PARAM = "action";
+    private static final String SINCE_PARAM = "since";
+    private static final String DELETE_EVENTS_ACTION = "deleteEvents";
+    private static final String FIELD_TASK_ID = "taskId";
+
     private static final String FIELD_CALENDAR_URL = "calendarUrl";
     private static final String FIELD_DURATION_MINUTES = "durationMinutes";
     private static final String FIELD_ACTIVE = "active";
@@ -99,16 +110,22 @@ public class BookingLinkUserRoutes implements Routes {
     private final OpenPaaSUserDAO userDAO;
     private final BookingLinkDAO bookingLinkDAO;
     private final CalDavClient calDavClient;
+    private final TaskManager taskManager;
+    private final BookingLinkEventDeletionService eventDeletionService;
     private final JsonTransformer jsonTransformer;
 
     @Inject
     public BookingLinkUserRoutes(OpenPaaSUserDAO userDAO,
                                  BookingLinkDAO bookingLinkDAO,
                                  CalDavClient calDavClient,
+                                 TaskManager taskManager,
+                                 BookingLinkEventDeletionService eventDeletionService,
                                  JsonTransformer jsonTransformer) {
         this.userDAO = userDAO;
         this.bookingLinkDAO = bookingLinkDAO;
         this.calDavClient = calDavClient;
+        this.taskManager = taskManager;
+        this.eventDeletionService = eventDeletionService;
         this.jsonTransformer = jsonTransformer;
     }
 
@@ -124,7 +141,49 @@ public class BookingLinkUserRoutes implements Routes {
         service.get(BOOKING_LINK_PATH, this::getBookingLink, jsonTransformer);
         service.patch(BOOKING_LINK_PATH, this::updateBookingLink);
         service.delete(BOOKING_LINK_PATH, this::deleteBookingLink);
+        service.post(BOOKING_LINK_PATH, this::postBookingLink, jsonTransformer);
         service.post(RESET_PATH, this::resetPublicId, jsonTransformer);
+    }
+
+    private Map<String, String> postBookingLink(Request request, Response response) {
+        String action = request.queryParams(ACTION_PARAM);
+        if (DELETE_EVENTS_ACTION.equals(action)) {
+            return submitDeleteEventsTask(request, response);
+        }
+        throw ErrorResponder.builder()
+            .statusCode(HttpStatus.BAD_REQUEST_400)
+            .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+            .message("Invalid action: '%s'. Supported actions are: %s".formatted(action, DELETE_EVENTS_ACTION))
+            .haltError();
+    }
+
+    private Map<String, String> submitDeleteEventsTask(Request request, Response response) {
+        Username username = retrieveUser(request).username();
+        BookingLinkPublicId publicId = parsePublicId(request);
+        Optional<Instant> since = parseSince(request);
+
+        BookingLink bookingLink = bookingLinkDAO.findByPublicId(username, publicId)
+            .blockOptional()
+            .orElseThrow(() -> bookingLinkNotFound(publicId));
+
+        BookingLinkEventDeletionTask task = new BookingLinkEventDeletionTask(eventDeletionService,
+            username, bookingLink.calendarUrl(), publicId, since);
+        TaskId taskId = taskManager.submit(task);
+
+        response.status(HttpStatus.CREATED_201);
+        return Map.of(FIELD_TASK_ID, taskId.asString());
+    }
+
+    private Optional<Instant> parseSince(Request request) {
+        return Optional.ofNullable(request.queryParams(SINCE_PARAM))
+            .filter(StringUtils::isNotBlank)
+            .map(value -> {
+                try {
+                    return Instant.parse(value);
+                } catch (DateTimeParseException e) {
+                    throw badRequest("Invalid 'since' query parameter, expecting an ISO-8601 instant: %s".formatted(value), e);
+                }
+            });
     }
 
     private List<BookingLinkDTO> listBookingLinks(Request request, Response response) {
