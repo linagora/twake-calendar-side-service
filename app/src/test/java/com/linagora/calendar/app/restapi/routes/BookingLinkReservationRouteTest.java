@@ -306,7 +306,7 @@ class BookingLinkReservationRouteTest {
             softly.assertThat(getPropertyValue.apply(Property.DESCRIPTION))
                 .isEqualTo("Please call via Zoom.\nVisio: " + getPropertyValue.apply("X-OPENPAAS-VIDEOCONFERENCE"));
             softly.assertThat(getPropertyValue.apply("X-PUBLICLY-CREATED"))
-                .isEqualTo("true");
+                .isEqualTo("TRUE");
             softly.assertThat(getPropertyValue.apply("X-PUBLICLY-CREATOR"))
                 .isEqualTo("creator@example.com");
             softly.assertThat(getPropertyValue.apply("X-OPENPAAS-BOOKING-LINK"))
