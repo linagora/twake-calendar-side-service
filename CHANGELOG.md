@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 
  - ISSUE-864 Booking links: reference the originating booking link in generated event ICS through the `X-OPENPAAS-BOOKING-LINK` property
  - ISSUE-867 Booking links: index the originating booking link and expose a `bookingLink` event search criterion on it
+ - ISSUE-875 Booking links: admin task to delete all events created by a booking link (with an optional `since` filter), convenient for mass clean up e.g. after a link compromission
 
 ## [2.1.0] - 2026-05-07
 

@@ -34,6 +34,9 @@ import java.util.UUID;
 
 import javax.net.ssl.SSLException;
 
+import org.apache.james.task.Hostname;
+import org.apache.james.task.MemoryTaskManager;
+import org.apache.james.task.TaskManager;
 import org.apache.james.webadmin.WebAdminServer;
 import org.apache.james.webadmin.WebAdminUtils;
 import org.apache.james.webadmin.utils.JsonTransformer;
@@ -53,9 +56,11 @@ import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
+import com.linagora.calendar.storage.eventsearch.MemoryCalendarSearchService;
 import com.linagora.calendar.storage.mongodb.MongoDBBookingLinkDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
+import com.linagora.calendar.webadmin.service.BookingLinkEventDeletionService;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
 import io.restassured.RestAssured;
@@ -81,8 +86,12 @@ public class BookingLinkUserRoutesTest {
         user = sabreDavExtension.newTestUser();
         otherUser = sabreDavExtension.newTestUser();
 
+        TaskManager taskManager = new MemoryTaskManager(new Hostname("foo"));
+        BookingLinkEventDeletionService eventDeletionService =
+            new BookingLinkEventDeletionService(new MemoryCalendarSearchService(), calDavClient);
+
         webAdminServer = WebAdminUtils.createWebAdminServer(
-            new BookingLinkUserRoutes(userDAO, bookingLinkDAO, calDavClient, new JsonTransformer()))
+            new BookingLinkUserRoutes(userDAO, bookingLinkDAO, calDavClient, taskManager, eventDeletionService, new JsonTransformer()))
             .start();
 
         RestAssured.requestSpecification = WebAdminUtils.buildRequestSpecification(webAdminServer).build();
