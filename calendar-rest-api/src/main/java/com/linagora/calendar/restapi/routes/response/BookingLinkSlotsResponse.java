@@ -29,22 +29,30 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.linagora.calendar.api.booking.AvailableSlotsCalculator.AvailabilitySlot;
+import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
 
 public record BookingLinkSlotsResponse(long durationMinutes,
+                                       OwnerDTO owner,
                                        RangeDTO range,
                                        List<SlotDTO> slots) {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
         .registerModule(new JavaTimeModule())
         .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
-    public static BookingLinkSlotsResponse of(BookingLink bookingLink, Instant from, Instant to, Set<AvailabilitySlot> slots) {
-        return new BookingLinkSlotsResponse(bookingLink.duration().toMinutes(), new RangeDTO(from, to),
+    public static BookingLinkSlotsResponse of(BookingLink bookingLink, OpenPaaSUser owner, Instant from, Instant to, Set<AvailabilitySlot> slots) {
+        return new BookingLinkSlotsResponse(bookingLink.duration().toMinutes(),
+            new OwnerDTO(owner.fullName(), owner.username().asString()),
+            new RangeDTO(from, to),
             slots.stream()
                 .map(AvailabilitySlot::start)
                 .sorted()
                 .map(SlotDTO::new)
                 .toList());
+    }
+
+    public record OwnerDTO(@JsonProperty("displayName") String displayName,
+                           @JsonProperty("email") String email) {
     }
 
     public record RangeDTO(@JsonProperty("from")

@@ -162,6 +162,10 @@ class BookingLinkSlotsRouteTest {
             .isEqualTo("""
                 {
                   "durationMinutes": 30,
+                  "owner": {
+                    "displayName": "%s",
+                    "email": "%s"
+                  },
                   "range": {
                     "from": "2036-01-26T00:00:00Z",
                     "to": "2036-01-27T00:00:00Z"
@@ -175,7 +179,36 @@ class BookingLinkSlotsRouteTest {
                     { "start": "2036-01-26T11:30:00Z" }
                   ]
                 }
-                """);
+                """.formatted(openPaaSUser.fullName(), openPaaSUser.username().asString()));
+    }
+
+    @Test
+    void shouldExposeOwnerDisplayNameAndMailAddress(TwakeCalendarGuiceServer server) {
+        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES, AVAILABILITY_RULE);
+        BookingLink inserted = server.getProbe(BookingLinkSlotsProbe.class).insert(openPaaSUser.username(), insertRequest);
+
+        String response = given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .queryParam("from", FROM_20360126)
+            .queryParam("to", TO_20360127)
+        .when()
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(JSON)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response)
+            .describedAs("should expose the booking link owner display name and mail address")
+            .inPath("$.owner")
+            .isEqualTo("""
+                {
+                  "displayName": "%s",
+                  "email": "%s"
+                }
+                """.formatted(openPaaSUser.fullName(), openPaaSUser.username().asString()));
     }
 
     @Test
