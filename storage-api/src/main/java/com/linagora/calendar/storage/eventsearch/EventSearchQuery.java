@@ -26,11 +26,13 @@ import org.apache.james.core.MailAddress;
 
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 
 public record EventSearchQuery(String query,
                                Optional<List<CalendarURL>> calendars,
                                Optional<List<MailAddress>> organizers,
                                Optional<List<MailAddress>> attendees,
+                               Optional<BookingLinkPublicId> bookingLink,
                                int limit,
                                int offset) {
 
@@ -47,6 +49,7 @@ public record EventSearchQuery(String query,
         Preconditions.checkNotNull(calendars, "calendars must not be null");
         Preconditions.checkNotNull(organizers, "organizers must not be null");
         Preconditions.checkNotNull(attendees, "attendees must not be null");
+        Preconditions.checkNotNull(bookingLink, "bookingLink must not be null");
         Preconditions.checkArgument(limit > 0, "limit must be positive");
         Preconditions.checkArgument(offset >= 0, "offset must be non-negative");
         Preconditions.checkArgument(limit <= MAX_LIMIT, "limit must be less than or equal to " + MAX_LIMIT);
@@ -57,6 +60,7 @@ public record EventSearchQuery(String query,
         private Optional<List<CalendarURL>> calendars = Optional.empty();
         private Optional<List<MailAddress>> organizers = Optional.empty();
         private Optional<List<MailAddress>> attendees = Optional.empty();
+        private Optional<BookingLinkPublicId> bookingLink = Optional.empty();
         private int limit = DEFAULT_LIMIT;
         private int offset = OFFSET_INITIAL;
 
@@ -95,6 +99,11 @@ public record EventSearchQuery(String query,
             return this;
         }
 
+        public Builder bookingLink(BookingLinkPublicId bookingLink) {
+            this.bookingLink = Optional.of(bookingLink);
+            return this;
+        }
+
         public Builder limit(int limit) {
             this.limit = limit;
             return this;
@@ -106,7 +115,7 @@ public record EventSearchQuery(String query,
         }
 
         public EventSearchQuery build() {
-            return new EventSearchQuery(query, calendars, organizers, attendees, limit, offset);
+            return new EventSearchQuery(query, calendars, organizers, attendees, bookingLink, limit, offset);
         }
     }
 }

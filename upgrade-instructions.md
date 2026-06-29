@@ -53,6 +53,32 @@ index only after confirming no calendar-side-service instance still uses the old
 DELETE /calendar-events
 ```
 
+### Added bookingLinkId field to Calendar Event index mapping
+
+Date: 29/06/2026
+
+We added the `bookingLinkId` field to the OpenSearch calendar event index. This field stores the public
+booking link identifier from the `X-OPENPAAS-BOOKING-LINK` ICS property and powers the `bookingLink`
+criterion of the event search API (`POST /calendar/api/events/search`).
+
+#### Required Actions
+
+**Add the field to your existing index mapping:**
+
+```bash
+PUT /calendar_events/_mapping
+{
+  "properties": {
+    "bookingLinkId": {
+      "type": "keyword",
+      "index": true
+    }
+  }
+}
+```
+
+**Note:** Replace `calendar_events` with your actual index name if different.
+
 ## 2.2.0
 
 ### Removed obsolete search queues

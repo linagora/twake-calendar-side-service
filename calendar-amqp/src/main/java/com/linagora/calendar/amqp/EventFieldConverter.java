@@ -128,6 +128,7 @@ public class EventFieldConverter {
                 case EventProperty.RRULE_PROPERTY -> builder.isRecurrentMaster(true);
                 case EventProperty.SEQUENCE_PROPERTY -> builder.sequence(((SequenceProperty) property).getSequence());
                 case EventProperty.VIDEOCONFERENCE -> builder.videoconferenceUrl(property.value);
+                case EventProperty.BOOKING_LINK -> builder.bookingLinkId(property.value);
                 default -> {
                 }
             }

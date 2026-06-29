@@ -656,6 +656,62 @@ public interface CalendarSearchRouteContract {
             .body("_embedded.events[0].data.x-openpaas-videoconference", equalTo(videoconferenceUrl));
     }
 
+    @Test
+    default void shouldFilterByBookingLinkWhenProvided(TwakeCalendarGuiceServer server) {
+        CalendarURL calendarURL = defaultCalendarURL(server);
+        String userId = calendarURL.base().value();
+        String calendarId = calendarURL.calendarId().value();
+        String bookingLink = "a1b2c3d4-e5f6-4a5b-8c7d-0e1f2a3b4c5d";
+
+        EventFields bookedEvent = EventFields.builder()
+            .uid("booked-event")
+            .summary("Booked slot")
+            .start(Instant.parse("2025-04-19T11:00:00Z"))
+            .end(Instant.parse("2025-04-19T11:30:00Z"))
+            .clazz("PUBLIC")
+            .allDay(false)
+            .isRecurrentMaster(false)
+            .bookingLinkId(bookingLink)
+            .calendarURL(calendarURL)
+            .dtStamp(Instant.parse("2025-04-18T07:47:48Z"))
+            .build();
+
+        EventFields otherEvent = EventFields.builder()
+            .uid("other-event")
+            .summary("Booked slot")
+            .start(Instant.parse("2025-04-20T11:00:00Z"))
+            .end(Instant.parse("2025-04-20T11:30:00Z"))
+            .clazz("PUBLIC")
+            .allDay(false)
+            .isRecurrentMaster(false)
+            .calendarURL(calendarURL)
+            .dtStamp(Instant.parse("2025-04-18T07:47:48Z"))
+            .build();
+
+        server.getProbe(CalendarDataProbe.class).indexCalendar(CalendarEvents.of(bookedEvent));
+        server.getProbe(CalendarDataProbe.class).indexCalendar(CalendarEvents.of(otherEvent));
+
+        String requestBody = """
+            {
+                "calendars": [
+                    { "userId": "%s", "calendarId": "%s" }
+                ],
+                "query": "Booked",
+                "bookingLink": "%s"
+            }
+            """.formatted(userId, calendarId, bookingLink);
+
+        given()
+            .body(requestBody)
+            .post("/calendar/api/events/search")
+            .then()
+            .statusCode(200)
+            .contentType(ContentType.JSON)
+            .body("_total_hits", equalTo(1))
+            .body("_embedded.events[0].data.uid", equalTo("booked-event"))
+            .body("_embedded.events[0].data.x-openpaas-booking-link", equalTo(bookingLink));
+    }
+
     private CalendarURL defaultCalendarURL(TwakeCalendarGuiceServer server) {
         return CalendarURL.from(server.getProbe(CalendarDataProbe.class).userId(USERNAME));
     }

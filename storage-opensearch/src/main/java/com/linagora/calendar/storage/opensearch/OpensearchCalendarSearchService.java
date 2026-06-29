@@ -63,6 +63,7 @@ import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.eventsearch.CalendarEvents;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
@@ -205,6 +206,8 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
             mustClauses.add(buildAddressFilter(organizerList, CalendarFields.ORGANIZER)));
         query.attendees().ifPresent(attendeeList ->
             mustClauses.add(buildAddressFilter(attendeeList, CalendarFields.ATTENDEES)));
+        query.bookingLink().ifPresent(bookingLink ->
+            mustClauses.add(buildBookingLinkFilter(bookingLink)));
 
         Query openSearchQuery = QueryBuilders.bool()
             .must(mustClauses)
@@ -340,6 +343,14 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
                     .map(calendarURL -> FieldValue.of(calendarURL.serialize()))
                     .toList())
                 .build())
+            .build()
+            .toQuery();
+    }
+
+    private Query buildBookingLinkFilter(BookingLinkPublicId bookingLink) {
+        return QueryBuilders.term()
+            .field(CalendarFields.BOOKING_LINK_ID)
+            .value(FieldValue.of(bookingLink.value().toString()))
             .build()
             .toQuery();
     }

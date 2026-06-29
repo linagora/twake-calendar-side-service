@@ -43,6 +43,7 @@ import com.linagora.calendar.dav.CalendarSearchSourceResolver;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
 import com.linagora.calendar.storage.eventsearch.EventSearchQuery;
@@ -56,16 +57,18 @@ import reactor.netty.http.server.HttpServerResponse;
 public class CalendarSearchRoute extends CalendarRoute {
 
     public record SearchRequest(List<CalendarRef> calendars, String query, List<String> organizers,
-                                List<String> attendees) {
+                                List<String> attendees, String bookingLink) {
         @JsonCreator
         public SearchRequest(@JsonProperty("calendars") List<CalendarRef> calendars,
                              @JsonProperty("query") String query,
                              @JsonProperty("organizers") List<String> organizers,
-                             @JsonProperty("attendees") List<String> attendees) {
+                             @JsonProperty("attendees") List<String> attendees,
+                             @JsonProperty("bookingLink") String bookingLink) {
             this.calendars = calendars;
             this.query = query;
             this.organizers = organizers;
             this.attendees = attendees;
+            this.bookingLink = bookingLink;
         }
 
         public record CalendarRef(String userId, String calendarId) {
@@ -136,12 +139,13 @@ public class CalendarSearchRoute extends CalendarRoute {
                                Integer durationInDays, Boolean isRecurrentMaster, List<Attendee> attendees,
                                EventResource.Data.Organizer organizer, List<Resource> resources,
                                @JsonProperty("x-openpaas-videoconference") Optional<String> videoconferenceUrl,
+                               @JsonProperty("x-openpaas-booking-link") Optional<String> bookingLinkId,
                                String userId, String calendarId, String dtstamp) {
                 public Data(String uid, Optional<String> summary, Optional<String> location, Optional<String> description,
                             Optional<String> start, Optional<String> end, String clazz,
                             Boolean allDay, Boolean hasResources, Integer durationInDays, Boolean isRecurrentMaster,
                             List<Attendee> attendees, Organizer organizer, List<Resource> resources,
-                            Optional<String> videoconferenceUrl, String userId, String calendarId, String dtstamp) {
+                            Optional<String> videoconferenceUrl, Optional<String> bookingLinkId, String userId, String calendarId, String dtstamp) {
                     this.uid = uid;
                     this.summary = summary;
                     this.location = location;
@@ -157,6 +161,7 @@ public class CalendarSearchRoute extends CalendarRoute {
                     this.organizer = organizer;
                     this.resources = resources;
                     this.videoconferenceUrl = videoconferenceUrl;
+                    this.bookingLinkId = bookingLinkId;
                     this.userId = userId;
                     this.calendarId = calendarId;
                     this.dtstamp = dtstamp;
@@ -194,6 +199,7 @@ public class CalendarSearchRoute extends CalendarRoute {
                         organizer,
                         resources,
                         Optional.ofNullable(event.videoconferenceUrl()),
+                        Optional.ofNullable(event.bookingLinkId()),
                         userId,
                         calendarId,
                         ISO_INSTANT.format(event.dtStamp()));
@@ -284,6 +290,7 @@ public class CalendarSearchRoute extends CalendarRoute {
             .offset(offset);
         extractOrganizers(searchRequest).ifPresent(queryBuilder::organizers);
         extractAttendees(searchRequest).ifPresent(queryBuilder::attendees);
+        extractBookingLink(searchRequest).ifPresent(queryBuilder::bookingLink);
         return queryBuilder.build();
     }
 
@@ -337,6 +344,18 @@ public class CalendarSearchRoute extends CalendarRoute {
                 })
                 .collect(Collectors.toList()))
             .orElse(List.of());
+    }
+
+    private Optional<BookingLinkPublicId> extractBookingLink(SearchRequest searchRequest) {
+        return Optional.ofNullable(searchRequest.bookingLink)
+            .filter(bookingLink -> !bookingLink.isBlank())
+            .map(bookingLink -> {
+                try {
+                    return BookingLinkPublicId.from(bookingLink);
+                } catch (IllegalArgumentException e) {
+                    throw new IllegalArgumentException("Invalid bookingLink: " + bookingLink, e);
+                }
+            });
     }
 
     private Optional<List<MailAddress>> extractOrganizers(SearchRequest searchRequest) {
