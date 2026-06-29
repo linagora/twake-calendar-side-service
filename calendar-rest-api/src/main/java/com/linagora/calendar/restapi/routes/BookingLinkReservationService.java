@@ -31,6 +31,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
+import com.linagora.calendar.api.BookedEventTokenSigner;
+import com.linagora.calendar.api.BookedEventTokenSigner.BookedEvent;
 import com.linagora.calendar.api.booking.AvailableSlotsCalculator.AvailabilitySlot;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.restapi.RestApiConfiguration;
@@ -75,7 +77,7 @@ public class BookingLinkReservationService {
 
     }
 
-    public Mono<Void> book(BookingLinkPublicId publicId, BookingRequest request) {
+    public Mono<BookedEvent> book(BookingLinkPublicId publicId, BookingRequest request) {
         return bookingLinkDAO.findActiveByPublicId(publicId)
             .switchIfEmpty(Mono.error(() -> new BookingLinkNotFoundException(publicId)))
             .flatMap(bookingLink -> validateSlotAvailability(bookingLink, request.slotStartUtc())
@@ -93,7 +95,7 @@ public class BookingLinkReservationService {
             .then();
     }
 
-    private Mono<Void> createBooking(BookingLink bookingLink, BookingRequest request) {
+    private Mono<BookedEvent> createBooking(BookingLink bookingLink, BookingRequest request) {
         return openPaaSUserDAO.retrieve(bookingLink.username())
             .flatMap(organizer -> {
                 BuildResult eventIcsResult = bookingLinkEventIcsBuilder.build(request,
@@ -101,9 +103,13 @@ public class BookingLinkReservationService {
 
                 return calDavClient.importCalendar(bookingLink.calendarUrl(), eventIcsResult.eventIdAsString(), bookingLink.username(), eventIcsResult.icsBytes())
                     .onErrorMap(throwable -> BookingLinkReservationException.createEventFailed(bookingLink.publicId(), eventIcsResult.eventIdAsString(), throwable))
-                    .then(notifyBookingCreated(new BookingCreated(bookingLink, request, organizer, eventIcsResult)));
-            })
-            .then();
+                    .then(notifyBookingCreated(new BookingCreated(bookingLink, request, organizer, eventIcsResult)))
+                    .thenReturn(new BookedEvent(
+                        bookingLink.publicId().value(),
+                        bookingLink.calendarUrl().calendarId().value(),
+                        bookingLink.calendarUrl().base().value(),
+                        eventIcsResult.eventIdAsString()));
+            });
     }
 
     private Mono<Void> notifyBookingCreated(BookingCreated bookingCreated) {

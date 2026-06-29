@@ -418,7 +418,15 @@ Content-Type: application/json
 
 ```
 HTTP/1.1 201 Created
+Content-Type: application/json
+
+{
+  "jwt": "<signed-jwt>"
+}
 ```
+
+The returned JWT is a signed token that can be used to cancel the booked event. It encodes the
+`publicBookingLinkId`, `calendarId`, `ownerId`, and `eventId` needed to identify and cancel the booking.
 
 **Error responses**
 
