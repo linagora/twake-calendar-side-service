@@ -84,6 +84,12 @@ public class BookingLinkEventDeletionService {
         }
     }
 
+    public record DeletionRequest(Username username,
+                                  CalendarURL calendarUrl,
+                                  BookingLinkPublicId bookingLinkPublicId,
+                                  Optional<Instant> since) {
+    }
+
     private record Page(List<EventFields> events, int nextOffset) {
     }
 
@@ -96,17 +102,16 @@ public class BookingLinkEventDeletionService {
         this.calDavClient = calDavClient;
     }
 
-    public Mono<Task.Result> deleteEvents(Username username,
-                                          CalendarURL calendarUrl,
-                                          BookingLinkPublicId bookingLinkPublicId,
-                                          Optional<Instant> since,
-                                          Context context) {
-        LOGGER.info("Deleting events of booking link {} in calendar {} for user {}{}",
-            bookingLinkPublicId.value(), calendarUrl.asUri(), username.asString(),
-            since.map(instant -> " since " + instant).orElse(""));
+    public Mono<Task.Result> deleteEvents(DeletionRequest request, Context context) {
+        Username username = request.username();
+        BookingLinkPublicId bookingLinkPublicId = request.bookingLinkPublicId();
 
-        return searchAllEvents(calendarUrl, bookingLinkPublicId)
-            .filter(sinceFilter(since))
+        LOGGER.info("Deleting events of booking link {} in calendar {} for user {}{}",
+            bookingLinkPublicId.value(), request.calendarUrl().asUri(), username.asString(),
+            request.since().map(instant -> " since " + instant).orElse(""));
+
+        return searchAllEvents(request.calendarUrl(), bookingLinkPublicId)
+            .filter(sinceFilter(request.since()))
             .flatMap(event -> deleteEvent(username, context, event), DEFAULT_CONCURRENCY)
             .reduce(Task.Result.COMPLETED, Task::combine)
             .onErrorResume(e -> {

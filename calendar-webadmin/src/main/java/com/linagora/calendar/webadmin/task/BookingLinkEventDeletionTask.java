@@ -70,7 +70,8 @@ public class BookingLinkEventDeletionTask implements Task {
 
     @Override
     public Result run() {
-        return deletionService.deleteEvents(username, calendarUrl, bookingLinkPublicId, since, context)
+        return deletionService.deleteEvents(
+                new BookingLinkEventDeletionService.DeletionRequest(username, calendarUrl, bookingLinkPublicId, since), context)
             .block();
     }
 
