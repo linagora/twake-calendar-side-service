@@ -22,7 +22,6 @@ import java.net.URI;
 import java.net.URL;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
@@ -31,8 +30,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.james.jmap.Endpoint;
-import org.apache.james.jmap.JMAPRoute;
-import org.apache.james.jmap.JMAPRoutes;
 import org.apache.james.jmap.exceptions.UnauthorizedException;
 import org.apache.james.metrics.api.MetricFactory;
 import org.slf4j.Logger;
@@ -60,7 +57,7 @@ import reactor.core.scheduler.Schedulers;
 import reactor.netty.http.server.HttpServerRequest;
 import reactor.netty.http.server.HttpServerResponse;
 
-public class ResourceParticipationRoute implements JMAPRoutes {
+public class ResourceParticipationRoute extends PublicRoute {
 
     record UpdatePartStatRequest(ResourceId resourceId,
                                  String eventId,
@@ -81,7 +78,6 @@ public class ResourceParticipationRoute implements JMAPRoutes {
     private final ResourceDAO resourceDAO;
     private final OpenPaaSDomainDAO openPaaSDomainDAO;
     private final URI locationRedirectUri;
-    private final MetricFactory metricFactory;
     private final JwtVerifier jwtVerifier;
 
     @Inject
@@ -91,30 +87,21 @@ public class ResourceParticipationRoute implements JMAPRoutes {
                                       @Named("spaCalendarUrl") URL calendarBaseUrl,
                                       JwtVerifier jwtVerifier,
                                       MetricFactory metricFactory) {
+        super(metricFactory);
         this.calDavEventRepository = calDavEventRepository;
         this.resourceDAO = resourceDAO;
         this.openPaaSDomainDAO = openPaaSDomainDAO;
         this.locationRedirectUri = URI.create(Strings.CS.removeEnd(calendarBaseUrl.toString(), "/") + "/calendar");
         this.jwtVerifier = jwtVerifier;
-        this.metricFactory = metricFactory;
     }
 
-    Endpoint endpoint() {
+    protected Endpoint endpoint() {
         return new Endpoint(HttpMethod.GET,
             String.format("/calendar/api/resources/{%s}/{%s}/participation",
                 RESOURCE_ID_PATH_PARAM, EVENT_PATH_ID_PATH_PARAM));
     }
 
-    @Override
-    public Stream<JMAPRoute> routes() {
-        return Stream.of(
-            JMAPRoute.builder()
-                .endpoint(endpoint())
-                .action((req, res) -> Mono.from(metricFactory.decoratePublisherWithTimerMetric(this.getClass().getSimpleName(), handleRequest(req, res))))
-                .corsHeaders());
-    }
-
-    Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response) {
+    protected Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response) {
         return validateAndExtractUpdateRequest(request)
             .flatMap(updateReq -> resourceDAO.findById(updateReq.resourceId())
                 .switchIfEmpty(Mono.error(new ResourceNotFoundException(updateReq.resourceId())))

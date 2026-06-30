@@ -26,15 +26,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import org.apache.james.jmap.Endpoint;
-import org.apache.james.jmap.JMAPRoute;
-import org.apache.james.jmap.JMAPRoutes;
 import org.apache.james.metrics.api.MetricFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,12 +54,11 @@ import reactor.core.publisher.Mono;
 import reactor.netty.http.server.HttpServerRequest;
 import reactor.netty.http.server.HttpServerResponse;
 
-public class BookingLinkReservationRoute implements JMAPRoutes {
+public class BookingLinkReservationRoute extends PublicRoute {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BookingLinkReservationRoute.class);
     private static final String BOOKING_LINK_PUBLIC_ID_PARAM = "bookingLinkPublicId";
 
-    private final MetricFactory metricFactory;
     private final BookingLinkReservationService bookingLinkReservationService;
     private final BookedEventTokenSigner bookedEventTokenSigner;
 
@@ -70,24 +66,16 @@ public class BookingLinkReservationRoute implements JMAPRoutes {
     public BookingLinkReservationRoute(MetricFactory metricFactory,
                                        BookingLinkReservationService bookingLinkReservationService,
                                        BookedEventTokenSigner bookedEventTokenSigner) {
-        this.metricFactory = metricFactory;
+        super(metricFactory);
         this.bookingLinkReservationService = bookingLinkReservationService;
         this.bookedEventTokenSigner = bookedEventTokenSigner;
     }
 
-    Endpoint endpoint() {
+    protected Endpoint endpoint() {
         return new Endpoint(HttpMethod.POST, "/api/booking-links/{%s}/book".formatted(BOOKING_LINK_PUBLIC_ID_PARAM));
     }
 
-    @Override
-    public Stream<JMAPRoute> routes() {
-        return Stream.of(JMAPRoute.builder()
-            .endpoint(endpoint())
-            .action((req, res) -> Mono.from(metricFactory.decoratePublisherWithTimerMetric(this.getClass().getSimpleName(), handleRequest(req, res))))
-            .corsHeaders());
-    }
-
-    Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response) {
+    protected Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response) {
         return request.receive().aggregate().asByteArray()
             .flatMap(bytes -> Mono.fromCallable(() -> ReservationRequestDTO.parse(bytes).toBookingRequest()))
             .flatMap(bookingRequest -> bookingLinkReservationService.book(BookingLinkPublicId.from(request.param(BOOKING_LINK_PUBLIC_ID_PARAM)), bookingRequest))

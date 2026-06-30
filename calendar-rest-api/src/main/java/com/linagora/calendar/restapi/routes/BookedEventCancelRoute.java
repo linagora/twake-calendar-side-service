@@ -22,14 +22,11 @@ import static com.linagora.calendar.restapi.RestApiConstants.JSON_HEADER;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.james.jmap.Endpoint;
-import org.apache.james.jmap.JMAPRoute;
-import org.apache.james.jmap.JMAPRoutes;
 import org.apache.james.metrics.api.MetricFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,12 +47,11 @@ import reactor.core.publisher.Mono;
 import reactor.netty.http.server.HttpServerRequest;
 import reactor.netty.http.server.HttpServerResponse;
 
-public class BookedEventCancelRoute implements JMAPRoutes {
+public class BookedEventCancelRoute extends PublicRoute {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BookedEventCancelRoute.class);
     private static final String BOOKING_CONFIRMATION_TOKEN_PARAM = "bookingConfirmationToken";
 
-    private final MetricFactory metricFactory;
     private final BookedEventTokenSigner bookedEventTokenSigner;
     private final OpenPaaSUserDAO openPaaSUserDAO;
     private final CalDavClient calDavClient;
@@ -65,25 +61,17 @@ public class BookedEventCancelRoute implements JMAPRoutes {
                                   BookedEventTokenSigner bookedEventTokenSigner,
                                   OpenPaaSUserDAO openPaaSUserDAO,
                                   CalDavClient calDavClient) {
-        this.metricFactory = metricFactory;
+        super(metricFactory);
         this.bookedEventTokenSigner = bookedEventTokenSigner;
         this.openPaaSUserDAO = openPaaSUserDAO;
         this.calDavClient = calDavClient;
     }
 
-    Endpoint endpoint() {
+    protected Endpoint endpoint() {
         return new Endpoint(HttpMethod.DELETE, "/api/booked-event");
     }
 
-    @Override
-    public Stream<JMAPRoute> routes() {
-        return Stream.of(JMAPRoute.builder()
-            .endpoint(endpoint())
-            .action((req, res) -> Mono.from(metricFactory.decoratePublisherWithTimerMetric(this.getClass().getSimpleName(), handleRequest(req, res))))
-            .corsHeaders());
-    }
-
-    Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response) {
+    protected Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response) {
         return extractToken(request)
             .flatMap(bookedEventTokenSigner::validateAndExtract)
             .flatMap(this::deleteBookedEvent)
