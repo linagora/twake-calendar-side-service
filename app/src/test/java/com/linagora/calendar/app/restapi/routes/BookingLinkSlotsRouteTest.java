@@ -24,6 +24,7 @@ import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
 import static io.restassured.http.ContentType.JSON;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -162,6 +163,11 @@ class BookingLinkSlotsRouteTest {
             .isEqualTo("""
                 {
                   "durationMinutes": 30,
+                  "autoAccept": false,
+                  "owner": {
+                    "displayName": "%s",
+                    "email": "%s"
+                  },
                   "range": {
                     "from": "2036-01-26T00:00:00Z",
                     "to": "2036-01-27T00:00:00Z"
@@ -175,7 +181,88 @@ class BookingLinkSlotsRouteTest {
                     { "start": "2036-01-26T11:30:00Z" }
                   ]
                 }
-                """);
+                """.formatted(openPaaSUser.fullName(), openPaaSUser.username().asString()));
+
+        assertThat(response)
+            .describedAs("should omit optional booking link name and description when unset")
+            .doesNotContain("\"name\"")
+            .doesNotContain("\"description\"");
+    }
+
+    @Test
+    void shouldExposeOwnerDisplayNameAndMailAddress(TwakeCalendarGuiceServer server) {
+        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES, AVAILABILITY_RULE);
+        BookingLink inserted = server.getProbe(BookingLinkSlotsProbe.class).insert(openPaaSUser.username(), insertRequest);
+
+        String response = given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .queryParam("from", FROM_20360126)
+            .queryParam("to", TO_20360127)
+        .when()
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(JSON)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response)
+            .describedAs("should expose the booking link owner display name and mail address")
+            .inPath("$.owner")
+            .isEqualTo("""
+                {
+                  "displayName": "%s",
+                  "email": "%s"
+                }
+                """.formatted(openPaaSUser.fullName(), openPaaSUser.username().asString()));
+    }
+
+    @Test
+    void shouldExposeNameDescriptionAndAutoAccept(TwakeCalendarGuiceServer server) {
+        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES, true, true,
+            Optional.of(AVAILABILITY_RULE), Optional.of("Interview"), Optional.of("A 30 minutes interview"));
+        BookingLink inserted = server.getProbe(BookingLinkSlotsProbe.class).insert(openPaaSUser.username(), insertRequest);
+
+        String response = given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .queryParam("from", FROM_20360126)
+            .queryParam("to", TO_20360127)
+        .when()
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(JSON)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response)
+            .describedAs("should expose the booking link name, description and autoAccept")
+            .isEqualTo("""
+                {
+                  "durationMinutes": 30,
+                  "autoAccept": true,
+                  "name": "Interview",
+                  "description": "A 30 minutes interview",
+                  "owner": {
+                    "displayName": "%s",
+                    "email": "%s"
+                  },
+                  "range": {
+                    "from": "2036-01-26T00:00:00Z",
+                    "to": "2036-01-27T00:00:00Z"
+                  },
+                  "slots": [
+                    { "start": "2036-01-26T09:00:00Z" },
+                    { "start": "2036-01-26T09:30:00Z" },
+                    { "start": "2036-01-26T10:00:00Z" },
+                    { "start": "2036-01-26T10:30:00Z" },
+                    { "start": "2036-01-26T11:00:00Z" },
+                    { "start": "2036-01-26T11:30:00Z" }
+                  ]
+                }
+                """.formatted(openPaaSUser.fullName(), openPaaSUser.username().asString()));
     }
 
     @Test
@@ -694,6 +781,37 @@ class BookingLinkSlotsRouteTest {
                         "details": "Cannot find booking link with publicId %s"
                     }
                 }""".formatted(nonExistingPublicId.toString()));
+    }
+
+    @Test
+    void shouldReturnNotFoundWhenBookingLinkOwnerDoesNotExist(TwakeCalendarGuiceServer server) {
+        Username missingOwner = Username.of("missing-owner@domain.tld");
+        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES, AVAILABILITY_RULE);
+        BookingLink inserted = server.getProbe(BookingLinkSlotsProbe.class).insert(missingOwner, insertRequest);
+
+        String response = given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .queryParam("from", FROM_20360126)
+            .queryParam("to", TO_20360127)
+        .when()
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
+        .then()
+            .statusCode(HttpStatus.SC_NOT_FOUND)
+            .contentType(JSON)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response)
+            .describedAs("should return not found when the booking link owner no longer exists")
+            .isEqualTo("""
+                {
+                    "error": {
+                        "code": 404,
+                        "message": "Not Found",
+                        "details": "Cannot find booking link with publicId %s"
+                    }
+                }""".formatted(inserted.publicId().value()));
     }
 
     @Test

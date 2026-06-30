@@ -20,31 +20,50 @@ package com.linagora.calendar.restapi.routes.response;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.linagora.calendar.api.booking.AvailableSlotsCalculator.AvailabilitySlot;
+import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
 
+@JsonInclude(JsonInclude.Include.NON_ABSENT)
 public record BookingLinkSlotsResponse(long durationMinutes,
+                                       boolean autoAccept,
+                                       Optional<String> name,
+                                       Optional<String> description,
+                                       OwnerDTO owner,
                                        RangeDTO range,
                                        List<SlotDTO> slots) {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
         .registerModule(new JavaTimeModule())
+        .registerModule(new Jdk8Module())
         .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
-    public static BookingLinkSlotsResponse of(BookingLink bookingLink, Instant from, Instant to, Set<AvailabilitySlot> slots) {
-        return new BookingLinkSlotsResponse(bookingLink.duration().toMinutes(), new RangeDTO(from, to),
+    public static BookingLinkSlotsResponse of(BookingLink bookingLink, OpenPaaSUser owner, Instant from, Instant to, Set<AvailabilitySlot> slots) {
+        return new BookingLinkSlotsResponse(bookingLink.duration().toMinutes(),
+            bookingLink.autoAccept(),
+            bookingLink.name(),
+            bookingLink.description(),
+            new OwnerDTO(owner.fullName(), owner.username().asString()),
+            new RangeDTO(from, to),
             slots.stream()
                 .map(AvailabilitySlot::start)
                 .sorted()
                 .map(SlotDTO::new)
                 .toList());
+    }
+
+    public record OwnerDTO(@JsonProperty("displayName") String displayName,
+                           @JsonProperty("email") String email) {
     }
 
     public record RangeDTO(@JsonProperty("from")

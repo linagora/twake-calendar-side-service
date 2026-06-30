@@ -350,6 +350,13 @@ Content-Type: application/json
 
 {
   "durationMinutes": 30,
+  "autoAccept": false,
+  "name": "Interview",
+  "description": "A 30 minutes interview",
+  "owner": {
+    "displayName": "John Doe",
+    "email": "john.doe@open-paas.org"
+  },
   "range": {
     "from": "2036-01-26T00:00:00Z",
     "to": "2036-01-27T00:00:00Z"
@@ -361,6 +368,10 @@ Content-Type: application/json
   ]
 }
 ```
+
+The `owner` object exposes the public booking link owner `displayName` and `email`.
+
+The response also exposes the booking link `autoAccept` flag, along with the optional `name` and `description` (omitted when not set), so the bookee can access that information too.
 
 **Error responses**
 

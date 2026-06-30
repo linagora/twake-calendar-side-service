@@ -23,7 +23,6 @@ import static com.linagora.calendar.restapi.RestApiConstants.JSON_HEADER;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
-import java.util.Set;
 import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
@@ -35,9 +34,7 @@ import org.apache.james.metrics.api.MetricFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.linagora.calendar.api.booking.AvailableSlotsCalculator.AvailabilitySlot;
 import com.linagora.calendar.restapi.routes.response.BookingLinkSlotsResponse;
-import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkNotFoundException;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 
@@ -88,7 +85,7 @@ public class BookingLinkSlotsRoute implements JMAPRoutes {
                 BookingLinkPublicId bookingLinkPublicId = BookingLinkPublicId.from(request.param(BOOKING_LINK_PUBLIC_ID_PARAM));
 
                 return bookingLinkSlotsService.computeSlots(bookingLinkPublicId, queryStart, queryEnd)
-                    .flatMap(result -> doResponse(response, queryStart, queryEnd, result.getLeft(), result.getRight()));
+                    .flatMap(result -> doResponse(response, queryStart, queryEnd, result));
             })
             .onErrorResume(Exception.class, exception -> switch (exception) {
                 case BookingLinkNotFoundException notFound -> {
@@ -131,9 +128,8 @@ public class BookingLinkSlotsRoute implements JMAPRoutes {
     private Mono<Void> doResponse(HttpServerResponse response,
                                   Instant queryStart,
                                   Instant queryEnd,
-                                  BookingLink bookingLink,
-                                  Set<AvailabilitySlot> slots) {
-        return Mono.fromCallable(() -> BookingLinkSlotsResponse.of(bookingLink, queryStart, queryEnd, slots).jsonAsBytes())
+                                  BookingLinkSlotsService.SlotsResult result) {
+        return Mono.fromCallable(() -> BookingLinkSlotsResponse.of(result.bookingLink(), result.owner(), queryStart, queryEnd, result.slots()).jsonAsBytes())
             .flatMap(bytes -> response.status(HttpResponseStatus.OK)
                 .headers(JSON_HEADER)
                 .sendByteArray(Mono.just(bytes))

@@ -25,8 +25,6 @@ import java.util.Set;
 
 import jakarta.inject.Inject;
 
-import org.apache.commons.lang3.tuple.Pair;
-
 import com.linagora.calendar.api.booking.AvailabilityRule.FixedAvailabilityRule;
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.api.booking.AvailableSlotsCalculator;
@@ -35,6 +33,8 @@ import com.linagora.calendar.api.booking.AvailableSlotsCalculator.ComputeSlotsRe
 import com.linagora.calendar.api.booking.AvailableSlotsCalculator.UnavailableTimeRanges;
 import com.linagora.calendar.api.booking.AvailableSlotsCalculator.UnavailableTimeRanges.TimeRange;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.storage.OpenPaaSUser;
+import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.booking.BookingLinkNotFoundException;
@@ -43,21 +43,28 @@ import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 import reactor.core.publisher.Mono;
 
 public class BookingLinkSlotsService {
+    public record SlotsResult(BookingLink bookingLink, OpenPaaSUser owner, Set<AvailabilitySlot> slots) {
+    }
+
     private final BookingLinkDAO bookingLinkDAO;
+    private final OpenPaaSUserDAO openPaaSUserDAO;
     private final CalDavClient calDavClient;
     private final AvailableSlotsCalculator availableSlotsCalculator;
 
     @Inject
-    public BookingLinkSlotsService(BookingLinkDAO bookingLinkDAO, CalDavClient calDavClient) {
+    public BookingLinkSlotsService(BookingLinkDAO bookingLinkDAO, OpenPaaSUserDAO openPaaSUserDAO, CalDavClient calDavClient) {
         this.bookingLinkDAO = bookingLinkDAO;
+        this.openPaaSUserDAO = openPaaSUserDAO;
         this.calDavClient = calDavClient;
         this.availableSlotsCalculator = new AvailableSlotsCalculator.Default();
     }
 
-    public Mono<Pair<BookingLink, Set<AvailabilitySlot>>> computeSlots(BookingLinkPublicId publicId, Instant from, Instant to) {
+    public Mono<SlotsResult> computeSlots(BookingLinkPublicId publicId, Instant from, Instant to) {
         return findActiveBookingLink(publicId)
-            .flatMap(bookingLink -> computeSlots(bookingLink, from, to)
-                .map(set -> Pair.of(bookingLink, set)));
+            .flatMap(bookingLink -> Mono.zip(
+                    retrieveOwner(bookingLink),
+                    computeSlots(bookingLink, from, to))
+                .map(tuple -> new SlotsResult(bookingLink, tuple.getT1(), tuple.getT2())));
     }
 
     Mono<Set<AvailabilitySlot>> computeSlots(BookingLink bookingLink, Instant from, Instant to) {
@@ -88,6 +95,12 @@ public class BookingLinkSlotsService {
     private Mono<BookingLink> findActiveBookingLink(BookingLinkPublicId publicId) {
         return bookingLinkDAO.findActiveByPublicId(publicId)
             .switchIfEmpty(Mono.error(() -> new BookingLinkNotFoundException(publicId)));
+    }
+
+    private Mono<OpenPaaSUser> retrieveOwner(BookingLink bookingLink) {
+        return openPaaSUserDAO.retrieve(bookingLink.username())
+            // Public booking links whose owner disappeared should behave as unavailable.
+            .switchIfEmpty(Mono.error(() -> new BookingLinkNotFoundException(bookingLink.publicId())));
     }
 
 }
