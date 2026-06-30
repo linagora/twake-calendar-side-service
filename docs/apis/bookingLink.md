@@ -331,6 +331,7 @@ Compute available slots for a public booking link in a query time range.
 |-----------|----------|-------------|
 | `from`    | yes      | Range start, ISO-8601 instant (example: `2036-01-26T00:00:00Z`) |
 | `to`      | yes      | Range end, ISO-8601 instant (must be strictly after `from`) |
+| `timeZone` | no      | Timezone identifier (e.g. `Europe/Paris`, `UTC`, or an ical4j-supported legacy identifier) used to express `range` and `slots` in the response. Defaults to `UTC` when omitted. |
 
 Constraints:
 
@@ -339,7 +340,7 @@ Constraints:
 **Sample request**
 
 ```
-GET /api/booking-links/550e8400-e29b-41d4-a716-446655440000/slots?from=2036-01-26T00:00:00Z&to=2036-01-27T00:00:00Z
+GET /api/booking-links/550e8400-e29b-41d4-a716-446655440000/slots?from=2036-01-26T00:00:00Z&to=2036-01-27T00:00:00Z&timeZone=Europe/Paris
 ```
 
 **Sample response**
@@ -358,13 +359,13 @@ Content-Type: application/json
     "email": "john.doe@open-paas.org"
   },
   "range": {
-    "from": "2036-01-26T00:00:00Z",
-    "to": "2036-01-27T00:00:00Z"
+    "from": "2036-01-26T01:00:00+01:00",
+    "to": "2036-01-27T01:00:00+01:00"
   },
   "slots": [
-    { "start": "2036-01-26T09:00:00Z" },
-    { "start": "2036-01-26T09:30:00Z" },
-    { "start": "2036-01-26T10:00:00Z" }
+    { "start": "2036-01-26T10:00:00+01:00" },
+    { "start": "2036-01-26T10:30:00+01:00" },
+    { "start": "2036-01-26T11:00:00+01:00" }
   ]
 }
 ```
@@ -377,7 +378,7 @@ The response also exposes the booking link `autoAccept` flag, along with the opt
 
 | Status | Cause |
 |--------|-------|
-| 400    | Missing/invalid `from` or `to`, invalid UUID, `to <= from`, range > 60 days |
+| 400    | Missing/invalid `from` or `to`, invalid UUID, `to <= from`, range > 60 days, invalid `timeZone` |
 | 404    | Booking link not found or inactive |
 
 ---
