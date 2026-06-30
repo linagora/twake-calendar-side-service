@@ -50,6 +50,10 @@ public class BookingLinkProbe implements GuiceProbe {
         return bookingLinkDAO.insert(username, request).block();
     }
 
+    public BookingLink insert(Username username, BookingLinkInsertRequest request) {
+        return insertBookingLink(username, request);
+    }
+
     public void deleteBookingLink(Username username, BookingLinkPublicId publicId) {
         bookingLinkDAO.delete(username, publicId).block();
     }

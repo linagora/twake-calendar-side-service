@@ -47,8 +47,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.IntStream;
 
-import jakarta.inject.Inject;
-
 import org.apache.http.HttpStatus;
 import org.apache.james.core.Domain;
 import org.apache.james.core.MaybeSender;
@@ -63,12 +61,12 @@ import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
-import com.google.inject.Scopes;
 import com.google.inject.multibindings.Multibinder;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.api.booking.AvailabilityRule.FixedAvailabilityRule;
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.app.AppTestHelper;
+import com.linagora.calendar.app.BookingLinkProbe;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
@@ -85,10 +83,8 @@ import com.linagora.calendar.smtp.template.MailTemplateConfiguration;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
-import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
-import com.linagora.calendar.storage.booking.MemoryBookingLinkDAO;
 import com.linagora.calendar.storage.event.EventFields.Person;
 import com.linagora.calendar.storage.event.EventParseUtils;
 
@@ -114,19 +110,6 @@ class BookingLinkReservationRouteTest {
         .and().pollDelay(ONE_HUNDRED_MILLISECONDS)
         .await();
 
-    static class BookingLinkReservationProbe implements GuiceProbe {
-        private final BookingLinkDAO bookingLinkDAO;
-
-        @Inject
-        BookingLinkReservationProbe(BookingLinkDAO bookingLinkDAO) {
-            this.bookingLinkDAO = bookingLinkDAO;
-        }
-
-        BookingLink insert(Username username, BookingLinkInsertRequest request) {
-            return bookingLinkDAO.insert(username, request).block();
-        }
-    }
-
     @RegisterExtension
     @Order(1)
     static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
@@ -149,14 +132,9 @@ class BookingLinkReservationRouteTest {
                 MaybeSender.getMailSender("no-reply@openpaas.org"))),
         binder -> binder.bind(MailSenderConfiguration.class)
             .toInstance(mailSenderConfigurationFunction.apply(mockSmtpExtension)),
-        binder -> {
-            Multibinder.newSetBinder(binder, GuiceProbe.class)
-                .addBinding()
-                .to(BookingLinkReservationProbe.class);
-
-            binder.bind(MemoryBookingLinkDAO.class).in(Scopes.SINGLETON);
-            binder.bind(BookingLinkDAO.class).to(MemoryBookingLinkDAO.class);
-        });
+        binder -> Multibinder.newSetBinder(binder, GuiceProbe.class)
+            .addBinding()
+            .to(BookingLinkProbe.class));
 
     @AfterAll
     static void afterAll() {
@@ -447,7 +425,7 @@ class BookingLinkReservationRouteTest {
         BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(
             CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES, BookingLinkInsertRequest.ACTIVE, true,
             Optional.of(AVAILABILITY_RULE), Optional.empty(), Optional.empty());
-        BookingLink inserted = server.getProbe(BookingLinkReservationProbe.class)
+        BookingLink inserted = server.getProbe(BookingLinkProbe.class)
             .insert(openPaaSUser.username(), insertRequest);
         String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();
 
@@ -789,7 +767,7 @@ class BookingLinkReservationRouteTest {
             AvailabilityRules.of(new FixedAvailabilityRule(
                 ZonedDateTime.parse("2036-01-26T09:00:00Z"),
                 ZonedDateTime.parse("2036-01-26T10:00:00Z"))));
-        BookingLink inserted = server.getProbe(BookingLinkReservationProbe.class)
+        BookingLink inserted = server.getProbe(BookingLinkProbe.class)
             .insert(openPaaSUser.username(), insertRequest);
 
         given()
@@ -1174,7 +1152,7 @@ class BookingLinkReservationRouteTest {
             DURATION_30_MINUTES,
             false,
             Optional.of(AVAILABILITY_RULE));
-        BookingLink inserted = server.getProbe(BookingLinkReservationProbe.class)
+        BookingLink inserted = server.getProbe(BookingLinkProbe.class)
             .insert(openPaaSUser.username(), insertRequest);
 
         given()
@@ -1220,7 +1198,7 @@ class BookingLinkReservationRouteTest {
             CalendarURL.from(openPaaSUser.id()),
             DURATION_30_MINUTES,
             AVAILABILITY_RULE);
-        return server.getProbe(BookingLinkReservationProbe.class)
+        return server.getProbe(BookingLinkProbe.class)
             .insert(openPaaSUser.username(), insertRequest);
     }
 
