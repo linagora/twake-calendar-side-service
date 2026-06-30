@@ -58,6 +58,7 @@ import com.google.inject.Scopes;
 import com.google.inject.Singleton;
 import com.google.inject.multibindings.Multibinder;
 import com.google.inject.multibindings.ProvidesIntoSet;
+import com.linagora.calendar.api.BookedEventTokenSigner;
 import com.linagora.calendar.api.JwtSigner;
 import com.linagora.calendar.api.JwtVerifier;
 import com.linagora.calendar.api.ParticipationTokenSigner;
@@ -204,6 +205,7 @@ public class RestApiModule extends AbstractModule {
         bind(SecretLinkPermissionChecker.class).to(NoopPermissionChecker.class);
 
         bind(ParticipationTokenSigner.class).to(ParticipationTokenSigner.Default.class);
+        bind(BookedEventTokenSigner.class).to(BookedEventTokenSigner.Default.class);
 
         Multibinder<PeopleSearchProvider> peopleSearchProviderMultibinder = Multibinder.newSetBinder(binder(), PeopleSearchProvider.class);
         peopleSearchProviderMultibinder.addBinding().to(ContactSearchProvider.class);

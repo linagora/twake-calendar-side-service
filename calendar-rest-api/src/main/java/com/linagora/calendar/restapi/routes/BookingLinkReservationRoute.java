@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.restapi.routes;
 
+import static com.linagora.calendar.restapi.RestApiConstants.JSON_HEADER;
+
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
@@ -42,6 +44,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.google.common.base.Preconditions;
+import com.linagora.calendar.api.BookedEventTokenSigner;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationException.SlotNotAvailableException;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingRequest;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingRequest.BookingAttendee;
@@ -61,12 +64,15 @@ public class BookingLinkReservationRoute implements JMAPRoutes {
 
     private final MetricFactory metricFactory;
     private final BookingLinkReservationService bookingLinkReservationService;
+    private final BookedEventTokenSigner bookedEventTokenSigner;
 
     @Inject
     public BookingLinkReservationRoute(MetricFactory metricFactory,
-                                       BookingLinkReservationService bookingLinkReservationService) {
+                                       BookingLinkReservationService bookingLinkReservationService,
+                                       BookedEventTokenSigner bookedEventTokenSigner) {
         this.metricFactory = metricFactory;
         this.bookingLinkReservationService = bookingLinkReservationService;
+        this.bookedEventTokenSigner = bookedEventTokenSigner;
     }
 
     Endpoint endpoint() {
@@ -85,7 +91,11 @@ public class BookingLinkReservationRoute implements JMAPRoutes {
         return request.receive().aggregate().asByteArray()
             .flatMap(bytes -> Mono.fromCallable(() -> ReservationRequestDTO.parse(bytes).toBookingRequest()))
             .flatMap(bookingRequest -> bookingLinkReservationService.book(BookingLinkPublicId.from(request.param(BOOKING_LINK_PUBLIC_ID_PARAM)), bookingRequest))
-            .then(response.status(HttpResponseStatus.CREATED).send())
+            .flatMap(bookedEventTokenSigner::signAsJwt)
+            .flatMap(jwt -> response.status(HttpResponseStatus.CREATED)
+                .headers(JSON_HEADER)
+                .sendString(Mono.just("{\"bookingConfirmationToken\":\"%s\"}".formatted(jwt)))
+                .then())
             .onErrorResume(Exception.class, exception -> handleError(request, response, exception));
     }
 

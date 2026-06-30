@@ -205,6 +205,45 @@ class BookingLinkReservationRouteTest {
     }
 
     @Test
+    void shouldReturnBookingConfirmationTokenOnSuccessfulBooking(TwakeCalendarGuiceServer server) {
+        BookingLink inserted = insertActiveBookingLink(server);
+        String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();
+
+        String bookingConfirmationToken = given()
+            .auth().none()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body(bodyRequest(slotStartUtc))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED)
+            .contentType(JSON)
+            .extract()
+            .jsonPath()
+            .getString("bookingConfirmationToken");
+
+        String eventId = calDavClient.findUserCalendarEventIds(openPaaSUser.username(), CalendarURL.from(openPaaSUser.id()))
+            .collectList()
+            .block()
+            .getFirst();
+
+        String payload = new String(Base64.getUrlDecoder().decode(bookingConfirmationToken.split("\\.")[1]), StandardCharsets.UTF_8);
+        assertThatJson(payload)
+            .withOptions(net.javacrumbs.jsonunit.core.Option.IGNORING_EXTRA_FIELDS)
+            .isEqualTo("""
+                {
+                  "publicBookingLinkId": "%s",
+                  "calendarId": "%s",
+                  "ownerId": "%s",
+                  "eventId": "%s"
+                }
+                """.formatted(inserted.publicId().value(),
+                openPaaSUser.id().value(),
+                openPaaSUser.id().value(),
+                eventId));
+    }
+
+    @Test
     void shouldCreateBookingWithoutAuthentication(TwakeCalendarGuiceServer server) {
         BookingLink inserted = insertActiveBookingLink(server);
         String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();

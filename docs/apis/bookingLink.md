@@ -418,7 +418,15 @@ Content-Type: application/json
 
 ```
 HTTP/1.1 201 Created
+Content-Type: application/json
+
+{
+  "bookingConfirmationToken": "<signed-jwt>"
+}
 ```
+
+The returned `bookingConfirmationToken` is a signed JWT that can be used to cancel the booked event. It encodes the
+`publicBookingLinkId`, `calendarId`, `ownerId`, and `eventId` needed to identify and cancel the booking.
 
 **Error responses**
 
