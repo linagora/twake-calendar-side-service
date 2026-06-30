@@ -24,6 +24,7 @@ import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
 import static io.restassured.http.ContentType.JSON;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -181,6 +182,11 @@ class BookingLinkSlotsRouteTest {
                   ]
                 }
                 """.formatted(openPaaSUser.fullName(), openPaaSUser.username().asString()));
+
+        assertThat(response)
+            .describedAs("should omit optional booking link name and description when unset")
+            .doesNotContain("\"name\"")
+            .doesNotContain("\"description\"");
     }
 
     @Test
