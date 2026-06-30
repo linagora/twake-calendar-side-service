@@ -30,7 +30,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 import jakarta.inject.Inject;
@@ -46,7 +45,6 @@ import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
-import com.google.inject.Scopes;
 import com.google.inject.multibindings.Multibinder;
 import com.linagora.calendar.api.booking.AvailabilityRule.FixedAvailabilityRule;
 import com.linagora.calendar.api.booking.AvailabilityRules;
@@ -57,7 +55,6 @@ import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavModuleTestHelper;
-import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.smtp.MailSenderConfiguration;
@@ -69,7 +66,6 @@ import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
-import com.linagora.calendar.storage.booking.MemoryBookingLinkDAO;
 
 import io.restassured.RestAssured;
 import io.restassured.builder.RequestSpecBuilder;
@@ -98,7 +94,7 @@ class BookedEventCancelRouteTest {
 
     @RegisterExtension
     @Order(1)
-    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+    static SabreDavExtension sabreDavExtension = SabreDavExtension.shared();
 
     @RegisterExtension
     @Order(2)
@@ -122,9 +118,6 @@ class BookedEventCancelRouteTest {
             Multibinder.newSetBinder(binder, GuiceProbe.class)
                 .addBinding()
                 .to(BookingLinkProbe.class);
-
-            binder.bind(MemoryBookingLinkDAO.class).in(Scopes.SINGLETON);
-            binder.bind(BookingLinkDAO.class).to(MemoryBookingLinkDAO.class);
         });
 
     @AfterAll
@@ -170,6 +163,32 @@ class BookedEventCancelRouteTest {
             .collectList()
             .block();
         assertThat(eventIds).isEmpty();
+    }
+
+    @Test
+    void cancelShouldBeIdempotent(TwakeCalendarGuiceServer server) {
+        String jwt = bookAndGetJwt(server);
+
+        given()
+            .auth().none()
+            .queryParam("bookingConfirmationToken", jwt)
+        .when()
+            .delete("/api/booked-event")
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        List<String> eventIds = calDavClient.findUserCalendarEventIds(openPaaSUser.username(), CalendarURL.from(openPaaSUser.id()))
+            .collectList()
+            .block();
+        assertThat(eventIds).isEmpty();
+
+        given()
+            .auth().none()
+            .queryParam("bookingConfirmationToken", jwt)
+        .when()
+            .delete("/api/booked-event")
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
     }
 
     @Test
