@@ -784,6 +784,37 @@ class BookingLinkSlotsRouteTest {
     }
 
     @Test
+    void shouldReturnNotFoundWhenBookingLinkOwnerDoesNotExist(TwakeCalendarGuiceServer server) {
+        Username missingOwner = Username.of("missing-owner@domain.tld");
+        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES, AVAILABILITY_RULE);
+        BookingLink inserted = server.getProbe(BookingLinkSlotsProbe.class).insert(missingOwner, insertRequest);
+
+        String response = given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .queryParam("from", FROM_20360126)
+            .queryParam("to", TO_20360127)
+        .when()
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
+        .then()
+            .statusCode(HttpStatus.SC_NOT_FOUND)
+            .contentType(JSON)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response)
+            .describedAs("should return not found when the booking link owner no longer exists")
+            .isEqualTo("""
+                {
+                    "error": {
+                        "code": 404,
+                        "message": "Not Found",
+                        "details": "Cannot find booking link with publicId %s"
+                    }
+                }""".formatted(inserted.publicId().value()));
+    }
+
+    @Test
     void shouldReturnNotFoundWhenBookingLinkIsInactive(TwakeCalendarGuiceServer server) {
         boolean inactive = false;
         BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES, inactive, Optional.of(AVAILABILITY_RULE));
