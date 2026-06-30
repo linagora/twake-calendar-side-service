@@ -18,8 +18,6 @@
 
 package com.linagora.calendar.restapi.routes;
 
-import static com.linagora.calendar.restapi.RestApiConstants.JSON_HEADER;
-
 import java.util.List;
 import java.util.Optional;
 
@@ -35,7 +33,6 @@ import com.linagora.calendar.api.BookedEventTokenSigner;
 import com.linagora.calendar.api.BookedEventTokenSigner.BookedEvent;
 import com.linagora.calendar.api.BookedEventTokenSigner.BookedEventTokenClaimException;
 import com.linagora.calendar.dav.CalDavClient;
-import com.linagora.calendar.restapi.ErrorResponse;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
@@ -101,31 +98,17 @@ public class BookedEventCancelRoute extends PublicRoute {
     private Mono<Void> handleError(HttpServerResponse response, Exception exception) {
         return switch (exception) {
             case BookedEventTokenClaimException e -> {
-                LOGGER.warn("Invalid booked event token", e);
-                yield doUnauthorized(response);
+                LOGGER.warn("Invalid booked event token: {}", e.getMessage());
+                yield ErrorResponseHandler.handle(response, HttpResponseStatus.UNAUTHORIZED, "bookingConfirmationToken is missing or invalid");
             }
             case IllegalArgumentException e -> {
                 LOGGER.warn("Bad request for booked event cancellation: {}", e.getMessage());
-                yield doUnauthorized(response);
+                yield ErrorResponseHandler.handle(response, HttpResponseStatus.UNAUTHORIZED, "bookingConfirmationToken is missing or invalid");
             }
             default -> {
                 LOGGER.error("Unexpected error processing booked event cancellation", exception);
-                yield doServerError(response, exception);
+                yield ErrorResponseHandler.handle(response, HttpResponseStatus.INTERNAL_SERVER_ERROR, exception);
             }
         };
-    }
-
-    private Mono<Void> doUnauthorized(HttpServerResponse response) {
-        return response.status(HttpResponseStatus.UNAUTHORIZED)
-            .headers(JSON_HEADER)
-            .sendByteArray(Mono.fromCallable(() -> ErrorResponse.of(401, "Unauthorized", "JWT is missing or invalid").serializeAsBytes()))
-            .then();
-    }
-
-    private Mono<Void> doServerError(HttpServerResponse response, Exception exception) {
-        return response.status(HttpResponseStatus.INTERNAL_SERVER_ERROR)
-            .headers(JSON_HEADER)
-            .sendByteArray(Mono.fromCallable(() -> ErrorResponse.of(500, "Server Error", exception.getMessage()).serializeAsBytes()))
-            .then();
     }
 }

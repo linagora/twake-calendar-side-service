@@ -27,14 +27,23 @@ import reactor.netty.http.server.HttpServerResponse;
 
 public class ErrorResponseHandler {
 
-
     public static Mono<Void> handle(HttpServerResponse response,
                                     HttpResponseStatus status,
                                     Throwable exception) {
+        if (HttpResponseStatus.INTERNAL_SERVER_ERROR.equals(status)) {
+            return handle(response, status, "Something went wrong.");
+        }
+        return handle(response, status, exception.getMessage());
+    }
+
+
+    public static Mono<Void> handle(HttpServerResponse response,
+                                    HttpResponseStatus status,
+                                    String message) {
         return response.status(status)
             .headers(RestApiConstants.JSON_HEADER)
             .sendByteArray(Mono.fromCallable(() ->
-                ErrorResponse.of(status.code(), status.reasonPhrase(), exception.getMessage())
+                ErrorResponse.of(status.code(), status.reasonPhrase(), message)
                     .serializeAsBytes()))
             .then();
     }
