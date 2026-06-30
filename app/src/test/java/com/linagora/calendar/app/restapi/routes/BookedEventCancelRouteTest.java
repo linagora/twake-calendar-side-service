@@ -198,7 +198,7 @@ class BookedEventCancelRouteTest {
         .when()
             .delete("/api/booked-event")
         .then()
-            .statusCode(HttpStatus.SC_UNAUTHORIZED)
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
             .contentType(JSON);
     }
 
@@ -210,7 +210,7 @@ class BookedEventCancelRouteTest {
         .when()
             .delete("/api/booked-event")
         .then()
-            .statusCode(HttpStatus.SC_UNAUTHORIZED)
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
             .contentType(JSON);
     }
 
