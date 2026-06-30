@@ -62,7 +62,7 @@ public class BookingLinkSlotsService {
     public Mono<SlotsResult> computeSlots(BookingLinkPublicId publicId, Instant from, Instant to) {
         return findActiveBookingLink(publicId)
             .flatMap(bookingLink -> Mono.zip(
-                    openPaaSUserDAO.retrieve(bookingLink.username()),
+                    retrieveOwner(bookingLink),
                     computeSlots(bookingLink, from, to))
                 .map(tuple -> new SlotsResult(bookingLink, tuple.getT1(), tuple.getT2())));
     }
@@ -95,6 +95,12 @@ public class BookingLinkSlotsService {
     private Mono<BookingLink> findActiveBookingLink(BookingLinkPublicId publicId) {
         return bookingLinkDAO.findActiveByPublicId(publicId)
             .switchIfEmpty(Mono.error(() -> new BookingLinkNotFoundException(publicId)));
+    }
+
+    private Mono<OpenPaaSUser> retrieveOwner(BookingLink bookingLink) {
+        return openPaaSUserDAO.retrieve(bookingLink.username())
+            // Public booking links whose owner disappeared should behave as unavailable.
+            .switchIfEmpty(Mono.error(() -> new BookingLinkNotFoundException(bookingLink.publicId())));
     }
 
 }
