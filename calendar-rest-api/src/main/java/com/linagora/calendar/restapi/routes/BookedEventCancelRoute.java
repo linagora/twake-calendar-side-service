@@ -99,7 +99,7 @@ public class BookedEventCancelRoute extends PublicRoute {
         return switch (exception) {
             case BookedEventTokenClaimException e -> {
                 LOGGER.info("Invalid booked event token: {}", e.getMessage());
-                yield ErrorResponseHandler.handle(response, HttpResponseStatus.BAD_REQUEST, "bookingConfirmationToken is missing or invalid");
+                yield ErrorResponseHandler.handle(response, HttpResponseStatus.UNAUTHORIZED, "bookingConfirmationToken is missing or invalid");
             }
             case IllegalArgumentException e -> {
                 LOGGER.info("Bad request for booked event cancellation: {}", e.getMessage());
