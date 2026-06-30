@@ -94,7 +94,7 @@ public class BookingLinkReservationRoute implements JMAPRoutes {
             .flatMap(bookedEventTokenSigner::signAsJwt)
             .flatMap(jwt -> response.status(HttpResponseStatus.CREATED)
                 .headers(JSON_HEADER)
-                .sendString(Mono.just("{\"jwt\":\"%s\"}".formatted(jwt)))
+                .sendString(Mono.just("{\"bookingConfirmationToken\":\"%s\"}".formatted(jwt)))
                 .then())
             .onErrorResume(Exception.class, exception -> handleError(request, response, exception));
     }

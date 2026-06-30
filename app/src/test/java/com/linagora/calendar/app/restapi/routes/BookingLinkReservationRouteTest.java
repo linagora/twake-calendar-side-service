@@ -205,11 +205,11 @@ class BookingLinkReservationRouteTest {
     }
 
     @Test
-    void shouldReturnJwtOnSuccessfulBooking(TwakeCalendarGuiceServer server) {
+    void shouldReturnBookingConfirmationTokenOnSuccessfulBooking(TwakeCalendarGuiceServer server) {
         BookingLink inserted = insertActiveBookingLink(server);
         String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();
 
-        String jwt = given()
+        String bookingConfirmationToken = given()
             .auth().none()
             .pathParam("bookingLinkPublicId", inserted.publicId().value())
             .body(bodyRequest(slotStartUtc))
@@ -220,14 +220,14 @@ class BookingLinkReservationRouteTest {
             .contentType(JSON)
             .extract()
             .jsonPath()
-            .getString("jwt");
+            .getString("bookingConfirmationToken");
 
         String eventId = calDavClient.findUserCalendarEventIds(openPaaSUser.username(), CalendarURL.from(openPaaSUser.id()))
             .collectList()
             .block()
             .getFirst();
 
-        String payload = new String(Base64.getUrlDecoder().decode(jwt.split("\\.")[1]), StandardCharsets.UTF_8);
+        String payload = new String(Base64.getUrlDecoder().decode(bookingConfirmationToken.split("\\.")[1]), StandardCharsets.UTF_8);
         assertThatJson(payload)
             .withOptions(net.javacrumbs.jsonunit.core.Option.IGNORING_EXTRA_FIELDS)
             .isEqualTo("""
