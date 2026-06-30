@@ -331,7 +331,7 @@ Compute available slots for a public booking link in a query time range.
 |-----------|----------|-------------|
 | `from`    | yes      | Range start, ISO-8601 instant (example: `2036-01-26T00:00:00Z`) |
 | `to`      | yes      | Range end, ISO-8601 instant (must be strictly after `from`) |
-| `timeZone` | no      | IANA timezone (e.g. `Europe/Paris`, `UTC`) used to express `range` and `slots` in the response. Defaults to `UTC` when omitted. |
+| `timeZone` | no      | Timezone identifier (e.g. `Europe/Paris`, `UTC`, or an ical4j-supported legacy identifier) used to express `range` and `slots` in the response. Defaults to `UTC` when omitted. |
 
 Constraints:
 

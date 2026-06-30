@@ -311,6 +311,50 @@ class BookingLinkSlotsRouteTest {
     }
 
     @Test
+    void shouldApplyDaylightSavingRulesForLegacyTimeZoneIdentifier(TwakeCalendarGuiceServer server) {
+        AvailabilityRules summerAvailabilityRule = AvailabilityRules.of(new FixedAvailabilityRule(
+            ZonedDateTime.parse("2036-07-01T09:00:00Z"),
+            ZonedDateTime.parse("2036-07-01T10:00:00Z")));
+        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES, summerAvailabilityRule);
+        BookingLink inserted = server.getProbe(BookingLinkSlotsProbe.class).insert(openPaaSUser.username(), insertRequest);
+
+        String response = given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .queryParam("from", "2036-07-01T00:00:00Z")
+            .queryParam("to", "2036-07-02T00:00:00Z")
+            .queryParam("timeZone", "Romance Standard Time")
+        .when()
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(JSON)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response)
+            .describedAs("should apply DST offsets when resolving legacy time zone identifiers")
+            .isEqualTo("""
+                {
+                  "durationMinutes": 30,
+                  "autoAccept": false,
+                  "owner": {
+                    "displayName": "%s",
+                    "email": "%s"
+                  },
+                  "range": {
+                    "from": "2036-07-01T02:00:00+02:00",
+                    "to": "2036-07-02T02:00:00+02:00"
+                  },
+                  "slots": [
+                    { "start": "2036-07-01T11:00:00+02:00" },
+                    { "start": "2036-07-01T11:30:00+02:00" }
+                  ]
+                }
+                """.formatted(openPaaSUser.fullName(), openPaaSUser.username().asString()));
+    }
+
+    @Test
     void shouldDefaultToUtcWhenTimeZoneIsAbsent(TwakeCalendarGuiceServer server) {
         BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES, AVAILABILITY_RULE);
         BookingLink inserted = server.getProbe(BookingLinkSlotsProbe.class).insert(openPaaSUser.username(), insertRequest);
