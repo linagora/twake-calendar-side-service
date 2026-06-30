@@ -29,6 +29,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.linagora.calendar.api.booking.AvailableSlotsCalculator.AvailabilitySlot;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -44,6 +45,7 @@ public record BookingLinkSlotsResponse(long durationMinutes,
                                        List<SlotDTO> slots) {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
         .registerModule(new JavaTimeModule())
+        .registerModule(new Jdk8Module())
         .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
     public static BookingLinkSlotsResponse of(BookingLink bookingLink, OpenPaaSUser owner, Instant from, Instant to, Set<AvailabilitySlot> slots) {
