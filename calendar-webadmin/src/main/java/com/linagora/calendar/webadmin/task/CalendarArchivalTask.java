@@ -36,7 +36,8 @@ public class CalendarArchivalTask implements Task {
                           long archivedEventCount,
                           long failedEventCount,
                           Optional<Username> targetUser,
-                          EventArchivalCriteria criteria) implements TaskExecutionDetails.AdditionalInformation {
+                          EventArchivalCriteria criteria,
+                          int eventsPerSecond) implements TaskExecutionDetails.AdditionalInformation {
 
         @Override
         public Instant timestamp() {
@@ -81,6 +82,6 @@ public class CalendarArchivalTask implements Task {
     public Optional<TaskExecutionDetails.AdditionalInformation> details() {
         return Optional.of(new Details(Clock.systemUTC().instant(),
             context.snapshot().success(),
-            context.snapshot().failure(), targetUser, criteria));
+            context.snapshot().failure(), targetUser, criteria, runningOptions.eventsPerSecond()));
     }
 }

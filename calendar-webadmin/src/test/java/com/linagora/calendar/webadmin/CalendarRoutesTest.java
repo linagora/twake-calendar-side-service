@@ -142,6 +142,8 @@ public class CalendarRoutesTest {
     void shouldShowAllInformationInResponse() {
         String taskId = given()
             .queryParam("task", "reindex")
+            .queryParam("eventsPerSecond", 12)
+            .queryParam("calendarsConcurrency", 3)
             .when()
             .post()
             .jsonPath()
@@ -157,6 +159,8 @@ public class CalendarRoutesTest {
             .body("type", is("reindex-calendar-events"))
             .body("additionalInformation.processedEventCount", is(0))
             .body("additionalInformation.failedEventCount", is(0))
+            .body("additionalInformation.runningOptions.eventsPerSecond", is(12))
+            .body("additionalInformation.runningOptions.calendarsConcurrency", is(3))
             .body("additionalInformation.timestamp", is(notNullValue()))
             .body("additionalInformation.type", is("reindex-calendar-events"))
             .body("startedDate", is(notNullValue()))

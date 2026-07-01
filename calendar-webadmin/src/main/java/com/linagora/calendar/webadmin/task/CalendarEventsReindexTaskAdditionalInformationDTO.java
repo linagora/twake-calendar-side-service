@@ -19,6 +19,7 @@
 package com.linagora.calendar.webadmin.task;
 
 import java.time.Instant;
+import java.util.Optional;
 
 import org.apache.james.json.DTOModule;
 import org.apache.james.server.task.json.dto.AdditionalInformationDTO;
@@ -27,7 +28,14 @@ import org.apache.james.server.task.json.dto.AdditionalInformationDTOModule;
 public record CalendarEventsReindexTaskAdditionalInformationDTO(String type,
                                                                 Instant timestamp,
                                                                 long processedEventCount,
-                                                                long failedEventCount) implements AdditionalInformationDTO {
+                                                                long failedEventCount,
+                                                                Optional<RunningOptionsDTO> runningOptions) implements AdditionalInformationDTO {
+    public record RunningOptionsDTO(int eventsPerSecond, int calendarsConcurrency) {
+        static RunningOptionsDTO fromDomainObject(CalendarEventsReindexTask.Details details) {
+            return new RunningOptionsDTO(details.eventsPerSecond(), details.calendarsConcurrency());
+        }
+    }
+
     @Override
     public String getType() {
         return type;
@@ -52,13 +60,18 @@ public record CalendarEventsReindexTaskAdditionalInformationDTO(String type,
             type,
             details.instant(),
             details.processedEventCount(),
-            details.failedEventCount());
+            details.failedEventCount(),
+            Optional.of(RunningOptionsDTO.fromDomainObject(details)));
     }
 
     private CalendarEventsReindexTask.Details toDomainObject() {
         return new CalendarEventsReindexTask.Details(
             timestamp,
             processedEventCount,
-            failedEventCount);
+            failedEventCount,
+            runningOptions.map(RunningOptionsDTO::eventsPerSecond)
+                .orElse(CalendarEventsReindexTask.RunningOptions.DEFAULT_EVENTS_PER_SECOND),
+            runningOptions.map(RunningOptionsDTO::calendarsConcurrency)
+                .orElse(CalendarEventsReindexTask.RunningOptions.DEFAULT_CALENDARS_CONCURRENCY));
     }
 }

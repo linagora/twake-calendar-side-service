@@ -29,7 +29,8 @@ import org.apache.james.task.TaskType;
 import com.linagora.calendar.webadmin.service.LdapUsersImportService;
 
 public class LdapUsersImportTask implements Task {
-    public record Details(Instant instant, long processedUserCount, long failedUserCount) implements TaskExecutionDetails.AdditionalInformation {
+    public record Details(Instant instant, long processedUserCount, long failedUserCount,
+                          int usersPerSecond) implements TaskExecutionDetails.AdditionalInformation {
         @Override
         public Instant timestamp() {
             return instant;
@@ -62,6 +63,7 @@ public class LdapUsersImportTask implements Task {
     public Optional<TaskExecutionDetails.AdditionalInformation> details() {
         return Optional.of(new Details(Clock.systemUTC().instant(),
             context.snapshot().processedUserCount(),
-            context.snapshot().failedUserCount()));
+            context.snapshot().failedUserCount(),
+            runningOptions.usersPerSecond()));
     }
 }

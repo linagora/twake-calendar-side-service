@@ -130,6 +130,7 @@ public class AlarmScheduleTest {
     void shouldShowAllInformationInResponse() {
         String taskId = given()
             .queryParam("task", "scheduleAlarms")
+            .queryParam("eventsPerSecond", 12)
             .when()
             .post()
             .jsonPath()
@@ -145,6 +146,7 @@ public class AlarmScheduleTest {
             .body("type", is("schedule-alarms"))
             .body("additionalInformation.processedEventCount", is(0))
             .body("additionalInformation.failedEventCount", is(0))
+            .body("additionalInformation.runningOptions.eventsPerSecond", is(12))
             .body("additionalInformation.timestamp", is(notNullValue()))
             .body("additionalInformation.type", is("schedule-alarms"))
             .body("startedDate", is(notNullValue()))
