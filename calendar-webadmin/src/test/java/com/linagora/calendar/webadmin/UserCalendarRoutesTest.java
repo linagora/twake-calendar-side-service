@@ -39,7 +39,6 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavTestHelper;
-import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.dav.dto.SubscribedCalendarRequest;
 import com.linagora.calendar.storage.CalendarURL;
@@ -56,7 +55,7 @@ import io.restassured.path.json.JsonPath;
 public class UserCalendarRoutesTest {
 
     @RegisterExtension
-    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+    static SabreDavExtension sabreDavExtension = SabreDavExtension.shared();
 
     private WebAdminServer webAdminServer;
     private OpenPaaSUserDAO userDAO;

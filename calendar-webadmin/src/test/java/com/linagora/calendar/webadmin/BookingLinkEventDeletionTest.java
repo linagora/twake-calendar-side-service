@@ -57,7 +57,6 @@ import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.api.booking.AvailabilityRule.WeeklyAvailabilityRule;
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.dav.CalDavClient;
-import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -77,7 +76,7 @@ import io.restassured.RestAssured;
 public class BookingLinkEventDeletionTest {
 
     @RegisterExtension
-    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+    static SabreDavExtension sabreDavExtension = SabreDavExtension.shared();
 
     private WebAdminServer webAdminServer;
     private MongoDBBookingLinkDAO bookingLinkDAO;

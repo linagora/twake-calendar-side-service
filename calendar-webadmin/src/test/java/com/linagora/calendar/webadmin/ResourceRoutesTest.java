@@ -49,7 +49,6 @@ import org.testcontainers.shaded.com.google.common.collect.ImmutableList;
 
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.linagora.calendar.dav.CalDavClient;
-import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -69,7 +68,7 @@ import net.javacrumbs.jsonunit.core.Option;
 class ResourceRoutesTest {
 
     @RegisterExtension
-    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+    static SabreDavExtension sabreDavExtension = SabreDavExtension.shared();
 
     private WebAdminServer webAdminServer;
     private OpenPaaSUserDAO userDAO;

@@ -55,7 +55,6 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.dav.CardDavClient;
-import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -76,7 +75,7 @@ import reactor.core.publisher.Flux;
 public class DomainMembersAddressBookRoutesTest {
 
     @RegisterExtension
-    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+    static SabreDavExtension sabreDavExtension = SabreDavExtension.shared();
 
     private WebAdminServer webAdminServer;
     private LdapDomainMemberProvider ldapDomainMemberProvider;

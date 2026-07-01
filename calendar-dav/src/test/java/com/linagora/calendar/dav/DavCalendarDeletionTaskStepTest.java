@@ -40,7 +40,7 @@ import net.fortuna.ical4j.model.Component;
 public class DavCalendarDeletionTaskStepTest {
 
     @RegisterExtension
-    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+    static SabreDavExtension sabreDavExtension = SabreDavExtension.shared();
 
     private DavCalendarDeletionTaskStep testee;
     private CalDavClient calDavClient;

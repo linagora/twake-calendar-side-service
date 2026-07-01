@@ -52,7 +52,6 @@ import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.app.restapi.routes.PeopleSearchRouteTest.ResourceProbe;
 import com.linagora.calendar.dav.DavModuleTestHelper;
-import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.smtp.MailSenderConfiguration;
@@ -76,7 +75,7 @@ public class ResourceRouteTest {
 
     @RegisterExtension
     @Order(2)
-    static SabreDavExtension SABRE_DAV_EXTENSION = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+    static SabreDavExtension SABRE_DAV_EXTENSION = SabreDavExtension.shared();
 
     @RegisterExtension
     @Order(3)

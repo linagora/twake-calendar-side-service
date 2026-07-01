@@ -66,7 +66,6 @@ import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavCalendarObject;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DavTestHelper;
-import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.Fixture;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.dav.SabreDavProvisioningService;
@@ -102,7 +101,7 @@ public class ResourceParticipationRouteTest {
 
     @RegisterExtension
     @Order(1)
-    static SabreDavExtension SABRE_DAV_EXTENSION = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+    static SabreDavExtension SABRE_DAV_EXTENSION = SabreDavExtension.shared();
 
     @RegisterExtension
     @Order(2)

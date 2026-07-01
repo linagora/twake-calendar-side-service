@@ -63,7 +63,7 @@ import reactor.rabbitmq.RabbitFlux;
 import reactor.rabbitmq.Sender;
 import reactor.rabbitmq.SenderOptions;
 
-public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup, DockerLifecycle dockerLifecycle) implements BeforeAllCallback, AfterAllCallback,
+public final class SabreDavExtension implements BeforeAllCallback, AfterAllCallback,
     AfterEachCallback, ParameterResolver {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(SabreDavExtension.class);
@@ -75,7 +75,10 @@ public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup, DockerL
         MongoDBSecretLinkStore.COLLECTION,
         MongoDBResourceDAO.COLLECTION);
 
-    public enum DockerLifecycle {
+    private final DockerSabreDavSetup dockerSabreDavSetup;
+    private final DockerLifecycle dockerLifecycle;
+
+    private enum DockerLifecycle {
         SHARED {
             @Override
             void beforeAll(DockerSabreDavSetup dockerSabreDavSetup) {
@@ -104,10 +107,6 @@ public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup, DockerL
         abstract void afterAll(DockerSabreDavSetup dockerSabreDavSetup);
     }
 
-    public SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup) {
-        this(dockerSabreDavSetup, DockerLifecycle.SHARED);
-    }
-
     public static SabreDavExtension shared() {
         return new SabreDavExtension(DockerSabreDavSetup.SINGLETON, DockerLifecycle.SHARED);
     }
@@ -116,15 +115,19 @@ public record SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup, DockerL
         return new SabreDavExtension(new DockerSabreDavSetup(), DockerLifecycle.PER_CLASS);
     }
 
-    public SabreDavExtension {
-        Objects.requireNonNull(dockerSabreDavSetup);
-        Objects.requireNonNull(dockerLifecycle);
+    private SabreDavExtension(DockerSabreDavSetup dockerSabreDavSetup, DockerLifecycle dockerLifecycle) {
+        this.dockerSabreDavSetup = Objects.requireNonNull(dockerSabreDavSetup);
+        this.dockerLifecycle = Objects.requireNonNull(dockerLifecycle);
         if (dockerLifecycle == DockerLifecycle.SHARED && dockerSabreDavSetup != DockerSabreDavSetup.SINGLETON) {
             throw new IllegalArgumentException("SHARED requires DockerSabreDavSetup.SINGLETON. Use SabreDavExtension.perClass() for a dedicated stack.");
         }
         if (dockerLifecycle == DockerLifecycle.PER_CLASS && dockerSabreDavSetup == DockerSabreDavSetup.SINGLETON) {
             throw new IllegalArgumentException("PER_CLASS requires a dedicated DockerSabreDavSetup. Use SabreDavExtension.perClass().");
         }
+    }
+
+    public DockerSabreDavSetup dockerSabreDavSetup() {
+        return dockerSabreDavSetup;
     }
 
     @Override

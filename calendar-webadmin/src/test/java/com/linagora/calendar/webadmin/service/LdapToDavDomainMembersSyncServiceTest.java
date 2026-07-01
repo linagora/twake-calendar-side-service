@@ -52,7 +52,6 @@ import org.junit.jupiter.params.provider.MethodSource;
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.dav.AddressBookContact;
 import com.linagora.calendar.dav.CardDavClient;
-import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.ldap.LdapDomainMemberProvider;
@@ -67,7 +66,7 @@ import reactor.core.publisher.Flux;
 public class LdapToDavDomainMembersSyncServiceTest {
 
     @RegisterExtension
-    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+    static SabreDavExtension sabreDavExtension = SabreDavExtension.shared();
 
 
     private LdapToDavDomainMembersSyncService testee;
