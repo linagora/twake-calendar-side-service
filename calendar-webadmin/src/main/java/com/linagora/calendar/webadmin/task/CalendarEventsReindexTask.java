@@ -30,7 +30,8 @@ import com.google.common.base.Preconditions;
 import com.linagora.calendar.webadmin.service.CalendarEventsReindexService;
 
 public class CalendarEventsReindexTask implements Task {
-    public record Details(Instant instant, long processedEventCount, long failedEventCount) implements TaskExecutionDetails.AdditionalInformation {
+    public record Details(Instant instant, long processedEventCount, long failedEventCount,
+                          int eventsPerSecond, int calendarsConcurrency) implements TaskExecutionDetails.AdditionalInformation {
         @Override
         public Instant timestamp() {
             return instant;
@@ -82,6 +83,8 @@ public class CalendarEventsReindexTask implements Task {
     public Optional<TaskExecutionDetails.AdditionalInformation> details() {
         return Optional.of(new Details(Clock.systemUTC().instant(),
             context.snapshot().processedEventCount(),
-            context.snapshot().failedEventCount()));
+            context.snapshot().failedEventCount(),
+            runningOptions.eventsPerSecond(),
+            runningOptions.calendarsConcurrency()));
     }
 }

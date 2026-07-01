@@ -29,7 +29,8 @@ import org.apache.james.task.TaskType;
 import com.linagora.calendar.webadmin.service.AlarmScheduleService;
 
 public class AlarmScheduleTask implements Task {
-    public record Details(Instant instant, long processedEventCount, long failedEventCount) implements TaskExecutionDetails.AdditionalInformation {
+    public record Details(Instant instant, long processedEventCount, long failedEventCount,
+                          int eventsPerSecond) implements TaskExecutionDetails.AdditionalInformation {
         @Override
         public Instant timestamp() {
             return instant;
@@ -62,6 +63,7 @@ public class AlarmScheduleTask implements Task {
     public Optional<TaskExecutionDetails.AdditionalInformation> details() {
         return Optional.of(new Details(Clock.systemUTC().instant(),
             context.snapshot().processedEventCount(),
-            context.snapshot().failedEventCount()));
+            context.snapshot().failedEventCount(),
+            runningOptions.eventsPerSecond()));
     }
 }

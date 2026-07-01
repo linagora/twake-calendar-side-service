@@ -19,6 +19,7 @@
 package com.linagora.calendar.webadmin.task;
 
 import java.time.Instant;
+import java.util.Optional;
 
 import org.apache.james.json.DTOModule;
 import org.apache.james.server.task.json.dto.AdditionalInformationDTO;
@@ -27,7 +28,14 @@ import org.apache.james.server.task.json.dto.AdditionalInformationDTOModule;
 public record LdapUsersImportTaskAdditionalInformationDTO(String type,
                                                          Instant timestamp,
                                                          long processedUserCount,
-                                                         long failedUserCount) implements AdditionalInformationDTO {
+                                                         long failedUserCount,
+                                                         Optional<RunningOptionsDTO> runningOptions) implements AdditionalInformationDTO {
+    public record RunningOptionsDTO(int usersPerSecond) {
+        static RunningOptionsDTO fromDomainObject(LdapUsersImportTask.Details details) {
+            return new RunningOptionsDTO(details.usersPerSecond());
+        }
+    }
+
     @Override
     public String getType() {
         return type;
@@ -52,13 +60,16 @@ public record LdapUsersImportTaskAdditionalInformationDTO(String type,
             type,
             details.instant(),
             details.processedUserCount(),
-            details.failedUserCount());
+            details.failedUserCount(),
+            Optional.of(RunningOptionsDTO.fromDomainObject(details)));
     }
 
     private LdapUsersImportTask.Details toDomainObject() {
         return new LdapUsersImportTask.Details(
             timestamp,
             processedUserCount,
-            failedUserCount);
+            failedUserCount,
+            runningOptions.map(RunningOptionsDTO::usersPerSecond)
+                .orElse(LdapUsersImportRunningOptions.DEFAULT_USERS_PER_SECOND));
     }
 }

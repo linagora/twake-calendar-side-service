@@ -115,6 +115,7 @@ This endpoint returns a webdmin task with the following additional information:
 
 - processedUserCount: integer
 - failedUserCount: integer
+- runningOptions.usersPerSecond: integer
 
 ### Add missing fields to registered users
 
@@ -292,6 +293,8 @@ This endpoint returns a webdmin task with the following additional information:
 
  - processedEventCount: integer
  - failedEventCount: integer
+ - runningOptions.eventsPerSecond: integer
+ - runningOptions.calendarsConcurrency: integer
  
 
 ### Alarm rescheduling
@@ -308,6 +311,7 @@ This endpoint returns a webdmin task with the following additional information:
 
 - processedEventCount: integer
 - failedEventCount: integer
+- runningOptions.eventsPerSecond: integer
 
 ### Calendar event archival
 
@@ -386,6 +390,9 @@ Example task result:
   "additionalInformation": {
     "archivedEventCount": 12,
     "failedEventCount": 0,
+    "runningOptions": {
+      "eventsPerSecond": 100
+    },
     "criteria": {
       "createdBefore": "2025-12-22T00:00:00Z",
       "lastModifiedBefore": null,
@@ -400,6 +407,7 @@ Example task result:
 Where:
 - `archivedEventCount`: Number of events successfully archived
 - `failedEventCount`: Number of events that failed to be archived
+- `runningOptions.eventsPerSecond`: Effective throttling parameter used by the task
 - `criteria`: Effective archival criteria applied for the task
 
 **Note:** When using the single-user archival endpoint (`POST /calendars/{username}?task=archive`),

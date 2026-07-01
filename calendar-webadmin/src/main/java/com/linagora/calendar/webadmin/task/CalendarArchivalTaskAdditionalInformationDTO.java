@@ -33,7 +33,14 @@ public record CalendarArchivalTaskAdditionalInformationDTO(String type,
                                                            long archivedEventCount,
                                                            long failedEventCount,
                                                            Optional<String> targetUser,
-                                                           CriteriaDetailDTO criteria) implements AdditionalInformationDTO {
+                                                           CriteriaDetailDTO criteria,
+                                                           Optional<RunningOptionsDTO> runningOptions) implements AdditionalInformationDTO {
+    public record RunningOptionsDTO(int eventsPerSecond) {
+        static RunningOptionsDTO fromDomainObject(CalendarArchivalTask.Details details) {
+            return new RunningOptionsDTO(details.eventsPerSecond());
+        }
+    }
+
 
     record CriteriaDetailDTO(Optional<Instant> createdBefore,
                              Optional<Instant> lastModifiedBefore,
@@ -77,11 +84,19 @@ public record CalendarArchivalTaskAdditionalInformationDTO(String type,
         return new CalendarArchivalTaskAdditionalInformationDTO(type, details.instant(),
             details.archivedEventCount(), details.failedEventCount(),
             details.targetUser().map(Username::asString),
-            CriteriaDetailDTO.fromDomainObject(details.criteria()));
+            CriteriaDetailDTO.fromDomainObject(details.criteria()),
+            Optional.of(RunningOptionsDTO.fromDomainObject(details)));
     }
 
     private CalendarArchivalTask.Details toDomainObject() {
-        return new CalendarArchivalTask.Details(timestamp, archivedEventCount, failedEventCount, targetUser.map(Username::of), criteria.toDomainObject());
+        return new CalendarArchivalTask.Details(
+            timestamp,
+            archivedEventCount,
+            failedEventCount,
+            targetUser.map(Username::of),
+            criteria.toDomainObject(),
+            runningOptions.map(RunningOptionsDTO::eventsPerSecond)
+                .orElse(RunningOptions.DEFAULT_EVENTS_PER_SECOND));
     }
 
 }

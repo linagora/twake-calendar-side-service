@@ -735,6 +735,7 @@ public class CalendarArchivalTest {
             .queryParam("masterDtStartBefore", "5d")
             .queryParam("isRejected", "true")
             .queryParam("isNotRecurring", "true")
+            .queryParam("eventsPerSecond", 12)
         .when()
             .post()
         .then()
@@ -754,7 +755,8 @@ public class CalendarArchivalTest {
             .body("additionalInformation.criteria.lastModifiedBefore", is("2025-12-25T00:00:00Z"))
             .body("additionalInformation.criteria.masterDtStartBefore", is("2025-12-27T00:00:00Z"))
             .body("additionalInformation.criteria.rejectedOnly", is(true))
-            .body("additionalInformation.criteria.isNotRecurring", is(true));
+            .body("additionalInformation.criteria.isNotRecurring", is(true))
+            .body("additionalInformation.runningOptions.eventsPerSecond", is(12));
     }
 
     @Test
