@@ -42,14 +42,15 @@ class SaaSDomainSubscriptionHandlerTest {
     }
 
     @Test
-    void shouldCreateDomainWhenCalendarFeatureEnabledAndDnsValidated() {
+    void shouldCreateDomainOnDnsConfigurationMessageWhenMailDnsValidated() {
+        // `domain.dns.configuration.status` message: carries the DNS status, no `features`.
         String json = """
             {
+                "organizationId": "businesse7f351",
                 "domain": "toto.tld",
+                "dnsOwnershipValidated": true,
                 "mailDnsConfigurationValidated": true,
-                "features": {
-                    "calendar": {}
-                }
+                "chatDnsConfigurationValidated": false
             }
             """;
 
@@ -61,13 +62,14 @@ class SaaSDomainSubscriptionHandlerTest {
     }
 
     @Test
-    void shouldNotCreateDomainWhenCalendarFeatureNotPresent() {
+    void shouldNotCreateDomainOnSubscriptionMessageAsItCarriesNoDnsStatus() {
+        // `domain.subscription.changed` message: carries `features` but no DNS status, so the domain must
+        // not be created yet (it will be created upon the later DNS configuration message).
         String json = """
             {
                 "domain": "toto.tld",
-                "mailDnsConfigurationValidated": true,
                 "features": {
-                    "mail": {}
+                    "calendar": {}
                 }
             }
             """;
@@ -79,14 +81,31 @@ class SaaSDomainSubscriptionHandlerTest {
     }
 
     @Test
-    void shouldNotCreateDomainWhenDnsNotValidated() {
+    void shouldNotCreateDomainWhenMailDnsNotValidated() {
         String json = """
             {
+                "organizationId": "businesse7f351",
                 "domain": "toto.tld",
+                "dnsOwnershipValidated": true,
                 "mailDnsConfigurationValidated": false,
-                "features": {
-                    "calendar": {}
-                }
+                "chatDnsConfigurationValidated": false
+            }
+            """;
+
+        testee.handleMessage(json.getBytes(StandardCharsets.UTF_8)).block();
+
+        OpenPaaSDomain domain = domainDAO.retrieve(Domain.of("toto.tld")).block();
+        assertThat(domain).isNull();
+    }
+
+    @Test
+    void shouldNotCreateDomainWhenMailDnsStatusIsMissing() {
+        String json = """
+            {
+                "organizationId": "businesse7f351",
+                "domain": "toto.tld",
+                "dnsOwnershipValidated": true,
+                "chatDnsConfigurationValidated": false
             }
             """;
 
@@ -103,11 +122,11 @@ class SaaSDomainSubscriptionHandlerTest {
 
         String json = """
             {
+                "organizationId": "businesse7f351",
                 "domain": "existing.tld",
+                "dnsOwnershipValidated": true,
                 "mailDnsConfigurationValidated": true,
-                "features": {
-                    "calendar": {}
-                }
+                "chatDnsConfigurationValidated": false
             }
             """;
 
@@ -123,19 +142,13 @@ class SaaSDomainSubscriptionHandlerTest {
         String json1 = """
             {
                 "domain": "domain1.tld",
-                "mailDnsConfigurationValidated": true,
-                "features": {
-                    "calendar": {}
-                }
+                "mailDnsConfigurationValidated": true
             }
             """;
         String json2 = """
             {
                 "domain": "domain2.tld",
-                "mailDnsConfigurationValidated": true,
-                "features": {
-                    "calendar": {}
-                }
+                "mailDnsConfigurationValidated": true
             }
             """;
 
@@ -144,38 +157,5 @@ class SaaSDomainSubscriptionHandlerTest {
 
         assertThat(domainDAO.retrieve(Domain.of("domain1.tld")).block()).isNotNull();
         assertThat(domainDAO.retrieve(Domain.of("domain2.tld")).block()).isNotNull();
-    }
-
-    @Test
-    void shouldNotCreateDomainWhenCalendarFeatureIsNull() {
-        String json = """
-            {
-                "domain": "toto.tld",
-                "mailDnsConfigurationValidated": true,
-                "features": {
-                    "calendar": null
-                }
-            }
-            """;
-
-        testee.handleMessage(json.getBytes(StandardCharsets.UTF_8)).block();
-
-        OpenPaaSDomain domain = domainDAO.retrieve(Domain.of("toto.tld")).block();
-        assertThat(domain).isNull();
-    }
-
-    @Test
-    void shouldNotCreateDomainWhenFeaturesIsMissing() {
-        String json = """
-            {
-                "domain": "toto.tld",
-                "mailDnsConfigurationValidated": true
-            }
-            """;
-
-        testee.handleMessage(json.getBytes(StandardCharsets.UTF_8)).block();
-
-        OpenPaaSDomain domain = domainDAO.retrieve(Domain.of("toto.tld")).block();
-        assertThat(domain).isNull();
     }
 }
