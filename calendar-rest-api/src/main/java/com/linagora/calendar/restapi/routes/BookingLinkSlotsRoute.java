@@ -25,13 +25,10 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
-import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
 
 import org.apache.james.jmap.Endpoint;
-import org.apache.james.jmap.JMAPRoute;
-import org.apache.james.jmap.JMAPRoutes;
 import org.apache.james.metrics.api.MetricFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,7 +45,7 @@ import reactor.core.publisher.Mono;
 import reactor.netty.http.server.HttpServerRequest;
 import reactor.netty.http.server.HttpServerResponse;
 
-public class BookingLinkSlotsRoute implements JMAPRoutes {
+public class BookingLinkSlotsRoute extends PublicRoute {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BookingLinkSlotsRoute.class);
 
@@ -60,29 +57,20 @@ public class BookingLinkSlotsRoute implements JMAPRoutes {
     private static final CalendarUtil.CustomizedTimeZoneRegistry TIME_ZONE_REGISTRY = new CalendarUtil.CustomizedTimeZoneRegistry();
     private static final Duration MAX_QUERY_RANGE = Duration.ofDays(60);
 
-    private final MetricFactory metricFactory;
     private final BookingLinkSlotsService bookingLinkSlotsService;
 
     @Inject
     public BookingLinkSlotsRoute(MetricFactory metricFactory,
                                  BookingLinkSlotsService bookingLinkSlotsService) {
-        this.metricFactory = metricFactory;
+        super(metricFactory);
         this.bookingLinkSlotsService = bookingLinkSlotsService;
     }
 
-    Endpoint endpoint() {
+    protected Endpoint endpoint() {
         return new Endpoint(HttpMethod.GET, "/api/booking-links/{%s}/slots".formatted(BOOKING_LINK_PUBLIC_ID_PARAM));
     }
 
-    @Override
-    public Stream<JMAPRoute> routes() {
-        return Stream.of(JMAPRoute.builder()
-            .endpoint(endpoint())
-            .action((req, res) -> Mono.from(metricFactory.decoratePublisherWithTimerMetric(this.getClass().getSimpleName(), handleRequest(req, res))))
-            .corsHeaders());
-    }
-
-    Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response) {
+    protected Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response) {
         return Mono.fromCallable(() -> new QueryStringDecoder(request.uri()))
             .flatMap(queryStringDecoder -> {
                 Instant queryStart = parseRequiredInstant(queryStringDecoder, FROM_QUERY_PARAM);

@@ -450,3 +450,36 @@ The returned `bookingConfirmationToken` is a signed JWT that can be used to canc
 | 500    | Unexpected server-side booking error |
 
 ---
+
+### **DELETE /api/booked-event**
+
+- No authentication required
+
+Cancel a previously booked event using the confirmation token returned by the `/book` endpoint.
+
+**Query parameters**
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `bookingConfirmationToken` | yes | The signed JWT returned by the `/book` endpoint |
+
+**Sample request**
+
+```
+DELETE /api/booked-event?bookingConfirmationToken=<signed-jwt>
+```
+
+**Sample response**
+
+```
+HTTP/1.1 204 No Content
+```
+
+**Error responses**
+
+| Status | Cause |
+|--------|-------|
+| 401    | `bookingConfirmationToken` is missing or invalid |
+| 500    | Unexpected server-side error |
+
+---

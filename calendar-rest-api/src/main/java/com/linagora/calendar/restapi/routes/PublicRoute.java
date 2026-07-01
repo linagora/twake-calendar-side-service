@@ -18,33 +18,34 @@
 
 package com.linagora.calendar.restapi.routes;
 
-import com.linagora.calendar.restapi.ErrorResponse;
-import com.linagora.calendar.restapi.RestApiConstants;
+import java.util.stream.Stream;
 
-import io.netty.handler.codec.http.HttpResponseStatus;
+import org.apache.james.jmap.Endpoint;
+import org.apache.james.jmap.JMAPRoute;
+import org.apache.james.jmap.JMAPRoutes;
+import org.apache.james.metrics.api.MetricFactory;
+
 import reactor.core.publisher.Mono;
+import reactor.netty.http.server.HttpServerRequest;
 import reactor.netty.http.server.HttpServerResponse;
 
-public class ErrorResponseHandler {
+abstract class PublicRoute implements JMAPRoutes {
 
-    public static Mono<Void> handle(HttpServerResponse response,
-                                    HttpResponseStatus status,
-                                    Throwable exception) {
-        if (HttpResponseStatus.INTERNAL_SERVER_ERROR.equals(status)) {
-            return handle(response, status, "Something went wrong.");
-        }
-        return handle(response, status, exception.getMessage());
+    protected final MetricFactory metricFactory;
+
+    protected PublicRoute(MetricFactory metricFactory) {
+        this.metricFactory = metricFactory;
     }
 
+    protected abstract Endpoint endpoint();
 
-    public static Mono<Void> handle(HttpServerResponse response,
-                                    HttpResponseStatus status,
-                                    String message) {
-        return response.status(status)
-            .headers(RestApiConstants.JSON_HEADER)
-            .sendByteArray(Mono.fromCallable(() ->
-                ErrorResponse.of(status.code(), status.reasonPhrase(), message)
-                    .serializeAsBytes()))
-            .then();
+    protected abstract Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response);
+
+    @Override
+    public Stream<JMAPRoute> routes() {
+        return Stream.of(JMAPRoute.builder()
+            .endpoint(endpoint())
+            .action((req, res) -> Mono.from(metricFactory.decoratePublisherWithTimerMetric(this.getClass().getSimpleName(), handleRequest(req, res))))
+            .corsHeaders());
     }
 }
