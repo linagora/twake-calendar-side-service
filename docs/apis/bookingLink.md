@@ -479,7 +479,50 @@ HTTP/1.1 204 No Content
 
 | Status | Cause |
 |--------|-------|
-| 401    | `bookingConfirmationToken` is missing or invalid |
+| 400    | `bookingConfirmationToken` is missing |
+| 401    | `bookingConfirmationToken` is invalid |
+| 500    | Unexpected server-side error |
+
+---
+
+### **GET /api/booked-event**
+
+- No authentication required
+
+Retrieve the details of a previously booked event using the confirmation token returned by the `/book` endpoint.
+
+**Query parameters**
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `bookingConfirmationToken` | yes | The signed JWT returned by the `/book` endpoint |
+
+**Sample request**
+
+```
+GET /api/booked-event?bookingConfirmationToken=<signed-jwt>
+```
+
+**Sample response**
+
+```
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "eventJSON": ["vcalendar", [...], [...]]
+}
+```
+
+The `eventJSON` field contains the event in jCal format (RFC 7265).
+
+**Error responses**
+
+| Status | Cause |
+|--------|-------|
+| 400    | `bookingConfirmationToken` is missing |
+| 401    | `bookingConfirmationToken` is invalid |
+| 404    | Booked event not found |
 | 500    | Unexpected server-side error |
 
 ---
