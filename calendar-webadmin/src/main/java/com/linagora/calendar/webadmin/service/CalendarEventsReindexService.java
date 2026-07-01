@@ -136,8 +136,12 @@ public class CalendarEventsReindexService {
     public Mono<Task.Result> reindex(Context context, CalendarEventsReindexTask.RunningOptions runningOptions) {
         return Flux.concat(
                 userDAO.list()
+                    .collectList()
+                    .flatMapMany(Flux::fromIterable)
                     .concatMap(user -> collectEvents(context, user, runningOptions.calendarsConcurrency())),
                 resourceDAO.findAll()
+                    .collectList()
+                    .flatMapMany(Flux::fromIterable)
                     .concatMap(resource -> collectEvents(context, resource)))
             .transform(ReactorUtils.<IndexItem, Task.Result>throttle()
                 .elements(runningOptions.eventsPerSecond())
