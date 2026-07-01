@@ -50,7 +50,7 @@ import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
 
 class CalendarSearchSourceResolverTest {
     @RegisterExtension
-    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+    static SabreDavExtension sabreDavExtension = SabreDavExtension.shared();
 
     private static DavTestHelper davTestHelper;
 

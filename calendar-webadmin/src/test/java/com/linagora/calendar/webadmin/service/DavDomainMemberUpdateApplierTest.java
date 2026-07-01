@@ -37,7 +37,6 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.linagora.calendar.dav.AddressBookContact;
 import com.linagora.calendar.dav.CardDavClient;
-import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
@@ -47,7 +46,7 @@ import com.mongodb.reactivestreams.client.MongoClients;
 public class DavDomainMemberUpdateApplierTest {
 
     @RegisterExtension
-    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+    static SabreDavExtension sabreDavExtension = SabreDavExtension.shared();
 
     private CardDavClient cardDavClient;
     private OpenPaaSDomain openPaaSDomain;

@@ -39,7 +39,7 @@ import com.mongodb.reactivestreams.client.MongoDatabase;
 public class DavContactDeletionTaskStepTest {
 
     @RegisterExtension
-    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+    static SabreDavExtension sabreDavExtension = SabreDavExtension.shared();
 
     private DavContactDeletionTaskStep testee;
     private CardDavClient cardDavClient;

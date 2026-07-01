@@ -64,7 +64,7 @@ public class CalDavEventRepositoryTest {
     private static final String datePattern = "yyyyMMdd'T'HHmmss";
 
     @RegisterExtension
-    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+    static SabreDavExtension sabreDavExtension = SabreDavExtension.shared();
 
     private static DavTestHelper davTestHelper;
 

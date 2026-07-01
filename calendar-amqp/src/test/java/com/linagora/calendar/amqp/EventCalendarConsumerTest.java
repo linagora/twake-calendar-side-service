@@ -74,7 +74,7 @@ public class EventCalendarConsumerTest {
     private final ConditionFactory awaitAtMost = calmlyAwait.atMost(20, TimeUnit.SECONDS);
 
     @RegisterExtension
-    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+    static SabreDavExtension sabreDavExtension = SabreDavExtension.shared();
 
     private static ReactorRabbitMQChannelPool channelPool;
     private static SimpleConnectionPool connectionPool;

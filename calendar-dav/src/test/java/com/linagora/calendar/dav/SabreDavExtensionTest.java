@@ -39,7 +39,7 @@ import com.linagora.calendar.storage.OpenPaaSUser;
 public class SabreDavExtensionTest {
 
     @RegisterExtension
-    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+    static SabreDavExtension sabreDavExtension = SabreDavExtension.shared();
 
     @Test
     void allServersShouldStartSuccessfully() {

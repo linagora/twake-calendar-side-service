@@ -76,7 +76,7 @@ import net.fortuna.ical4j.model.component.VEvent;
 public class CalDavClientTest {
 
     @RegisterExtension
-    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+    static SabreDavExtension sabreDavExtension = SabreDavExtension.shared();
     private static DavTestHelper davTestHelper;
 
     private CalDavClient testee;

@@ -34,7 +34,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.linagora.calendar.dav.CardDavClient;
-import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.DomainSettingsResolver;
 import com.linagora.calendar.storage.MemoryDomainSettingsDAO;
@@ -47,7 +46,7 @@ import com.mongodb.reactivestreams.client.MongoDatabase;
 class SaaSUserSubscriptionHandlerTest {
 
     @RegisterExtension
-    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+    static SabreDavExtension sabreDavExtension = SabreDavExtension.shared();
 
     private SaaSUserSubscriptionHandler testee;
     private CardDavClient cardDavClient;

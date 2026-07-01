@@ -52,7 +52,7 @@ import com.mongodb.reactivestreams.client.MongoDatabase;
 public class CardDavClientTest {
 
     @RegisterExtension
-    static SabreDavExtension sabreDavExtension = new SabreDavExtension(DockerSabreDavSetup.SINGLETON);
+    static SabreDavExtension sabreDavExtension = SabreDavExtension.shared();
 
     private static DavTestHelper davTestHelper;
 
