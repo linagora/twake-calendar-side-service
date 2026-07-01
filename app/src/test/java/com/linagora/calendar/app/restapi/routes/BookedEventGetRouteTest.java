@@ -19,12 +19,11 @@
 package com.linagora.calendar.app.restapi.routes;
 
 import static com.linagora.calendar.app.restapi.routes.ImportRouteTest.mailSenderConfigurationFunction;
-import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static io.restassured.RestAssured.given;
 import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
 import static io.restassured.http.ContentType.JSON;
-import static org.assertj.core.api.Assertions.assertThat;
+import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -53,7 +52,6 @@ import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
-import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiServerProbe;
@@ -70,8 +68,9 @@ import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 import io.restassured.RestAssured;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.http.ContentType;
+import net.javacrumbs.jsonunit.core.Option;
 
-class BookedEventCancelRouteTest {
+class BookedEventGetRouteTest {
 
     private static final String PASSWORD = "secret";
     private static final Duration DURATION_30_MINUTES = Duration.ofMinutes(30);
@@ -126,7 +125,6 @@ class BookedEventCancelRouteTest {
     }
 
     private OpenPaaSUser openPaaSUser;
-    private CalDavClient calDavClient;
 
     @BeforeEach
     void setUp(TwakeCalendarGuiceServer server) throws Exception {
@@ -143,52 +141,67 @@ class BookedEventCancelRouteTest {
             .setPort(server.getProbe(RestApiServerProbe.class).getPort().getValue())
             .setBasePath("")
             .build();
-
-        calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
     }
 
     @Test
-    void shouldCancelBookedEventAndReturn204(TwakeCalendarGuiceServer server) {
-        String jwt = bookAndGetJwt(server);
+    void shouldReturnEventJsonForValidToken(TwakeCalendarGuiceServer server) {
+        String token = bookAndGetToken(server);
 
-        given()
+        String actualResponse = given()
             .auth().none()
-            .queryParam("bookingConfirmationToken", jwt)
+            .queryParam("bookingConfirmationToken", token)
         .when()
-            .delete("/api/booked-event")
+            .get("/api/booked-event")
         .then()
-            .statusCode(HttpStatus.SC_NO_CONTENT);
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(JSON)
+            .extract()
+            .body()
+            .asString();
 
-        List<String> eventIds = calDavClient.findUserCalendarEventIds(openPaaSUser.username(), CalendarURL.from(openPaaSUser.id()))
-            .collectList()
-            .block();
-        assertThat(eventIds).isEmpty();
-    }
+        assertThatJson(actualResponse)
+            .isEqualTo("""
+                {
+                  "eventJSON": "${json-unit.ignore}"
+                }
+                """);
 
-    @Test
-    void cancelShouldBeIdempotent(TwakeCalendarGuiceServer server) {
-        String jwt = bookAndGetJwt(server);
-
-        given()
-            .auth().none()
-            .queryParam("bookingConfirmationToken", jwt)
-        .when()
-            .delete("/api/booked-event")
-        .then()
-            .statusCode(HttpStatus.SC_NO_CONTENT);
-
-        List<String> eventIds = calDavClient.findUserCalendarEventIds(openPaaSUser.username(), CalendarURL.from(openPaaSUser.id()))
-            .collectList()
-            .block();
-        assertThat(eventIds).isEmpty();
-
-        given()
-            .auth().none()
-            .queryParam("bookingConfirmationToken", jwt)
-        .when()
-            .delete("/api/booked-event")
-        .then()
-            .statusCode(HttpStatus.SC_NO_CONTENT);
+        assertThatJson(actualResponse)
+            .withOptions(Option.IGNORING_ARRAY_ORDER)
+            .inPath("eventJSON")
+            .isEqualTo("""
+                [
+                  "vcalendar",
+                  [
+                    ["version", {}, "text", "2.0"],
+                    ["prodid", {}, "text", "${json-unit.ignore}"],
+                    ["calscale", {}, "text", "GREGORIAN"]
+                  ],
+                  [
+                    [
+                      "vevent",
+                      [
+                        ["uid", {}, "text", "${json-unit.ignore}"],
+                        ["transp", {}, "text", "OPAQUE"],
+                        ["summary", {}, "text", "30-min intro call"],
+                        ["dtstamp", {}, "date-time", "${json-unit.ignore}"],
+                        ["dtstart", {}, "date-time", "2036-01-26T09:00:00Z"],
+                        ["duration", {}, "duration", "PT30M"],
+                        ["organizer", {"cn": "%s"}, "cal-address", "mailto:%s"],
+                        ["attendee", {"cn": "%s", "role": "CHAIR", "cutype": "INDIVIDUAL", "partstat": "NEEDS-ACTION", "rsvp": "TRUE"}, "cal-address", "mailto:%s"],
+                        ["attendee", {"cn": "BOB", "role": "REQ-PARTICIPANT", "cutype": "INDIVIDUAL", "partstat": "ACCEPTED", "rsvp": "TRUE"}, "cal-address", "mailto:creator@example.com"],
+                        ["class", {}, "text", "PUBLIC"],
+                        ["x-publicly-created", {}, "boolean", true],
+                        ["x-publicly-creator", {}, "text", "creator@example.com"],
+                        ["x-openpaas-booking-link", {}, "text", "${json-unit.ignore}"]
+                      ],
+                      []
+                    ]
+                  ]
+                ]
+                """.formatted(
+                openPaaSUser.fullName(), openPaaSUser.username().asString(),
+                openPaaSUser.fullName(), openPaaSUser.username().asString()));
     }
 
     @Test
@@ -196,7 +209,7 @@ class BookedEventCancelRouteTest {
         given()
             .auth().none()
         .when()
-            .delete("/api/booked-event")
+            .get("/api/booked-event")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .contentType(JSON);
@@ -208,13 +221,35 @@ class BookedEventCancelRouteTest {
             .auth().none()
             .queryParam("bookingConfirmationToken", "not.a.valid.jwt")
         .when()
-            .delete("/api/booked-event")
+            .get("/api/booked-event")
         .then()
             .statusCode(HttpStatus.SC_UNAUTHORIZED)
             .contentType(JSON);
     }
 
-    private String bookAndGetJwt(TwakeCalendarGuiceServer server) {
+    @Test
+    void shouldReturn404WhenBookedEventNoLongerExists(TwakeCalendarGuiceServer server) {
+        String token = bookAndGetToken(server);
+
+        given()
+            .auth().none()
+            .queryParam("bookingConfirmationToken", token)
+        .when()
+            .delete("/api/booked-event")
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        given()
+            .auth().none()
+            .queryParam("bookingConfirmationToken", token)
+        .when()
+            .get("/api/booked-event")
+        .then()
+            .statusCode(HttpStatus.SC_NOT_FOUND)
+            .contentType(JSON);
+    }
+
+    private String bookAndGetToken(TwakeCalendarGuiceServer server) {
         BookingLink inserted = insertActiveBookingLink(server);
         String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();
 
