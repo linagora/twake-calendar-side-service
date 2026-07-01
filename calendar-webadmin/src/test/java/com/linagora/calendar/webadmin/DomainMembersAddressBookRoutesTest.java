@@ -44,7 +44,6 @@ import org.apache.james.task.MemoryTaskManager;
 import org.apache.james.task.TaskExecutionDetails;
 import org.apache.james.task.TaskManager;
 import org.apache.james.webadmin.WebAdminServer;
-import org.apache.james.webadmin.WebAdminUtils;
 import org.apache.james.webadmin.routes.TasksRoutes;
 import org.apache.james.webadmin.utils.JsonTransformer;
 import org.junit.jupiter.api.AfterEach;
@@ -365,7 +364,7 @@ public class DomainMembersAddressBookRoutesTest {
         // When: sync all domains but ignore domain2 and domain3 (comma URL-encoded)
         String ignoredDomainsParam = domain2.asString() + "%2C" + domain3.asString();
 
-        String taskId = given().log().all()
+        String taskId = given()
             .urlEncodingEnabled(false)
             .queryParam("task", "sync")
             .queryParam("ignoredDomains", ignoredDomainsParam)
@@ -379,7 +378,7 @@ public class DomainMembersAddressBookRoutesTest {
         given()
             .basePath(TasksRoutes.BASE)
         .when()
-            .get(taskId + "/await").prettyPeek()
+            .get(taskId + "/await")
         .then()
             .statusCode(200)
             .body("status", is("completed"))

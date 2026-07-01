@@ -26,7 +26,6 @@ import static org.hamcrest.CoreMatchers.is;
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
 import org.apache.james.webadmin.WebAdminServer;
-import org.apache.james.webadmin.WebAdminUtils;
 import org.apache.james.webadmin.utils.JsonTransformer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
