@@ -120,7 +120,7 @@ public class BookedEventGetRoute extends PublicRoute {
                 yield ErrorResponseHandler.handle(response, HttpResponseStatus.UNAUTHORIZED, "bookingConfirmationToken is invalid");
             }
             case IllegalArgumentException e -> {
-                LOGGER.info("Bad request for booked event cancellation: {}", e.getMessage());
+                LOGGER.info("Bad request for booked event retrieval: {}", e.getMessage());
                 yield ErrorResponseHandler.handle(response, HttpResponseStatus.BAD_REQUEST, e.getMessage());
             }
             case EventNotFoundException e -> {
@@ -128,7 +128,7 @@ public class BookedEventGetRoute extends PublicRoute {
                 yield ErrorResponseHandler.handle(response, HttpResponseStatus.NOT_FOUND, "Booked event not found");
             }
             default -> {
-                LOGGER.error("Unexpected error processing booked event cancellation", exception);
+                LOGGER.error("Unexpected error processing booked event retrieval", exception);
                 yield ErrorResponseHandler.handle(response, HttpResponseStatus.INTERNAL_SERVER_ERROR, exception);
             }
         };

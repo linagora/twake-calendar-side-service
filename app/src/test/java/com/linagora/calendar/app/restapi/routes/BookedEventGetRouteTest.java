@@ -227,6 +227,28 @@ class BookedEventGetRouteTest {
             .contentType(JSON);
     }
 
+    @Test
+    void shouldReturn404WhenBookedEventNoLongerExists(TwakeCalendarGuiceServer server) {
+        String token = bookAndGetToken(server);
+
+        given()
+            .auth().none()
+            .queryParam("bookingConfirmationToken", token)
+        .when()
+            .delete("/api/booked-event")
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        given()
+            .auth().none()
+            .queryParam("bookingConfirmationToken", token)
+        .when()
+            .get("/api/booked-event")
+        .then()
+            .statusCode(HttpStatus.SC_NOT_FOUND)
+            .contentType(JSON);
+    }
+
     private String bookAndGetToken(TwakeCalendarGuiceServer server) {
         BookingLink inserted = insertActiveBookingLink(server);
         String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();
