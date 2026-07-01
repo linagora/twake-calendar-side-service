@@ -31,7 +31,6 @@ import java.util.UUID;
 import javax.net.ssl.SSLException;
 
 import org.apache.james.webadmin.WebAdminServer;
-import org.apache.james.webadmin.WebAdminUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

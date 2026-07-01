@@ -47,7 +47,6 @@ import org.apache.james.task.TaskExecutionDetails;
 import org.apache.james.task.TaskManager;
 import org.apache.james.utils.UpdatableTickingClock;
 import org.apache.james.webadmin.WebAdminServer;
-import org.apache.james.webadmin.WebAdminUtils;
 import org.apache.james.webadmin.routes.TasksRoutes;
 import org.apache.james.webadmin.utils.JsonTransformer;
 import org.junit.jupiter.api.AfterEach;

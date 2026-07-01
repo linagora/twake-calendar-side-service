@@ -28,7 +28,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
 import org.apache.james.webadmin.WebAdminServer;
-import org.apache.james.webadmin.WebAdminUtils;
 import org.apache.james.webadmin.utils.JsonTransformer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -69,7 +68,7 @@ class CalendarChannelLogoutRoutesTest {
     void postShouldReturn200WhenSidIsExtractedSuccessfully() {
         String validToken = generateJwtLikeTokenWithSid("sid1");
 
-        given().log().ifValidationFails()
+        given()
             .contentType(ContentType.URLENC)
             .formParam("logout_token", validToken)
         .when()
@@ -82,7 +81,7 @@ class CalendarChannelLogoutRoutesTest {
     void postShouldInvalidateCacheWhenSidIsPresent() {
         String validToken = generateJwtLikeTokenWithSid("sid1");
 
-        given().log().ifValidationFails()
+        given()
             .contentType(ContentType.URLENC)
             .formParam("logout_token", validToken)
         .when()
@@ -96,7 +95,6 @@ class CalendarChannelLogoutRoutesTest {
     @Test
     void postShouldReturn400WhenLogoutTokenIsMissing() {
         given()
-            .log().ifValidationFails()
             .contentType(ContentType.URLENC)
         .when()
             .post()
@@ -110,7 +108,6 @@ class CalendarChannelLogoutRoutesTest {
 
         ContentType invalidateContentType = ContentType.JSON;
         given()
-            .log().ifValidationFails()
             .contentType(invalidateContentType)
             .body("{\"logout_token\":\"" + validToken + "\"}")
         .when()
@@ -125,13 +122,12 @@ class CalendarChannelLogoutRoutesTest {
         "eyJblablabla"
     })
     void postShouldReturn400WhenCanNotExtractSidFromToken(String invalidToken) {
-        given().log().ifValidationFails()
+        given()
             .contentType(ContentType.URLENC)
             .formParam("logout_token", invalidToken)
         .when()
             .post()
         .then()
-            .log().ifValidationFails()
             .statusCode(400);
     }
 
@@ -142,7 +138,6 @@ class CalendarChannelLogoutRoutesTest {
         String tokenWithoutSid = "eyJblablabla." + payload + ".signature";
 
         given()
-            .log().ifValidationFails()
             .contentType(ContentType.URLENC)
             .formParam("logout_token", tokenWithoutSid)
         .when()

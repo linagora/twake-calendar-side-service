@@ -35,7 +35,6 @@ import org.apache.james.task.Hostname;
 import org.apache.james.task.MemoryTaskManager;
 import org.apache.james.task.TaskExecutionDetails;
 import org.apache.james.webadmin.WebAdminServer;
-import org.apache.james.webadmin.WebAdminUtils;
 import org.apache.james.webadmin.routes.TasksRoutes;
 import org.apache.james.webadmin.utils.JsonTransformer;
 import org.eclipse.jetty.http.HttpStatus;
@@ -114,7 +113,7 @@ class CalendarUserRoutesTest {
     void getUsersShouldThrow404WhenNotMatchEmailFilter() {
         given()
             .queryParam("email", "james@linagora.com")
-            .get().prettyPeek()
+            .get()
         .then()
             .contentType(ContentType.JSON)
             .statusCode(404);

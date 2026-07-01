@@ -52,6 +52,7 @@ public class TwakeCalendarExtension implements BeforeEachCallback, AfterEachCall
         server = TwakeCalendarMain.createServer(configuration.workingDirectory(temporaryFolder.newFolder()).build())
             .overrideWith(overrides);
         server.start();
+        RestAssured.enableLoggingOfRequestAndResponseIfValidationFails();
     }
 
     @Override

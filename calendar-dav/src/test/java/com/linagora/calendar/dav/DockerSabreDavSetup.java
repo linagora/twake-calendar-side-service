@@ -124,7 +124,8 @@ public class DockerSabreDavSetup {
                 .withExposedService(DockerService.RABBITMQ_ADMIN.serviceName(), DockerService.RABBITMQ_ADMIN.port())
                 .withExposedService(DockerService.SABRE_DAV.serviceName(), DockerService.SABRE_DAV.port())
                 .withExposedService(DockerService.MONGO.serviceName(), DockerService.MONGO.port())
-                .withLogConsumer(DockerService.RABBITMQ.serviceName(), frame -> LOGGER.info("[SABRE_DAV] " + frame.getUtf8String()))
+                .withLogConsumer(DockerService.RABBITMQ.serviceName(), frame -> LOGGER.debug("[{}] {}", DockerService.RABBITMQ.serviceName(), frame.getUtf8String().stripTrailing()))
+                .withLogConsumer(DockerService.SABRE_DAV.serviceName(), frame -> LOGGER.debug("[{}] {}", DockerService.SABRE_DAV.serviceName(), frame.getUtf8String().stripTrailing()))
                 .waitingFor(DockerService.SABRE_DAV.serviceName(), Wait.forLogMessage(".*ready to handle connections.*", 1)
                     .withStartupTimeout(Duration.ofMinutes(5)));
         } catch (IOException e) {

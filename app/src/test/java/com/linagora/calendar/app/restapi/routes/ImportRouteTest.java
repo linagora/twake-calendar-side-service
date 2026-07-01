@@ -917,7 +917,7 @@ public class ImportRouteTest {
             .exportCalendarFromCalDav(new CalendarURL(openPaaSUser.id(), openPaaSUser.id()),
                 MailboxSessionUtil.create(openPaaSUser.username()));
 
-        JsonPath response = given().log().all()
+        JsonPath response = given()
             .body(requestBody)
         .when()
             .post("/api/import")
