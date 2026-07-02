@@ -31,6 +31,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.DateTimeException;
 import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 
 import net.fortuna.ical4j.data.CalendarBuilder;
 import net.fortuna.ical4j.data.CalendarParserFactory;
@@ -84,13 +87,62 @@ public class CalendarUtil {
             new ContentHandlerContext().withSuppressInvalidProperties(true),
             new CustomizedTimeZoneRegistry());
         try {
-            ByteArrayInputStream inputStream = new ByteArrayInputStream(icsContent);
+            byte[] sanitized = dropVTimeZonesWithoutObservance(new String(icsContent, StandardCharsets.UTF_8))
+                .getBytes(StandardCharsets.UTF_8);
+            ByteArrayInputStream inputStream = new ByteArrayInputStream(sanitized);
             return builder.build(inputStream);
         } catch (IOException e) {
             throw new RuntimeException("Error while reading calendar input", e);
         } catch (ParserException e) {
             throw new RuntimeException("Error while parsing ICal object", e);
         }
+    }
+
+    /**
+     * Some clients (e.g. Sabre) may emit a VTIMEZONE without any STANDARD or DAYLIGHT observance.
+     * Such a component is invalid per RFC 5545 and makes ical4j fail with a NullPointerException
+     * ("Cannot invoke Observance.getRequiredProperty(...)") while building the calendar.
+     * Since an observance-less VTIMEZONE carries no offset information, it can safely be dropped:
+     * the TZID referenced by the events is still resolved through the timezone registry.
+     */
+    private static String dropVTimeZonesWithoutObservance(String icsContent) {
+        if (!icsContent.toUpperCase(Locale.US).contains("BEGIN:VTIMEZONE")) {
+            return icsContent;
+        }
+        String[] lines = icsContent.split("\r\n|\r|\n", -1);
+        StringBuilder result = new StringBuilder(icsContent.length());
+        List<String> currentBlock = null;
+        boolean hasObservance = false;
+        boolean dropped = false;
+        for (String line : lines) {
+            String directive = line.trim().toUpperCase(Locale.US);
+            if (directive.equals("BEGIN:VTIMEZONE")) {
+                currentBlock = new ArrayList<>();
+                hasObservance = false;
+                currentBlock.add(line);
+            } else if (currentBlock != null) {
+                currentBlock.add(line);
+                if (directive.equals("BEGIN:STANDARD") || directive.equals("BEGIN:DAYLIGHT")) {
+                    hasObservance = true;
+                } else if (directive.equals("END:VTIMEZONE")) {
+                    if (hasObservance) {
+                        currentBlock.forEach(kept -> result.append(kept).append("\r\n"));
+                    } else {
+                        dropped = true;
+                    }
+                    currentBlock = null;
+                }
+            } else {
+                result.append(line).append("\r\n");
+            }
+        }
+        if (currentBlock != null) {
+            currentBlock.forEach(kept -> result.append(kept).append("\r\n"));
+        }
+        if (!dropped) {
+            return icsContent;
+        }
+        return result.toString();
     }
 
     public static Calendar withSingleVEvent(Calendar template, VEvent vevent) {
