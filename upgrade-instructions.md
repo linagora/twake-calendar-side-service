@@ -4,6 +4,49 @@ This document describes breaking changes and migration steps required when upgra
 
 ## 2.4.0 (upcoming)
 
+### Collapse recurring event occurrences in the calendar event search index
+
+Date: 02/07/2026
+
+Recurring events are no longer deleted by `eventUid` before being re-indexed. Every occurrence (the master
+and its overridden occurrences) is now upserted as its own sequence-guarded document, and search results
+are collapsed on the event uid so that a recurring event is surfaced as a single representative document
+(see issue #895). This removes a race where the delete-before-index step bypassed the per-document sequence
+guard and could resurrect stale occurrences under concurrent or reordered messages.
+
+A new `collapseRank` field is added to the OpenSearch calendar event index. It is used as a sort key to keep
+the recurrence master (or a standalone event) as the representative when collapsing on the uid.
+
+#### Breaking Change
+
+Existing indexed documents do not contain `collapseRank`. Until they are reindexed, the collapse sort has
+no rank to order occurrences by, so an overridden occurrence may be surfaced as the representative instead of
+the master.
+
+#### Required Actions
+
+**1. Add the field to your existing index mapping:**
+
+```bash
+PUT /calendar_events/_mapping
+{
+  "properties": {
+    "collapseRank": {
+      "type": "integer",
+      "index": false
+    }
+  }
+}
+```
+
+**2. Run a full reindex** so that all existing documents get a `collapseRank` value:
+
+```
+POST {webadminBaseURL}/calendars?task=reindex
+```
+
+**Note:** Replace `calendar_events` with your actual index name if different.
+
 ### Rebuilt calendar event search index around source calendars
 
 Date: 12/06/2026

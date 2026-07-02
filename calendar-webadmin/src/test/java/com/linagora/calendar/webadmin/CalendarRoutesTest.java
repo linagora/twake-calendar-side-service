@@ -410,25 +410,6 @@ public class CalendarRoutesTest {
             .resourceName(uid1 + ICS_EXTENSION)
             .build();
 
-        EventFields expected2 = EventFields.builder()
-            .uid(uid1)
-            .summary("recur222")
-            .location(null)
-            .description(null)
-            .clazz("PUBLIC")
-            .start(Instant.parse("2025-05-15T05:00:00Z")) // Asia/Saigon 12:00 = UTC+7
-            .end(Instant.parse("2025-05-15T05:30:00Z"))
-            .dtStamp(Instant.parse("2025-05-15T07:39:30Z"))
-            .allDay(false)
-            .isRecurrentMaster(false)
-            .organizer(person)
-            .attendees(List.of(person))
-            .resources(List.of())
-            .calendarURL(calendarURL)
-            .resourceName(uid1 + ICS_EXTENSION)
-            .sequence(1)
-            .build();
-
         EventFields expected3 = EventFields.builder()
             .uid(uid2)
             .summary("test555")
@@ -448,11 +429,13 @@ public class CalendarRoutesTest {
 
         List<EventFields> actual = calendarSearchService.search(simpleQuery("", calendarURL))
             .collectList().block();
+        // Search collapses occurrences on the uid and keeps the recurrence master as the representative:
+        // the recur222 overridden occurrence is not surfaced separately.
         assertThat(actual)
             .usingRecursiveFieldByFieldElementComparator(builder()
                 .withIgnoredFields("attendees.partStat", "resources.partStat", "organizer.partStat", "recurrenceId")
                 .build())
-            .containsExactlyInAnyOrder(expected1, expected2, expected3);
+            .containsExactlyInAnyOrder(expected1, expected3);
     }
 
     @Test
