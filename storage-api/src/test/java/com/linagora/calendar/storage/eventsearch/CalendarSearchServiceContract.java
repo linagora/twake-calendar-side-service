@@ -282,8 +282,9 @@ public interface CalendarSearchServiceContract {
 
         testee().index(CalendarEvents.of(masterEvent, recurrenceEvent)).block();
 
+        // Search collapses occurrences on the uid and keeps the recurrence master as the representative.
         CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(simpleQuery("Recurrence", calendarURL))
-            .collectList().block()).containsExactlyInAnyOrder(masterEvent, recurrenceEvent));
+            .collectList().block()).containsExactly(masterEvent));
     }
 
     @Test
@@ -313,8 +314,9 @@ public interface CalendarSearchServiceContract {
 
         testee().index(CalendarEvents.of(masterEvent, recurrenceEvent)).block();
 
+        // Search collapses occurrences on the uid and keeps the recurrence master as the representative.
         CALMLY_AWAIT.untilAsserted(() -> assertThat(query.get())
-            .containsExactlyInAnyOrder(masterEvent, recurrenceEvent));
+            .containsExactly(masterEvent));
     }
 
     @Test
@@ -1536,9 +1538,60 @@ public interface CalendarSearchServiceContract {
             List<EventFields> results = testee().search(simpleQuery("", url))
                 .collectList().block();
 
+            // Occurrences collapse on the uid, keeping the sequence-guarded master as the representative.
             assertThat(results).extracting(EventFields::summary)
-                .contains("master-v2", "instance");
+                .containsExactly("master-v2");
         });
+    }
+
+    @Test
+    default void indexingStaleRecurringMasterShouldNotDowngradeNewerOne() {
+        // Reproduces issue #895: a newer recurring event state (higher sequence) is indexed first, then a
+        // reordered stale message (lower sequence) arrives. The stale message must not resurrect old data.
+        CalendarURL url = generateCalendarURL();
+        EventUid uid = generateEventUid();
+
+        EventFields masterNew = EventFields.builder()
+            .uid(uid)
+            .sequence(2)
+            .summary("masternew")
+            .isRecurrentMaster(true)
+            .calendarURL(url)
+            .build();
+        EventFields overrideNew = EventFields.builder()
+            .uid(uid)
+            .sequence(2)
+            .summary("overrideoccurrence")
+            .isRecurrentMaster(false)
+            .recurrenceId("2025-01-03T10:00:00Z")
+            .calendarURL(url)
+            .build();
+
+        EventFields masterOld = EventFields.builder()
+            .uid(uid)
+            .sequence(1)
+            .summary("masterold")
+            .isRecurrentMaster(true)
+            .calendarURL(url)
+            .build();
+        EventFields overrideOld = EventFields.builder()
+            .uid(uid)
+            .sequence(1)
+            .summary("overrideoccurrence")
+            .isRecurrentMaster(false)
+            .recurrenceId("2025-01-03T10:00:00Z")
+            .calendarURL(url)
+            .build();
+
+        // Newer state indexed first, then the stale reordered message with a lower sequence.
+        testee().index(CalendarEvents.of(masterNew, overrideNew)).block();
+        testee().index(CalendarEvents.of(masterOld, overrideOld)).block();
+
+        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(simpleQuery("masternew", url))
+            .collectList().block()).containsExactly(masterNew));
+
+        assertThat(testee().search(simpleQuery("masterold", url))
+            .collectList().block()).isEmpty();
     }
 
     @Test
@@ -1787,13 +1840,14 @@ public interface CalendarSearchServiceContract {
         // update instance
         testee().index(CalendarEvents.of(master, instanceV2)).block();
 
+        // Occurrences collapse on the uid, keeping the master as the representative: no duplicate instance.
         CALMLY_AWAIT.untilAsserted(() -> {
             List<EventFields> results = testee().search(simpleQuery("recur", url))
                 .collectList().block();
 
             assertThat(results)
                 .extracting(EventFields::start)
-                .containsExactlyInAnyOrder(master.start(), instanceV2.start());
+                .containsExactly(master.start());
         });
     }
 

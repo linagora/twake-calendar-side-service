@@ -214,7 +214,16 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
             .build()
             .toQuery();
 
-        SortOptions sortOption = new SortOptions.Builder()
+        // Keep the recurrence master (or a standalone event) as the representative document per uid:
+        // sort overridden occurrences (higher rank) after it before collapsing.
+        SortOptions collapseRankSort = new SortOptions.Builder()
+            .field(f -> f
+                .field(CalendarFields.COLLAPSE_RANK)
+                .order(SortOrder.Asc)
+                .missing(FieldValue.of(0L)))
+            .build();
+
+        SortOptions startSort = new SortOptions.Builder()
             .field(f -> f
                 .field(CalendarFields.START)
                 .order(SortOrder.Desc)
@@ -226,7 +235,9 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
             .from(query.offset())
             .size(query.limit())
             .query(openSearchQuery)
-            .sort(sortOption)
+            .sort(collapseRankSort)
+            .sort(startSort)
+            .collapse(collapse -> collapse.field(CalendarFields.EVENT_UID))
             .build();
 
         return Mono.fromCallable(() -> client.search(request))

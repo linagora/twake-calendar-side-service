@@ -18,13 +18,16 @@
 
 package com.linagora.calendar.storage.eventsearch;
 
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
@@ -86,10 +89,17 @@ public class MemoryCalendarSearchService implements CalendarSearchService {
             return Flux.empty();
         }
 
-        return Flux.fromIterable(indexStore.values())
-            .flatMapIterable(CalendarEventsDTO::visibleEvents)
+        // Collapse matching occurrences on their uid, keeping the recurrence master (or a standalone event)
+        // as the representative document, mirroring the OpenSearch field collapse (see issue #895).
+        Collection<EventFields> representatives = indexStore.values().stream()
+            .flatMap(dto -> dto.visibleEvents().stream())
             .filter(event -> matchesQuery(event, query))
-            .sort(Comparator.comparing(EventFields::start, Comparator.nullsLast(Comparator.reverseOrder())))
+            .collect(Collectors.toMap(EventFields::uid, Function.identity(), MemoryCalendarSearchService::keepMaster))
+            .values();
+
+        return Flux.fromIterable(representatives)
+            .sort(Comparator.comparingInt(MemoryCalendarSearchService::collapseRank)
+                .thenComparing(EventFields::start, Comparator.nullsLast(Comparator.reverseOrder())))
             .skip(query.offset())
             .take(query.limit());
     }
@@ -98,6 +108,14 @@ public class MemoryCalendarSearchService implements CalendarSearchService {
     public Mono<Void> deleteAll(OpenPaaSId baseCalendarId) {
         return Mono.fromRunnable(() -> indexStore.rowKeySet()
             .removeIf(calendarURL -> calendarURL.base().equals(baseCalendarId)));
+    }
+
+    private static EventFields keepMaster(EventFields left, EventFields right) {
+        return collapseRank(left) <= collapseRank(right) ? left : right;
+    }
+
+    private static int collapseRank(EventFields event) {
+        return Boolean.FALSE.equals(event.isRecurrentMaster()) ? 1 : 0;
     }
 
     static List<CalendarURL> validateSourceSearchCalendars(EventSearchQuery query) {

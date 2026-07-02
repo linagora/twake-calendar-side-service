@@ -361,28 +361,10 @@ public class EventIndexerConsumerTest {
             .resourceName(eventUid + ".ics")
             .build();
 
-        EventFields recurrenceEvent = EventFields.builder()
-            .calendarURL(new CalendarURL(new OpenPaaSId(openPaasUser.id().value()), new OpenPaaSId(openPaasUser.id().value())))
-            .uid(new EventUid(eventUid))
-            .isRecurrentMaster(false)
-            .summary(summary)
-            .location(location)
-            .description(description)
-            .clazz("PUBLIC")
-            .start(Instant.parse("2025-05-23T07:30:00Z"))
-            .end(Instant.parse("2025-05-23T08:00:00Z"))
-            .dtStamp(Instant.parse("2025-05-16T06:03:20Z"))
-            .allDay(false)
-            .organizer(EventFields.Person.of("John1 Doe1", openPaasUser.username().asString()))
-            .addAttendee(EventFields.Person.of("John2 Doe2", attendee1.username().asString()))
-            .addAttendee(EventFields.Person.of("John1 Doe1", openPaasUser.username().asString()))
-            .sequence(1)
-            .resourceName(eventUid + ".ics")
-            .build();
-
+        // Search collapses occurrences on the uid and keeps the recurrence master as the representative.
         assertThat(eventFields)
             .usingRecursiveFieldByFieldElementComparatorIgnoringFields("recurrenceId")
-            .containsExactlyInAnyOrder(masterEvent, recurrenceEvent);
+            .containsExactly(masterEvent);
 
         // Check that the recurrence event is indexed for the attendee
         assertEventExistsInSearch(attendee1.username(), summary, eventUid);
@@ -393,7 +375,7 @@ public class EventIndexerConsumerTest {
 
         assertThat(eventFieldsAttendee)
             .usingRecursiveFieldByFieldElementComparatorIgnoringFields("recurrenceId")
-            .containsExactlyInAnyOrder(masterEvent, recurrenceEvent);
+            .containsExactly(masterEvent);
     }
 
     @Test
@@ -486,7 +468,8 @@ public class EventIndexerConsumerTest {
             .collect(Collectors.toSet())
             .block();
 
-        awaitAtMost.untilAsserted(() -> assertThat(searchSupplier.get()).hasSize(3));
+        // Occurrences collapse on the uid, keeping the master as the single representative.
+        awaitAtMost.untilAsserted(() -> assertThat(searchSupplier.get()).hasSize(1));
 
         // Update the event (removed one recurrence event)
         String updatedCalendar = """
@@ -548,7 +531,7 @@ public class EventIndexerConsumerTest {
 
         davTestHelper.upsertCalendar(openPaasUser, updatedCalendar, eventUid);
 
-        awaitAtMost.untilAsserted(() -> assertThat(searchSupplier.get()).hasSize(2));
+        awaitAtMost.untilAsserted(() -> assertThat(searchSupplier.get()).hasSize(1));
     }
 
     @Test
@@ -642,7 +625,8 @@ public class EventIndexerConsumerTest {
             .collect(Collectors.toSet())
             .block();
 
-        awaitAtMost.untilAsserted(() -> assertThat(searchSupplier.get()).hasSize(3));
+        // Occurrences collapse on the uid, keeping the master as the single representative.
+        awaitAtMost.untilAsserted(() -> assertThat(searchSupplier.get()).hasSize(1));
     }
 
     @Test
@@ -936,12 +920,12 @@ public class EventIndexerConsumerTest {
                 .collectList()
                 .block();
 
-            // Expect only 2 events (master + updated instance)
-            assertThat(results).hasSize(2);
+            // Occurrences collapse on the uid, keeping the master as the single representative: no duplicate.
+            assertThat(results).hasSize(1);
 
-            // The updated instance should be present
+            // The master occurrence is returned as the representative.
             assertThat(results)
-                .anySatisfy(e -> assertThat(e.start()).isEqualTo(Instant.parse("2025-05-18T08:00:00Z")));
+                .allSatisfy(e -> assertThat(e.start()).isEqualTo(Instant.parse("2025-05-10T08:00:00Z")));
         });
     }
 

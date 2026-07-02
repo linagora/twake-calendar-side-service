@@ -80,6 +80,9 @@ public class CalendarEventIndexMappingFactory {
         String BOOKING_LINK_ID = "bookingLinkId";
         String SEQUENCE = "sequence";
         String RESOURCE_NAME = "resourceName";
+        // Sort rank used to keep the recurrence master (or a standalone event) as the representative
+        // document when collapsing search results on the event uid. Lower rank wins.
+        String COLLAPSE_RANK = "collapseRank";
     }
 
     interface MultiField {
@@ -209,6 +212,8 @@ public class CalendarEventIndexMappingFactory {
                 .put(CalendarFields.VIDEOCONFERENCE_URL, nonIndexedKeywordProperty)
                 .put(CalendarFields.SEQUENCE, nonIndexedIntegerProperty)
                 .put(CalendarFields.RESOURCE_NAME, nonIndexedKeywordProperty)
+                // Not indexed but keeps doc_values so it can be used as a sort key when collapsing on the uid.
+                .put(CalendarFields.COLLAPSE_RANK, nonIndexedIntegerProperty)
                 .build())
             .build();
     }

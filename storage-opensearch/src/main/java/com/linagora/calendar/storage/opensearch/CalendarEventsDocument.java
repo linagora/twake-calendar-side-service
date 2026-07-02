@@ -47,7 +47,13 @@ public record CalendarEventsDocument(@JsonProperty(CalendarFields.BASE_CALENDAR_
                                      @JsonProperty(CalendarFields.BOOKING_LINK_ID) String bookingLinkId,
                                      @JsonProperty(CalendarFields.CALENDAR_URL) String calendarURL,
                                      @JsonProperty(CalendarFields.SEQUENCE) Integer sequence,
-                                     @JsonProperty(CalendarFields.RESOURCE_NAME) String resourceName) {
+                                     @JsonProperty(CalendarFields.RESOURCE_NAME) String resourceName,
+                                     @JsonProperty(CalendarFields.COLLAPSE_RANK) Integer collapseRank) {
+
+    // Representative rank used to keep the recurrence master (or a standalone event) when collapsing
+    // search results on the event uid: an overridden occurrence sorts after the master.
+    private static final int MASTER_COLLAPSE_RANK = 0;
+    private static final int OVERRIDDEN_OCCURRENCE_COLLAPSE_RANK = 1;
 
     public static class DeserializeException extends RuntimeException {
         public DeserializeException(String message, Throwable cause) {
@@ -97,7 +103,14 @@ public record CalendarEventsDocument(@JsonProperty(CalendarFields.BASE_CALENDAR_
             eventFields.bookingLinkId(),
             eventFields.calendarURL().serialize(),
             eventFields.sequence().orElse(null),
-            eventFields.resourceName().orElse(null));
+            eventFields.resourceName().orElse(null),
+            computeCollapseRank(eventFields));
+    }
+
+    private static int computeCollapseRank(EventFields eventFields) {
+        return Boolean.FALSE.equals(eventFields.isRecurrentMaster())
+            ? OVERRIDDEN_OCCURRENCE_COLLAPSE_RANK
+            : MASTER_COLLAPSE_RANK;
     }
 
     public EventFields toEventFields() {
