@@ -29,6 +29,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import jakarta.inject.Inject;
@@ -162,9 +163,12 @@ class BookedEventGetRouteTest {
         assertThatJson(actualResponse)
             .isEqualTo("""
                 {
-                  "eventJSON": "${json-unit.ignore}"
+                  "eventJSON": "${json-unit.ignore}",
+                  "owner": "%s",
+                  "bookingLinkMail": "%s",
+                  "bookingLinkDescription": "A 30 minutes intro call"
                 }
-                """);
+                """.formatted(openPaaSUser.fullName(), openPaaSUser.username().asString()));
 
         assertThatJson(actualResponse)
             .withOptions(Option.IGNORING_ARRAY_ORDER)
@@ -277,7 +281,10 @@ class BookedEventGetRouteTest {
             .insert(openPaaSUser.username(), new BookingLinkInsertRequest(
                 CalendarURL.from(openPaaSUser.id()),
                 DURATION_30_MINUTES,
-                AVAILABILITY_RULE));
+                BookingLinkInsertRequest.ACTIVE,
+                Optional.of(AVAILABILITY_RULE),
+                Optional.of("30-min intro call"),
+                Optional.of("A 30 minutes intro call")));
     }
 
     private List<String> getAvailableSlots(BookingLinkPublicId bookingLinkPublicId) {

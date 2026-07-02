@@ -19,6 +19,7 @@
 package com.linagora.calendar.restapi.routes;
 
 import static com.linagora.calendar.restapi.RestApiConstants.JSON_HEADER;
+import static com.linagora.calendar.restapi.RestApiConstants.OBJECT_MAPPER_DEFAULT;
 
 import java.util.List;
 import java.util.Optional;
@@ -31,15 +32,20 @@ import org.apache.james.metrics.api.MetricFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.collect.ImmutableMap;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.linagora.calendar.api.BookedEventTokenSigner;
 import com.linagora.calendar.api.BookedEventTokenSigner.BookedEvent;
 import com.linagora.calendar.api.BookedEventTokenSigner.BookedEventTokenClaimException;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.dto.VCalendarDto;
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.booking.BookingLink;
+import com.linagora.calendar.storage.booking.BookingLinkDAO;
+import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -56,23 +62,32 @@ public class BookedEventGetRoute extends PublicRoute {
         }
     }
 
+    @JsonInclude(JsonInclude.Include.NON_ABSENT)
+    public record BookedEventResponse(@JsonProperty("eventJSON") JsonNode eventJSON,
+                                      @JsonProperty("owner") String owner,
+                                      @JsonProperty("bookingLinkMail") String bookingLinkMail,
+                                      @JsonProperty("bookingLinkDescription") Optional<String> bookingLinkDescription) {
+    }
+
     private static final Logger LOGGER = LoggerFactory.getLogger(BookedEventGetRoute.class);
     private static final String BOOKING_CONFIRMATION_TOKEN_PARAM = "bookingConfirmationToken";
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final BookedEventTokenSigner bookedEventTokenSigner;
     private final OpenPaaSUserDAO openPaaSUserDAO;
     private final CalDavClient calDavClient;
+    private final BookingLinkDAO bookingLinkDAO;
 
     @Inject
     public BookedEventGetRoute(MetricFactory metricFactory,
                                BookedEventTokenSigner bookedEventTokenSigner,
                                OpenPaaSUserDAO openPaaSUserDAO,
-                               CalDavClient calDavClient) {
+                               CalDavClient calDavClient,
+                               BookingLinkDAO bookingLinkDAO) {
         super(metricFactory);
         this.bookedEventTokenSigner = bookedEventTokenSigner;
         this.openPaaSUserDAO = openPaaSUserDAO;
         this.calDavClient = calDavClient;
+        this.bookingLinkDAO = bookingLinkDAO;
     }
 
     protected Endpoint endpoint() {
@@ -82,22 +97,37 @@ public class BookedEventGetRoute extends PublicRoute {
     protected Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response) {
         return extractToken(request)
             .flatMap(bookedEventTokenSigner::validateAndExtract)
-            .flatMap(this::fetchEvent)
+            .flatMap(this::fetchBookedEvent)
             .flatMap(dto -> response.status(HttpResponseStatus.OK)
                 .headers(JSON_HEADER)
-                .sendByteArray(Mono.fromCallable(() -> MAPPER.writeValueAsBytes(ImmutableMap.of("eventJSON", dto.value()))))
+                .sendByteArray(Mono.fromCallable(() -> OBJECT_MAPPER_DEFAULT.writeValueAsBytes(dto)))
                 .then())
             .onErrorResume(Exception.class, exception -> handleError(response, exception));
     }
 
-    private Mono<VCalendarDto> fetchEvent(BookedEvent bookedEvent) {
+    private Mono<BookedEventResponse> fetchBookedEvent(BookedEvent bookedEvent) {
         return openPaaSUserDAO.retrieve(new OpenPaaSId(bookedEvent.ownerId()))
-            .flatMap(owner -> calDavClient.calendarReportByUid(
+            .flatMap(owner -> fetchEvent(owner, bookedEvent)
+                .flatMap(vCalendar -> toResponse(owner, bookedEvent, vCalendar)));
+    }
+
+    private Mono<VCalendarDto> fetchEvent(OpenPaaSUser owner, BookedEvent bookedEvent) {
+        return calDavClient.calendarReportByUid(
                 owner.username(),
                 new OpenPaaSId(bookedEvent.calendarId()),
-                bookedEvent.eventId()))
+                bookedEvent.eventId())
             .map(VCalendarDto::from)
             .switchIfEmpty(Mono.error(new EventNotFoundException(bookedEvent.eventId())));
+    }
+
+    private Mono<BookedEventResponse> toResponse(OpenPaaSUser owner, BookedEvent bookedEvent, VCalendarDto vCalendar) {
+        return bookingLinkDAO.findByPublicId(new BookingLinkPublicId(bookedEvent.publicBookingLinkId()))
+            .map(BookingLink::description)
+            .defaultIfEmpty(Optional.empty())
+            .map(description -> new BookedEventResponse(vCalendar.value(),
+                owner.fullName(),
+                owner.username().asString(),
+                description));
     }
 
     private Mono<String> extractToken(HttpServerRequest request) {
