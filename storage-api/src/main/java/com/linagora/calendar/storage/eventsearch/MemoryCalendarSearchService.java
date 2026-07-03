@@ -203,7 +203,27 @@ public class MemoryCalendarSearchService implements CalendarSearchService {
                     eventsByKey.put(key, new EventEntry(incomingEvent, false, incomingEvent.sequence()));
                 }
             }
+            pruneRemovedOccurrences(incomingEvents);
             return this;
+        }
+
+        // Drop occurrence documents that are no longer part of the event (e.g. a deleted overridden
+        // occurrence). We only drop entries with a strictly older sequence than the current update, so a
+        // reordered older message cannot erase a fresher state (see issue #895).
+        private void pruneRemovedOccurrences(Set<EventFields> incomingEvents) {
+            Optional<Integer> sequenceThreshold = incomingEvents.stream()
+                .map(EventFields::sequence)
+                .flatMap(Optional::stream)
+                .max(Comparator.naturalOrder());
+
+            sequenceThreshold.ifPresent(threshold -> {
+                Set<String> incomingKeys = incomingEvents.stream()
+                    .map(CalendarEventsDTO::eventKey)
+                    .collect(Collectors.toSet());
+
+                eventsByKey.entrySet().removeIf(entry -> !incomingKeys.contains(entry.getKey())
+                    && entry.getValue().lastSequence().map(sequence -> sequence < threshold).orElse(false));
+            });
         }
 
         static boolean shouldReplace(Optional<EventFields> existing, EventFields incoming) {

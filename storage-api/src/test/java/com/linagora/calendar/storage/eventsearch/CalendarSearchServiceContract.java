@@ -1595,6 +1595,65 @@ public interface CalendarSearchServiceContract {
     }
 
     @Test
+    default void removedRecurrenceOccurrenceShouldNotRemainSearchableAfterUpdate() {
+        // Reproduces issue #895: an overridden occurrence removed from a later update must not linger in the
+        // index and remain searchable through its own fields.
+        CalendarURL url = generateCalendarURL();
+        EventUid uid = generateEventUid();
+
+        EventFields master = EventFields.builder()
+            .uid(uid)
+            .sequence(1)
+            .summary("recurringmaster")
+            .isRecurrentMaster(true)
+            .calendarURL(url)
+            .build();
+        EventFields keptOccurrence = EventFields.builder()
+            .uid(uid)
+            .sequence(1)
+            .summary("keptoccurrence")
+            .isRecurrentMaster(false)
+            .recurrenceId("2025-01-03T10:00:00Z")
+            .calendarURL(url)
+            .build();
+        EventFields removedOccurrence = EventFields.builder()
+            .uid(uid)
+            .sequence(1)
+            .summary("removedoccurrence")
+            .isRecurrentMaster(false)
+            .recurrenceId("2025-01-10T10:00:00Z")
+            .calendarURL(url)
+            .build();
+
+        testee().index(CalendarEvents.of(master, keptOccurrence, removedOccurrence)).block();
+
+        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(simpleQuery("removedoccurrence", url))
+            .collectList().block()).containsExactly(removedOccurrence));
+
+        // Update the event with a higher sequence, dropping the removed occurrence from the payload.
+        EventFields masterV2 = EventFields.builder()
+            .uid(uid)
+            .sequence(2)
+            .summary("recurringmaster")
+            .isRecurrentMaster(true)
+            .calendarURL(url)
+            .build();
+        EventFields keptOccurrenceV2 = EventFields.builder()
+            .uid(uid)
+            .sequence(2)
+            .summary("keptoccurrence")
+            .isRecurrentMaster(false)
+            .recurrenceId("2025-01-03T10:00:00Z")
+            .calendarURL(url)
+            .build();
+
+        testee().index(CalendarEvents.of(masterV2, keptOccurrenceV2)).block();
+
+        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(simpleQuery("removedoccurrence", url))
+            .collectList().block()).isEmpty());
+    }
+
+    @Test
     default void indexShouldOverrideAllFieldsOnlyWhenSequenceIsHigher() {
         EventUid uid = generateEventUid();
         CalendarURL url = generateCalendarURL();

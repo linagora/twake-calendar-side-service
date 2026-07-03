@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -133,7 +134,53 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
 
     @Override
     public Mono<Void> index(CalendarEvents fields) {
-        return doIndex(fields, INDEX_CHECK_SEQUENCE);
+        return doIndex(fields, INDEX_CHECK_SEQUENCE)
+            .then(deleteStaleOccurrences(fields));
+    }
+
+    // Remove occurrence documents that are no longer part of the event (e.g. a deleted overridden
+    // occurrence). We only delete documents with a strictly older sequence than the current message and
+    // never the ones we just wrote, so a reordered older message cannot resurrect a stale state (see
+    // issue #895).
+    private Mono<Void> deleteStaleOccurrences(CalendarEvents fields) {
+        OptionalInt sequenceThreshold = fields.events().stream()
+            .map(EventFields::sequence)
+            .flatMap(Optional::stream)
+            .mapToInt(Integer::intValue)
+            .max();
+
+        if (sequenceThreshold.isEmpty()) {
+            return Mono.empty();
+        }
+
+        CalendarURL calendarURL = fields.calendarURL();
+        List<String> writtenDocumentIds = fields.events().stream()
+            .map(event -> buildDocumentIdForEvent(event.calendarURL(), event).asString())
+            .toList();
+
+        Query staleOccurrencesQuery = QueryBuilders.bool()
+            .must(calendarURLQuery(calendarURL))
+            .must(QueryBuilders.term()
+                .field(CalendarFields.EVENT_UID)
+                .value(FieldValue.of(fields.eventUid().value()))
+                .build()
+                .toQuery())
+            .must(QueryBuilders.range()
+                .field(CalendarFields.SEQUENCE)
+                .lt(JsonData.of(sequenceThreshold.getAsInt()))
+                .build()
+                .toQuery())
+            .mustNot(QueryBuilders.ids()
+                .values(writtenDocumentIds)
+                .build()
+                .toQuery())
+            .build()
+            .toQuery();
+
+        return indexer.deleteAllMatchingQuery(staleOccurrencesQuery, ROUTING_KEY.apply(calendarURL.base()))
+            .onErrorResume(error -> Mono.error(CalendarSearchIndexingException.of("Failed to delete stale calendar occurrences",
+                calendarURL, fields.eventUid(), error)))
+            .then();
     }
 
     @Override

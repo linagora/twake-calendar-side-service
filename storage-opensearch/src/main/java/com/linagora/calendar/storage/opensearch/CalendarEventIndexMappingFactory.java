@@ -168,6 +168,7 @@ public class CalendarEventIndexMappingFactory {
         Property nonIndexedKeywordProperty = new Property(new KeywordProperty.Builder().index(false).build());
         Property nonIndexedBooleanProperty = new Property(new BooleanProperty.Builder().index(false).build());
         Property nonIndexedIntegerProperty = new Property(new IntegerNumberProperty.Builder().index(false).build());
+        Property indexedIntegerProperty = new Property(new IntegerNumberProperty.Builder().index(true).build());
         Property indexedKeywordProperty = new Property(new KeywordProperty.Builder().index(true).build());
 
         Property emailTextProperty = new TextProperty.Builder()
@@ -210,7 +211,8 @@ public class CalendarEventIndexMappingFactory {
                 .put(CalendarFields.ALL_DAY, nonIndexedBooleanProperty)
                 .put(CalendarFields.IS_RECURRENT_MASTER, nonIndexedBooleanProperty)
                 .put(CalendarFields.VIDEOCONFERENCE_URL, nonIndexedKeywordProperty)
-                .put(CalendarFields.SEQUENCE, nonIndexedIntegerProperty)
+                // Indexed so removed occurrences can be pruned with a sequence-bounded delete-by-query (issue #895).
+                .put(CalendarFields.SEQUENCE, indexedIntegerProperty)
                 .put(CalendarFields.RESOURCE_NAME, nonIndexedKeywordProperty)
                 // Not indexed but keeps doc_values so it can be used as a sort key when collapsing on the uid.
                 .put(CalendarFields.COLLAPSE_RANK, nonIndexedIntegerProperty)

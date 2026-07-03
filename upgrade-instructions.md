@@ -14,18 +14,26 @@ are collapsed on the event uid so that a recurring event is surfaced as a single
 (see issue #895). This removes a race where the delete-before-index step bypassed the per-document sequence
 guard and could resurrect stale occurrences under concurrent or reordered messages.
 
+When an event is updated, occurrences that are no longer part of it (e.g. a deleted overridden occurrence)
+are pruned with a sequence-bounded delete-by-query: only documents with a strictly older `sequence` than the
+incoming message, and never the documents just written, are removed. A reordered older message therefore
+cannot resurrect a stale occurrence, and removed occurrences no longer linger in the index.
+
 A new `collapseRank` field is added to the OpenSearch calendar event index. It is used as a sort key to keep
-the recurrence master (or a standalone event) as the representative when collapsing on the uid.
+the recurrence master (or a standalone event) as the representative when collapsing on the uid. The existing
+`sequence` field is now indexed (`index: true`) so removed occurrences can be pruned by the sequence-bounded
+delete-by-query.
 
 #### Breaking Change
 
 Existing indexed documents do not contain `collapseRank`. Until they are reindexed, the collapse sort has
 no rank to order occurrences by, so an overridden occurrence may be surfaced as the representative instead of
-the master.
+the master. In addition, the `sequence` field must be indexed for the removed-occurrence pruning to match
+existing documents.
 
 #### Required Actions
 
-**1. Add the field to your existing index mapping:**
+**1. Add `collapseRank` and make `sequence` searchable in your existing index mapping:**
 
 ```bash
 PUT /calendar_events/_mapping
@@ -34,10 +42,17 @@ PUT /calendar_events/_mapping
     "collapseRank": {
       "type": "integer",
       "index": false
+    },
+    "sequence": {
+      "type": "integer",
+      "index": true
     }
   }
 }
 ```
+
+Changing `index` on an existing field is not always accepted by OpenSearch; if the mapping update is
+rejected, create a new index with the updated mapping and reindex into it.
 
 **2. Run a full reindex** so that all existing documents get a `collapseRank` value:
 
