@@ -69,8 +69,11 @@ public class TeamCalendarService {
     }
 
     public Mono<Void> delete(Domain domainName, TeamCalendarId id) {
-        return retrieve(domainName, id)
-            .then(teamCalendarRepository.delete(id));
+        return resolveDomain(domainName)
+            .flatMap(domain -> teamCalendarRepository.retrieve(id)
+                .filter(teamCalendar -> teamCalendar.domain().id().equals(domain.id()))
+                .flatMap(_ -> teamCalendarRepository.delete(id))
+                .then());
     }
 
     private Mono<OpenPaaSDomain> resolveDomain(Domain domainName) {

@@ -602,6 +602,9 @@ Status codes:
 - `400` when the domain name or request body is invalid
 - `404` when the domain does not exist
 
+Creation is not idempotent.
+The `name` lookup can return several team calendars.
+
 ### Listing team calendars
 
 ```
@@ -669,7 +672,7 @@ Deletes the team calendar metadata.
 Status codes:
 - `204` on success
 - `400` when the domain name is invalid
-- `404` when the domain or team calendar does not exist
+- `404` when the domain does not exist
 
 ## Domain registered users routes
 

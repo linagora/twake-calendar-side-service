@@ -39,6 +39,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.TeamCalendarInsertRequest;
+import com.linagora.calendar.storage.model.TeamCalendar;
 import com.linagora.calendar.storage.model.TeamCalendarId;
 import com.linagora.calendar.storage.mongodb.DockerMongoDBExtension;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
@@ -114,6 +115,81 @@ class TeamCalendarRoutesTest {
 
         assertThat(teamCalendarRepository.retrieve(domain.id(), "sales").collectList().block())
             .hasSize(1);
+    }
+
+    @Test
+    void createShouldNotBeIdempotentWhenSamePayloadIsPostedTwice() {
+        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
+        String payload = """
+            {
+              "name": "sales",
+              "displayName": "Sales Team"
+            }
+            """;
+
+        String firstId = given()
+            .contentType(ContentType.JSON)
+            .body(payload)
+        .when()
+            .post("/domains/linagora.com/team-calendars")
+        .then()
+            .statusCode(201)
+            .extract()
+            .jsonPath()
+            .getString("id");
+
+        String secondId = given()
+            .contentType(ContentType.JSON)
+            .body(payload)
+        .when()
+            .post("/domains/linagora.com/team-calendars")
+        .then()
+            .statusCode(201)
+            .extract()
+            .jsonPath()
+            .getString("id");
+
+        assertThat(secondId).isNotEqualTo(firstId);
+        assertThat(teamCalendarRepository.retrieve(domain.id(), "sales").collectList().block())
+            .hasSize(2)
+            .extracting(TeamCalendar::displayName)
+            .containsOnly("Sales Team");
+    }
+
+    @Test
+    void createShouldAllowSameNameWithDifferentDisplayName() {
+        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
+
+        given()
+            .contentType(ContentType.JSON)
+            .body("""
+                {
+                  "name": "sales",
+                  "displayName": "Sales Team"
+                }
+                """)
+        .when()
+            .post("/domains/linagora.com/team-calendars")
+        .then()
+            .statusCode(201);
+
+        given()
+            .contentType(ContentType.JSON)
+            .body("""
+                {
+                  "name": "sales",
+                  "displayName": "Global Sales"
+                }
+                """)
+        .when()
+            .post("/domains/linagora.com/team-calendars")
+        .then()
+            .statusCode(201);
+
+        assertThat(teamCalendarRepository.retrieve(domain.id(), "sales").collectList().block())
+            .hasSize(2)
+            .extracting(TeamCalendar::displayName)
+            .containsExactlyInAnyOrder("Sales Team", "Global Sales");
     }
 
     @Test
@@ -195,7 +271,7 @@ class TeamCalendarRoutesTest {
     void getShouldReturnTeamCalendarById() {
         OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
         TeamCalendarId id = teamCalendarRepository.create(new TeamCalendarInsertRequest(domain, "sales", "Sales Team"))
-            .map(com.linagora.calendar.storage.model.TeamCalendar::id)
+            .map(TeamCalendar::id)
             .block();
 
         String response = when()
@@ -223,7 +299,7 @@ class TeamCalendarRoutesTest {
     void patchShouldUpdateDisplayName() {
         OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
         TeamCalendarId id = teamCalendarRepository.create(new TeamCalendarInsertRequest(domain, "sales", "Sales Team"))
-            .map(com.linagora.calendar.storage.model.TeamCalendar::id)
+            .map(TeamCalendar::id)
             .block();
         clock.setInstant(Instant.parse("2026-01-01T00:01:00Z"));
 
@@ -252,7 +328,7 @@ class TeamCalendarRoutesTest {
     void deleteShouldRemoveTeamCalendar() {
         OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
         TeamCalendarId id = teamCalendarRepository.create(new TeamCalendarInsertRequest(domain, "sales", "Sales Team"))
-            .map(com.linagora.calendar.storage.model.TeamCalendar::id)
+            .map(TeamCalendar::id)
             .block();
 
         when()
@@ -262,14 +338,45 @@ class TeamCalendarRoutesTest {
 
         assertThat(teamCalendarRepository.retrieve(id).blockOptional())
             .isEmpty();
+    }
+
+    @Test
+    void deleteShouldBeIdempotent() {
+        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
+        TeamCalendarId id = teamCalendarRepository.create(new TeamCalendarInsertRequest(domain, "sales", "Sales Team"))
+            .map(TeamCalendar::id)
+            .block();
 
         when()
             .delete("/domains/linagora.com/team-calendars/" + id.value())
         .then()
-            .statusCode(404)
-            .contentType(ContentType.JSON);
+            .statusCode(204);
+
+        when()
+            .delete("/domains/linagora.com/team-calendars/" + id.value())
+        .then()
+            .statusCode(204);
 
         assertThat(teamCalendarRepository.retrieve(id).blockOptional())
+            .isEmpty();
+    }
+
+    @Test
+    void deleteShouldNotRemoveTeamCalendarOfOtherDomain() {
+        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
+        OpenPaaSDomain otherDomain = domainDAO.add(Domain.of("other.com")).block();
+        TeamCalendarId id = teamCalendarRepository.create(new TeamCalendarInsertRequest(otherDomain, "sales", "Sales Team"))
+            .map(TeamCalendar::id)
+            .block();
+
+        when()
+            .delete("/domains/linagora.com/team-calendars/" + id.value())
+        .then()
+            .statusCode(204);
+
+        assertThat(teamCalendarRepository.retrieve(id).blockOptional())
+            .hasValueSatisfying(teamCalendar -> assertThat(teamCalendar.domain()).isEqualTo(otherDomain));
+        assertThat(teamCalendarRepository.listByDomain(domain.id()).collectList().block())
             .isEmpty();
     }
 
