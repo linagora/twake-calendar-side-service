@@ -68,12 +68,14 @@ import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.ResourceDAO;
 import com.linagora.calendar.storage.ResourceInsertRequest;
+import com.linagora.calendar.storage.TeamCalendarRepository;
 import com.linagora.calendar.storage.UsernameRegistrationKey;
 import com.linagora.calendar.storage.model.ResourceAdministrator;
 import com.linagora.calendar.storage.model.ResourceId;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
+import com.linagora.calendar.storage.mongodb.MongoDBTeamCalendarRepository;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
 import reactor.core.publisher.Mono;
@@ -129,8 +131,9 @@ public class CalendarListNotificationConsumerTest {
         domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
         openPaaSUserDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
         resourceDAO = new MongoDBResourceDAO(mongoDB, Clock.systemUTC());
+        TeamCalendarRepository teamCalendarRepository = new MongoDBTeamCalendarRepository(mongoDB, Clock.systemUTC());
 
-        CalendarListNotificationHandler handler = new CalendarListNotificationHandler(eventBus, openPaaSUserDAO, resourceDAO);
+        CalendarListNotificationHandler handler = new CalendarListNotificationHandler(eventBus, openPaaSUserDAO, resourceDAO, teamCalendarRepository);
         consumer = new CalendarListNotificationConsumer(channelPool, QueueArguments.Builder::new, handler);
         consumer.init();
     }
