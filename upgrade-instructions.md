@@ -2,7 +2,7 @@
 
 This document describes breaking changes and migration steps required when upgrading to newer versions of Twake Calendar.
 
-## 2.4.0 (upcoming)
+## 2.4.3 (upcoming)
 
 ### Collapse recurring event occurrences in the calendar event search index
 
