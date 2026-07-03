@@ -77,9 +77,10 @@ public class MongoDBTeamCalendarRepository implements TeamCalendarRepository {
     }
 
     @Override
-    public Mono<Void> create(TeamCalendarInsertRequest request) {
-        return Mono.from(collection.insertOne(toDocument(request)))
-            .then();
+    public Mono<TeamCalendar> create(TeamCalendarInsertRequest request) {
+        Document document = toDocument(request);
+        return Mono.from(collection.insertOne(document))
+            .thenReturn(fromDocument(document));
     }
 
     @Override
@@ -155,6 +156,7 @@ public class MongoDBTeamCalendarRepository implements TeamCalendarRepository {
     private Document toDocument(TeamCalendarInsertRequest request) {
         Date now = Date.from(clock.instant());
         return new Document()
+            .append(ID_FIELD, new ObjectId())
             .append(DOMAIN_ID_FIELD, new ObjectId(request.domain().id().value()))
             .append(DOMAIN_NAME_FIELD, request.domain().domain().asString())
             .append(NAME_FIELD, request.name())
