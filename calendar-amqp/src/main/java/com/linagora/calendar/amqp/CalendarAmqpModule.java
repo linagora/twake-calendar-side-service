@@ -59,6 +59,7 @@ public class CalendarAmqpModule extends AbstractModule {
         bind(CalendarListNotificationConsumer.class).in(Scopes.SINGLETON);
         bind(CalendarListNotificationHandler.class).in(Scopes.SINGLETON);
         bind(ItipLocalDeliveryConsumer.class).in(Scopes.SINGLETON);
+        bind(EventAuditLogConsumer.class).in(Scopes.SINGLETON);
 
         Multibinder<HealthCheck> healthCheckMultibinder = Multibinder.newSetBinder(binder(), HealthCheck.class);
         healthCheckMultibinder.addBinding().to(RabbitMQCalendarQueueConsumerHealthCheck.class);
@@ -202,6 +203,18 @@ public class CalendarAmqpModule extends AbstractModule {
     public InitializationOperation initializeItipLocalDeliveryConsumer(ItipLocalDeliveryConsumer instance) {
         return InitilizationOperationBuilder
             .forClass(ItipLocalDeliveryConsumer.class)
+            .init(instance::init);
+    }
+
+    @ProvidesIntoSet
+    SimpleConnectionPool.ReconnectionHandler provideEventAuditLogReconnectionHandler(EventAuditLogReconnectionHandler reconnectionHandler) {
+        return reconnectionHandler;
+    }
+
+    @ProvidesIntoSet
+    public InitializationOperation initializeEventAuditLogConsumer(EventAuditLogConsumer instance) {
+        return InitilizationOperationBuilder
+            .forClass(EventAuditLogConsumer.class)
             .init(instance::init);
     }
 
