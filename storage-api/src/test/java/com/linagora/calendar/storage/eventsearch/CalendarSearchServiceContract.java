@@ -1654,7 +1654,7 @@ public interface CalendarSearchServiceContract {
     }
 
     @Test
-    default void searchShouldReturnOverriddenOccurrenceWhenOnlyItMatches() {
+    default void searchShouldReturnOverriddenOccurrenceWhenOnlyItMatches() throws AddressException {
         // Ensures the collapse-on-uid approach still surfaces an overridden occurrence when the searched
         // keyword only matches that occurrence and not the master (see the review discussion on #895):
         // recurring master without Bob, one override instance with Bob invited separately.
