@@ -1654,6 +1654,41 @@ public interface CalendarSearchServiceContract {
     }
 
     @Test
+    default void searchShouldReturnOverriddenOccurrenceWhenOnlyItMatches() {
+        // Ensures the collapse-on-uid approach still surfaces an overridden occurrence when the searched
+        // keyword only matches that occurrence and not the master (see the review discussion on #895):
+        // recurring master without Bob, one override instance with Bob invited separately.
+        CalendarURL url = generateCalendarURL();
+        EventUid uid = generateEventUid();
+
+        EventFields master = EventFields.builder()
+            .uid(uid)
+            .sequence(1)
+            .summary("recurringmaster")
+            .organizer(Person.of("Alice", "alice@domain.tld"))
+            .attendees(List.of(Person.of("Alice", "alice@domain.tld")))
+            .isRecurrentMaster(true)
+            .calendarURL(url)
+            .build();
+        EventFields overrideWithBob = EventFields.builder()
+            .uid(uid)
+            .sequence(1)
+            .summary("recurringmaster")
+            .organizer(Person.of("Alice", "alice@domain.tld"))
+            .attendees(List.of(Person.of("Alice", "alice@domain.tld"), Person.of("Bob", "bob@domain.tld")))
+            .isRecurrentMaster(false)
+            .recurrenceId("2025-01-03T10:00:00Z")
+            .calendarURL(url)
+            .build();
+
+        testee().index(CalendarEvents.of(master, overrideWithBob)).block();
+
+        // A keyword matching only the override must return that override's VEVENT, not the master.
+        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(simpleQuery("Bob", url))
+            .collectList().block()).containsExactly(overrideWithBob));
+    }
+
+    @Test
     default void indexShouldOverrideAllFieldsOnlyWhenSequenceIsHigher() {
         EventUid uid = generateEventUid();
         CalendarURL url = generateCalendarURL();
