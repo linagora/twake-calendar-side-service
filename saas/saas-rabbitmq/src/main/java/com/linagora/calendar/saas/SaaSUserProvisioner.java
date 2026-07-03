@@ -27,12 +27,10 @@ import org.slf4j.LoggerFactory;
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.dav.AddressBookContact;
 import com.linagora.calendar.dav.CardDavClient;
-import com.linagora.calendar.storage.DomainSettingsResolver;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
-import com.linagora.calendar.storage.UserSearchMode;
 
 import reactor.core.publisher.Mono;
 
@@ -42,17 +40,14 @@ public class SaaSUserProvisioner {
     private final OpenPaaSUserDAO userDAO;
     private final OpenPaaSDomainDAO domainDAO;
     private final CardDavClient cardDavClient;
-    private final DomainSettingsResolver domainSettingsResolver;
 
     @Inject
     public SaaSUserProvisioner(OpenPaaSUserDAO userDAO,
                                OpenPaaSDomainDAO domainDAO,
-                               CardDavClient cardDavClient,
-                               DomainSettingsResolver domainSettingsResolver) {
+                               CardDavClient cardDavClient) {
         this.userDAO = userDAO;
         this.domainDAO = domainDAO;
         this.cardDavClient = cardDavClient;
-        this.domainSettingsResolver = domainSettingsResolver;
     }
 
     public Mono<OpenPaaSUser> provisionUser(Username username) {
@@ -69,9 +64,7 @@ public class SaaSUserProvisioner {
 
     private Mono<Void> addUserToDomainAddressBook(OpenPaaSUser user) {
         return Mono.justOrEmpty(user.username().getDomainPart())
-            .flatMap(domain -> domainSettingsResolver.resolveUserSearchMode(domain)
-                .filter(mode -> mode != UserSearchMode.DISABLED)
-                .flatMap(ignored -> domainDAO.retrieve(domain))
+            .flatMap(domain -> domainDAO.retrieve(domain)
                 .flatMap(openPaaSDomain -> upsertUserContact(openPaaSDomain, user)));
     }
 

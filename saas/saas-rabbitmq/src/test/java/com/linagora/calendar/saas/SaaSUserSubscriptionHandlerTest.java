@@ -22,11 +22,8 @@ import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 
-import org.apache.commons.configuration2.MapConfiguration;
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,8 +32,6 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.dav.SabreDavExtension;
-import com.linagora.calendar.storage.DomainSettingsResolver;
-import com.linagora.calendar.storage.MemoryDomainSettingsDAO;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
@@ -60,9 +55,7 @@ class SaaSUserSubscriptionHandlerTest {
         domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
         userDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
         cardDavClient = new CardDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
-        DomainSettingsResolver domainSettingsResolver = new DomainSettingsResolver(
-            new MemoryDomainSettingsDAO(), Set.of(Domain.of("nonshared.tld")), Set.of(), new MapConfiguration(Map.of()));
-        testee = new SaaSUserSubscriptionHandler(new SaaSUserProvisioner(userDAO, domainDAO, cardDavClient, domainSettingsResolver));
+        testee = new SaaSUserSubscriptionHandler(new SaaSUserProvisioner(userDAO, domainDAO, cardDavClient));
         testDomain = createNewDomainWithAddressBook();
     }
 
@@ -177,7 +170,7 @@ class SaaSUserSubscriptionHandlerTest {
     }
 
     @Test
-    void shouldNotAddContactToAddressBookWhenNotSupportSharingForDomain() {
+    void shouldRegisterUserAsDomainMemberRegardlessOfUserSearchConfiguration() {
         OpenPaaSDomain nonSharedDomain = domainDAO.add(Domain.of("nonshared.tld")).block();
         cardDavClient.createDomainMembersAddressBook(nonSharedDomain.id()).block();
 
@@ -200,7 +193,7 @@ class SaaSUserSubscriptionHandlerTest {
         assertThat(user.username()).isEqualTo(Username.of(userEmail));
 
         String vcardContent = listContactDomainMembersAsVcard(nonSharedDomain);
-        assertThat(vcardContent).doesNotContain(userEmail);
+        assertThat(vcardContent).contains(userEmail);
     }
 
     private String listContactDomainMembersAsVcard(OpenPaaSDomain domain) {

@@ -24,12 +24,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
-import org.apache.commons.configuration2.MapConfiguration;
 import org.apache.james.core.Username;
 import org.apache.james.mailbox.store.RandomMailboxSessionIdGenerator;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,8 +37,6 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import com.fasterxml.jackson.databind.node.LongNode;
 import com.fasterxml.jackson.databind.node.TextNode;
-import com.linagora.calendar.storage.DomainSettingsResolver;
-import com.linagora.calendar.storage.MemoryDomainSettingsDAO;
 import com.linagora.calendar.storage.MemoryOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.MemoryOpenPaaSUserDAO;
 import com.linagora.calendar.storage.MemoryUserConfigurationDAO;
@@ -64,12 +60,11 @@ public class CalendarSettingUpdaterTest {
     void setup() {
         openPaaSUserDAO = new MemoryOpenPaaSUserDAO();
         userConfigurationDAO = new MemoryUserConfigurationDAO(openPaaSUserDAO);
-        // Disable user search for the test domain so the provisioner skips the (CardDav) address book step,
-        // keeping this an in-memory test. Auto-provisioning thus only creates the OpenPaaSUser.
-        DomainSettingsResolver domainSettingsResolver = new DomainSettingsResolver(
-            new MemoryDomainSettingsDAO(), Set.of(USER.getDomainPart().get()), Set.of(), new MapConfiguration(Map.of()));
+        // The test domain is not registered in the (in-memory) domain DAO, so the provisioner skips the
+        // (CardDav) address book step, keeping this an in-memory test. Auto-provisioning thus only creates
+        // the OpenPaaSUser.
         SaaSUserProvisioner userProvisioner = new SaaSUserProvisioner(openPaaSUserDAO,
-            new MemoryOpenPaaSDomainDAO(), null, domainSettingsResolver);
+            new MemoryOpenPaaSDomainDAO(), null);
         testee = new CalendarSettingUpdater(userConfigurationDAO, openPaaSUserDAO, userProvisioner, sessionProvider);
         openPaaSUserDAO.add(USER).block();
     }
