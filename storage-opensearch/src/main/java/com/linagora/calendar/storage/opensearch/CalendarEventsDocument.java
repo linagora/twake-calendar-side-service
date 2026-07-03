@@ -48,6 +48,7 @@ public record CalendarEventsDocument(@JsonProperty(CalendarFields.BASE_CALENDAR_
                                      @JsonProperty(CalendarFields.CALENDAR_URL) String calendarURL,
                                      @JsonProperty(CalendarFields.SEQUENCE) Integer sequence,
                                      @JsonProperty(CalendarFields.RESOURCE_NAME) String resourceName,
+                                     @JsonProperty(CalendarFields.RECURRENCE_ID) String recurrenceId,
                                      @JsonProperty(CalendarFields.COLLAPSE_RANK) Integer collapseRank) {
 
     // Representative rank used to keep the recurrence master (or a standalone event) when collapsing
@@ -104,6 +105,7 @@ public record CalendarEventsDocument(@JsonProperty(CalendarFields.BASE_CALENDAR_
             eventFields.calendarURL().serialize(),
             eventFields.sequence().orElse(null),
             eventFields.resourceName().orElse(null),
+            eventFields.recurrenceId().orElse(null),
             computeCollapseRank(eventFields));
     }
 
@@ -147,6 +149,9 @@ public record CalendarEventsDocument(@JsonProperty(CalendarFields.BASE_CALENDAR_
         }
         if (resourceName != null) {
             builder.resourceName(resourceName);
+        }
+        if (recurrenceId != null) {
+            builder.recurrenceId(recurrenceId);
         }
 
         return builder.build();
