@@ -24,16 +24,21 @@ the recurrence master (or a standalone event) as the representative when collaps
 `sequence` field is now indexed (`index: true`) so removed occurrences can be pruned by the sequence-bounded
 delete-by-query.
 
+A new `recurrenceId` field is also added (stored, non-indexed). It carries the `RECURRENCE-ID` of an
+overridden occurrence so that, when such an occurrence is surfaced by search, it keeps its own recurrence id
+instead of falling back to the master's.
+
 #### Breaking Change
 
-Existing indexed documents do not contain `collapseRank`. Until they are reindexed, the collapse sort has
-no rank to order occurrences by, so an overridden occurrence may be surfaced as the representative instead of
-the master. In addition, the `sequence` field must be indexed for the removed-occurrence pruning to match
+Existing indexed documents do not contain `collapseRank` or `recurrenceId`. Until they are reindexed, the
+collapse sort has no rank to order occurrences by, so an overridden occurrence may be surfaced as the
+representative instead of the master, and a surfaced overridden occurrence has no stored `recurrenceId` to
+return. In addition, the `sequence` field must be indexed for the removed-occurrence pruning to match
 existing documents.
 
 #### Required Actions
 
-**1. Add `collapseRank` and make `sequence` searchable in your existing index mapping:**
+**1. Add `collapseRank` and `recurrenceId`, and make `sequence` searchable in your existing index mapping:**
 
 ```bash
 PUT /calendar_events/_mapping
@@ -41,6 +46,10 @@ PUT /calendar_events/_mapping
   "properties": {
     "collapseRank": {
       "type": "integer",
+      "index": false
+    },
+    "recurrenceId": {
+      "type": "keyword",
       "index": false
     },
     "sequence": {
