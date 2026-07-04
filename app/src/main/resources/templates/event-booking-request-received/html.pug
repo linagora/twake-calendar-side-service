@@ -83,4 +83,12 @@ html
                                       else
                                         strong #{content.start.fullDateTime}&nbsp;#{translator.get('to')}&nbsp;#{content.end.fullDateTime}&nbsp;#{content.start.timezone}
                                         span .
+                                    p
+                                      strong #{translator.get('owner')}:&nbsp;
+                                      span(style='font-weight:500;') #{content.owner.cn}
+                                      span(style='color: #787878;') &nbsp;&lt;#{content.owner.email}&gt;
+                                    if (content.description)
+                                      p
+                                        strong #{translator.get('description')}:&nbsp;
+                                        span(style='white-space: pre-line;') #{content.description}
                                     p #{translator.get('organizer_notified')}
