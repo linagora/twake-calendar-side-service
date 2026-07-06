@@ -23,7 +23,9 @@ import static com.mongodb.client.model.Filters.eq;
 
 import java.time.Clock;
 import java.util.Date;
+import java.util.List;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 import jakarta.inject.Inject;
 
@@ -38,6 +40,7 @@ import com.linagora.calendar.storage.TeamCalendarNotFoundException;
 import com.linagora.calendar.storage.TeamCalendarRepository;
 import com.linagora.calendar.storage.model.TeamCalendar;
 import com.linagora.calendar.storage.model.TeamCalendarId;
+import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.FindOneAndUpdateOptions;
 import com.mongodb.client.model.IndexOptions;
 import com.mongodb.client.model.Indexes;
@@ -123,6 +126,27 @@ public class MongoDBTeamCalendarRepository implements TeamCalendarRepository {
         return Mono.justOrEmpty(asObjectId(domainId))
             .flatMapMany(domainObjectId -> Flux.from(collection.find(eq(DOMAIN_ID_FIELD, domainObjectId))))
             .map(this::fromDocument);
+    }
+
+    @Override
+    public Flux<TeamCalendar> search(OpenPaaSId domainId, String query, int limit) {
+        String regexPattern = ".*" + Pattern.quote(query.trim().toLowerCase()) + ".*";
+        return Mono.justOrEmpty(asObjectId(domainId))
+            .flatMapMany(domainObjectId -> Flux.from(collection.find(and(
+                    eq(DOMAIN_ID_FIELD, domainObjectId),
+                    Filters.or(
+                        Filters.regex(NAME_FIELD, regexPattern, "i"),
+                        Filters.regex(DISPLAY_NAME_FIELD, regexPattern, "i"),
+                        derivedEmailAddressFilter(regexPattern))))
+                .limit(limit)))
+            .map(this::fromDocument);
+    }
+
+    private Document derivedEmailAddressFilter(String regexPattern) {
+        return new Document("$expr", new Document("$regexMatch", new Document()
+            .append("input", new Document("$concat", List.of("$" + NAME_FIELD, "@", "$" + DOMAIN_NAME_FIELD)))
+            .append("regex", regexPattern)
+            .append("options", "i")));
     }
 
     @Override
