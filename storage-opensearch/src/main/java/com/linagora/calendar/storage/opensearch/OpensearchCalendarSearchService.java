@@ -24,7 +24,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.OptionalInt;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -41,6 +40,7 @@ import org.apache.james.util.ReactorUtils;
 import org.opensearch.client.json.JsonData;
 import org.opensearch.client.opensearch.OpenSearchAsyncClient;
 import org.opensearch.client.opensearch._types.FieldValue;
+import org.opensearch.client.opensearch._types.Result;
 import org.opensearch.client.opensearch._types.Script;
 import org.opensearch.client.opensearch._types.SortOptions;
 import org.opensearch.client.opensearch._types.SortOrder;
@@ -87,6 +87,8 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
                 .source("""
                         if (ctx._source.sequence == null || params.sequence > ctx._source.sequence) {
                             ctx._source.putAll(params.doc);
+                        } else {
+                            ctx.op = 'none';
                         }
                     """)
                 .params("sequence", JsonData.of(seq))
@@ -132,27 +134,38 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
             eventFields.recurrenceId().orElse(null)));
     }
 
+    private record IndexOutcome(EventFields event, Result result) {
+        boolean applied() {
+            return result != Result.NoOp;
+        }
+    }
+
     @Override
     public Mono<Void> index(CalendarEvents fields) {
         return doIndex(fields, INDEX_CHECK_SEQUENCE)
-            .then(deleteStaleOccurrences(fields));
+            .flatMap(outcomes -> {
+                if (masterApplied(outcomes)) {
+                    return deleteStaleOccurrences(fields);
+                }
+                return Mono.empty();
+            });
+    }
+
+    // The recurrence master carries the series version, so its upsert winning the sequence guard means the
+    // incoming message is newer than the indexed state. Only then may we prune occurrences; a reordered
+    // older message is a no-op on the master and must not remove occurrences it does not know about.
+    private boolean masterApplied(List<IndexOutcome> outcomes) {
+        return outcomes.stream()
+            .filter(outcome -> Boolean.TRUE.equals(outcome.event().isRecurrentMaster()))
+            .anyMatch(IndexOutcome::applied);
     }
 
     // Remove occurrence documents that are no longer part of the event (e.g. a deleted overridden
-    // occurrence). We only delete documents with a strictly older sequence than the current message and
-    // never the ones we just wrote, so a reordered older message cannot resurrect a stale state (see
-    // issue #895).
+    // occurrence). Staleness is decided by identity: any indexed document for this uid whose id (which
+    // encodes the recurrenceId) is absent from the newly written message is dropped. We never rely on
+    // SEQUENCE here because it is per-VEVENT, so a removed occurrence may legitimately carry a higher
+    // sequence than the master (see issue #895).
     private Mono<Void> deleteStaleOccurrences(CalendarEvents fields) {
-        OptionalInt sequenceThreshold = fields.events().stream()
-            .map(EventFields::sequence)
-            .flatMap(Optional::stream)
-            .mapToInt(Integer::intValue)
-            .max();
-
-        if (sequenceThreshold.isEmpty()) {
-            return Mono.empty();
-        }
-
         CalendarURL calendarURL = fields.calendarURL();
         List<String> writtenDocumentIds = fields.events().stream()
             .map(event -> buildDocumentIdForEvent(event.calendarURL(), event).asString())
@@ -163,11 +176,6 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
             .must(QueryBuilders.term()
                 .field(CalendarFields.EVENT_UID)
                 .value(FieldValue.of(fields.eventUid().value()))
-                .build()
-                .toQuery())
-            .must(QueryBuilders.range()
-                .field(CalendarFields.SEQUENCE)
-                .lt(JsonData.of(sequenceThreshold.getAsInt()))
                 .build()
                 .toQuery())
             .mustNot(QueryBuilders.ids()
@@ -185,20 +193,17 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
 
     @Override
     public Mono<Void> reindex(CalendarEvents fields) {
-        return doIndex(fields, !INDEX_CHECK_SEQUENCE);
+        return doIndex(fields, !INDEX_CHECK_SEQUENCE).then();
     }
 
-    private Mono<Void> doIndex(CalendarEvents fields, boolean checkSequence) {
-        if (fields.events().isEmpty()) {
-            return Mono.empty();
-        }
-
+    private Mono<List<IndexOutcome>> doIndex(CalendarEvents fields, boolean checkSequence) {
         return Flux.fromIterable(fields.events())
             .flatMap(event -> indexSingleEvent(event, checkSequence)
                     .onErrorResume(error -> Mono.error(CalendarSearchIndexingException.of("Failed to index calendar event",
-                        fields.calendarURL(), fields.eventUid(), error))),
+                        fields.calendarURL(), fields.eventUid(), error)))
+                    .map(response -> new IndexOutcome(event, response.result())),
                 ReactorUtils.DEFAULT_CONCURRENCY)
-            .then();
+            .collectList();
     }
 
     private Mono<WriteResponseBase> indexSingleEvent(EventFields eventFields,
