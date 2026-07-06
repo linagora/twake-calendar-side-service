@@ -474,7 +474,7 @@ Computes the user avatar by rendering first letter in a fixed color square.
 
 ### POST /api/people/search
 
-This badly named HTTP method allows looking up the following resources in an auto complete manner: `user`, `contact`, `resources`. 
+This badly named HTTP method allows looking up the following resources in an auto complete manner: `user`, `contact`, `resource`, `team-calendar`. 
 
 Sample payloads:
 

@@ -156,6 +156,70 @@ public interface TeamCalendarRepositoryContract {
     }
 
     @Test
+    default void searchShouldMatchPartialNameCaseInsensitively() {
+        TeamCalendar sales = createTeamCalendar(DOMAIN, SALES, "Commercial Team");
+        createTeamCalendar(DOMAIN, SUPPORT, "Support Team");
+
+        List<TeamCalendar> result = testee().search(DOMAIN_ID, "SAL", 10).collectList().block();
+
+        assertThat(result)
+            .containsExactly(sales);
+    }
+
+    @Test
+    default void searchShouldMatchPartialDisplayNameCaseInsensitively() {
+        TeamCalendar sales = createTeamCalendar(DOMAIN, SALES, "Commercial Team");
+        createTeamCalendar(DOMAIN, SUPPORT, "Support Team");
+
+        List<TeamCalendar> result = testee().search(DOMAIN_ID, "commercial", 10).collectList().block();
+
+        assertThat(result)
+            .containsExactly(sales);
+    }
+
+    @Test
+    default void searchShouldMatchDerivedEmailAddress() {
+        TeamCalendar sales = createTeamCalendar(DOMAIN, SALES, "Commercial Team");
+        createTeamCalendar(DOMAIN, SUPPORT, "Support Team");
+
+        List<TeamCalendar> result = testee().search(DOMAIN_ID, "sales@linagora.com", 10).collectList().block();
+
+        assertThat(result)
+            .containsExactly(sales);
+    }
+
+    @Test
+    default void searchShouldReturnOnlyTeamCalendarsOfDomain() {
+        TeamCalendar sales = createTeamCalendar(DOMAIN, SALES, "Sales Team");
+        createTeamCalendar(OTHER_DOMAIN, SALES, "External Sales");
+
+        List<TeamCalendar> result = testee().search(DOMAIN_ID, SALES, 10).collectList().block();
+
+        assertThat(result)
+            .containsExactly(sales);
+    }
+
+    @Test
+    default void searchShouldRespectLimit() {
+        createTeamCalendar(DOMAIN, "sales-1", "Sales Team 1");
+        createTeamCalendar(DOMAIN, "sales-2", "Sales Team 2");
+        createTeamCalendar(DOMAIN, "sales-3", "Sales Team 3");
+
+        List<TeamCalendar> result = testee().search(DOMAIN_ID, SALES, 2).collectList().block();
+
+        assertThat(result)
+            .hasSize(2);
+    }
+
+    @Test
+    default void searchShouldReturnEmptyWhenNoneMatches() {
+        createTeamCalendar(DOMAIN, SALES, "Sales Team");
+
+        assertThat(testee().search(DOMAIN_ID, "marketing", 10).collectList().block())
+            .isEmpty();
+    }
+
+    @Test
     default void updateDisplayNameShouldUpdateDisplayNameAndUpdatedTimestampOnly() {
         TeamCalendar teamCalendar = createTeamCalendar(DOMAIN, SALES, "Sales Team");
         Instant newUpdateTime = teamCalendar.updated().plusSeconds(1);

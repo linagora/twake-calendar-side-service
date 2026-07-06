@@ -119,6 +119,7 @@ import com.linagora.calendar.restapi.routes.configuration.StoredConfigurationEnt
 import com.linagora.calendar.restapi.routes.people.search.ContactSearchProvider;
 import com.linagora.calendar.restapi.routes.people.search.PeopleSearchProvider;
 import com.linagora.calendar.restapi.routes.people.search.ResourceSearchProvider;
+import com.linagora.calendar.restapi.routes.people.search.TeamCalendarSearchProvider;
 import com.linagora.calendar.restapi.routes.people.search.UserSearchProvider;
 import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.TokenInfoResolver;
@@ -215,6 +216,7 @@ public class RestApiModule extends AbstractModule {
         peopleSearchProviderMultibinder.addBinding().to(ContactSearchProvider.class);
         peopleSearchProviderMultibinder.addBinding().to(ResourceSearchProvider.class);
         peopleSearchProviderMultibinder.addBinding().to(UserSearchProvider.class);
+        peopleSearchProviderMultibinder.addBinding().to(TeamCalendarSearchProvider.class);
 
         bind(ImportWebSocketNotifier.class).in(Scopes.SINGLETON);
         bind(SendMailNotifier.class).in(Scopes.SINGLETON);
