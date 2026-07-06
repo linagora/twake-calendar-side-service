@@ -180,9 +180,9 @@ public class MemoryCalendarSearchService implements CalendarSearchService {
                              HashMap<String, EventEntry> eventsByKey) {
         static final boolean DELETED = true;
 
-        record EventEntry(EventFields event, boolean deleted, Optional<Integer> lastSequence) {
+        record EventEntry(EventFields event, boolean deleted) {
             static EventEntry from(EventFields event) {
-                return new EventEntry(event, !DELETED, event.sequence());
+                return new EventEntry(event, !DELETED);
             }
         }
 
@@ -194,36 +194,35 @@ public class MemoryCalendarSearchService implements CalendarSearchService {
         }
 
         CalendarEventsDTO replaceWith(Set<EventFields> incomingEvents) {
+            boolean masterApplied = false;
             for (EventFields incomingEvent : incomingEvents) {
                 String key = eventKey(incomingEvent);
                 Optional<EventFields> existingEvent = Optional.ofNullable(eventsByKey.get(key))
                     .map(EventEntry::event);
 
                 if (shouldReplace(existingEvent, incomingEvent)) {
-                    eventsByKey.put(key, new EventEntry(incomingEvent, false, incomingEvent.sequence()));
+                    eventsByKey.put(key, new EventEntry(incomingEvent, false));
+                    masterApplied |= Boolean.TRUE.equals(incomingEvent.isRecurrentMaster());
                 }
             }
-            pruneRemovedOccurrences(incomingEvents);
+            if (masterApplied) {
+                pruneStaleOccurrences(incomingEvents);
+            }
             return this;
         }
 
         // Drop occurrence documents that are no longer part of the event (e.g. a deleted overridden
-        // occurrence). We only drop entries with a strictly older sequence than the current update, so a
-        // reordered older message cannot erase a fresher state (see issue #895).
-        private void pruneRemovedOccurrences(Set<EventFields> incomingEvents) {
-            Optional<Integer> sequenceThreshold = incomingEvents.stream()
-                .map(EventFields::sequence)
-                .flatMap(Optional::stream)
-                .max(Comparator.naturalOrder());
+        // occurrence). Staleness is decided by identity: any indexed entry for this uid whose key (which
+        // encodes the recurrenceId) is absent from the newly written message is dropped. We never rely on
+        // SEQUENCE here because it is per-VEVENT, so a removed occurrence may legitimately carry a higher
+        // sequence than the master. Pruning only runs when the recurrence master won its sequence guard,
+        // meaning the incoming message is newer than the indexed state (see issue #895).
+        private void pruneStaleOccurrences(Set<EventFields> incomingEvents) {
+            Set<String> incomingKeys = incomingEvents.stream()
+                .map(CalendarEventsDTO::eventKey)
+                .collect(Collectors.toSet());
 
-            sequenceThreshold.ifPresent(threshold -> {
-                Set<String> incomingKeys = incomingEvents.stream()
-                    .map(CalendarEventsDTO::eventKey)
-                    .collect(Collectors.toSet());
-
-                eventsByKey.entrySet().removeIf(entry -> !incomingKeys.contains(entry.getKey())
-                    && entry.getValue().lastSequence().map(sequence -> sequence < threshold).orElse(false));
-            });
+            eventsByKey.keySet().removeIf(key -> !incomingKeys.contains(key));
         }
 
         static boolean shouldReplace(Optional<EventFields> existing, EventFields incoming) {
