@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -1651,6 +1652,109 @@ public interface CalendarSearchServiceContract {
 
         CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(simpleQuery("removedoccurrence", url))
             .collectList().block()).isEmpty());
+    }
+
+    @Test
+    default void shouldPruneRemovedOccurrenceByRecurrenceId() {
+        // Given a recurring event with one occurrence that will be removed but has a higher sequence.
+        CalendarURL url = generateCalendarURL();
+        EventUid uid = generateEventUid();
+
+        EventFields master = EventFields.builder()
+            .uid(uid)
+            .sequence(1)
+            .summary("recurringmaster")
+            .isRecurrentMaster(true)
+            .calendarURL(url)
+            .build();
+        EventFields keptOccurrence = EventFields.builder()
+            .uid(uid)
+            .sequence(1)
+            .summary("keptoccurrence")
+            .isRecurrentMaster(false)
+            .recurrenceId("2025-01-03T10:00:00Z")
+            .calendarURL(url)
+            .build();
+        EventFields removedHighSequenceOccurrence = EventFields.builder()
+            .uid(uid)
+            .sequence(10)
+            .summary("removedhighsequenceoccurrence")
+            .isRecurrentMaster(false)
+            .recurrenceId("2025-01-10T10:00:00Z")
+            .calendarURL(url)
+            .build();
+
+        testee().index(CalendarEvents.of(master, keptOccurrence, removedHighSequenceOccurrence)).block();
+
+        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(simpleQuery("removedhighsequenceoccurrence", url))
+            .collectList().block()).containsExactly(removedHighSequenceOccurrence));
+
+        // When a later payload keeps only one occurrence and drops the high-sequence one.
+        EventFields masterV2 = EventFields.builder()
+            .uid(uid)
+            .sequence(2)
+            .summary("recurringmaster")
+            .isRecurrentMaster(true)
+            .calendarURL(url)
+            .build();
+        EventFields keptOccurrenceV2 = EventFields.builder()
+            .uid(uid)
+            .sequence(2)
+            .summary("keptoccurrence")
+            .isRecurrentMaster(false)
+            .recurrenceId("2025-01-03T10:00:00Z")
+            .calendarURL(url)
+            .build();
+
+        testee().index(CalendarEvents.of(masterV2, keptOccurrenceV2)).block();
+
+        // Then the dropped occurrence should be pruned
+        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(simpleQuery("removedhighsequenceoccurrence", url))
+            .collectList().block()).isEmpty());
+    }
+
+    @Test
+    default void stalePayloadShouldNotPruneOccurrences() {
+        // Given a newer indexed recurring state with one overridden occurrence.
+        CalendarURL url = generateCalendarURL();
+        EventUid uid = generateEventUid();
+
+        EventFields currentMaster = EventFields.builder()
+            .uid(uid)
+            .sequence(10)
+            .summary("currentmaster")
+            .isRecurrentMaster(true)
+            .calendarURL(url)
+            .build();
+        EventFields currentOccurrence = EventFields.builder()
+            .uid(uid)
+            .sequence(1)
+            .summary("currentoccurrence")
+            .isRecurrentMaster(false)
+            .recurrenceId("2025-01-03T10:00:00Z")
+            .calendarURL(url)
+            .build();
+
+        testee().index(CalendarEvents.of(currentMaster, currentOccurrence)).block();
+
+        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(simpleQuery("currentoccurrence", url))
+            .collectList().block()).containsExactly(currentOccurrence));
+
+        // When an older payload without that occurrence arrives and does not win the sequence guard.
+        EventFields staleMaster = EventFields.builder()
+            .uid(uid)
+            .sequence(9)
+            .summary("stalemaster")
+            .isRecurrentMaster(true)
+            .calendarURL(url)
+            .build();
+
+        testee().index(CalendarEvents.of(staleMaster)).block();
+
+        // Then the stale payload must not prune occurrences from the newer state.
+        CALMLY_AWAIT.during(2, TimeUnit.SECONDS)
+            .untilAsserted(() -> assertThat(testee().search(simpleQuery("currentoccurrence", url))
+            .collectList().block()).containsExactly(currentOccurrence));
     }
 
     @Test
