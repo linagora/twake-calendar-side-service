@@ -1090,6 +1090,20 @@ class TwakeCalendarGuiceServerTest  {
     }
 
     @Test
+    void userByEmailEndpointShouldRejectEmailWithoutDomainPart(TwakeCalendarGuiceServer server) {
+        targetRestAPI(server);
+
+        given()
+            .auth().preemptive().basic(USERNAME.asString(), PASSWORD)
+            .queryParam("email", "user1")
+        .when()
+            .get("/api/users")
+        .then()
+            .statusCode(400)
+            .body("error.details", is("'email' query parameter must contain a domain part"));
+    }
+
+    @Test
     void userByEmailEndpointShouldProvisionMissingUsers(TwakeCalendarGuiceServer server) {
         targetRestAPI(server);
         Username username = Username.of("to-be-provisionned@linagora.com");
