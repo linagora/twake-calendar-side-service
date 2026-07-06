@@ -642,7 +642,7 @@ public class ItipLocalDeliveryConsumerTest {
     }
 
     @Test
-    void shouldRouteToDeadLetterWhenRecipientAddressIsInvalid() {
+    void shouldIgnoreMessageWhenRecipientAddressIsInvalid() throws Exception {
         String payload = """
             {
               "sender": "mailto:%s",
@@ -657,13 +657,14 @@ public class ItipLocalDeliveryConsumerTest {
 
         publishToConsumer(payload);
 
-        AWAIT_AT_MOST.untilAsserted(() ->
-            assertThat(channel.basicGet(ItipLocalDeliveryConsumer.DEAD_LETTER_QUEUE, true)).isNotNull());
+        // An invalid address is necessarily not local: the message is ignored (acked), not dead-lettered.
+        Thread.sleep(1000);
+        assertThat(channel.basicGet(ItipLocalDeliveryConsumer.DEAD_LETTER_QUEUE, true)).isNull();
         WireMock.verify(0, WireMock.postRequestedFor(WireMock.urlEqualTo("/itip")));
     }
 
     @Test
-    void shouldStillProcessValidRecipientsWhenOneRecipientAddressIsInvalid() {
+    void shouldStillProcessValidRecipientsWhenOneRecipientAddressIsInvalid() throws Exception {
         when(localRecipientResolver.resolve(Username.of(ALICE)))
             .thenReturn(Mono.just(Optional.of(new LocalRecipientResolver.ResolvedRecipient.LocalUser(new OpenPaaSId(LOCAL_USER_ID)))));
         stubItipNoContent();
@@ -682,11 +683,12 @@ public class ItipLocalDeliveryConsumerTest {
 
         publishToConsumer(payload);
 
-        AWAIT_AT_MOST.untilAsserted(() -> {
+        AWAIT_AT_MOST.untilAsserted(() ->
             WireMock.verify(WireMock.postRequestedFor(WireMock.urlEqualTo("/itip"))
-                .withRequestBody(WireMock.matchingJsonPath("$.recipient", WireMock.equalTo(ALICE))));
-            assertThat(channel.basicGet(ItipLocalDeliveryConsumer.DEAD_LETTER_QUEUE, true)).isNotNull();
-        });
+                .withRequestBody(WireMock.matchingJsonPath("$.recipient", WireMock.equalTo(ALICE)))));
+
+        // The invalid recipient is ignored (acked), not dead-lettered.
+        assertThat(channel.basicGet(ItipLocalDeliveryConsumer.DEAD_LETTER_QUEUE, true)).isNull();
     }
 
     @Test
