@@ -18,10 +18,12 @@
 
 package com.linagora.calendar.restapi.routes;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import jakarta.inject.Inject;
 
@@ -46,13 +48,15 @@ public class BookingLinkSlotsService {
     public record SlotsResult(BookingLink bookingLink, OpenPaaSUser owner, Set<AvailabilitySlot> slots) {
     }
 
+    private final Clock clock;
     private final BookingLinkDAO bookingLinkDAO;
     private final OpenPaaSUserDAO openPaaSUserDAO;
     private final CalDavClient calDavClient;
     private final AvailableSlotsCalculator availableSlotsCalculator;
 
     @Inject
-    public BookingLinkSlotsService(BookingLinkDAO bookingLinkDAO, OpenPaaSUserDAO openPaaSUserDAO, CalDavClient calDavClient) {
+    public BookingLinkSlotsService(Clock clock, BookingLinkDAO bookingLinkDAO, OpenPaaSUserDAO openPaaSUserDAO, CalDavClient calDavClient) {
+        this.clock = clock;
         this.bookingLinkDAO = bookingLinkDAO;
         this.openPaaSUserDAO = openPaaSUserDAO;
         this.calDavClient = calDavClient;
@@ -70,7 +74,16 @@ public class BookingLinkSlotsService {
     Mono<Set<AvailabilitySlot>> computeSlots(BookingLink bookingLink, Instant from, Instant to) {
         return retrieveUnavailableTimeRanges(bookingLink, from, to)
             .map(unavailableTimeRanges -> toComputeSlotsRequest(bookingLink, from, to, unavailableTimeRanges))
-            .map(availableSlotsCalculator::computeSlots);
+            .map(availableSlotsCalculator::computeSlots)
+            .map(this::filterOutPastSlots);
+    }
+
+    private Set<AvailabilitySlot> filterOutPastSlots(Set<AvailabilitySlot> slots) {
+        // Prevent time travel: slots starting in the past must never be offered for booking.
+        Instant now = clock.instant();
+        return slots.stream()
+            .filter(slot -> !slot.start().isBefore(now))
+            .collect(Collectors.toUnmodifiableSet());
     }
 
     private ComputeSlotsRequest toComputeSlotsRequest(BookingLink bookingLink,
