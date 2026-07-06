@@ -566,6 +566,114 @@ allowing them to accept, reject and counter events in the name of the resource.
 
 Note that existing delegation write access granted to users no longer listed as administrators will not be revoked.
 
+## Team calendar routes
+
+Team calendar routes manage team calendar metadata.
+Use the `id` as the stable identifier.
+
+All routes are scoped under a domain: `/domains/{domain}/team-calendars`.
+
+### Creating a team calendar
+
+```
+POST /domains/linagora.com/team-calendars
+{
+  "name": "sales",
+  "displayName": "Sales Team"
+}
+```
+
+Returns `201 Created` with a `Location` header and the created entity:
+
+```json
+{
+  "id": "64f1c2...",
+  "domainId": "6501a9...",
+  "domainName": "linagora.com",
+  "name": "sales",
+  "displayName": "Sales Team",
+  "creation": "2026-06-23T08:00:00Z",
+  "updated": "2026-06-23T08:00:00Z"
+}
+```
+
+Status codes:
+- `201` when created
+- `400` when the domain name or request body is invalid
+- `404` when the domain does not exist
+
+Creation is not idempotent.
+The `name` lookup can return several team calendars.
+
+### Listing team calendars
+
+```
+GET /domains/linagora.com/team-calendars
+```
+
+Returns all team calendars of the domain:
+
+```json
+[
+  {
+    "id": "64f1c2...",
+    "domainId": "6501a9...",
+    "domainName": "linagora.com",
+    "name": "sales",
+    "displayName": "Sales Team",
+    "creation": "2026-06-23T08:00:00Z",
+    "updated": "2026-06-23T08:00:00Z"
+  }
+]
+```
+
+Status codes:
+- `200` on success
+- `400` when the domain name is invalid
+- `404` when the domain does not exist
+
+### Getting a team calendar by id
+
+```
+GET /domains/linagora.com/team-calendars/64f1c2...
+```
+
+Returns the matching team calendar.
+
+Status codes:
+- `200` on success
+- `400` when the domain name is invalid
+- `404` when the domain or team calendar does not exist
+
+### Updating a team calendar display name
+
+```
+PATCH /domains/linagora.com/team-calendars/64f1c2...
+{
+  "displayName": "Global Sales"
+}
+```
+
+Only `displayName` is updated.
+
+Status codes:
+- `200` on success
+- `400` when the domain name or request body is invalid
+- `404` when the domain or team calendar does not exist
+
+### Deleting a team calendar
+
+```
+DELETE /domains/linagora.com/team-calendars/64f1c2...
+```
+
+Deletes the team calendar metadata.
+
+Status codes:
+- `204` on success
+- `400` when the domain name is invalid
+- `404` when the domain does not exist
+
 ## Domain registered users routes
 
 Domain-scoped mirror of the `/registeredUsers` routes, allowing multi-tenant safe access.

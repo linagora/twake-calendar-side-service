@@ -117,14 +117,25 @@ public class BookingLinkRequestAcknowledgementNotifier {
         String CONTENT = "content";
         String START = "start";
         String END = "end";
+        String OWNER = "owner";
+        String OWNER_NAME = "cn";
+        String OWNER_EMAIL = "email";
+        String DESCRIPTION = "description";
 
         static Map<String, Object> toPugModel(BookingCreated bookingCreated, Locale locale, ZoneId zoneId) {
             ZonedDateTime start = ZonedDateTime.ofInstant(bookingCreated.request().slotStartUtc(), zoneId);
             ZonedDateTime end = start.plus(bookingCreated.bookingLink().duration());
 
-            return ImmutableMap.of(CONTENT, ImmutableMap.of(
-                    START, new EventTimeModel(start).toPugModel(locale, zoneId),
-                    END, new EventTimeModel(end).toPugModel(locale, zoneId)));
+            ImmutableMap.Builder<String, Object> content = ImmutableMap.<String, Object>builder()
+                .put(START, new EventTimeModel(start).toPugModel(locale, zoneId))
+                .put(END, new EventTimeModel(end).toPugModel(locale, zoneId))
+                .put(OWNER, ImmutableMap.of(
+                    OWNER_NAME, bookingCreated.organizer().fullName(),
+                    OWNER_EMAIL, bookingCreated.organizer().username().asString()));
+            bookingCreated.bookingLink().description()
+                .ifPresent(description -> content.put(DESCRIPTION, description));
+
+            return ImmutableMap.of(CONTENT, content.build());
         }
     }
 }

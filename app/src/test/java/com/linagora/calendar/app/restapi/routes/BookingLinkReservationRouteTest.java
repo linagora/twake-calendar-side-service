@@ -367,8 +367,12 @@ class BookingLinkReservationRouteTest {
 
     @Test
     void shouldSendAcknowledgementEmailToBookerWhenBookingCreated(TwakeCalendarGuiceServer server) {
-        // Given: an active booking link with an available slot.
-        BookingLink inserted = insertActiveBookingLink(server);
+        // Given: an active booking link with a description and an available slot.
+        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(
+            CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES, BookingLinkInsertRequest.ACTIVE,
+            Optional.of(AVAILABILITY_RULE), Optional.of("Intro call"), Optional.of("A short call to get to know each other"));
+        BookingLink inserted = server.getProbe(BookingLinkProbe.class)
+            .insert(openPaaSUser.username(), insertRequest);
         String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();
 
         // When: an unauthenticated booker submits a booking request with custom content.
@@ -413,6 +417,10 @@ class BookingLinkReservationRouteTest {
                 .contains("We have registered your booking request on")
                 .contains("The organizer was notified about it and will validate it in a timely manner.")
                 .contains("<strong>Saturday, 26 January 2036");
+            softly.assertThat(html)
+                .contains(openPaaSUser.fullName())
+                .contains(openPaaSUser.username().asString())
+                .contains("A short call to get to know each other");
             softly.assertThat(html)
                 .doesNotContain("Please call via Zoom.");
         });

@@ -31,10 +31,13 @@ import com.linagora.calendar.amqp.CalendarListNotificationConsumer.CalendarListE
 import com.linagora.calendar.storage.CalendarListChangedEvent;
 import com.linagora.calendar.storage.CalendarListChangedEvent.ChangeType;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.ResourceDAO;
+import com.linagora.calendar.storage.TeamCalendarRepository;
 import com.linagora.calendar.storage.UsernameRegistrationKey;
 import com.linagora.calendar.storage.model.ResourceId;
+import com.linagora.calendar.storage.model.TeamCalendarId;
 
 import reactor.core.publisher.Mono;
 
@@ -45,12 +48,15 @@ public class CalendarListNotificationHandler {
     private final EventBus eventBus;
     private final OpenPaaSUserDAO openPaaSUserDAO;
     private final ResourceDAO resourceDAO;
+    private final TeamCalendarRepository teamCalendarRepository;
 
     @Inject
-    public CalendarListNotificationHandler(EventBus eventBus, OpenPaaSUserDAO openPaaSUserDAO, ResourceDAO resourceDAO) {
+    public CalendarListNotificationHandler(EventBus eventBus, OpenPaaSUserDAO openPaaSUserDAO, ResourceDAO resourceDAO,
+                                           TeamCalendarRepository teamCalendarRepository) {
         this.resourceDAO = resourceDAO;
         this.eventBus = eventBus;
         this.openPaaSUserDAO = openPaaSUserDAO;
+        this.teamCalendarRepository = teamCalendarRepository;
     }
 
     public Mono<Void> handle(CalendarListExchange exchange, CalendarListChangesMessage message) {
@@ -58,14 +64,36 @@ public class CalendarListNotificationHandler {
         ChangeType changeType = resolveChangeType(exchange, message);
 
         return openPaaSUserDAO.retrieve(calendarURL.base())
-            .switchIfEmpty(Mono.defer(() -> resourceDAO.findById(ResourceId.from(calendarURL.base()))
-                .switchIfEmpty(Mono.error(() -> new IllegalStateException("Can not resolve base id " + calendarURL.base().value())))
-                .then(Mono.empty())))
+            .switchIfEmpty(Mono.defer(() -> ignoreKnownNonUserOwner(calendarURL)))
             .flatMap(user -> eventBus.dispatch(
                     CalendarListChangedEvent.of(user.username(), calendarURL, changeType),
                     new UsernameRegistrationKey(user.username()))
                 .doOnSuccess(ignored -> LOGGER.debug("Published calendar list changed event {} for {}", changeType, calendarURL.asUri()))
                 .then());
+    }
+
+    private Mono<OpenPaaSUser> ignoreKnownNonUserOwner(CalendarURL calendarURL) {
+        return resourceDAO.findById(ResourceId.from(calendarURL.base()))
+            .hasElement()
+            .flatMap(isResource -> {
+                if (isResource) {
+                    LOGGER.debug("Ignore calendar list notification for resource calendar {}", calendarURL.asUri());
+                    return Mono.empty();
+                }
+                return ignoreTeamCalendarOwner(calendarURL);
+            });
+    }
+
+    private Mono<OpenPaaSUser> ignoreTeamCalendarOwner(CalendarURL calendarURL) {
+        return teamCalendarRepository.retrieve(TeamCalendarId.from(calendarURL.base()))
+            .hasElement()
+            .flatMap(isTeamCalendar -> {
+                if (isTeamCalendar) {
+                    LOGGER.debug("Ignore calendar list notification for team calendar {}", calendarURL.asUri());
+                    return Mono.empty();
+                }
+                return Mono.error(() -> new IllegalStateException("Can not resolve base id " + calendarURL.base().value()));
+            });
     }
 
     private ChangeType resolveChangeType(CalendarListExchange exchange, CalendarListChangesMessage message) {

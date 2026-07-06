@@ -44,10 +44,11 @@ public class MemoryTeamCalendarRepository implements TeamCalendarRepository {
     }
 
     @Override
-    public Mono<Void> create(TeamCalendarInsertRequest teamCalendar) {
-        return Mono.fromRunnable(() -> {
+    public Mono<TeamCalendar> create(TeamCalendarInsertRequest teamCalendar) {
+        return Mono.fromCallable(() -> {
             TeamCalendar created = toTeamCalendar(teamCalendar);
             teamCalendars.put(created.id(), created);
+            return created;
         });
     }
 

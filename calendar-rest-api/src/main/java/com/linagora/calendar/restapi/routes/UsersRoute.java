@@ -23,6 +23,7 @@ import static com.linagora.calendar.restapi.routes.AvatarRoute.extractEmail;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 
+import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
 import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.http.Authenticator;
@@ -84,12 +85,16 @@ public class UsersRoute extends CalendarRoute {
     @Override
     Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response, MailboxSession session) {
         Username queryUsername = Username.of(extractEmail(request));
-        if (crossDomainAccess(session, queryUsername.getDomainPart().get())) {
+        if (queryUsername.getDomainPart().isEmpty()) {
+            return ErrorResponseHandler.handle(response, HttpResponseStatus.BAD_REQUEST, "'email' query parameter must contain a domain part");
+        }
+        Domain queryDomain = queryUsername.getDomainPart().get();
+        if (crossDomainAccess(session, queryDomain)) {
             return respondWithEmptyResult(response);
         }
         return userDAO.retrieve(queryUsername)
             .switchIfEmpty(provisionUser(queryUsername))
-            .flatMap(user -> Mono.zip(domainDAO.retrieve(user.username().getDomainPart().get()),
+            .flatMap(user -> Mono.zip(domainDAO.retrieve(queryDomain),
                     settingsResolver.resolveOrDefault(user.username()))
                 .map(tuple -> {
                     OpenPaaSDomain domain = tuple.getT1();

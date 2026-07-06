@@ -25,7 +25,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 public interface TeamCalendarRepository {
-    Mono<Void> create(TeamCalendarInsertRequest teamCalendar);
+    Mono<TeamCalendar> create(TeamCalendarInsertRequest teamCalendar);
 
     Mono<Void> delete(TeamCalendarId id);
 
