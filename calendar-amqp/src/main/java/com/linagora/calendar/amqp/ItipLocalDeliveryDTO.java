@@ -122,6 +122,10 @@ public record ItipLocalDeliveryDTO(
     }
 
     private static String stripMailto(String address) {
-        return address.startsWith("mailto:") ? address.substring(7) : address;
+        String sanitized = StringUtils.strip(address.trim(), "<>");
+        if (sanitized.startsWith("mailto:")) {
+            sanitized = sanitized.substring(7);
+        }
+        return StringUtils.strip(sanitized, "<>");
     }
 }
