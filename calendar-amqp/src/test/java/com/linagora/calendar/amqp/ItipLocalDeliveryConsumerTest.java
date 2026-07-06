@@ -642,6 +642,54 @@ public class ItipLocalDeliveryConsumerTest {
     }
 
     @Test
+    void shouldRouteToDeadLetterWhenRecipientAddressIsInvalid() {
+        String payload = """
+            {
+              "sender": "mailto:%s",
+              "method": "REQUEST",
+              "uid": "%s",
+              "calendarId": "%s",
+              "message": %s,
+              "hasChange": true,
+              "recipients": ["mailto:%s"]
+            }
+            """.formatted(BOB, EVENT_UID, CALENDAR_ID, jsonString(SIMPLE_ICAL), "invalid@domain@address");
+
+        publishToConsumer(payload);
+
+        AWAIT_AT_MOST.untilAsserted(() ->
+            assertThat(channel.basicGet(ItipLocalDeliveryConsumer.DEAD_LETTER_QUEUE, true)).isNotNull());
+        WireMock.verify(0, WireMock.postRequestedFor(WireMock.urlEqualTo("/itip")));
+    }
+
+    @Test
+    void shouldStillProcessValidRecipientsWhenOneRecipientAddressIsInvalid() {
+        when(localRecipientResolver.resolve(Username.of(ALICE)))
+            .thenReturn(Mono.just(Optional.of(new LocalRecipientResolver.ResolvedRecipient.LocalUser(new OpenPaaSId(LOCAL_USER_ID)))));
+        stubItipNoContent();
+
+        String payload = """
+            {
+              "sender": "mailto:%s",
+              "method": "REQUEST",
+              "uid": "%s",
+              "calendarId": "%s",
+              "message": %s,
+              "hasChange": true,
+              "recipients": ["mailto:%s", "mailto:%s"]
+            }
+            """.formatted(BOB, EVENT_UID, CALENDAR_ID, jsonString(SIMPLE_ICAL), ALICE, "invalid@domain@address");
+
+        publishToConsumer(payload);
+
+        AWAIT_AT_MOST.untilAsserted(() -> {
+            WireMock.verify(WireMock.postRequestedFor(WireMock.urlEqualTo("/itip"))
+                .withRequestBody(WireMock.matchingJsonPath("$.recipient", WireMock.equalTo(ALICE))));
+            assertThat(channel.basicGet(ItipLocalDeliveryConsumer.DEAD_LETTER_QUEUE, true)).isNotNull();
+        });
+    }
+
+    @Test
     void shouldCallItipAndEmailWhenReplyPartStatChanged() {
         when(localRecipientResolver.resolve(Username.of(BOB)))
             .thenReturn(Mono.just(Optional.of(new LocalRecipientResolver.ResolvedRecipient.LocalUser(new OpenPaaSId(LOCAL_USER_ID)))));
