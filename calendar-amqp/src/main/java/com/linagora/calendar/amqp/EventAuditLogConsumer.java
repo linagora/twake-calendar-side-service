@@ -24,10 +24,7 @@ import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.io.Closeable;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.EnumMap;
-import java.util.Map;
-import java.util.function.Consumer;
+import java.util.List;
 import java.util.function.Supplier;
 
 import jakarta.annotation.PreDestroy;
@@ -60,136 +57,87 @@ public class EventAuditLogConsumer implements Closeable, Startable {
     private static final Logger AUDIT_LOGGER = LoggerFactory.getLogger("audit");
     private static final Logger LOGGER = LoggerFactory.getLogger(EventAuditLogConsumer.class);
     private static final boolean REQUEUE_ON_NACK = true;
+    static final String AUDIT_QUEUE = "tcalendar:audit";
+    static final String AUDIT_DEAD_LETTER = "tcalendar:audit:dead-letter";
 
-    public enum AuditQueue {
-        CONTACT_CREATED("sabre:contact:created", "tcalendar:audit:sabre:contact:created",
-            "tcalendar:audit:sabre:contact:created:dead-letter"),
-        CONTACT_DELETED("sabre:contact:deleted", "tcalendar:audit:sabre:contact:deleted",
-            "tcalendar:audit:sabre:contact:deleted:dead-letter"),
-        CONTACT_UPDATED("sabre:contact:updated", "tcalendar:audit:sabre:contact:updated",
-            "tcalendar:audit:sabre:contact:updated:dead-letter"),
-        CONTACT_UPDATE("sabre:contact:update", "tcalendar:audit:sabre:contact:update",
-            "tcalendar:audit:sabre:contact:update:dead-letter"),
-        SUBSCRIPTION_CREATED("calendar:subscription:created", "tcalendar:audit:calendar:subscription:created",
-            "tcalendar:audit:calendar:subscription:created:dead-letter"),
-        SUBSCRIPTION_DELETED("calendar:subscription:deleted", "tcalendar:audit:calendar:subscription:deleted",
-            "tcalendar:audit:calendar:subscription:deleted:dead-letter"),
-        SUBSCRIPTION_UPDATED("calendar:subscription:updated", "tcalendar:audit:calendar:subscription:updated",
-            "tcalendar:audit:calendar:subscription:updated:dead-letter"),
-        CALENDAR_CREATED("calendar:calendar:created", "tcalendar:audit:calendar:calendar:created",
-            "tcalendar:audit:calendar:calendar:created:dead-letter"),
-        CALENDAR_DELETED("calendar:calendar:deleted", "tcalendar:audit:calendar:calendar:deleted",
-            "tcalendar:audit:calendar:calendar:deleted:dead-letter"),
-        CALENDAR_UPDATED("calendar:calendar:updated", "tcalendar:audit:calendar:calendar:updated",
-            "tcalendar:audit:calendar:calendar:updated:dead-letter"),
-        EVENT_CREATED("calendar:event:created", "tcalendar:audit:calendar:event:created",
-            "tcalendar:audit:calendar:event:created:dead-letter"),
-        EVENT_UPDATED("calendar:event:updated", "tcalendar:audit:calendar:event:updated",
-            "tcalendar:audit:calendar:event:updated:dead-letter"),
-        EVENT_DELETED("calendar:event:deleted", "tcalendar:audit:calendar:event:deleted",
-            "tcalendar:audit:calendar:event:deleted:dead-letter"),
-        EVENT_REQUEST("calendar:event:request", "tcalendar:audit:calendar:event:request",
-            "tcalendar:audit:calendar:event:request:dead-letter"),
-        EVENT_CANCEL("calendar:event:cancel", "tcalendar:audit:calendar:event:cancel",
-            "tcalendar:audit:calendar:event:cancel:dead-letter"),
-        EVENT_REPLY("calendar:event:reply", "tcalendar:audit:calendar:event:reply",
-            "tcalendar:audit:calendar:event:reply:dead-letter"),
-        ADDRESSBOOK_CREATED("sabre:addressbook:created", "tcalendar:audit:sabre:addressbook:created",
-            "tcalendar:audit:sabre:addressbook:created:dead-letter"),
-        ADDRESSBOOK_DELETED("sabre:addressbook:deleted", "tcalendar:audit:sabre:addressbook:deleted",
-            "tcalendar:audit:sabre:addressbook:deleted:dead-letter"),
-        ADDRESSBOOK_UPDATED("sabre:addressbook:updated", "tcalendar:audit:sabre:addressbook:updated",
-            "tcalendar:audit:sabre:addressbook:updated:dead-letter"),
-        ADDRESSBOOK_SUBSCRIPTION_CREATED("sabre:addressbook:subscription:created",
-            "tcalendar:audit:sabre:addressbook:subscription:created",
-            "tcalendar:audit:sabre:addressbook:subscription:created:dead-letter"),
-        ADDRESSBOOK_SUBSCRIPTION_DELETED("sabre:addressbook:subscription:deleted",
-            "tcalendar:audit:sabre:addressbook:subscription:deleted",
-            "tcalendar:audit:sabre:addressbook:subscription:deleted:dead-letter"),
-        ADDRESSBOOK_SUBSCRIPTION_UPDATED("sabre:addressbook:subscription:updated",
-            "tcalendar:audit:sabre:addressbook:subscription:updated",
-            "tcalendar:audit:sabre:addressbook:subscription:updated:dead-letter");
-
-        private final String exchangeName;
-        private final String queueName;
-        private final String deadLetter;
-
-        AuditQueue(String exchangeName, String queueName, String deadLetter) {
-            this.exchangeName = exchangeName;
-            this.queueName = queueName;
-            this.deadLetter = deadLetter;
-        }
-
-        public String exchangeName() {
-            return exchangeName;
-        }
-
-        public String queueName() {
-            return queueName;
-        }
-
-        public String deadLetter() {
-            return deadLetter;
-        }
-    }
+    private static final List<String> EXCHANGES = List.of(
+        "sabre:contact:created",
+        "sabre:contact:deleted",
+        "sabre:contact:updated",
+        "sabre:contact:update",
+        "calendar:subscription:created",
+        "calendar:subscription:deleted",
+        "calendar:subscription:updated",
+        "calendar:calendar:created",
+        "calendar:calendar:deleted",
+        "calendar:calendar:updated",
+        "calendar:event:created",
+        "calendar:event:updated",
+        "calendar:event:deleted",
+        "calendar:event:request",
+        "calendar:event:cancel",
+        "calendar:event:reply",
+        "sabre:addressbook:created",
+        "sabre:addressbook:deleted",
+        "sabre:addressbook:updated",
+        "sabre:addressbook:subscription:created",
+        "sabre:addressbook:subscription:deleted",
+        "sabre:addressbook:subscription:updated");
 
     private final ReceiverProvider receiverProvider;
-    private final Consumer<AuditQueue> declareExchangeAndQueue;
-    private final Map<AuditQueue, Disposable> consumeDisposableMap;
+    private final AuditLogger auditLogger;
+    private Disposable consumeDisposable;
 
     @Inject
     @Singleton
     public EventAuditLogConsumer(ReactorRabbitMQChannelPool channelPool,
                                  @Named(CalendarAmqpModule.INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier) {
         this.receiverProvider = channelPool::createReceiver;
+        this.auditLogger = new DefaultAuditLogger();
+        declareInfrastructure(channelPool.getSender(), queueArgumentSupplier);
+    }
 
-        Sender sender = channelPool.getSender();
-        this.declareExchangeAndQueue = eventQueue -> Flux.concat(
-                sender.declareExchange(ExchangeSpecification.exchange(eventQueue.exchangeName)
-                    .durable(DURABLE).type(BuiltinExchangeType.FANOUT.getType())),
-                sender.declareExchange(ExchangeSpecification.exchange(eventQueue.deadLetter)
+    private void declareInfrastructure(Sender sender, Supplier<QueueArguments.Builder> queueArgumentSupplier) {
+        Flux.concat(
+                sender.declareExchange(ExchangeSpecification.exchange(AUDIT_DEAD_LETTER)
                     .durable(DURABLE).type(BuiltinExchangeType.FANOUT.getType())),
                 sender.declareQueue(QueueSpecification
-                    .queue(eventQueue.deadLetter)
+                    .queue(AUDIT_DEAD_LETTER)
                     .durable(DURABLE)
                     .arguments(queueArgumentSupplier.get()
                         .build())),
                 sender.bind(BindingSpecification.binding()
-                    .exchange(eventQueue.deadLetter)
-                    .queue(eventQueue.deadLetter)
+                    .exchange(AUDIT_DEAD_LETTER)
+                    .queue(AUDIT_DEAD_LETTER)
                     .routingKey(EMPTY_ROUTING_KEY)),
                 sender.declareQueue(QueueSpecification
-                    .queue(eventQueue.queueName)
+                    .queue(AUDIT_QUEUE)
                     .durable(DURABLE)
                     .arguments(queueArgumentSupplier.get()
-                        .deadLetter(eventQueue.deadLetter)
-                        .build())),
-                sender.bind(BindingSpecification.binding()
-                    .exchange(eventQueue.exchangeName)
-                    .queue(eventQueue.queueName)
-                    .routingKey(EMPTY_ROUTING_KEY)))
+                        .deadLetter(AUDIT_DEAD_LETTER)
+                        .build())))
+            .thenMany(Flux.fromIterable(EXCHANGES)
+                .flatMap(exchange -> Flux.concat(
+                    sender.declareExchange(ExchangeSpecification.exchange(exchange)
+                        .durable(DURABLE).type(BuiltinExchangeType.FANOUT.getType())),
+                    sender.bind(BindingSpecification.binding()
+                        .exchange(exchange)
+                        .queue(AUDIT_QUEUE)
+                        .routingKey(EMPTY_ROUTING_KEY)))))
             .then()
             .block();
-
-        this.consumeDisposableMap = new EnumMap<>(AuditQueue.class);
     }
 
     public void init() {
-        Arrays.stream(AuditQueue.values())
-            .forEach(declareExchangeAndQueue);
-
         start();
     }
 
     public void start() {
-        for (AuditQueue queue : AuditQueue.values()) {
-            consumeDisposableMap.put(queue, doConsume(queue));
-        }
+        consumeDisposable = doConsume();
     }
 
     public void restart() {
         close();
-        consumeDisposableMap.clear();
         start();
     }
 
@@ -197,30 +145,31 @@ public class EventAuditLogConsumer implements Closeable, Startable {
     @PreDestroy
     public void close() {
         LOGGER.info("Trying to stop event audit log consumer");
-        consumeDisposableMap.values()
-            .stream()
-            .filter(disposable -> !disposable.isDisposed())
-            .forEach(Disposable::dispose);
+        if (consumeDisposable != null && !consumeDisposable.isDisposed()) {
+            consumeDisposable.dispose();
+        }
     }
 
-    private Disposable doConsume(AuditQueue queue) {
-        return delivery(queue.queueName())
-            .flatMap(delivery -> messageConsume(delivery, queue), DEFAULT_CONCURRENCY)
+    private Disposable doConsume() {
+        return delivery()
+            .flatMap(this::messageConsume, DEFAULT_CONCURRENCY)
             .subscribe();
     }
 
-    public Flux<AcknowledgableDelivery> delivery(String queue) {
+    public Flux<AcknowledgableDelivery> delivery() {
         return Flux.using(receiverProvider::createReceiver,
-            receiver -> receiver.consumeManualAck(queue, new ConsumeOptions().qos(DEFAULT_CONCURRENCY)),
+            receiver -> receiver.consumeManualAck(AUDIT_QUEUE, new ConsumeOptions().qos(DEFAULT_CONCURRENCY)),
             Receiver::close);
     }
 
-    private Mono<?> messageConsume(AcknowledgableDelivery ackDelivery, AuditQueue auditQueue) {
+    private Mono<?> messageConsume(AcknowledgableDelivery ackDelivery) {
         return Mono.fromRunnable(() -> {
                 String body = new String(ackDelivery.getBody(), StandardCharsets.UTF_8);
-                AUDIT_LOGGER.info("{} {}", auditQueue.exchangeName(), body);
+                String exchangeName = ackDelivery.getEnvelope().getExchange();
+                String logLine = auditLogger.format(body, exchangeName);
+                AUDIT_LOGGER.info(logLine);
             })
-            .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed audit log event {}", auditQueue.exchangeName())))
+            .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed audit log event")))
             .doOnSuccess(result -> ackDelivery.ack())
             .onErrorResume(error -> {
                 LOGGER.error("Error when consume audit log event", error);
