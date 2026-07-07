@@ -18,6 +18,6 @@
 
         <logger name="org.apache.james" level="DEBUG" />
 
-        <logger name="audit" level="INFO" />
+        <logger name="org.apache.james.util.AuditTrail" level="INFO" />
 
 </configuration>
