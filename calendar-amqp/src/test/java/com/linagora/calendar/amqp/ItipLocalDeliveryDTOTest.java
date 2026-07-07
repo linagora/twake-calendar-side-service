@@ -101,4 +101,66 @@ class ItipLocalDeliveryDTOTest {
 
         assertThat(actual).isEqualTo(expected);
     }
+
+    @Test
+    void strippedRecipientShouldRemoveMailtoPrefix() {
+        ItipLocalDeliveryDTO dto = dtoWithRecipient("mailto:alice@example.com");
+
+        assertThat(dto.strippedRecipient()).isEqualTo("alice@example.com");
+    }
+
+    @Test
+    void strippedRecipientShouldRemoveSurroundingAngleBrackets() {
+        ItipLocalDeliveryDTO dto = dtoWithRecipient("mailto:<alice@example.com>");
+
+        assertThat(dto.strippedRecipient()).isEqualTo("alice@example.com");
+    }
+
+    @Test
+    void strippedRecipientShouldRemoveTrailingAngleBracket() {
+        ItipLocalDeliveryDTO dto = dtoWithRecipient("mailto:alice@example.com>");
+
+        assertThat(dto.strippedRecipient()).isEqualTo("alice@example.com");
+    }
+
+    @Test
+    void strippedRecipientShouldRemoveAngleBracketsWrappingMailto() {
+        ItipLocalDeliveryDTO dto = dtoWithRecipient("<mailto:alice@example.com>");
+
+        assertThat(dto.strippedRecipient()).isEqualTo("alice@example.com");
+    }
+
+    @Test
+    void strippedRecipientShouldTrimSurroundingWhitespace() {
+        ItipLocalDeliveryDTO dto = dtoWithRecipient("  mailto:alice@example.com  ");
+
+        assertThat(dto.strippedRecipient()).isEqualTo("alice@example.com");
+    }
+
+    @Test
+    void strippedSenderShouldRemoveSurroundingAngleBrackets() {
+        ItipLocalDeliveryDTO dto = new ItipLocalDeliveryDTO(
+            "mailto:<bob@example.com>",
+            "REQUEST",
+            "uid-1",
+            "calendar-1",
+            "MSG",
+            Optional.empty(),
+            true,
+            List.of("mailto:alice@example.com"));
+
+        assertThat(dto.strippedSender()).isEqualTo("bob@example.com");
+    }
+
+    private static ItipLocalDeliveryDTO dtoWithRecipient(String recipient) {
+        return new ItipLocalDeliveryDTO(
+            "mailto:sender@example.com",
+            "REQUEST",
+            "uid-1",
+            "calendar-1",
+            "MSG",
+            Optional.empty(),
+            true,
+            List.of(recipient));
+    }
 }
