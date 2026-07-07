@@ -40,8 +40,6 @@ import com.linagora.calendar.restapi.routes.BookingLinkReservationService.Bookin
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.booking.BookingLink;
-import com.linagora.calendar.storage.booking.BookingLinkDAO;
-import com.linagora.calendar.storage.booking.BookingLinkNotFoundException;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 
 import reactor.core.publisher.Mono;
@@ -49,7 +47,6 @@ import reactor.core.publisher.Mono;
 public class BookingLinkReservationService {
     private static final Logger LOGGER = LoggerFactory.getLogger(BookingLinkReservationService.class);
 
-    private final BookingLinkDAO bookingLinkDAO;
     private final BookingLinkSlotsService bookingLinkSlotsService;
     private final BookingLinkEventIcsBuilder bookingLinkEventIcsBuilder;
     private final CalDavClient calDavClient;
@@ -58,15 +55,13 @@ public class BookingLinkReservationService {
     private final BookingLinkRequestAcknowledgementNotifier bookingLinkRequestAcknowledgementNotifier;
 
     @Inject
-    public BookingLinkReservationService(BookingLinkDAO bookingLinkDAO,
-                                         Clock clock,
+    public BookingLinkReservationService(Clock clock,
                                          BookingLinkSlotsService bookingLinkSlotsService,
                                          RestApiConfiguration restApiConfiguration,
                                          CalDavClient calDavClient,
                                          OpenPaaSUserDAO openPaaSUserDAO,
                                          PublicAgendaProposalNotifier publicAgendaProposalNotifier,
                                          BookingLinkRequestAcknowledgementNotifier bookingLinkRequestAcknowledgementNotifier) {
-        this.bookingLinkDAO = bookingLinkDAO;
         this.calDavClient = calDavClient;
         this.bookingLinkSlotsService = bookingLinkSlotsService;
         this.openPaaSUserDAO = openPaaSUserDAO;
@@ -77,8 +72,7 @@ public class BookingLinkReservationService {
     }
 
     public Mono<BookedEvent> book(BookingLinkPublicId publicId, BookingRequest request) {
-        return bookingLinkDAO.findActiveByPublicId(publicId)
-            .switchIfEmpty(Mono.error(() -> new BookingLinkNotFoundException(publicId)))
+        return bookingLinkSlotsService.findActiveBookingLink(publicId)
             .flatMap(bookingLink -> validateSlotAvailability(bookingLink, request.slotStartUtc())
                 .then(createBooking(bookingLink, request)));
     }

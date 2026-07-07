@@ -35,6 +35,7 @@ import org.slf4j.LoggerFactory;
 
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.restapi.routes.response.BookingLinkSlotsResponse;
+import com.linagora.calendar.storage.booking.BookingLinkNotActiveException;
 import com.linagora.calendar.storage.booking.BookingLinkNotFoundException;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 
@@ -86,6 +87,10 @@ public class BookingLinkSlotsRoute extends PublicRoute {
                 case BookingLinkNotFoundException notFound -> {
                     LOGGER.warn("Booking link not found for [{}]: {}", request.uri(), notFound.getMessage());
                     yield ErrorResponseHandler.handle(response, HttpResponseStatus.NOT_FOUND, notFound);
+                }
+                case BookingLinkNotActiveException notActive -> {
+                    LOGGER.warn("Booking link {} is not active for [{}]", notActive.publicId().value(), request.uri());
+                    yield ErrorResponseHandler.handle(response, HttpResponseStatus.BAD_REQUEST, notActive);
                 }
                 case IllegalArgumentException illegalArgumentException -> {
                     LOGGER.warn("Bad request for [{}]: {}", request.uri(), illegalArgumentException.getMessage());
