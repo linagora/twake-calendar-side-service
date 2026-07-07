@@ -361,28 +361,10 @@ public class EventIndexerConsumerTest {
             .resourceName(eventUid + ".ics")
             .build();
 
-        EventFields recurrenceEvent = EventFields.builder()
-            .calendarURL(new CalendarURL(new OpenPaaSId(openPaasUser.id().value()), new OpenPaaSId(openPaasUser.id().value())))
-            .uid(new EventUid(eventUid))
-            .isRecurrentMaster(false)
-            .summary(summary)
-            .location(location)
-            .description(description)
-            .clazz("PUBLIC")
-            .start(Instant.parse("2025-05-23T07:30:00Z"))
-            .end(Instant.parse("2025-05-23T08:00:00Z"))
-            .dtStamp(Instant.parse("2025-05-16T06:03:20Z"))
-            .allDay(false)
-            .organizer(EventFields.Person.of("John1 Doe1", openPaasUser.username().asString()))
-            .addAttendee(EventFields.Person.of("John2 Doe2", attendee1.username().asString()))
-            .addAttendee(EventFields.Person.of("John1 Doe1", openPaasUser.username().asString()))
-            .sequence(1)
-            .resourceName(eventUid + ".ics")
-            .build();
-
+        // Search collapses occurrences on the uid and keeps the recurrence master as the representative.
         assertThat(eventFields)
             .usingRecursiveFieldByFieldElementComparatorIgnoringFields("recurrenceId")
-            .containsExactlyInAnyOrder(masterEvent, recurrenceEvent);
+            .containsExactly(masterEvent);
 
         // Check that the recurrence event is indexed for the attendee
         assertEventExistsInSearch(attendee1.username(), summary, eventUid);
@@ -393,7 +375,7 @@ public class EventIndexerConsumerTest {
 
         assertThat(eventFieldsAttendee)
             .usingRecursiveFieldByFieldElementComparatorIgnoringFields("recurrenceId")
-            .containsExactlyInAnyOrder(masterEvent, recurrenceEvent);
+            .containsExactly(masterEvent);
     }
 
     @Test
@@ -486,7 +468,8 @@ public class EventIndexerConsumerTest {
             .collect(Collectors.toSet())
             .block();
 
-        awaitAtMost.untilAsserted(() -> assertThat(searchSupplier.get()).hasSize(3));
+        // Occurrences collapse on the uid, keeping the master as the single representative.
+        awaitAtMost.untilAsserted(() -> assertThat(searchSupplier.get()).hasSize(1));
 
         // Update the event (removed one recurrence event)
         String updatedCalendar = """
@@ -548,7 +531,111 @@ public class EventIndexerConsumerTest {
 
         davTestHelper.upsertCalendar(openPaasUser, updatedCalendar, eventUid);
 
-        awaitAtMost.untilAsserted(() -> assertThat(searchSupplier.get()).hasSize(2));
+        awaitAtMost.untilAsserted(() -> assertThat(searchSupplier.get()).hasSize(1));
+    }
+
+    @Test
+    void shouldNotKeepRemovedRecurrenceInstanceSearchableAfterUpdate() {
+        String eventUid = UUID.randomUUID().toString();
+        String masterSummary = "Recurring meeting";
+        String keptOccurrenceSummary = "Kept occurrence";
+        String removedOccurrenceSummary = "Removed occurrence";
+        String organizer = openPaasUser.username().asString();
+
+        // Given a recurring event with two overridden occurrences.
+        String initialCalendar = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//SabreDAV//SabreDAV 3.2.2//EN
+            BEGIN:VEVENT
+            UID:{eventUid}
+            TRANSP:OPAQUE
+            DTSTART:20250515T043000Z
+            DTEND:20250515T050000Z
+            CLASS:PUBLIC
+            SUMMARY:{masterSummary}
+            RRULE:FREQ=WEEKLY;COUNT=14;BYDAY=FR
+            ORGANIZER;CN=John1 Doe1:mailto:{organizer}
+            DTSTAMP:20250516T060320Z
+            SEQUENCE:1
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:{eventUid}
+            TRANSP:OPAQUE
+            DTSTART:20250523T073000Z
+            DTEND:20250523T080000Z
+            CLASS:PUBLIC
+            SUMMARY:{keptOccurrenceSummary}
+            ORGANIZER;CN=John1 Doe1:mailto:{organizer}
+            DTSTAMP:20250516T060320Z
+            RECURRENCE-ID:20250523T043000Z
+            SEQUENCE:1
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:{eventUid}
+            TRANSP:OPAQUE
+            DTSTART:20250530T073000Z
+            DTEND:20250530T080000Z
+            CLASS:PUBLIC
+            SUMMARY:{removedOccurrenceSummary}
+            ORGANIZER;CN=John1 Doe1:mailto:{organizer}
+            DTSTAMP:20250516T060320Z
+            RECURRENCE-ID:20250530T043000Z
+            SEQUENCE:1
+            END:VEVENT
+            END:VCALENDAR
+            """.replace("{eventUid}", eventUid)
+            .replace("{masterSummary}", masterSummary)
+            .replace("{keptOccurrenceSummary}", keptOccurrenceSummary)
+            .replace("{removedOccurrenceSummary}", removedOccurrenceSummary)
+            .replace("{organizer}", organizer);
+
+        davTestHelper.upsertCalendar(openPaasUser, initialCalendar, eventUid);
+
+        assertEventExistsInSearch(openPaasUser.username(), removedOccurrenceSummary, eventUid);
+
+        // When the event is updated and one overridden occurrence is removed from the calendar payload.
+        String updatedCalendar = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//SabreDAV//SabreDAV 3.2.2//EN
+            BEGIN:VEVENT
+            UID:{eventUid}
+            TRANSP:OPAQUE
+            DTSTART:20250515T043000Z
+            DTEND:20250515T050000Z
+            CLASS:PUBLIC
+            SUMMARY:{masterSummary}
+            RRULE:FREQ=WEEKLY;COUNT=14;BYDAY=FR
+            ORGANIZER;CN=John1 Doe1:mailto:{organizer}
+            DTSTAMP:20250516T060320Z
+            SEQUENCE:2
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:{eventUid}
+            TRANSP:OPAQUE
+            DTSTART:20250523T073000Z
+            DTEND:20250523T080000Z
+            CLASS:PUBLIC
+            SUMMARY:{keptOccurrenceSummary}
+            ORGANIZER;CN=John1 Doe1:mailto:{organizer}
+            DTSTAMP:20250516T060320Z
+            RECURRENCE-ID:20250523T043000Z
+            SEQUENCE:2
+            END:VEVENT
+            END:VCALENDAR
+            """.replace("{eventUid}", eventUid)
+            .replace("{masterSummary}", masterSummary)
+            .replace("{keptOccurrenceSummary}", keptOccurrenceSummary)
+            .replace("{organizer}", organizer);
+
+        davTestHelper.updateCalendar(openPaasUser, updatedCalendar, eventUid);
+
+        // Then the removed occurrence must not remain searchable from the index.
+        awaitAtMost.untilAsserted(() -> assertThat(
+            calendarSearchService.search(simpleQuery(removedOccurrenceSummary, CalendarURL.from(openPaasUser.id())))
+                .collectList()
+                .block()).isEmpty());
     }
 
     @Test
@@ -642,7 +729,8 @@ public class EventIndexerConsumerTest {
             .collect(Collectors.toSet())
             .block();
 
-        awaitAtMost.untilAsserted(() -> assertThat(searchSupplier.get()).hasSize(3));
+        // Occurrences collapse on the uid, keeping the master as the single representative.
+        awaitAtMost.untilAsserted(() -> assertThat(searchSupplier.get()).hasSize(1));
     }
 
     @Test
@@ -936,12 +1024,12 @@ public class EventIndexerConsumerTest {
                 .collectList()
                 .block();
 
-            // Expect only 2 events (master + updated instance)
-            assertThat(results).hasSize(2);
+            // Occurrences collapse on the uid, keeping the master as the single representative: no duplicate.
+            assertThat(results).hasSize(1);
 
-            // The updated instance should be present
+            // The master occurrence is returned as the representative.
             assertThat(results)
-                .anySatisfy(e -> assertThat(e.start()).isEqualTo(Instant.parse("2025-05-18T08:00:00Z")));
+                .allSatisfy(e -> assertThat(e.start()).isEqualTo(Instant.parse("2025-05-10T08:00:00Z")));
         });
     }
 

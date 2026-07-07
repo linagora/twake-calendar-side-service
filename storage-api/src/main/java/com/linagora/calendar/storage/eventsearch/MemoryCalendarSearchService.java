@@ -18,13 +18,16 @@
 
 package com.linagora.calendar.storage.eventsearch;
 
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
@@ -86,10 +89,17 @@ public class MemoryCalendarSearchService implements CalendarSearchService {
             return Flux.empty();
         }
 
-        return Flux.fromIterable(indexStore.values())
-            .flatMapIterable(CalendarEventsDTO::visibleEvents)
+        // Collapse matching occurrences on their uid, keeping the recurrence master (or a standalone event)
+        // as the representative document, mirroring the OpenSearch field collapse (see issue #895).
+        Collection<EventFields> representatives = indexStore.values().stream()
+            .flatMap(dto -> dto.visibleEvents().stream())
             .filter(event -> matchesQuery(event, query))
-            .sort(Comparator.comparing(EventFields::start, Comparator.nullsLast(Comparator.reverseOrder())))
+            .collect(Collectors.toMap(EventFields::uid, Function.identity(), MemoryCalendarSearchService::keepMaster))
+            .values();
+
+        return Flux.fromIterable(representatives)
+            .sort(Comparator.comparingInt(MemoryCalendarSearchService::collapseRank)
+                .thenComparing(EventFields::start, Comparator.nullsLast(Comparator.reverseOrder())))
             .skip(query.offset())
             .take(query.limit());
     }
@@ -98,6 +108,14 @@ public class MemoryCalendarSearchService implements CalendarSearchService {
     public Mono<Void> deleteAll(OpenPaaSId baseCalendarId) {
         return Mono.fromRunnable(() -> indexStore.rowKeySet()
             .removeIf(calendarURL -> calendarURL.base().equals(baseCalendarId)));
+    }
+
+    private static EventFields keepMaster(EventFields left, EventFields right) {
+        return collapseRank(left) <= collapseRank(right) ? left : right;
+    }
+
+    private static int collapseRank(EventFields event) {
+        return Boolean.FALSE.equals(event.isRecurrentMaster()) ? 1 : 0;
     }
 
     static List<CalendarURL> validateSourceSearchCalendars(EventSearchQuery query) {
@@ -162,9 +180,9 @@ public class MemoryCalendarSearchService implements CalendarSearchService {
                              HashMap<String, EventEntry> eventsByKey) {
         static final boolean DELETED = true;
 
-        record EventEntry(EventFields event, boolean deleted, Optional<Integer> lastSequence) {
+        record EventEntry(EventFields event, boolean deleted) {
             static EventEntry from(EventFields event) {
-                return new EventEntry(event, !DELETED, event.sequence());
+                return new EventEntry(event, !DELETED);
             }
         }
 
@@ -176,16 +194,35 @@ public class MemoryCalendarSearchService implements CalendarSearchService {
         }
 
         CalendarEventsDTO replaceWith(Set<EventFields> incomingEvents) {
+            boolean masterApplied = false;
             for (EventFields incomingEvent : incomingEvents) {
                 String key = eventKey(incomingEvent);
                 Optional<EventFields> existingEvent = Optional.ofNullable(eventsByKey.get(key))
                     .map(EventEntry::event);
 
                 if (shouldReplace(existingEvent, incomingEvent)) {
-                    eventsByKey.put(key, new EventEntry(incomingEvent, false, incomingEvent.sequence()));
+                    eventsByKey.put(key, new EventEntry(incomingEvent, false));
+                    masterApplied |= Boolean.TRUE.equals(incomingEvent.isRecurrentMaster());
                 }
             }
+            if (masterApplied) {
+                pruneStaleOccurrences(incomingEvents);
+            }
             return this;
+        }
+
+        // Drop occurrence documents that are no longer part of the event (e.g. a deleted overridden
+        // occurrence). Staleness is decided by identity: any indexed entry for this uid whose key (which
+        // encodes the recurrenceId) is absent from the newly written message is dropped. We never rely on
+        // SEQUENCE here because it is per-VEVENT, so a removed occurrence may legitimately carry a higher
+        // sequence than the master. Pruning only runs when the recurrence master won its sequence guard,
+        // meaning the incoming message is newer than the indexed state (see issue #895).
+        private void pruneStaleOccurrences(Set<EventFields> incomingEvents) {
+            Set<String> incomingKeys = incomingEvents.stream()
+                .map(CalendarEventsDTO::eventKey)
+                .collect(Collectors.toSet());
+
+            eventsByKey.keySet().removeIf(key -> !incomingKeys.contains(key));
         }
 
         static boolean shouldReplace(Optional<EventFields> existing, EventFields incoming) {

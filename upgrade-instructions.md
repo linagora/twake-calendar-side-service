@@ -2,7 +2,74 @@
 
 This document describes breaking changes and migration steps required when upgrading to newer versions of Twake Calendar.
 
-## 2.4.0 (upcoming)
+## 2.4.3 (upcoming)
+
+### Collapse recurring event occurrences in the calendar event search index
+
+Date: 02/07/2026
+
+Recurring events are no longer deleted by `eventUid` before being re-indexed. Every occurrence (the master
+and its overridden occurrences) is now upserted as its own sequence-guarded document, and search results
+are collapsed on the event uid so that a recurring event is surfaced as a single representative document
+(see issue #895). This removes a race where the delete-before-index step bypassed the per-document sequence
+guard and could resurrect stale occurrences under concurrent or reordered messages.
+
+When an event is updated, occurrences that are no longer part of it (e.g. a deleted overridden occurrence)
+are pruned with a sequence-bounded delete-by-query: only documents with a strictly older `sequence` than the
+incoming message, and never the documents just written, are removed. A reordered older message therefore
+cannot resurrect a stale occurrence, and removed occurrences no longer linger in the index.
+
+A new `collapseRank` field is added to the OpenSearch calendar event index. It is used as a sort key to keep
+the recurrence master (or a standalone event) as the representative when collapsing on the uid. The existing
+`sequence` field is now indexed (`index: true`) so removed occurrences can be pruned by the sequence-bounded
+delete-by-query.
+
+A new `recurrenceId` field is also added (stored, non-indexed). It carries the `RECURRENCE-ID` of an
+overridden occurrence so that, when such an occurrence is surfaced by search, it keeps its own recurrence id
+instead of falling back to the master's.
+
+#### Breaking Change
+
+Existing indexed documents do not contain `collapseRank` or `recurrenceId`. Until they are reindexed, the
+collapse sort has no rank to order occurrences by, so an overridden occurrence may be surfaced as the
+representative instead of the master, and a surfaced overridden occurrence has no stored `recurrenceId` to
+return. In addition, the `sequence` field must be indexed for the removed-occurrence pruning to match
+existing documents.
+
+#### Required Actions
+
+**1. Add `collapseRank` and `recurrenceId`, and make `sequence` searchable in your existing index mapping:**
+
+```bash
+PUT /calendar_events/_mapping
+{
+  "properties": {
+    "collapseRank": {
+      "type": "integer",
+      "index": false
+    },
+    "recurrenceId": {
+      "type": "keyword",
+      "index": false
+    },
+    "sequence": {
+      "type": "integer",
+      "index": true
+    }
+  }
+}
+```
+
+Changing `index` on an existing field is not always accepted by OpenSearch; if the mapping update is
+rejected, create a new index with the updated mapping and reindex into it.
+
+**2. Run a full reindex** so that all existing documents get a `collapseRank` value:
+
+```
+POST {webadminBaseURL}/calendars?task=reindex
+```
+
+**Note:** Replace `calendar_events` with your actual index name if different.
 
 ### Rebuilt calendar event search index around source calendars
 
