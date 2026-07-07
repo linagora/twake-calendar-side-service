@@ -36,6 +36,7 @@ import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.ReceiverProvider;
 import org.apache.james.lifecycle.api.Startable;
+import org.apache.james.util.MDCStructuredLogger;
 import org.apache.james.util.ReactorUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -167,7 +168,11 @@ public class EventAuditLogConsumer implements Closeable, Startable {
                 String body = new String(ackDelivery.getBody(), StandardCharsets.UTF_8);
                 String exchangeName = ackDelivery.getEnvelope().getExchange();
                 String logLine = auditLogger.format(body, exchangeName);
-                AUDIT_LOGGER.info(logLine);
+                MDCStructuredLogger.forLogger(AUDIT_LOGGER)
+                    .field("action", exchangeName)
+                    .field("user", DefaultAuditLogger.extractUser(body).orElse("unknown"))
+                    .field("path", DefaultAuditLogger.extractPath(body).orElse("unknown"))
+                    .log(logger -> logger.info(logLine));
             })
             .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed audit log event")))
             .doOnSuccess(result -> ackDelivery.ack())

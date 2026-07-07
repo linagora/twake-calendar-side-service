@@ -18,11 +18,13 @@
 
 package com.linagora.calendar.amqp;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.base.Splitter;
 
 public class DefaultAuditLogger implements AuditLogger {
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -62,6 +64,35 @@ public class DefaultAuditLogger implements AuditLogger {
         return sb.toString();
     }
 
+    public static Optional<String> extractUser(String body) {
+        try {
+            JsonNode root = MAPPER.readTree(body);
+            Optional<String> path = Optional.empty();
+            if (root.has("eventPath")) {
+                path = Optional.ofNullable(root.get("eventPath").asText(null));
+            } else if (root.has("calendarPath")) {
+                path = Optional.ofNullable(root.get("calendarPath").asText(null));
+            }
+            return path.flatMap(DefaultAuditLogger::parseOwnerFromPath);
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+    }
+
+    private static Optional<String> parseOwnerFromPath(String path) {
+        try {
+            List<String> parts = Splitter.on('/')
+                .omitEmptyStrings()
+                .splitToList(path);
+            if (parts.size() >= 3 && !parts.getFirst().isEmpty()) {
+                return Optional.of(parts.get(1));
+            }
+            return Optional.empty();
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+    }
+
     private static Optional<String> extractUid(String body) {
         try {
             JsonNode root = MAPPER.readTree(body);
@@ -74,7 +105,7 @@ public class DefaultAuditLogger implements AuditLogger {
         }
     }
 
-    private static Optional<String> extractPath(String body) {
+    public static Optional<String> extractPath(String body) {
         try {
             JsonNode root = MAPPER.readTree(body);
             if (root.has("eventPath")) {
