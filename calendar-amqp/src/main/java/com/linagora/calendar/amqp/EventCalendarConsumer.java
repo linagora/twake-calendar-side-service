@@ -42,6 +42,7 @@ import org.apache.james.util.ReactorUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.github.fge.lambdas.Throwing;
@@ -60,7 +61,8 @@ import reactor.rabbitmq.Receiver;
 import reactor.rabbitmq.Sender;
 
 public class EventCalendarConsumer implements Closeable, Startable {
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module());
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module())
+        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     private static final Logger LOGGER = LoggerFactory.getLogger(EventCalendarConsumer.class);
     private static final boolean REQUEUE_ON_NACK = true;
 

@@ -103,6 +103,39 @@ class ItipLocalDeliveryDTOTest {
     }
 
     @Test
+    // Sabre started adding a "connectedUser" field to the payload: unknown fields must be ignored.
+    void deserializeShouldIgnoreUnknownFields() {
+        byte[] payload = """
+            {
+                "sender": "mailto:sender@example.com",
+                "method": "REQUEST",
+                "uid": "uid-123",
+                "calendarId": "calendar-123",
+                "message": "BEGIN:VCALENDAR",
+                "hasChange": true,
+                "connectedUser": "mailto:connected@example.com",
+                "recipients": [
+                    "mailto:alice@example.com"
+                ]
+            }
+            """.getBytes(StandardCharsets.UTF_8);
+
+        ItipLocalDeliveryDTO actual = ItipLocalDeliveryDTO.deserialize(payload);
+
+        ItipLocalDeliveryDTO expected = new ItipLocalDeliveryDTO(
+            "mailto:sender@example.com",
+            "REQUEST",
+            "uid-123",
+            "calendar-123",
+            "BEGIN:VCALENDAR",
+            Optional.empty(),
+            true,
+            List.of("mailto:alice@example.com"));
+
+        assertThat(actual).isEqualTo(expected);
+    }
+
+    @Test
     void strippedRecipientShouldRemoveMailtoPrefix() {
         ItipLocalDeliveryDTO dto = dtoWithRecipient("mailto:alice@example.com");
 
