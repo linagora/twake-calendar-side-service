@@ -41,6 +41,7 @@ import org.apache.james.util.ReactorUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.inject.name.Named;
@@ -77,7 +78,8 @@ public class EventEmailConsumer implements Closeable, Startable {
     private static final boolean PUBLIC_AGENDA_EVENT = true;
     private static final Logger LOGGER = LoggerFactory.getLogger(EventEmailConsumer.class);
     private static final boolean REQUEUE_ON_NACK = true;
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module());
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module())
+        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     private final ReceiverProvider receiverProvider;
     private final EventMailHandler eventMailHandler;
