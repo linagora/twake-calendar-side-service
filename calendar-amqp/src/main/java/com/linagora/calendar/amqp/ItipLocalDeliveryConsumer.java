@@ -227,7 +227,11 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     // ---- Processing phase --------------------------------------------------------------------
 
     private Mono<Void> processSingleRecipient(ItipLocalDeliveryDTO localDelivery) {
-        Username recipientUsername = Username.of(localDelivery.strippedRecipient());
+        Optional<Username> maybeRecipient = parseRecipient(localDelivery);
+        if (maybeRecipient.isEmpty()) {
+            return Mono.empty();
+        }
+        Username recipientUsername = maybeRecipient.get();
         Optional<Calendar> oldEventCalendar = localDelivery.oldMessage().map(CalendarUtil::parseIcs);
 
         return Mono.fromCallable(() -> CalendarUtil.parseIcs(localDelivery.message()))
@@ -239,6 +243,21 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
                     return sendItipIfNecessary(localDelivery, recipientUsername, localRecipientId, calendar)
                         .then(isResource ? Mono.empty() : publishEmailNotification(localDelivery, recipientUsername, localRecipientId, oldEventCalendar));
                 }));
+    }
+
+    /**
+     * Parses the single recipient address. An invalid address is necessarily not a local
+     * recipient, so there is nothing to deliver: we log and ignore the message rather than
+     * dead-lettering it.
+     */
+    private Optional<Username> parseRecipient(ItipLocalDeliveryDTO localDelivery) {
+        try {
+            return Optional.of(Username.of(localDelivery.strippedRecipient()));
+        } catch (IllegalArgumentException e) {
+            LOGGER.warn("Ignoring iTIP local delivery for uid {}: invalid recipient address '{}'",
+                localDelivery.uid(), localDelivery.strippedRecipient(), e);
+            return Optional.empty();
+        }
     }
 
     private boolean localDeliveryIgnored(ItipLocalDeliveryDTO localDelivery,

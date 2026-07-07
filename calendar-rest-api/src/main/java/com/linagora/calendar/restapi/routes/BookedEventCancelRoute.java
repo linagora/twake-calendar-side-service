@@ -18,12 +18,15 @@
 
 package com.linagora.calendar.restapi.routes;
 
+import java.net.URI;
+import java.time.Clock;
 import java.util.List;
 import java.util.Optional;
 
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.james.core.Username;
 import org.apache.james.jmap.Endpoint;
 import org.apache.james.metrics.api.MetricFactory;
 import org.slf4j.Logger;
@@ -36,6 +39,7 @@ import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.event.EventParseUtils;
 
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -46,19 +50,28 @@ import reactor.netty.http.server.HttpServerResponse;
 
 public class BookedEventCancelRoute extends PublicRoute {
 
+    static class PastBookedEventException extends RuntimeException {
+        PastBookedEventException(String eventId) {
+            super("Cannot cancel a booked event that already started: " + eventId);
+        }
+    }
+
     private static final Logger LOGGER = LoggerFactory.getLogger(BookedEventCancelRoute.class);
     private static final String BOOKING_CONFIRMATION_TOKEN_PARAM = "bookingConfirmationToken";
 
+    private final Clock clock;
     private final BookedEventTokenSigner bookedEventTokenSigner;
     private final OpenPaaSUserDAO openPaaSUserDAO;
     private final CalDavClient calDavClient;
 
     @Inject
     public BookedEventCancelRoute(MetricFactory metricFactory,
+                                  Clock clock,
                                   BookedEventTokenSigner bookedEventTokenSigner,
                                   OpenPaaSUserDAO openPaaSUserDAO,
                                   CalDavClient calDavClient) {
         super(metricFactory);
+        this.clock = clock;
         this.bookedEventTokenSigner = bookedEventTokenSigner;
         this.openPaaSUserDAO = openPaaSUserDAO;
         this.calDavClient = calDavClient;
@@ -79,7 +92,18 @@ public class BookedEventCancelRoute extends PublicRoute {
     private Mono<Void> deleteBookedEvent(BookedEvent bookedEvent) {
         CalendarURL calendarURL = new CalendarURL(new OpenPaaSId(bookedEvent.ownerId()), new OpenPaaSId(bookedEvent.calendarId()));
         return openPaaSUserDAO.retrieve(new OpenPaaSId(bookedEvent.ownerId()))
-            .flatMap(owner -> calDavClient.deleteCalendarEvent(owner.username(), calendarURL, bookedEvent.eventId()));
+            .flatMap(owner -> rejectIfAlreadyStarted(owner.username(), calendarURL, bookedEvent.eventId())
+                .then(calDavClient.deleteCalendarEvent(owner.username(), calendarURL, bookedEvent.eventId())));
+    }
+
+    private Mono<Void> rejectIfAlreadyStarted(Username username, CalendarURL calendarURL, String eventId) {
+        URI eventHref = URI.create(calendarURL.asUri() + "/" + eventId + CalDavClient.ICS_EXTENSION);
+        return calDavClient.fetchCalendarEvent(username, eventHref)
+            // Prevent time travel: a booked event whose start time is in the past can no longer be cancelled.
+            // A missing event yields an empty Mono and stays a no-op delete, keeping cancellation idempotent.
+            .map(davCalendarObject -> EventParseUtils.getStartTime(EventParseUtils.getFirstEvent(davCalendarObject.calendarData())).toInstant())
+            .filter(startTime -> startTime.isBefore(clock.instant()))
+            .flatMap(pastStartTime -> Mono.error(new PastBookedEventException(eventId)));
     }
 
     private Mono<String> extractToken(HttpServerRequest request) {
@@ -100,6 +124,10 @@ public class BookedEventCancelRoute extends PublicRoute {
             case BookedEventTokenClaimException e -> {
                 LOGGER.info("Invalid booked event token: {}", e.getMessage());
                 yield ErrorResponseHandler.handle(response, HttpResponseStatus.UNAUTHORIZED, "bookingConfirmationToken is invalid");
+            }
+            case PastBookedEventException e -> {
+                LOGGER.info("Attempt to cancel a past booked event: {}", e.getMessage());
+                yield ErrorResponseHandler.handle(response, HttpResponseStatus.UNPROCESSABLE_ENTITY, "Cannot cancel a booked event that already started");
             }
             case IllegalArgumentException e -> {
                 LOGGER.info("Bad request for booked event cancellation: {}", e.getMessage());

@@ -836,6 +836,70 @@ class BookingLinkReservationRouteTest {
     }
 
     @Test
+    void shouldReturnUnprocessableEntityWhenRequestedSlotIsBusyAndAvailabilityRulesAreEmpty(TwakeCalendarGuiceServer server) {
+        // Given: a booking link without availability rules. Such a link is "effectively open"
+        // (any 30-minute aligned slot is bookable), but busy intervals must still be honoured.
+        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(
+            CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES,
+            BookingLinkInsertRequest.ACTIVE, Optional.empty());
+        BookingLink inserted = server.getProbe(BookingLinkProbe.class)
+            .insert(openPaaSUser.username(), insertRequest);
+
+        // - Calendar already has an opaque busy event in range [09:30, 10:00] UTC.
+        String busyEventUid = UUID.randomUUID().toString();
+        davTestHelper.upsertCalendar(openPaaSUser, """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Twake//BookingReservationTest//EN
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20360101T000000Z
+            DTSTART:20360126T093000Z
+            DTEND:20360126T100000Z
+            SUMMARY:busy-window
+            TRANSP:OPAQUE
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(busyEventUid), busyEventUid);
+
+        // When: booking the exact busy slot on a link with no availability rules.
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body(bodyRequest("2036-01-26T09:30:00Z"))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_UNPROCESSABLE_ENTITY)
+            .contentType(JSON)
+            .body("error", jsonEquals("""
+                {
+                  "code": 422,
+                  "message": "Unprocessable Entity",
+                  "details": "Requested slot is not available for booking link with publicId %s, slotStartUtc 2036-01-26T09:30:00Z"
+                }
+                """.formatted(inserted.publicId().value())));
+    }
+
+    @Test
+    void shouldCreateBookingWhenSlotIsFreeAndAvailabilityRulesAreEmpty(TwakeCalendarGuiceServer server) {
+        // Given: a booking link without availability rules and a free (non-busy) aligned slot.
+        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(
+            CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES,
+            BookingLinkInsertRequest.ACTIVE, Optional.empty());
+        BookingLink inserted = server.getProbe(BookingLinkProbe.class)
+            .insert(openPaaSUser.username(), insertRequest);
+
+        // When/Then: booking a free aligned slot succeeds (empty rules are effectively open).
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body(bodyRequest("2036-01-26T09:30:00Z"))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED);
+    }
+
+    @Test
     void shouldReturnBadRequestWhenRequestBodyIsInvalidJson(TwakeCalendarGuiceServer server) {
         BookingLink inserted = insertActiveBookingLink(server);
 

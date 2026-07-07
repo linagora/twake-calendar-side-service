@@ -60,11 +60,15 @@ public class PeopleSearchRoute extends CalendarRoute {
     public static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     public enum ObjectType {
-        USER, CONTACT, RESOURCE;
+        USER, CONTACT, RESOURCE, TEAM_CALENDAR;
+
+        public String serialize() {
+            return name().toLowerCase().replace('_', '-');
+        }
 
         static Optional<ObjectType> parse(String s) {
             return Stream.of(ObjectType.values())
-                .filter(t -> t.name().equalsIgnoreCase(s))
+                .filter(t -> t.serialize().equalsIgnoreCase(s))
                 .findAny();
         }
     }
@@ -135,9 +139,10 @@ public class PeopleSearchRoute extends CalendarRoute {
     }
 
     private static final Map<String, Integer> OBJECT_TYPE_ORDER = ImmutableMap.of(
-        ObjectType.USER.name().toLowerCase(), 0,
-        ObjectType.RESOURCE.name().toLowerCase(), 1,
-        ObjectType.CONTACT.name().toLowerCase(), 2);
+        ObjectType.USER.serialize(), 0,
+        ObjectType.RESOURCE.serialize(), 1,
+        ObjectType.CONTACT.serialize(), 2,
+        ObjectType.TEAM_CALENDAR.serialize(), 3);
 
     private static final Comparator<ResponseDTO> RESULT_COMPARATOR =
         Comparator.<ResponseDTO>comparingInt(dto -> OBJECT_TYPE_ORDER.getOrDefault(dto.getObjectType(), Integer.MAX_VALUE))

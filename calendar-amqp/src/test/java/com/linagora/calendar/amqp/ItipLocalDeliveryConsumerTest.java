@@ -642,6 +642,56 @@ public class ItipLocalDeliveryConsumerTest {
     }
 
     @Test
+    void shouldIgnoreMessageWhenRecipientAddressIsInvalid() throws Exception {
+        String payload = """
+            {
+              "sender": "mailto:%s",
+              "method": "REQUEST",
+              "uid": "%s",
+              "calendarId": "%s",
+              "message": %s,
+              "hasChange": true,
+              "recipients": ["mailto:%s"]
+            }
+            """.formatted(BOB, EVENT_UID, CALENDAR_ID, jsonString(SIMPLE_ICAL), "invalid@domain@address");
+
+        publishToConsumer(payload);
+
+        // An invalid address is necessarily not local: the message is ignored (acked), not dead-lettered.
+        Thread.sleep(1000);
+        assertThat(channel.basicGet(ItipLocalDeliveryConsumer.DEAD_LETTER_QUEUE, true)).isNull();
+        WireMock.verify(0, WireMock.postRequestedFor(WireMock.urlEqualTo("/itip")));
+    }
+
+    @Test
+    void shouldStillProcessValidRecipientsWhenOneRecipientAddressIsInvalid() throws Exception {
+        when(localRecipientResolver.resolve(Username.of(ALICE)))
+            .thenReturn(Mono.just(Optional.of(new LocalRecipientResolver.ResolvedRecipient.LocalUser(new OpenPaaSId(LOCAL_USER_ID)))));
+        stubItipNoContent();
+
+        String payload = """
+            {
+              "sender": "mailto:%s",
+              "method": "REQUEST",
+              "uid": "%s",
+              "calendarId": "%s",
+              "message": %s,
+              "hasChange": true,
+              "recipients": ["mailto:%s", "mailto:%s"]
+            }
+            """.formatted(BOB, EVENT_UID, CALENDAR_ID, jsonString(SIMPLE_ICAL), ALICE, "invalid@domain@address");
+
+        publishToConsumer(payload);
+
+        AWAIT_AT_MOST.untilAsserted(() ->
+            WireMock.verify(WireMock.postRequestedFor(WireMock.urlEqualTo("/itip"))
+                .withRequestBody(WireMock.matchingJsonPath("$.recipient", WireMock.equalTo(ALICE)))));
+
+        // The invalid recipient is ignored (acked), not dead-lettered.
+        assertThat(channel.basicGet(ItipLocalDeliveryConsumer.DEAD_LETTER_QUEUE, true)).isNull();
+    }
+
+    @Test
     void shouldCallItipAndEmailWhenReplyPartStatChanged() {
         when(localRecipientResolver.resolve(Username.of(BOB)))
             .thenReturn(Mono.just(Optional.of(new LocalRecipientResolver.ResolvedRecipient.LocalUser(new OpenPaaSId(LOCAL_USER_ID)))));

@@ -37,5 +37,7 @@ public interface TeamCalendarRepository {
 
     Flux<TeamCalendar> listByDomain(OpenPaaSId domainId);
 
+    Flux<TeamCalendar> search(OpenPaaSId domainId, String query, int limit);
+
     Mono<TeamCalendar> updateDisplayName(TeamCalendarId id, String displayName);
 }

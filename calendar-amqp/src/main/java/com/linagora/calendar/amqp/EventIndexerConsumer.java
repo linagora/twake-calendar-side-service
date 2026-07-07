@@ -27,7 +27,6 @@ import java.io.Closeable;
 import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -45,9 +44,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.inject.name.Named;
-import com.linagora.calendar.storage.eventsearch.CalendarEvents;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
-import com.linagora.calendar.storage.exception.CalendarSearchIndexingException;
 import com.rabbitmq.client.BuiltinExchangeType;
 
 import reactor.core.Disposable;
@@ -150,7 +147,7 @@ public class EventIndexerConsumer implements Closeable, Startable {
     }
 
     public void start() {
-        consumeDisposableMap.put(Queue.ADD, doConsumeCalendarEventMessages(Queue.ADD, handlerAdd));
+        consumeDisposableMap.put(Queue.ADD, doConsumeCalendarEventMessages(Queue.ADD, handlerAddOrUpdate));
         consumeDisposableMap.put(Queue.UPDATE, doConsumeCalendarEventMessages(Queue.UPDATE, handlerAddOrUpdate));
         consumeDisposableMap.put(Queue.DELETE, doConsumeCalendarEventMessages(Queue.DELETE, handlerDelete));
     }
@@ -178,53 +175,17 @@ public class EventIndexerConsumer implements Closeable, Startable {
         Mono<CalendarEventMessage> deserialize(byte[] messagesAsBytes);
     }
 
-    private final CalendarEventHandler handlerAdd = new CalendarEventHandler() {
+    // Both created and updated events are indexed the same way: each occurrence (master and overridden
+    // occurrences) is upserted as its own document guarded by its sequence. We intentionally do NOT delete
+    // by eventUid before re-indexing recurring events: that delete bypasses the per-document sequence guard
+    // and races with concurrent/reordered messages (see issue #895). Search collapses on the uid and keeps
+    // the sequence-guarded master, so stale overridden occurrences are never surfaced.
+    private final CalendarEventHandler handlerAddOrUpdate = new CalendarEventHandler() {
         @Override
         public Mono<?> handle(CalendarEventMessage calendarEventMessage) {
             return Mono.fromCallable(calendarEventMessage::extractCalendarEvents)
                 .flatMap(calendarSearchService::index)
                 .then();
-        }
-
-        @Override
-        public Mono<CalendarEventMessage> deserialize(byte[] messagesAsBytes) {
-            return Mono.fromCallable(() -> CalendarEventMessage.CreatedOrUpdated.deserialize(messagesAsBytes));
-        }
-    };
-
-    private final CalendarEventHandler handlerAddOrUpdate = new CalendarEventHandler() {
-
-        @Override
-        public Mono<?> handle(CalendarEventMessage calendarEventMessage) {
-            return Mono.fromCallable(calendarEventMessage::extractCalendarEvents)
-                .flatMap(this::indexEvents)
-                .then();
-        }
-
-        private Mono<Void> indexEvents(CalendarEvents calendarEvents) {
-           if (hasRecurrenceEvents(calendarEvents)) {
-                return calendarSearchService.delete(calendarEvents.calendarURL(), calendarEvents.eventUid())
-                    .then(calendarSearchService.index(calendarEvents))
-                    .onErrorResume(this::isVersionConflict, error -> {
-                        LOGGER.info("Ignoring duplicated DAV recurring event message for eventUid {} in calendarURL {}",
-                            calendarEvents.eventUid().value(), calendarEvents.calendarURL().serialize(), error);
-                        return Mono.empty();
-                    });
-            } else {
-                return calendarSearchService.index(calendarEvents);
-           }
-        }
-
-        private boolean hasRecurrenceEvents(CalendarEvents calendarEvents) {
-            return calendarEvents.events().size() > 1;
-        }
-
-        private boolean isVersionConflict(Throwable error) {
-            return error instanceof CalendarSearchIndexingException
-                && Optional.ofNullable(error.getCause())
-                .map(Throwable::getMessage)
-                .filter(message -> message.contains("version conflict, required seqNo"))
-                .isPresent();
         }
 
         @Override

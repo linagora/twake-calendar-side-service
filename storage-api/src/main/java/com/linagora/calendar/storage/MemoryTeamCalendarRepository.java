@@ -82,6 +82,21 @@ public class MemoryTeamCalendarRepository implements TeamCalendarRepository {
     }
 
     @Override
+    public Flux<TeamCalendar> search(OpenPaaSId domainId, String query, int limit) {
+        String lowerCaseQuery = query.trim().toLowerCase();
+        return listByDomain(domainId)
+            .filter(teamCalendar -> matches(teamCalendar, lowerCaseQuery))
+            .take(limit);
+    }
+
+    private boolean matches(TeamCalendar teamCalendar, String lowerCaseQuery) {
+        String emailAddress = teamCalendar.name() + "@" + teamCalendar.domain().domain().asString();
+        return teamCalendar.name().toLowerCase().contains(lowerCaseQuery)
+            || teamCalendar.displayName().toLowerCase().contains(lowerCaseQuery)
+            || emailAddress.toLowerCase().contains(lowerCaseQuery);
+    }
+
+    @Override
     public Mono<TeamCalendar> updateDisplayName(TeamCalendarId id, String displayName) {
         return Mono.fromCallable(() -> Optional.ofNullable(teamCalendars.computeIfPresent(id,
                 (ignored, existing) -> updateDisplayName(existing, displayName)))
