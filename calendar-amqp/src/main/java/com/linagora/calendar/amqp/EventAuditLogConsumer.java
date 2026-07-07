@@ -228,6 +228,9 @@ public class EventAuditLogConsumer implements Closeable, Startable {
     public static Optional<String> extractOwner(String body) {
         try {
             JsonNode root = MAPPER.readTree(body);
+            if (root.has("owner")) {
+                return Optional.ofNullable(root.get("owner").asText(null));
+            }
             Optional<String> path = Optional.empty();
             if (root.has("eventPath")) {
                 path = Optional.ofNullable(root.get("eventPath").asText(null));
