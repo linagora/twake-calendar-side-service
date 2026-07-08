@@ -72,6 +72,7 @@ import com.linagora.calendar.restapi.auth.OidcFallbackCookieAuthenticationStrate
 import com.linagora.calendar.restapi.routes.AvatarRoute;
 import com.linagora.calendar.restapi.routes.BookedEventCancelRoute;
 import com.linagora.calendar.restapi.routes.BookedEventGetRoute;
+import com.linagora.calendar.restapi.routes.BookingLinkCancellationAcknowledgementNotifier;
 import com.linagora.calendar.restapi.routes.BookingLinkCreateRoute;
 import com.linagora.calendar.restapi.routes.BookingLinkDeleteRoute;
 import com.linagora.calendar.restapi.routes.BookingLinkGetRoute;
@@ -101,6 +102,7 @@ import com.linagora.calendar.restapi.routes.LogoRoute;
 import com.linagora.calendar.restapi.routes.PeopleSearchRoute;
 import com.linagora.calendar.restapi.routes.ProfileAvatarRoute;
 import com.linagora.calendar.restapi.routes.ProfileUpdateRoute;
+import com.linagora.calendar.restapi.routes.PublicAgendaCancellationNotifier;
 import com.linagora.calendar.restapi.routes.PublicAgendaProposalNotifier;
 import com.linagora.calendar.restapi.routes.ResourceIconRoute;
 import com.linagora.calendar.restapi.routes.ResourceParticipationRoute;
@@ -223,6 +225,8 @@ public class RestApiModule extends AbstractModule {
         bind(BookingLinkSlotsService.class).in(Scopes.SINGLETON);
         bind(PublicAgendaProposalNotifier.class).in(Scopes.SINGLETON);
         bind(BookingLinkRequestAcknowledgementNotifier.class).in(Scopes.SINGLETON);
+        bind(PublicAgendaCancellationNotifier.class).in(Scopes.SINGLETON);
+        bind(BookingLinkCancellationAcknowledgementNotifier.class).in(Scopes.SINGLETON);
 
         Multibinder<ImportResultNotifier> importResultNotifierMultibinder = Multibinder.newSetBinder(binder(), ImportResultNotifier.class);
         importResultNotifierMultibinder.addBinding().to(ImportWebSocketNotifier.class);
