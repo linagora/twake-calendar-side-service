@@ -65,7 +65,7 @@ public class BookingLinkSlotsService {
     }
 
     public Mono<SlotsResult> computeSlots(BookingLinkPublicId publicId, Instant from, Instant to) {
-        return findActiveBookingLink(publicId)
+        return getBookingLink(publicId)
             .flatMap(bookingLink -> Mono.zip(
                     retrieveOwner(bookingLink),
                     computeSlots(bookingLink, from, to))
@@ -106,7 +106,7 @@ public class BookingLinkSlotsService {
             .map(UnavailableTimeRanges::new);
     }
 
-    Mono<BookingLink> findActiveBookingLink(BookingLinkPublicId publicId) {
+    Mono<BookingLink> getBookingLink(BookingLinkPublicId publicId) {
         return bookingLinkDAO.findByPublicId(publicId)
             .switchIfEmpty(Mono.error(() -> new BookingLinkNotFoundException(publicId)))
             .handle((bookingLink, sink) -> {

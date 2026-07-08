@@ -72,7 +72,7 @@ public class BookingLinkReservationService {
     }
 
     public Mono<BookedEvent> book(BookingLinkPublicId publicId, BookingRequest request) {
-        return bookingLinkSlotsService.findActiveBookingLink(publicId)
+        return bookingLinkSlotsService.getBookingLink(publicId)
             .flatMap(bookingLink -> validateSlotAvailability(bookingLink, request.slotStartUtc())
                 .then(createBooking(bookingLink, request)));
     }
