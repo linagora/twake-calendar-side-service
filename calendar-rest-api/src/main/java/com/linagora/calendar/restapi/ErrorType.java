@@ -18,8 +18,29 @@
 
 package com.linagora.calendar.restapi;
 
+import io.netty.handler.codec.http.HttpResponseStatus;
+
 public enum ErrorType {
+    BAD_REQUEST("BadRequest"),
+    UNAUTHORIZED("Unauthorized"),
+    FORBIDDEN("Forbidden"),
+    NOT_FOUND("NotFound"),
+    UNPROCESSABLE_ENTITY("UnprocessableEntity"),
+    SERVICE_UNAVAILABLE("ServiceUnavailable"),
+    SERVER_ERROR("ServerError"),
     INACTIVE_BOOKING_LINK("InactiveBookingLink");
+
+    public static ErrorType fromStatus(HttpResponseStatus status) {
+        return switch (status.code()) {
+            case 400 -> BAD_REQUEST;
+            case 401 -> UNAUTHORIZED;
+            case 403 -> FORBIDDEN;
+            case 404 -> NOT_FOUND;
+            case 422 -> UNPROCESSABLE_ENTITY;
+            case 503 -> SERVICE_UNAVAILABLE;
+            default -> SERVER_ERROR;
+        };
+    }
 
     private final String value;
 

@@ -542,6 +542,7 @@ class EventParticipationRouteTest {
                 {
                     "error": {
                         "code": 401,
+                        "type": "Unauthorized",
                         "message": "Unauthorized",
                         "details": "JWT is missing or invalid"
                     }
@@ -571,6 +572,7 @@ class EventParticipationRouteTest {
             {
                 "error": {
                     "code": 404,
+                    "type": "NotFound",
                     "message": "Not found",
                     "details": "${json-unit.ignore}"
                 }
@@ -615,6 +617,7 @@ class EventParticipationRouteTest {
             {
                 "error": {
                     "code": 404,
+                    "type": "NotFound",
                     "message": "Not found",
                     "details": "${json-unit.ignore}"
                 }

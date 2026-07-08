@@ -620,6 +620,7 @@ class BookingLinkReservationRouteTest {
             .body("error", jsonEquals("""
                 {
                   "code": 422,
+                  "type": "UnprocessableEntity",
                   "message": "Unprocessable Entity",
                   "details": "Requested slot is not available for booking link with publicId %s, slotStartUtc %s"
                 }
@@ -651,6 +652,7 @@ class BookingLinkReservationRouteTest {
             .body("error", jsonEquals("""
                 {
                   "code": 422,
+                  "type": "UnprocessableEntity",
                   "message": "Unprocessable Entity",
                   "details": "Requested slot is not available for booking link with publicId %s, slotStartUtc %s"
                 }
@@ -683,6 +685,7 @@ class BookingLinkReservationRouteTest {
             .body("error", jsonEquals("""
                 {
                   "code": 422,
+                  "type": "UnprocessableEntity",
                   "message": "Unprocessable Entity",
                   "details": "Requested slot is not available for booking link with publicId %s, slotStartUtc %s"
                 }
@@ -788,6 +791,7 @@ class BookingLinkReservationRouteTest {
             .body("error", jsonEquals("""
                 {
                   "code": 422,
+                  "type": "UnprocessableEntity",
                   "message": "Unprocessable Entity",
                   "details": "Requested slot is not available for booking link with publicId %s, slotStartUtc 2036-01-26T08:00:00Z"
                 }
@@ -829,6 +833,7 @@ class BookingLinkReservationRouteTest {
             .body("error", jsonEquals("""
                 {
                   "code": 422,
+                  "type": "UnprocessableEntity",
                   "message": "Unprocessable Entity",
                   "details": "Requested slot is not available for booking link with publicId %s, slotStartUtc 2036-01-26T09:30:00Z"
                 }
@@ -874,6 +879,7 @@ class BookingLinkReservationRouteTest {
             .body("error", jsonEquals("""
                 {
                   "code": 422,
+                  "type": "UnprocessableEntity",
                   "message": "Unprocessable Entity",
                   "details": "Requested slot is not available for booking link with publicId %s, slotStartUtc 2036-01-26T09:30:00Z"
                 }
@@ -914,6 +920,7 @@ class BookingLinkReservationRouteTest {
             .body("error", jsonEquals("""
                 {
                   "code": 400,
+                  "type": "BadRequest",
                   "message": "Bad Request",
                   "details": "Missing or invalid request body"
                 }
@@ -943,6 +950,7 @@ class BookingLinkReservationRouteTest {
             .body("error", jsonEquals("""
                 {
                   "code": 400,
+                  "type": "BadRequest",
                   "message": "Bad Request",
                   "details": "Missing or invalid request body"
                 }
@@ -969,6 +977,7 @@ class BookingLinkReservationRouteTest {
             .body("error", jsonEquals("""
                 {
                   "code": 400,
+                  "type": "BadRequest",
                   "message": "Bad Request",
                   "details": "Missing or invalid request body"
                 }
@@ -999,6 +1008,7 @@ class BookingLinkReservationRouteTest {
             .body("error", jsonEquals("""
                 {
                   "code": 400,
+                  "type": "BadRequest",
                   "message": "Bad Request",
                   "details": "'email' has invalid format: invalid-email"
                 }
@@ -1035,6 +1045,7 @@ class BookingLinkReservationRouteTest {
             .body("error", jsonEquals("""
                 {
                   "code": 400,
+                  "type": "BadRequest",
                   "message": "Bad Request",
                   "details": "'additional_attendees' must not contain creator email"
                 }
@@ -1077,6 +1088,7 @@ class BookingLinkReservationRouteTest {
             .body("error", jsonEquals("""
                 {
                   "code": 400,
+                  "type": "BadRequest",
                   "message": "Bad Request",
                   "details": "'additional_attendees' contains duplicate email: VANA@example.com"
                 }
@@ -1119,6 +1131,7 @@ class BookingLinkReservationRouteTest {
             .body("error", jsonEquals("""
                 {
                   "code": 400,
+                  "type": "BadRequest",
                   "message": "Bad Request",
                   "details": "'additional_attendees' must not exceed 20 items"
                 }
@@ -1149,6 +1162,7 @@ class BookingLinkReservationRouteTest {
             .body("error", jsonEquals("""
                 {
                   "code": 400,
+                  "type": "BadRequest",
                   "message": "Bad Request",
                   "details": "'eventTitle' must not be blank"
                 }
@@ -1179,6 +1193,7 @@ class BookingLinkReservationRouteTest {
             .body("error", jsonEquals("""
                 {
                   "code": 400,
+                  "type": "BadRequest",
                   "message": "Bad Request",
                   "details": "'eventTitle' must not exceed 255 characters"
                 }
@@ -1210,6 +1225,7 @@ class BookingLinkReservationRouteTest {
             .body("error", jsonEquals("""
                 {
                   "code": 400,
+                  "type": "BadRequest",
                   "message": "Bad Request",
                   "details": "'notes' must not exceed 2000 characters"
                 }
@@ -1259,6 +1275,7 @@ class BookingLinkReservationRouteTest {
             .body("error", jsonEquals("""
                 {
                   "code": 404,
+                  "type": "NotFound",
                   "message": "Not Found",
                   "details": "Cannot find booking link with publicId %s"
                 }

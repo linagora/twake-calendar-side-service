@@ -186,6 +186,7 @@ class DownloadCalendarRouteTest {
             {
                 "error": {
                     "code": 403,
+                    "type": "Forbidden",
                     "message": "Forbidden",
                     "details": "Token validation failed"
                 }
@@ -216,6 +217,7 @@ class DownloadCalendarRouteTest {
         {
             "error": {
                 "code": 403,
+                "type": "Forbidden",
                 "message": "Forbidden",
                 "details": "Token validation failed"
             }
@@ -250,6 +252,7 @@ class DownloadCalendarRouteTest {
         {
             "error": {
                 "code": 400,
+                "type": "BadRequest",
                 "message": "Bad Request",
                 "details": "Invalid token: only letters, digits, hyphen, and underscore are allowed."
             }
@@ -293,6 +296,7 @@ class DownloadCalendarRouteTest {
         {
             "error": {
                 "code": 403,
+                "type": "Forbidden",
                 "message": "Forbidden",
                 "details": "Token validation failed"
             }
@@ -326,6 +330,7 @@ class DownloadCalendarRouteTest {
                 {
                     "error": {
                         "code": 503,
+                        "type": "ServiceUnavailable",
                         "message": "Service Unavailable",
                         "details": "Service Unavailable"
                     }
@@ -538,6 +543,7 @@ class DownloadCalendarRouteTest {
                 {
                     "error": {
                         "code": 404,
+                        "type": "NotFound",
                         "message": "Not Found",
                         "details": "${json-unit.ignore}"
                     }
@@ -728,6 +734,7 @@ class DownloadCalendarRouteTest {
                 {
                     "error": {
                         "code": 404,
+                        "type": "NotFound",
                         "message": "Not Found",
                         "details": "${json-unit.ignore}"
                     }

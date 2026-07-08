@@ -40,7 +40,8 @@ public class ErrorResponseHandler {
     public static Mono<Void> handle(HttpServerResponse response,
                                     HttpResponseStatus status,
                                     String message) {
-        return handle(response, status, ErrorResponse.of(status.code(), status.reasonPhrase(), message));
+        return handle(response, status,
+            ErrorResponse.of(status.code(), ErrorType.fromStatus(status), status.reasonPhrase(), message));
     }
 
     public static Mono<Void> handle(HttpServerResponse response,
