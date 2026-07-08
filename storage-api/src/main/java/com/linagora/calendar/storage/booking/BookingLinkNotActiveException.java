@@ -18,23 +18,15 @@
 
 package com.linagora.calendar.storage.booking;
 
-import org.apache.james.core.Username;
+public class BookingLinkNotActiveException extends RuntimeException {
+    private final BookingLinkPublicId publicId;
 
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
+    public BookingLinkNotActiveException(BookingLinkPublicId publicId) {
+        super("The booking link with public id " + publicId.value() + " is not available");
+        this.publicId = publicId;
+    }
 
-public interface BookingLinkDAO {
-    Mono<BookingLink> insert(Username username, BookingLinkInsertRequest request);
-
-    Mono<BookingLink> findByPublicId(BookingLinkPublicId publicId);
-
-    Mono<BookingLink> findByPublicId(Username username, BookingLinkPublicId publicId);
-
-    Flux<BookingLink> findByUsername(Username username);
-
-    Mono<BookingLink> update(Username username, BookingLinkPublicId publicId, BookingLinkPatchRequest request);
-
-    Mono<BookingLinkPublicId> resetPublicId(Username username, BookingLinkPublicId publicId);
-
-    Mono<Void> delete(Username username, BookingLinkPublicId publicId);
+    public BookingLinkPublicId publicId() {
+        return publicId;
+    }
 }

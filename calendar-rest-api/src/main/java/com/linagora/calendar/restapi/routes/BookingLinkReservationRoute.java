@@ -42,9 +42,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.api.BookedEventTokenSigner;
+import com.linagora.calendar.restapi.ErrorType;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationException.SlotNotAvailableException;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingRequest;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingRequest.BookingAttendee;
+import com.linagora.calendar.storage.booking.BookingLinkNotActiveException;
 import com.linagora.calendar.storage.booking.BookingLinkNotFoundException;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 
@@ -92,6 +94,10 @@ public class BookingLinkReservationRoute extends PublicRoute {
             case BookingLinkNotFoundException notFound -> {
                 LOGGER.warn("Booking link not found for [{}]: {}", request.uri(), notFound.getMessage());
                 yield ErrorResponseHandler.handle(response, HttpResponseStatus.NOT_FOUND, notFound);
+            }
+            case BookingLinkNotActiveException notActive -> {
+                LOGGER.warn("Booking link {} is not active for [{}]", notActive.publicId().value(), request.uri());
+                yield ErrorResponseHandler.handle(response, HttpResponseStatus.BAD_REQUEST, ErrorType.INACTIVE_BOOKING_LINK, notActive);
             }
             case SlotNotAvailableException slotNotAvailableException -> {
                 LOGGER.warn("Requested slot is unavailable (likely busy) for [{}]: {}", request.uri(), slotNotAvailableException.getMessage());

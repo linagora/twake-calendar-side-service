@@ -1217,7 +1217,7 @@ class BookingLinkReservationRouteTest {
     }
 
     @Test
-    void shouldReturnNotFoundWhenBookingLinkIsInactive(TwakeCalendarGuiceServer server) {
+    void shouldReturnBadRequestWhenBookingLinkIsInactive(TwakeCalendarGuiceServer server) {
         BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(
             CalendarURL.from(openPaaSUser.id()),
             DURATION_30_MINUTES,
@@ -1232,13 +1232,14 @@ class BookingLinkReservationRouteTest {
         .when()
             .post("/api/booking-links/{bookingLinkPublicId}/book")
         .then()
-            .statusCode(HttpStatus.SC_NOT_FOUND)
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
             .contentType(JSON)
             .body("error", jsonEquals("""
                 {
-                  "code": 404,
-                  "message": "Not Found",
-                  "details": "Cannot find booking link with publicId %s"
+                  "code": 400,
+                  "type": "InactiveBookingLink",
+                  "message": "Bad Request",
+                  "details": "The booking link with public id %s is not available"
                 }
                 """.formatted(inserted.publicId().value())));
     }

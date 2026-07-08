@@ -16,25 +16,18 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage.booking;
+package com.linagora.calendar.restapi;
 
-import org.apache.james.core.Username;
+public enum ErrorType {
+    INACTIVE_BOOKING_LINK("InactiveBookingLink");
 
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
+    private final String value;
 
-public interface BookingLinkDAO {
-    Mono<BookingLink> insert(Username username, BookingLinkInsertRequest request);
+    ErrorType(String value) {
+        this.value = value;
+    }
 
-    Mono<BookingLink> findByPublicId(BookingLinkPublicId publicId);
-
-    Mono<BookingLink> findByPublicId(Username username, BookingLinkPublicId publicId);
-
-    Flux<BookingLink> findByUsername(Username username);
-
-    Mono<BookingLink> update(Username username, BookingLinkPublicId publicId, BookingLinkPatchRequest request);
-
-    Mono<BookingLinkPublicId> resetPublicId(Username username, BookingLinkPublicId publicId);
-
-    Mono<Void> delete(Username username, BookingLinkPublicId publicId);
+    public String asString() {
+        return value;
+    }
 }

@@ -378,8 +378,10 @@ The response also exposes the booking link `autoAccept` flag, along with the opt
 
 | Status | Cause |
 |--------|-------|
-| 400    | Missing/invalid `from` or `to`, invalid UUID, `to <= from`, range > 60 days, invalid `timeZone` |
-| 404    | Booking link not found or inactive |
+| 400    | Missing/invalid `from` or `to`, invalid UUID, `to <= from`, range > 60 days, invalid `timeZone`, booking link inactive |
+| 404    | Booking link not found |
+
+The error body may carry a `type` field identifying the error, see [Error types](errorTypes.md).
 
 ---
 
@@ -444,10 +446,12 @@ The returned `bookingConfirmationToken` is a signed JWT that can be used to retr
 
 | Status | Cause |
 |--------|-------|
-| 400    | Invalid body, invalid email/constraints, requested slot not available |
+| 400    | Invalid body, invalid email/constraints, requested slot not available, booking link inactive |
 | 422    | Request is syntactically valid but cannot be processed due to business validation rules |
-| 404    | Booking link not found or inactive |
+| 404    | Booking link not found |
 | 500    | Unexpected server-side booking error |
+
+The error body may carry a `type` field identifying the error, see [Error types](errorTypes.md).
 
 ---
 

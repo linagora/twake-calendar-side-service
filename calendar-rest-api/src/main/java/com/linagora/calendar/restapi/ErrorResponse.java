@@ -18,21 +18,31 @@
 
 package com.linagora.calendar.restapi;
 
+import java.util.Optional;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 
 public record ErrorResponse(@JsonProperty("error") ErrorDetail error) {
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
+        .registerModule(new Jdk8Module());
 
     public static ErrorResponse of(int code, String message, String details) {
-        return new ErrorResponse(new ErrorDetail(code, message, details));
+        return new ErrorResponse(new ErrorDetail(code, Optional.empty(), message, details));
+    }
+
+    public static ErrorResponse of(int code, String type, String message, String details) {
+        return new ErrorResponse(new ErrorDetail(code, Optional.of(type), message, details));
     }
 
     public static ErrorResponse of(IllegalArgumentException illegalArgumentException) {
-        return new ErrorResponse(new ErrorDetail(400, "Bad request", illegalArgumentException.getMessage()));
+        return new ErrorResponse(new ErrorDetail(400, Optional.empty(), "Bad request", illegalArgumentException.getMessage()));
     }
 
     public record ErrorDetail(@JsonProperty("code") int code,
+                              @JsonInclude(JsonInclude.Include.NON_ABSENT) @JsonProperty("type") Optional<String> type,
                               @JsonProperty("message") String message,
                               @JsonProperty("details") String details) {
     }

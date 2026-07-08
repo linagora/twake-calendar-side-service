@@ -39,6 +39,7 @@ import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
+import com.linagora.calendar.storage.booking.BookingLinkNotActiveException;
 import com.linagora.calendar.storage.booking.BookingLinkNotFoundException;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 
@@ -64,7 +65,7 @@ public class BookingLinkSlotsService {
     }
 
     public Mono<SlotsResult> computeSlots(BookingLinkPublicId publicId, Instant from, Instant to) {
-        return findActiveBookingLink(publicId)
+        return getBookingLink(publicId)
             .flatMap(bookingLink -> Mono.zip(
                     retrieveOwner(bookingLink),
                     computeSlots(bookingLink, from, to))
@@ -105,9 +106,16 @@ public class BookingLinkSlotsService {
             .map(UnavailableTimeRanges::new);
     }
 
-    private Mono<BookingLink> findActiveBookingLink(BookingLinkPublicId publicId) {
-        return bookingLinkDAO.findActiveByPublicId(publicId)
-            .switchIfEmpty(Mono.error(() -> new BookingLinkNotFoundException(publicId)));
+    Mono<BookingLink> getBookingLink(BookingLinkPublicId publicId) {
+        return bookingLinkDAO.findByPublicId(publicId)
+            .switchIfEmpty(Mono.error(() -> new BookingLinkNotFoundException(publicId)))
+            .handle((bookingLink, sink) -> {
+                if (!bookingLink.active()) {
+                    sink.error(new BookingLinkNotActiveException(publicId));
+                    return;
+                }
+                sink.next(bookingLink);
+            });
     }
 
     private Mono<OpenPaaSUser> retrieveOwner(BookingLink bookingLink) {
