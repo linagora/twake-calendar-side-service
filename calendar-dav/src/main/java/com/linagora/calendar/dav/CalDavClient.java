@@ -31,6 +31,7 @@ import java.util.Optional;
 import javax.net.ssl.SSLException;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.apache.http.HttpStatus;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.james.core.Username;
@@ -49,6 +50,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.api.CalendarUtil;
+import com.linagora.calendar.dav.dto.CalendarDetailsResponse;
 import com.linagora.calendar.dav.dto.CalendarListResponse;
 import com.linagora.calendar.dav.dto.CalendarReportJsonResponse;
 import com.linagora.calendar.dav.dto.CalendarReportXmlResponse;
@@ -128,8 +130,20 @@ public class CalDavClient extends DavClient {
                                 @JsonProperty("dav:read") Optional<Boolean> read,
                                 @JsonProperty("dav:read-write") Optional<Boolean> readWrite,
                                 @JsonProperty("dav:administration") Optional<Boolean> administration) {
+            public static AddSharee read(String davHref) {
+                return new AddSharee(davHref, Optional.of(true), Optional.empty(), Optional.empty());
+            }
+
+            public static AddSharee readWrite(String davHref) {
+                return new AddSharee(davHref, Optional.empty(), Optional.of(true), Optional.empty());
+            }
+
+            public static AddSharee administration(String davHref) {
+                return new AddSharee(davHref, Optional.empty(), Optional.empty(), Optional.of(true));
+            }
+
             public AddSharee {
-                Preconditions.checkArgument(StringUtils.startsWith(davHref, MAILTO_PREFIX),
+                Preconditions.checkArgument(Strings.CI.startsWith(davHref, MAILTO_PREFIX),
                     "'dav:href' must be a '" + MAILTO_PREFIX + "' URI");
                 Preconditions.checkArgument(read.isPresent() || readWrite.isPresent() || administration.isPresent(),
                     "One of 'dav:read', 'dav:read-write', 'dav:administration' must be provided");
@@ -138,7 +152,7 @@ public class CalDavClient extends DavClient {
 
         public record RemoveSharee(@JsonProperty("dav:href") String davHref) {
             public RemoveSharee {
-                Preconditions.checkArgument(StringUtils.startsWith(davHref, MAILTO_PREFIX),
+                Preconditions.checkArgument(Strings.CI.startsWith(davHref, MAILTO_PREFIX),
                     "'dav:href' must be a '" + MAILTO_PREFIX + "' URI");
             }
         }
@@ -270,6 +284,39 @@ public class CalDavClient extends DavClient {
                         %s
                         """.formatted(response.status().code(), userId.value(), errorBody))));
             });
+    }
+
+    public Mono<CalendarDetailsResponse> fetchCalendarDetails(Mono<HttpClient> httpClientPublisher,
+                                                              CalendarURL calendarURL,
+                                                              Map<String, String> queryParams) {
+        Preconditions.checkArgument(httpClientPublisher != null, "httpClientPublisher must not be null");
+        Preconditions.checkArgument(calendarURL != null, "calendarURL must not be null");
+        Preconditions.checkArgument(queryParams != null, "queryParams must not be null");
+
+        URIBuilder uriBuilder = new URIBuilder().setPath(calendarURL.asUri().getPath());
+        queryParams.forEach(uriBuilder::addParameter);
+
+        return httpClientPublisher.flatMap(client -> client
+            .headers(headers -> headers.add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_JSON))
+            .request(HttpMethod.GET)
+            .uri(uriBuilder.toString())
+            .responseSingle((response, responseContent) -> switch (response.status().code()) {
+                case HttpStatus.SC_OK -> responseContent.asByteArray()
+                    .map(CalendarDetailsResponse::parse);
+                case HttpStatus.SC_NOT_FOUND -> Mono.error(new CalendarNotFoundException(calendarURL));
+                default -> responseBodyAsString(responseContent)
+                    .flatMap(errorBody -> Mono.error(new DavClientException("""
+                        Unexpected status code: %d while retrieving calendar '%s'
+                        Response body:
+                        %s
+                        """.formatted(response.status().code(), calendarURL.asUri(), errorBody))));
+            }));
+    }
+
+    public Mono<CalendarDetailsResponse> fetchCalendarDetails(OpenPaaSId domainId,
+                                                              CalendarURL calendarURL,
+                                                              Map<String, String> queryParams) {
+        return fetchCalendarDetails(httpClientWithTechnicalToken(domainId), calendarURL, queryParams);
     }
 
     public Flux<String> findUserCalendarEventIds(Username username, CalendarURL calendarURL) {
@@ -558,8 +605,18 @@ public class CalDavClient extends DavClient {
      * {@code {"share":{"set":[{"dav:href":"mailto:...","dav:read":true}],"remove":[{"dav:href":"mailto:..."}]}}}
      */
     public Mono<Void> updateCalendarShares(Username username, CalendarURL calendarURL, CalendarSharingUpdate sharingUpdate) {
+        return updateCalendarShares(Mono.just(httpClientWithImpersonation(username)), calendarURL, sharingUpdate);
+    }
+
+    public Mono<Void> updateCalendarShares(OpenPaaSId domainId, CalendarURL calendarURL, CalendarSharingUpdate sharingUpdate) {
+        return updateCalendarShares(httpClientWithTechnicalToken(domainId), calendarURL, sharingUpdate);
+    }
+
+    public Mono<Void> updateCalendarShares(Mono<HttpClient> httpClientPublisher,
+                                           CalendarURL calendarURL,
+                                           CalendarSharingUpdate sharingUpdate) {
         String uri = calendarURL.asUri() + ".json";
-        return httpClientWithImpersonation(username)
+        return httpClientPublisher.flatMap(client -> client
             .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, JSON_CHARSET_UTF_8)
                 .add(HttpHeaderNames.ACCEPT, DEFAULT_JSON_ACCEPT))
             .request(HttpMethod.POST)
@@ -573,7 +630,7 @@ public class CalDavClient extends DavClient {
                         Unexpected status code: %d when updating shares of calendar '%s'
                         %s
                         """.formatted(response.status().code(), uri, errorBody))));
-            });
+            }));
     }
 
     /**

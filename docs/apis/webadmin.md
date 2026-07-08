@@ -674,6 +674,69 @@ Status codes:
 - `400` when the domain name is invalid
 - `404` when the domain does not exist
 
+### Listing team calendar members
+
+```
+GET /domains/linagora.com/team-calendars/64f1c2.../members
+```
+
+Returns the Team Calendar members derived from DAV sharing rights:
+
+```json
+[
+  {
+    "username": "alice@linagora.com",
+    "role": "viewer",
+    "davRight": "dav:read"
+  },
+  {
+    "username": "bob@linagora.com",
+    "role": "manager",
+    "davRight": "dav:administration"
+  }
+]
+```
+
+Role mapping:
+- `viewer`: `dav:read`
+- `member`: `dav:read-write`
+- `manager`: `dav:administration`
+
+Status codes:
+- `200` on success
+- `400` when the domain name is invalid
+- `404` when the domain or team calendar does not exist
+- `500` when the DAV server cannot be reached or rejects the read operation
+
+### Adding / removing team calendar members
+
+```
+POST /domains/linagora.com/team-calendars/64f1c2.../members/invitee
+{
+  "share": {
+    "set": [
+      {"dav:href": "mailto:alice@linagora.com", "dav:read": true},
+      {"dav:href": "mailto:bob@linagora.com", "dav:read-write": true},
+      {"dav:href": "mailto:cedric@linagora.com", "dav:administration": true}
+    ],
+    "remove": [
+      {"dav:href": "mailto:david@linagora.com"}
+    ]
+  }
+}
+```
+
+Each set entry grants or updates the right for the given user; each remove entry revokes
+the sharing for the given user.
+This is a partial update: `set` grants or updates member rights, while `remove` revokes them. Omitted members are left
+unchanged.
+
+Status codes:
+- `204`: the sharees were updated
+- `400`: invalid domain name, malformed request body,candidate member is invalid or unknown...
+- `404`: the domain or team calendar does not exist
+- `500`: the DAV server cannot be reached or rejects the update operation
+
 ## Domain registered users routes
 
 Domain-scoped mirror of the `/registeredUsers` routes, allowing multi-tenant safe access.
