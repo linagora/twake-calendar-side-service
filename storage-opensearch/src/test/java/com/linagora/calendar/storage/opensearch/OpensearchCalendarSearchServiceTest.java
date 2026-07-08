@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.storage.opensearch;
 
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
 
 import java.util.List;
@@ -43,6 +44,8 @@ import com.linagora.calendar.storage.eventsearch.CalendarEvents;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchServiceContract;
 import com.linagora.calendar.storage.eventsearch.EventSearchQuery;
+
+import reactor.core.publisher.Flux;
 
 public class OpensearchCalendarSearchServiceTest implements CalendarSearchServiceContract {
     @RegisterExtension
@@ -213,5 +216,27 @@ public class OpensearchCalendarSearchServiceTest implements CalendarSearchServic
             .collectList().block();
 
         assertThat(searchResults).hasSize(0);
+    }
+
+    @Test
+    void deleteShouldNotFailWhenEventIsConcurrentlyReindexed() {
+        // Reproduces issue #934: a delete-by-query racing with concurrent re-indexing of the same event used to
+        // abort with a version conflict (HTTP 409). The delete must now proceed past the conflict rather than fail.
+        EventFields event = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("concurrent")
+            .calendarURL(generateCalendarURL())
+            .build();
+
+        CalendarEvents events = CalendarEvents.of(event);
+
+        Flux<Void> reindexing = Flux.range(0, 300)
+            .flatMap(i -> testee().reindex(events), 8);
+
+        Flux<Void> deleting = Flux.range(0, 100)
+            .concatMap(i -> testee().delete(event.calendarURL(), event.uid()));
+
+        assertThatCode(() -> Flux.merge(reindexing, deleting).blockLast())
+            .doesNotThrowAnyException();
     }
 }
