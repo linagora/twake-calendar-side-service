@@ -381,6 +381,8 @@ The response also exposes the booking link `autoAccept` flag, along with the opt
 | 400    | Missing/invalid `from` or `to`, invalid UUID, `to <= from`, range > 60 days, invalid `timeZone`, booking link inactive |
 | 404    | Booking link not found |
 
+The error body may carry a `type` field identifying the error, see [Error types](errorTypes.md).
+
 ---
 
 ### **POST /api/booking-links/{bookingLinkPublicId}/book**
@@ -448,6 +450,8 @@ The returned `bookingConfirmationToken` is a signed JWT that can be used to retr
 | 422    | Request is syntactically valid but cannot be processed due to business validation rules |
 | 404    | Booking link not found |
 | 500    | Unexpected server-side booking error |
+
+The error body may carry a `type` field identifying the error, see [Error types](errorTypes.md).
 
 ---
 

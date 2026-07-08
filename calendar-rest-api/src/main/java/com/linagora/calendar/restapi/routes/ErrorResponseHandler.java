@@ -19,6 +19,7 @@
 package com.linagora.calendar.restapi.routes;
 
 import com.linagora.calendar.restapi.ErrorResponse;
+import com.linagora.calendar.restapi.ErrorType;
 import com.linagora.calendar.restapi.RestApiConstants;
 
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -36,15 +37,26 @@ public class ErrorResponseHandler {
         return handle(response, status, exception.getMessage());
     }
 
-
     public static Mono<Void> handle(HttpServerResponse response,
                                     HttpResponseStatus status,
                                     String message) {
+        return handle(response, status, ErrorResponse.of(status.code(), status.reasonPhrase(), message));
+    }
+
+    public static Mono<Void> handle(HttpServerResponse response,
+                                    HttpResponseStatus status,
+                                    ErrorType type,
+                                    Throwable exception) {
+        return handle(response, status,
+            ErrorResponse.of(status.code(), type.asString(), status.reasonPhrase(), exception.getMessage()));
+    }
+
+    public static Mono<Void> handle(HttpServerResponse response,
+                                    HttpResponseStatus status,
+                                    ErrorResponse errorResponse) {
         return response.status(status)
             .headers(RestApiConstants.JSON_HEADER)
-            .sendByteArray(Mono.fromCallable(() ->
-                ErrorResponse.of(status.code(), status.reasonPhrase(), message)
-                    .serializeAsBytes()))
+            .sendByteArray(Mono.fromCallable(errorResponse::serializeAsBytes))
             .then();
     }
 }

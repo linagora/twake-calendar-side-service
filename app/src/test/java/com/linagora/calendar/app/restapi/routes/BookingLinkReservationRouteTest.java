@@ -1237,6 +1237,7 @@ class BookingLinkReservationRouteTest {
             .body("error", jsonEquals("""
                 {
                   "code": 400,
+                  "type": "InactiveBookingLink",
                   "message": "Bad Request",
                   "details": "The booking link with public id %s is not available"
                 }
