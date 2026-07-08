@@ -1257,6 +1257,7 @@ Content-Type: application/json
     "autoAccept": false,
     "name": "Intro call",
     "description": "Book a 30-minute introduction call",
+    "color": "#6B4ECC",
     "availabilityRules": [
       { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "17:00", "timeZone": "UTC" }
     ]
@@ -1265,6 +1266,7 @@ Content-Type: application/json
 ```
 
 `availabilityRules`, `name` and `description` are omitted from an entry when not set.
+The `color` field is always present, defaulting to `#6B4ECC` when not set.
 
 **Status codes**:
 - `200`: the list is returned (possibly empty)
@@ -1293,13 +1295,14 @@ POST /users/{username}/booking-links
   "autoAccept": false,
   "name": "Intro call",
   "description": "Book a 30-minute introduction call",
+  "color": "#6B4ECC",
   "availabilityRules": [
     { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "timeZone": "Europe/Paris" }
   ]
 }
 ```
 
-`calendarUrl`, `durationMinutes` and `active` are required. `autoAccept` (default `false`), `availabilityRules`, `name` and `description` are optional.
+`calendarUrl`, `durationMinutes` and `active` are required. `autoAccept` (default `false`), `availabilityRules`, `name`, `description` and `color` (default `#6B4ECC`) are optional.
 
 ```
 HTTP/1.1 201 Created

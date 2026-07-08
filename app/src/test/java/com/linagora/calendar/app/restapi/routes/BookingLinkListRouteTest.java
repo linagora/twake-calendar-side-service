@@ -153,14 +153,16 @@ class BookingLinkListRouteTest {
                         "calendarUrl": "%s",
                         "durationMinutes": 60,
                         "active": false,
-                        "autoAccept": false
+                        "autoAccept": false,
+                        "color": "#6B4ECC"
                     },
                     {
                         "publicId": "%s",
                         "calendarUrl": "%s",
                         "durationMinutes": 30,
                         "active": true,
-                        "autoAccept": false
+                        "autoAccept": false,
+                        "color": "#6B4ECC"
                     }
                 ]
                 """.formatted(
@@ -194,7 +196,8 @@ class BookingLinkListRouteTest {
                         "autoAccept": false,
                         "availabilityRules": [
                             { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "17:00", "timeZone": "UTC" }
-                        ]
+                        ],
+                        "color": "#6B4ECC"
                     }
                 ]
                 """.formatted(inserted.publicId().value(), CalendarURL.from(openPaaSUser.id()).asUri()));

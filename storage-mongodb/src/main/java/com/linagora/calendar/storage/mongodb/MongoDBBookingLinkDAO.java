@@ -73,6 +73,7 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
     private static final String FIELD_AVAILABILITY_RULES = "availabilityRules";
     private static final String FIELD_NAME = "name";
     private static final String FIELD_DESCRIPTION = "description";
+    private static final String FIELD_COLOR = "color";
     private static final String FIELD_CREATED_AT = "createdAt";
     private static final String FIELD_UPDATED_AT = "updatedAt";
 
@@ -115,6 +116,7 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
                 .availabilityRules(request.availabilityRules())
                 .name(request.name())
                 .description(request.description())
+                .color(request.color())
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
@@ -222,6 +224,11 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
         } else if (request.description().isRemoved()) {
             unsetFields.append(FIELD_DESCRIPTION, "");
         }
+        if (request.color().isModified()) {
+            setFields.append(FIELD_COLOR, request.color().get());
+        } else if (request.color().isRemoved()) {
+            unsetFields.append(FIELD_COLOR, "");
+        }
 
         Document updateBson = new Document("$set", setFields);
         if (!unsetFields.isEmpty()) {
@@ -246,6 +253,7 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
             doc.append(FIELD_AVAILABILITY_RULES, serializeRules(rules)));
         bookingLink.name().ifPresent(name -> doc.append(FIELD_NAME, name));
         bookingLink.description().ifPresent(description -> doc.append(FIELD_DESCRIPTION, description));
+        bookingLink.color().ifPresent(color -> doc.append(FIELD_COLOR, color));
 
         return doc;
     }
@@ -286,6 +294,7 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
             .map(rules -> new AvailabilityRules(rules.stream().map(this::deserializeRule).toList()));
         Optional<String> name = Optional.ofNullable(doc.getString(FIELD_NAME));
         Optional<String> description = Optional.ofNullable(doc.getString(FIELD_DESCRIPTION));
+        Optional<String> color = Optional.ofNullable(doc.getString(FIELD_COLOR));
 
         return BookingLink.builder()
             .username(username)
@@ -297,6 +306,7 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
             .availabilityRules(availabilityRules)
             .name(name)
             .description(description)
+            .color(color)
             .createdAt(createdAt)
             .updatedAt(updatedAt)
             .build();

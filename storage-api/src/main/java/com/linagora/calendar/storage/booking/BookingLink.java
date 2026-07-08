@@ -37,8 +37,11 @@ public record BookingLink(Username username,
                           Optional<AvailabilityRules> availabilityRules,
                           Optional<String> name,
                           Optional<String> description,
+                          Optional<String> color,
                           Instant createdAt,
                           Instant updatedAt) {
+
+    public static final String DEFAULT_COLOR = "#6B4ECC";
 
     public BookingLink {
         Preconditions.checkNotNull(username, "'username' must not be null");
@@ -49,7 +52,12 @@ public record BookingLink(Username username,
         Preconditions.checkNotNull(availabilityRules, "'availabilityRules' must not be null");
         Preconditions.checkNotNull(name, "'name' must not be null");
         Preconditions.checkNotNull(description, "'description' must not be null");
+        Preconditions.checkNotNull(color, "'color' must not be null");
         Preconditions.checkNotNull(createdAt, "'createdAt' must not be null");
+    }
+
+    public String colorOrDefault() {
+        return color.orElse(DEFAULT_COLOR);
     }
 
     public static Builder builder() {
@@ -67,6 +75,7 @@ public record BookingLink(Username username,
             .availabilityRules(availabilityRules)
             .name(name)
             .description(description)
+            .color(color)
             .createdAt(createdAt)
             .updatedAt(updatedAt);
     }
@@ -81,6 +90,7 @@ public record BookingLink(Username username,
         private Optional<AvailabilityRules> availabilityRules = Optional.empty();
         private Optional<String> name = Optional.empty();
         private Optional<String> description = Optional.empty();
+        private Optional<String> color = Optional.empty();
         private Instant createdAt;
         private Instant updatedAt;
 
@@ -129,6 +139,11 @@ public record BookingLink(Username username,
             return this;
         }
 
+        public Builder color(Optional<String> color) {
+            this.color = color;
+            return this;
+        }
+
         public Builder createdAt(Instant createdAt) {
             this.createdAt = createdAt;
             return this;
@@ -140,7 +155,7 @@ public record BookingLink(Username username,
         }
 
         public BookingLink build() {
-            return new BookingLink(username, publicId, calendarUrl, duration, active, autoAccept, availabilityRules, name, description, createdAt, updatedAt);
+            return new BookingLink(username, publicId, calendarUrl, duration, active, autoAccept, availabilityRules, name, description, color, createdAt, updatedAt);
         }
     }
 

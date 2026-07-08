@@ -48,6 +48,7 @@ import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.restapi.routes.dto.AvailabilityRuleDTO;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.booking.BookingLinkColor;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.configuration.resolver.BusinessHoursSettingReader;
@@ -67,7 +68,8 @@ public class BookingLinkCreateRoute extends CalendarRoute {
                                               @JsonProperty("autoAccept") Optional<Boolean> autoAccept,
                                               @JsonProperty("availabilityRules") Optional<List<AvailabilityRuleDTO>> availabilityRules,
                                               @JsonProperty("name") Optional<String> name,
-                                              @JsonProperty("description") Optional<String> description) {
+                                              @JsonProperty("description") Optional<String> description,
+                                              @JsonProperty("color") Optional<String> color) {
 
         public static BookingLinkInsertRequest toBookingLinkInsertRequest(CreateBookingLinkRequestDTO request,
                                                                           ZoneId defaultZone,
@@ -84,7 +86,7 @@ public class BookingLinkCreateRoute extends CalendarRoute {
 
             return new BookingLinkInsertRequest(calendarURL, duration, request.active,
                 request.autoAccept.orElse(BookingLinkInsertRequest.AUTO_ACCEPT), availabilityRules,
-                normalize(request.name), normalize(request.description));
+                normalize(request.name), normalize(request.description), BookingLinkColor.sanitize(request.color));
         }
 
         private static Optional<String> normalize(Optional<String> value) {

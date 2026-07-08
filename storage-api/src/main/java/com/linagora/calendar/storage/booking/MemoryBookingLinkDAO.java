@@ -60,6 +60,7 @@ public class MemoryBookingLinkDAO implements BookingLinkDAO {
                 .availabilityRules(request.availabilityRules())
                 .name(request.name())
                 .description(request.description())
+                .color(request.color())
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
@@ -98,6 +99,7 @@ public class MemoryBookingLinkDAO implements BookingLinkDAO {
                 builder.availabilityRules(request.availabilityRules().notKeptOrElse(existing.availabilityRules()));
                 builder.name(request.name().notKeptOrElse(existing.name()));
                 builder.description(request.description().notKeptOrElse(existing.description()));
+                builder.color(request.color().notKeptOrElse(existing.color()));
                 return builder.updatedAt(now).build();
             });
 

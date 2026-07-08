@@ -27,6 +27,7 @@ Public users can use booking links to book events.
 | `availabilityRules` | array (optional) | List of availability rule objects (weekly or fixed)                         |
 | `name`              | string (optional)| Display name of the booking link                                            |
 | `description`       | string (optional)| Description of the booking link                                             |
+| `color`             | string           | Display color of the booking link, as a `#RRGGBB` hex string. Always present in responses, defaulting to `#6B4ECC` when not set. |
 
 ### Availability rule object
 
@@ -68,6 +69,7 @@ Create a new booking link for the authenticated user.
 | `availabilityRules` | no       | List of availability rules. Defaults to business hours from user settings when omitted. Each rule may specify its own `timeZone` (see availability rule object above). |
 | `name`              | no       | Display name of the booking link. Blank values are ignored.                                                                                              |
 | `description`       | no       | Description of the booking link. Blank values are ignored.                                                                                               |
+| `color`             | no       | Display color as a `#RRGGBB` hex string. Blank values are ignored. Defaults to `#6B4ECC` when omitted.                                                    |
 
 **Sample request**
 ```
@@ -82,6 +84,7 @@ Content-Type: application/json
     "autoAccept": false,
     "name": "Intro call",
     "description": "Book a 30-minute introduction call",
+    "color": "#6B4ECC",
     "availabilityRules": [
         { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "timeZone": "Asia/Ho_Chi_Minh" },
         { "type": "weekly", "dayOfWeek": "MON", "start": "13:00", "end": "17:00", "timeZone": "Europe/London" },
@@ -133,6 +136,7 @@ Content-Type: application/json
         "autoAccept": false,
         "name": "Intro call",
         "description": "Book a 30-minute introduction call",
+        "color": "#6B4ECC",
         "availabilityRules": [
             { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "17:00", "timeZone": "Asia/Ho_Chi_Minh" }
         ]
@@ -141,6 +145,7 @@ Content-Type: application/json
 ```
 
 Fields `availabilityRules`, `name` and `description` are omitted from each entry when not set.
+The `color` field is always present, defaulting to `#6B4ECC` when not set.
 
 **Error responses**
 
@@ -173,6 +178,7 @@ Content-Type: application/json
     "autoAccept": false,
     "name": "Intro call",
     "description": "Book a 30-minute introduction call",
+    "color": "#6B4ECC",
     "availabilityRules": [
         { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "timeZone": "Asia/Ho_Chi_Minh" },
         { "type": "weekly", "dayOfWeek": "MON", "start": "13:00", "end": "17:00", "timeZone": "Europe/London" },
@@ -182,6 +188,7 @@ Content-Type: application/json
 ```
 
 Fields `availabilityRules`, `name` and `description` are omitted from the response when not set.
+The `color` field is always present, defaulting to `#6B4ECC` when not set.
 
 **Error responses**
 
@@ -211,6 +218,7 @@ All fields are optional. Include only the fields to update.
 | `availabilityRules` | Replaces all existing rules. Set to `null` to remove all rules. Each rule may specify its own `timeZone`. |
 | `name`              | New display name. Set to `null` or a blank value to remove it.                                                   |
 | `description`       | New description. Set to `null` or a blank value to remove it.                                                    |
+| `color`             | New display color as a `#RRGGBB` hex string. Set to `null` or a blank value to remove it (the default `#6B4ECC` then applies). |
 
 **Sample request — update duration and deactivate**
 ```
@@ -354,6 +362,7 @@ Content-Type: application/json
   "autoAccept": false,
   "name": "Interview",
   "description": "A 30 minutes interview",
+  "color": "#6B4ECC",
   "owner": {
     "displayName": "John Doe",
     "email": "john.doe@open-paas.org"
@@ -372,7 +381,7 @@ Content-Type: application/json
 
 The `owner` object exposes the public booking link owner `displayName` and `email`.
 
-The response also exposes the booking link `autoAccept` flag, along with the optional `name` and `description` (omitted when not set), so the bookee can access that information too.
+The response also exposes the booking link `autoAccept` flag, along with the optional `name` and `description` (omitted when not set) and the `color` (always present, defaulting to `#6B4ECC`), so the bookee can access that information too.
 
 **Error responses**
 

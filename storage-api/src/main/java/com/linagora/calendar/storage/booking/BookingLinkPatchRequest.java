@@ -32,7 +32,8 @@ public record BookingLinkPatchRequest(ValuePatch<CalendarURL> calendarUrl,
                                       ValuePatch<Boolean> autoAccept,
                                       ValuePatch<AvailabilityRules> availabilityRules,
                                       ValuePatch<String> name,
-                                      ValuePatch<String> description) {
+                                      ValuePatch<String> description,
+                                      ValuePatch<String> color) {
     public BookingLinkPatchRequest {
         Preconditions.checkNotNull(calendarUrl, "'calendarUrl' must not be null");
         Preconditions.checkNotNull(duration, "'eventDuration' must not be null");
@@ -41,6 +42,7 @@ public record BookingLinkPatchRequest(ValuePatch<CalendarURL> calendarUrl,
         Preconditions.checkNotNull(availabilityRules, "'availabilityRules' must not be null");
         Preconditions.checkNotNull(name, "'name' must not be null");
         Preconditions.checkNotNull(description, "'description' must not be null");
+        Preconditions.checkNotNull(color, "'color' must not be null");
         Preconditions.checkArgument(!calendarUrl.isRemoved(), "'calendarUrl' can not be removed");
         Preconditions.checkArgument(!duration.isRemoved(), "'eventDuration' can not be removed");
         Preconditions.checkArgument(!active.isRemoved(), "'active' can not be removed");
@@ -56,7 +58,18 @@ public record BookingLinkPatchRequest(ValuePatch<CalendarURL> calendarUrl,
             || !autoAccept.isKept()
             || !availabilityRules.isKept()
             || !name.isKept()
-            || !description.isKept(), "At least one updatable field is required");
+            || !description.isKept()
+            || !color.isKept(), "At least one updatable field is required");
+    }
+
+    public BookingLinkPatchRequest(ValuePatch<CalendarURL> calendarUrl,
+                                   ValuePatch<Duration> duration,
+                                   ValuePatch<Boolean> active,
+                                   ValuePatch<Boolean> autoAccept,
+                                   ValuePatch<AvailabilityRules> availabilityRules,
+                                   ValuePatch<String> name,
+                                   ValuePatch<String> description) {
+        this(calendarUrl, duration, active, autoAccept, availabilityRules, name, description, ValuePatch.keep());
     }
 
     public BookingLinkPatchRequest(ValuePatch<CalendarURL> calendarUrl,

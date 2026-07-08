@@ -220,6 +220,58 @@ class BookingLinkPatchRouteTest {
     }
 
     @Test
+    void shouldPersistUpdatedColor() {
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+
+        given()
+            .body("""
+                { "color": "#FF8800" }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        BookingLink updated = bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
+        assertThat(updated.color()).contains("#FF8800");
+    }
+
+    @Test
+    void shouldRemoveColorWhenSetToNull() {
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE,
+                BookingLinkInsertRequest.AUTO_ACCEPT, Optional.empty(), Optional.empty(), Optional.empty(), Optional.of("#FF8800")));
+
+        given()
+            .body("""
+                { "color": null }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        BookingLink updated = bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
+        assertThat(updated.color()).isEmpty();
+    }
+
+    @Test
+    void shouldReturn400WhenColorIsNotAValidHexColor() {
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+
+        given()
+            .body("""
+                { "color": "not-a-color" }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @Test
     void shouldPersistUpdatedDurationMinutes() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));

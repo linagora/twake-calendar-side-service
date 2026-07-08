@@ -374,6 +374,65 @@ public interface BookingLinkDAOContract {
     }
 
     @Test
+    default void insertShouldPersistColor() {
+        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
+            Optional.of(AVAILABILITY_RULES), Optional.empty(), Optional.empty(), Optional.of("#123456"));
+
+        BookingLink created = testee().insert(USER_1, request).block();
+
+        assertThat(created.color()).contains("#123456");
+
+        BookingLink found = testee().findByPublicId(USER_1, created.publicId()).block();
+        assertThat(found).isEqualTo(created);
+    }
+
+    @Test
+    default void insertShouldDefaultColorToEmpty() {
+        BookingLink created = testee().insert(USER_1, INSERT_REQUEST).block();
+
+        assertThat(created.color()).isEmpty();
+        assertThat(created.colorOrDefault()).isEqualTo(BookingLink.DEFAULT_COLOR);
+    }
+
+    @Test
+    default void updateShouldApplyColor() {
+        BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
+        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.modifyTo("#abcdef"));
+
+        BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
+
+        assertThat(updated.color()).contains("#abcdef");
+    }
+
+    @Test
+    default void updateShouldAllowRemovingColor() {
+        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
+            Optional.of(AVAILABILITY_RULES), Optional.empty(), Optional.empty(), Optional.of("#123456"));
+        BookingLink inserted = testee().insert(USER_1, request).block();
+        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.remove());
+
+        BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
+
+        assertThat(updated.color()).isEmpty();
+    }
+
+    @Test
     default void resetPublicIdShouldFailWhenPublicIdDoesNotExist() {
         assertThatThrownBy(() -> testee().resetPublicId(USER_1, new BookingLinkPublicId(UUID.randomUUID())).block())
             .isInstanceOf(BookingLinkNotFoundException.class);
