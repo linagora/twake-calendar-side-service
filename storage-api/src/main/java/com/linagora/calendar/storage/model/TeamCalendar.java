@@ -24,6 +24,7 @@ import org.apache.commons.lang3.StringUtils;
 
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.storage.OpenPaaSDomain;
+import com.linagora.calendar.storage.OpenPaaSId;
 
 public record TeamCalendar(TeamCalendarId id,
                            OpenPaaSDomain domain,
@@ -39,5 +40,9 @@ public record TeamCalendar(TeamCalendarId id,
         Preconditions.checkArgument(!StringUtils.isBlank(displayName), "team calendar displayName must not be empty");
         Preconditions.checkNotNull(creation, "creation must not be null");
         Preconditions.checkNotNull(updated, "updated must not be null");
+    }
+
+    public OpenPaaSId domainId() {
+        return domain.id();
     }
 }

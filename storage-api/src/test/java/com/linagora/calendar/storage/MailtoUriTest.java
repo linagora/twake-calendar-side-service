@@ -18,17 +18,39 @@
 
 package com.linagora.calendar.storage;
 
-import com.linagora.calendar.storage.model.TeamCalendarId;
+import static org.assertj.core.api.Assertions.assertThat;
 
-public class TeamCalendarNotFoundException extends RuntimeException {
-    private final TeamCalendarId id;
+import org.junit.jupiter.api.Test;
 
-    public TeamCalendarNotFoundException(TeamCalendarId id) {
-        super("Team calendar not found: " + id.value());
-        this.id = id;
+class MailtoUriTest {
+
+    @Test
+    void stripMailtoPrefixShouldSanitizeMalformedMailtoAddress() {
+        assertThat(MailtoUri.stripMailtoPrefix(" mailto:<alice@linagora.com> "))
+            .isEqualTo("alice@linagora.com");
     }
 
-    public TeamCalendarId id() {
-        return id;
+    @Test
+    void stripMailtoPrefixShouldSanitizeTrailingAngleBracket() {
+        assertThat(MailtoUri.stripMailtoPrefix("mailto:alice@linagora.com>"))
+            .isEqualTo("alice@linagora.com");
+    }
+
+    @Test
+    void stripMailtoPrefixShouldBeCaseInsensitive() {
+        assertThat(MailtoUri.stripMailtoPrefix("MAILTO:alice@linagora.com"))
+            .isEqualTo("alice@linagora.com");
+    }
+
+    @Test
+    void stripMailtoPrefixShouldKeepPlainAddress() {
+        assertThat(MailtoUri.stripMailtoPrefix("alice@linagora.com"))
+            .isEqualTo("alice@linagora.com");
+    }
+
+    @Test
+    void hasMailtoPrefixShouldBeCaseInsensitiveAndSanitizeAddress() {
+        assertThat(MailtoUri.hasMailtoPrefix(" <MAILTO:alice@linagora.com> "))
+            .isTrue();
     }
 }

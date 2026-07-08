@@ -29,6 +29,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
@@ -50,6 +51,7 @@ import com.linagora.calendar.dav.CalDavClient.CalendarPropertiesUpdate;
 import com.linagora.calendar.dav.CalDavClient.CalendarSharingUpdate;
 import com.linagora.calendar.dav.CalDavClient.NewCalendar;
 import com.linagora.calendar.dav.FreeBusyQueryResponseObject.BusyInterval;
+import com.linagora.calendar.dav.dto.CalendarDetailsResponse;
 import com.linagora.calendar.dav.dto.CalendarReportJsonResponse;
 import com.linagora.calendar.dav.dto.CalendarReportXmlResponse;
 import com.linagora.calendar.dav.dto.CalendarReportXmlResponse.CalendarObject;
@@ -93,6 +95,14 @@ public class CalDavClientTest {
 
     private OpenPaaSUser createOpenPaaSUser() {
         return sabreDavExtension.newTestUser();
+    }
+
+    private OpenPaaSId retrieveDefaultDomainId() {
+        return sabreDavExtension.dockerSabreDavSetup()
+            .getOpenPaaSProvisioningService()
+            .getDomain()
+            .map(OpenPaaSDomain::id)
+            .block();
     }
 
     @Test
@@ -274,6 +284,29 @@ public class CalDavClientTest {
 
         assertThatThrownBy(() -> testee.findUserCalendars(user.username(), new OpenPaaSId("invalid")).collectList().block())
             .isInstanceOf(DavClientException.class);
+    }
+
+    @Test
+    void fetchCalendarDetailsShouldReturnCalendarDetails() {
+        OpenPaaSUser owner = createOpenPaaSUser();
+        OpenPaaSUser delegate = createOpenPaaSUser();
+        String calendarId = UUID.randomUUID().toString();
+        CalendarURL calendarURL = new CalendarURL(owner.id(), new OpenPaaSId(calendarId));
+        String delegateMailto = "mailto:" + delegate.username().asString();
+        CalendarSharingUpdate sharingUpdate = new CalendarSharingUpdate(new CalendarSharingUpdate.Share(
+            List.of(CalendarSharingUpdate.AddSharee.readWrite(delegateMailto)),
+            List.of()));
+
+        testee.createNewCalendar(owner.username(), owner.id(), new NewCalendar(calendarId, "Shared calendar", "#0000FF", "")).block();
+        testee.updateCalendarShares(owner.username(), calendarURL, sharingUpdate).block();
+
+        CalendarDetailsResponse response = testee.fetchCalendarDetails(retrieveDefaultDomainId(), calendarURL, Map.of("withRights", "true")).block();
+
+        assertThat(response.invites())
+            .anySatisfy(invite -> {
+                assertThat(invite.href()).isEqualTo(delegateMailto);
+                assertThat(invite.access()).contains(3);
+            });
     }
 
     @Test

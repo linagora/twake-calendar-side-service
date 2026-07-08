@@ -18,17 +18,31 @@
 
 package com.linagora.calendar.storage;
 
-import com.linagora.calendar.storage.model.TeamCalendarId;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
-public class TeamCalendarNotFoundException extends RuntimeException {
-    private final TeamCalendarId id;
+import com.google.common.base.Preconditions;
 
-    public TeamCalendarNotFoundException(TeamCalendarId id) {
-        super("Team calendar not found: " + id.value());
-        this.id = id;
+public final class MailtoUri {
+    private static final String MAILTO_PREFIX = "mailto:";
+
+    public static boolean hasMailtoPrefix(String value) {
+        if (value == null) {
+            return false;
+        }
+        return Strings.CI.startsWith(StringUtils.strip(value.trim(), "<>"), MAILTO_PREFIX);
     }
 
-    public TeamCalendarId id() {
-        return id;
+    public static String stripMailtoPrefix(String value) {
+        Preconditions.checkNotNull(value, "value must not be null");
+
+        String sanitized = StringUtils.strip(value.trim(), "<>");
+        if (hasMailtoPrefix(sanitized)) {
+            sanitized = sanitized.substring(MAILTO_PREFIX.length());
+        }
+        return StringUtils.strip(sanitized, "<>");
+    }
+
+    private MailtoUri() {
     }
 }
