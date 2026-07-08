@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.app.restapi.routes;
 
+import static com.linagora.calendar.dav.Fixture.awaitAtMost;
+import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static io.restassured.RestAssured.given;
 import static io.restassured.RestAssured.with;
 import static io.restassured.config.EncoderConfig.encoderConfig;
@@ -53,7 +55,9 @@ import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
+import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavModuleTestHelper;
+import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.CalendarURL;
@@ -96,19 +100,21 @@ class BookingLinkCreateRouteTest {
 
     private BookingLinkProbe bookingLinkProbe;
     private OpenPaaSUser openPaaSUser;
+    private CalendarDataProbe calendarDataProbe;
+    private CalDavClient calDavClient;
+    private DavTestHelper davTestHelper;
 
     @BeforeEach
-    void setUp(TwakeCalendarGuiceServer server) {
+    void setUp(TwakeCalendarGuiceServer server) throws Exception {
         openPaaSUser = sabreDavExtension.newTestUser();
-        CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
+        calendarDataProbe = server.getProbe(CalendarDataProbe.class);
         calendarDataProbe.addDomain(openPaaSUser.username().getDomainPart().get());
         calendarDataProbe.addUserToRepository(openPaaSUser.username(), PASSWORD);
 
         bookingLinkProbe = server.getProbe(BookingLinkProbe.class);
 
-        PreemptiveBasicAuthScheme basicAuthScheme = new PreemptiveBasicAuthScheme();
-        basicAuthScheme.setUserName(openPaaSUser.username().asString());
-        basicAuthScheme.setPassword(PASSWORD);
+        calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
+        davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
 
         RestAssured.requestSpecification = new RequestSpecBuilder()
             .setContentType(ContentType.JSON)
@@ -116,8 +122,32 @@ class BookingLinkCreateRouteTest {
             .setConfig(newConfig().encoderConfig(encoderConfig().defaultContentCharset(StandardCharsets.UTF_8)))
             .setPort(server.getProbe(RestApiServerProbe.class).getPort().getValue())
             .setBasePath("")
-            .setAuth(basicAuthScheme)
+            .setAuth(authScheme(openPaaSUser))
             .build();
+    }
+
+    private PreemptiveBasicAuthScheme authScheme(OpenPaaSUser user) {
+        PreemptiveBasicAuthScheme basicAuthScheme = new PreemptiveBasicAuthScheme();
+        basicAuthScheme.setUserName(user.username().asString());
+        basicAuthScheme.setPassword(PASSWORD);
+        return basicAuthScheme;
+    }
+
+    private OpenPaaSUser newProvisionedUser() {
+        OpenPaaSUser user = sabreDavExtension.newTestUser();
+        calendarDataProbe.addDomain(user.username().getDomainPart().get());
+        calendarDataProbe.addUserToRepository(user.username(), PASSWORD);
+        return user;
+    }
+
+    private CalendarURL findMirrorCalendar(OpenPaaSUser user) {
+        return awaitAtMost.until(() -> calDavClient.findUserCalendarList(user)
+            .map(response -> response.calendars()
+                .keySet()
+                .stream()
+                .filter(calendarURL -> !calendarURL.equals(CalendarURL.from(user.id())))
+                .findFirst())
+            .block(), Optional::isPresent).get();
     }
 
     @Test
@@ -753,5 +783,53 @@ class BookingLinkCreateRouteTest {
             .body("error.code", equalTo(400))
             .body("error.message", equalTo("Bad request"))
             .body("error.details", equalTo("Calendar not found or access denied: /calendars/nonexistentBase/nonexistentCalendar"));
+    }
+
+    @Test
+    void shouldReturn403WhenCalendarIsReadOnlyDelegated() {
+        OpenPaaSUser delegate = newProvisionedUser();
+        CalendarURL ownerCalendar = CalendarURL.from(openPaaSUser.id());
+        davTestHelper.grantDelegation(openPaaSUser, ownerCalendar, delegate, "dav:read");
+        CalendarURL delegatedCalendar = findMirrorCalendar(delegate);
+
+        given()
+            .auth().preemptive().basic(delegate.username().asString(), PASSWORD)
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true
+                }
+                """.formatted(delegatedCalendar.asUri().toString()))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_FORBIDDEN);
+
+        assertThat(bookingLinkProbe.listBookingLinks(delegate.username())).isEmpty();
+    }
+
+    @Test
+    void shouldReturn201WhenCalendarIsReadWriteDelegated() {
+        OpenPaaSUser delegate = newProvisionedUser();
+        CalendarURL ownerCalendar = CalendarURL.from(openPaaSUser.id());
+        davTestHelper.grantDelegation(openPaaSUser, ownerCalendar, delegate, "dav:read-write");
+        CalendarURL delegatedCalendar = findMirrorCalendar(delegate);
+
+        given()
+            .auth().preemptive().basic(delegate.username().asString(), PASSWORD)
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true
+                }
+                """.formatted(delegatedCalendar.asUri().toString()))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED);
+
+        assertThat(bookingLinkProbe.listBookingLinks(delegate.username())).hasSize(1);
     }
 }

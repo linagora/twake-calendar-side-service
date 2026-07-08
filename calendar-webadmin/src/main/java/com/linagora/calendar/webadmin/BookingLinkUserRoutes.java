@@ -369,6 +369,13 @@ public class BookingLinkUserRoutes implements Routes {
                     return Mono.empty();
                 }
                 return Mono.error(badRequest("Calendar not found or access denied: " + calendarURL.asUri(), null));
+            })
+            .then(calDavClient.hasWriteAccess(username, calendarURL))
+            .flatMap(hasWriteAccess -> {
+                if (hasWriteAccess) {
+                    return Mono.empty();
+                }
+                return Mono.error(forbidden("User does not have write access to calendar: " + calendarURL.asUri()));
             });
     }
 
@@ -420,6 +427,14 @@ public class BookingLinkUserRoutes implements Routes {
             .map(Throwable::getMessage)
             .orElse(e.getMessage());
         return badRequest("Invalid request body: %s".formatted(detail), e);
+    }
+
+    private HaltException forbidden(String message) {
+        return ErrorResponder.builder()
+            .statusCode(HttpStatus.FORBIDDEN_403)
+            .type(ErrorResponder.ErrorType.WRONG_STATE)
+            .message(StringUtils.defaultString(message, "Forbidden"))
+            .haltError();
     }
 
     private HaltException badRequest(String message, Exception cause) {

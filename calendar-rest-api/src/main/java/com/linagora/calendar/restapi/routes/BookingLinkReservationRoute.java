@@ -43,6 +43,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.api.BookedEventTokenSigner;
 import com.linagora.calendar.restapi.ErrorType;
+import com.linagora.calendar.restapi.ForbiddenException;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationException.SlotNotAvailableException;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingRequest;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingRequest.BookingAttendee;
@@ -102,6 +103,10 @@ public class BookingLinkReservationRoute extends PublicRoute {
             case SlotNotAvailableException slotNotAvailableException -> {
                 LOGGER.warn("Requested slot is unavailable (likely busy) for [{}]: {}", request.uri(), slotNotAvailableException.getMessage());
                 yield ErrorResponseHandler.handle(response, HttpResponseStatus.UNPROCESSABLE_ENTITY, ErrorType.UNAVAILABLE_BOOKING_SLOT, slotNotAvailableException);
+            }
+            case ForbiddenException forbiddenException -> {
+                LOGGER.warn("Booking rejected, owner lacks write access for [{}]: {}", request.uri(), forbiddenException.getMessage());
+                yield ErrorResponseHandler.handle(response, HttpResponseStatus.FORBIDDEN, forbiddenException);
             }
             case BookingLinkReservationException bookingLinkReservationException -> {
                 LOGGER.error("Booking operation failed for [{}]", request.uri(), bookingLinkReservationException);

@@ -19,6 +19,7 @@
 package com.linagora.calendar.restapi;
 
 import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
+import static io.netty.handler.codec.http.HttpResponseStatus.FORBIDDEN;
 import static io.netty.handler.codec.http.HttpResponseStatus.INTERNAL_SERVER_ERROR;
 import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
 import static io.netty.handler.codec.http.HttpResponseStatus.UNAUTHORIZED;
@@ -88,6 +89,10 @@ public class CalendarRestApiServer implements Startable  {
                     if (e instanceof UnauthorizedException) {
                         LOGGER.info("Wrong authentication", e);
                         return response.status(UNAUTHORIZED).send();
+                    }
+                    if (e instanceof ForbiddenException) {
+                        LOGGER.info("Forbidden request {} {}", request.method(), request.uri(), e);
+                        return response.status(FORBIDDEN).send();
                     }
                     if (e instanceof NotFoundException) {
                         return response.status(NOT_FOUND).send();

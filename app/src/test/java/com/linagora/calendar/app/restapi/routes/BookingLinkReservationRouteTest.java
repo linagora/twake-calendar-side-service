@@ -1282,6 +1282,34 @@ class BookingLinkReservationRouteTest {
                 """.formatted(notFoundPublicId)));
     }
 
+    @Test
+    void shouldReturnForbiddenWhenBookingLinkTargetsReadOnlyCalendar(TwakeCalendarGuiceServer server) {
+        CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
+        Username delegateUsername = Username.fromLocalPartWithDomain("delegate-" + UUID.randomUUID(), Domain.of("open-paas.org"));
+        calendarDataProbe.addUser(delegateUsername, PASSWORD, "Delegate", "User");
+        OpenPaaSUser delegate = calendarDataProbe.getUser(delegateUsername);
+
+        // Owner delegates its calendar to the booking link owner in read-only mode.
+        CalendarURL ownerCalendar = CalendarURL.from(openPaaSUser.id());
+        davTestHelper.grantDelegation(openPaaSUser, ownerCalendar, delegate, "dav:read");
+        CalendarURL delegatedCalendar = CALMLY_AWAIT.until(() -> calDavClient.findUserCalendarList(delegate)
+            .map(response -> response.calendars().keySet().stream()
+                .filter(url -> !url.equals(CalendarURL.from(delegate.id())))
+                .findFirst())
+            .block(), Optional::isPresent).get();
+
+        BookingLink inserted = server.getProbe(BookingLinkProbe.class)
+            .insert(delegate.username(), new BookingLinkInsertRequest(delegatedCalendar, DURATION_30_MINUTES, AVAILABILITY_RULE));
+
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body(bodyRequest("2036-01-26T09:00:00Z"))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_FORBIDDEN);
+    }
+
     private BookingLink insertActiveBookingLink(TwakeCalendarGuiceServer server) {
         BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(
             CalendarURL.from(openPaaSUser.id()),

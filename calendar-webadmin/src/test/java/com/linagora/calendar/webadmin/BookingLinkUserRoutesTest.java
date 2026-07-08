@@ -47,6 +47,8 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import com.linagora.calendar.api.booking.AvailabilityRule.WeeklyAvailabilityRule;
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.DavTestHelper;
+import com.linagora.calendar.dav.Fixture;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -69,6 +71,8 @@ public class BookingLinkUserRoutesTest {
 
     private WebAdminServer webAdminServer;
     private MongoDBBookingLinkDAO bookingLinkDAO;
+    private CalDavClient calDavClient;
+    private DavTestHelper davTestHelper;
     private OpenPaaSUser user;
     private OpenPaaSUser otherUser;
 
@@ -77,7 +81,8 @@ public class BookingLinkUserRoutesTest {
         MongoDatabase mongoDB = sabreDavExtension.dockerSabreDavSetup().getMongoDB();
         MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
         OpenPaaSUserDAO userDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
-        CalDavClient calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
+        calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
+        davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         bookingLinkDAO = new MongoDBBookingLinkDAO(mongoDB, Clock.system(UTC));
 
         user = sabreDavExtension.newTestUser();
@@ -247,6 +252,58 @@ public class BookingLinkUserRoutesTest {
             .post("/users/{username}/booking-links", user.username().asString())
         .then()
             .statusCode(400);
+    }
+
+    @Test
+    void createShouldReturn403WhenCalendarIsReadOnlyDelegated() {
+        CalendarURL ownerCalendar = CalendarURL.from(otherUser.id());
+        davTestHelper.grantDelegation(otherUser, ownerCalendar, user, "dav:read");
+        CalendarURL delegatedCalendar = findMirrorCalendar(user);
+
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true
+                }
+                """.formatted(delegatedCalendar.asUri().toString()))
+        .when()
+            .post("/users/{username}/booking-links", user.username().asString())
+        .then()
+            .statusCode(403);
+
+        assertThat(bookingLinkDAO.findByUsername(user.username()).collectList().block()).isEmpty();
+    }
+
+    @Test
+    void createShouldReturn201WhenCalendarIsReadWriteDelegated() {
+        CalendarURL ownerCalendar = CalendarURL.from(otherUser.id());
+        davTestHelper.grantDelegation(otherUser, ownerCalendar, user, "dav:read-write");
+        CalendarURL delegatedCalendar = findMirrorCalendar(user);
+
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true
+                }
+                """.formatted(delegatedCalendar.asUri().toString()))
+        .when()
+            .post("/users/{username}/booking-links", user.username().asString())
+        .then()
+            .statusCode(201);
+    }
+
+    private CalendarURL findMirrorCalendar(OpenPaaSUser user) {
+        return Fixture.awaitAtMost.until(() -> calDavClient.findUserCalendarList(user)
+            .map(response -> response.calendars()
+                .keySet()
+                .stream()
+                .filter(calendarURL -> !calendarURL.equals(CalendarURL.from(user.id())))
+                .findFirst())
+            .block(), Optional::isPresent).get();
     }
 
     @Test

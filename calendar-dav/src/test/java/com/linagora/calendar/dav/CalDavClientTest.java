@@ -1610,6 +1610,66 @@ public class CalDavClientTest {
     }
 
     @Test
+    void hasWriteAccessShouldReturnTrueForOwnCalendar() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL calendarURL = CalendarURL.from(user.id());
+
+        assertThat(testee.hasWriteAccess(user.username(), calendarURL).block()).isTrue();
+    }
+
+    @Test
+    void hasWriteAccessShouldReturnFalseForNonExistingCalendar() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL calendarURL = new CalendarURL(user.id(), new OpenPaaSId(UUID.randomUUID().toString()));
+
+        assertThat(testee.hasWriteAccess(user.username(), calendarURL).block()).isFalse();
+    }
+
+    @Test
+    void hasWriteAccessShouldReturnTrueForReadWriteDelegatedCalendar() {
+        OpenPaaSUser owner = createOpenPaaSUser();
+        OpenPaaSUser delegate = createOpenPaaSUser();
+        String calendarId = UUID.randomUUID().toString();
+        testee.createNewCalendar(owner.username(), owner.id(), new NewCalendar(calendarId, "Shared calendar", "#0000FF", "")).block();
+        CalendarURL calendarURL = new CalendarURL(owner.id(), new OpenPaaSId(calendarId));
+
+        testee.updateCalendarShares(owner.username(), calendarURL,
+            new CalendarSharingUpdate(new CalendarSharingUpdate.Share(
+                List.of(new CalendarSharingUpdate.AddSharee("mailto:" + delegate.username().asString(),
+                    Optional.empty(), Optional.of(true), Optional.empty())),
+                List.of()))).block();
+
+        CalendarURL delegatedCalendar = testee.findUserCalendars(delegate.username(), delegate.id()).collectList().block().stream()
+            .filter(url -> !url.calendarId().equals(delegate.id()))
+            .findFirst()
+            .orElseThrow();
+
+        assertThat(testee.hasWriteAccess(delegate.username(), delegatedCalendar).block()).isTrue();
+    }
+
+    @Test
+    void hasWriteAccessShouldReturnFalseForReadOnlyDelegatedCalendar() {
+        OpenPaaSUser owner = createOpenPaaSUser();
+        OpenPaaSUser delegate = createOpenPaaSUser();
+        String calendarId = UUID.randomUUID().toString();
+        testee.createNewCalendar(owner.username(), owner.id(), new NewCalendar(calendarId, "Shared calendar", "#0000FF", "")).block();
+        CalendarURL calendarURL = new CalendarURL(owner.id(), new OpenPaaSId(calendarId));
+
+        testee.updateCalendarShares(owner.username(), calendarURL,
+            new CalendarSharingUpdate(new CalendarSharingUpdate.Share(
+                List.of(new CalendarSharingUpdate.AddSharee("mailto:" + delegate.username().asString(),
+                    Optional.of(true), Optional.empty(), Optional.empty())),
+                List.of()))).block();
+
+        CalendarURL delegatedCalendar = testee.findUserCalendars(delegate.username(), delegate.id()).collectList().block().stream()
+            .filter(url -> !url.calendarId().equals(delegate.id()))
+            .findFirst()
+            .orElseThrow();
+
+        assertThat(testee.hasWriteAccess(delegate.username(), delegatedCalendar).block()).isFalse();
+    }
+
+    @Test
     void updateCalendarSharesShouldThrowWhenCalendarDoesNotExist() {
         OpenPaaSUser owner = createOpenPaaSUser();
         OpenPaaSUser delegate = createOpenPaaSUser();

@@ -104,4 +104,20 @@ public class XMLUtil {
         }
         return eventIds.build();
     }
+
+    /**
+     * Parses a {@code PROPFIND} multistatus response requesting {@code DAV:current-user-privilege-set}
+     * and tells whether the current (impersonated) principal is granted a write-like privilege
+     * ({@code DAV:write}, {@code DAV:write-content} or {@code DAV:bind}) on the resource.
+     */
+    public static boolean hasWritePrivilege(byte[] xml) throws ParserConfigurationException, IOException, SAXException, XPathExpressionException {
+        Document doc = DOCUMENT_BUILDER_FACTORY.newDocumentBuilder()
+            .parse(new java.io.ByteArrayInputStream(xml));
+        XPath xpath = XPathFactory.newInstance().newXPath();
+        xpath.setNamespaceContext(new DavNamespaceContext());
+        String expression = "//*[local-name()='current-user-privilege-set']/*[local-name()='privilege']"
+            + "/*[local-name()='write' or local-name()='write-content' or local-name()='bind']";
+        NodeList nodes = (NodeList) xpath.evaluate(expression, doc, XPathConstants.NODESET);
+        return nodes.getLength() > 0;
+    }
 }
