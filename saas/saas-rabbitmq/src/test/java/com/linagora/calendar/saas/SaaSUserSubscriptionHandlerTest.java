@@ -39,6 +39,7 @@ import com.linagora.calendar.storage.DomainSettingsResolver;
 import com.linagora.calendar.storage.MemoryDomainSettingsDAO;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSUser;
+import com.linagora.calendar.storage.UserNameResolver;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
 import com.mongodb.reactivestreams.client.MongoDatabase;
@@ -62,7 +63,7 @@ class SaaSUserSubscriptionHandlerTest {
         cardDavClient = new CardDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         DomainSettingsResolver domainSettingsResolver = new DomainSettingsResolver(
             new MemoryDomainSettingsDAO(), Set.of(Domain.of("nonshared.tld")), Set.of(), new MapConfiguration(Map.of()));
-        testee = new SaaSUserSubscriptionHandler(new SaaSUserProvisioner(userDAO, domainDAO, cardDavClient, domainSettingsResolver));
+        testee = new SaaSUserSubscriptionHandler(new SaaSUserProvisioner(userDAO, domainDAO, cardDavClient, domainSettingsResolver, new UserNameResolver.Noop()));
         testDomain = createNewDomainWithAddressBook();
     }
 
