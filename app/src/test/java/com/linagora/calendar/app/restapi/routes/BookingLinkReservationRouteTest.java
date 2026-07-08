@@ -620,7 +620,7 @@ class BookingLinkReservationRouteTest {
             .body("error", jsonEquals("""
                 {
                   "code": 422,
-                  "type": "UnprocessableEntity",
+                  "type": "UnavailableBookingSlot",
                   "message": "Unprocessable Entity",
                   "details": "Requested slot is not available for booking link with publicId %s, slotStartUtc %s"
                 }
@@ -652,7 +652,7 @@ class BookingLinkReservationRouteTest {
             .body("error", jsonEquals("""
                 {
                   "code": 422,
-                  "type": "UnprocessableEntity",
+                  "type": "UnavailableBookingSlot",
                   "message": "Unprocessable Entity",
                   "details": "Requested slot is not available for booking link with publicId %s, slotStartUtc %s"
                 }
@@ -685,7 +685,7 @@ class BookingLinkReservationRouteTest {
             .body("error", jsonEquals("""
                 {
                   "code": 422,
-                  "type": "UnprocessableEntity",
+                  "type": "UnavailableBookingSlot",
                   "message": "Unprocessable Entity",
                   "details": "Requested slot is not available for booking link with publicId %s, slotStartUtc %s"
                 }
@@ -791,7 +791,7 @@ class BookingLinkReservationRouteTest {
             .body("error", jsonEquals("""
                 {
                   "code": 422,
-                  "type": "UnprocessableEntity",
+                  "type": "UnavailableBookingSlot",
                   "message": "Unprocessable Entity",
                   "details": "Requested slot is not available for booking link with publicId %s, slotStartUtc 2036-01-26T08:00:00Z"
                 }
@@ -833,7 +833,7 @@ class BookingLinkReservationRouteTest {
             .body("error", jsonEquals("""
                 {
                   "code": 422,
-                  "type": "UnprocessableEntity",
+                  "type": "UnavailableBookingSlot",
                   "message": "Unprocessable Entity",
                   "details": "Requested slot is not available for booking link with publicId %s, slotStartUtc 2036-01-26T09:30:00Z"
                 }
@@ -879,7 +879,7 @@ class BookingLinkReservationRouteTest {
             .body("error", jsonEquals("""
                 {
                   "code": 422,
-                  "type": "UnprocessableEntity",
+                  "type": "UnavailableBookingSlot",
                   "message": "Unprocessable Entity",
                   "details": "Requested slot is not available for booking link with publicId %s, slotStartUtc 2036-01-26T09:30:00Z"
                 }

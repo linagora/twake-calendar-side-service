@@ -13,4 +13,5 @@ token rather than parsing the human-readable `message` or `details` fields.
 | `UnprocessableEntity` | 422    | Request understood but cannot be processed     |
 | `ServiceUnavailable`  | 503    | Service temporarily unavailable                |
 | `ServerError`         | 500    | Unexpected server-side error                   |
-| `InactiveBookingLink` | 400    | Booking link is inactive                       |
+| `InactiveBookingLink`    | 400    | Booking link is inactive                    |
+| `UnavailableBookingSlot` | 422    | Requested booking slot is unavailable       |

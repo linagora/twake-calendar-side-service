@@ -28,7 +28,8 @@ public enum ErrorType {
     UNPROCESSABLE_ENTITY("UnprocessableEntity"),
     SERVICE_UNAVAILABLE("ServiceUnavailable"),
     SERVER_ERROR("ServerError"),
-    INACTIVE_BOOKING_LINK("InactiveBookingLink");
+    INACTIVE_BOOKING_LINK("InactiveBookingLink"),
+    UNAVAILABLE_BOOKING_SLOT("UnavailableBookingSlot");
 
     public static ErrorType fromStatus(HttpResponseStatus status) {
         return switch (status.code()) {
