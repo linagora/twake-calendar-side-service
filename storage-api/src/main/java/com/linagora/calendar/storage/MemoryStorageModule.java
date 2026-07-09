@@ -22,6 +22,7 @@ import java.io.FileNotFoundException;
 
 import org.apache.james.core.Domain;
 import org.apache.james.domainlist.api.DomainList;
+import org.apache.james.events.EventBus;
 import org.apache.james.utils.InitializationOperation;
 import org.apache.james.utils.InitilizationOperationBuilder;
 import org.apache.james.utils.PropertiesProvider;
@@ -33,6 +34,7 @@ import com.google.inject.Scopes;
 import com.google.inject.Singleton;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
+import com.linagora.calendar.storage.booking.EventBusBookingLinkDAO;
 import com.linagora.calendar.storage.booking.MemoryBookingLinkDAO;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
@@ -80,13 +82,18 @@ public class MemoryStorageModule extends AbstractModule {
         bind(TeamCalendarRepository.class).to(MemoryTeamCalendarRepository.class);
 
         bind(MemoryBookingLinkDAO.class).in(Scopes.SINGLETON);
-        bind(BookingLinkDAO.class).to(MemoryBookingLinkDAO.class);
 
         bind(MemoryTicketStore.class).in(Scopes.SINGLETON);
         bind(TicketStore.class).to(MemoryTicketStore.class);
 
         bind(MemoryDomainSettingsDAO.class).in(Scopes.SINGLETON);
         bind(DomainSettingsDAO.class).to(MemoryDomainSettingsDAO.class);
+    }
+
+    @Provides
+    @Singleton
+    BookingLinkDAO bookingLinkDAO(MemoryBookingLinkDAO delegate, EventBus eventBus) {
+        return new EventBusBookingLinkDAO(delegate, eventBus);
     }
 
     @Provides
