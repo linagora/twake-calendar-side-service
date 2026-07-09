@@ -42,7 +42,7 @@ import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.restapi.routes.dto.AvailabilityRuleDTO;
 import com.linagora.calendar.storage.CalendarURL;
-import com.linagora.calendar.storage.booking.BookingLinkColor;
+import com.linagora.calendar.storage.booking.BookingLinkColorUtil;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.booking.BookingLinkNotFoundException;
 import com.linagora.calendar.storage.booking.BookingLinkPatchRequest;
@@ -227,7 +227,7 @@ public class BookingLinkPatchRoute extends CalendarRoute {
         if (!node.has(FIELD_COLOR)) {
             return ValuePatch.keep();
         }
-        return BookingLinkColor.sanitize(dto.color())
+        return BookingLinkColorUtil.sanitize(dto.color())
             .map(ValuePatch::modifyTo)
             .orElseGet(ValuePatch::remove);
     }

@@ -23,14 +23,14 @@ import java.util.regex.Pattern;
 
 import com.google.common.base.Preconditions;
 
-public class BookingLinkColor {
+public class BookingLinkColorUtil {
 
     private static final Pattern COLOR_PATTERN = Pattern.compile("^#[0-9a-fA-F]{6}$");
 
     public static Optional<String> sanitize(Optional<String> raw) {
         return raw.map(String::trim)
             .filter(value -> !value.isEmpty())
-            .map(BookingLinkColor::validate);
+            .map(BookingLinkColorUtil::validate);
     }
 
     public static String validate(String color) {
@@ -39,6 +39,6 @@ public class BookingLinkColor {
         return color;
     }
 
-    private BookingLinkColor() {
+    private BookingLinkColorUtil() {
     }
 }

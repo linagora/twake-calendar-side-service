@@ -57,7 +57,7 @@ import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.booking.BookingLink;
-import com.linagora.calendar.storage.booking.BookingLinkColor;
+import com.linagora.calendar.storage.booking.BookingLinkColorUtil;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.booking.BookingLinkNotFoundException;
@@ -369,7 +369,7 @@ public class BookingLinkUserRoutes implements Routes {
         if (!node.has(FIELD_COLOR)) {
             return ValuePatch.keep();
         }
-        return BookingLinkColor.sanitize(dto.color())
+        return BookingLinkColorUtil.sanitize(dto.color())
             .map(ValuePatch::modifyTo)
             .orElseGet(ValuePatch::remove);
     }
