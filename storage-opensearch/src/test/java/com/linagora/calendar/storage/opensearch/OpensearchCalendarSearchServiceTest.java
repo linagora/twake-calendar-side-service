@@ -240,11 +240,13 @@ public class OpensearchCalendarSearchServiceTest implements CalendarSearchServic
             .doesNotThrowAnyException();
 
         // Whether the event survives the race depends on which operation ran last, so delete it once more now
-        // that no writer competes, and check the document is effectively gone.
-        testee().delete(event.calendarURL(), event.uid()).block();
-
+        // that no writer competes, and check the document is effectively gone. The delete is retried: it is a
+        // delete-by-query, whose search phase only sees documents already refreshed, so a document written by
+        // the very last re-indexing may still be invisible to the first delete attempt.
         EventSearchQuery query = simpleQuery("concurrent", event.calendarURL());
         CALMLY_AWAIT.untilAsserted(() -> {
+            testee().delete(event.calendarURL(), event.uid()).block();
+
             List<EventFields> searchResults = testee().search(query)
                 .collectList().block();
 
