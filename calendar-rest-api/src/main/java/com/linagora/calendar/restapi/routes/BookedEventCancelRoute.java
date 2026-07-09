@@ -36,14 +36,17 @@ import com.linagora.calendar.api.BookedEventTokenSigner;
 import com.linagora.calendar.api.BookedEventTokenSigner.BookedEvent;
 import com.linagora.calendar.api.BookedEventTokenSigner.BookedEventTokenClaimException;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.DavCalendarObject;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.event.EventParseUtils;
 
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.QueryStringDecoder;
+import net.fortuna.ical4j.model.Calendar;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.server.HttpServerRequest;
 import reactor.netty.http.server.HttpServerResponse;
@@ -63,18 +66,21 @@ public class BookedEventCancelRoute extends PublicRoute {
     private final BookedEventTokenSigner bookedEventTokenSigner;
     private final OpenPaaSUserDAO openPaaSUserDAO;
     private final CalDavClient calDavClient;
+    private final PublicAgendaCancellationNotifier organizerCancellationNotifier;
 
     @Inject
     public BookedEventCancelRoute(MetricFactory metricFactory,
                                   Clock clock,
                                   BookedEventTokenSigner bookedEventTokenSigner,
                                   OpenPaaSUserDAO openPaaSUserDAO,
-                                  CalDavClient calDavClient) {
+                                  CalDavClient calDavClient,
+                                  PublicAgendaCancellationNotifier organizerCancellationNotifier) {
         super(metricFactory);
         this.clock = clock;
         this.bookedEventTokenSigner = bookedEventTokenSigner;
         this.openPaaSUserDAO = openPaaSUserDAO;
         this.calDavClient = calDavClient;
+        this.organizerCancellationNotifier = organizerCancellationNotifier;
     }
 
     protected Endpoint endpoint() {
@@ -90,20 +96,41 @@ public class BookedEventCancelRoute extends PublicRoute {
     }
 
     private Mono<Void> deleteBookedEvent(BookedEvent bookedEvent) {
-        CalendarURL calendarURL = new CalendarURL(new OpenPaaSId(bookedEvent.ownerId()), new OpenPaaSId(bookedEvent.calendarId()));
-        return openPaaSUserDAO.retrieve(new OpenPaaSId(bookedEvent.ownerId()))
-            .flatMap(owner -> rejectIfAlreadyStarted(owner.username(), calendarURL, bookedEvent.eventId())
-                .then(calDavClient.deleteCalendarEvent(owner.username(), calendarURL, bookedEvent.eventId())));
+        OpenPaaSId ownerId = new OpenPaaSId(bookedEvent.ownerId());
+        CalendarURL calendarURL = new CalendarURL(ownerId, new OpenPaaSId(bookedEvent.calendarId()));
+        return openPaaSUserDAO.retrieve(ownerId)
+            .flatMap(owner -> cancelBookedEvent(owner, calendarURL, bookedEvent.eventId()));
     }
 
-    private Mono<Void> rejectIfAlreadyStarted(Username username, CalendarURL calendarURL, String eventId) {
+    private Mono<Void> cancelBookedEvent(OpenPaaSUser owner, CalendarURL calendarURL, String eventId) {
+        // A missing event yields an empty Mono: there is nothing left to cancel, which keeps this route idempotent.
+        return fetchCalendarEvent(owner.username(), calendarURL, eventId)
+            .flatMap(davCalendarObject -> rejectIfAlreadyStarted(davCalendarObject.calendarData(), eventId)
+                .then(calDavClient.deleteCalendarEvent(owner.username(), calendarURL, eventId))
+                .then(notifyCancellation(owner, davCalendarObject.calendarData())));
+    }
+
+    private Mono<DavCalendarObject> fetchCalendarEvent(Username username, CalendarURL calendarURL, String eventId) {
         URI eventHref = URI.create(calendarURL.asUri() + "/" + eventId + CalDavClient.ICS_EXTENSION);
-        return calDavClient.fetchCalendarEvent(username, eventHref)
-            // Prevent time travel: a booked event whose start time is in the past can no longer be cancelled.
-            // A missing event yields an empty Mono and stays a no-op delete, keeping cancellation idempotent.
-            .map(davCalendarObject -> EventParseUtils.getStartTime(EventParseUtils.getFirstEvent(davCalendarObject.calendarData())).toInstant())
+        return calDavClient.fetchCalendarEvent(username, eventHref);
+    }
+
+    private Mono<Void> rejectIfAlreadyStarted(Calendar calendarData, String eventId) {
+        // Prevent time travel: a booked event whose start time is in the past can no longer be cancelled.
+        return Mono.fromCallable(() -> EventParseUtils.getStartTime(EventParseUtils.getFirstEvent(calendarData)).toInstant())
             .filter(startTime -> startTime.isBefore(clock.instant()))
-            .flatMap(pastStartTime -> Mono.error(new PastBookedEventException(eventId)));
+            .flatMap(pastStartTime -> Mono.<Void>error(new PastBookedEventException(eventId)));
+    }
+
+    private Mono<Void> notifyCancellation(OpenPaaSUser owner, Calendar calendarData) {
+        // The booker is not notified here: deleting the event already emits a standard iTIP CANCEL to the attendees.
+        return Mono.fromCallable(() -> BookedEventCancelled.from(owner, calendarData))
+            .flatMap(organizerCancellationNotifier::notify)
+            .onErrorResume(error -> {
+                LOGGER.warn("Failed to send booked event cancellation notification to organizer {}: {}",
+                    owner.username().asString(), error.getMessage(), error);
+                return Mono.empty();
+            });
     }
 
     private Mono<String> extractToken(HttpServerRequest request) {

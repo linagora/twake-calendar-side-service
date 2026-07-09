@@ -21,6 +21,8 @@ settings. This includes:
 - Resource moderation notifications, letting event organizer know about resource moderation decisions
 - Calendar / address book import notifications
 
+See [the mail page](mail.md) for the exhaustive list of emails the calendar sends and their recipients.
+
 The side service also enables synchronizing domain members into ESN-Sabre DAV server.
 
 ## Automatic user provisioning
