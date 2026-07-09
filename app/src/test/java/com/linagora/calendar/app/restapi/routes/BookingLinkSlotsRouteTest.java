@@ -389,6 +389,7 @@ class BookingLinkSlotsRouteTest {
                 {
                     "error": {
                         "code": 400,
+                        "type": "BadRequest",
                         "message": "Bad Request",
                         "details": "Invalid query parameter 'timeZone': Invalid/Zone"
                     }
@@ -673,6 +674,7 @@ class BookingLinkSlotsRouteTest {
                 {
                     "error": {
                         "code": 400,
+                        "type": "BadRequest",
                         "message": "Bad Request",
                         "details": "Requested range is too large, max is %s days"
                     }
@@ -760,6 +762,7 @@ class BookingLinkSlotsRouteTest {
                 {
                     "error": {
                         "code": 400,
+                        "type": "BadRequest",
                         "message": "Bad Request",
                         "details": "Missing or invalid query parameter 'from'. Expected ISO-8601 instant format, e.g. 2007-12-03T10:15:30.00Z"
                     }
@@ -789,6 +792,7 @@ class BookingLinkSlotsRouteTest {
                 {
                     "error": {
                         "code": 400,
+                        "type": "BadRequest",
                         "message": "Bad Request",
                         "details": "Missing or invalid query parameter 'to'. Expected ISO-8601 instant format, e.g. 2007-12-03T10:15:30.00Z"
                     }
@@ -819,6 +823,7 @@ class BookingLinkSlotsRouteTest {
                 {
                     "error": {
                         "code": 400,
+                        "type": "BadRequest",
                         "message": "Bad Request",
                         "details": "Missing or invalid query parameter 'from'. Expected ISO-8601 instant format, e.g. 2007-12-03T10:15:30.00Z"
                     }
@@ -849,6 +854,7 @@ class BookingLinkSlotsRouteTest {
                 {
                     "error": {
                         "code": 400,
+                        "type": "BadRequest",
                         "message": "Bad Request",
                         "details": "Missing or invalid query parameter 'to'. Expected ISO-8601 instant format, e.g. 2007-12-03T10:15:30.00Z"
                     }
@@ -879,6 +885,7 @@ class BookingLinkSlotsRouteTest {
                 {
                     "error": {
                         "code": 400,
+                        "type": "BadRequest",
                         "message": "Bad Request",
                         "details": "'to' must be after 'from'"
                     }
@@ -907,6 +914,7 @@ class BookingLinkSlotsRouteTest {
                 {
                     "error": {
                         "code": 404,
+                        "type": "NotFound",
                         "message": "Not Found",
                         "details": "Cannot find booking link with publicId %s"
                     }
@@ -938,6 +946,7 @@ class BookingLinkSlotsRouteTest {
                 {
                     "error": {
                         "code": 404,
+                        "type": "NotFound",
                         "message": "Not Found",
                         "details": "Cannot find booking link with publicId %s"
                     }

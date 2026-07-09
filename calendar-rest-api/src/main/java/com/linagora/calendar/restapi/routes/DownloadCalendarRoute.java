@@ -44,6 +44,7 @@ import com.google.common.base.Preconditions;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalendarNotFoundException;
 import com.linagora.calendar.restapi.ErrorResponse;
+import com.linagora.calendar.restapi.ErrorType;
 import com.linagora.calendar.restapi.ForbiddenException;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -181,7 +182,7 @@ public class DownloadCalendarRoute implements JMAPRoutes {
     Mono<Void> doOnError(HttpServerResponse response) {
         return response.status(HttpResponseStatus.SERVICE_UNAVAILABLE)
             .header("Content-Type", CONTENT_TYPE_JSON)
-            .sendByteArray(Mono.fromCallable(() -> ErrorResponse.of(503, "Service Unavailable", "Service Unavailable").serializeAsBytes()))
+            .sendByteArray(Mono.fromCallable(() -> ErrorResponse.of(503, ErrorType.SERVICE_UNAVAILABLE, "Service Unavailable", "Service Unavailable").serializeAsBytes()))
             .then();
     }
 }

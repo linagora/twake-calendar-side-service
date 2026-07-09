@@ -38,6 +38,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.restapi.ErrorResponse;
+import com.linagora.calendar.restapi.ErrorType;
 import com.linagora.calendar.restapi.RestApiConstants;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.TechnicalTokenService;
@@ -107,7 +108,7 @@ public class CheckTechnicalUserTokenRoute implements JMAPRoutes {
     Mono<Void> doOnError(HttpServerResponse response) {
         return response.status(HttpResponseStatus.NOT_FOUND)
             .headers(JSON_HEADER)
-            .sendByteArray(Mono.fromCallable(() -> ErrorResponse.of(404, "Not found", "Token not found or expired")
+            .sendByteArray(Mono.fromCallable(() -> ErrorResponse.of(404, ErrorType.NOT_FOUND, "Not found", "Token not found or expired")
                 .serializeAsBytes()))
             .then();
     }

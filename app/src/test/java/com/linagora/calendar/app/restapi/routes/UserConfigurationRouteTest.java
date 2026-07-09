@@ -338,6 +338,7 @@ class UserConfigurationRouteTest {
             {
                  "error": {
                      "code": 400,
+                     "type": "BadRequest",
                      "message": "Bad request",
                      "details": "Invalid request body"
                  }

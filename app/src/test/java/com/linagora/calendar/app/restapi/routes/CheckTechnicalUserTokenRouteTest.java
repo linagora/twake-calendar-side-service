@@ -175,6 +175,7 @@ class CheckTechnicalUserTokenRouteTest {
                 {
                     "error": {
                         "code": 404,
+                        "type": "NotFound",
                         "message": "Not found",
                         "details": "Token not found or expired"
                     }
@@ -201,6 +202,7 @@ class CheckTechnicalUserTokenRouteTest {
                 {
                     "error": {
                         "code": 404,
+                        "type": "NotFound",
                         "message": "Not found",
                         "details": "Token not found or expired"
                     }
@@ -224,6 +226,7 @@ class CheckTechnicalUserTokenRouteTest {
                 {
                     "error": {
                         "code": 404,
+                        "type": "NotFound",
                         "message": "Not found",
                         "details": "Token not found or expired"
                     }

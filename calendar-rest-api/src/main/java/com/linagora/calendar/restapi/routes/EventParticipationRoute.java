@@ -45,6 +45,7 @@ import com.linagora.calendar.dav.CalendarEventNotFoundException;
 import com.linagora.calendar.dav.CalendarEventUpdatePatch.AttendeePartStatusUpdatePatch;
 import com.linagora.calendar.dav.dto.VCalendarDto;
 import com.linagora.calendar.restapi.ErrorResponse;
+import com.linagora.calendar.restapi.ErrorType;
 import com.linagora.calendar.restapi.routes.response.EventParticipationResponse;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
@@ -182,6 +183,7 @@ public class EventParticipationRoute extends PublicRoute {
             .headers(JSON_HEADER)
             .sendByteArray(Mono.fromCallable(() -> ErrorResponse.of(
                 401,
+                ErrorType.UNAUTHORIZED,
                 "Unauthorized",
                 "JWT is missing or invalid").serializeAsBytes()))
             .then();
@@ -190,7 +192,7 @@ public class EventParticipationRoute extends PublicRoute {
     private Mono<Void> doNotFound(HttpServerResponse response, CalendarEventNotFoundException exception) {
         return response.status(HttpResponseStatus.NOT_FOUND)
             .headers(JSON_HEADER)
-            .sendByteArray(Mono.fromCallable(() -> ErrorResponse.of(404, "Not found", exception.getMessage())
+            .sendByteArray(Mono.fromCallable(() -> ErrorResponse.of(404, ErrorType.NOT_FOUND, "Not found", exception.getMessage())
                 .serializeAsBytes()))
             .then();
     }
@@ -198,7 +200,7 @@ public class EventParticipationRoute extends PublicRoute {
     private Mono<Void> doOnError(HttpServerResponse response, Exception exception) {
         return response.status(HttpResponseStatus.BAD_REQUEST)
             .headers(JSON_HEADER)
-            .sendByteArray(Mono.fromCallable(() -> ErrorResponse.of(500, "Server Error", exception.getMessage())
+            .sendByteArray(Mono.fromCallable(() -> ErrorResponse.of(500, ErrorType.SERVER_ERROR, "Server Error", exception.getMessage())
                 .serializeAsBytes()))
             .then();
     }
