@@ -215,7 +215,7 @@ public class EventAuditLogConsumer implements Closeable, Startable {
             });
     }
 
-    private static String formatMessage(String body, String exchangeName) {
+    static String formatMessage(String body, String exchangeName) {
         String message = MESSAGE_TEMPLATES.getOrDefault(exchangeName, "Unknown event");
         Optional<String> uid = extractUid(body);
         Optional<String> path = extractPath(body);
