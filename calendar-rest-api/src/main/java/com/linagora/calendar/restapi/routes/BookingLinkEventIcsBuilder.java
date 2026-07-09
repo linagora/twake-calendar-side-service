@@ -33,6 +33,7 @@ import org.apache.james.util.FunctionalUtils;
 
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
+import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingRequest;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingRequest.BookingAttendee;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
@@ -52,6 +53,7 @@ import net.fortuna.ical4j.model.property.Clazz;
 import net.fortuna.ical4j.model.property.Description;
 import net.fortuna.ical4j.model.property.DtStamp;
 import net.fortuna.ical4j.model.property.DtStart;
+import net.fortuna.ical4j.model.property.Method;
 import net.fortuna.ical4j.model.property.Organizer;
 import net.fortuna.ical4j.model.property.Summary;
 import net.fortuna.ical4j.model.property.Transp;
@@ -191,6 +193,10 @@ public class BookingLinkEventIcsBuilder {
 
         public byte[] icsBytes() {
             return calendar.toString().getBytes(StandardCharsets.UTF_8);
+        }
+
+        public byte[] icsBytes(Method method) {
+            return CalendarUtil.withMethod(calendar, method).toString().getBytes(StandardCharsets.UTF_8);
         }
 
         public String eventIdAsString() {
