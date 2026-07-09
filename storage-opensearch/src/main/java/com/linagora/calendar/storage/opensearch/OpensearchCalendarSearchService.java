@@ -39,6 +39,7 @@ import org.apache.james.core.MailAddress;
 import org.apache.james.util.ReactorUtils;
 import org.opensearch.client.json.JsonData;
 import org.opensearch.client.opensearch.OpenSearchAsyncClient;
+import org.opensearch.client.opensearch._types.Conflicts;
 import org.opensearch.client.opensearch._types.FieldValue;
 import org.opensearch.client.opensearch._types.Result;
 import org.opensearch.client.opensearch._types.Script;
@@ -50,6 +51,8 @@ import org.opensearch.client.opensearch._types.query_dsl.Operator;
 import org.opensearch.client.opensearch._types.query_dsl.Query;
 import org.opensearch.client.opensearch._types.query_dsl.QueryBuilders;
 import org.opensearch.client.opensearch._types.query_dsl.TermsQueryField;
+import org.opensearch.client.opensearch.core.DeleteByQueryRequest;
+import org.opensearch.client.opensearch.core.DeleteByQueryResponse;
 import org.opensearch.client.opensearch.core.SearchRequest;
 import org.opensearch.client.opensearch.core.UpdateRequest;
 
@@ -185,7 +188,7 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
             .build()
             .toQuery();
 
-        return indexer.deleteAllMatchingQuery(staleOccurrencesQuery, ROUTING_KEY.apply(calendarURL.base()))
+        return deleteByQuery(staleOccurrencesQuery, ROUTING_KEY.apply(calendarURL.base()))
             .onErrorResume(error -> Mono.error(CalendarSearchIndexingException.of("Failed to delete stale calendar occurrences",
                 calendarURL, fields.eventUid(), error)))
             .then();
@@ -237,7 +240,7 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
             .build()
             .toQuery();
 
-        return indexer.deleteAllMatchingQuery(query, ROUTING_KEY.apply(calendarURL.base()))
+        return deleteByQuery(query, ROUTING_KEY.apply(calendarURL.base()))
             .onErrorResume(error -> Mono.error(CalendarSearchIndexingException.of("Failed to delete calendar event",
                 calendarURL, eventUid, error)))
             .then();
@@ -306,7 +309,7 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
     public Mono<Void> deleteAll(OpenPaaSId baseCalendarId) {
         Preconditions.checkArgument(baseCalendarId != null, "baseCalendarId can not be null");
 
-        return indexer.deleteAllMatchingQuery(baseCalendarIdQuery(baseCalendarId), ROUTING_KEY.apply(baseCalendarId))
+        return deleteByQuery(baseCalendarIdQuery(baseCalendarId), ROUTING_KEY.apply(baseCalendarId))
             .onErrorResume(error -> Mono.error(CalendarSearchIndexingException.of("Failed to delete calendar events",
                 baseCalendarId, error)))
             .then();
@@ -463,6 +466,39 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
 
         return toReactor(opensearchAsyncClient.update(request, ObjectNode.class))
             .map(updateResponse -> (WriteResponseBase) updateResponse);
+    }
+
+    // A delete-by-query runs in two phases: it first snapshots the documents matching the query, then bulk
+    // deletes them using the sequence numbers captured during the snapshot. When a concurrent (or reordered)
+    // message re-indexes one of those documents in between, its sequence number changes and the bulk delete
+    // is rejected with a version conflict (HTTP 409), aborting the whole operation (see issue #934).
+    // We ask OpenSearch to proceed past conflicts rather than abort, then retry so the documents that were
+    // concurrently rewritten are still removed. Retries are bounded; residual conflicts are left for a later
+    // message to clean up rather than looping indefinitely against a document under sustained writes.
+    private Mono<Void> deleteByQuery(Query query, RoutingKey routingKey) {
+        return deleteByQuery(query, routingKey, MAX_RETRY_ON_CONFLICT);
+    }
+
+    private Mono<Void> deleteByQuery(Query query, RoutingKey routingKey, int remainingRetries) {
+        DeleteByQueryRequest request = new DeleteByQueryRequest.Builder()
+            .index(configuration.writeAliasName().getValue())
+            .query(query)
+            .routing(routingKey.asString())
+            .conflicts(Conflicts.Proceed)
+            .refresh(true)
+            .build();
+
+        return Mono.defer(Throwing.supplier(() -> toReactor(opensearchAsyncClient.deleteByQuery(request))))
+            .flatMap(response -> {
+                if (hasVersionConflict(response) && remainingRetries > 0) {
+                    return deleteByQuery(query, routingKey, remainingRetries - 1);
+                }
+                return Mono.<Void>empty();
+            });
+    }
+
+    private boolean hasVersionConflict(DeleteByQueryResponse response) {
+        return response.versionConflicts() != null && response.versionConflicts() > 0;
     }
 
     private static <T> Mono<T> toReactor(CompletableFuture<T> async) {
