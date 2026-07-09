@@ -9,6 +9,7 @@ This includes:
 - Calendar import events (ICS)
 - Address Book import events (vCard)
 - Display alarm notifications
+- Booking link changes
 
 ## 1. Endpoint 
 
@@ -163,6 +164,28 @@ Subscription behavior:
 - Subscriber renames subscribed calendar metadata (for example display name) → subscriber receives `updated`
 - Subscriber deletes subscribed calendar from their list → subscriber receives `deleted`
 - Owner hides/restricts source shared calendar so subscriber loses visibility → subscriber receives `deleted`
+
+#### Booking link push
+
+Whenever one of the booking links owned by the connected user is created, updated, deleted, or has its public id
+reset, the server pushes a payload-less notification:
+
+```json
+{
+  "bookingLinkStateChanged": true
+}
+```
+
+Upon reception, the client re-fetches `GET /api/booking-links`. No delta is carried, so a dropped message is
+recovered by the next one, and no ordering has to be maintained. This subscription requires no `register` request:
+it relies on the same default subscription as `calendarList`.
+
+Notes:
+- Notifications are also emitted when an administrator mutates the booking links of the user through webadmin.
+- A burst of mutations produces one notification each: clients are expected to debounce before re-fetching.
+- Notifications may be spurious, for instance when deleting an already deleted booking link.
+- Booking an appointment through `POST /api/booking-links/{id}/book` does not change the booking link itself,
+  hence emits no such notification. The resulting calendar change is notified through the calendar event push.
 
 #### Calendar Event push
 

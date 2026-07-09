@@ -29,6 +29,7 @@ import org.reactivestreams.Publisher;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.linagora.calendar.storage.BookingLinkStateChangedEvent;
 import com.linagora.calendar.storage.CalendarListChangedEvent;
 import com.linagora.calendar.storage.CalendarListChangedEvent.ChangeType;
 import com.linagora.calendar.storage.CalendarURL;
@@ -42,13 +43,17 @@ public record DefaultWebSocketNotificationListener(Sinks.Many<WebsocketRoute.Web
 
     @Override
     public boolean isHandling(Event event) {
-        return event instanceof CalendarListChangedEvent;
+        return event instanceof CalendarListChangedEvent
+            || event instanceof BookingLinkStateChangedEvent;
     }
 
     @Override
     public Publisher<Void> reactiveEvent(Event event) {
         if (event instanceof CalendarListChangedEvent calendarListChangedEvent) {
             return handleCalendarListChange(calendarListChangedEvent);
+        }
+        if (event instanceof BookingLinkStateChangedEvent) {
+            return Mono.fromRunnable(() -> emit(new BookingLinkStateChangedMessage())).then();
         }
         return Mono.empty();
     }
@@ -61,6 +66,16 @@ public record DefaultWebSocketNotificationListener(Sinks.Many<WebsocketRoute.Web
     private void emit(WebsocketRoute.WebsocketMessage message) {
         synchronized (outbound) {
             outbound.emitNext(message, Sinks.EmitFailureHandler.FAIL_FAST);
+        }
+    }
+
+    public record BookingLinkStateChangedMessage() implements WebsocketRoute.WebsocketMessage {
+
+        static final String PAYLOAD = "{\"bookingLinkStateChanged\":true}";
+
+        @Override
+        public WebSocketFrame asWebSocketFrame() {
+            return new TextWebSocketFrame(PAYLOAD);
         }
     }
 

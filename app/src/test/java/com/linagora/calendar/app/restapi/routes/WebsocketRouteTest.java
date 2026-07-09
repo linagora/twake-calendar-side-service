@@ -29,6 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -61,6 +62,7 @@ import com.google.inject.Provides;
 import com.google.inject.Singleton;
 import com.google.inject.multibindings.Multibinder;
 import com.linagora.calendar.app.AppTestHelper;
+import com.linagora.calendar.app.BookingLinkProbe;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
@@ -82,6 +84,8 @@ import com.linagora.calendar.storage.MailboxSessionUtil;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.UsernameRegistrationKey;
+import com.linagora.calendar.storage.booking.BookingLink;
+import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.model.Upload;
 import com.linagora.calendar.storage.model.UploadedMimeType;
 import com.linagora.calendar.storage.redis.DockerRedisExtension;
@@ -144,8 +148,11 @@ class WebsocketRouteTest {
             .enableRedis(),
         AppTestHelper.OIDC_BY_PASS_MODULE,
         DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
-        binder -> Multibinder.newSetBinder(binder, GuiceProbe.class)
-            .addBinding().to(EventBusProbe.class),
+        binder -> {
+            Multibinder<GuiceProbe> probes = Multibinder.newSetBinder(binder, GuiceProbe.class);
+            probes.addBinding().to(EventBusProbe.class);
+            probes.addBinding().to(BookingLinkProbe.class);
+        },
         new AbstractModule() {
             @Provides
             @Singleton
@@ -216,6 +223,78 @@ class WebsocketRouteTest {
                 {
                     "registered": [ "%s"]
                 }""".formatted(registerCalendarURL));
+    }
+
+    @Test
+    void websocketShouldReceiveBookingLinkStateChangedUponBookingLinkCreation(TwakeCalendarGuiceServer guiceServer) {
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        guiceServer.getProbe(BookingLinkProbe.class)
+            .insert(bob.username(), bookingLinkInsertRequest(bob));
+
+        assertThatJson(awaitMessage(messages, msg -> msg.contains("bookingLinkStateChanged")))
+            .isEqualTo("{\"bookingLinkStateChanged\": true}");
+    }
+
+    @Test
+    void websocketShouldReceiveBookingLinkStateChangedUponBookingLinkDeletion(TwakeCalendarGuiceServer guiceServer) {
+        BookingLinkProbe bookingLinkProbe = guiceServer.getProbe(BookingLinkProbe.class);
+        BookingLink bookingLink = bookingLinkProbe.insert(bob.username(), bookingLinkInsertRequest(bob));
+
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        bookingLinkProbe.deleteBookingLink(bob.username(), bookingLink.publicId());
+
+        assertThatJson(awaitMessage(messages, msg -> msg.contains("bookingLinkStateChanged")))
+            .isEqualTo("{\"bookingLinkStateChanged\": true}");
+    }
+
+    @Test
+    void websocketShouldReceiveBookingLinkStateChangedUponBookingLinkUpdate(TwakeCalendarGuiceServer guiceServer) {
+        BookingLink bookingLink = guiceServer.getProbe(BookingLinkProbe.class)
+            .insert(bob.username(), bookingLinkInsertRequest(bob));
+
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        given()
+            .auth().preemptive().basic(bob.username().asString(), PASSWORD)
+            .port(restApiPort)
+            .contentType("application/json")
+            .body("""
+                { "name": "Renamed" }
+                """)
+        .when()
+            .patch("/api/booking-links/" + bookingLink.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        assertThatJson(awaitMessage(messages, msg -> msg.contains("bookingLinkStateChanged")))
+            .isEqualTo("{\"bookingLinkStateChanged\": true}");
+    }
+
+    @Test
+    void websocketShouldNotReceiveBookingLinkStateChangedOfOtherUsers(TwakeCalendarGuiceServer guiceServer) {
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        guiceServer.getProbe(BookingLinkProbe.class)
+            .insert(alice.username(), bookingLinkInsertRequest(alice));
+
+        NEGATIVE_AWAIT.untilAsserted(() -> {
+            List<String> received = new ArrayList<>();
+            messages.drainTo(received);
+
+            assertThat(received)
+                .as("Should not receive booking link notifications of other users")
+                .noneSatisfy(msg -> assertThat(msg).contains("bookingLinkStateChanged"));
+        });
     }
 
     @Test
@@ -2430,6 +2509,15 @@ class WebsocketRouteTest {
             .extract()
             .jsonPath()
             .getString("importId");
+    }
+
+    private BookingLinkInsertRequest bookingLinkInsertRequest(OpenPaaSUser user) {
+        return new BookingLinkInsertRequest(CalendarURL.from(user.id()),
+            Duration.ofMinutes(30),
+            BookingLinkInsertRequest.ACTIVE,
+            Optional.empty(),
+            Optional.of("Intro call"),
+            Optional.empty());
     }
 
     private String importIcsIntoCalendar(TwakeCalendarGuiceServer guiceServer,
