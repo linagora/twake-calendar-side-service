@@ -47,6 +47,7 @@ import org.testcontainers.shaded.com.google.common.collect.ImmutableList;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linagora.calendar.api.CalendarUtil;
+import com.linagora.calendar.dav.CalDavClient.CalendarAccess;
 import com.linagora.calendar.dav.CalDavClient.CalendarPropertiesUpdate;
 import com.linagora.calendar.dav.CalDavClient.CalendarSharingUpdate;
 import com.linagora.calendar.dav.CalDavClient.NewCalendar;
@@ -1607,6 +1608,69 @@ public class CalDavClientTest {
 
         assertThat(testee.findUserCalendars(delegate.username(), delegate.id()).collectList().block())
             .allMatch(url -> url.calendarId().equals(delegate.id()));
+    }
+
+    @Test
+    void resolveCalendarAccessShouldReturnWritableForOwnCalendar() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL calendarURL = CalendarURL.from(user.id());
+
+        assertThat(testee.resolveCalendarAccess(user.username(), calendarURL).block()).isEqualTo(CalendarAccess.WRITABLE);
+    }
+
+    @Test
+    void resolveCalendarAccessShouldReturnNotFoundForNonExistingCalendar() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL calendarURL = new CalendarURL(user.id(), new OpenPaaSId(UUID.randomUUID().toString()));
+
+        assertThat(testee.resolveCalendarAccess(user.username(), calendarURL).block()).isEqualTo(CalendarAccess.NOT_FOUND);
+    }
+
+    @Test
+    void resolveCalendarAccessShouldReturnWritableForReadWriteDelegatedCalendar() {
+        OpenPaaSUser owner = createOpenPaaSUser();
+        OpenPaaSUser delegate = createOpenPaaSUser();
+        CalendarURL delegatedCalendar = shareCalendar(owner, delegate,
+            new CalendarSharingUpdate.AddSharee("mailto:" + delegate.username().asString(),
+                Optional.empty(), Optional.of(true), Optional.empty()));
+
+        assertThat(testee.resolveCalendarAccess(delegate.username(), delegatedCalendar).block()).isEqualTo(CalendarAccess.WRITABLE);
+    }
+
+    @Test
+    void resolveCalendarAccessShouldReturnReadOnlyForReadOnlyDelegatedCalendar() {
+        OpenPaaSUser owner = createOpenPaaSUser();
+        OpenPaaSUser delegate = createOpenPaaSUser();
+        CalendarURL delegatedCalendar = shareCalendar(owner, delegate,
+            new CalendarSharingUpdate.AddSharee("mailto:" + delegate.username().asString(),
+                Optional.of(true), Optional.empty(), Optional.empty()));
+
+        assertThat(testee.resolveCalendarAccess(delegate.username(), delegatedCalendar).block()).isEqualTo(CalendarAccess.READ_ONLY);
+    }
+
+    @Test
+    void resolveCalendarAccessShouldReturnWritableForAdministrationDelegatedCalendar() {
+        OpenPaaSUser owner = createOpenPaaSUser();
+        OpenPaaSUser delegate = createOpenPaaSUser();
+        CalendarURL delegatedCalendar = shareCalendar(owner, delegate,
+            new CalendarSharingUpdate.AddSharee("mailto:" + delegate.username().asString(),
+                Optional.empty(), Optional.empty(), Optional.of(true)));
+
+        assertThat(testee.resolveCalendarAccess(delegate.username(), delegatedCalendar).block()).isEqualTo(CalendarAccess.WRITABLE);
+    }
+
+    private CalendarURL shareCalendar(OpenPaaSUser owner, OpenPaaSUser delegate, CalendarSharingUpdate.AddSharee sharee) {
+        String calendarId = UUID.randomUUID().toString();
+        testee.createNewCalendar(owner.username(), owner.id(), new NewCalendar(calendarId, "Shared calendar", "#0000FF", "")).block();
+        CalendarURL calendarURL = new CalendarURL(owner.id(), new OpenPaaSId(calendarId));
+
+        testee.updateCalendarShares(owner.username(), calendarURL,
+            new CalendarSharingUpdate(new CalendarSharingUpdate.Share(List.of(sharee), List.of()))).block();
+
+        return testee.findUserCalendars(delegate.username(), delegate.id()).collectList().block().stream()
+            .filter(url -> !url.calendarId().equals(delegate.id()))
+            .findFirst()
+            .orElseThrow();
     }
 
     @Test

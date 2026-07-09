@@ -806,6 +806,53 @@ public class CalDavClient extends DavClient {
             });
     }
 
+    /**
+     * Access level the (impersonated) user holds on a calendar, resolved in a single
+     * {@code PROPFIND} on {@code DAV:current-user-privilege-set}.
+     */
+    public enum CalendarAccess {
+        /** The calendar does not exist, or the user may not even see it. */
+        NOT_FOUND,
+        /** The calendar is visible to the user, but grants no write-like privilege. */
+        READ_ONLY,
+        /** The user holds a write-like privilege on the calendar. */
+        WRITABLE
+    }
+
+    public Mono<CalendarAccess> resolveCalendarAccess(Username user, CalendarURL calendarUrl) {
+        String uri = calendarUrl.asUri().toString();
+        String requestBody = """
+            <?xml version="1.0" encoding="utf-8" ?>
+            <d:propfind xmlns:d="DAV:">
+              <d:prop>
+                <d:current-user-privilege-set/>
+              </d:prop>
+            </d:propfind>""";
+
+        return httpClientWithImpersonation(user)
+            .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, "application/xml")
+                .add("Depth", "0"))
+            .request(HttpMethod.valueOf("PROPFIND"))
+            .uri(uri)
+            .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(requestBody.getBytes(StandardCharsets.UTF_8))))
+            .responseSingle((response, content) -> {
+                int status = response.status().code();
+                return content.asByteArray()
+                    .switchIfEmpty(Mono.just(new byte[0]))
+                    .flatMap(bytes -> switch (status) {
+                        case 207 -> Mono.fromCallable(() -> XMLUtil.hasWritePrivilege(bytes)
+                            ? CalendarAccess.WRITABLE
+                            : CalendarAccess.READ_ONLY);
+                        case HttpStatus.SC_UNAUTHORIZED, HttpStatus.SC_FORBIDDEN, HttpStatus.SC_NOT_FOUND -> Mono.just(CalendarAccess.NOT_FOUND);
+                        default -> Mono.error(new DavClientException("""
+                            Unexpected response when resolving calendar access for '%s'
+                            Status: %d
+                            Body: %s
+                            """.formatted(uri, status, new String(bytes, StandardCharsets.UTF_8))));
+                    });
+            });
+    }
+
     private Mono<SyncToken> parseSyncToken(String body, String uri) {
         return Mono.fromCallable(() -> OBJECT_MAPPER.readTree(body))
             .flatMap(jsonNode -> Mono.justOrEmpty(jsonNode.path(SYNC_TOKEN_PROPERTY).asText(null)))

@@ -34,6 +34,8 @@ import com.google.common.base.Preconditions;
 import com.linagora.calendar.api.BookedEventTokenSigner.BookedEvent;
 import com.linagora.calendar.api.booking.AvailableSlotsCalculator.AvailabilitySlot;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.CalDavClient.CalendarAccess;
+import com.linagora.calendar.restapi.ForbiddenException;
 import com.linagora.calendar.restapi.RestApiConfiguration;
 import com.linagora.calendar.restapi.routes.BookingLinkEventIcsBuilder.BuildResult;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingRequest.BookingAttendee;
@@ -73,8 +75,20 @@ public class BookingLinkReservationService {
 
     public Mono<BookedEvent> book(BookingLinkPublicId publicId, BookingRequest request) {
         return bookingLinkSlotsService.getBookingLink(publicId)
-            .flatMap(bookingLink -> validateSlotAvailability(bookingLink, request.slotStartUtc())
+            .flatMap(bookingLink -> validateCalendarWriteAccess(bookingLink)
+                .then(validateSlotAvailability(bookingLink, request.slotStartUtc()))
                 .then(createBooking(bookingLink, request)));
+    }
+
+    private Mono<Void> validateCalendarWriteAccess(BookingLink bookingLink) {
+        return calDavClient.resolveCalendarAccess(bookingLink.username(), bookingLink.calendarUrl())
+            .flatMap(access -> {
+                if (access == CalendarAccess.WRITABLE) {
+                    return Mono.empty();
+                }
+                return Mono.error(new ForbiddenException("Booking link owner no longer has write access to calendar: "
+                    + bookingLink.calendarUrl().asUri()));
+            });
     }
 
     private Mono<Void> validateSlotAvailability(BookingLink bookingLink, Instant startUtc) {

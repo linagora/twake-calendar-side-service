@@ -40,6 +40,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.restapi.ForbiddenException;
 import com.linagora.calendar.restapi.routes.dto.AvailabilityRuleDTO;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.booking.BookingLinkColorUtil;
@@ -116,12 +117,11 @@ public class BookingLinkPatchRoute extends CalendarRoute {
     }
 
     private Mono<Void> validateCalendarAccess(CalendarURL calendarURL, MailboxSession session) {
-        return calDavClient.calendarExists(session.getUser(), calendarURL)
-            .flatMap(exists -> {
-                if (exists) {
-                    return Mono.empty();
-                }
-                return Mono.error(new IllegalArgumentException("Calendar not found or access denied: " + calendarURL.asUri()));
+        return calDavClient.resolveCalendarAccess(session.getUser(), calendarURL)
+            .flatMap(access -> switch (access) {
+                case WRITABLE -> Mono.<Void>empty();
+                case READ_ONLY -> Mono.error(new ForbiddenException("User does not have write access to calendar: " + calendarURL.asUri()));
+                case NOT_FOUND -> Mono.error(new IllegalArgumentException("Calendar not found or access denied: " + calendarURL.asUri()));
             });
     }
 
