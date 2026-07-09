@@ -23,5 +23,4 @@ The table below summarizes every case where a mail is sent and to whom.
 | A booking link reservation is created (acknowledgement) | The booker | `event-booking-request-received` |
 | A booking link reservation is created (ICS proposal) | The booking link owner | `event-propose` |
 | A booking link owner confirms a reservation | The booker | `event-booking-confirmed` |
-| A booking link reservation is cancelled (acknowledgement) | The booker | `event-booking-request-cancelled` |
 | A booking link reservation is cancelled (ICS cancellation) | The booking link owner | `event-cancel` |

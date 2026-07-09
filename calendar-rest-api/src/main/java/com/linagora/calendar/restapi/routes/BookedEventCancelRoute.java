@@ -66,7 +66,6 @@ public class BookedEventCancelRoute extends PublicRoute {
     private final BookedEventTokenSigner bookedEventTokenSigner;
     private final OpenPaaSUserDAO openPaaSUserDAO;
     private final CalDavClient calDavClient;
-    private final BookingLinkCancellationAcknowledgementNotifier bookerCancellationNotifier;
     private final PublicAgendaCancellationNotifier organizerCancellationNotifier;
 
     @Inject
@@ -75,14 +74,12 @@ public class BookedEventCancelRoute extends PublicRoute {
                                   BookedEventTokenSigner bookedEventTokenSigner,
                                   OpenPaaSUserDAO openPaaSUserDAO,
                                   CalDavClient calDavClient,
-                                  BookingLinkCancellationAcknowledgementNotifier bookerCancellationNotifier,
                                   PublicAgendaCancellationNotifier organizerCancellationNotifier) {
         super(metricFactory);
         this.clock = clock;
         this.bookedEventTokenSigner = bookedEventTokenSigner;
         this.openPaaSUserDAO = openPaaSUserDAO;
         this.calDavClient = calDavClient;
-        this.bookerCancellationNotifier = bookerCancellationNotifier;
         this.organizerCancellationNotifier = organizerCancellationNotifier;
     }
 
@@ -106,16 +103,11 @@ public class BookedEventCancelRoute extends PublicRoute {
     }
 
     private Mono<Void> cancelBookedEvent(OpenPaaSUser owner, CalendarURL calendarURL, String eventId) {
-        Mono<Void> deleteEvent = calDavClient.deleteCalendarEvent(owner.username(), calendarURL, eventId);
-
+        // A missing event yields an empty Mono: there is nothing left to cancel, which keeps this route idempotent.
         return fetchCalendarEvent(owner.username(), calendarURL, eventId)
             .flatMap(davCalendarObject -> rejectIfAlreadyStarted(davCalendarObject.calendarData(), eventId)
-                .then(deleteEvent)
-                .then(notifyCancellation(owner, davCalendarObject.calendarData()))
-                .thenReturn(Boolean.TRUE))
-            // A missing event yields an empty Mono and stays a no-op delete, keeping cancellation idempotent.
-            .switchIfEmpty(deleteEvent.thenReturn(Boolean.TRUE))
-            .then();
+                .then(calDavClient.deleteCalendarEvent(owner.username(), calendarURL, eventId))
+                .then(notifyCancellation(owner, davCalendarObject.calendarData())));
     }
 
     private Mono<DavCalendarObject> fetchCalendarEvent(Username username, CalendarURL calendarURL, String eventId) {
@@ -131,29 +123,12 @@ public class BookedEventCancelRoute extends PublicRoute {
     }
 
     private Mono<Void> notifyCancellation(OpenPaaSUser owner, Calendar calendarData) {
+        // The booker is not notified here: deleting the event already emits a standard iTIP CANCEL to the attendees.
         return Mono.fromCallable(() -> BookedEventCancelled.from(owner, calendarData))
-            .flatMap(cancelled -> Mono.when(notifyBooker(cancelled), notifyOrganizer(cancelled)))
-            .onErrorResume(error -> {
-                LOGGER.warn("Failed to send booked event cancellation notifications for owner {}: {}",
-                    owner.username().asString(), error.getMessage(), error);
-                return Mono.empty();
-            });
-    }
-
-    private Mono<Void> notifyBooker(BookedEventCancelled cancelled) {
-        return bookerCancellationNotifier.notify(cancelled)
-            .onErrorResume(error -> {
-                LOGGER.warn("Failed to send booking cancellation acknowledgement to {}: {}",
-                    cancelled.bookerEmail().asString(), error.getMessage(), error);
-                return Mono.empty();
-            });
-    }
-
-    private Mono<Void> notifyOrganizer(BookedEventCancelled cancelled) {
-        return organizerCancellationNotifier.notify(cancelled)
+            .flatMap(organizerCancellationNotifier::notify)
             .onErrorResume(error -> {
                 LOGGER.warn("Failed to send booked event cancellation notification to organizer {}: {}",
-                    cancelled.organizer().username().asString(), error.getMessage(), error);
+                    owner.username().asString(), error.getMessage(), error);
                 return Mono.empty();
             });
     }

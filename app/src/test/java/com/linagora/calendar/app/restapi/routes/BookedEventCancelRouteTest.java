@@ -244,7 +244,7 @@ class BookedEventCancelRouteTest {
     }
 
     @Test
-    void cancellationShouldNotifyBookerAndOrganizer(TwakeCalendarGuiceServer server) {
+    void cancellationShouldNotifyOrganizer(TwakeCalendarGuiceServer server) {
         String jwt = bookAndGetJwt(server);
 
         // Drop the acknowledgement / proposal emails sent at booking time.
@@ -260,31 +260,22 @@ class BookedEventCancelRouteTest {
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
-        // The booker receives the friendly cancellation acknowledgement and the organizer receives an ICS
-        // cancellation. Note: deleting the event on the organizer calendar also emits a standards iTIP CANCEL
-        // to the attendee (pre-existing platform behaviour), hence we assert on the specific messages rather
-        // than an exact mail count.
+        // The organizer receives an ICS cancellation, and deleting the event on their calendar emits the standard
+        // iTIP CANCEL to the attendees, hence to the booker.
         CALMLY_AWAIT.atMost(Duration.ofSeconds(10))
             .untilAsserted(() -> {
                 JsonPath mails = smtpMails();
-                assertThat(messagesMatching(mails, "creator@example.com", "Subject: Booking request cancelled")).isNotEmpty();
+                assertThat(messagesMatching(mails, "creator@example.com", "method=CANCEL")).isNotEmpty();
                 assertThat(messagesMatching(mails, openPaaSUser.username().asString(), "method=CANCEL")).isNotEmpty();
             });
 
         JsonPath smtpMailsResponse = smtpMails();
-        String bookerMessage = messagesMatching(smtpMailsResponse, "creator@example.com", "Subject: Booking request cancelled").getFirst();
         String organizerMessage = messagesMatching(smtpMailsResponse, openPaaSUser.username().asString(), "method=CANCEL").getFirst();
 
         assertSoftly(softly -> {
-            // The booker receives a cancellation acknowledgement.
-            softly.assertThat(getHtml(bookerMessage))
-                .contains("Your booking request has been cancelled")
-                .contains("You have cancelled your booking request on")
-                .contains("The organizer was notified about the cancellation.")
-                .contains(openPaaSUser.fullName())
-                .contains(openPaaSUser.username().asString());
+            // The booker is only sent the iTIP CANCEL: no additional acknowledgement duplicates it.
+            softly.assertThat(messagesTo(smtpMailsResponse, "creator@example.com")).hasSize(1);
 
-            // The organizer receives an ICS cancellation.
             softly.assertThat(organizerMessage)
                 .contains("Subject: Event 30-min intro call from %s canceled".formatted(openPaaSUser.fullName()));
             softly.assertThat(getCancelIcs(organizerMessage))
@@ -302,22 +293,17 @@ class BookedEventCancelRouteTest {
             .jsonPath();
     }
 
-    private List<String> messagesMatching(JsonPath smtpMailsResponse, String recipient, String rawContent) {
+    private List<String> messagesTo(JsonPath smtpMailsResponse, String recipient) {
         return IntStream.range(0, smtpMailsResponse.getList("").size())
             .filter(index -> recipient.equals(smtpMailsResponse.getString("[%d].recipients[0].address".formatted(index))))
             .mapToObj(index -> smtpMailsResponse.getString("[%d].message".formatted(index)))
-            .filter(message -> message.contains(rawContent))
             .toList();
     }
 
-    private String getHtml(String message) {
-        Pattern htmlPattern = Pattern.compile(
-            "Content-Transfer-Encoding: base64\\r?\\nContent-Type: text/html; charset=UTF-8\\r?\\nContent-Language: [^\\r\\n]+\\r?\\n\\r?\\n([A-Za-z0-9+/=\\r\\n]+)\\r?\\n---=Part",
-            Pattern.DOTALL);
-        Matcher matcher = htmlPattern.matcher(message);
-        assertThat(matcher.find()).isTrue();
-        String base64Html = matcher.group(1).replaceAll("\\s+", "");
-        return new String(Base64.getDecoder().decode(base64Html), StandardCharsets.UTF_8);
+    private List<String> messagesMatching(JsonPath smtpMailsResponse, String recipient, String rawContent) {
+        return messagesTo(smtpMailsResponse, recipient).stream()
+            .filter(message -> message.contains(rawContent))
+            .toList();
     }
 
     private String getCancelIcs(String message) {
