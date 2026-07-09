@@ -141,6 +141,7 @@ class BookingLinkSlotsRouteTest {
                 {
                   "durationMinutes": 30,
                   "autoAccept": false,
+                  "color": "#6B4ECC",
                   "owner": {
                     "displayName": "%s",
                     "email": "%s"
@@ -222,6 +223,7 @@ class BookingLinkSlotsRouteTest {
                   "autoAccept": true,
                   "name": "Interview",
                   "description": "A 30 minutes interview",
+                  "color": "#6B4ECC",
                   "owner": {
                     "displayName": "%s",
                     "email": "%s"
@@ -267,6 +269,7 @@ class BookingLinkSlotsRouteTest {
                 {
                   "durationMinutes": 30,
                   "autoAccept": false,
+                  "color": "#6B4ECC",
                   "owner": {
                     "displayName": "%s",
                     "email": "%s"
@@ -315,6 +318,7 @@ class BookingLinkSlotsRouteTest {
                 {
                   "durationMinutes": 30,
                   "autoAccept": false,
+                  "color": "#6B4ECC",
                   "owner": {
                     "displayName": "%s",
                     "email": "%s"

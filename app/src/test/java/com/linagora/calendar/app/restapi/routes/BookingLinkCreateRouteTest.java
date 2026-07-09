@@ -336,6 +336,66 @@ class BookingLinkCreateRouteTest {
     }
 
     @Test
+    void shouldPersistBookingLinkWithColor() {
+        String publicId = given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "color": "#FF8800"
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED)
+            .extract().jsonPath().getString("bookingLinkPublicId");
+
+        BookingLink stored = bookingLinkProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
+
+        assertThat(stored.color()).contains("#FF8800");
+    }
+
+    @Test
+    void shouldDefaultColorToEmptyWhenNotProvided() {
+        String publicId = given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED)
+            .extract().jsonPath().getString("bookingLinkPublicId");
+
+        BookingLink stored = bookingLinkProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
+
+        assertThat(stored.color()).isEmpty();
+    }
+
+    @Test
+    void shouldReturn400WhenColorIsNotAValidHexColor() {
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "color": "purple"
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @Test
     void shouldDefaultNameAndDescriptionToEmptyWhenNotProvided() {
         String publicId = given()
             .body("""

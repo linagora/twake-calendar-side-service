@@ -42,6 +42,7 @@ import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.restapi.routes.dto.AvailabilityRuleDTO;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.booking.BookingLinkColorUtil;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.booking.BookingLinkNotFoundException;
 import com.linagora.calendar.storage.booking.BookingLinkPatchRequest;
@@ -64,6 +65,7 @@ public class BookingLinkPatchRoute extends CalendarRoute {
     private static final String FIELD_AVAILABILITY_RULES = "availabilityRules";
     private static final String FIELD_NAME = "name";
     private static final String FIELD_DESCRIPTION = "description";
+    private static final String FIELD_COLOR = "color";
 
     public record PatchDto(@JsonProperty(FIELD_CALENDAR_URL) Optional<String> calendarUrl,
                            @JsonProperty(FIELD_DURATION_MINUTES) Optional<Integer> durationMinutes,
@@ -71,7 +73,8 @@ public class BookingLinkPatchRoute extends CalendarRoute {
                            @JsonProperty(FIELD_AUTO_ACCEPT) Optional<Boolean> autoAccept,
                            @JsonProperty(FIELD_AVAILABILITY_RULES) Optional<List<AvailabilityRuleDTO>> availabilityRules,
                            @JsonProperty(FIELD_NAME) Optional<String> name,
-                           @JsonProperty(FIELD_DESCRIPTION) Optional<String> description) {
+                           @JsonProperty(FIELD_DESCRIPTION) Optional<String> description,
+                           @JsonProperty(FIELD_COLOR) Optional<String> color) {
     }
 
     private final BookingLinkDAO bookingLinkDAO;
@@ -133,7 +136,8 @@ public class BookingLinkPatchRoute extends CalendarRoute {
                 parseAutoAccept(node, dto),
                 parseAvailabilityRules(node, dto, defaultTimeZone),
                 parseName(node, dto),
-                parseDescription(node, dto));
+                parseDescription(node, dto),
+                parseColor(node, dto));
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
@@ -215,6 +219,15 @@ public class BookingLinkPatchRoute extends CalendarRoute {
             return ValuePatch.keep();
         }
         return dto.description().map(String::trim).filter(description -> !description.isEmpty())
+            .map(ValuePatch::modifyTo)
+            .orElseGet(ValuePatch::remove);
+    }
+
+    private ValuePatch<String> parseColor(JsonNode node, PatchDto dto) {
+        if (!node.has(FIELD_COLOR)) {
+            return ValuePatch.keep();
+        }
+        return BookingLinkColorUtil.sanitize(dto.color())
             .map(ValuePatch::modifyTo)
             .orElseGet(ValuePatch::remove);
     }

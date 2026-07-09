@@ -57,6 +57,7 @@ import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.booking.BookingLink;
+import com.linagora.calendar.storage.booking.BookingLinkColorUtil;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.booking.BookingLinkNotFoundException;
@@ -102,6 +103,7 @@ public class BookingLinkUserRoutes implements Routes {
     private static final String FIELD_AVAILABILITY_RULES = "availabilityRules";
     private static final String FIELD_NAME = "name";
     private static final String FIELD_DESCRIPTION = "description";
+    private static final String FIELD_COLOR = "color";
     private static final String FIELD_PUBLIC_ID = "bookingLinkPublicId";
     private static final ZoneId DEFAULT_ZONE = ZoneId.of("UTC");
 
@@ -285,7 +287,8 @@ public class BookingLinkUserRoutes implements Routes {
                 parseAutoAccept(node, dto),
                 parseAvailabilityRules(node, dto),
                 parseName(node, dto),
-                parseDescription(node, dto));
+                parseDescription(node, dto),
+                parseColor(node, dto));
         } catch (IllegalArgumentException e) {
             throw badRequest(e.getMessage(), e);
         } catch (Exception e) {
@@ -358,6 +361,15 @@ public class BookingLinkUserRoutes implements Routes {
             return ValuePatch.keep();
         }
         return dto.description().map(String::trim).filter(description -> !description.isEmpty())
+            .map(ValuePatch::modifyTo)
+            .orElseGet(ValuePatch::remove);
+    }
+
+    private ValuePatch<String> parseColor(JsonNode node, PatchDto dto) {
+        if (!node.has(FIELD_COLOR)) {
+            return ValuePatch.keep();
+        }
+        return BookingLinkColorUtil.sanitize(dto.color())
             .map(ValuePatch::modifyTo)
             .orElseGet(ValuePatch::remove);
     }

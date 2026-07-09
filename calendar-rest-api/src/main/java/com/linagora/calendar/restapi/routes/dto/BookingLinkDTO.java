@@ -33,7 +33,8 @@ public record BookingLinkDTO(@JsonProperty("publicId") String publicId,
                              @JsonProperty("autoAccept") boolean autoAccept,
                              @JsonProperty("availabilityRules") Optional<List<AvailabilityRuleDTO>> availabilityRules,
                              @JsonProperty("name") Optional<String> name,
-                             @JsonProperty("description") Optional<String> description) {
+                             @JsonProperty("description") Optional<String> description,
+                             @JsonProperty("color") String color) {
 
     public static BookingLinkDTO from(BookingLink bookingLink) {
         Optional<List<AvailabilityRuleDTO>> ruleDTOs = bookingLink.availabilityRules()
@@ -49,6 +50,7 @@ public record BookingLinkDTO(@JsonProperty("publicId") String publicId,
             bookingLink.autoAccept(),
             ruleDTOs,
             bookingLink.name(),
-            bookingLink.description());
+            bookingLink.description(),
+            bookingLink.colorOrDefault());
     }
 }

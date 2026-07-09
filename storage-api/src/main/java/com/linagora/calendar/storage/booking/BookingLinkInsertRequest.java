@@ -31,7 +31,8 @@ public record BookingLinkInsertRequest(CalendarURL calendarUrl,
                                        boolean autoAccept,
                                        Optional<AvailabilityRules> availabilityRules,
                                        Optional<String> name,
-                                       Optional<String> description) {
+                                       Optional<String> description,
+                                       Optional<String> color) {
     public static final boolean ACTIVE = true;
     public static final boolean AUTO_ACCEPT = false;
 
@@ -42,6 +43,17 @@ public record BookingLinkInsertRequest(CalendarURL calendarUrl,
         Preconditions.checkNotNull(availabilityRules, "'availabilityRules' must not be null");
         Preconditions.checkNotNull(name, "'name' must not be null");
         Preconditions.checkNotNull(description, "'description' must not be null");
+        Preconditions.checkNotNull(color, "'color' must not be null");
+    }
+
+    public BookingLinkInsertRequest(CalendarURL calendarUrl,
+                                    Duration eventDuration,
+                                    boolean active,
+                                    boolean autoAccept,
+                                    Optional<AvailabilityRules> availabilityRules,
+                                    Optional<String> name,
+                                    Optional<String> description) {
+        this(calendarUrl, eventDuration, active, autoAccept, availabilityRules, name, description, Optional.empty());
     }
 
     public BookingLinkInsertRequest(CalendarURL calendarUrl,
