@@ -146,19 +146,11 @@ public class BookingLinkCreateRoute extends CalendarRoute {
     }
 
     private Mono<Void> validateCalendarAccess(CalendarURL calendarURL, MailboxSession session) {
-        return calDavClient.calendarExists(session.getUser(), calendarURL)
-            .flatMap(exists -> {
-                if (exists) {
-                    return Mono.empty();
-                }
-                return Mono.error(new IllegalArgumentException("Calendar not found or access denied: " + calendarURL.asUri()));
-            })
-            .then(calDavClient.hasWriteAccess(session.getUser(), calendarURL))
-            .flatMap(hasWriteAccess -> {
-                if (hasWriteAccess) {
-                    return Mono.empty();
-                }
-                return Mono.error(new ForbiddenException("User does not have write access to calendar: " + calendarURL.asUri()));
+        return calDavClient.resolveCalendarAccess(session.getUser(), calendarURL)
+            .flatMap(access -> switch (access) {
+                case WRITABLE -> Mono.<Void>empty();
+                case READ_ONLY -> Mono.error(new ForbiddenException("User does not have write access to calendar: " + calendarURL.asUri()));
+                case NOT_FOUND -> Mono.error(new IllegalArgumentException("Calendar not found or access denied: " + calendarURL.asUri()));
             });
     }
 

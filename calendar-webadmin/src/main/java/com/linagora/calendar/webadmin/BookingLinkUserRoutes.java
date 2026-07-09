@@ -363,19 +363,11 @@ public class BookingLinkUserRoutes implements Routes {
     }
 
     private Mono<Void> validateCalendarAccess(Username username, CalendarURL calendarURL) {
-        return calDavClient.calendarExists(username, calendarURL)
-            .flatMap(exists -> {
-                if (exists) {
-                    return Mono.empty();
-                }
-                return Mono.error(badRequest("Calendar not found or access denied: " + calendarURL.asUri(), null));
-            })
-            .then(calDavClient.hasWriteAccess(username, calendarURL))
-            .flatMap(hasWriteAccess -> {
-                if (hasWriteAccess) {
-                    return Mono.empty();
-                }
-                return Mono.error(forbidden("User does not have write access to calendar: " + calendarURL.asUri()));
+        return calDavClient.resolveCalendarAccess(username, calendarURL)
+            .flatMap(access -> switch (access) {
+                case WRITABLE -> Mono.<Void>empty();
+                case READ_ONLY -> Mono.error(forbidden("User does not have write access to calendar: " + calendarURL.asUri()));
+                case NOT_FOUND -> Mono.error(badRequest("Calendar not found or access denied: " + calendarURL.asUri(), null));
             });
     }
 

@@ -296,6 +296,26 @@ public class BookingLinkUserRoutesTest {
             .statusCode(201);
     }
 
+    @Test
+    void createShouldReturn201WhenCalendarIsAdministrationDelegated() {
+        CalendarURL ownerCalendar = CalendarURL.from(otherUser.id());
+        davTestHelper.grantDelegation(otherUser, ownerCalendar, user, "dav:administration");
+        CalendarURL delegatedCalendar = findMirrorCalendar(user);
+
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true
+                }
+                """.formatted(delegatedCalendar.asUri().toString()))
+        .when()
+            .post("/users/{username}/booking-links", user.username().asString())
+        .then()
+            .statusCode(201);
+    }
+
     private CalendarURL findMirrorCalendar(OpenPaaSUser user) {
         return Fixture.awaitAtMost.until(() -> calDavClient.findUserCalendarList(user)
             .map(response -> response.calendars()

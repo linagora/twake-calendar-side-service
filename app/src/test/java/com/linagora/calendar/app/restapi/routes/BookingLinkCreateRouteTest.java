@@ -832,4 +832,28 @@ class BookingLinkCreateRouteTest {
 
         assertThat(bookingLinkProbe.listBookingLinks(delegate.username())).hasSize(1);
     }
+
+    @Test
+    void shouldReturn201WhenCalendarIsAdministrationDelegated() {
+        OpenPaaSUser delegate = newProvisionedUser();
+        CalendarURL ownerCalendar = CalendarURL.from(openPaaSUser.id());
+        davTestHelper.grantDelegation(openPaaSUser, ownerCalendar, delegate, "dav:administration");
+        CalendarURL delegatedCalendar = findMirrorCalendar(delegate);
+
+        given()
+            .auth().preemptive().basic(delegate.username().asString(), PASSWORD)
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true
+                }
+                """.formatted(delegatedCalendar.asUri().toString()))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED);
+
+        assertThat(bookingLinkProbe.listBookingLinks(delegate.username())).hasSize(1);
+    }
 }

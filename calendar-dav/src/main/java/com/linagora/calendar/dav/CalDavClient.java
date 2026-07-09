@@ -806,7 +806,20 @@ public class CalDavClient extends DavClient {
             });
     }
 
-    public Mono<Boolean> hasWriteAccess(Username user, CalendarURL calendarUrl) {
+    /**
+     * Access level the (impersonated) user holds on a calendar, resolved in a single
+     * {@code PROPFIND} on {@code DAV:current-user-privilege-set}.
+     */
+    public enum CalendarAccess {
+        /** The calendar does not exist, or the user may not even see it. */
+        NOT_FOUND,
+        /** The calendar is visible to the user, but grants no write-like privilege. */
+        READ_ONLY,
+        /** The user holds a write-like privilege on the calendar. */
+        WRITABLE
+    }
+
+    public Mono<CalendarAccess> resolveCalendarAccess(Username user, CalendarURL calendarUrl) {
         String uri = calendarUrl.asUri().toString();
         String requestBody = """
             <?xml version="1.0" encoding="utf-8" ?>
@@ -827,10 +840,12 @@ public class CalDavClient extends DavClient {
                 return content.asByteArray()
                     .switchIfEmpty(Mono.just(new byte[0]))
                     .flatMap(bytes -> switch (status) {
-                        case 207 -> Mono.fromCallable(() -> XMLUtil.hasWritePrivilege(bytes));
-                        case HttpStatus.SC_UNAUTHORIZED, HttpStatus.SC_FORBIDDEN, HttpStatus.SC_NOT_FOUND -> Mono.just(false);
+                        case 207 -> Mono.fromCallable(() -> XMLUtil.hasWritePrivilege(bytes)
+                            ? CalendarAccess.WRITABLE
+                            : CalendarAccess.READ_ONLY);
+                        case HttpStatus.SC_UNAUTHORIZED, HttpStatus.SC_FORBIDDEN, HttpStatus.SC_NOT_FOUND -> Mono.just(CalendarAccess.NOT_FOUND);
                         default -> Mono.error(new DavClientException("""
-                            Unexpected response when checking write access for '%s'
+                            Unexpected response when resolving calendar access for '%s'
                             Status: %d
                             Body: %s
                             """.formatted(uri, status, new String(bytes, StandardCharsets.UTF_8))));

@@ -34,6 +34,7 @@ import com.google.common.base.Preconditions;
 import com.linagora.calendar.api.BookedEventTokenSigner.BookedEvent;
 import com.linagora.calendar.api.booking.AvailableSlotsCalculator.AvailabilitySlot;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.CalDavClient.CalendarAccess;
 import com.linagora.calendar.restapi.ForbiddenException;
 import com.linagora.calendar.restapi.RestApiConfiguration;
 import com.linagora.calendar.restapi.routes.BookingLinkEventIcsBuilder.BuildResult;
@@ -80,9 +81,9 @@ public class BookingLinkReservationService {
     }
 
     private Mono<Void> validateCalendarWriteAccess(BookingLink bookingLink) {
-        return calDavClient.hasWriteAccess(bookingLink.username(), bookingLink.calendarUrl())
-            .flatMap(hasWriteAccess -> {
-                if (hasWriteAccess) {
+        return calDavClient.resolveCalendarAccess(bookingLink.username(), bookingLink.calendarUrl())
+            .flatMap(access -> {
+                if (access == CalendarAccess.WRITABLE) {
                     return Mono.empty();
                 }
                 return Mono.error(new ForbiddenException("Booking link owner no longer has write access to calendar: "
