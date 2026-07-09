@@ -238,5 +238,17 @@ public class OpensearchCalendarSearchServiceTest implements CalendarSearchServic
 
         assertThatCode(() -> Flux.merge(reindexing, deleting).blockLast())
             .doesNotThrowAnyException();
+
+        // Whether the event survives the race depends on which operation ran last, so delete it once more now
+        // that no writer competes, and check the document is effectively gone.
+        testee().delete(event.calendarURL(), event.uid()).block();
+
+        EventSearchQuery query = simpleQuery("concurrent", event.calendarURL());
+        CALMLY_AWAIT.untilAsserted(() -> {
+            List<EventFields> searchResults = testee().search(query)
+                .collectList().block();
+
+            assertThat(searchResults).hasSize(0);
+        });
     }
 }
