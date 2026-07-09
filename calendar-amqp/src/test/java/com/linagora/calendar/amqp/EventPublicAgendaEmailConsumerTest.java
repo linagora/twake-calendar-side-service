@@ -294,6 +294,8 @@ public class EventPublicAgendaEmailConsumerTest {
             .contains("Content-Type: application/ics")
             .contains("filename=\"meeting.ics\"")
             .doesNotContain("Public agenda event notification.");
+        assertThat(extractDecodedPart(message, "text/calendar; charset=UTF-8; method=REQUEST"))
+            .contains("METHOD:REQUEST");
         assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo(organizer.username().asString());
         assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(attendee.username().asString());
     }

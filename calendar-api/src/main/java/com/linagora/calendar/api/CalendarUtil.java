@@ -38,9 +38,11 @@ import net.fortuna.ical4j.data.ContentHandlerContext;
 import net.fortuna.ical4j.data.ParserException;
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.TimeZoneRegistry;
 import net.fortuna.ical4j.model.TimeZoneRegistryImpl;
 import net.fortuna.ical4j.model.component.VEvent;
+import net.fortuna.ical4j.model.property.Method;
 import net.fortuna.ical4j.util.CompatibilityHints;
 import net.fortuna.ical4j.util.MapTimeZoneCache;
 
@@ -91,6 +93,20 @@ public class CalendarUtil {
         } catch (ParserException e) {
             throw new RuntimeException("Error while parsing ICal object", e);
         }
+    }
+
+    /**
+     * Returns a copy of the given calendar carrying the supplied iTIP METHOD.
+     *
+     * <p>Calendar objects stored on the CalDAV server must not carry a METHOD property, thus it needs to be
+     * added back when the very same calendar is turned into an iTIP message (eg a {@code text/calendar} MIME part).
+     * Mail clients rely on it to display the event invitation widget.
+     */
+    public static Calendar withMethod(Calendar calendar, Method method) {
+        Calendar copiedCalendar = calendar.copy();
+        copiedCalendar.removeAll(Property.METHOD);
+        copiedCalendar.add(method);
+        return copiedCalendar;
     }
 
     public static Calendar withSingleVEvent(Calendar template, VEvent vevent) {

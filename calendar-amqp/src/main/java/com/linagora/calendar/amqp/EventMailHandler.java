@@ -21,6 +21,7 @@ package com.linagora.calendar.amqp;
 import static com.linagora.calendar.amqp.EventFieldConverter.extractCalendarURL;
 import static com.linagora.calendar.smtp.template.MimeAttachment.ATTACHMENT_DISPOSITION_TYPE;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -50,6 +51,7 @@ import com.linagora.calendar.amqp.model.CalendarEventInviteNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventReplyNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventUpdateNotificationEmail;
+import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.api.EventParticipationActionLinkFactory;
 import com.linagora.calendar.api.EventParticipationActionLinkFactory.ActionLinks;
 import com.linagora.calendar.smtp.Mail;
@@ -69,6 +71,7 @@ import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.model.ResourceId;
 
+import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.property.Method;
 import net.fortuna.ical4j.model.property.Uid;
 import net.fortuna.ical4j.model.property.immutable.ImmutableMethod;
@@ -127,7 +130,8 @@ public class EventMailHandler {
     interface EventMessageGenerator {
         Mono<Message> generate(ResolvedSettings resolvedSettings);
 
-        static List<MimeAttachment> createAttachments(byte[] calendarAsBytes, Method method) {
+        static List<MimeAttachment> createAttachments(Calendar calendar, Method method) {
+            byte[] calendarAsBytes = CalendarUtil.withMethod(calendar, method).toString().getBytes(StandardCharsets.UTF_8);
             return List.of(
                 MimeAttachment.builder()
                     .contentType(ContentType.of("text/calendar; charset=UTF-8; method=" + method.getValue()))
@@ -177,8 +181,7 @@ public class EventMailHandler {
         }
 
         private Mono<Message> generateInvitationMessage(ResolvedSettings resolvedSettings, MessageGenerator messageGenerator) {
-            byte[] calendarAsBytes = event.base().eventAsBytes();
-            List<MimeAttachment> attachments = EventMessageGenerator.createAttachments(calendarAsBytes, ImmutableMethod.REQUEST);
+            List<MimeAttachment> attachments = EventMessageGenerator.createAttachments(event.base().event(), ImmutableMethod.REQUEST);
             MailAddress fromAddress = event.base().senderEmail();
 
             return EventMessageGenerator.generateActionLinks(participationActionLinkFactory, event.base())
@@ -207,8 +210,7 @@ public class EventMailHandler {
         }
 
         private Mono<Message> generateUpdateMessage(ResolvedSettings resolvedSettings, MessageGenerator messageGenerator) {
-            byte[] calendarAsBytes = event.base().eventAsBytes();
-            List<MimeAttachment> attachments = EventMessageGenerator.createAttachments(calendarAsBytes, ImmutableMethod.REQUEST);
+            List<MimeAttachment> attachments = EventMessageGenerator.createAttachments(event.base().event(), ImmutableMethod.REQUEST);
 
             MailAddress fromAddress = event.base().senderEmail();
 
@@ -238,8 +240,7 @@ public class EventMailHandler {
         }
 
         private Mono<Message> generateCancelMessage(ResolvedSettings resolvedSettings, MessageGenerator messageGenerator) {
-            byte[] calendarAsBytes = event.base().eventAsBytes();
-            List<MimeAttachment> attachments = EventMessageGenerator.createAttachments(calendarAsBytes, ImmutableMethod.CANCEL);
+            List<MimeAttachment> attachments = EventMessageGenerator.createAttachments(event.base().event(), ImmutableMethod.CANCEL);
 
             MailAddress fromAddress = event.base().senderEmail();
             return messageGenerator.generate(recipientUser, fromAddress,
@@ -277,7 +278,7 @@ public class EventMailHandler {
                 .translator(messageGenerator.getI18nTranslator())
                 .eventInCalendarLink(eventInCalendarLinkFactory);
 
-            List<MimeAttachment> attachments = EventMessageGenerator.createAttachments(event.base().eventAsBytes(), ImmutableMethod.REPLY);
+            List<MimeAttachment> attachments = EventMessageGenerator.createAttachments(event.base().event(), ImmutableMethod.REPLY);
 
             MailAddress fromAddress = event.base().senderEmail();
 
@@ -319,8 +320,7 @@ public class EventMailHandler {
                 .eventInCalendarLink(eventInCalendarLinkFactory)
                 .buildAsMap();
 
-            byte[] calendarAsBytes = event.base().eventAsBytes();
-            List<MimeAttachment> attachments = EventMessageGenerator.createAttachments(calendarAsBytes, ImmutableMethod.COUNTER);
+            List<MimeAttachment> attachments = EventMessageGenerator.createAttachments(event.base().event(), ImmutableMethod.COUNTER);
 
             MailAddress fromAddress = event.base().senderEmail();
             return messageGenerator.generate(recipientUser, fromAddress, model, attachments);
@@ -346,8 +346,7 @@ public class EventMailHandler {
         }
 
         private Mono<Message> generateBookingConfirmedMessage(ResolvedSettings resolvedSettings, MessageGenerator messageGenerator) {
-            byte[] calendarAsBytes = event.base().eventAsBytes();
-            List<MimeAttachment> attachments = EventMessageGenerator.createAttachments(calendarAsBytes, ImmutableMethod.REQUEST);
+            List<MimeAttachment> attachments = EventMessageGenerator.createAttachments(event.base().event(), ImmutableMethod.REQUEST);
             MailAddress fromAddress = event.base().senderEmail();
 
             return Mono.fromCallable(() -> toBookingConfirmedPugModel(resolvedSettings, messageGenerator))
