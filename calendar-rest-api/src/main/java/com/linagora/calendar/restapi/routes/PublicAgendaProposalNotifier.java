@@ -117,14 +117,15 @@ public class PublicAgendaProposalNotifier {
                                           BookingCreated bookingCreated,
                                           ActionLinks actionLinks,
                                           MessageGenerator messageGenerator) {
+        byte[] invitationIcs = bookingCreated.eventIcsResult().icsBytes(ImmutableMethod.REQUEST);
         List<MimeAttachment> attachments = List.of(
             MimeAttachment.builder()
                 .contentType(ContentType.of(CALENDAR_CONTENT_TYPE_PREFIX + ImmutableMethod.REQUEST.getValue()))
-                .content(bookingCreated.eventIcsResult().icsBytes())
+                .content(invitationIcs)
                 .build(),
             MimeAttachment.builder()
                 .contentType(ContentType.of(ICS_CONTENT_TYPE))
-                .content(bookingCreated.eventIcsResult().icsBytes())
+                .content(invitationIcs)
                 .dispositionType(ATTACHMENT_DISPOSITION_TYPE)
                 .fileName(ICS_FILENAME)
                 .build());

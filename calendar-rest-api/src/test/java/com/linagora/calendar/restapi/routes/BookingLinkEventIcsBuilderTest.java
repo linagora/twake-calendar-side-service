@@ -39,6 +39,7 @@ import com.linagora.calendar.restapi.routes.BookingLinkReservationService.Bookin
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 
 import net.fortuna.ical4j.model.property.Uid;
+import net.fortuna.ical4j.model.property.immutable.ImmutableMethod;
 import net.fortuna.ical4j.util.UidGenerator;
 
 public class BookingLinkEventIcsBuilderTest {
@@ -263,4 +264,33 @@ public class BookingLinkEventIcsBuilderTest {
             .contains("ATTENDEE;RSVP=TRUE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED;CN=Alice Owner:mailto:owner@example.com");
     }
 
+    @Test
+    void icsBytesShouldNotCarryAMethodByDefault() {
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+
+        BuildResult result = testee.build(bookingRequest(), OWNER, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID);
+
+        assertThat(new String(result.icsBytes(), StandardCharsets.UTF_8))
+            .doesNotContain("METHOD:");
+    }
+
+    @Test
+    void icsBytesShouldCarrySuppliedMethod() {
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+
+        BuildResult result = testee.build(bookingRequest(), OWNER, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID);
+
+        assertThat(new String(result.icsBytes(ImmutableMethod.REQUEST), StandardCharsets.UTF_8))
+            .contains("METHOD:REQUEST");
+    }
+
+    private BookingRequest bookingRequest() {
+        return new BookingRequest(
+            Instant.parse("2036-01-26T09:30:00Z"),
+            BookingAttendee.from("BOB", "creator@example.com"),
+            List.of(),
+            "eventTitle",
+            false,
+            null);
+    }
 }

@@ -366,6 +366,34 @@ class BookingLinkReservationRouteTest {
     }
 
     @Test
+    void proposalEmailShouldCarryARequestIcs(TwakeCalendarGuiceServer server) {
+        BookingLink inserted = insertActiveBookingLink(server);
+        String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();
+
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body("""
+                {
+                  "startUtc": "%s",
+                  "creator": {
+                    "name": "BOB",
+                    "email": "creator@example.com"
+                  },
+                  "eventTitle": "30-min intro call"
+                }
+                """.formatted(slotStartUtc))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED);
+
+        String message = messageForRecipient(awaitBookingEmails(), openPaaSUser.username().asString());
+
+        assertThat(getIcs(message))
+            .contains("METHOD:REQUEST");
+    }
+
+    @Test
     void shouldSendAcknowledgementEmailToBookerWhenBookingCreated(TwakeCalendarGuiceServer server) {
         // Given: an active booking link with a description and an available slot.
         BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(
@@ -1399,6 +1427,16 @@ class BookingLinkReservationRouteTest {
         assertThat(matcher.find()).isTrue();
         String base64Html = matcher.group(1).replaceAll("\\s+", "");
         return new String(Base64.getDecoder().decode(base64Html), StandardCharsets.UTF_8);
+    }
+
+    private String getIcs(String message) {
+        Pattern icsPattern = Pattern.compile(
+            "Content-Type: text/calendar[^\\r\\n]*\\r?\\n(?:[^\\r\\n]+\\r?\\n)*\\r?\\n([A-Za-z0-9+/=\\r\\n]+?)\\r?\\n---=Part",
+            Pattern.DOTALL);
+        Matcher matcher = icsPattern.matcher(message);
+        assertThat(matcher.find()).isTrue();
+        String base64Ics = matcher.group(1).replaceAll("\\s+", "");
+        return new String(Base64.getDecoder().decode(base64Ics), StandardCharsets.UTF_8);
     }
 
     private List<String> extractParticipationActionLinks(String html) {

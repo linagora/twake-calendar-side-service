@@ -33,9 +33,9 @@ import com.linagora.calendar.storage.event.EventParseUtils;
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.component.VEvent;
-import net.fortuna.ical4j.model.property.Method;
 import net.fortuna.ical4j.model.property.Sequence;
 import net.fortuna.ical4j.model.property.Status;
+import net.fortuna.ical4j.model.property.immutable.ImmutableMethod;
 
 /**
  * Parsed view of a booked event that has just been cancelled by its booker.
@@ -84,9 +84,8 @@ public record BookedEventCancelled(OpenPaaSUser organizer,
         cancelledEvent.removeAll(Property.STATUS);
         cancelledEvent.add(new Status(Status.VALUE_CANCELLED));
 
-        Calendar cancelCalendar = CalendarUtil.withSingleVEvent(calendarData, cancelledEvent);
-        cancelCalendar.removeAll(Property.METHOD);
-        cancelCalendar.add(new Method(Method.VALUE_CANCEL));
+        Calendar cancelCalendar = CalendarUtil.withMethod(CalendarUtil.withSingleVEvent(calendarData, cancelledEvent),
+            ImmutableMethod.CANCEL);
 
         return cancelCalendar.toString().getBytes(StandardCharsets.UTF_8);
     }

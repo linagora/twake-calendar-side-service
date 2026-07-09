@@ -20,7 +20,6 @@ package com.linagora.calendar.amqp.model;
 
 import static com.linagora.calendar.storage.event.EventParseUtils.DuplicateAttendeePolicy.KEEP_FIRST;
 
-import java.nio.charset.StandardCharsets;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.List;
@@ -102,10 +101,6 @@ public record CalendarEventNotificationEmail(MailAddress senderEmail,
         return people.stream()
             .collect(ImmutableMap.toImmutableMap(person -> person.email().asString(),
                 this::toPugModel));
-    }
-
-    public byte[] eventAsBytes() {
-        return event().toString().getBytes(StandardCharsets.UTF_8);
     }
 
     public VEvent getFirstVEvent() {
