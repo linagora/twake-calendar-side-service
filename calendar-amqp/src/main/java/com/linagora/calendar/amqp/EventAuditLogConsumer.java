@@ -252,9 +252,13 @@ public class EventAuditLogConsumer implements Closeable, Startable {
     public static Optional<String> extractConnectedUser(String body) {
         try {
             JsonNode root = MAPPER.readTree(body);
-            return Optional.ofNullable(root.path("connectedUser").asText(null))
+            if (!root.has("connectedUser")) {
+                return Optional.empty();
+            }
+            return Optional.ofNullable(root.get("connectedUser").asText(null))
                 .filter(user -> !user.isBlank());
         } catch (Exception e) {
+            LOGGER.error("Error when extracting connectedUser from audit log event", e);
             return Optional.empty();
         }
     }
