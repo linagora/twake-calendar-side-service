@@ -73,6 +73,85 @@ class EventAuditLogConsumerTest {
             .contains("explicit-owner");
     }
 
+    @Test
+    void extractConnectedUserShouldReturnPrincipalWhenFieldIsPresent() {
+        String amqpMessage = """
+            {
+              "eventPath": "/calendars/base1/calendar1/3423434.ics",
+              "connectedUser": "principals/users/64b111111111111111111111"
+            }
+            """;
+
+        assertThat(EventAuditLogConsumer.extractConnectedUser(amqpMessage))
+            .contains("principals/users/64b111111111111111111111");
+    }
+
+    @Test
+    void extractConnectedUserShouldReturnDelegatePrincipalWhenActingOnAnotherOwnerCalendar() {
+        String amqpMessage = """
+            {
+              "eventPath": "/calendars/owner/calendar1/3423434.ics",
+              "connectedUser": "principals/users/delegate"
+            }
+            """;
+
+        assertThat(EventAuditLogConsumer.extractConnectedUser(amqpMessage))
+            .contains("principals/users/delegate");
+        assertThat(EventAuditLogConsumer.extractOwner(amqpMessage))
+            .contains("owner");
+    }
+
+    @Test
+    void extractConnectedUserShouldBeEmptyWhenFieldIsAbsent() {
+        assertThat(EventAuditLogConsumer.extractConnectedUser(CALENDAR_EVENT_NOTIFICATION))
+            .isEmpty();
+    }
+
+    @Test
+    void extractConnectedUserShouldBeEmptyWhenFieldIsNull() {
+        String amqpMessage = """
+            {
+              "eventPath": "/calendars/base1/calendar1/3423434.ics",
+              "connectedUser": null
+            }
+            """;
+
+        assertThat(EventAuditLogConsumer.extractConnectedUser(amqpMessage))
+            .isEmpty();
+    }
+
+    @Test
+    void extractConnectedUserShouldBeEmptyWhenFieldIsBlank() {
+        String amqpMessage = """
+            {
+              "eventPath": "/calendars/base1/calendar1/3423434.ics",
+              "connectedUser": ""
+            }
+            """;
+
+        assertThat(EventAuditLogConsumer.extractConnectedUser(amqpMessage))
+            .isEmpty();
+    }
+
+    @Test
+    void extractConnectedUserShouldBeEmptyWhenPayloadIsNotJson() {
+        assertThat(EventAuditLogConsumer.extractConnectedUser("not json"))
+            .isEmpty();
+    }
+
+    @Test
+    void formatMessageShouldNotBeImpactedByConnectedUser() {
+        String amqpMessage = """
+            {
+              "eventPath": "/calendars/base1/calendar1/3423434.ics",
+              "connectedUser": "principals/users/delegate"
+            }
+            """;
+
+        assertThat(EventAuditLogConsumer.formatMessage(amqpMessage, "calendar:event:updated"))
+            .isEqualTo("Calendar event updated [/calendars/base1/calendar1/3423434.ics]");
+    }
+
     private static Stream<EventAmqpMessageSample> eventAmqpMessageSamplesFromExistingConsumerTests() {
         // Only use AMQP payload literals already present in focused consumer/message tests.
         return Stream.of(
