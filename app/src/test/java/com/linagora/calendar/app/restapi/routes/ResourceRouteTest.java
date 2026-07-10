@@ -68,6 +68,9 @@ import net.javacrumbs.jsonunit.core.Option;
 
 public class ResourceRouteTest {
     private static final String DEFAULT_USER_PASSWORD = "secret";
+    private static final String ADMIN = "admin@linagora.com";
+    private static final String ADMIN_PASSWORD = "secret";
+    private static final String LEGACY_RESOURCE_PATH = "/linagora.esn.resource/api/resources/%s";
 
     @RegisterExtension
     @Order(1)
@@ -250,6 +253,45 @@ public class ResourceRouteTest {
             .get(String.format("/api/resources/%s", resource.id().value()))
         .then()
             .statusCode(404);
+    }
+
+    @Test
+    void shouldReturn404WhenAccessingResourceFromAnotherDomainOnLegacyEndpoint(TwakeCalendarGuiceServer server) {
+        Domain otherDomain = Domain.of("domain999.tld");
+        Username otherDomainUser = Username.fromLocalPartWithDomain(UUID.randomUUID().toString(), otherDomain);
+        server.getProbe(CalendarDataProbe.class)
+            .addDomain(otherDomain)
+            .addUserToRepository(otherDomainUser, DEFAULT_USER_PASSWORD);
+
+        given(buildRequestSpec(otherDomainUser.asString(), DEFAULT_USER_PASSWORD, restApiPort))
+            .when()
+            .get(String.format(LEGACY_RESOURCE_PATH, resource.id().value()))
+        .then()
+            .statusCode(404);
+    }
+
+    @Test
+    void adminShouldAccessResourceFromAnotherDomain() {
+        given(buildRequestSpec(ADMIN, ADMIN_PASSWORD, restApiPort))
+            .when()
+            .get(String.format("/api/resources/%s", resource.id().value()))
+        .then()
+            .statusCode(200)
+            .contentType(JSON)
+            .body("_id", equalTo(resource.id().value()))
+            .body("name", equalTo(resource.name()));
+    }
+
+    @Test
+    void adminShouldAccessResourceFromAnotherDomainOnLegacyEndpoint() {
+        given(buildRequestSpec(ADMIN, ADMIN_PASSWORD, restApiPort))
+            .when()
+            .get(String.format(LEGACY_RESOURCE_PATH, resource.id().value()))
+        .then()
+            .statusCode(200)
+            .contentType(JSON)
+            .body("_id", equalTo(resource.id().value()))
+            .body("name", equalTo(resource.name()));
     }
 
     @Test

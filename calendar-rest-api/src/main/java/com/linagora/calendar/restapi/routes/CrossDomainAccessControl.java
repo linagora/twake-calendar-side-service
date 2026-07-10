@@ -18,40 +18,34 @@
 
 package com.linagora.calendar.restapi.routes;
 
-import java.util.stream.Stream;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 
-import org.apache.james.jmap.Endpoint;
-import org.apache.james.jmap.JMAPRoute;
-import org.apache.james.jmap.JMAPRoutes;
-import org.apache.james.jmap.http.Authenticator;
+import org.apache.james.core.Domain;
+import org.apache.james.core.Username;
 import org.apache.james.mailbox.MailboxSession;
-import org.apache.james.metrics.api.MetricFactory;
 
-import reactor.core.publisher.Mono;
-import reactor.netty.http.server.HttpServerRequest;
-import reactor.netty.http.server.HttpServerResponse;
+import com.linagora.calendar.restapi.RestApiConfiguration;
 
-public abstract class CalendarRoute implements JMAPRoutes {
+@Singleton
+public class CrossDomainAccessControl {
+    private final Username adminUsername;
 
-    abstract Endpoint endpoint();
-
-    abstract Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response, MailboxSession session);
-
-    private final Authenticator authenticator;
-    private final MetricFactory metricFactory;
-
-    protected CalendarRoute(Authenticator authenticator, MetricFactory metricFactory) {
-        this.authenticator = authenticator;
-        this.metricFactory = metricFactory;
+    @Inject
+    public CrossDomainAccessControl(RestApiConfiguration configuration) {
+        this.adminUsername = Username.of(configuration.getAdminUsername());
     }
 
-    @Override
-    public Stream<JMAPRoute> routes() {
-        return Stream.of(
-            JMAPRoute.builder()
-                .endpoint(endpoint())
-                .action((req, res) -> authenticator.authenticate(req)
-                    .flatMap(session -> Mono.from(metricFactory.decoratePublisherWithTimerMetric(this.getClass().getSimpleName(), handleRequest(req, res, session)))))
-                .corsHeaders());
+    /**
+     * @return true when the authenticated user must not see data of {@code queriedDomain}.
+     */
+    public boolean denies(MailboxSession session, Domain queriedDomain) {
+        Username authenticatedUser = session.getUser();
+        if (adminUsername.equals(authenticatedUser)) {
+            return false;
+        }
+        return !authenticatedUser.getDomainPart()
+            .map(queriedDomain::equals)
+            .orElse(false);
     }
 }

@@ -163,17 +163,20 @@ public class UserRoute extends CalendarRoute {
     private final OpenPaaSUserDAO userDAO;
     private final OpenPaaSDomainDAO domainDAO;
     private final SettingsBasedResolver settingsResolver;
+    private final CrossDomainAccessControl crossDomainAccessControl;
 
     @Inject
     public UserRoute(Authenticator authenticator,
                      MetricFactory metricFactory,
                      OpenPaaSUserDAO userDAO,
                      OpenPaaSDomainDAO domainDAO,
-                     @Named("language_timezone") SettingsBasedResolver settingsResolver) {
+                     @Named("language_timezone") SettingsBasedResolver settingsResolver,
+                     CrossDomainAccessControl crossDomainAccessControl) {
         super(authenticator, metricFactory);
         this.userDAO = userDAO;
         this.domainDAO = domainDAO;
         this.settingsResolver = settingsResolver;
+        this.crossDomainAccessControl = crossDomainAccessControl;
     }
 
     @Override
@@ -186,7 +189,7 @@ public class UserRoute extends CalendarRoute {
         OpenPaaSId userId = new OpenPaaSId(request.param("userId"));
         return userDAO.retrieve(userId)
             .flatMap(user -> {
-                if (crossDomainAccess(session, user.username().getDomainPart().get())) {
+                if (crossDomainAccessControl.denies(session, user.username().getDomainPart().get())) {
                     return Mono.error(NotFoundException::new);
                 }
                 return buildUserResponse(user);

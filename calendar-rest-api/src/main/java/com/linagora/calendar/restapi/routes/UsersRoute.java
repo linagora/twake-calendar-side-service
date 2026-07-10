@@ -60,6 +60,7 @@ public class UsersRoute extends CalendarRoute {
     private final UsersRepository usersRepository;
     private final SettingsBasedResolver settingsResolver;
     private final UserNameResolver userNameResolver;
+    private final CrossDomainAccessControl crossDomainAccessControl;
 
     @Inject
     public UsersRoute(Authenticator authenticator,
@@ -68,13 +69,15 @@ public class UsersRoute extends CalendarRoute {
                       OpenPaaSDomainDAO domainDAO,
                       UsersRepository usersRepository,
                       @Named("language_timezone") SettingsBasedResolver settingsResolver,
-                      UserNameResolver userNameResolver) {
+                      UserNameResolver userNameResolver,
+                      CrossDomainAccessControl crossDomainAccessControl) {
         super(authenticator, metricFactory);
         this.userDAO = userDAO;
         this.domainDAO = domainDAO;
         this.usersRepository = usersRepository;
         this.settingsResolver = settingsResolver;
         this.userNameResolver = userNameResolver;
+        this.crossDomainAccessControl = crossDomainAccessControl;
     }
 
     @Override
@@ -89,7 +92,7 @@ public class UsersRoute extends CalendarRoute {
             return ErrorResponseHandler.handle(response, HttpResponseStatus.BAD_REQUEST, "'email' query parameter must contain a domain part");
         }
         Domain queryDomain = queryUsername.getDomainPart().get();
-        if (crossDomainAccess(session, queryDomain)) {
+        if (crossDomainAccessControl.denies(session, queryDomain)) {
             return respondWithEmptyResult(response);
         }
         return userDAO.retrieve(queryUsername)
