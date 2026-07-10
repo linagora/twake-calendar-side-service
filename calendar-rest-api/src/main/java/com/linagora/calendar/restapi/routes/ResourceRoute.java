@@ -100,16 +100,19 @@ public class ResourceRoute extends CalendarRoute {
     private final ResourceDAO resourceDAO;
     private final OpenPaaSDomainDAO openPaaSDomainDAO;
     private final OpenPaaSDomainAdminDAO domainAdminDAO;
+    private final CrossDomainAccessControl crossDomainAccessControl;
 
     @Inject
     public ResourceRoute(Authenticator authenticator,
                          MetricFactory metricFactory, ResourceDAO resourceDAO,
                          OpenPaaSDomainDAO openPaaSDomainDAO,
-                         OpenPaaSDomainAdminDAO domainAdminDAO) {
+                         OpenPaaSDomainAdminDAO domainAdminDAO,
+                         CrossDomainAccessControl crossDomainAccessControl) {
         super(authenticator, metricFactory);
         this.resourceDAO = resourceDAO;
         this.openPaaSDomainDAO = openPaaSDomainDAO;
         this.domainAdminDAO = domainAdminDAO;
+        this.crossDomainAccessControl = crossDomainAccessControl;
     }
 
     @Override
@@ -133,7 +136,7 @@ public class ResourceRoute extends CalendarRoute {
 
     private Mono<DomainRoute.ResponseDTO> retrieveAuthorizedDomainResponse(OpenPaaSId domainId, MailboxSession session) {
         return openPaaSDomainDAO.retrieve(domainId)
-            .filter(resource -> !crossDomainAccess(session, resource.domain()))
+            .filter(resource -> !crossDomainAccessControl.denies(session, resource.domain()))
             .switchIfEmpty(Mono.error(NotFoundException::new))
             .flatMap(domain -> buildDomainResponse(domainId, domain));
     }

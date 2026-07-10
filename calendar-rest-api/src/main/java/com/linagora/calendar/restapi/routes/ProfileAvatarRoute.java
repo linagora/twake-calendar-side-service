@@ -38,15 +38,18 @@ import reactor.netty.http.server.HttpServerResponse;
 public class ProfileAvatarRoute extends CalendarRoute {
     private final OpenPaaSUserDAO userDAO;
     private final RestApiConfiguration configuration;
+    private final CrossDomainAccessControl crossDomainAccessControl;
 
     @Inject
     public ProfileAvatarRoute(Authenticator authenticator,
                               MetricFactory metricFactory,
                               OpenPaaSUserDAO userDAO,
-                              RestApiConfiguration configuration) {
+                              RestApiConfiguration configuration,
+                              CrossDomainAccessControl crossDomainAccessControl) {
         super(authenticator, metricFactory);
         this.userDAO = userDAO;
         this.configuration = configuration;
+        this.crossDomainAccessControl = crossDomainAccessControl;
     }
 
     @Override
@@ -59,7 +62,7 @@ public class ProfileAvatarRoute extends CalendarRoute {
         return Mono.fromCallable(() -> new OpenPaaSId(request.param("userId")))
             .flatMap(userDAO::retrieve)
             .flatMap(user -> {
-                if (crossDomainAccess(session, user.username().getDomainPart().get())) {
+                if (crossDomainAccessControl.denies(session, user.username().getDomainPart().get())) {
                     return Mono.error(NotFoundException::new);
                 }
                 return Mono.just(user);

@@ -131,13 +131,16 @@ public class DomainRoute extends CalendarRoute {
 
     private final OpenPaaSDomainDAO domainDAO;
     private final OpenPaaSDomainAdminDAO domainAdminDAO;
+    private final CrossDomainAccessControl crossDomainAccessControl;
 
     @Inject
     public DomainRoute(Authenticator authenticator, MetricFactory metricFactory,
-                       OpenPaaSDomainDAO domainDAO, OpenPaaSDomainAdminDAO domainAdminDAO) {
+                       OpenPaaSDomainDAO domainDAO, OpenPaaSDomainAdminDAO domainAdminDAO,
+                       CrossDomainAccessControl crossDomainAccessControl) {
         super(authenticator, metricFactory);
         this.domainDAO = domainDAO;
         this.domainAdminDAO = domainAdminDAO;
+        this.crossDomainAccessControl = crossDomainAccessControl;
     }
 
     @Override
@@ -149,7 +152,7 @@ public class DomainRoute extends CalendarRoute {
     Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response, MailboxSession session) {
         OpenPaaSId domainId = new OpenPaaSId(request.param("domainId"));
         return domainDAO.retrieve(domainId)
-            .filter(openPaaSDomain -> !crossDomainAccess(session, openPaaSDomain.domain()))
+            .filter(openPaaSDomain -> !crossDomainAccessControl.denies(session, openPaaSDomain.domain()))
             .switchIfEmpty(Mono.error(NotFoundException::new))
             .flatMap(openPaaSDomain -> domainAdminDAO.listAdmins(openPaaSDomain.id())
                 .collectList()

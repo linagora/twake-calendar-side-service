@@ -90,8 +90,9 @@ public final class LegacyRoutes {
                         MetricFactory metricFactory,
                         ResourceDAO resourceDAO,
                         OpenPaaSDomainDAO openPaaSDomainDAO,
-                        OpenPaaSDomainAdminDAO domainAdminDAO) {
-            super(authenticator, metricFactory, resourceDAO, openPaaSDomainDAO, domainAdminDAO);
+                        OpenPaaSDomainAdminDAO domainAdminDAO,
+                        CrossDomainAccessControl crossDomainAccessControl) {
+            super(authenticator, metricFactory, resourceDAO, openPaaSDomainDAO, domainAdminDAO, crossDomainAccessControl);
         }
 
         @Override

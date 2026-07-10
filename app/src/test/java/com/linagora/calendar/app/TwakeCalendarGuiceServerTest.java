@@ -76,6 +76,7 @@ class TwakeCalendarGuiceServerTest  {
     public static final Domain DOMAIN = Domain.of("linagora.com");
     public static final String PASSWORD = "secret";
     public static final Username USERNAME = Username.of("btellier@linagora.com");
+    public static final Username ADMIN = Username.of("admin@linagora.com");
     private static final String USERINFO_TOKEN_URI_PATH = "/token/userinfo";
     private static final String INTROSPECT_TOKEN_URI_PATH = "/oauth2/introspect";
 
@@ -816,6 +817,57 @@ class TwakeCalendarGuiceServerTest  {
     }
 
     @Test
+    void profileAvatarShouldNotExposeUserFromAnotherDomain(TwakeCalendarGuiceServer server) {
+        // GIVEN: two domains with one user each
+        targetRestAPI(server);
+        CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
+
+        Domain domainA = Domain.of("domain-a.com");
+        Domain domainB = Domain.of("domain-b.com");
+        Username userDomainA = Username.fromLocalPartWithDomain("alice", domainA.asString());
+        Username userDomainB = Username.fromLocalPartWithDomain("bob", domainB.asString());
+
+        calendarDataProbe.addDomain(domainA).addUser(userDomainA, PASSWORD);
+        calendarDataProbe.addDomain(domainB).addUser(userDomainB, PASSWORD);
+
+        String userDomainBId = calendarDataProbe.userId(userDomainB).value();
+
+        // WHEN: authenticated as domain A user, querying the avatar of user B
+        // THEN: cross-domain access is blocked
+        given()
+            .redirects().follow(false)
+            .auth().preemptive().basic(userDomainA.asString(), PASSWORD)
+        .when()
+            .get("/api/users/" + userDomainBId + "/profile/avatar")
+        .then()
+            .statusCode(404);
+    }
+
+    @Test
+    void adminShouldAccessProfileAvatarOfAnotherDomain(TwakeCalendarGuiceServer server) {
+        // GIVEN: a user in a domain the admin does not belong to
+        targetRestAPI(server);
+        CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
+
+        Domain domainB = Domain.of("domain-b.com");
+        Username userDomainB = Username.fromLocalPartWithDomain("bob", domainB.asString());
+        calendarDataProbe.addDomain(domainB).addUser(userDomainB, PASSWORD);
+
+        String userDomainBId = calendarDataProbe.userId(userDomainB).value();
+
+        // WHEN: authenticated as admin, querying the avatar of user B
+        // THEN: cross-domain access is granted
+        given()
+            .redirects().follow(false)
+            .auth().preemptive().basic(ADMIN.asString(), PASSWORD)
+        .when()
+            .get("/api/users/" + userDomainBId + "/profile/avatar")
+        .then()
+            .statusCode(302)
+            .header("Location", "https://twcalendar.linagora.com/api/avatars?email=" + userDomainB.asString());
+    }
+
+    @Test
     void shouldSupportDomainEndpoint(TwakeCalendarGuiceServer server) {
         targetRestAPI(server);
 
@@ -885,6 +937,28 @@ class TwakeCalendarGuiceServerTest  {
     }
 
     @Test
+    void adminShouldAccessDomainOfAnotherDomain(TwakeCalendarGuiceServer server) {
+        // GIVEN: a domain the admin does not belong to
+        targetRestAPI(server);
+        CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
+
+        Domain domainB = Domain.of("domain-b.com");
+        calendarDataProbe.addDomain(domainB);
+
+        String domainBId = calendarDataProbe.domainId(domainB).value();
+
+        // WHEN: authenticated as admin, querying domain B
+        // THEN: cross-domain access is granted
+        given()
+            .auth().preemptive().basic(ADMIN.asString(), PASSWORD)
+        .when()
+            .get("/api/domains/" + domainBId)
+        .then()
+            .statusCode(200)
+            .body("name", is(domainB.asString()));
+    }
+
+    @Test
     void shouldSupportUserEndpoint(TwakeCalendarGuiceServer server) {
         targetRestAPI(server);
 
@@ -950,6 +1024,29 @@ class TwakeCalendarGuiceServerTest  {
         .get("/api/users/" + userDomainBId)
             .then()
             .statusCode(404);
+    }
+
+    @Test
+    void adminShouldQueryUserOfAnotherDomainById(TwakeCalendarGuiceServer server) {
+        // GIVEN: a user in a domain the admin does not belong to
+        targetRestAPI(server);
+        CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
+
+        Domain domainB = Domain.of("domain-b.com");
+        Username userDomainB = Username.fromLocalPartWithDomain("bob", domainB.asString());
+        calendarDataProbe.addDomain(domainB).addUser(userDomainB, PASSWORD);
+
+        String userDomainBId = calendarDataProbe.userId(userDomainB).value();
+
+        // WHEN: authenticated as admin, querying user B by id
+        // THEN: cross-domain access is granted
+        given()
+            .auth().preemptive().basic(ADMIN.asString(), PASSWORD)
+        .when()
+            .get("/api/users/" + userDomainBId)
+        .then()
+            .statusCode(200)
+            .body("preferredEmail", is(userDomainB.asString()));
     }
 
     @Test
@@ -1024,6 +1121,36 @@ class TwakeCalendarGuiceServerTest  {
 
         // THEN: no cross-domain user information is leaked
         assertThatJson(body).isEqualTo("[]");
+    }
+
+    @Test
+    void adminShouldQueryUserOfAnotherDomainByEmail(TwakeCalendarGuiceServer server) {
+        // GIVEN: a user in a domain the admin does not belong to
+        targetRestAPI(server);
+        CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
+
+        Domain domainB = Domain.of("domain-b.com");
+        Username userDomainB = Username.fromLocalPartWithDomain("bob", domainB.asString());
+        calendarDataProbe.addDomain(domainB).addUser(userDomainB, PASSWORD);
+
+        // WHEN: authenticated as admin, querying user B by email
+        String body = given()
+            .auth().preemptive().basic(ADMIN.asString(), PASSWORD)
+            .queryParam("email", userDomainB.asString())
+        .when()
+            .get("/api/users")
+        .then()
+            .statusCode(200)
+            .extract()
+            .body()
+            .asString();
+
+        // THEN: cross-domain access is granted
+        assertThatJson(body)
+            .isArray()
+            .anySatisfy(json -> assertThatJson(json)
+                .node("preferredEmail")
+                .isEqualTo(userDomainB.asString()));
     }
 
     @Test
