@@ -279,6 +279,27 @@ class WebsocketRouteTest {
     }
 
     @Test
+    void websocketShouldReceiveBookingLinkStateChangedUponBookingLinkPublicIdReset(TwakeCalendarGuiceServer guiceServer) {
+        BookingLink bookingLink = guiceServer.getProbe(BookingLinkProbe.class)
+            .insert(bob.username(), bookingLinkInsertRequest(bob));
+
+        String ticket = generateTicket(bob);
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        webSocket = connectWebSocket(restApiPort, ticket, messages);
+
+        given()
+            .auth().preemptive().basic(bob.username().asString(), PASSWORD)
+            .port(restApiPort)
+        .when()
+            .post("/api/booking-links/" + bookingLink.publicId().value() + "/reset")
+        .then()
+            .statusCode(HttpStatus.SC_OK);
+
+        assertThatJson(awaitMessage(messages, msg -> msg.contains("bookingLinkStateChanged")))
+            .isEqualTo("{\"bookingLinkStateChanged\": true}");
+    }
+
+    @Test
     void websocketShouldNotReceiveBookingLinkStateChangedOfOtherUsers(TwakeCalendarGuiceServer guiceServer) {
         String ticket = generateTicket(bob);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
