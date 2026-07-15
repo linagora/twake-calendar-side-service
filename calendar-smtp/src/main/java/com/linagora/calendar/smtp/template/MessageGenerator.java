@@ -148,6 +148,10 @@ public class MessageGenerator {
         this.userDAO = userDAO;
     }
 
+    public Mono<Message> generate(Username recipient, MailAddress fromAddress, Map<String, Object> scopedVariable) {
+        return generate(recipient, fromAddress, scopedVariable, List.of());
+    }
+
     public Mono<Message> generate(Username recipient, MailAddress fromAddress, Map<String, Object> scopedVariable, List<MimeAttachment> mimeAttachments) {
         return resolveInternetAddress(Username.fromMailAddress(fromAddress))
             .flatMap(fromAsInternetAddress -> generate(recipient, fromAsInternetAddress, scopedVariable, mimeAttachments));

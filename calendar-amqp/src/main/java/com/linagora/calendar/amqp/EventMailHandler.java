@@ -29,6 +29,7 @@ import java.util.Optional;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 
+import org.apache.commons.lang3.BooleanUtils;
 import org.apache.james.core.Domain;
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.MaybeSender;
@@ -100,6 +101,7 @@ public class EventMailHandler {
     }
 
     private static final Logger LOGGER = LoggerFactory.getLogger(EventMailHandler.class);
+    private static final String X_PUBLICLY_CREATED_PROPERTY = "X-PUBLICLY-CREATED";
     private final MailSender.Factory mailSenderFactory;
     private final MessageGenerator.Factory messageGeneratorFactory;
     private final EventInCalendarLinkFactory eventInCalendarLinkFactory;
@@ -240,7 +242,7 @@ public class EventMailHandler {
         }
 
         private Mono<Message> generateCancelMessage(ResolvedSettings resolvedSettings, MessageGenerator messageGenerator) {
-            List<MimeAttachment> attachments = EventMessageGenerator.createAttachments(event.base().event(), ImmutableMethod.CANCEL);
+            List<MimeAttachment> attachments = cancelAttachments();
 
             MailAddress fromAddress = event.base().senderEmail();
             return messageGenerator.generate(recipientUser, fromAddress,
@@ -249,6 +251,19 @@ public class EventMailHandler {
                     message.getHeader().addField(new RawField("Auto-Submitted", "auto-generated"));
                     return message;
                 });
+        }
+
+        private List<MimeAttachment> cancelAttachments() {
+            if (publiclyCreated()) {
+                return List.of();
+            }
+            return EventMessageGenerator.createAttachments(event.base().event(), ImmutableMethod.CANCEL);
+        }
+
+        private boolean publiclyCreated() {
+            return EventParseUtils.getPropertyValueIgnoreCase(event.base().getFirstVEvent(), X_PUBLICLY_CREATED_PROPERTY)
+                .map(BooleanUtils::toBoolean)
+                .orElse(false);
         }
     }
 

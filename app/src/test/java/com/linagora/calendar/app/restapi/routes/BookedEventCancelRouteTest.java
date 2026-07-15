@@ -31,11 +31,8 @@ import static org.awaitility.Durations.ONE_HUNDRED_MILLISECONDS;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.ZonedDateTime;
-import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.IntStream;
 
 import jakarta.inject.Inject;
@@ -260,27 +257,30 @@ class BookedEventCancelRouteTest {
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
-        // The organizer receives an ICS cancellation, and deleting the event on their calendar emits the standard
-        // iTIP CANCEL to the attendees, hence to the booker.
+        // The organizer receives a cancellation notification, and deleting the event on their calendar emits the
+        // standard iTIP CANCEL to the attendees, hence to the booker.
         CALMLY_AWAIT.atMost(Duration.ofSeconds(10))
             .untilAsserted(() -> {
                 JsonPath mails = smtpMails();
                 assertThat(messagesMatching(mails, "creator@example.com", "method=CANCEL")).isNotEmpty();
-                assertThat(messagesMatching(mails, openPaaSUser.username().asString(), "method=CANCEL")).isNotEmpty();
+                assertThat(messagesTo(mails, openPaaSUser.username().asString())).isNotEmpty();
             });
 
         JsonPath smtpMailsResponse = smtpMails();
-        String organizerMessage = messagesMatching(smtpMailsResponse, openPaaSUser.username().asString(), "method=CANCEL").getFirst();
+        String organizerMessage = messagesTo(smtpMailsResponse, openPaaSUser.username().asString()).getFirst();
+        String creatorMessage = messagesTo(smtpMailsResponse, "creator@example.com").getFirst();
 
         assertSoftly(softly -> {
-            // The booker is only sent the iTIP CANCEL: no additional acknowledgement duplicates it.
-            softly.assertThat(messagesTo(smtpMailsResponse, "creator@example.com")).hasSize(1);
-
             softly.assertThat(organizerMessage)
                 .contains("Subject: Event 30-min intro call from %s canceled".formatted(openPaaSUser.fullName()));
-            softly.assertThat(getCancelIcs(organizerMessage))
-                .contains("METHOD:CANCEL")
-                .contains("STATUS:CANCELLED");
+            // The organizer notification is informative only: it carries no ICS attachment.
+            softly.assertThat(organizerMessage)
+                .doesNotContain("text/calendar")
+                .doesNotContain("application/ics");
+
+            softly.assertThat(creatorMessage)
+                .doesNotContain("text/calendar")
+                .doesNotContain("application/ics");
         });
     }
 
@@ -304,18 +304,6 @@ class BookedEventCancelRouteTest {
         return messagesTo(smtpMailsResponse, recipient).stream()
             .filter(message -> message.contains(rawContent))
             .toList();
-    }
-
-    private String getCancelIcs(String message) {
-        Matcher matcher = Pattern.compile("\\r?\\n\\r?\\n([A-Za-z0-9+/=\\r\\n]{40,})\\r?\\n---=Part", Pattern.DOTALL)
-            .matcher(message);
-        while (matcher.find()) {
-            String decoded = new String(Base64.getMimeDecoder().decode(matcher.group(1).replaceAll("\\s+", "")), StandardCharsets.UTF_8);
-            if (decoded.contains("BEGIN:VCALENDAR")) {
-                return decoded;
-            }
-        }
-        throw new AssertionError("No VCALENDAR attachment found in message");
     }
 
     private String bookAndGetJwt(TwakeCalendarGuiceServer server) {

@@ -18,24 +18,18 @@
 
 package com.linagora.calendar.restapi.routes;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Optional;
 
 import com.github.fge.lambdas.Throwing;
-import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.event.EventParseUtils;
 
 import net.fortuna.ical4j.model.Calendar;
-import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.component.VEvent;
-import net.fortuna.ical4j.model.property.Sequence;
-import net.fortuna.ical4j.model.property.Status;
-import net.fortuna.ical4j.model.property.immutable.ImmutableMethod;
 
 /**
  * Parsed view of a booked event that has just been cancelled by its booker.
@@ -49,8 +43,7 @@ public record BookedEventCancelled(OpenPaaSUser organizer,
                                    String summary,
                                    Instant start,
                                    Instant end,
-                                   Optional<String> description,
-                                   byte[] cancelIcsBytes) {
+                                   Optional<String> description) {
 
     public static BookedEventCancelled from(OpenPaaSUser organizer, Calendar calendarData) {
         VEvent vEvent = EventParseUtils.getFirstEvent(calendarData);
@@ -67,34 +60,6 @@ public record BookedEventCancelled(OpenPaaSUser organizer,
             EventParseUtils.getSummary(vEvent).orElse(""),
             start,
             end,
-            EventParseUtils.getDescription(vEvent),
-            buildCancelIcs(calendarData, vEvent));
-    }
-
-    private static byte[] buildCancelIcs(Calendar calendarData, VEvent vEvent) {
-        VEvent cancelledEvent = vEvent.copy();
-
-        int nextSequence = cancelledEvent.getProperty(Property.SEQUENCE)
-            .map(Property::getValue)
-            .map(BookedEventCancelled::parseSequence)
-            .orElse(0) + 1;
-        cancelledEvent.removeAll(Property.SEQUENCE);
-        cancelledEvent.add(new Sequence(nextSequence));
-
-        cancelledEvent.removeAll(Property.STATUS);
-        cancelledEvent.add(new Status(Status.VALUE_CANCELLED));
-
-        Calendar cancelCalendar = CalendarUtil.withMethod(CalendarUtil.withSingleVEvent(calendarData, cancelledEvent),
-            ImmutableMethod.CANCEL);
-
-        return cancelCalendar.toString().getBytes(StandardCharsets.UTF_8);
-    }
-
-    private static int parseSequence(String value) {
-        try {
-            return Integer.parseInt(value.trim());
-        } catch (NumberFormatException e) {
-            return 0;
-        }
+            EventParseUtils.getDescription(vEvent));
     }
 }
