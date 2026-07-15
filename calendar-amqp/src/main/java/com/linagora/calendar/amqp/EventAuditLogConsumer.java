@@ -202,6 +202,7 @@ public class EventAuditLogConsumer implements Closeable, Startable {
                     .parameters(() -> {
                         ImmutableMap.Builder<String, String> params = ImmutableMap.builder();
                         extractPath(body).ifPresent(p -> params.put("path", p));
+                        extractConnectedUser(body).ifPresent(user -> params.put("connectedUser", user));
                         return params.build();
                     })
                     .log(formatMessage(body, exchangeName));
@@ -239,6 +240,25 @@ public class EventAuditLogConsumer implements Closeable, Startable {
             }
             return path.flatMap(EventAuditLogConsumer::parseOwnerFromPath);
         } catch (Exception e) {
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * The principal URI of the user who actually performed the action, as reported by Sabre.
+     * It may differ from the resource owner (delegation, admin impersonation), which is what
+     * makes it worth auditing. Older Sabre versions do not emit it: absence is not an error.
+     */
+    public static Optional<String> extractConnectedUser(String body) {
+        try {
+            JsonNode root = MAPPER.readTree(body);
+            if (!root.has("connectedUser")) {
+                return Optional.empty();
+            }
+            return Optional.ofNullable(root.get("connectedUser").asText(null))
+                .filter(user -> !user.isBlank());
+        } catch (Exception e) {
+            LOGGER.error("Error when extracting connectedUser from audit log event", e);
             return Optional.empty();
         }
     }
