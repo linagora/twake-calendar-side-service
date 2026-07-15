@@ -41,6 +41,7 @@ import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableList;
 
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 public interface MailSender {
     Logger LOGGER = LoggerFactory.getLogger(MailSender.class);
@@ -79,7 +80,7 @@ public interface MailSender {
             }
 
             public Mono<MailSender> create() {
-                return Mono.fromCallable(() -> {
+                return Mono.<MailSender>fromCallable(() -> {
                     AuthenticatingSMTPClient authClient = new AuthenticatingSMTPClient(DEFAULT_PROTOCOL,
                         configuration.sslEnabled(),
                         UTF_8_ENCODING);
@@ -107,7 +108,7 @@ public interface MailSender {
                         }
                     }));
                     return new MailSender.Default(authClient, configuration, eventEmailFilter);
-                });
+                }).subscribeOn(Schedulers.boundedElastic());
             }
         }
     }
@@ -125,18 +126,18 @@ public interface MailSender {
 
         @Override
         public Mono<Void> send(Mail mail) {
-            return Mono.fromRunnable(Throwing.runnable(() -> {
+            return Mono.<Void>fromRunnable(Throwing.runnable(() -> {
                 try {
                     eventEmailFilter.filterRecipients(mail).ifPresent(Throwing.consumer(this::sendMailTransaction));
                 } finally {
                     disconnect();
                 }
-            }));
+            })).subscribeOn(Schedulers.boundedElastic());
         }
 
         @Override
         public Mono<Void> send(Collection<Mail> mails) {
-            return Mono.fromRunnable(Throwing.runnable(() -> {
+            return Mono.<Void>fromRunnable(Throwing.runnable(() -> {
                 ImmutableList.Builder<Exception> exceptionBuilder = new ImmutableList.Builder<>();
                 mails.forEach(mail -> eventEmailFilter.filterRecipients(mail).ifPresent(Throwing.consumer(updatedMail -> {
                     try {
@@ -156,7 +157,7 @@ public interface MailSender {
                 if (exceptions.size() == mails.size()) {
                     throw exceptions.getFirst();
                 }
-            }));
+            })).subscribeOn(Schedulers.boundedElastic());
         }
 
         private void disconnect() throws IOException {
