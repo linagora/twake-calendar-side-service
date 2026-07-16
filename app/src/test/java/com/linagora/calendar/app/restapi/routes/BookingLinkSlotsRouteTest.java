@@ -29,6 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.ZonedDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -55,6 +56,7 @@ import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
@@ -480,6 +482,113 @@ class BookingLinkSlotsRouteTest {
                   { "start": "2036-01-26T09:00:00Z" },
                   { "start": "2036-01-26T10:00:00Z" },
                   { "start": "2036-01-26T10:30:00Z" },
+                  { "start": "2036-01-26T11:30:00Z" }
+                ]
+                """);
+    }
+
+    @Test
+    void shouldExcludeExtraAttendeeBusyIntervalsFromReturnedSlots(TwakeCalendarGuiceServer server) {
+        // Given: a booking link carrying an extra attendee. Their free/busy is queried by impersonating the
+        // booking link owner, so the DAV server decides what the owner may see of that calendar.
+        OpenPaaSUser extraAttendee = createTestUser(server, "extra");
+
+        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES,
+            true, BookingLinkInsertRequest.AUTO_ACCEPT, Optional.of(AVAILABILITY_RULE), List.of(extraAttendee.id()),
+            Optional.empty(), Optional.empty(), Optional.empty());
+        BookingLink inserted = server.getProbe(BookingLinkProbe.class).insert(openPaaSUser.username(), insertRequest);
+
+        // Given owner busy interval [09:30, 10:00): this should exclude slot starting at 09:30.
+        String ownerBusyUid = UUID.randomUUID().toString();
+        davTestHelper.upsertCalendar(openPaaSUser, """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Twake//BookingSlotsTest//EN
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20360101T000000Z
+            DTSTART:20360126T093000Z
+            DTEND:20360126T100000Z
+            SUMMARY:owner-busy
+            TRANSP:OPAQUE
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(ownerBusyUid), ownerBusyUid);
+
+        // Given extra attendee busy interval [11:00, 11:30): this should exclude slot starting at 11:00 too.
+        String extraAttendeeBusyUid = UUID.randomUUID().toString();
+        davTestHelper.upsertCalendar(extraAttendee, """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Twake//BookingSlotsTest//EN
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20360101T000000Z
+            DTSTART:20360126T110000Z
+            DTEND:20360126T113000Z
+            SUMMARY:extra-attendee-busy
+            TRANSP:OPAQUE
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(extraAttendeeBusyUid), extraAttendeeBusyUid);
+
+        String response = given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .queryParam("from", FROM_20360126)
+            .queryParam("to", TO_20360127)
+        .when()
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(JSON)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response)
+            .describedAs("offered slots should be the intersection of the owner and the extra attendee availability")
+            .inPath("$.slots")
+            .isEqualTo("""
+                [
+                  { "start": "2036-01-26T09:00:00Z" },
+                  { "start": "2036-01-26T10:00:00Z" },
+                  { "start": "2036-01-26T10:30:00Z" },
+                  { "start": "2036-01-26T11:30:00Z" }
+                ]
+                """);
+    }
+
+    @Test
+    void shouldStillReturnSlotsWhenExtraAttendeeCalendarCannotBeRead(TwakeCalendarGuiceServer server) {
+        // Given: an extra attendee whose calendar the owner cannot read at all. Such an attendee is treated
+        // as free rather than breaking the whole booking link.
+        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES,
+            true, BookingLinkInsertRequest.AUTO_ACCEPT, Optional.of(AVAILABILITY_RULE), List.of(new OpenPaaSId("659387b9d486dc0046aeffff")),
+            Optional.empty(), Optional.empty(), Optional.empty());
+        BookingLink inserted = server.getProbe(BookingLinkProbe.class).insert(openPaaSUser.username(), insertRequest);
+
+        String response = given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .queryParam("from", FROM_20360126)
+            .queryParam("to", TO_20360127)
+        .when()
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(JSON)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response)
+            .inPath("$.slots")
+            .isEqualTo("""
+                [
+                  { "start": "2036-01-26T09:00:00Z" },
+                  { "start": "2036-01-26T09:30:00Z" },
+                  { "start": "2036-01-26T10:00:00Z" },
+                  { "start": "2036-01-26T10:30:00Z" },
+                  { "start": "2036-01-26T11:00:00Z" },
                   { "start": "2036-01-26T11:30:00Z" }
                 ]
                 """);

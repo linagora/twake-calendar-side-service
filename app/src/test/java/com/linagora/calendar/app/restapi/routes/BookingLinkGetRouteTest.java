@@ -30,6 +30,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -55,6 +56,7 @@ import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
@@ -143,6 +145,36 @@ class BookingLinkGetRouteTest {
                     "durationMinutes": 30,
                     "active": true,
                     "autoAccept": false,
+                    "color": "#6B4ECC"
+                }
+                """.formatted(inserted.publicId().value(), CalendarURL.from(openPaaSUser.id()).asUri().toString()));
+    }
+
+    @Test
+    void shouldReturn200WithExtraAttendeesWhenSet() {
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE,
+                BookingLinkInsertRequest.AUTO_ACCEPT, Optional.empty(),
+                List.of(new OpenPaaSId("659387b9d486dc0046aeffb1"), new OpenPaaSId("659387b9d486dc0046aeffb2")),
+                Optional.empty(), Optional.empty(), Optional.empty()));
+
+        String response = given()
+        .when()
+            .get("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(ContentType.JSON)
+            .extract().body().asString();
+
+        assertThatJson(response)
+            .isEqualTo("""
+                {
+                    "publicId": "%s",
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "autoAccept": false,
+                    "extraAttendees": ["659387b9d486dc0046aeffb1", "659387b9d486dc0046aeffb2"],
                     "color": "#6B4ECC"
                 }
                 """.formatted(inserted.publicId().value(), CalendarURL.from(openPaaSUser.id()).asUri().toString()));

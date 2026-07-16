@@ -23,6 +23,7 @@ import java.util.Optional;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.booking.BookingLink;
 
 @JsonInclude(JsonInclude.Include.NON_ABSENT)
@@ -32,6 +33,7 @@ public record BookingLinkDTO(@JsonProperty("publicId") String publicId,
                              @JsonProperty("active") boolean active,
                              @JsonProperty("autoAccept") boolean autoAccept,
                              @JsonProperty("availabilityRules") Optional<List<AvailabilityRuleDTO>> availabilityRules,
+                             @JsonProperty("extraAttendees") Optional<List<String>> extraAttendees,
                              @JsonProperty("name") Optional<String> name,
                              @JsonProperty("description") Optional<String> description,
                              @JsonProperty("color") String color) {
@@ -42,6 +44,12 @@ public record BookingLinkDTO(@JsonProperty("publicId") String publicId,
                 .map(AvailabilityRuleDTO::from)
                 .toList());
 
+        Optional<List<String>> extraAttendees = Optional.of(bookingLink.extraAttendees())
+            .filter(attendees -> !attendees.isEmpty())
+            .map(attendees -> attendees.stream()
+                .map(OpenPaaSId::value)
+                .toList());
+
         return new BookingLinkDTO(
             bookingLink.publicId().value().toString(),
             bookingLink.calendarUrl().asUri().toString(),
@@ -49,6 +57,7 @@ public record BookingLinkDTO(@JsonProperty("publicId") String publicId,
             bookingLink.active(),
             bookingLink.autoAccept(),
             ruleDTOs,
+            extraAttendees,
             bookingLink.name(),
             bookingLink.description(),
             bookingLink.colorOrDefault());

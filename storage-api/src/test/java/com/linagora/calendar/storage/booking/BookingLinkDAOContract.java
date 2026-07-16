@@ -26,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.LocalTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -49,6 +50,8 @@ public interface BookingLinkDAOContract {
     CalendarURL UPDATED_CALENDAR_URL = new CalendarURL(new OpenPaaSId("659387b9d486dc0046aeffaa"), new OpenPaaSId("659387b9d486dc0046aeffab"));
     Duration UPDATED_DURATION = Duration.ofMinutes(45);
     AvailabilityRules UPDATED_AVAILABILITY_RULES = AvailabilityRules.of(new WeeklyAvailabilityRule(DayOfWeek.FRIDAY, LocalTime.parse("08:00"), LocalTime.parse("12:00")));
+    OpenPaaSId EXTRA_ATTENDEE_1 = new OpenPaaSId("659387b9d486dc0046aeffb1");
+    OpenPaaSId EXTRA_ATTENDEE_2 = new OpenPaaSId("659387b9d486dc0046aeffb2");
 
     BookingLinkDAO testee();
 
@@ -430,6 +433,92 @@ public interface BookingLinkDAOContract {
         BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
 
         assertThat(updated.color()).isEmpty();
+    }
+
+    @Test
+    default void insertShouldPersistExtraAttendees() {
+        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
+            Optional.of(AVAILABILITY_RULES), List.of(EXTRA_ATTENDEE_1, EXTRA_ATTENDEE_2), Optional.empty(), Optional.empty(), Optional.empty());
+
+        BookingLink created = testee().insert(USER_1, request).block();
+
+        assertThat(created.extraAttendees()).containsExactly(EXTRA_ATTENDEE_1, EXTRA_ATTENDEE_2);
+
+        BookingLink found = testee().findByPublicId(USER_1, created.publicId()).block();
+        assertThat(found).isEqualTo(created);
+    }
+
+    @Test
+    default void insertShouldDefaultExtraAttendeesToEmpty() {
+        BookingLink created = testee().insert(USER_1, INSERT_REQUEST).block();
+
+        assertThat(created.extraAttendees()).isEmpty();
+
+        BookingLink found = testee().findByPublicId(USER_1, created.publicId()).block();
+        assertThat(found.extraAttendees()).isEmpty();
+    }
+
+    @Test
+    default void updateShouldApplyExtraAttendees() {
+        BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
+        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.modifyTo(List.of(EXTRA_ATTENDEE_1)),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep());
+
+        BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
+
+        assertThat(updated.extraAttendees()).containsExactly(EXTRA_ATTENDEE_1);
+        assertThat(testee().findByPublicId(USER_1, inserted.publicId()).block()).isEqualTo(updated);
+    }
+
+    @Test
+    default void updateShouldAllowRemovingExtraAttendees() {
+        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
+            Optional.of(AVAILABILITY_RULES), List.of(EXTRA_ATTENDEE_1), Optional.empty(), Optional.empty(), Optional.empty());
+        BookingLink inserted = testee().insert(USER_1, request).block();
+        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.remove(),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep());
+
+        BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
+
+        assertThat(updated.extraAttendees()).isEmpty();
+        assertThat(testee().findByPublicId(USER_1, inserted.publicId()).block().extraAttendees()).isEmpty();
+    }
+
+    @Test
+    default void updateShouldKeepExtraAttendeesWhenNotSpecified() {
+        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
+            Optional.of(AVAILABILITY_RULES), List.of(EXTRA_ATTENDEE_1), Optional.empty(), Optional.empty(), Optional.empty());
+        BookingLink inserted = testee().insert(USER_1, request).block();
+        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
+            ValuePatch.keep(),
+            ValuePatch.modifyTo(UPDATED_DURATION),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep(),
+            ValuePatch.keep());
+
+        BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
+
+        assertThat(updated.extraAttendees()).containsExactly(EXTRA_ATTENDEE_1);
     }
 
     @Test

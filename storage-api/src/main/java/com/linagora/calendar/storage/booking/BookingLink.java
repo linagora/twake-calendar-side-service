@@ -20,6 +20,7 @@ package com.linagora.calendar.storage.booking;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import org.apache.james.core.Username;
@@ -27,6 +28,7 @@ import org.apache.james.core.Username;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.OpenPaaSId;
 
 public record BookingLink(Username username,
                           BookingLinkPublicId publicId,
@@ -35,6 +37,7 @@ public record BookingLink(Username username,
                           boolean active,
                           boolean autoAccept,
                           Optional<AvailabilityRules> availabilityRules,
+                          List<OpenPaaSId> extraAttendees,
                           Optional<String> name,
                           Optional<String> description,
                           Optional<String> color,
@@ -50,10 +53,12 @@ public record BookingLink(Username username,
         Preconditions.checkNotNull(duration, "'eventDuration' must not be null");
         Preconditions.checkArgument(!duration.isNegative() && !duration.isZero(), "'eventDuration' must be positive");
         Preconditions.checkNotNull(availabilityRules, "'availabilityRules' must not be null");
+        Preconditions.checkNotNull(extraAttendees, "'extraAttendees' must not be null");
         Preconditions.checkNotNull(name, "'name' must not be null");
         Preconditions.checkNotNull(description, "'description' must not be null");
         Preconditions.checkNotNull(color, "'color' must not be null");
         Preconditions.checkNotNull(createdAt, "'createdAt' must not be null");
+        extraAttendees = List.copyOf(extraAttendees);
     }
 
     public String colorOrDefault() {
@@ -73,6 +78,7 @@ public record BookingLink(Username username,
             .active(active)
             .autoAccept(autoAccept)
             .availabilityRules(availabilityRules)
+            .extraAttendees(extraAttendees)
             .name(name)
             .description(description)
             .color(color)
@@ -88,6 +94,7 @@ public record BookingLink(Username username,
         private boolean active;
         private boolean autoAccept;
         private Optional<AvailabilityRules> availabilityRules = Optional.empty();
+        private List<OpenPaaSId> extraAttendees = List.of();
         private Optional<String> name = Optional.empty();
         private Optional<String> description = Optional.empty();
         private Optional<String> color = Optional.empty();
@@ -129,6 +136,11 @@ public record BookingLink(Username username,
             return this;
         }
 
+        public Builder extraAttendees(List<OpenPaaSId> extraAttendees) {
+            this.extraAttendees = extraAttendees;
+            return this;
+        }
+
         public Builder name(Optional<String> name) {
             this.name = name;
             return this;
@@ -155,7 +167,7 @@ public record BookingLink(Username username,
         }
 
         public BookingLink build() {
-            return new BookingLink(username, publicId, calendarUrl, duration, active, autoAccept, availabilityRules, name, description, color, createdAt, updatedAt);
+            return new BookingLink(username, publicId, calendarUrl, duration, active, autoAccept, availabilityRules, extraAttendees, name, description, color, createdAt, updatedAt);
         }
     }
 

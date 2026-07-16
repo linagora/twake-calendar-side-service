@@ -264,6 +264,59 @@ public class BookingLinkEventIcsBuilderTest {
     }
 
     @Test
+    void buildShouldAddExtraAttendeesAsNeedsActionAttendees() {
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+
+        List<BookingAttendee> extraAttendees = List.of(
+            BookingAttendee.from("Presales Engineer", "presales@example.com"),
+            BookingAttendee.from("Project Manager", "pm@example.com"));
+
+        String ics = new String(testee.build(bookingRequest(), OWNER, extraAttendees, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false)
+            .icsBytes(), StandardCharsets.UTF_8);
+
+        assertThat(ics)
+            .contains("ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=Presales Engineer:mailto:presales@example.com")
+            .contains("ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=Project Manager:mailto:pm@example.com");
+    }
+
+    @Test
+    void buildShouldNotDuplicateExtraAttendeeAlreadyInvitedByTheBooker() {
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+
+        BookingRequest request = new BookingRequest(
+            Instant.parse("2036-01-26T09:30:00Z"),
+            BookingAttendee.from("BOB", "creator@example.com"),
+            List.of(BookingAttendee.from("Presales Engineer", "presales@example.com")),
+            "eventTitle",
+            false,
+            null);
+
+        // Both the booker and an additional attendee collide with an extra attendee of the booking link.
+        List<BookingAttendee> extraAttendees = List.of(
+            BookingAttendee.from("Presales Engineer", "presales@example.com"),
+            BookingAttendee.from("BOB", "creator@example.com"));
+
+        String ics = new String(testee.build(request, OWNER, extraAttendees, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false)
+            .icsBytes(), StandardCharsets.UTF_8);
+
+        assertThat(ics.lines().filter(line -> line.startsWith("ATTENDEE")))
+            .describedAs("already invited attendees keep their single ATTENDEE line")
+            .hasSize(3)
+            .doesNotContain("ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=Presales Engineer:mailto:presales@example.com");
+    }
+
+    @Test
+    void buildShouldNotAddAnyAttendeeWhenNoExtraAttendee() {
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+
+        String ics = new String(testee.build(bookingRequest(), OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false)
+            .icsBytes(), StandardCharsets.UTF_8);
+
+        assertThat(ics.lines().filter(line -> line.startsWith("ATTENDEE")))
+            .hasSize(2);
+    }
+
+    @Test
     void icsBytesShouldNotCarryAMethodByDefault() {
         BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
 

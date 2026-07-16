@@ -25,6 +25,8 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
 
@@ -33,6 +35,7 @@ import org.apache.james.util.FunctionalUtils;
 
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingRequest;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingRequest.BookingAttendee;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
@@ -92,6 +95,15 @@ public class BookingLinkEventIcsBuilder {
     }
 
     public BuildResult build(BookingRequest request, BookingAttendee organizer, Duration eventDuration, BookingLinkPublicId bookingLinkPublicId, boolean autoAccept) {
+        return build(request, organizer, List.of(), eventDuration, bookingLinkPublicId, autoAccept);
+    }
+
+    public BuildResult build(BookingRequest request,
+                             BookingAttendee organizer,
+                             List<BookingAttendee> extraAttendees,
+                             Duration eventDuration,
+                             BookingLinkPublicId bookingLinkPublicId,
+                             boolean autoAccept) {
         Uid eventUid = uidGenerator.generateUid();
         Optional<URL> maybeMeetingLink = Optional.of(request.visioLink())
             .filter(FunctionalUtils.identityPredicate())
@@ -100,7 +112,7 @@ public class BookingLinkEventIcsBuilder {
         Calendar calendar = new Calendar()
             .withDefaults()
             .withProdId(PROD_ID)
-            .withComponent(buildEvent(request, organizer, eventUid, eventDuration, maybeMeetingLink, bookingLinkPublicId, autoAccept))
+            .withComponent(buildEvent(request, organizer, extraAttendees, eventUid, eventDuration, maybeMeetingLink, bookingLinkPublicId, autoAccept))
             .getFluentTarget();
 
         return new BuildResult(eventUid, calendar, maybeMeetingLink);
@@ -108,6 +120,7 @@ public class BookingLinkEventIcsBuilder {
 
     private VEvent buildEvent(BookingRequest request,
                               BookingAttendee organizer,
+                              List<BookingAttendee> extraAttendees,
                               Uid eventUid,
                               Duration eventDuration,
                               Optional<URL> maybeMeetingLink,
@@ -124,6 +137,9 @@ public class BookingLinkEventIcsBuilder {
             .add(buildAttendee(request.creator()))
             .addAll(request.additionalAttendees().stream()
                 .map(this::buildAttendee)
+                .toList())
+            .addAll(newExtraAttendees(request, extraAttendees).stream()
+                .map(this::buildExtraAttendee)
                 .toList());
 
         buildDescription(request.notes(), maybeMeetingLink)
@@ -155,12 +171,38 @@ public class BookingLinkEventIcsBuilder {
                 .orElse(null))));
     }
 
+    /**
+     * An extra attendee who booked the slot themselves, or who the booker also listed, already has an ATTENDEE
+     * line: keep that one rather than emitting a duplicate with a conflicting PARTSTAT.
+     */
+    private List<BookingAttendee> newExtraAttendees(BookingRequest request, List<BookingAttendee> extraAttendees) {
+        Set<String> alreadyInvited = Stream.concat(Stream.of(request.creator()), request.additionalAttendees().stream())
+            .map(attendee -> attendee.email().asString())
+            .collect(ImmutableSet.toImmutableSet());
+
+        return extraAttendees.stream()
+            .filter(extraAttendee -> !alreadyInvited.contains(extraAttendee.email().asString()))
+            .toList();
+    }
+
     private Attendee buildAttendee(BookingAttendee attendee) {
+        return buildAttendee(attendee, PartStat.ACCEPTED);
+    }
+
+    /**
+     * Extra attendees of the booking link were never asked: they are invited through the regular
+     * iTIP flow and still have to answer.
+     */
+    private Attendee buildExtraAttendee(BookingAttendee attendee) {
+        return buildAttendee(attendee, PartStat.NEEDS_ACTION);
+    }
+
+    private Attendee buildAttendee(BookingAttendee attendee, PartStat partStat) {
         Attendee builtAttendee = (Attendee) new Attendee(URI.create(MAIL_TO_PREFIX + attendee.email().asString()))
             .withParameter(Rsvp.TRUE)
             .withParameter(Role.REQ_PARTICIPANT)
             .withParameter(CuType.INDIVIDUAL)
-            .withParameter(PartStat.ACCEPTED)
+            .withParameter(partStat)
             .getFluentTarget();
 
         if (StringUtils.isNotBlank(attendee.name())) {

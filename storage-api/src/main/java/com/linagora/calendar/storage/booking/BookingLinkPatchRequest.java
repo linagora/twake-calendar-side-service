@@ -19,18 +19,21 @@
 package com.linagora.calendar.storage.booking;
 
 import java.time.Duration;
+import java.util.List;
 
 import org.apache.james.util.ValuePatch;
 
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.OpenPaaSId;
 
 public record BookingLinkPatchRequest(ValuePatch<CalendarURL> calendarUrl,
                                       ValuePatch<Duration> duration,
                                       ValuePatch<Boolean> active,
                                       ValuePatch<Boolean> autoAccept,
                                       ValuePatch<AvailabilityRules> availabilityRules,
+                                      ValuePatch<List<OpenPaaSId>> extraAttendees,
                                       ValuePatch<String> name,
                                       ValuePatch<String> description,
                                       ValuePatch<String> color) {
@@ -40,6 +43,7 @@ public record BookingLinkPatchRequest(ValuePatch<CalendarURL> calendarUrl,
         Preconditions.checkNotNull(active, "'active' must not be null");
         Preconditions.checkNotNull(autoAccept, "'autoAccept' must not be null");
         Preconditions.checkNotNull(availabilityRules, "'availabilityRules' must not be null");
+        Preconditions.checkNotNull(extraAttendees, "'extraAttendees' must not be null");
         Preconditions.checkNotNull(name, "'name' must not be null");
         Preconditions.checkNotNull(description, "'description' must not be null");
         Preconditions.checkNotNull(color, "'color' must not be null");
@@ -57,9 +61,21 @@ public record BookingLinkPatchRequest(ValuePatch<CalendarURL> calendarUrl,
             || !active.isKept()
             || !autoAccept.isKept()
             || !availabilityRules.isKept()
+            || !extraAttendees.isKept()
             || !name.isKept()
             || !description.isKept()
             || !color.isKept(), "At least one updatable field is required");
+    }
+
+    public BookingLinkPatchRequest(ValuePatch<CalendarURL> calendarUrl,
+                                   ValuePatch<Duration> duration,
+                                   ValuePatch<Boolean> active,
+                                   ValuePatch<Boolean> autoAccept,
+                                   ValuePatch<AvailabilityRules> availabilityRules,
+                                   ValuePatch<String> name,
+                                   ValuePatch<String> description,
+                                   ValuePatch<String> color) {
+        this(calendarUrl, duration, active, autoAccept, availabilityRules, ValuePatch.keep(), name, description, color);
     }
 
     public BookingLinkPatchRequest(ValuePatch<CalendarURL> calendarUrl,

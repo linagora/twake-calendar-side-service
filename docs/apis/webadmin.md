@@ -1328,7 +1328,7 @@ Content-Type: application/json
 ]
 ```
 
-`availabilityRules`, `name` and `description` are omitted from an entry when not set.
+`availabilityRules`, `extraAttendees`, `name` and `description` are omitted from an entry when not set.
 The `color` field is always present, defaulting to `#6B4ECC` when not set.
 
 **Status codes**:
@@ -1359,13 +1359,17 @@ POST /users/{username}/booking-links
   "name": "Intro call",
   "description": "Book a 30-minute introduction call",
   "color": "#6B4ECC",
+  "extraAttendees": ["67c3a792e4b0884b05ef8af0"],
   "availabilityRules": [
     { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "timeZone": "Europe/Paris" }
   ]
 }
 ```
 
-`calendarUrl`, `durationMinutes` and `active` are required. `autoAccept` (default `false`), `availabilityRules`, `name`, `description` and `color` (default `#6B4ECC`) are optional.
+`calendarUrl`, `durationMinutes` and `active` are required. `autoAccept` (default `false`), `availabilityRules`, `extraAttendees` (empty by default), `name`, `description` and `color` (default `#6B4ECC`) are optional.
+
+`extraAttendees` holds OpenPaaS ids of registered users invited on every booked event, and whose availability
+narrows down the offered slots. See the [booking link API](bookingLink.md#extra-attendees) for details.
 
 ```
 HTTP/1.1 201 Created
@@ -1379,7 +1383,7 @@ Content-Type: application/json
 
 **Status codes**:
 - `201`: the booking link was created
-- `400`: invalid `username`, missing/invalid field, unknown rule type, invalid `timeZone`, or the calendar does not exist for that user
+- `400`: invalid `username`, missing/invalid field, unknown rule type, invalid `timeZone`, the calendar does not exist for that user, or an extra attendee is unknown or is the owner
 - `404`: the user does not exist
 
 ### Updating a booking link
@@ -1393,8 +1397,8 @@ PATCH /users/{username}/booking-links/{publicId}
 ```
 
 Only the fields present in the body are updated. At least one field must be provided.
-Set `availabilityRules` to `null` to remove all rules. Set `name` or `description` to `null`
-or a blank value to remove them.
+Set `availabilityRules` to `null` to remove all rules. Set `extraAttendees` to `null` or `[]` to
+remove them all. Set `name` or `description` to `null` or a blank value to remove them.
 
 **Status codes**:
 - `204`: the booking link was updated

@@ -71,6 +71,7 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
     private static final String FIELD_ACTIVE = "active";
     private static final String FIELD_AUTO_ACCEPT = "autoAccept";
     private static final String FIELD_AVAILABILITY_RULES = "availabilityRules";
+    private static final String FIELD_EXTRA_ATTENDEES = "extraAttendees";
     private static final String FIELD_NAME = "name";
     private static final String FIELD_DESCRIPTION = "description";
     private static final String FIELD_COLOR = "color";
@@ -114,6 +115,7 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
                 .active(request.active())
                 .autoAccept(request.autoAccept())
                 .availabilityRules(request.availabilityRules())
+                .extraAttendees(request.extraAttendees())
                 .name(request.name())
                 .description(request.description())
                 .color(request.color())
@@ -214,6 +216,11 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
         } else if (request.availabilityRules().isRemoved()) {
             unsetFields.append(FIELD_AVAILABILITY_RULES, "");
         }
+        if (request.extraAttendees().isModified()) {
+            setFields.append(FIELD_EXTRA_ATTENDEES, serializeExtraAttendees(request.extraAttendees().get()));
+        } else if (request.extraAttendees().isRemoved()) {
+            unsetFields.append(FIELD_EXTRA_ATTENDEES, "");
+        }
         if (request.name().isModified()) {
             setFields.append(FIELD_NAME, request.name().get());
         } else if (request.name().isRemoved()) {
@@ -251,11 +258,20 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
 
         bookingLink.availabilityRules().ifPresent(rules ->
             doc.append(FIELD_AVAILABILITY_RULES, serializeRules(rules)));
+        if (!bookingLink.extraAttendees().isEmpty()) {
+            doc.append(FIELD_EXTRA_ATTENDEES, serializeExtraAttendees(bookingLink.extraAttendees()));
+        }
         bookingLink.name().ifPresent(name -> doc.append(FIELD_NAME, name));
         bookingLink.description().ifPresent(description -> doc.append(FIELD_DESCRIPTION, description));
         bookingLink.color().ifPresent(color -> doc.append(FIELD_COLOR, color));
 
         return doc;
+    }
+
+    private List<String> serializeExtraAttendees(List<OpenPaaSId> extraAttendees) {
+        return extraAttendees.stream()
+            .map(OpenPaaSId::value)
+            .toList();
     }
 
     private List<Document> serializeRules(AvailabilityRules rules) {
@@ -292,6 +308,9 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
         Optional<AvailabilityRules> availabilityRules = Optional.ofNullable(doc.getList(FIELD_AVAILABILITY_RULES, Document.class))
             .filter(rules -> !rules.isEmpty())
             .map(rules -> new AvailabilityRules(rules.stream().map(this::deserializeRule).toList()));
+        List<OpenPaaSId> extraAttendees = Optional.ofNullable(doc.getList(FIELD_EXTRA_ATTENDEES, String.class))
+            .map(ids -> ids.stream().map(OpenPaaSId::new).toList())
+            .orElse(List.of());
         Optional<String> name = Optional.ofNullable(doc.getString(FIELD_NAME));
         Optional<String> description = Optional.ofNullable(doc.getString(FIELD_DESCRIPTION));
         Optional<String> color = Optional.ofNullable(doc.getString(FIELD_COLOR));
@@ -304,6 +323,7 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
             .active(active)
             .autoAccept(autoAccept)
             .availabilityRules(availabilityRules)
+            .extraAttendees(extraAttendees)
             .name(name)
             .description(description)
             .color(color)

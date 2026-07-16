@@ -31,6 +31,7 @@ import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -127,6 +128,12 @@ class BookingLinkPatchRouteTest {
             .build();
 
         calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
+    }
+
+    private OpenPaaSUser newProvisionedUser(TwakeCalendarGuiceServer server) {
+        OpenPaaSUser user = sabreDavExtension.newTestUser();
+        server.getProbe(CalendarDataProbe.class).addUserToRepository(user.username(), PASSWORD);
+        return user;
     }
 
     @Test
@@ -386,6 +393,67 @@ class BookingLinkPatchRouteTest {
 
         BookingLink updated = bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
         assertThat(updated.availabilityRules()).isEmpty();
+    }
+
+    @Test
+    void shouldPersistUpdatedExtraAttendees(TwakeCalendarGuiceServer server) {
+        OpenPaaSUser extraAttendee = newProvisionedUser(server);
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+
+        given()
+            .body("""
+                { "extraAttendees": ["%s"] }
+                """.formatted(extraAttendee.id().value()))
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        BookingLink updated = bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
+        assertThat(updated.extraAttendees()).containsExactly(extraAttendee.id());
+    }
+
+    @Test
+    void shouldRemoveExtraAttendeesWhenSetToNull(TwakeCalendarGuiceServer server) {
+        OpenPaaSUser extraAttendee = newProvisionedUser(server);
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE,
+                BookingLinkInsertRequest.AUTO_ACCEPT, Optional.empty(), List.of(extraAttendee.id()),
+                Optional.empty(), Optional.empty(), Optional.empty()));
+
+        given()
+            .body("""
+                { "extraAttendees": null }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        BookingLink updated = bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
+        assertThat(updated.extraAttendees()).isEmpty();
+    }
+
+    @Test
+    void shouldReturn400WhenUpdatedExtraAttendeeDoesNotExist(TwakeCalendarGuiceServer server) {
+        OpenPaaSUser extraAttendee = newProvisionedUser(server);
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE,
+                BookingLinkInsertRequest.AUTO_ACCEPT, Optional.empty(), List.of(extraAttendee.id()),
+                Optional.empty(), Optional.empty(), Optional.empty()));
+
+        given()
+            .body("""
+                { "extraAttendees": ["659387b9d486dc0046aeffff"] }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+
+        BookingLink notUpdated = bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
+        assertThat(notUpdated.extraAttendees()).containsExactly(extraAttendee.id());
     }
 
     @Test

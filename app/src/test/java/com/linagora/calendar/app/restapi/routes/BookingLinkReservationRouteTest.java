@@ -80,6 +80,7 @@ import com.linagora.calendar.smtp.MailSenderConfiguration;
 import com.linagora.calendar.smtp.MockSmtpServerExtension;
 import com.linagora.calendar.smtp.template.MailTemplateConfiguration;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
@@ -1337,6 +1338,85 @@ class BookingLinkReservationRouteTest {
             .post("/api/booking-links/{bookingLinkPublicId}/book")
         .then()
             .statusCode(HttpStatus.SC_FORBIDDEN);
+    }
+
+    @Test
+    void shouldAddBookingLinkExtraAttendeesToTheCreatedEvent(TwakeCalendarGuiceServer server) {
+        CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
+        Username extraAttendeeUsername = Username.fromLocalPartWithDomain("extra-" + UUID.randomUUID(), Domain.of("open-paas.org"));
+        calendarDataProbe.addUser(extraAttendeeUsername, PASSWORD, "Extra", "Attendee");
+        OpenPaaSUser extraAttendee = calendarDataProbe.getUser(extraAttendeeUsername);
+
+        BookingLink inserted = server.getProbe(BookingLinkProbe.class)
+            .insert(openPaaSUser.username(), new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES,
+                true, BookingLinkInsertRequest.AUTO_ACCEPT, Optional.of(AVAILABILITY_RULE), List.of(extraAttendee.id()),
+                Optional.empty(), Optional.empty(), Optional.empty()));
+
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body(bodyRequest("2036-01-26T09:00:00Z"))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED);
+
+        String unfoldedCalendar = exportCalendar(openPaaSUser).replace("\r\n ", "");
+
+        assertThat(unfoldedCalendar)
+            .describedAs("extra attendees are invited and still have to answer")
+            .contains("ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=%s:mailto:%s"
+                .formatted(extraAttendee.fullName(), extraAttendee.username().asString()));
+    }
+
+    @Test
+    void shouldStillBookWhenAnExtraAttendeeNoLongerExists(TwakeCalendarGuiceServer server) {
+        // An extra attendee deleted after the booking link creation must not make the link unbookable.
+        BookingLink inserted = server.getProbe(BookingLinkProbe.class)
+            .insert(openPaaSUser.username(), new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES,
+                true, BookingLinkInsertRequest.AUTO_ACCEPT, Optional.of(AVAILABILITY_RULE), List.of(new OpenPaaSId("659387b9d486dc0046aeffff")),
+                Optional.empty(), Optional.empty(), Optional.empty()));
+
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body(bodyRequest("2036-01-26T09:00:00Z"))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED);
+    }
+
+    @Test
+    void shouldNotDuplicateAttendeeWhenAnExtraAttendeeBooksTheSlotThemselves(TwakeCalendarGuiceServer server) {
+        CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
+        Username extraAttendeeUsername = Username.fromLocalPartWithDomain("extra-" + UUID.randomUUID(), Domain.of("open-paas.org"));
+        calendarDataProbe.addUser(extraAttendeeUsername, PASSWORD, "Extra", "Attendee");
+        OpenPaaSUser extraAttendee = calendarDataProbe.getUser(extraAttendeeUsername);
+
+        BookingLink inserted = server.getProbe(BookingLinkProbe.class)
+            .insert(openPaaSUser.username(), new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES,
+                true, BookingLinkInsertRequest.AUTO_ACCEPT, Optional.of(AVAILABILITY_RULE), List.of(extraAttendee.id()),
+                Optional.empty(), Optional.empty(), Optional.empty()));
+
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body("""
+                {
+                  "startUtc": "2036-01-26T09:00:00Z",
+                  "creator": { "email": "%s" },
+                  "eventTitle": "booked by an extra attendee"
+                }
+                """.formatted(extraAttendee.username().asString()))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED);
+
+        String unfoldedCalendar = exportCalendar(openPaaSUser).replace("\r\n ", "");
+
+        assertThat(unfoldedCalendar.lines()
+            .filter(line -> line.startsWith("ATTENDEE") && line.contains(extraAttendee.username().asString())))
+            .describedAs("the booker already is an attendee: no duplicate ATTENDEE with a conflicting PARTSTAT")
+            .hasSize(1);
     }
 
     private BookingLink insertActiveBookingLink(TwakeCalendarGuiceServer server) {
