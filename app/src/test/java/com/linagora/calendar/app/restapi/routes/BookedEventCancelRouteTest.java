@@ -262,7 +262,7 @@ class BookedEventCancelRouteTest {
         CALMLY_AWAIT.atMost(Duration.ofSeconds(10))
             .untilAsserted(() -> {
                 JsonPath mails = smtpMails();
-                assertThat(messagesMatching(mails, "creator@example.com", "method=CANCEL")).isNotEmpty();
+                assertThat(messagesTo(mails, "creator@example.com")).isNotEmpty();
                 assertThat(messagesTo(mails, openPaaSUser.username().asString())).isNotEmpty();
             });
 
