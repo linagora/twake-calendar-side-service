@@ -457,6 +457,42 @@ class BookingLinkPatchRouteTest {
     }
 
     @Test
+    void shouldReturn400WhenUpdatedExtraAttendeesContainsTheOwner(TwakeCalendarGuiceServer server) {
+        OpenPaaSUser extraAttendee = newProvisionedUser(server);
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE,
+                BookingLinkInsertRequest.AUTO_ACCEPT, Optional.empty(), List.of(extraAttendee.id()),
+                Optional.empty(), Optional.empty(), Optional.empty()));
+
+        given()
+            .body("""
+                { "extraAttendees": ["%s"] }
+                """.formatted(openPaaSUser.id().value()))
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+
+        BookingLink notUpdated = bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
+        assertThat(notUpdated.extraAttendees()).containsExactly(extraAttendee.id());
+    }
+
+    @Test
+    void shouldReturn400WhenUpdatedExtraAttendeeIsBlank() {
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+
+        given()
+            .body("""
+                { "extraAttendees": [" "] }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @Test
     void shouldNotUpdateFieldsAbsentFromRequest() {
         AvailabilityRules existingRules = AvailabilityRules.of(
             new WeeklyAvailabilityRule(DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(17, 0), UTC));

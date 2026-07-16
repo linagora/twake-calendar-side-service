@@ -67,15 +67,12 @@ public class BookingLinkExtraAttendeeResolver {
         if (extraAttendees.isEmpty()) {
             return Mono.empty();
         }
-        Mono<OpenPaaSId> ownerId = openPaaSUserDAO.retrieve(owner)
+        return openPaaSUserDAO.retrieve(owner)
             .map(OpenPaaSUser::id)
-            .cache();
-
-        return resolve(extraAttendees)
-            .concatMap(extraAttendee -> ownerId
-                .filter(id -> id.equals(extraAttendee.id()))
-                .flatMap(id -> Mono.<Void>error(new IllegalArgumentException(
-                    "'extraAttendees' must not contain the booking link owner: " + id.value()))))
+            .flatMapMany(ownerId -> resolve(extraAttendees)
+                .filter(extraAttendee -> extraAttendee.id().equals(ownerId))
+                .concatMap(extraAttendee -> Mono.<Void>error(new IllegalArgumentException(
+                    "'extraAttendees' must not contain the booking link owner: " + ownerId.value()))))
             .then();
     }
 
