@@ -18,8 +18,6 @@
 
 package com.linagora.calendar.restapi.routes;
 
-import static com.linagora.calendar.smtp.template.MimeAttachment.ATTACHMENT_DISPOSITION_TYPE;
-
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.List;
@@ -35,7 +33,6 @@ import jakarta.inject.Singleton;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.MailAddress;
-import org.apache.james.mailbox.model.ContentType;
 import org.apache.james.mime4j.dom.Message;
 
 import com.github.fge.lambdas.Throwing;
@@ -49,7 +46,6 @@ import com.linagora.calendar.smtp.MailSender;
 import com.linagora.calendar.smtp.template.Language;
 import com.linagora.calendar.smtp.template.MailTemplateConfiguration;
 import com.linagora.calendar.smtp.template.MessageGenerator;
-import com.linagora.calendar.smtp.template.MimeAttachment;
 import com.linagora.calendar.smtp.template.TemplateType;
 import com.linagora.calendar.smtp.template.content.model.EventInCalendarLinkFactory;
 import com.linagora.calendar.smtp.template.content.model.EventTimeModel;
@@ -57,15 +53,11 @@ import com.linagora.calendar.smtp.template.content.model.PersonModel;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.ResolvedSettings;
 
-import net.fortuna.ical4j.model.property.immutable.ImmutableMethod;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 public class PublicAgendaProposalNotifier {
     private static final TemplateType EVENT_PROPOSE_TEMPLATE = new TemplateType("event-propose");
-    private static final String CALENDAR_CONTENT_TYPE_PREFIX = "text/calendar; charset=UTF-8; method=";
-    private static final String ICS_CONTENT_TYPE = "application/ics";
-    private static final String ICS_FILENAME = "meeting.ics";
 
     private final SettingsBasedResolver settingsResolver;
     private final EventParticipationActionLinkFactory actionLinkFactory;
@@ -117,23 +109,9 @@ public class PublicAgendaProposalNotifier {
                                           BookingCreated bookingCreated,
                                           ActionLinks actionLinks,
                                           MessageGenerator messageGenerator) {
-        byte[] invitationIcs = bookingCreated.eventIcsResult().icsBytes(ImmutableMethod.REQUEST);
-        List<MimeAttachment> attachments = List.of(
-            MimeAttachment.builder()
-                .contentType(ContentType.of(CALENDAR_CONTENT_TYPE_PREFIX + ImmutableMethod.REQUEST.getValue()))
-                .content(invitationIcs)
-                .build(),
-            MimeAttachment.builder()
-                .contentType(ContentType.of(ICS_CONTENT_TYPE))
-                .content(invitationIcs)
-                .dispositionType(ATTACHMENT_DISPOSITION_TYPE)
-                .fileName(ICS_FILENAME)
-                .build());
-
         return messageGenerator.generate(bookingCreated.organizer().username(),
             fromMailAddress,
-            PugModel.toPugModel(bookingCreated, actionLinks, settings.locale(), settings.zoneId(), eventInCalendarLinkFactory),
-            attachments);
+            PugModel.toPugModel(bookingCreated, actionLinks, settings.locale(), settings.zoneId(), eventInCalendarLinkFactory));
     }
 
     interface PugModel {

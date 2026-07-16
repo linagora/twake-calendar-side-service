@@ -366,7 +366,7 @@ class BookingLinkReservationRouteTest {
     }
 
     @Test
-    void proposalEmailShouldCarryARequestIcs(TwakeCalendarGuiceServer server) {
+    void proposalEmailShouldNotCarryIcsAttachment(TwakeCalendarGuiceServer server) {
         BookingLink inserted = insertActiveBookingLink(server);
         String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();
 
@@ -389,8 +389,9 @@ class BookingLinkReservationRouteTest {
 
         String message = messageForRecipient(awaitBookingEmails(), openPaaSUser.username().asString());
 
-        assertThat(getIcs(message))
-            .contains("METHOD:REQUEST");
+        assertThat(message)
+            .doesNotContain("text/calendar")
+            .doesNotContain("application/ics");
     }
 
     @Test
@@ -1427,16 +1428,6 @@ class BookingLinkReservationRouteTest {
         assertThat(matcher.find()).isTrue();
         String base64Html = matcher.group(1).replaceAll("\\s+", "");
         return new String(Base64.getDecoder().decode(base64Html), StandardCharsets.UTF_8);
-    }
-
-    private String getIcs(String message) {
-        Pattern icsPattern = Pattern.compile(
-            "Content-Type: text/calendar[^\\r\\n]*\\r?\\n(?:[^\\r\\n]+\\r?\\n)*\\r?\\n([A-Za-z0-9+/=\\r\\n]+?)\\r?\\n---=Part",
-            Pattern.DOTALL);
-        Matcher matcher = icsPattern.matcher(message);
-        assertThat(matcher.find()).isTrue();
-        String base64Ics = matcher.group(1).replaceAll("\\s+", "");
-        return new String(Base64.getDecoder().decode(base64Ics), StandardCharsets.UTF_8);
     }
 
     private List<String> extractParticipationActionLinks(String html) {
