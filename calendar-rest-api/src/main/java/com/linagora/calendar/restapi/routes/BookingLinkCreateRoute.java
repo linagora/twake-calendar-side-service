@@ -41,6 +41,7 @@ import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.metrics.api.MetricFactory;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import com.linagora.calendar.api.booking.AvailabilityRule;
@@ -69,7 +70,7 @@ public class BookingLinkCreateRoute extends CalendarRoute {
                                               @JsonProperty("active") Boolean active,
                                               @JsonProperty("autoAccept") Optional<Boolean> autoAccept,
                                               @JsonProperty("availabilityRules") Optional<List<AvailabilityRuleDTO>> availabilityRules,
-                                              @JsonProperty("extraAttendees") Optional<List<String>> extraAttendees,
+                                              @JsonProperty("extraAttendees") Optional<JsonNode> extraAttendees,
                                               @JsonProperty("name") Optional<String> name,
                                               @JsonProperty("description") Optional<String> description,
                                               @JsonProperty("color") Optional<String> color) {
@@ -144,7 +145,7 @@ public class BookingLinkCreateRoute extends CalendarRoute {
                     CreateBookingLinkRequestDTO.toBookingLinkInsertRequest(dto, resolvedSettings.zoneId(), getDefaultAvailabilityRules(resolvedSettings))))
             .flatMap(insertRequest ->
                 validateCalendarAccess(insertRequest.calendarUrl(), session)
-                    .then(extraAttendeeResolver.validate(session.getUser(), insertRequest.extraAttendees()))
+                    .then(extraAttendeeResolver.validate(session.getUser(), insertRequest.extraAttendees().participants()))
                     .thenReturn(insertRequest))
             .flatMap(insertRequest -> bookingLinkDAO.insert(session.getUser(), insertRequest))
             .flatMap(bookingLink -> response.status(HttpResponseStatus.CREATED)

@@ -21,7 +21,6 @@ package com.linagora.calendar.storage.booking;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Comparator;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -101,7 +100,7 @@ public class MemoryBookingLinkDAO implements BookingLinkDAO {
                 builder.availabilityRules(request.availabilityRules().notKeptOrElse(existing.availabilityRules()));
                 builder.extraAttendees(request.extraAttendees()
                     .notKeptOrElse(Optional.of(existing.extraAttendees()))
-                    .orElse(List.of()));
+                    .orElse(ExtraAttendees.NONE));
                 builder.name(request.name().notKeptOrElse(existing.name()));
                 builder.description(request.description().notKeptOrElse(existing.description()));
                 builder.color(request.color().notKeptOrElse(existing.color()));

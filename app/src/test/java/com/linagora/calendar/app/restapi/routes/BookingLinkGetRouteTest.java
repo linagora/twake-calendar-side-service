@@ -60,6 +60,7 @@ import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
+import com.linagora.calendar.storage.booking.ExtraAttendees;
 
 import io.restassured.RestAssured;
 import io.restassured.authentication.PreemptiveBasicAuthScheme;
@@ -155,7 +156,7 @@ class BookingLinkGetRouteTest {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE,
                 BookingLinkInsertRequest.AUTO_ACCEPT, Optional.empty(),
-                List.of(new OpenPaaSId("659387b9d486dc0046aeffb1"), new OpenPaaSId("659387b9d486dc0046aeffb2")),
+                ExtraAttendees.of(new OpenPaaSId("659387b9d486dc0046aeffb1"), new OpenPaaSId("659387b9d486dc0046aeffb2")),
                 Optional.empty(), Optional.empty(), Optional.empty()));
 
         String response = given()
@@ -174,7 +175,7 @@ class BookingLinkGetRouteTest {
                     "durationMinutes": 30,
                     "active": true,
                     "autoAccept": false,
-                    "extraAttendees": ["659387b9d486dc0046aeffb1", "659387b9d486dc0046aeffb2"],
+                    "extraAttendees": { "and": [ { "participant": "659387b9d486dc0046aeffb1" }, { "participant": "659387b9d486dc0046aeffb2" } ] },
                     "color": "#6B4ECC"
                 }
                 """.formatted(inserted.publicId().value(), CalendarURL.from(openPaaSUser.id()).asUri().toString()));

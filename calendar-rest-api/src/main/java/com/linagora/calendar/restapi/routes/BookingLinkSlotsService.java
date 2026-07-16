@@ -125,7 +125,7 @@ public class BookingLinkSlotsService {
      * view rather than mixing it in.
      */
     private Flux<BusyInterval> extraAttendeesBusyIntervals(BookingLink bookingLink, Instant from, Instant to) {
-        return Flux.fromIterable(bookingLink.extraAttendees())
+        return Flux.fromIterable(bookingLink.extraAttendees().participants())
             .concatMap(extraAttendee -> calDavClient.findBusyIntervals(bookingLink.username(), CalendarURL.from(extraAttendee), from, to)
                 .collectList()
                 .onErrorResume(error -> {

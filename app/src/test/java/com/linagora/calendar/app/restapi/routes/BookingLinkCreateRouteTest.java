@@ -44,6 +44,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.google.inject.multibindings.Multibinder;
 import com.linagora.calendar.api.booking.AvailabilityRule.FixedAvailabilityRule;
@@ -64,6 +66,7 @@ import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
+import com.linagora.calendar.storage.booking.ExtraAttendees;
 
 import io.restassured.RestAssured;
 import io.restassured.authentication.PreemptiveBasicAuthScheme;
@@ -527,7 +530,7 @@ class BookingLinkCreateRouteTest {
                     "calendarUrl": "%s",
                     "durationMinutes": 30,
                     "active": true,
-                    "extraAttendees": ["%s"]
+                    "extraAttendees": { "and": [ { "participant": "%s" } ] }
                 }
                 """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString(), extraAttendee.id().value()))
         .when()
@@ -538,7 +541,7 @@ class BookingLinkCreateRouteTest {
 
         BookingLink stored = bookingLinkProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
 
-        assertThat(stored.extraAttendees()).containsExactly(extraAttendee.id());
+        assertThat(stored.extraAttendees()).isEqualTo(ExtraAttendees.of(extraAttendee.id()));
     }
 
     @Test
@@ -559,7 +562,7 @@ class BookingLinkCreateRouteTest {
 
         BookingLink stored = bookingLinkProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
 
-        assertThat(stored.extraAttendees()).isEmpty();
+        assertThat(stored.extraAttendees()).isEqualTo(ExtraAttendees.NONE);
     }
 
     @Test
@@ -570,7 +573,7 @@ class BookingLinkCreateRouteTest {
                     "calendarUrl": "%s",
                     "durationMinutes": 30,
                     "active": true,
-                    "extraAttendees": ["659387b9d486dc0046aeffff"]
+                    "extraAttendees": { "and": [ { "participant": "659387b9d486dc0046aeffff" } ] }
                 }
                 """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
         .when()
@@ -589,7 +592,7 @@ class BookingLinkCreateRouteTest {
                     "calendarUrl": "%s",
                     "durationMinutes": 30,
                     "active": true,
-                    "extraAttendees": ["%s"]
+                    "extraAttendees": { "and": [ { "participant": "%s" } ] }
                 }
                 """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString(), openPaaSUser.id().value()))
         .when()
@@ -608,9 +611,30 @@ class BookingLinkCreateRouteTest {
                     "calendarUrl": "%s",
                     "durationMinutes": 30,
                     "active": true,
-                    "extraAttendees": [" "]
+                    "extraAttendees": { "and": [ { "participant": " " } ] }
                 }
                 """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "[\"659387b9d486dc0046aeffb1\"]",
+        "{\"or\": [{\"participant\": \"659387b9d486dc0046aeffb1\"}]}",
+        "{\"and\": [{\"and\": [{\"participant\": \"659387b9d486dc0046aeffb1\"}]}]}"})
+    void shouldReturn400WhenExtraAttendeesShapeIsNotSupported(String extraAttendees) {
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "extraAttendees": %s
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString(), extraAttendees))
         .when()
             .post("/api/booking-links")
         .then()

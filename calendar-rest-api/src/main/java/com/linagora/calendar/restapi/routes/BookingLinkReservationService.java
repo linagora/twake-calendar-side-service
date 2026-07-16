@@ -125,7 +125,7 @@ public class BookingLinkReservationService {
     }
 
     private Mono<List<BookingAttendee>> resolveExtraAttendees(BookingLink bookingLink) {
-        return extraAttendeeResolver.resolveExisting(bookingLink.extraAttendees())
+        return extraAttendeeResolver.resolveExisting(bookingLink.extraAttendees().participants())
             .map(user -> BookingAttendee.from(user.fullName(), user.username().asString()))
             .collectList();
     }

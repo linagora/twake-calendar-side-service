@@ -57,6 +57,7 @@ import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
+import com.linagora.calendar.storage.booking.ExtraAttendees;
 import com.linagora.calendar.storage.mongodb.MongoDBBookingLinkDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
@@ -236,7 +237,7 @@ public class BookingLinkUserRoutesTest {
                     "calendarUrl": "%s",
                     "durationMinutes": 45,
                     "active": true,
-                    "extraAttendees": ["%s"]
+                    "extraAttendees": { "and": [ { "participant": "%s" } ] }
                 }
                 """.formatted(defaultCalendarUrl(user), otherUser.id().value()))
         .when()
@@ -246,7 +247,7 @@ public class BookingLinkUserRoutesTest {
             .extract().jsonPath().getString("bookingLinkPublicId");
 
         BookingLink stored = bookingLinkDAO.findByPublicId(user.username(), new BookingLinkPublicId(UUID.fromString(publicId))).block();
-        assertThat(stored.extraAttendees()).containsExactly(otherUser.id());
+        assertThat(stored.extraAttendees()).isEqualTo(ExtraAttendees.of(otherUser.id()));
     }
 
     @Test
@@ -257,7 +258,7 @@ public class BookingLinkUserRoutesTest {
                     "calendarUrl": "%s",
                     "durationMinutes": 45,
                     "active": true,
-                    "extraAttendees": ["659387b9d486dc0046aeffff"]
+                    "extraAttendees": { "and": [ { "participant": "659387b9d486dc0046aeffff" } ] }
                 }
                 """.formatted(defaultCalendarUrl(user)))
         .when()

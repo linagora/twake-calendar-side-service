@@ -66,6 +66,7 @@ import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.booking.BookingLinkNotFoundException;
 import com.linagora.calendar.storage.booking.BookingLinkPatchRequest;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
+import com.linagora.calendar.storage.booking.ExtraAttendees;
 import com.linagora.calendar.webadmin.service.BookingLinkEventDeletionService;
 import com.linagora.calendar.webadmin.task.BookingLinkEventDeletionTask;
 
@@ -219,7 +220,7 @@ public class BookingLinkUserRoutes implements Routes {
         BookingLinkInsertRequest insertRequest = parseInsertRequest(request);
 
         BookingLink bookingLink = validateCalendarAccess(user.username(), insertRequest.calendarUrl())
-            .then(validateExtraAttendees(user.username(), insertRequest.extraAttendees()))
+            .then(validateExtraAttendees(user.username(), insertRequest.extraAttendees().participants()))
             .then(bookingLinkDAO.insert(user.username(), insertRequest))
             .block();
 
@@ -239,7 +240,7 @@ public class BookingLinkUserRoutes implements Routes {
             .orElse(Mono.empty());
 
         validateCalendar
-            .then(validateExtraAttendees(username, patchRequest.extraAttendees().getOrElse(List.of())))
+            .then(validateExtraAttendees(username, patchRequest.extraAttendees().getOrElse(ExtraAttendees.NONE).participants()))
             .then(bookingLinkDAO.update(username, publicId, patchRequest))
             .onErrorMap(BookingLinkNotFoundException.class, e -> bookingLinkNotFound(publicId))
             .block();
@@ -357,14 +358,11 @@ public class BookingLinkUserRoutes implements Routes {
             .orElseGet(ValuePatch::remove);
     }
 
-    private ValuePatch<List<OpenPaaSId>> parseExtraAttendees(JsonNode node, PatchDto dto) {
+    private ValuePatch<ExtraAttendees> parseExtraAttendees(JsonNode node, PatchDto dto) {
         if (!node.has(FIELD_EXTRA_ATTENDEES)) {
             return ValuePatch.keep();
         }
-        return dto.extraAttendees().map(BookingLinkExtraAttendeeUtil::parse)
-            .filter(extraAttendees -> !extraAttendees.isEmpty())
-            .map(ValuePatch::modifyTo)
-            .orElseGet(ValuePatch::remove);
+        return BookingLinkExtraAttendeeUtil.parsePatch(dto.extraAttendees());
     }
 
     private ValuePatch<String> parseName(JsonNode node, PatchDto dto) {

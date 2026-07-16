@@ -20,7 +20,6 @@ package com.linagora.calendar.storage.booking;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
 import java.util.Optional;
 
 import org.apache.james.core.Username;
@@ -28,7 +27,6 @@ import org.apache.james.core.Username;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.storage.CalendarURL;
-import com.linagora.calendar.storage.OpenPaaSId;
 
 public record BookingLink(Username username,
                           BookingLinkPublicId publicId,
@@ -37,7 +35,7 @@ public record BookingLink(Username username,
                           boolean active,
                           boolean autoAccept,
                           Optional<AvailabilityRules> availabilityRules,
-                          List<OpenPaaSId> extraAttendees,
+                          ExtraAttendees extraAttendees,
                           Optional<String> name,
                           Optional<String> description,
                           Optional<String> color,
@@ -58,7 +56,6 @@ public record BookingLink(Username username,
         Preconditions.checkNotNull(description, "'description' must not be null");
         Preconditions.checkNotNull(color, "'color' must not be null");
         Preconditions.checkNotNull(createdAt, "'createdAt' must not be null");
-        extraAttendees = List.copyOf(extraAttendees);
     }
 
     public String colorOrDefault() {
@@ -94,7 +91,7 @@ public record BookingLink(Username username,
         private boolean active;
         private boolean autoAccept;
         private Optional<AvailabilityRules> availabilityRules = Optional.empty();
-        private List<OpenPaaSId> extraAttendees = List.of();
+        private ExtraAttendees extraAttendees = ExtraAttendees.NONE;
         private Optional<String> name = Optional.empty();
         private Optional<String> description = Optional.empty();
         private Optional<String> color = Optional.empty();
@@ -136,7 +133,7 @@ public record BookingLink(Username username,
             return this;
         }
 
-        public Builder extraAttendees(List<OpenPaaSId> extraAttendees) {
+        public Builder extraAttendees(ExtraAttendees extraAttendees) {
             this.extraAttendees = extraAttendees;
             return this;
         }

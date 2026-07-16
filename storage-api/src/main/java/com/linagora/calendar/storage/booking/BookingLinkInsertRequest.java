@@ -19,26 +19,24 @@
 package com.linagora.calendar.storage.booking;
 
 import java.time.Duration;
-import java.util.List;
 import java.util.Optional;
 
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.storage.CalendarURL;
-import com.linagora.calendar.storage.OpenPaaSId;
 
 public record BookingLinkInsertRequest(CalendarURL calendarUrl,
                                        Duration eventDuration,
                                        boolean active,
                                        boolean autoAccept,
                                        Optional<AvailabilityRules> availabilityRules,
-                                       List<OpenPaaSId> extraAttendees,
+                                       ExtraAttendees extraAttendees,
                                        Optional<String> name,
                                        Optional<String> description,
                                        Optional<String> color) {
     public static final boolean ACTIVE = true;
     public static final boolean AUTO_ACCEPT = false;
-    public static final List<OpenPaaSId> NO_EXTRA_ATTENDEE = List.of();
+    public static final ExtraAttendees NO_EXTRA_ATTENDEE = ExtraAttendees.NONE;
 
     public BookingLinkInsertRequest {
         Preconditions.checkNotNull(calendarUrl, "'calendarUrl' must not be null");
@@ -49,7 +47,6 @@ public record BookingLinkInsertRequest(CalendarURL calendarUrl,
         Preconditions.checkNotNull(name, "'name' must not be null");
         Preconditions.checkNotNull(description, "'description' must not be null");
         Preconditions.checkNotNull(color, "'color' must not be null");
-        extraAttendees = List.copyOf(extraAttendees);
     }
 
     public BookingLinkInsertRequest(CalendarURL calendarUrl,

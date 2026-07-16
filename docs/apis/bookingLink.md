@@ -25,7 +25,7 @@ Public users can use booking links to book events.
 | `active`            | boolean          | Whether the booking link is active                                          |
 | `autoAccept`        | boolean          | When `true`, the organizer accepts as soon as a booking is created: no validation mail is sent to the organizer and no acknowledgement mail to the booker, the regular IMIP flow applies. When `false` (default), the booking starts the validation flow. |
 | `availabilityRules` | array (optional) | List of availability rule objects (weekly or fixed)                         |
-| `extraAttendees`    | array (optional) | OpenPaaS ids of registered users invited to every event booked through this link. Omitted from responses when empty. See [Extra attendees](#extra-attendees). |
+| `extraAttendees`    | object (optional)| Tree of the registered users invited to every event booked through this link. Omitted from responses when empty. See [Extra attendees](#extra-attendees). |
 | `name`              | string (optional)| Display name of the booking link                                            |
 | `description`       | string (optional)| Description of the booking link                                             |
 | `color`             | string           | Display color of the booking link, as a `#RRGGBB` hex string. Always present in responses, defaulting to `#6B4ECC` when not set. |
@@ -53,9 +53,27 @@ Public users can use booking links to book events.
 
 ### Extra attendees
 
-A booking link may carry `extraAttendees`: a list of OpenPaaS ids of registered users to invite alongside the owner.
-This allows handing over a single link for a meeting that needs several people, for instance a sales
-representative, a presales engineer and a project manager.
+A booking link may carry `extraAttendees`: registered users to invite alongside the owner. This allows handing
+over a single link for a meeting that needs several people, for instance a sales representative, a presales
+engineer and a project manager.
+
+They are expressed as a tree, whose only supported shape today is a single `and` node of `participant` leaves -
+invite all of them:
+
+```json
+{
+    "extraAttendees": {
+        "and": [
+            { "participant": "67c3a792e4b0884b05ef8af0" },
+            { "participant": "67c3a792e4b0884b05ef8af1" }
+        ]
+    }
+}
+```
+
+The tree leaves room for the richer combinations calendaring calls for (optional participants, substitutes:
+`bob` OR `michael` but only one of them) without a breaking change. Any other shape - other node types, nested
+`and`, extra fields on a leaf - is rejected with a `400 Bad Request` for now.
 
 Extra attendees change the booking link in two ways:
 
@@ -71,8 +89,8 @@ Working hours of the extra attendees own timezone are not taken into account.
 
 Constraints:
 
-- Each entry must be the OpenPaaS id of an existing user, and must not be the booking link owner.
-- At most 20 extra attendees. Duplicates are ignored.
+- Each `participant` must be the OpenPaaS id of an existing user, and must not be the booking link owner.
+- At most 20 participants. Duplicates are ignored.
 
 ---
 
@@ -91,7 +109,7 @@ Create a new booking link for the authenticated user.
 | `active`            | yes      | Whether the booking link is active                                                                                                                       |
 | `autoAccept`        | no       | Whether bookings are auto-accepted by the organizer. Defaults to `false` when omitted.                                                                   |
 | `availabilityRules` | no       | List of availability rules. Defaults to business hours from user settings when omitted. Each rule may specify its own `timeZone` (see availability rule object above). |
-| `extraAttendees`    | no       | OpenPaaS ids of registered users to invite on every booked event. Empty when omitted. See [Extra attendees](#extra-attendees).                            |
+| `extraAttendees`    | no       | Tree of the registered users to invite on every booked event. Empty when omitted. See [Extra attendees](#extra-attendees).                                |
 | `name`              | no       | Display name of the booking link. Blank values are ignored.                                                                                              |
 | `description`       | no       | Description of the booking link. Blank values are ignored.                                                                                               |
 | `color`             | no       | Display color as a `#RRGGBB` hex string. Blank values are ignored. Defaults to `#6B4ECC` when omitted.                                                    |
@@ -110,7 +128,7 @@ Content-Type: application/json
     "name": "Intro call",
     "description": "Book a 30-minute introduction call",
     "color": "#6B4ECC",
-    "extraAttendees": ["67c3a792e4b0884b05ef8af0", "67c3a792e4b0884b05ef8af1"],
+    "extraAttendees": { "and": [{ "participant": "67c3a792e4b0884b05ef8af0" }, { "participant": "67c3a792e4b0884b05ef8af1" }] },
     "availabilityRules": [
         { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "timeZone": "Asia/Ho_Chi_Minh" },
         { "type": "weekly", "dayOfWeek": "MON", "start": "13:00", "end": "17:00", "timeZone": "Europe/London" },
@@ -242,7 +260,7 @@ All fields are optional. Include only the fields to update.
 | `active`            | New active state                                                                                                 |
 | `autoAccept`        | New auto-accept state                                                                                            |
 | `availabilityRules` | Replaces all existing rules. Set to `null` to remove all rules. Each rule may specify its own `timeZone`. |
-| `extraAttendees`    | Replaces all existing extra attendees. Set to `null` or `[]` to remove them all. See [Extra attendees](#extra-attendees). |
+| `extraAttendees`    | Replaces all existing extra attendees. Set to `null` or `{"and": []}` to remove them all. See [Extra attendees](#extra-attendees). |
 | `name`              | New display name. Set to `null` or a blank value to remove it.                                                   |
 | `description`       | New description. Set to `null` or a blank value to remove it.                                                    |
 | `color`             | New display color as a `#RRGGBB` hex string. Set to `null` or a blank value to remove it (the default `#6B4ECC` then applies). |

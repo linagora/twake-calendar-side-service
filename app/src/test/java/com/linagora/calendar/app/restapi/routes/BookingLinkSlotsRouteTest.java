@@ -60,6 +60,7 @@ import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
+import com.linagora.calendar.storage.booking.ExtraAttendees;
 
 import io.restassured.RestAssured;
 import io.restassured.builder.RequestSpecBuilder;
@@ -494,7 +495,7 @@ class BookingLinkSlotsRouteTest {
         OpenPaaSUser extraAttendee = createTestUser(server, "extra");
 
         BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES,
-            true, BookingLinkInsertRequest.AUTO_ACCEPT, Optional.of(AVAILABILITY_RULE), List.of(extraAttendee.id()),
+            true, BookingLinkInsertRequest.AUTO_ACCEPT, Optional.of(AVAILABILITY_RULE), ExtraAttendees.of(extraAttendee.id()),
             Optional.empty(), Optional.empty(), Optional.empty());
         BookingLink inserted = server.getProbe(BookingLinkProbe.class).insert(openPaaSUser.username(), insertRequest);
 
@@ -563,7 +564,7 @@ class BookingLinkSlotsRouteTest {
         // Given: an extra attendee whose calendar the owner cannot read at all. Such an attendee is treated
         // as free rather than breaking the whole booking link.
         BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES,
-            true, BookingLinkInsertRequest.AUTO_ACCEPT, Optional.of(AVAILABILITY_RULE), List.of(new OpenPaaSId("659387b9d486dc0046aeffff")),
+            true, BookingLinkInsertRequest.AUTO_ACCEPT, Optional.of(AVAILABILITY_RULE), ExtraAttendees.of(new OpenPaaSId("659387b9d486dc0046aeffff")),
             Optional.empty(), Optional.empty(), Optional.empty());
         BookingLink inserted = server.getProbe(BookingLinkProbe.class).insert(openPaaSUser.username(), insertRequest);
 

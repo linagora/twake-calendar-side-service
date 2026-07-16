@@ -1359,7 +1359,7 @@ POST /users/{username}/booking-links
   "name": "Intro call",
   "description": "Book a 30-minute introduction call",
   "color": "#6B4ECC",
-  "extraAttendees": ["67c3a792e4b0884b05ef8af0"],
+  "extraAttendees": { "and": [{ "participant": "67c3a792e4b0884b05ef8af0" }] },
   "availabilityRules": [
     { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "timeZone": "Europe/Paris" }
   ]
@@ -1368,8 +1368,9 @@ POST /users/{username}/booking-links
 
 `calendarUrl`, `durationMinutes` and `active` are required. `autoAccept` (default `false`), `availabilityRules`, `extraAttendees` (empty by default), `name`, `description` and `color` (default `#6B4ECC`) are optional.
 
-`extraAttendees` holds OpenPaaS ids of registered users invited on every booked event, and whose availability
-narrows down the offered slots. See the [booking link API](bookingLink.md#extra-attendees) for details.
+`extraAttendees` holds a tree of the registered users invited on every booked event, and whose availability
+narrows down the offered slots. Only a single `and` of `participant` leaves is supported today. See the
+[booking link API](bookingLink.md#extra-attendees) for details.
 
 ```
 HTTP/1.1 201 Created
@@ -1397,7 +1398,7 @@ PATCH /users/{username}/booking-links/{publicId}
 ```
 
 Only the fields present in the body are updated. At least one field must be provided.
-Set `availabilityRules` to `null` to remove all rules. Set `extraAttendees` to `null` or `[]` to
+Set `availabilityRules` to `null` to remove all rules. Set `extraAttendees` to `null` or `{"and": []}` to
 remove them all. Set `name` or `description` to `null` or a blank value to remove them.
 
 **Status codes**:

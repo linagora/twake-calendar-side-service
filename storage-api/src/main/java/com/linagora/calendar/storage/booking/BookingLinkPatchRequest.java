@@ -19,21 +19,19 @@
 package com.linagora.calendar.storage.booking;
 
 import java.time.Duration;
-import java.util.List;
 
 import org.apache.james.util.ValuePatch;
 
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.storage.CalendarURL;
-import com.linagora.calendar.storage.OpenPaaSId;
 
 public record BookingLinkPatchRequest(ValuePatch<CalendarURL> calendarUrl,
                                       ValuePatch<Duration> duration,
                                       ValuePatch<Boolean> active,
                                       ValuePatch<Boolean> autoAccept,
                                       ValuePatch<AvailabilityRules> availabilityRules,
-                                      ValuePatch<List<OpenPaaSId>> extraAttendees,
+                                      ValuePatch<ExtraAttendees> extraAttendees,
                                       ValuePatch<String> name,
                                       ValuePatch<String> description,
                                       ValuePatch<String> color) {

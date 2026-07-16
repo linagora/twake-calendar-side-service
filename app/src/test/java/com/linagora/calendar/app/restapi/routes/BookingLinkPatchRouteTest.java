@@ -64,6 +64,7 @@ import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
+import com.linagora.calendar.storage.booking.ExtraAttendees;
 
 import io.restassured.RestAssured;
 import io.restassured.authentication.PreemptiveBasicAuthScheme;
@@ -403,7 +404,7 @@ class BookingLinkPatchRouteTest {
 
         given()
             .body("""
-                { "extraAttendees": ["%s"] }
+                { "extraAttendees": { "and": [ { "participant": "%s" } ] } }
                 """.formatted(extraAttendee.id().value()))
         .when()
             .patch("/api/booking-links/" + inserted.publicId().value())
@@ -411,7 +412,7 @@ class BookingLinkPatchRouteTest {
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
         BookingLink updated = bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
-        assertThat(updated.extraAttendees()).containsExactly(extraAttendee.id());
+        assertThat(updated.extraAttendees()).isEqualTo(ExtraAttendees.of(extraAttendee.id()));
     }
 
     @Test
@@ -419,7 +420,7 @@ class BookingLinkPatchRouteTest {
         OpenPaaSUser extraAttendee = newProvisionedUser(server);
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE,
-                BookingLinkInsertRequest.AUTO_ACCEPT, Optional.empty(), List.of(extraAttendee.id()),
+                BookingLinkInsertRequest.AUTO_ACCEPT, Optional.empty(), ExtraAttendees.of(extraAttendee.id()),
                 Optional.empty(), Optional.empty(), Optional.empty()));
 
         given()
@@ -432,7 +433,7 @@ class BookingLinkPatchRouteTest {
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
         BookingLink updated = bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
-        assertThat(updated.extraAttendees()).isEmpty();
+        assertThat(updated.extraAttendees()).isEqualTo(ExtraAttendees.NONE);
     }
 
     @Test
@@ -440,12 +441,12 @@ class BookingLinkPatchRouteTest {
         OpenPaaSUser extraAttendee = newProvisionedUser(server);
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE,
-                BookingLinkInsertRequest.AUTO_ACCEPT, Optional.empty(), List.of(extraAttendee.id()),
+                BookingLinkInsertRequest.AUTO_ACCEPT, Optional.empty(), ExtraAttendees.of(extraAttendee.id()),
                 Optional.empty(), Optional.empty(), Optional.empty()));
 
         given()
             .body("""
-                { "extraAttendees": ["659387b9d486dc0046aeffff"] }
+                { "extraAttendees": { "and": [ { "participant": "659387b9d486dc0046aeffff" } ] } }
                 """)
         .when()
             .patch("/api/booking-links/" + inserted.publicId().value())
@@ -453,7 +454,7 @@ class BookingLinkPatchRouteTest {
             .statusCode(HttpStatus.SC_BAD_REQUEST);
 
         BookingLink notUpdated = bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
-        assertThat(notUpdated.extraAttendees()).containsExactly(extraAttendee.id());
+        assertThat(notUpdated.extraAttendees()).isEqualTo(ExtraAttendees.of(extraAttendee.id()));
     }
 
     @Test
@@ -461,12 +462,12 @@ class BookingLinkPatchRouteTest {
         OpenPaaSUser extraAttendee = newProvisionedUser(server);
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE,
-                BookingLinkInsertRequest.AUTO_ACCEPT, Optional.empty(), List.of(extraAttendee.id()),
+                BookingLinkInsertRequest.AUTO_ACCEPT, Optional.empty(), ExtraAttendees.of(extraAttendee.id()),
                 Optional.empty(), Optional.empty(), Optional.empty()));
 
         given()
             .body("""
-                { "extraAttendees": ["%s"] }
+                { "extraAttendees": { "and": [ { "participant": "%s" } ] } }
                 """.formatted(openPaaSUser.id().value()))
         .when()
             .patch("/api/booking-links/" + inserted.publicId().value())
@@ -474,7 +475,7 @@ class BookingLinkPatchRouteTest {
             .statusCode(HttpStatus.SC_BAD_REQUEST);
 
         BookingLink notUpdated = bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
-        assertThat(notUpdated.extraAttendees()).containsExactly(extraAttendee.id());
+        assertThat(notUpdated.extraAttendees()).isEqualTo(ExtraAttendees.of(extraAttendee.id()));
     }
 
     @Test
@@ -484,7 +485,7 @@ class BookingLinkPatchRouteTest {
 
         given()
             .body("""
-                { "extraAttendees": [" "] }
+                { "extraAttendees": { "and": [ { "participant": " " } ] } }
                 """)
         .when()
             .patch("/api/booking-links/" + inserted.publicId().value())

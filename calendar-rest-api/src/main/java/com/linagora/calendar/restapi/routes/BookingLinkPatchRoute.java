@@ -43,13 +43,13 @@ import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.restapi.ForbiddenException;
 import com.linagora.calendar.restapi.routes.dto.AvailabilityRuleDTO;
 import com.linagora.calendar.storage.CalendarURL;
-import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.booking.BookingLinkColorUtil;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.booking.BookingLinkExtraAttendeeUtil;
 import com.linagora.calendar.storage.booking.BookingLinkNotFoundException;
 import com.linagora.calendar.storage.booking.BookingLinkPatchRequest;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
+import com.linagora.calendar.storage.booking.ExtraAttendees;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 
 import io.netty.handler.codec.http.HttpMethod;
@@ -76,7 +76,7 @@ public class BookingLinkPatchRoute extends CalendarRoute {
                            @JsonProperty(FIELD_ACTIVE) Optional<Boolean> active,
                            @JsonProperty(FIELD_AUTO_ACCEPT) Optional<Boolean> autoAccept,
                            @JsonProperty(FIELD_AVAILABILITY_RULES) Optional<List<AvailabilityRuleDTO>> availabilityRules,
-                           @JsonProperty(FIELD_EXTRA_ATTENDEES) Optional<List<String>> extraAttendees,
+                           @JsonProperty(FIELD_EXTRA_ATTENDEES) Optional<JsonNode> extraAttendees,
                            @JsonProperty(FIELD_NAME) Optional<String> name,
                            @JsonProperty(FIELD_DESCRIPTION) Optional<String> description,
                            @JsonProperty(FIELD_COLOR) Optional<String> color) {
@@ -118,7 +118,7 @@ public class BookingLinkPatchRoute extends CalendarRoute {
                 patchRequest.calendarUrl().toOptional().map(calendarURL ->
                     validateCalendarAccess(calendarURL, session).thenReturn(patchRequest)).orElse(Mono.just(patchRequest)))
             .flatMap(patchRequest -> extraAttendeeResolver.validate(session.getUser(),
-                    patchRequest.extraAttendees().getOrElse(List.of()))
+                    patchRequest.extraAttendees().getOrElse(ExtraAttendees.NONE).participants())
                 .thenReturn(patchRequest))
             .flatMap(patchRequest -> bookingLinkDAO.update(session.getUser(), publicId, patchRequest))
             .then(response.status(HttpResponseStatus.NO_CONTENT).send().then())
@@ -216,14 +216,11 @@ public class BookingLinkPatchRoute extends CalendarRoute {
             .orElseGet(ValuePatch::remove);
     }
 
-    private ValuePatch<List<OpenPaaSId>> parseExtraAttendees(JsonNode node, PatchDto dto) {
+    private ValuePatch<ExtraAttendees> parseExtraAttendees(JsonNode node, PatchDto dto) {
         if (!node.has(FIELD_EXTRA_ATTENDEES)) {
             return ValuePatch.keep();
         }
-        return dto.extraAttendees().map(BookingLinkExtraAttendeeUtil::parse)
-            .filter(extraAttendees -> !extraAttendees.isEmpty())
-            .map(ValuePatch::modifyTo)
-            .orElseGet(ValuePatch::remove);
+        return BookingLinkExtraAttendeeUtil.parsePatch(dto.extraAttendees());
     }
 
     private ValuePatch<String> parseName(JsonNode node, PatchDto dto) {

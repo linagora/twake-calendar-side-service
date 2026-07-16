@@ -47,6 +47,8 @@ import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.booking.BookingLinkNotFoundException;
 import com.linagora.calendar.storage.booking.BookingLinkPatchRequest;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
+import com.linagora.calendar.storage.booking.ExtraAttendeeNode;
+import com.linagora.calendar.storage.booking.ExtraAttendees;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.FindOneAndUpdateOptions;
 import com.mongodb.client.model.IndexOptions;
@@ -77,6 +79,9 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
     private static final String FIELD_COLOR = "color";
     private static final String FIELD_CREATED_AT = "createdAt";
     private static final String FIELD_UPDATED_AT = "updatedAt";
+
+    private static final String ATTENDEE_AND = "and";
+    private static final String ATTENDEE_PARTICIPANT = "participant";
 
     private static final String RULE_TYPE = "type";
     private static final String RULE_TYPE_WEEKLY = "weekly";
@@ -268,10 +273,33 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
         return doc;
     }
 
-    private List<String> serializeExtraAttendees(List<OpenPaaSId> extraAttendees) {
-        return extraAttendees.stream()
-            .map(OpenPaaSId::value)
-            .toList();
+    private Document serializeExtraAttendees(ExtraAttendees extraAttendees) {
+        return serializeExtraAttendeeNode(extraAttendees.root());
+    }
+
+    private Document serializeExtraAttendeeNode(ExtraAttendeeNode node) {
+        return switch (node) {
+            case ExtraAttendeeNode.Participant participant -> new Document(ATTENDEE_PARTICIPANT, participant.id().value());
+            case ExtraAttendeeNode.And and -> new Document(ATTENDEE_AND, and.children().stream()
+                .map(this::serializeExtraAttendeeNode)
+                .toList());
+        };
+    }
+
+    private ExtraAttendees deserializeExtraAttendees(Document doc) {
+        return new ExtraAttendees(deserializeExtraAttendeeNode(doc));
+    }
+
+    private ExtraAttendeeNode deserializeExtraAttendeeNode(Document doc) {
+        if (doc.containsKey(ATTENDEE_PARTICIPANT)) {
+            return new ExtraAttendeeNode.Participant(new OpenPaaSId(doc.getString(ATTENDEE_PARTICIPANT)));
+        }
+        if (doc.containsKey(ATTENDEE_AND)) {
+            return new ExtraAttendeeNode.And(doc.getList(ATTENDEE_AND, Document.class).stream()
+                .map(this::deserializeExtraAttendeeNode)
+                .toList());
+        }
+        throw new IllegalArgumentException("Unknown extra attendee node: " + doc.toJson());
     }
 
     private List<Document> serializeRules(AvailabilityRules rules) {
@@ -308,9 +336,9 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
         Optional<AvailabilityRules> availabilityRules = Optional.ofNullable(doc.getList(FIELD_AVAILABILITY_RULES, Document.class))
             .filter(rules -> !rules.isEmpty())
             .map(rules -> new AvailabilityRules(rules.stream().map(this::deserializeRule).toList()));
-        List<OpenPaaSId> extraAttendees = Optional.ofNullable(doc.getList(FIELD_EXTRA_ATTENDEES, String.class))
-            .map(ids -> ids.stream().map(OpenPaaSId::new).toList())
-            .orElse(List.of());
+        ExtraAttendees extraAttendees = Optional.ofNullable(doc.get(FIELD_EXTRA_ATTENDEES, Document.class))
+            .map(this::deserializeExtraAttendees)
+            .orElse(ExtraAttendees.NONE);
         Optional<String> name = Optional.ofNullable(doc.getString(FIELD_NAME));
         Optional<String> description = Optional.ofNullable(doc.getString(FIELD_DESCRIPTION));
         Optional<String> color = Optional.ofNullable(doc.getString(FIELD_COLOR));

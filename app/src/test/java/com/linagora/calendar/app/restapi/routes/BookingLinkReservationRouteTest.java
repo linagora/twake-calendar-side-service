@@ -85,6 +85,7 @@ import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
+import com.linagora.calendar.storage.booking.ExtraAttendees;
 import com.linagora.calendar.storage.event.EventFields.Person;
 import com.linagora.calendar.storage.event.EventParseUtils;
 
@@ -1349,7 +1350,7 @@ class BookingLinkReservationRouteTest {
 
         BookingLink inserted = server.getProbe(BookingLinkProbe.class)
             .insert(openPaaSUser.username(), new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES,
-                true, BookingLinkInsertRequest.AUTO_ACCEPT, Optional.of(AVAILABILITY_RULE), List.of(extraAttendee.id()),
+                true, BookingLinkInsertRequest.AUTO_ACCEPT, Optional.of(AVAILABILITY_RULE), ExtraAttendees.of(extraAttendee.id()),
                 Optional.empty(), Optional.empty(), Optional.empty()));
 
         given()
@@ -1373,7 +1374,7 @@ class BookingLinkReservationRouteTest {
         // An extra attendee deleted after the booking link creation must not make the link unbookable.
         BookingLink inserted = server.getProbe(BookingLinkProbe.class)
             .insert(openPaaSUser.username(), new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES,
-                true, BookingLinkInsertRequest.AUTO_ACCEPT, Optional.of(AVAILABILITY_RULE), List.of(new OpenPaaSId("659387b9d486dc0046aeffff")),
+                true, BookingLinkInsertRequest.AUTO_ACCEPT, Optional.of(AVAILABILITY_RULE), ExtraAttendees.of(new OpenPaaSId("659387b9d486dc0046aeffff")),
                 Optional.empty(), Optional.empty(), Optional.empty()));
 
         given()
@@ -1394,7 +1395,7 @@ class BookingLinkReservationRouteTest {
 
         BookingLink inserted = server.getProbe(BookingLinkProbe.class)
             .insert(openPaaSUser.username(), new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES,
-                true, BookingLinkInsertRequest.AUTO_ACCEPT, Optional.of(AVAILABILITY_RULE), List.of(extraAttendee.id()),
+                true, BookingLinkInsertRequest.AUTO_ACCEPT, Optional.of(AVAILABILITY_RULE), ExtraAttendees.of(extraAttendee.id()),
                 Optional.empty(), Optional.empty(), Optional.empty()));
 
         given()

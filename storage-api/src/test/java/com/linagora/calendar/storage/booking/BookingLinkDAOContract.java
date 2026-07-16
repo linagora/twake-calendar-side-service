@@ -438,11 +438,11 @@ public interface BookingLinkDAOContract {
     @Test
     default void insertShouldPersistExtraAttendees() {
         BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
-            Optional.of(AVAILABILITY_RULES), List.of(EXTRA_ATTENDEE_1, EXTRA_ATTENDEE_2), Optional.empty(), Optional.empty(), Optional.empty());
+            Optional.of(AVAILABILITY_RULES), ExtraAttendees.of(EXTRA_ATTENDEE_1, EXTRA_ATTENDEE_2), Optional.empty(), Optional.empty(), Optional.empty());
 
         BookingLink created = testee().insert(USER_1, request).block();
 
-        assertThat(created.extraAttendees()).containsExactly(EXTRA_ATTENDEE_1, EXTRA_ATTENDEE_2);
+        assertThat(created.extraAttendees()).isEqualTo(ExtraAttendees.of(EXTRA_ATTENDEE_1, EXTRA_ATTENDEE_2));
 
         BookingLink found = testee().findByPublicId(USER_1, created.publicId()).block();
         assertThat(found).isEqualTo(created);
@@ -452,10 +452,10 @@ public interface BookingLinkDAOContract {
     default void insertShouldDefaultExtraAttendeesToEmpty() {
         BookingLink created = testee().insert(USER_1, INSERT_REQUEST).block();
 
-        assertThat(created.extraAttendees()).isEmpty();
+        assertThat(created.extraAttendees()).isEqualTo(ExtraAttendees.NONE);
 
         BookingLink found = testee().findByPublicId(USER_1, created.publicId()).block();
-        assertThat(found.extraAttendees()).isEmpty();
+        assertThat(found.extraAttendees()).isEqualTo(ExtraAttendees.NONE);
     }
 
     @Test
@@ -467,21 +467,21 @@ public interface BookingLinkDAOContract {
             ValuePatch.keep(),
             ValuePatch.keep(),
             ValuePatch.keep(),
-            ValuePatch.modifyTo(List.of(EXTRA_ATTENDEE_1)),
+            ValuePatch.modifyTo(ExtraAttendees.of(EXTRA_ATTENDEE_1)),
             ValuePatch.keep(),
             ValuePatch.keep(),
             ValuePatch.keep());
 
         BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
 
-        assertThat(updated.extraAttendees()).containsExactly(EXTRA_ATTENDEE_1);
+        assertThat(updated.extraAttendees()).isEqualTo(ExtraAttendees.of(EXTRA_ATTENDEE_1));
         assertThat(testee().findByPublicId(USER_1, inserted.publicId()).block()).isEqualTo(updated);
     }
 
     @Test
     default void updateShouldAllowRemovingExtraAttendees() {
         BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
-            Optional.of(AVAILABILITY_RULES), List.of(EXTRA_ATTENDEE_1), Optional.empty(), Optional.empty(), Optional.empty());
+            Optional.of(AVAILABILITY_RULES), ExtraAttendees.of(EXTRA_ATTENDEE_1), Optional.empty(), Optional.empty(), Optional.empty());
         BookingLink inserted = testee().insert(USER_1, request).block();
         BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
             ValuePatch.keep(),
@@ -496,14 +496,14 @@ public interface BookingLinkDAOContract {
 
         BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
 
-        assertThat(updated.extraAttendees()).isEmpty();
-        assertThat(testee().findByPublicId(USER_1, inserted.publicId()).block().extraAttendees()).isEmpty();
+        assertThat(updated.extraAttendees()).isEqualTo(ExtraAttendees.NONE);
+        assertThat(testee().findByPublicId(USER_1, inserted.publicId()).block().extraAttendees()).isEqualTo(ExtraAttendees.NONE);
     }
 
     @Test
     default void updateShouldKeepExtraAttendeesWhenNotSpecified() {
         BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
-            Optional.of(AVAILABILITY_RULES), List.of(EXTRA_ATTENDEE_1), Optional.empty(), Optional.empty(), Optional.empty());
+            Optional.of(AVAILABILITY_RULES), ExtraAttendees.of(EXTRA_ATTENDEE_1), Optional.empty(), Optional.empty(), Optional.empty());
         BookingLink inserted = testee().insert(USER_1, request).block();
         BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
             ValuePatch.keep(),
@@ -518,7 +518,7 @@ public interface BookingLinkDAOContract {
 
         BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
 
-        assertThat(updated.extraAttendees()).containsExactly(EXTRA_ATTENDEE_1);
+        assertThat(updated.extraAttendees()).isEqualTo(ExtraAttendees.of(EXTRA_ATTENDEE_1));
     }
 
     @Test
