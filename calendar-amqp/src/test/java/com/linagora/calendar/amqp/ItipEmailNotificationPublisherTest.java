@@ -299,7 +299,6 @@ class ItipEmailNotificationPublisherTest {
                     assertThat(notification.calendarURI()).isEqualTo("public-team-calendar");
                     assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST);
                     assertThat(notification.eventPath()).contains(EVENT_PATH.getPath());
-                    assertThat(notification.shouldNotify()).isTrue();
                     assertThat(notification.event()).isEqualTo(SINGLE_REQUEST_NEW);
                 });
         }
@@ -398,7 +397,6 @@ class ItipEmailNotificationPublisherTest {
                     assertThat(notification.calendarURI()).isEqualTo("public-recurring-calendar");
                     assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST);
                     assertThat(notification.eventPath()).contains(EVENT_PATH.getPath());
-                    assertThat(notification.shouldNotify()).isTrue();
                 });
         }
 

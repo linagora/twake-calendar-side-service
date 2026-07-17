@@ -37,7 +37,6 @@ public record CalendarEventNotificationEmailDTO(@JsonProperty("senderEmail") @Js
                                                 @JsonProperty("recipientEmail") @JsonDeserialize(using = MailAddressDeserializer.class) MailAddress recipientEmail,
                                                 @JsonProperty("method") Method method,
                                                 @JsonProperty("event") @JsonDeserialize(using = CalendarEventDeserializer.class) Calendar event,
-                                                @JsonProperty("notify") boolean notifyEvent,
                                                 @JsonProperty("calendarURI") String calendarURI,
                                                 @JsonProperty("eventPath") String eventPath,
                                                 @JsonProperty("changes") Optional<Changes> changes,

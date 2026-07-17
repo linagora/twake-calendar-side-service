@@ -311,7 +311,6 @@ public class EventCounterEmailConsumerTest {
               "recipientEmail": "%s",
               "method": "COUNTER",
               "event": "%s",
-              "notify": true,
               "calendarURI": "%s",
               "eventPath": "%s",
               "oldEvent": "%s"

@@ -551,7 +551,6 @@ public class ItipLocalDeliveryConsumerTest {
             assertThat(emailPayload.at("/senderEmail").asText()).isEqualTo(BOB);
             assertThat(emailPayload.at("/recipientEmail").asText()).isEqualTo(ALICE);
             assertThat(emailPayload.at("/method").asText()).isEqualTo("REQUEST");
-            assertThat(emailPayload.at("/notify").asBoolean()).isTrue();
             assertThat(emailPayload.at("/calendarURI").asText()).isEqualTo(CALENDAR_ID);
         });
     }

@@ -318,7 +318,6 @@ class ItipEmailNotificationPublisher {
                                 @JsonProperty("recipientEmail") String recipientEmail,
                                 @JsonProperty("method") String method,
                                 @JsonProperty("event") String event,
-                                @JsonProperty("notify") boolean shouldNotify,
                                 @JsonProperty("calendarURI") String calendarURI,
                                 @JsonProperty("eventPath") Optional<String> eventPath,
                                 @JsonProperty("oldEvent") Optional<String> oldEvent,
@@ -344,7 +343,6 @@ class ItipEmailNotificationPublisher {
             private final String senderEmail;
             private final String recipientEmail;
             private String method;
-            private final boolean shouldNotify;
             private final String calendarURI;
             private String event;
             private boolean isNewEvent;
@@ -358,7 +356,6 @@ class ItipEmailNotificationPublisher {
                 this.recipientEmail = recipientEmail;
                 this.calendarURI = calendarURI;
                 this.method = method;
-                this.shouldNotify = true;
             }
 
             Builder withEvent(String eventIcs) {
@@ -413,7 +410,7 @@ class ItipEmailNotificationPublisher {
 
             NotificationEmailDTO build() {
                 return new NotificationEmailDTO(
-                    senderEmail, recipientEmail, method, event, shouldNotify, calendarURI,
+                    senderEmail, recipientEmail, method, event, calendarURI,
                     eventPath.map(URI::getPath), oldEvent, isNewEvent, changes);
             }
         }
