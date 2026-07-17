@@ -264,7 +264,7 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
                                          Calendar calendar,
                                          Optional<Calendar> oldEventCalendar) {
         if (Method.VALUE_REQUEST.equalsIgnoreCase(localDelivery.method())
-            && hasInvalidRequestOrganizer(localDelivery, calendar, oldEventCalendar)) {
+            && hasInvalidRequestOrganizer(localDelivery, calendar)) {
             return SKIP;
         }
         if (Method.VALUE_REPLY.equalsIgnoreCase(localDelivery.method())
@@ -315,28 +315,14 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     }
 
     private boolean hasInvalidRequestOrganizer(ItipLocalDeliveryDTO localDelivery,
-                                               Calendar calendar,
-                                               Optional<Calendar> oldEventCalendar) {
+                                               Calendar calendar) {
         Set<Username> currentOrganizers = extractOrganizer(calendar);
         if (currentOrganizers.size() != 1) {
             return SKIP;
         }
 
         Username currentOrganizer = currentOrganizers.iterator().next();
-        if (organizerChanged(currentOrganizer, oldEventCalendar)) {
-            return SKIP;
-        }
-
         return senderIsNotOrganizer(localDelivery, currentOrganizer);
-    }
-
-    private boolean organizerChanged(Username currentOrganizer, Optional<Calendar> oldEventCalendar) {
-        return oldEventCalendar
-            .map(oldCalendar -> {
-                Set<Username> oldOrganizers = extractOrganizer(oldCalendar);
-                return oldOrganizers.size() != 1 || !oldOrganizers.iterator().next().equals(currentOrganizer);
-            })
-            .orElse(!SKIP);
     }
 
     private boolean senderIsNotOrganizer(ItipLocalDeliveryDTO localDelivery, Username organizer) {
