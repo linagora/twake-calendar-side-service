@@ -89,7 +89,6 @@ class OrganizerAbsentRenderTest {
             new MailAddress("bob@domain.tld"),
             new Method(Method.VALUE_REQUEST),
             calendar,
-            true,
             "/calendars/uri",
             "/calendars/base/event.ics");
     }
@@ -230,7 +229,6 @@ class OrganizerAbsentRenderTest {
             new MailAddress("bob@domain.tld"),
             new Method(Method.VALUE_REQUEST),
             calendar,
-            true,
             "/calendars/uri",
             "/calendars/base/event.ics");
         CalendarEventBookingConfirmedNotificationEmail email = new CalendarEventBookingConfirmedNotificationEmail(base);

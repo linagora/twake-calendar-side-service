@@ -57,7 +57,6 @@ class OrganizerAbsentActionLinksTest {
             new MailAddress("bob@domain.tld"),
             new Method(Method.VALUE_REQUEST),
             calendar,
-            true,
             "/calendars/uri",
             "/calendars/base/event.ics");
     }

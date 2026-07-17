@@ -466,7 +466,6 @@ public class EventPublicAgendaEmailConsumerTest {
               "recipientEmail": "%s",
               "method": "REQUEST",
               "event": %s,
-              "notify": true,
               "calendarURI": "calendar-uri",
               "eventPath": "/calendars/%s/events/%s.ics",
               "changes": {

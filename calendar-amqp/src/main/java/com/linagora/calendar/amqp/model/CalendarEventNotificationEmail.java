@@ -47,7 +47,6 @@ public record CalendarEventNotificationEmail(MailAddress senderEmail,
                                              MailAddress recipientEmail,
                                              Method method,
                                              Calendar event,
-                                             boolean notifyEvent,
                                              String calendarURI,
                                              String eventPath) {
 
@@ -62,7 +61,6 @@ public record CalendarEventNotificationEmail(MailAddress senderEmail,
             dto.recipientEmail(),
             dto.method(),
             dto.event(),
-            dto.notifyEvent(),
             dto.calendarURI(),
             dto.eventPath()
         );
