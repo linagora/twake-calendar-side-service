@@ -18,51 +18,33 @@
 
 package com.linagora.calendar.smtp.template.content.model;
 
-import java.net.URI;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-import java.util.Map;
+import static org.assertj.core.api.Assertions.assertThat;
 
-import org.apache.commons.lang3.StringUtils;
+import org.junit.jupiter.api.Test;
 
-public record LocationModel(String value) {
+class LocationModelTest {
 
-    public Map<String, Object> toPugModel() {
-        return Map.of(
-            "value", value,
-            "urlEncodedValue", urlEncodedValue(),
-            "isValidURL", isValidURL(),
-            "isAbsoluteURL", isAbsoluteURL());
+    @Test
+    void urlEncodedValueShouldEncodeSpacesAsPercent20() {
+        assertThat(new LocationModel("37 Rue Pierre Poli, 92130 Issy-les-Moulineaux").toPugModel())
+            .containsEntry("urlEncodedValue", "37%20Rue%20Pierre%20Poli%2C%2092130%20Issy-les-Moulineaux");
     }
 
-    private String urlEncodedValue() {
-        return URLEncoder.encode(value, StandardCharsets.UTF_8)
-            .replace("+", "%20");
+    @Test
+    void urlEncodedValueShouldEncodeNonAsciiCharacters() {
+        assertThat(new LocationModel("Café").toPugModel())
+            .containsEntry("urlEncodedValue", "Caf%C3%A9");
     }
 
-    private boolean isValidURL() {
-        if (StringUtils.isBlank(value)) {
-            return false;
-        }
-
-        try {
-            URI.create(value).toURL();
-            return true;
-        } catch (Exception e) {
-            return false;
-        }
+    @Test
+    void urlEncodedValueShouldNotAlterAlreadySafeValue() {
+        assertThat(new LocationModel("RoomA").toPugModel())
+            .containsEntry("urlEncodedValue", "RoomA");
     }
 
-    public boolean isAbsoluteURL() {
-        if (StringUtils.isBlank(value)) {
-            return false;
-        }
-
-        try {
-            URI uri = new URI(value);
-            return uri.isAbsolute();
-        } catch (Exception e) {
-            return false;
-        }
+    @Test
+    void toPugModelShouldKeepRawValue() {
+        assertThat(new LocationModel("37 Rue Pierre Poli").toPugModel())
+            .containsEntry("value", "37 Rue Pierre Poli");
     }
 }
