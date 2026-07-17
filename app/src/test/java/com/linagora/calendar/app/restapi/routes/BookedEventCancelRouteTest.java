@@ -46,7 +46,6 @@ import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionFactory;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -242,8 +241,7 @@ class BookedEventCancelRouteTest {
     }
 
     @Test
-    @Disabled("Will be resolved in https://github.com/linagora/twake-calendar-side-service/issues/952")
-    void cancellationShouldNotifyOrganizer(TwakeCalendarGuiceServer server) {
+    void bookerCancellationShouldNotifyOrganizerAndCreator(TwakeCalendarGuiceServer server) {
         String jwt = bookAndGetJwt(server);
 
         // Drop the acknowledgement / proposal emails sent at booking time.
@@ -274,7 +272,8 @@ class BookedEventCancelRouteTest {
 
         assertSoftly(softly -> {
             softly.assertThat(organizerMessage)
-                .contains("Subject: Event 30-min intro call from %s canceled".formatted(openPaaSUser.fullName()));
+                .contains("Subject: Booking 30-min intro call canceled")
+                .doesNotContain("Forwarding this invitation");
             // The organizer notification is informative only: it carries no ICS attachment.
             softly.assertThat(organizerMessage)
                 .doesNotContain("text/calendar")

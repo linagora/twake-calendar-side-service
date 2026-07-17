@@ -54,7 +54,7 @@ import reactor.core.scheduler.Schedulers;
 
 @Singleton
 public class PublicAgendaCancellationNotifier {
-    private static final TemplateType EVENT_CANCEL_TEMPLATE = new TemplateType("event-cancel");
+    private static final TemplateType EVENT_BOOKING_CANCELLED_TEMPLATE = new TemplateType("event-booking-cancelled");
 
     private final SettingsBasedResolver settingsResolver;
     private final MailTemplateConfiguration templateConfiguration;
@@ -88,7 +88,7 @@ public class PublicAgendaCancellationNotifier {
     }
 
     private Mono<Mail> generateMail(ResolvedSettings settings, BookedEventCancelled cancelled, MailAddress organizerMailAddress) {
-        return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(settings.locale()), EVENT_CANCEL_TEMPLATE))
+        return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(settings.locale()), EVENT_BOOKING_CANCELLED_TEMPLATE))
             .flatMap(messageGenerator -> generateMessage(settings, cancelled, messageGenerator))
             .map(Throwing.function(message -> new Mail(templateConfiguration.sender(), List.of(organizerMailAddress), message)))
             .subscribeOn(Schedulers.boundedElastic());
@@ -106,6 +106,7 @@ public class PublicAgendaCancellationNotifier {
         String CONTENT = "content";
         String EVENT = "event";
         String ORGANIZER = "organizer";
+        String CANCELLED_BY = "cancelledBy";
         String ATTENDEES = "attendees";
         String SUMMARY = "summary";
         String ALL_DAY = "allDay";
@@ -116,7 +117,6 @@ public class PublicAgendaCancellationNotifier {
         String DESCRIPTION = "description";
         String SEE_IN_CALENDAR_LINK = "seeInCalendarLink";
         String SUBJECT_SUMMARY = "subject.summary";
-        String SUBJECT_ORGANIZER = "subject.organizer";
 
         static Map<String, Object> toPugModel(BookedEventCancelled cancelled,
                                               Locale locale,
@@ -126,9 +126,11 @@ public class PublicAgendaCancellationNotifier {
             ZonedDateTime end = ZonedDateTime.ofInstant(cancelled.end(), zoneId);
 
             PersonModel organizer = PersonModel.from(cancelled.organizerPerson());
+            PersonModel cancelledBy = PersonModel.from(cancelled.cancelledBy());
 
             ImmutableMap.Builder<String, Object> eventBuilder = ImmutableMap.builder();
             eventBuilder.put(ORGANIZER, ImmutableMap.of("cn", organizer.displayName(), "email", organizer.email()))
+                .put(CANCELLED_BY, ImmutableMap.of("cn", cancelledBy.displayName(), "email", cancelledBy.email()))
                 .put(ATTENDEES, attendeesAsPugModel(cancelled))
                 .put(SUMMARY, cancelled.summary())
                 .put(ALL_DAY, false)
@@ -145,8 +147,7 @@ public class PublicAgendaCancellationNotifier {
                 CONTENT, ImmutableMap.of(
                     EVENT, eventBuilder.build(),
                     SEE_IN_CALENDAR_LINK, eventInCalendarLinkFactory.getEventInCalendarLink(start)),
-                SUBJECT_SUMMARY, cancelled.summary(),
-                SUBJECT_ORGANIZER, organizer.displayName());
+                SUBJECT_SUMMARY, cancelled.summary());
         }
 
         private static Map<String, Object> attendeesAsPugModel(BookedEventCancelled cancelled) {
