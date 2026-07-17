@@ -25,6 +25,7 @@ Public users can use booking links to book events.
 | `active`            | boolean          | Whether the booking link is active                                          |
 | `autoAccept`        | boolean          | When `true`, the organizer accepts as soon as a booking is created: no validation mail is sent to the organizer and no acknowledgement mail to the booker, the regular IMIP flow applies. When `false` (default), the booking starts the validation flow. |
 | `availabilityRules` | array (optional) | List of availability rule objects (weekly or fixed)                         |
+| `extraAttendees`    | object (optional)| Tree of the registered users invited to every event booked through this link. Omitted from responses when empty. See [Extra attendees](#extra-attendees). |
 | `name`              | string (optional)| Display name of the booking link                                            |
 | `description`       | string (optional)| Description of the booking link                                             |
 | `color`             | string           | Display color of the booking link, as a `#RRGGBB` hex string. Always present in responses, defaulting to `#6B4ECC` when not set. |
@@ -50,6 +51,47 @@ Public users can use booking links to book events.
 | `end`      | string | End date-time in `yyyy-MM-ddTHH:mm:ss` format       |
 | `timeZone` | string | IANA timezone used to interpret `start` and `end`. Default to the timezone setting of the user, then to the default configured timezone then UTC if omitted. |
 
+### Extra attendees
+
+A booking link may carry `extraAttendees`: registered users to invite alongside the owner. This allows handing
+over a single link for a meeting that needs several people, for instance a sales representative, a presales
+engineer and a project manager.
+
+They are expressed as a tree, whose only supported shape today is a single `and` node of `participant` leaves -
+invite all of them:
+
+```json
+{
+    "extraAttendees": {
+        "and": [
+            { "participant": "67c3a792e4b0884b05ef8af0" },
+            { "participant": "67c3a792e4b0884b05ef8af1" }
+        ]
+    }
+}
+```
+
+The tree leaves room for the richer combinations calendaring calls for (optional participants, substitutes:
+`bob` OR `michael` but only one of them) without a breaking change. Any other shape - other node types, nested
+`and`, extra fields on a leaf - is rejected with a `400 Bad Request` for now.
+
+Extra attendees change the booking link in two ways:
+
+- The offered slots are the intersection of the availability rules, the owner availability, and each extra
+  attendee availability. Attendee availability is seen from the owner point of view: the free-busy lookup is
+  performed as the booking link owner, so only what the calendar server lets the owner see (public calendar,
+  read delegation) narrows down the slots. An attendee whose calendar cannot be read at all is considered free
+  rather than making the booking link unusable.
+- Every event booked through the link carries the extra attendees as attendees, with `PARTSTAT=NEEDS-ACTION`:
+  they are invited through the regular iTIP flow and still have to answer.
+
+Working hours of the extra attendees own timezone are not taken into account.
+
+Constraints:
+
+- Each `participant` must be the OpenPaaS id of an existing user, and must not be the booking link owner.
+- At most 20 participants. Duplicates are ignored.
+
 ---
 
 ## Endpoints
@@ -67,6 +109,7 @@ Create a new booking link for the authenticated user.
 | `active`            | yes      | Whether the booking link is active                                                                                                                       |
 | `autoAccept`        | no       | Whether bookings are auto-accepted by the organizer. Defaults to `false` when omitted.                                                                   |
 | `availabilityRules` | no       | List of availability rules. Defaults to business hours from user settings when omitted. Each rule may specify its own `timeZone` (see availability rule object above). |
+| `extraAttendees`    | no       | Tree of the registered users to invite on every booked event. Empty when omitted. See [Extra attendees](#extra-attendees).                                |
 | `name`              | no       | Display name of the booking link. Blank values are ignored.                                                                                              |
 | `description`       | no       | Description of the booking link. Blank values are ignored.                                                                                               |
 | `color`             | no       | Display color as a `#RRGGBB` hex string. Blank values are ignored. Defaults to `#6B4ECC` when omitted.                                                    |
@@ -85,6 +128,7 @@ Content-Type: application/json
     "name": "Intro call",
     "description": "Book a 30-minute introduction call",
     "color": "#6B4ECC",
+    "extraAttendees": { "and": [{ "participant": "67c3a792e4b0884b05ef8af0" }, { "participant": "67c3a792e4b0884b05ef8af1" }] },
     "availabilityRules": [
         { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "timeZone": "Asia/Ho_Chi_Minh" },
         { "type": "weekly", "dayOfWeek": "MON", "start": "13:00", "end": "17:00", "timeZone": "Europe/London" },
@@ -107,7 +151,7 @@ Content-Type: application/json
 
 | Status | Cause                                          |
 |--------|------------------------------------------------|
-| 400    | Missing or invalid field, unknown rule type, invalid `timeZone`, calendar not found or inaccessible |
+| 400    | Missing or invalid field, unknown rule type, invalid `timeZone`, calendar not found or inaccessible, unknown extra attendee, extra attendee is the owner |
 | 401    | Unauthenticated                                |
 
 ---
@@ -144,7 +188,7 @@ Content-Type: application/json
 ]
 ```
 
-Fields `availabilityRules`, `name` and `description` are omitted from each entry when not set.
+Fields `availabilityRules`, `extraAttendees`, `name` and `description` are omitted from each entry when not set.
 The `color` field is always present, defaulting to `#6B4ECC` when not set.
 
 **Error responses**
@@ -187,7 +231,7 @@ Content-Type: application/json
 }
 ```
 
-Fields `availabilityRules`, `name` and `description` are omitted from the response when not set.
+Fields `availabilityRules`, `extraAttendees`, `name` and `description` are omitted from the response when not set.
 The `color` field is always present, defaulting to `#6B4ECC` when not set.
 
 **Error responses**
@@ -216,6 +260,7 @@ All fields are optional. Include only the fields to update.
 | `active`            | New active state                                                                                                 |
 | `autoAccept`        | New auto-accept state                                                                                            |
 | `availabilityRules` | Replaces all existing rules. Set to `null` to remove all rules. Each rule may specify its own `timeZone`. |
+| `extraAttendees`    | Replaces all existing extra attendees. Set to `null` or `{"and": []}` to remove them all. See [Extra attendees](#extra-attendees). |
 | `name`              | New display name. Set to `null` or a blank value to remove it.                                                   |
 | `description`       | New description. Set to `null` or a blank value to remove it.                                                    |
 | `color`             | New display color as a `#RRGGBB` hex string. Set to `null` or a blank value to remove it (the default `#6B4ECC` then applies). |
@@ -265,7 +310,7 @@ HTTP/1.1 204 No Content
 
 | Status | Cause                                                             |
 |--------|-------------------------------------------------------------------|
-| 400    | No field provided, invalid value, invalid `timeZone`, calendar not found or inaccessible |
+| 400    | No field provided, invalid value, invalid `timeZone`, calendar not found or inaccessible, unknown extra attendee, extra attendee is the owner |
 | 401    | Unauthenticated                                                   |
 | 404    | Booking link not found or belongs to another user                 |
 

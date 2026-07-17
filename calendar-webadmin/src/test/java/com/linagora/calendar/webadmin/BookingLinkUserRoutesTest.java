@@ -50,12 +50,14 @@ import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.Fixture;
 import com.linagora.calendar.dav.SabreDavExtension;
+import com.linagora.calendar.restapi.routes.BookingLinkExtraAttendeeResolver;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
+import com.linagora.calendar.storage.booking.ExtraAttendees;
 import com.linagora.calendar.storage.mongodb.MongoDBBookingLinkDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
@@ -93,7 +95,8 @@ public class BookingLinkUserRoutesTest {
             new BookingLinkEventDeletionService(calDavClient);
 
         webAdminServer = WebAdminUtils.createWebAdminServer(
-            new BookingLinkUserRoutes(userDAO, bookingLinkDAO, calDavClient, taskManager, eventDeletionService, new JsonTransformer()))
+            new BookingLinkUserRoutes(userDAO, bookingLinkDAO, calDavClient, taskManager, eventDeletionService,
+                new BookingLinkExtraAttendeeResolver(userDAO), new JsonTransformer()))
             .start();
 
         RestAssured.requestSpecification = WebAdminUtils.buildRequestSpecification(webAdminServer).build();
@@ -224,6 +227,44 @@ public class BookingLinkUserRoutesTest {
         assertThat(stored).isNotNull();
         assertThat(stored.duration()).isEqualTo(Duration.ofMinutes(45));
         assertThat(stored.calendarUrl()).isEqualTo(CalendarURL.from(user.id()));
+    }
+
+    @Test
+    void createShouldStoreExtraAttendees() {
+        String publicId = given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 45,
+                    "active": true,
+                    "extraAttendees": { "and": [ { "participant": "%s" } ] }
+                }
+                """.formatted(defaultCalendarUrl(user), otherUser.id().value()))
+        .when()
+            .post("/users/{username}/booking-links", user.username().asString())
+        .then()
+            .statusCode(201)
+            .extract().jsonPath().getString("bookingLinkPublicId");
+
+        BookingLink stored = bookingLinkDAO.findByPublicId(user.username(), new BookingLinkPublicId(UUID.fromString(publicId))).block();
+        assertThat(stored.extraAttendees()).isEqualTo(ExtraAttendees.of(otherUser.id()));
+    }
+
+    @Test
+    void createShouldReturn400WhenExtraAttendeeDoesNotExist() {
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 45,
+                    "active": true,
+                    "extraAttendees": { "and": [ { "participant": "659387b9d486dc0046aeffff" } ] }
+                }
+                """.formatted(defaultCalendarUrl(user)))
+        .when()
+            .post("/users/{username}/booking-links", user.username().asString())
+        .then()
+            .statusCode(400);
     }
 
     @Test

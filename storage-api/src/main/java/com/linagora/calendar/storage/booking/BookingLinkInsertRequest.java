@@ -30,20 +30,34 @@ public record BookingLinkInsertRequest(CalendarURL calendarUrl,
                                        boolean active,
                                        boolean autoAccept,
                                        Optional<AvailabilityRules> availabilityRules,
+                                       ExtraAttendees extraAttendees,
                                        Optional<String> name,
                                        Optional<String> description,
                                        Optional<String> color) {
     public static final boolean ACTIVE = true;
     public static final boolean AUTO_ACCEPT = false;
+    public static final ExtraAttendees NO_EXTRA_ATTENDEE = ExtraAttendees.NONE;
 
     public BookingLinkInsertRequest {
         Preconditions.checkNotNull(calendarUrl, "'calendarUrl' must not be null");
         Preconditions.checkNotNull(eventDuration, "'eventDuration' must not be null");
         Preconditions.checkArgument(!eventDuration.isNegative() && !eventDuration.isZero(), "'eventDuration' must be positive");
         Preconditions.checkNotNull(availabilityRules, "'availabilityRules' must not be null");
+        Preconditions.checkNotNull(extraAttendees, "'extraAttendees' must not be null");
         Preconditions.checkNotNull(name, "'name' must not be null");
         Preconditions.checkNotNull(description, "'description' must not be null");
         Preconditions.checkNotNull(color, "'color' must not be null");
+    }
+
+    public BookingLinkInsertRequest(CalendarURL calendarUrl,
+                                    Duration eventDuration,
+                                    boolean active,
+                                    boolean autoAccept,
+                                    Optional<AvailabilityRules> availabilityRules,
+                                    Optional<String> name,
+                                    Optional<String> description,
+                                    Optional<String> color) {
+        this(calendarUrl, eventDuration, active, autoAccept, availabilityRules, NO_EXTRA_ATTENDEE, name, description, color);
     }
 
     public BookingLinkInsertRequest(CalendarURL calendarUrl,

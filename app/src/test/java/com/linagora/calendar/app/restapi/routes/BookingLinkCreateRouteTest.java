@@ -44,6 +44,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.google.inject.multibindings.Multibinder;
 import com.linagora.calendar.api.booking.AvailabilityRule.FixedAvailabilityRule;
@@ -64,6 +66,7 @@ import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
+import com.linagora.calendar.storage.booking.ExtraAttendees;
 
 import io.restassured.RestAssured;
 import io.restassured.authentication.PreemptiveBasicAuthScheme;
@@ -515,6 +518,127 @@ class BookingLinkCreateRouteTest {
         assertThat(stored.availabilityRules()).isEqualTo(Optional.of(AvailabilityRules.of(
             new WeeklyAvailabilityRule(DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(17, 0), ZoneId.of("Europe/Paris"))
         )));
+    }
+
+    @Test
+    void shouldStoreExtraAttendeesWhenProvided() {
+        OpenPaaSUser extraAttendee = newProvisionedUser();
+
+        String publicId = given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "extraAttendees": { "and": [ { "participant": "%s" } ] }
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString(), extraAttendee.id().value()))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED)
+            .extract().jsonPath().getString("bookingLinkPublicId");
+
+        BookingLink stored = bookingLinkProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
+
+        assertThat(stored.extraAttendees()).isEqualTo(ExtraAttendees.of(extraAttendee.id()));
+    }
+
+    @Test
+    void shouldDefaultExtraAttendeesToEmptyWhenOmitted() {
+        String publicId = given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED)
+            .extract().jsonPath().getString("bookingLinkPublicId");
+
+        BookingLink stored = bookingLinkProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
+
+        assertThat(stored.extraAttendees()).isEqualTo(ExtraAttendees.NONE);
+    }
+
+    @Test
+    void shouldReturn400WhenExtraAttendeeDoesNotExist() {
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "extraAttendees": { "and": [ { "participant": "659387b9d486dc0046aeffff" } ] }
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+
+        assertThat(bookingLinkProbe.listBookingLinks(openPaaSUser.username())).isEmpty();
+    }
+
+    @Test
+    void shouldReturn400WhenExtraAttendeesContainsTheOwner() {
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "extraAttendees": { "and": [ { "participant": "%s" } ] }
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString(), openPaaSUser.id().value()))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+
+        assertThat(bookingLinkProbe.listBookingLinks(openPaaSUser.username())).isEmpty();
+    }
+
+    @Test
+    void shouldReturn400WhenExtraAttendeeIsBlank() {
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "extraAttendees": { "and": [ { "participant": " " } ] }
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "[\"659387b9d486dc0046aeffb1\"]",
+        "{\"or\": [{\"participant\": \"659387b9d486dc0046aeffb1\"}]}",
+        "{\"and\": [{\"and\": [{\"participant\": \"659387b9d486dc0046aeffb1\"}]}]}"})
+    void shouldReturn400WhenExtraAttendeesShapeIsNotSupported(String extraAttendees) {
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "extraAttendees": %s
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString(), extraAttendees))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
     }
 
     @Test

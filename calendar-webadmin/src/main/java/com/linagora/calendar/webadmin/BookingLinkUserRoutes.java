@@ -51,18 +51,22 @@ import com.google.common.base.Preconditions;
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.restapi.routes.BookingLinkCreateRoute.CreateBookingLinkRequestDTO;
+import com.linagora.calendar.restapi.routes.BookingLinkExtraAttendeeResolver;
 import com.linagora.calendar.restapi.routes.BookingLinkPatchRoute.PatchDto;
 import com.linagora.calendar.restapi.routes.dto.BookingLinkDTO;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkColorUtil;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
+import com.linagora.calendar.storage.booking.BookingLinkExtraAttendeeUtil;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.booking.BookingLinkNotFoundException;
 import com.linagora.calendar.storage.booking.BookingLinkPatchRequest;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
+import com.linagora.calendar.storage.booking.ExtraAttendees;
 import com.linagora.calendar.webadmin.service.BookingLinkEventDeletionService;
 import com.linagora.calendar.webadmin.task.BookingLinkEventDeletionTask;
 
@@ -101,6 +105,7 @@ public class BookingLinkUserRoutes implements Routes {
     private static final String FIELD_ACTIVE = "active";
     private static final String FIELD_AUTO_ACCEPT = "autoAccept";
     private static final String FIELD_AVAILABILITY_RULES = "availabilityRules";
+    private static final String FIELD_EXTRA_ATTENDEES = "extraAttendees";
     private static final String FIELD_NAME = "name";
     private static final String FIELD_DESCRIPTION = "description";
     private static final String FIELD_COLOR = "color";
@@ -114,6 +119,7 @@ public class BookingLinkUserRoutes implements Routes {
     private final CalDavClient calDavClient;
     private final TaskManager taskManager;
     private final BookingLinkEventDeletionService eventDeletionService;
+    private final BookingLinkExtraAttendeeResolver extraAttendeeResolver;
     private final JsonTransformer jsonTransformer;
 
     @Inject
@@ -122,12 +128,14 @@ public class BookingLinkUserRoutes implements Routes {
                                  CalDavClient calDavClient,
                                  TaskManager taskManager,
                                  BookingLinkEventDeletionService eventDeletionService,
+                                 BookingLinkExtraAttendeeResolver extraAttendeeResolver,
                                  JsonTransformer jsonTransformer) {
         this.userDAO = userDAO;
         this.bookingLinkDAO = bookingLinkDAO;
         this.calDavClient = calDavClient;
         this.taskManager = taskManager;
         this.eventDeletionService = eventDeletionService;
+        this.extraAttendeeResolver = extraAttendeeResolver;
         this.jsonTransformer = jsonTransformer;
     }
 
@@ -212,6 +220,7 @@ public class BookingLinkUserRoutes implements Routes {
         BookingLinkInsertRequest insertRequest = parseInsertRequest(request);
 
         BookingLink bookingLink = validateCalendarAccess(user.username(), insertRequest.calendarUrl())
+            .then(validateExtraAttendees(user.username(), insertRequest.extraAttendees().participants()))
             .then(bookingLinkDAO.insert(user.username(), insertRequest))
             .block();
 
@@ -231,6 +240,7 @@ public class BookingLinkUserRoutes implements Routes {
             .orElse(Mono.empty());
 
         validateCalendar
+            .then(validateExtraAttendees(username, patchRequest.extraAttendees().getOrElse(ExtraAttendees.NONE).participants()))
             .then(bookingLinkDAO.update(username, publicId, patchRequest))
             .onErrorMap(BookingLinkNotFoundException.class, e -> bookingLinkNotFound(publicId))
             .block();
@@ -286,6 +296,7 @@ public class BookingLinkUserRoutes implements Routes {
                 parseActive(node, dto),
                 parseAutoAccept(node, dto),
                 parseAvailabilityRules(node, dto),
+                parseExtraAttendees(node, dto),
                 parseName(node, dto),
                 parseDescription(node, dto),
                 parseColor(node, dto));
@@ -347,6 +358,13 @@ public class BookingLinkUserRoutes implements Routes {
             .orElseGet(ValuePatch::remove);
     }
 
+    private ValuePatch<ExtraAttendees> parseExtraAttendees(JsonNode node, PatchDto dto) {
+        if (!node.has(FIELD_EXTRA_ATTENDEES)) {
+            return ValuePatch.keep();
+        }
+        return BookingLinkExtraAttendeeUtil.parsePatch(dto.extraAttendees());
+    }
+
     private ValuePatch<String> parseName(JsonNode node, PatchDto dto) {
         if (!node.has(FIELD_NAME)) {
             return ValuePatch.keep();
@@ -372,6 +390,11 @@ public class BookingLinkUserRoutes implements Routes {
         return BookingLinkColorUtil.sanitize(dto.color())
             .map(ValuePatch::modifyTo)
             .orElseGet(ValuePatch::remove);
+    }
+
+    private Mono<Void> validateExtraAttendees(Username username, List<OpenPaaSId> extraAttendees) {
+        return extraAttendeeResolver.validate(username, extraAttendees)
+            .onErrorMap(IllegalArgumentException.class, e -> badRequest(e.getMessage(), e));
     }
 
     private Mono<Void> validateCalendarAccess(Username username, CalendarURL calendarURL) {

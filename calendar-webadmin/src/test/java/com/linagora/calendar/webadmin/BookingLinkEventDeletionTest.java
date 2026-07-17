@@ -57,6 +57,7 @@ import com.linagora.calendar.api.booking.AvailabilityRule.WeeklyAvailabilityRule
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.SabreDavExtension;
+import com.linagora.calendar.restapi.routes.BookingLinkExtraAttendeeResolver;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
@@ -96,7 +97,8 @@ public class BookingLinkEventDeletionTest {
         BookingLinkEventDeletionService eventDeletionService = new BookingLinkEventDeletionService(calDavClient);
 
         webAdminServer = WebAdminUtils.createWebAdminServer(
-                new BookingLinkUserRoutes(userDAO, bookingLinkDAO, calDavClient, taskManager, eventDeletionService, new JsonTransformer()),
+                new BookingLinkUserRoutes(userDAO, bookingLinkDAO, calDavClient, taskManager, eventDeletionService,
+                    new BookingLinkExtraAttendeeResolver(userDAO), new JsonTransformer()),
                 new TasksRoutes(taskManager,
                     new JsonTransformer(),
                     new DTOConverter<>(ImmutableSet.<AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO>>builder()

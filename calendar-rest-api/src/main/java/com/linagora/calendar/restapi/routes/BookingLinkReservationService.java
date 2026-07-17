@@ -55,6 +55,7 @@ public class BookingLinkReservationService {
     private final OpenPaaSUserDAO openPaaSUserDAO;
     private final PublicAgendaProposalNotifier publicAgendaProposalNotifier;
     private final BookingLinkRequestAcknowledgementNotifier bookingLinkRequestAcknowledgementNotifier;
+    private final BookingLinkExtraAttendeeResolver extraAttendeeResolver;
 
     @Inject
     public BookingLinkReservationService(Clock clock,
@@ -63,10 +64,12 @@ public class BookingLinkReservationService {
                                          CalDavClient calDavClient,
                                          OpenPaaSUserDAO openPaaSUserDAO,
                                          PublicAgendaProposalNotifier publicAgendaProposalNotifier,
-                                         BookingLinkRequestAcknowledgementNotifier bookingLinkRequestAcknowledgementNotifier) {
+                                         BookingLinkRequestAcknowledgementNotifier bookingLinkRequestAcknowledgementNotifier,
+                                         BookingLinkExtraAttendeeResolver extraAttendeeResolver) {
         this.calDavClient = calDavClient;
         this.bookingLinkSlotsService = bookingLinkSlotsService;
         this.openPaaSUserDAO = openPaaSUserDAO;
+        this.extraAttendeeResolver = extraAttendeeResolver;
         this.publicAgendaProposalNotifier = publicAgendaProposalNotifier;
         this.bookingLinkRequestAcknowledgementNotifier = bookingLinkRequestAcknowledgementNotifier;
         this.bookingLinkEventIcsBuilder = new BookingLinkEventIcsBuilder(clock, new MeetingConferenceLinkResolver.Visio(restApiConfiguration));
@@ -103,10 +106,12 @@ public class BookingLinkReservationService {
     }
 
     private Mono<BookedEvent> createBooking(BookingLink bookingLink, BookingRequest request) {
-        return openPaaSUserDAO.retrieve(bookingLink.username())
-            .flatMap(organizer -> {
+        return Mono.zip(openPaaSUserDAO.retrieve(bookingLink.username()), resolveExtraAttendees(bookingLink))
+            .flatMap(tuple -> {
+                OpenPaaSUser organizer = tuple.getT1();
                 BuildResult eventIcsResult = bookingLinkEventIcsBuilder.build(request,
-                    BookingAttendee.from(organizer.fullName(), organizer.username().asString()), bookingLink.duration(), bookingLink.publicId(), bookingLink.autoAccept());
+                    BookingAttendee.from(organizer.fullName(), organizer.username().asString()), tuple.getT2(),
+                    bookingLink.duration(), bookingLink.publicId(), bookingLink.autoAccept());
 
                 return calDavClient.importCalendar(bookingLink.calendarUrl(), eventIcsResult.eventIdAsString(), bookingLink.username(), eventIcsResult.icsBytes())
                     .onErrorMap(throwable -> BookingLinkReservationException.createEventFailed(bookingLink.publicId(), eventIcsResult.eventIdAsString(), throwable))
@@ -117,6 +122,12 @@ public class BookingLinkReservationService {
                         bookingLink.calendarUrl().base().value(),
                         eventIcsResult.eventIdAsString()));
             });
+    }
+
+    private Mono<List<BookingAttendee>> resolveExtraAttendees(BookingLink bookingLink) {
+        return extraAttendeeResolver.resolveExisting(bookingLink.extraAttendees().participants())
+            .map(user -> BookingAttendee.from(user.fullName(), user.username().asString()))
+            .collectList();
     }
 
     private Mono<Void> notifyBookingCreated(BookingCreated bookingCreated) {

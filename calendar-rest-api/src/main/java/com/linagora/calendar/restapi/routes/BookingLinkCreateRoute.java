@@ -41,6 +41,7 @@ import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.metrics.api.MetricFactory;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import com.linagora.calendar.api.booking.AvailabilityRule;
@@ -51,6 +52,7 @@ import com.linagora.calendar.restapi.routes.dto.AvailabilityRuleDTO;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.booking.BookingLinkColorUtil;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
+import com.linagora.calendar.storage.booking.BookingLinkExtraAttendeeUtil;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.configuration.resolver.BusinessHoursSettingReader;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
@@ -68,6 +70,7 @@ public class BookingLinkCreateRoute extends CalendarRoute {
                                               @JsonProperty("active") Boolean active,
                                               @JsonProperty("autoAccept") Optional<Boolean> autoAccept,
                                               @JsonProperty("availabilityRules") Optional<List<AvailabilityRuleDTO>> availabilityRules,
+                                              @JsonProperty("extraAttendees") Optional<JsonNode> extraAttendees,
                                               @JsonProperty("name") Optional<String> name,
                                               @JsonProperty("description") Optional<String> description,
                                               @JsonProperty("color") Optional<String> color) {
@@ -87,6 +90,7 @@ public class BookingLinkCreateRoute extends CalendarRoute {
 
             return new BookingLinkInsertRequest(calendarURL, duration, request.active,
                 request.autoAccept.orElse(BookingLinkInsertRequest.AUTO_ACCEPT), availabilityRules,
+                BookingLinkExtraAttendeeUtil.parse(request.extraAttendees),
                 normalize(request.name), normalize(request.description), BookingLinkColorUtil.sanitize(request.color));
         }
 
@@ -110,17 +114,20 @@ public class BookingLinkCreateRoute extends CalendarRoute {
     private final BookingLinkDAO bookingLinkDAO;
     private final CalDavClient calDavClient;
     private final SettingsBasedResolver settingsResolver;
+    private final BookingLinkExtraAttendeeResolver extraAttendeeResolver;
 
     @Inject
     public BookingLinkCreateRoute(Authenticator authenticator,
                                   MetricFactory metricFactory,
                                   BookingLinkDAO bookingLinkDAO,
                                   CalDavClient calDavClient,
-                                  @Named("businessHours") SettingsBasedResolver settingsResolver) {
+                                  @Named("businessHours") SettingsBasedResolver settingsResolver,
+                                  BookingLinkExtraAttendeeResolver extraAttendeeResolver) {
         super(authenticator, metricFactory);
         this.bookingLinkDAO = bookingLinkDAO;
         this.calDavClient = calDavClient;
         this.settingsResolver = settingsResolver;
+        this.extraAttendeeResolver = extraAttendeeResolver;
     }
 
     @Override
@@ -138,6 +145,7 @@ public class BookingLinkCreateRoute extends CalendarRoute {
                     CreateBookingLinkRequestDTO.toBookingLinkInsertRequest(dto, resolvedSettings.zoneId(), getDefaultAvailabilityRules(resolvedSettings))))
             .flatMap(insertRequest ->
                 validateCalendarAccess(insertRequest.calendarUrl(), session)
+                    .then(extraAttendeeResolver.validate(session.getUser(), insertRequest.extraAttendees().participants()))
                     .thenReturn(insertRequest))
             .flatMap(insertRequest -> bookingLinkDAO.insert(session.getUser(), insertRequest))
             .flatMap(bookingLink -> response.status(HttpResponseStatus.CREATED)
