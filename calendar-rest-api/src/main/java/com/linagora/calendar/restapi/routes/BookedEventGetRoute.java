@@ -97,6 +97,7 @@ public class BookedEventGetRoute extends PublicRoute {
                 new OpenPaaSId(bookedEvent.calendarId()),
                 bookedEvent.eventId()))
             .map(VCalendarDto::from)
+            .filter(dto -> !dto.isCancelled())
             .switchIfEmpty(Mono.error(new EventNotFoundException(bookedEvent.eventId())));
     }
 

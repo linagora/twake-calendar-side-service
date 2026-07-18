@@ -516,6 +516,10 @@ public class CalDavClient extends DavClient {
         );
     }
 
+    public Mono<Void> updateCalendarEvent(Username username, DavCalendarObject updatedCalendarObject) {
+        return updateCalendarEvent(Mono.just(httpClientWithImpersonation(username)), updatedCalendarObject);
+    }
+
     public Mono<DavCalendarObject> fetchCalendarEvent(Username username, URI calendarEventHref) {
         return fetchCalendarEvent(Mono.just(httpClientWithImpersonation(username)), calendarEventHref);
     }

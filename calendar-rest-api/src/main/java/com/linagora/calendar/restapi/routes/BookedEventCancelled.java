@@ -37,7 +37,7 @@ import net.fortuna.ical4j.model.component.VEvent;
  * Parsed view of a booked event that has just been cancelled by its booker.
  *
  * <p>All the data needed to notify the organizer (calendar owner) is extracted from the ICS that was
- * fetched from the CalDAV server before deletion, since the cancellation token only carries identifiers.
+ * fetched from the CalDAV server before the cancellation update, since the cancellation token only carries identifiers.
  */
 public record BookedEventCancelled(OpenPaaSUser organizer,
                                    EventFields.Person organizerPerson,
@@ -48,6 +48,7 @@ public record BookedEventCancelled(OpenPaaSUser organizer,
                                    Instant end,
                                    Optional<String> description) {
     private static final String X_PUBLICLY_CREATOR = "X-PUBLICLY-CREATOR";
+    private static final String X_PUBLICLY_CANCELLED_BY = "X-PUBLICLY-CANCELLED-BY";
 
     public static BookedEventCancelled from(OpenPaaSUser organizer, Calendar calendarData) {
         VEvent vEvent = EventParseUtils.getFirstEvent(calendarData);
@@ -70,7 +71,8 @@ public record BookedEventCancelled(OpenPaaSUser organizer,
     }
 
     private static EventFields.Person resolveCancelledBy(VEvent vEvent, EventFields.Person fallback) {
-        return EventParseUtils.getPropertyValueIgnoreCase(vEvent, X_PUBLICLY_CREATOR)
+        return EventParseUtils.getPropertyValueIgnoreCase(vEvent, X_PUBLICLY_CANCELLED_BY)
+            .or(() -> EventParseUtils.getPropertyValueIgnoreCase(vEvent, X_PUBLICLY_CREATOR))
             .flatMap(creatorEmail -> EventParseUtils.getAttendees(vEvent).stream()
                 .filter(attendee -> Strings.CI.equals(attendee.email().asString(), creatorEmail))
                 .findFirst()
