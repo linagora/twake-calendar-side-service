@@ -29,13 +29,17 @@ import java.util.stream.Collectors;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 import jakarta.inject.Singleton;
+import jakarta.mail.internet.InternetAddress;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.apache.james.core.MailAddress;
 import org.apache.james.mime4j.dom.Message;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.smtp.Mail;
 import com.linagora.calendar.smtp.MailSender;
 import com.linagora.calendar.smtp.template.Language;
@@ -49,11 +53,13 @@ import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolve
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.ResolvedSettings;
 import com.linagora.calendar.storage.event.EventFields;
 
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 @Singleton
 public class PublicAgendaCancellationNotifier {
+    private static final Logger LOGGER = LoggerFactory.getLogger(PublicAgendaCancellationNotifier.class);
     private static final TemplateType EVENT_BOOKING_CANCELLED_TEMPLATE = new TemplateType("event-booking-cancelled");
 
     private final SettingsBasedResolver settingsResolver;
@@ -80,26 +86,44 @@ public class PublicAgendaCancellationNotifier {
 
     public Mono<Void> notify(BookedEventCancelled cancelled) {
         return settingsResolver.resolveOrDefault(cancelled.organizer().username())
-            .flatMap(settings -> Mono.fromCallable(() -> cancelled.organizer().username().asMailAddress())
-                .flatMap(organizerMailAddress -> generateMail(settings, cancelled, organizerMailAddress)
-                    .flatMap(mail -> mailSenderFactory.create().flatMap(mailSender -> mailSender.send(mail)))))
+            .flatMap(settings -> sendCancellationMails(settings, cancelled));
+    }
+
+    private Mono<Void> sendCancellationMails(ResolvedSettings settings, BookedEventCancelled cancelled) {
+        return Mono.fromCallable(() -> ImmutableSet.<MailAddress>builder()
+                .add(cancelled.organizer().username().asMailAddress())
+                .add(cancelled.cancelledBy().email())
+                .build())
+            .flatMapMany(Flux::fromIterable)
+            .flatMap(recipient -> sendCancellationMail(settings, cancelled, recipient))
             .subscribeOn(Schedulers.boundedElastic())
             .then();
     }
 
-    private Mono<Mail> generateMail(ResolvedSettings settings, BookedEventCancelled cancelled, MailAddress organizerMailAddress) {
+    private Mono<Void> sendCancellationMail(ResolvedSettings settings, BookedEventCancelled cancelled, MailAddress recipient) {
+        LOGGER.debug("Preparing public agenda cancellation email to {} for event '{}'",
+            recipient.asString(), cancelled.summary());
+        return generateMail(settings, cancelled, recipient)
+            .flatMap(mail -> mailSenderFactory.create()
+                .flatMap(mailSender -> mailSender.send(mail)));
+    }
+
+    private Mono<Mail> generateMail(ResolvedSettings settings, BookedEventCancelled cancelled, MailAddress recipient) {
         return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(settings.locale()), EVENT_BOOKING_CANCELLED_TEMPLATE))
-            .flatMap(messageGenerator -> generateMessage(settings, cancelled, messageGenerator))
-            .map(Throwing.function(message -> new Mail(templateConfiguration.sender(), List.of(organizerMailAddress), message)))
-            .subscribeOn(Schedulers.boundedElastic());
+            .flatMap(messageGenerator -> generateMessage(settings, cancelled, recipient, messageGenerator))
+            .map(message -> new Mail(templateConfiguration.sender(), List.of(recipient), message));
     }
 
     private Mono<Message> generateMessage(ResolvedSettings settings,
                                           BookedEventCancelled cancelled,
+                                          MailAddress recipient,
                                           MessageGenerator messageGenerator) {
-        return messageGenerator.generate(cancelled.organizer().username(),
-            fromMailAddress,
-            PugModel.toPugModel(cancelled, settings.locale(), settings.zoneId(), eventInCalendarLinkFactory));
+        return Mono.fromCallable(() -> new InternetAddress(recipient.asString()))
+            .flatMap(recipientAddress -> Mono.fromCallable(() -> new InternetAddress(fromMailAddress.asString()))
+                .flatMap(fromAddress -> messageGenerator.generate(recipientAddress,
+                    fromAddress,
+                    PugModel.toPugModel(cancelled, recipient, settings.locale(), settings.zoneId(), eventInCalendarLinkFactory),
+                    List.of())));
     }
 
     interface PugModel {
@@ -107,6 +131,7 @@ public class PublicAgendaCancellationNotifier {
         String EVENT = "event";
         String ORGANIZER = "organizer";
         String CANCELLED_BY = "cancelledBy";
+        String RECIPIENT_IS_BOOKER = "recipientIsBooker";
         String ATTENDEES = "attendees";
         String SUMMARY = "summary";
         String ALL_DAY = "allDay";
@@ -119,6 +144,7 @@ public class PublicAgendaCancellationNotifier {
         String SUBJECT_SUMMARY = "subject.summary";
 
         static Map<String, Object> toPugModel(BookedEventCancelled cancelled,
+                                              MailAddress recipient,
                                               Locale locale,
                                               ZoneId zoneId,
                                               EventInCalendarLinkFactory eventInCalendarLinkFactory) {
@@ -131,6 +157,7 @@ public class PublicAgendaCancellationNotifier {
             ImmutableMap.Builder<String, Object> eventBuilder = ImmutableMap.builder();
             eventBuilder.put(ORGANIZER, ImmutableMap.of("cn", organizer.displayName(), "email", organizer.email()))
                 .put(CANCELLED_BY, ImmutableMap.of("cn", cancelledBy.displayName(), "email", cancelledBy.email()))
+                .put(RECIPIENT_IS_BOOKER, Strings.CI.equals(cancelled.cancelledBy().email().asString(), recipient.asString()))
                 .put(ATTENDEES, attendeesAsPugModel(cancelled))
                 .put(SUMMARY, cancelled.summary())
                 .put(ALL_DAY, false)
