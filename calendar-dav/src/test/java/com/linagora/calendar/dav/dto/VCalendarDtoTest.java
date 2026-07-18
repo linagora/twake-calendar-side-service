@@ -19,6 +19,7 @@
 package com.linagora.calendar.dav.dto;
 
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
 import org.junit.jupiter.api.Test;
@@ -89,6 +90,39 @@ public class VCalendarDtoTest {
                   ]
                 ]
                 """);
+    }
+
+    @Test
+    void isCancelledShouldReturnFalseWhenVEventDoesNotHaveCancelledStatus() throws JsonProcessingException {
+        CalendarReportJsonResponse response = CalendarReportJsonResponse.from(VALID_JSON);
+
+        assertThat(VCalendarDto.from(response).isCancelled()).isFalse();
+    }
+
+    @Test
+    void isCancelledShouldReturnTrueWhenVEventHasCancelledStatus() throws JsonProcessingException {
+        String cancelledJson = VALID_JSON.replace("""
+                        ["summary", {}, "text", "Team Meeting"],
+            """, """
+                        ["summary", {}, "text", "Team Meeting"],
+                        ["status", {}, "text", "CANCELLED"],
+            """);
+        CalendarReportJsonResponse response = CalendarReportJsonResponse.from(cancelledJson);
+
+        assertThat(VCalendarDto.from(response).isCancelled()).isTrue();
+    }
+
+    @Test
+    void isCancelledShouldIgnoreStatusOutsideVEvent() throws JsonProcessingException {
+        String cancelledCalendarStatusJson = VALID_JSON.replace("""
+                    ["prodid", {}, "text", "-//Sabre//Sabre VObject 4.2.2//EN"]
+            """, """
+                    ["prodid", {}, "text", "-//Sabre//Sabre VObject 4.2.2//EN"],
+                    ["status", {}, "text", "CANCELLED"]
+            """);
+        CalendarReportJsonResponse response = CalendarReportJsonResponse.from(cancelledCalendarStatusJson);
+
+        assertThat(VCalendarDto.from(response).isCancelled()).isFalse();
     }
 
     @Test

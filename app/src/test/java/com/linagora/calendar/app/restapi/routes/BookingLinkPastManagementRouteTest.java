@@ -49,6 +49,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.google.inject.multibindings.Multibinder;
+import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.api.booking.AvailabilityRule.FixedAvailabilityRule;
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.app.AppTestHelper;
@@ -72,6 +73,10 @@ import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import io.restassured.RestAssured;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.http.ContentType;
+import net.fortuna.ical4j.model.Calendar;
+import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.Property;
+import net.fortuna.ical4j.model.component.VEvent;
 
 class BookingLinkPastManagementRouteTest {
 
@@ -226,10 +231,12 @@ class BookingLinkPastManagementRouteTest {
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
-        List<String> eventIds = calDavClient.findUserCalendarEventIds(openPaaSUser.username(), CalendarURL.from(openPaaSUser.id()))
-            .collectList()
-            .block();
-        assertThat(eventIds).isEmpty();
+        Calendar exportedCalendar = CalendarUtil.parseIcs(calDavClient.export(CalendarURL.from(openPaaSUser.id()), openPaaSUser.username()).block());
+        assertThat(exportedCalendar.getComponents(Component.VEVENT))
+            .describedAs("the future event must remain in the calendar after cancellation")
+            .singleElement()
+            .satisfies(component -> assertThat(((VEvent) component).getProperty(Property.STATUS).map(Property::getValue))
+                .contains("CANCELLED"));
     }
 
     @Test

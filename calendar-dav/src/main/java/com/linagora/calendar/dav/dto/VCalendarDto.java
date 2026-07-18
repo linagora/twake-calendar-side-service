@@ -18,9 +18,19 @@
 
 package com.linagora.calendar.dav.dto;
 
+import java.util.Optional;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
+
+import org.apache.commons.lang3.Strings;
+
 import com.fasterxml.jackson.databind.JsonNode;
 
 public record VCalendarDto(JsonNode value) {
+    private static final String VEVENT = "vevent";
+    private static final String STATUS = "status";
+    private static final String CANCELLED = "CANCELLED";
+
     public static VCalendarDto from(CalendarReportJsonResponse reportResponse) {
         JsonNode davItem = reportResponse.firstDavItemNode();
         JsonNode data = davItem.path("data");
@@ -31,4 +41,28 @@ public record VCalendarDto(JsonNode value) {
         return new VCalendarDto(data);
     }
 
+    public boolean isCancelled() {
+        return hasCancelledStatus(value(), false);
+    }
+
+    private static boolean hasCancelledStatus(JsonNode node, boolean inVEvent) {
+        if (!node.isArray()) {
+            return false;
+        }
+
+        Optional<String> name = children(node)
+            .findFirst()
+            .map(JsonNode::asText);
+        boolean currentNodeIsVEvent = name.filter(value -> Strings.CI.equals(value, VEVENT)).isPresent();
+        boolean currentNodeIsCancelledStatus = inVEvent
+            && name.filter(value -> Strings.CI.equals(value, STATUS)).isPresent()
+            && children(node).anyMatch(child -> child.isTextual() && Strings.CI.equals(child.asText(), CANCELLED));
+
+        return currentNodeIsCancelledStatus
+            || children(node).anyMatch(child -> hasCancelledStatus(child, inVEvent || currentNodeIsVEvent));
+    }
+
+    private static Stream<JsonNode> children(JsonNode node) {
+        return StreamSupport.stream(node.spliterator(), false);
+    }
 }

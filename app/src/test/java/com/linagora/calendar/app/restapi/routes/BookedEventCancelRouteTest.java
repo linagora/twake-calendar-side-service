@@ -28,11 +28,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.awaitility.Durations.ONE_HUNDRED_MILLISECONDS;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 
 import jakarta.inject.Inject;
@@ -59,7 +61,10 @@ import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.CalendarEventModifier;
+import com.linagora.calendar.dav.CalendarEventUpdatePatch.AttendeePartStatusUpdatePatch;
 import com.linagora.calendar.dav.DavModuleTestHelper;
+import com.linagora.calendar.dav.DavCalendarObject;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.smtp.MailSenderConfiguration;
@@ -71,16 +76,23 @@ import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
+import com.linagora.calendar.storage.event.EventParseUtils;
 
 import io.restassured.RestAssured;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.http.ContentType;
 import io.restassured.path.json.JsonPath;
 import io.restassured.specification.RequestSpecification;
+import net.fortuna.ical4j.model.Property;
+import net.fortuna.ical4j.model.component.VEvent;
+import net.fortuna.ical4j.model.parameter.PartStat;
 
 class BookedEventCancelRouteTest {
 
     private static final String PASSWORD = "secret";
+    private static final String CREATOR_EMAIL = "creator@example.com";
+    private static final String CEDRIC_EXTERNAL_EMAIL = "cedric@example.com";
+    private static final String X_PUBLICLY_CANCELLED_BY = "X-PUBLICLY-CANCELLED-BY";
     private static final Duration DURATION_30_MINUTES = Duration.ofMinutes(30);
     private static final AvailabilityRules AVAILABILITY_RULE = AvailabilityRules.of(new FixedAvailabilityRule(
         ZonedDateTime.parse("2036-01-26T09:00:00Z"),
@@ -174,7 +186,7 @@ class BookedEventCancelRouteTest {
     }
 
     @Test
-    void shouldCancelBookedEventAndReturn204(TwakeCalendarGuiceServer server) {
+    void shouldMarkBookedEventAsCancelledAndReturn204(TwakeCalendarGuiceServer server) {
         String jwt = bookAndGetJwt(server);
 
         given()
@@ -188,7 +200,12 @@ class BookedEventCancelRouteTest {
         List<String> eventIds = calDavClient.findUserCalendarEventIds(openPaaSUser.username(), CalendarURL.from(openPaaSUser.id()))
             .collectList()
             .block();
-        assertThat(eventIds).isEmpty();
+        assertThat(eventIds).hasSize(1);
+        VEvent event = fetchOwnerEvent(eventIds.getFirst());
+        assertSoftly(softly -> {
+            softly.assertThat(event.getProperty(Property.STATUS).map(Property::getValue)).contains("CANCELLED");
+            softly.assertThat(event.getProperty(X_PUBLICLY_CANCELLED_BY).map(Property::getValue)).contains(CREATOR_EMAIL);
+        });
     }
 
     @Test
@@ -206,7 +223,9 @@ class BookedEventCancelRouteTest {
         List<String> eventIds = calDavClient.findUserCalendarEventIds(openPaaSUser.username(), CalendarURL.from(openPaaSUser.id()))
             .collectList()
             .block();
-        assertThat(eventIds).isEmpty();
+        assertThat(eventIds).hasSize(1);
+        assertThat(fetchOwnerEvent(eventIds.getFirst()).getProperty(Property.STATUS).map(Property::getValue))
+            .contains("CANCELLED");
 
         given()
             .auth().none()
@@ -215,6 +234,13 @@ class BookedEventCancelRouteTest {
             .delete("/api/booked-event")
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        List<String> eventIdsAfterSecondCancellation = calDavClient.findUserCalendarEventIds(openPaaSUser.username(), CalendarURL.from(openPaaSUser.id()))
+            .collectList()
+            .block();
+        assertThat(eventIdsAfterSecondCancellation).containsExactlyElementsOf(eventIds);
+        assertThat(fetchOwnerEvent(eventIdsAfterSecondCancellation.getFirst()).getProperty(Property.STATUS).map(Property::getValue))
+            .contains("CANCELLED");
     }
 
     @Test
@@ -283,6 +309,15 @@ class BookedEventCancelRouteTest {
                 .doesNotContain("text/calendar")
                 .doesNotContain("application/ics");
         });
+    }
+
+    private VEvent fetchOwnerEvent(String eventId) {
+        return EventParseUtils.getFirstEvent(fetchOwnerDavCalendarObject(eventId).calendarData());
+    }
+
+    private DavCalendarObject fetchOwnerDavCalendarObject(String eventId) {
+        URI eventHref = URI.create(CalendarURL.from(openPaaSUser.id()).asUri() + "/" + eventId + CalDavClient.ICS_EXTENSION);
+        return calDavClient.fetchCalendarEvent(openPaaSUser.username(), eventHref).block();
     }
 
     private JsonPath smtpMails() {
