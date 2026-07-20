@@ -92,3 +92,6 @@ html
                                         strong #{translator.get('description')}:&nbsp;
                                         span(style='white-space: pre-line;') #{content.description}
                                     p #{translator.get('organizer_notified')}
+                                    if (content.reservationLink)
+                                      p
+                                        a.link(href=content.reservationLink target="_blank" style='text-decoration: none; color: #4d91c9;') #{translator.get('see_reservation')}

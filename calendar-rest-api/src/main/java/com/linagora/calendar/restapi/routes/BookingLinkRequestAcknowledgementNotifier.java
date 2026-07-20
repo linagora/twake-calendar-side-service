@@ -20,6 +20,7 @@ package com.linagora.calendar.restapi.routes;
 
 import static reactor.core.scheduler.Schedulers.DEFAULT_BOUNDED_ELASTIC_QUEUESIZE;
 
+import java.net.URI;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.List;
@@ -37,6 +38,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.ImmutableMap;
+import com.linagora.calendar.api.BookedEventLinkFactory;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingCreated;
 import com.linagora.calendar.smtp.Mail;
 import com.linagora.calendar.smtp.MailSender;
@@ -63,16 +65,19 @@ public class BookingLinkRequestAcknowledgementNotifier {
     private final MailSender.Factory mailSenderFactory;
     private final MailAddress fromMailAddress;
     private final Scheduler mailScheduler;
+    private final BookedEventLinkFactory bookedEventLinkFactory;
 
     @Inject
     public BookingLinkRequestAcknowledgementNotifier(@Named("language_timezone") SettingsBasedResolver settingsResolver,
                                                      MailTemplateConfiguration templateConfiguration,
                                                      MessageGenerator.Factory messageGeneratorFactory,
-                                                     MailSender.Factory mailSenderFactory) {
+                                                     MailSender.Factory mailSenderFactory,
+                                                     BookedEventLinkFactory bookedEventLinkFactory) {
         this.settingsResolver = settingsResolver;
         this.templateConfiguration = templateConfiguration;
         this.messageGeneratorFactory = messageGeneratorFactory;
         this.mailSenderFactory = mailSenderFactory;
+        this.bookedEventLinkFactory = bookedEventLinkFactory;
         this.fromMailAddress = templateConfiguration.sender().asOptional()
             .orElseThrow(() -> new IllegalArgumentException("Sender address must not be empty"));
         this.mailScheduler = Schedulers.newBoundedElastic(1, DEFAULT_BOUNDED_ELASTIC_QUEUESIZE,
@@ -99,18 +104,20 @@ public class BookingLinkRequestAcknowledgementNotifier {
     private Mono<Mail> generateMail(ResolvedSettings settings, BookingCreated bookingCreated, MailAddress recipient) {
         return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(
                 new Language(settings.locale()), EVENT_BOOKING_REQUEST_RECEIVED_TEMPLATE))
-            .flatMap(messageGenerator -> generateMessage(settings, bookingCreated, recipient, messageGenerator))
+            .flatMap(messageGenerator -> bookedEventLinkFactory.generateLink(bookingCreated.bookedEvent())
+                .flatMap(reservationLink -> generateMessage(settings, bookingCreated, reservationLink, recipient, messageGenerator)))
             .map(message -> new Mail(templateConfiguration.sender(), List.of(recipient), message));
     }
 
     private Mono<Message> generateMessage(ResolvedSettings settings,
                                           BookingCreated bookingCreated,
+                                          URI reservationLink,
                                           MailAddress recipient,
                                           MessageGenerator messageGenerator) {
         return Mono.fromCallable(() -> new InternetAddress(recipient.asString()))
             .flatMap(recipientAddress -> Mono.fromCallable(() -> new InternetAddress(fromMailAddress.asString()))
                 .flatMap(fromAddress -> messageGenerator.generate(recipientAddress, fromAddress,
-                    PugModel.toPugModel(bookingCreated, settings.locale(), settings.zoneId()), List.of())));
+                    PugModel.toPugModel(bookingCreated, reservationLink, settings.locale(), settings.zoneId()), List.of())));
     }
 
     interface PugModel {
@@ -121,8 +128,9 @@ public class BookingLinkRequestAcknowledgementNotifier {
         String OWNER_NAME = "cn";
         String OWNER_EMAIL = "email";
         String DESCRIPTION = "description";
+        String RESERVATION_LINK = "reservationLink";
 
-        static Map<String, Object> toPugModel(BookingCreated bookingCreated, Locale locale, ZoneId zoneId) {
+        static Map<String, Object> toPugModel(BookingCreated bookingCreated, URI reservationLink, Locale locale, ZoneId zoneId) {
             ZonedDateTime start = ZonedDateTime.ofInstant(bookingCreated.request().slotStartUtc(), zoneId);
             ZonedDateTime end = start.plus(bookingCreated.bookingLink().duration());
 
@@ -131,7 +139,8 @@ public class BookingLinkRequestAcknowledgementNotifier {
                 .put(END, new EventTimeModel(end).toPugModel(locale, zoneId))
                 .put(OWNER, ImmutableMap.of(
                     OWNER_NAME, bookingCreated.organizer().fullName(),
-                    OWNER_EMAIL, bookingCreated.organizer().username().asString()));
+                    OWNER_EMAIL, bookingCreated.organizer().username().asString()))
+                .put(RESERVATION_LINK, reservationLink.toString());
             bookingCreated.bookingLink().description()
                 .ifPresent(description -> content.put(DESCRIPTION, description));
 

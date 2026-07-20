@@ -102,6 +102,7 @@ import net.fortuna.ical4j.model.parameter.PartStat;
 
 class BookingLinkReservationRouteTest {
     private static final String PASSWORD = "secret";
+    private static final String BOOKING_CONFIRMED_LINK_PREFIX = "https://excal.linagora.com/booking/confirmed/";
     private static final Duration DURATION_30_MINUTES = Duration.ofMinutes(30);
     private static final AvailabilityRules AVAILABILITY_RULE = AvailabilityRules.of(new FixedAvailabilityRule(
         ZonedDateTime.parse("2036-01-26T09:00:00Z"),
@@ -455,6 +456,41 @@ class BookingLinkReservationRouteTest {
             softly.assertThat(html)
                 .doesNotContain("Please call via Zoom.");
         });
+    }
+
+    @Test
+    void acknowledgementEmailShouldContainAWorkingLinkToTheReservationPage(TwakeCalendarGuiceServer server) {
+        // Given: an active booking link with an available slot.
+        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(
+            CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES, BookingLinkInsertRequest.ACTIVE,
+            Optional.of(AVAILABILITY_RULE), Optional.of("Intro call"), Optional.empty());
+        BookingLink inserted = server.getProbe(BookingLinkProbe.class)
+            .insert(openPaaSUser.username(), insertRequest);
+        String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();
+
+        // When: a booker submits a booking request.
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body(bodyRequest(slotStartUtc))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED);
+
+        String html = getHtml(messageForRecipient(awaitBookingEmails(), "creator@example.com"));
+        List<String> reservationLinks = extractLinksStartingWith(html, BOOKING_CONFIRMED_LINK_PREFIX);
+
+        // Then: the acknowledgement email carries a link to the reservation page...
+        assertThat(reservationLinks).hasSize(1);
+
+        // ... and the JWT it embeds grants access to the booked event.
+        given()
+            .auth().none()
+            .queryParam("bookingConfirmationToken", reservationLinks.getFirst().substring(BOOKING_CONFIRMED_LINK_PREFIX.length()))
+        .when()
+            .get("/api/booked-event")
+        .then()
+            .statusCode(HttpStatus.SC_OK);
     }
 
     @Test
@@ -1512,13 +1548,17 @@ class BookingLinkReservationRouteTest {
     }
 
     private List<String> extractParticipationActionLinks(String html) {
+        return extractLinksStartingWith(html, "https://excal.linagora.com/excal/?jwt=");
+    }
+
+    private List<String> extractLinksStartingWith(String html, String prefix) {
         List<String> links = new ArrayList<>();
         Pattern pattern = Pattern.compile("href\\s*=\\s*['\"]([^'\"]+)['\"]", Pattern.CASE_INSENSITIVE);
         Matcher matcher = pattern.matcher(html);
 
         while (matcher.find()) {
             String link = matcher.group(1);
-            if (link.startsWith("https://excal.linagora.com/excal/?jwt=")) {
+            if (link.startsWith(prefix)) {
                 links.add(link);
             }
         }

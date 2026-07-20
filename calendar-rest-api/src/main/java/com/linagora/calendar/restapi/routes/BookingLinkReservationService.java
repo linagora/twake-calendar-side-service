@@ -113,14 +113,16 @@ public class BookingLinkReservationService {
                     BookingAttendee.from(organizer.fullName(), organizer.username().asString()), tuple.getT2(),
                     bookingLink.duration(), bookingLink.publicId(), bookingLink.autoAccept());
 
+                BookedEvent bookedEvent = new BookedEvent(
+                    bookingLink.publicId().value(),
+                    bookingLink.calendarUrl().calendarId().value(),
+                    bookingLink.calendarUrl().base().value(),
+                    eventIcsResult.eventIdAsString());
+
                 return calDavClient.importCalendar(bookingLink.calendarUrl(), eventIcsResult.eventIdAsString(), bookingLink.username(), eventIcsResult.icsBytes())
                     .onErrorMap(throwable -> BookingLinkReservationException.createEventFailed(bookingLink.publicId(), eventIcsResult.eventIdAsString(), throwable))
-                    .then(notifyBookingCreated(new BookingCreated(bookingLink, request, organizer, eventIcsResult)))
-                    .thenReturn(new BookedEvent(
-                        bookingLink.publicId().value(),
-                        bookingLink.calendarUrl().calendarId().value(),
-                        bookingLink.calendarUrl().base().value(),
-                        eventIcsResult.eventIdAsString()));
+                    .then(notifyBookingCreated(new BookingCreated(bookingLink, request, organizer, eventIcsResult, bookedEvent)))
+                    .thenReturn(bookedEvent);
             });
     }
 
@@ -187,7 +189,8 @@ public class BookingLinkReservationService {
     public record BookingCreated(BookingLink bookingLink,
                                  BookingRequest request,
                                  OpenPaaSUser organizer,
-                                 BuildResult eventIcsResult) {
+                                 BuildResult eventIcsResult,
+                                 BookedEvent bookedEvent) {
     }
 
 }
