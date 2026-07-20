@@ -427,6 +427,25 @@ public class AlarmEventCancellationTest {
                 .isEmpty());
     }
 
+    @Test
+    void shouldKeepOrganizerAlarmWhenAttendeeDeletesOwnEvent() {
+        // Given
+        EventUid eventUid = createEventWithVALARM(attendee);
+        attendeeAcceptsEvent(attendee, eventUid);
+        awaitAlarmEventCreated(eventUid, organizer.username());
+        awaitAlarmEventCreated(eventUid, attendee.username());
+
+        String attendeeEventResourceId = davTestHelper.findFirstEventId(attendee).get();
+        // When: the attendee deletes the event from their own calendar
+        davTestHelper.deleteCalendar(attendee, attendeeEventResourceId);
+
+        // Then: only the attendee's alarm is removed, the organizer's one is left untouched
+        awaitAtMost.untilAsserted(() -> assertSoftly(Throwing.consumer(softly -> {
+            softly.assertThat(alarmEventDAO.find(eventUid, attendee.username().asMailAddress()).blockOptional()).isEmpty();
+            softly.assertThat(alarmEventDAO.find(eventUid, organizer.username().asMailAddress()).blockOptional()).isPresent();
+        })));
+    }
+
     private EventUid createEventWithVALARM(OpenPaaSUser... attendees) {
         String eventUid = UUID.randomUUID().toString();
         String organizerEmail = organizer.username().asString();
