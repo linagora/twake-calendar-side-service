@@ -215,6 +215,53 @@ public class AlarmEventCancellationTest {
     }
 
     @Test
+    void shouldRemoveDelegatedValarmRecipientAlarmWhenOrganizerCancelsEvent() {
+        // Given: organizer creates an event inviting one attendee, while the email VALARM also targets
+        // another recipient from the same calendar object.
+        String eventUidAsString = UUID.randomUUID().toString();
+        EventUid eventUid = new EventUid(eventUidAsString);
+        String attendeeEmail = attendee.username().asString();
+        String delegatedAlarmRecipientEmail = attendee2.username().asString();
+        String vAlarm = """
+            BEGIN:VALARM
+            TRIGGER:-PT30M
+            ACTION:EMAIL
+            ${alarmAttendees}
+            SUMMARY:Meeting Reminder
+            DESCRIPTION:This is an automatic alarm
+            END:VALARM"""
+            .replace("${alarmAttendees}", alarmAttendeeLines(List.of(
+                attendeeEmail,
+                attendeeEmail,
+                delegatedAlarmRecipientEmail)));
+        String calendarData = generateEventWithValarm(
+            eventUidAsString,
+            organizer.username().asString(),
+            List.of(attendeeEmail),
+            PartStat.NEEDS_ACTION,
+            vAlarm);
+
+        davTestHelper.upsertCalendar(organizer, calendarData, eventUidAsString);
+
+        // And: the attendee accepts, so the side service stores both the attendee alarm and
+        // the delegated VALARM recipient alarm.
+        attendeeAcceptsEvent(attendee, eventUid);
+        awaitAlarmEventCreated(eventUid, attendee.username());
+        awaitAlarmEventCreated(eventUid, attendee2.username());
+
+        // When: organizer cancels the event through Sabre/DAV.
+        davTestHelper.deleteCalendar(organizer, eventUid);
+
+        // Then: all alarm rows originating from that cancelled calendar object are removed.
+        awaitAtMost.untilAsserted(() -> assertSoftly(Throwing.consumer(softly -> {
+            softly.assertThat(alarmEventDAO.find(eventUid, attendee.username().asMailAddress()).blockOptional())
+                .isEmpty();
+            softly.assertThat(alarmEventDAO.find(eventUid, attendee2.username().asMailAddress()).blockOptional())
+                .isEmpty();
+        })));
+    }
+
+    @Test
     void shouldRemoveAllAttendeeAlarmsWhenOrganizerDeletesEvent() {
         // Given
         EventUid eventUid = createEventWithVALARM(attendee, attendee2);
