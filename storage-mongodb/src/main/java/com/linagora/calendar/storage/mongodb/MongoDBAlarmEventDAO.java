@@ -105,6 +105,15 @@ public class MongoDBAlarmEventDAO implements AlarmEventDAO {
     }
 
     @Override
+    public Mono<Void> deleteByEventPath(EventUid eventUid, String eventPath) {
+        return Mono.from(collection.deleteMany(
+            Filters.and(
+                eq(EVENT_UID_FIELD, eventUid.value()),
+                eq(EVENT_PATH_FIELD, eventPath)
+            ))).then();
+    }
+
+    @Override
     public Flux<AlarmEvent> findAlarmsToTrigger(Instant time) {
         return Flux.from(collection.find(
             Filters.and(

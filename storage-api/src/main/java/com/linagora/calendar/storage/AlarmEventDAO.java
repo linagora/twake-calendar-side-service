@@ -36,5 +36,12 @@ public interface AlarmEventDAO {
 
     Mono<Void> delete(EventUid eventUid, MailAddress recipient);
 
+    /**
+     * Deletes every alarm originating from a given calendar object, whatever its recipient.
+     * A single calendar object may schedule alarms for recipients that are not attendees of the
+     * event (VALARM ATTENDEE delegation), those alarms must be dropped along with the calendar object.
+     */
+    Mono<Void> deleteByEventPath(EventUid eventUid, String eventPath);
+
     Flux<AlarmEvent> findAlarmsToTrigger(Instant time); // get all alarmEvent with time >= alarmTime
 }
