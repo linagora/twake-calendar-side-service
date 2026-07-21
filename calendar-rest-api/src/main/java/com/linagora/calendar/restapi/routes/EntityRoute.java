@@ -153,9 +153,9 @@ public class EntityRoute extends CalendarRoute {
     @Override
     Mono<Void> handleRequest(HttpServerRequest req, HttpServerResponse res, MailboxSession session) {
         String id = req.param(ENTITY_ID_PATH_PARAM);
-        return asResourceEntity(id, session)
-            .switchIfEmpty(asUserEntity(id, session))
+        return asUserEntity(id, session)
             .switchIfEmpty(asTeamCalendarEntity(id, session))
+            .switchIfEmpty(asResourceEntity(id, session))
             .switchIfEmpty(asDomainEntity(id, session))
             .switchIfEmpty(Mono.error(NotFoundException::new))
             .map(Throwing.function(OBJECT_MAPPER::writeValueAsBytes))
