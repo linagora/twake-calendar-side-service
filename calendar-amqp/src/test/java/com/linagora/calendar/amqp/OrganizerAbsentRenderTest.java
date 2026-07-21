@@ -162,7 +162,7 @@ class OrganizerAbsentRenderTest {
             .contains("Team Meeting")
             .contains("bob@domain.tld")
             .doesNotContain("null");
-        assertThat(pugModel).containsEntry("subject.organizer", "");
+        assertThat(pugModel).containsEntry("subject.creator", "");
     }
 
     @Test

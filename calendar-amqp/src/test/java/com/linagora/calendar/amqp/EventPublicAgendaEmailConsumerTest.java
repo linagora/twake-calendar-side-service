@@ -24,6 +24,7 @@ import static com.linagora.calendar.storage.configuration.EntryIdentifier.LANGUA
 import static com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.TimeZoneSettingReader.TIMEZONE_IDENTIFIER;
 import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -38,6 +39,7 @@ import java.time.Duration;
 import java.time.ZoneId;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -46,6 +48,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.IntStream;
 
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
@@ -104,6 +107,7 @@ import reactor.rabbitmq.Sender;
 public class EventPublicAgendaEmailConsumerTest {
     private static final String X_PUBLICLY_CREATED_HEADER = "X-PUBLICLY-CREATED:true";
     private static final String X_PUBLICLY_CREATOR_HEADER = "X-PUBLICLY-CREATOR:%s";
+    private static final String X_PUBLICLY_CANCELLED_BY_HEADER = "X-PUBLICLY-CANCELLED-BY:%s";
     private static final int INITIAL_SEQUENCE = 1;
     private static final int UPDATED_SEQUENCE = INITIAL_SEQUENCE + 1;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module());
@@ -428,6 +432,74 @@ public class EventPublicAgendaEmailConsumerTest {
     }
 
     @Test
+    void shouldIgnoreBookerCancellationItipToCreatorButNotifyAdditionalAttendeeOnce() throws Exception {
+        String additionalAttendeeEmail = "additional-attendee-" + UUID.randomUUID() + "@external-domain.com";
+        String calendarData = withPubliclyCancelledBy(generatePublicAgendaCalendar(UUID.randomUUID().toString(), organizer.username().asString(),
+            attendee.username().asString(), PartStat.ACCEPTED, UPDATED_SEQUENCE, additionalAttendeeEmail), attendee.username().asString());
+
+        publishNotificationEmail(attendee.username().asString(), calendarData, "CANCEL");
+        publishNotificationEmail(additionalAttendeeEmail, calendarData, "CANCEL");
+
+        awaitAtMostForEmailDelivery
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+        calmlyAwait.during(1, TimeUnit.SECONDS)
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        assertThat(smtpMailsResponseSupplier.get().getString("[0].recipients[0].address"))
+            .isEqualTo(additionalAttendeeEmail);
+    }
+
+    @Test
+    void shouldNotifyCreatorAndAdditionalAttendeeWhenOrganizerCancelsPublicAgendaEvent() throws Exception {
+        String additionalAttendeeEmail = "additional-attendee-" + UUID.randomUUID() + "@external-domain.com";
+        String calendarData = generatePublicAgendaCalendar(UUID.randomUUID().toString(), organizer.username().asString(),
+            attendee.username().asString(), PartStat.ACCEPTED, UPDATED_SEQUENCE, additionalAttendeeEmail);
+
+        publishNotificationEmail(attendee.username().asString(), calendarData, "CANCEL");
+        publishNotificationEmail(additionalAttendeeEmail, calendarData, "CANCEL");
+
+        awaitAtMostForEmailDelivery
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(2));
+
+        JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
+        assertThat(recipients(smtpMailsResponse))
+            .containsExactlyInAnyOrder(attendee.username().asString(), additionalAttendeeEmail);
+
+        String creatorMessage = IntStream.range(0, smtpMailsResponse.getList("").size())
+            .filter(index -> attendee.username().asString().equals(smtpMailsResponse.getString("[%d].recipients[0].address".formatted(index))))
+            .mapToObj(index -> smtpMailsResponse.getString("[%d].message".formatted(index)))
+            .findFirst()
+            .orElseThrow();
+        String additionalAttendeeMessage = IntStream.range(0, smtpMailsResponse.getList("").size())
+            .filter(index -> additionalAttendeeEmail.equals(smtpMailsResponse.getString("[%d].recipients[0].address".formatted(index))))
+            .mapToObj(index -> smtpMailsResponse.getString("[%d].message".formatted(index)))
+            .findFirst()
+            .orElseThrow();
+        String creatorHtml = getHtml(creatorMessage);
+        String additionalAttendeeHtml = getHtml(additionalAttendeeMessage);
+
+        assertSoftly(softly -> {
+            softly.assertThat(creatorMessage)
+                .contains("Subject: Event Publicly created meeting from Bob canceled")
+                .doesNotContain("text/calendar")
+                .doesNotContain("application/ics");
+
+            softly.assertThat(additionalAttendeeMessage)
+                .contains("Subject: Event Publicly created meeting from Bob canceled")
+                .doesNotContain("text/calendar")
+                .doesNotContain("application/ics");
+
+            softly.assertThat(creatorHtml)
+                .contains("has canceled an event")
+                .doesNotContain("Forwarding this invitation");
+
+            softly.assertThat(additionalAttendeeHtml)
+                .contains("has canceled an event")
+                .doesNotContain("Forwarding this invitation");
+        });
+    }
+
+    @Test
     void shouldRecoverWhenProposerIsNotPresentInAttendees() throws Exception {
         publishNotificationEmail(attendee.username().asString(), generatePublicAgendaCalendarWithCustomCreator(UUID.randomUUID().toString(),
             organizer.username().asString(), attendee.username().asString(), PartStat.ACCEPTED, UPDATED_SEQUENCE,
@@ -459,12 +531,26 @@ public class EventPublicAgendaEmailConsumerTest {
             .contains("Subject: Van Tung TRAN has accepted your event proposal");
     }
 
+    private String getHtml(String rawMessage) {
+        Pattern htmlPattern = Pattern.compile(
+            "Content-Transfer-Encoding: base64\r?\nContent-Type: text/html; charset=UTF-8\r?\nContent-Language: [^\r\n]+\r?\n\r?\n([A-Za-z0-9+/=\r\n]+)\r?\n---=Part",
+            java.util.regex.Pattern.DOTALL);
+        Matcher matcher = htmlPattern.matcher(rawMessage);
+        matcher.find();
+        String base64Html = matcher.group(1).replaceAll("\\s+", "");
+        return new String(Base64.getDecoder().decode(base64Html), StandardCharsets.UTF_8);
+    }
+
     private void publishNotificationEmail(String recipientEmail, String calendarData) throws Exception {
+        publishNotificationEmail(recipientEmail, calendarData, "REQUEST");
+    }
+
+    private void publishNotificationEmail(String recipientEmail, String calendarData, String method) throws Exception {
         String payload = """
             {
               "senderEmail": "%s",
               "recipientEmail": "%s",
-              "method": "REQUEST",
+              "method": "%s",
               "event": %s,
               "calendarURI": "calendar-uri",
               "eventPath": "/calendars/%s/events/%s.ics",
@@ -479,12 +565,13 @@ public class EventPublicAgendaEmailConsumerTest {
             """.formatted(
             organizer.username().asString(),
             recipientEmail,
+            method,
             OBJECT_MAPPER.writeValueAsString(calendarData),
             recipientEmail,
             UUID.randomUUID());
 
         sender.send(Mono.just(new OutboundMessage(EventEmailConsumer.EXCHANGE_NAME, "",
-            payload.getBytes(StandardCharsets.UTF_8))))
+                payload.getBytes(StandardCharsets.UTF_8))))
             .block();
     }
 
@@ -494,6 +581,17 @@ public class EventPublicAgendaEmailConsumerTest {
         assertThat(matcher.find()).isTrue();
         String encoded = matcher.group(1).replaceAll("\\R", "");
         return new String(Base64.getDecoder().decode(encoded), StandardCharsets.UTF_8);
+    }
+
+    private List<String> recipients(JsonPath smtpMailsResponse) {
+        return IntStream.range(0, smtpMailsResponse.getList("").size())
+            .mapToObj(index -> smtpMailsResponse.getString("[%d].recipients[0].address".formatted(index)))
+            .toList();
+    }
+
+    private String withPubliclyCancelledBy(String calendarData, String cancelledBy) {
+        return calendarData.replace(X_PUBLICLY_CREATOR_HEADER.formatted(cancelledBy),
+            X_PUBLICLY_CREATOR_HEADER.formatted(cancelledBy) + "\n" + X_PUBLICLY_CANCELLED_BY_HEADER.formatted(cancelledBy));
     }
 
     private static final Supplier<JsonPath> smtpMailsResponseSupplier = () -> given(mockSMTPRequestSpecification())
@@ -541,7 +639,7 @@ public class EventPublicAgendaEmailConsumerTest {
             SUMMARY:Publicly created meeting
             DESCRIPTION:This is a publicly created meeting. Visio: https://meet.example.com/abc-xyzx-dkm
             ORGANIZER;CN=Van Tung TRAN:mailto:{organizerEmail}
-            ATTENDEE;PARTSTAT={organizerPartStat};RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL:mailto:{organizerEmail}
+            ATTENDEE;PARTSTAT={organizerPartStat};RSVP=FALSE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;CN=Van Tung TRAN:mailto:{organizerEmail}
             ATTENDEE;PARTSTAT=ACCEPTED;RSVP=FALSE;CN=Bob:mailto:{requesterEmail}
             {xPubliclyCreated}
             {xPubliclyCreator}{additionalAttendee}
