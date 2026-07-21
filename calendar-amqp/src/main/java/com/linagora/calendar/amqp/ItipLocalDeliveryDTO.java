@@ -27,6 +27,7 @@ import java.util.Optional;
 import jakarta.mail.internet.AddressException;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.apache.james.core.MailAddress;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -123,10 +124,10 @@ public record ItipLocalDeliveryDTO(
         return stripMailto(recipients.getFirst());
     }
 
-    private static String stripMailto(String address) {
-        String sanitized = StringUtils.strip(address.trim(), "<>");
-        if (sanitized.startsWith("mailto:")) {
-            sanitized = sanitized.substring(7);
+    static String stripMailto(String address) {
+        String sanitized = StringUtils.strip(StringUtils.trimToEmpty(address), "<>");
+        if (Strings.CI.startsWith(sanitized, "mailto:")) {
+            sanitized = sanitized.substring("mailto:".length());
         }
         return StringUtils.strip(sanitized, "<>");
     }
