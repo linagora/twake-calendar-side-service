@@ -22,6 +22,7 @@ import jakarta.inject.Inject;
 
 import org.apache.james.core.Domain;
 
+import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.TeamCalendarInsertRequest;
@@ -37,12 +38,15 @@ import reactor.core.publisher.Mono;
 public class TeamCalendarService {
     private final OpenPaaSDomainDAO domainDAO;
     private final TeamCalendarRepository teamCalendarRepository;
+    private final CalDavClient calDavClient;
 
     @Inject
     public TeamCalendarService(OpenPaaSDomainDAO domainDAO,
-                               TeamCalendarRepository teamCalendarRepository) {
+                               TeamCalendarRepository teamCalendarRepository,
+                               CalDavClient calDavClient) {
         this.domainDAO = domainDAO;
         this.teamCalendarRepository = teamCalendarRepository;
+        this.calDavClient = calDavClient;
     }
 
     public Mono<TeamCalendar> create(Domain domainName, String name, String displayName) {
@@ -72,7 +76,8 @@ public class TeamCalendarService {
         return resolveDomain(domainName)
             .flatMap(domain -> teamCalendarRepository.retrieve(id)
                 .filter(teamCalendar -> teamCalendar.domain().id().equals(domain.id()))
-                .flatMap(_ -> teamCalendarRepository.delete(id))
+                .flatMap(_ -> calDavClient.deleteCalendarHome(domain.id(), id.asOpenPaaSId())
+                    .then(teamCalendarRepository.delete(id)))
                 .then());
     }
 

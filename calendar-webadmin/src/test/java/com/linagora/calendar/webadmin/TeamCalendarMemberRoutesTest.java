@@ -78,7 +78,7 @@ class TeamCalendarMemberRoutesTest {
         teamCalendarRepository = new MongoDBTeamCalendarRepository(sabreDavExtension.dockerSabreDavSetup().getMongoDB(), Clock.systemUTC());
 
         CalDavClient calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
-        TeamCalendarService teamCalendarService = new TeamCalendarService(domainDAO, teamCalendarRepository);
+        TeamCalendarService teamCalendarService = new TeamCalendarService(domainDAO, teamCalendarRepository, calDavClient);
         TeamCalendarMemberService teamCalendarMemberService = new TeamCalendarMemberService(calDavClient);
 
         webAdminServer = WebAdminUtils.createWebAdminServer(

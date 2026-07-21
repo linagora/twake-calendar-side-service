@@ -38,6 +38,8 @@ import javax.net.ssl.SSLException;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.Username;
+import org.bson.Document;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -65,24 +67,33 @@ import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.ResourceInsertRequest;
+import com.linagora.calendar.storage.TeamCalendarInsertRequest;
 import com.linagora.calendar.storage.model.ResourceAdministrator;
 import com.linagora.calendar.storage.model.ResourceId;
+import com.linagora.calendar.storage.model.TeamCalendar;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
+import com.linagora.calendar.storage.mongodb.MongoDBTeamCalendarRepository;
+import com.mongodb.reactivestreams.client.MongoClient;
+import com.mongodb.reactivestreams.client.MongoClients;
+import com.mongodb.reactivestreams.client.MongoDatabase;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.PropertyList;
 import net.fortuna.ical4j.model.component.VEvent;
+import reactor.core.publisher.Mono;
 
 public class CalDavClientTest {
+    private static final String SABRE_DATABASE = "sabre";
 
     @RegisterExtension
     static SabreDavExtension sabreDavExtension = SabreDavExtension.shared();
     private static DavTestHelper davTestHelper;
 
     private CalDavClient testee;
+    private MongoClient sabreMongoClient;
 
     @BeforeAll
     static void setUp() throws SSLException {
@@ -92,6 +103,14 @@ public class CalDavClientTest {
     @BeforeEach
     void setupEach() throws Exception {
         testee = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
+    }
+
+    @AfterEach
+    void tearDownEach() {
+        if (sabreMongoClient != null) {
+            sabreMongoClient.close();
+            sabreMongoClient = null;
+        }
     }
 
     private OpenPaaSUser createOpenPaaSUser() {
@@ -104,6 +123,20 @@ public class CalDavClientTest {
             .getDomain()
             .map(OpenPaaSDomain::id)
             .block();
+    }
+
+    private long countCalendarInstances(String principalUri) {
+        return Mono.from(sabreMongoDB()
+                .getCollection("calendarinstances")
+                .countDocuments(new Document("principaluri", principalUri)))
+            .block();
+    }
+
+    private MongoDatabase sabreMongoDB() {
+        if (sabreMongoClient == null) {
+            sabreMongoClient = MongoClients.create(sabreDavExtension.dockerSabreDavSetup().getMongoDbIpAddress().toString());
+        }
+        return sabreMongoClient.getDatabase(SABRE_DATABASE);
     }
 
     @Test
@@ -533,6 +566,43 @@ public class CalDavClientTest {
         List<CalendarURL> uris = testee.findUserCalendars(user.username(), user.id()).collectList().block();
 
         assertThat(uris).containsExactlyInAnyOrder(CalendarURL.from(user.id()), anotherCalendarURL);
+    }
+
+    @Test
+    void deleteCalendarHomeShouldDeleteTeamCalendarHome() {
+        OpenPaaSUser member = createOpenPaaSUser();
+        OpenPaaSDomain domain = sabreDavExtension.dockerSabreDavSetup()
+            .getOpenPaaSProvisioningService()
+            .getDomain()
+            .block();
+        TeamCalendar teamCalendar = new MongoDBTeamCalendarRepository(sabreDavExtension.dockerSabreDavSetup().getMongoDB(), Clock.systemUTC())
+            .create(new TeamCalendarInsertRequest(domain, "team-" + UUID.randomUUID(), "Team Calendar"))
+            .block();
+        OpenPaaSId calendarId = teamCalendar.id().asOpenPaaSId();
+        CalendarURL teamCalendarURL = CalendarURL.from(calendarId);
+        String teamCalendarPrincipalUri = "principals/team-calendars/" + teamCalendar.id().value();
+        CalendarSharingUpdate sharingUpdate = new CalendarSharingUpdate(
+            new CalendarSharingUpdate.Share(
+                List.of(CalendarSharingUpdate.AddSharee.readWrite("mailto:" + member.username().asString())),
+                List.of()));
+
+        testee.updateCalendarShares(domain.id(), teamCalendarURL, sharingUpdate).block();
+
+        assertThat(countCalendarInstances(teamCalendarPrincipalUri))
+            .isPositive();
+
+        testee.deleteCalendarHome(domain.id(), calendarId).block();
+
+        assertThat(countCalendarInstances(teamCalendarPrincipalUri))
+            .isZero();
+    }
+
+    @Test
+    void deleteCalendarHomeShouldNotThrowWhenCalendarHomeDoesNotExist() {
+        createOpenPaaSUser();
+        OpenPaaSId domainId = retrieveDefaultDomainId();
+
+        testee.deleteCalendarHome(domainId, new OpenPaaSId(UUID.randomUUID().toString().replace("-", "").substring(0, 24))).block();
     }
 
     @Test

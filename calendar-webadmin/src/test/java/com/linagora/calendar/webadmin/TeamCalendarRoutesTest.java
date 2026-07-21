@@ -18,42 +18,46 @@
 
 package com.linagora.calendar.webadmin;
 
+import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static io.restassured.RestAssured.given;
 import static io.restassured.RestAssured.when;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
-import java.util.List;
+
+import javax.net.ssl.SSLException;
 
 import org.apache.james.core.Domain;
 import org.apache.james.utils.UpdatableTickingClock;
 import org.apache.james.webadmin.WebAdminServer;
 import org.apache.james.webadmin.WebAdminUtils;
 import org.apache.james.webadmin.utils.JsonTransformer;
+import org.bson.Document;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.TeamCalendarInsertRequest;
 import com.linagora.calendar.storage.model.TeamCalendar;
 import com.linagora.calendar.storage.model.TeamCalendarId;
-import com.linagora.calendar.storage.mongodb.DockerMongoDBExtension;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBTeamCalendarRepository;
+import com.mongodb.reactivestreams.client.MongoDatabase;
 
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
 import net.javacrumbs.jsonunit.core.Option;
+import reactor.core.publisher.Mono;
 
 class TeamCalendarRoutesTest {
     @RegisterExtension
-    static DockerMongoDBExtension mongo = new DockerMongoDBExtension(List.of(
-        MongoDBOpenPaaSDomainDAO.COLLECTION,
-        MongoDBTeamCalendarRepository.COLLECTION));
+    static SabreDavExtension sabreDavExtension = SabreDavExtension.shared();
 
     private WebAdminServer webAdminServer;
     private MongoDBOpenPaaSDomainDAO domainDAO;
@@ -61,12 +65,15 @@ class TeamCalendarRoutesTest {
     private UpdatableTickingClock clock;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws SSLException {
         clock = new UpdatableTickingClock(Instant.parse("2026-01-01T00:00:00Z"));
-        domainDAO = new MongoDBOpenPaaSDomainDAO(mongo.getDb());
-        teamCalendarRepository = new MongoDBTeamCalendarRepository(mongo.getDb(), clock);
+        MongoDatabase mongoDB = sabreDavExtension.dockerSabreDavSetup().getMongoDB();
+        Mono.from(mongoDB.getCollection(MongoDBTeamCalendarRepository.COLLECTION).deleteMany(new Document())).block();
+        domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
+        teamCalendarRepository = new MongoDBTeamCalendarRepository(mongoDB, clock);
 
-        TeamCalendarService teamCalendarService = new TeamCalendarService(domainDAO, teamCalendarRepository);
+        CalDavClient calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
+        TeamCalendarService teamCalendarService = new TeamCalendarService(domainDAO, teamCalendarRepository, calDavClient);
         webAdminServer = WebAdminUtils.createWebAdminServer(new TeamCalendarRoutes(teamCalendarService, new JsonTransformer()))
             .start();
 
