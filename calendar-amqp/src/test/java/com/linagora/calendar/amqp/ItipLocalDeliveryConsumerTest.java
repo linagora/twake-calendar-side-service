@@ -29,7 +29,10 @@ import static org.mockito.Mockito.when;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -179,7 +182,8 @@ public class ItipLocalDeliveryConsumerTest {
             QueueArguments.Builder::new,
             calDavClient,
             localRecipientResolver,
-            DEFAULT_ITIP_EVENT_MESSAGES_PREFETCH_COUNT);
+            DEFAULT_ITIP_EVENT_MESSAGES_PREFETCH_COUNT,
+            Clock.fixed(Instant.parse("2026-01-01T00:00:00Z"), ZoneOffset.UTC));
 
         consumer.init();
         declareExchange(EventEmailConsumer.EXCHANGE_NAME);

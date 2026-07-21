@@ -21,6 +21,7 @@ package com.linagora.calendar.amqp;
 import static com.linagora.calendar.storage.event.EventParseUtils.createInstanceVEvent;
 
 import java.net.URI;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.chrono.ChronoZonedDateTime;
 import java.time.temporal.Temporal;
@@ -69,13 +70,16 @@ class ItipEmailNotificationPublisher {
     private final NotificationStrategy singleEventNotificationStrategy;
     private final NotificationStrategy recurringEventNotificationStrategy;
     private final Function<byte[], OutboundMessage> outboundMessageFunction;
+    private final Clock clock;
 
     public ItipEmailNotificationPublisher(Sender sender,
-                                          Function<byte[], OutboundMessage> outboundMessageFunction) {
+                                          Function<byte[], OutboundMessage> outboundMessageFunction,
+                                          Clock clock) {
         this.sender = sender;
         this.singleEventNotificationStrategy = new SingleEventNotificationStrategy();
         this.recurringEventNotificationStrategy = new RecurringEventNotificationStrategy();
         this.outboundMessageFunction = outboundMessageFunction;
+        this.clock = clock;
     }
 
     Mono<Void> send(ItipLocalDeliveryDTO localDelivery,
@@ -98,7 +102,21 @@ class ItipEmailNotificationPublisher {
                                                                 Optional<Calendar> oldEventCalendar) {
         Calendar newCalendar = CalendarUtil.parseIcs(localDelivery.message());
         return notificationStrategy(newCalendar)
-            .handle(localDelivery, eventPath, newCalendar, oldEventCalendar);
+            .handle(localDelivery, eventPath, newCalendar, oldEventCalendar)
+            .stream()
+            .filter(this::notExpired)
+            .toList();
+    }
+
+    /**
+     * Suppresses notifications for events that have already occurred, mirroring esn-sabre's
+     * {@code IMipPlugin::testIfEventIsExpired}. The check is based on the event carried by the
+     * notification, which always reflects the new (rescheduled) time: rescheduling a past event to
+     * a future slot therefore still notifies attendees.
+     */
+    private boolean notExpired(NotificationEmailDTO notification) {
+        Calendar calendar = CalendarUtil.parseIcs(notification.event());
+        return !CalendarEventUtils.vEventExpired(EventParseUtils.getFirstEvent(calendar), clock);
     }
 
     private NotificationStrategy notificationStrategy(Calendar newCalendar) {
