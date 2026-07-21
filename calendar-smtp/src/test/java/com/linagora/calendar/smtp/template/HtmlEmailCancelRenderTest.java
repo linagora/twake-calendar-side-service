@@ -82,6 +82,8 @@ public class HtmlEmailCancelRenderTest {
                     ))
                     .put("description", "Discuss project updates.")
                     .build())
+                .put("canceler", "Alice Organizer")
+                .put("displayForwardWarning", true)
                 .put("seeInCalendarLink", "https://calendar.example.com/event/123")
                 .build(),
             "translator", i18nFactory.forLocale(Locale.ENGLISH)
@@ -169,6 +171,8 @@ public class HtmlEmailCancelRenderTest {
                     ))
                     .put("hasResources", false)
                     .build())
+                .put("canceler", "Alice")
+                .put("displayForwardWarning", true)
                 .build(),
             "translator", i18nFactory.forLocale(Locale.ENGLISH)
         );
@@ -254,6 +258,8 @@ public class HtmlEmailCancelRenderTest {
                     ))
                     .put("hasResources", false)
                     .build())
+                .put("canceler", "Alice")
+                .put("displayForwardWarning", true)
                 .build(),
             "translator", i18nFactory.forLocale(Locale.ENGLISH)
         );

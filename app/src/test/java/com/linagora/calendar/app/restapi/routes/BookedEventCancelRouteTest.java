@@ -32,9 +32,12 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.ZonedDateTime;
+import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.IntStream;
 
 import jakarta.inject.Inject;
@@ -267,7 +270,7 @@ class BookedEventCancelRouteTest {
     }
 
     @Test
-    void bookerCancellationShouldNotifyOrganizerAndCreator(TwakeCalendarGuiceServer server) {
+    void bookerCancellationShouldNotifyOrganizerAndCreatorWhenBookerCancelEvent(TwakeCalendarGuiceServer server) {
         String jwt = bookAndGetJwt(server);
 
         // Drop the acknowledgement / proposal emails sent at booking time.
@@ -283,32 +286,39 @@ class BookedEventCancelRouteTest {
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
-        // The organizer receives a cancellation notification, and deleting the event on their calendar emits the
-        // standard iTIP CANCEL to the attendees, hence to the booker.
         CALMLY_AWAIT.atMost(Duration.ofSeconds(10))
             .untilAsserted(() -> {
                 JsonPath mails = smtpMails();
-                assertThat(messagesTo(mails, "creator@example.com")).isNotEmpty();
-                assertThat(messagesTo(mails, openPaaSUser.username().asString())).isNotEmpty();
+                List<String> creatorMessages = messagesTo(mails, "creator@example.com");
+                List<String> ownerMessages = messagesTo(mails, openPaaSUser.username().asString());
+                assertThat(creatorMessages).hasSize(1);
+                assertThat(ownerMessages).hasSize(1);
+
+                String creatorMessage = creatorMessages.getFirst();
+                String ownerMessage = ownerMessages.getFirst();
+                String creatorHtml = getHtml(creatorMessage);
+                String ownerHtml = getHtml(ownerMessage);
+
+                assertSoftly(softly -> {
+                    softly.assertThat(creatorMessage)
+                        .contains("Subject: Booking 30-min intro call canceled")
+                        .doesNotContain("text/calendar")
+                        .doesNotContain("application/ics");
+
+                    softly.assertThat(ownerMessage)
+                        .contains("Subject: Booking 30-min intro call canceled")
+                        .doesNotContain("text/calendar")
+                        .doesNotContain("application/ics");
+
+                    softly.assertThat(creatorHtml)
+                        .contains("Your booking has been canceled")
+                        .doesNotContain("Forwarding this invitation");
+
+                    softly.assertThat(ownerHtml)
+                        .contains("has canceled a booking")
+                        .doesNotContain("Forwarding this invitation");
+                });
             });
-
-        JsonPath smtpMailsResponse = smtpMails();
-        String organizerMessage = messagesTo(smtpMailsResponse, openPaaSUser.username().asString()).getFirst();
-        String creatorMessage = messagesTo(smtpMailsResponse, "creator@example.com").getFirst();
-
-        assertSoftly(softly -> {
-            softly.assertThat(organizerMessage)
-                .contains("Subject: Booking 30-min intro call canceled")
-                .doesNotContain("Forwarding this invitation");
-            // The organizer notification is informative only: it carries no ICS attachment.
-            softly.assertThat(organizerMessage)
-                .doesNotContain("text/calendar")
-                .doesNotContain("application/ics");
-
-            softly.assertThat(creatorMessage)
-                .doesNotContain("text/calendar")
-                .doesNotContain("application/ics");
-        });
     }
 
     private VEvent fetchOwnerEvent(String eventId) {
@@ -333,12 +343,6 @@ class BookedEventCancelRouteTest {
         return IntStream.range(0, smtpMailsResponse.getList("").size())
             .filter(index -> recipient.equals(smtpMailsResponse.getString("[%d].recipients[0].address".formatted(index))))
             .mapToObj(index -> smtpMailsResponse.getString("[%d].message".formatted(index)))
-            .toList();
-    }
-
-    private List<String> messagesMatching(JsonPath smtpMailsResponse, String recipient, String rawContent) {
-        return messagesTo(smtpMailsResponse, recipient).stream()
-            .filter(message -> message.contains(rawContent))
             .toList();
     }
 
@@ -385,5 +389,15 @@ class BookedEventCancelRouteTest {
             .extract()
             .jsonPath()
             .getList("slots.start", String.class);
+    }
+
+    private String getHtml(String rawMessage) {
+        Pattern htmlPattern = Pattern.compile(
+            "Content-Transfer-Encoding: base64\r?\nContent-Type: text/html; charset=UTF-8\r?\nContent-Language: [^\r\n]+\r?\n\r?\n([A-Za-z0-9+/=\r\n]+)\r?\n---=Part",
+            java.util.regex.Pattern.DOTALL);
+        Matcher matcher = htmlPattern.matcher(rawMessage);
+        matcher.find();
+        String base64Html = matcher.group(1).replaceAll("\\s+", "");
+        return new String(Base64.getDecoder().decode(base64Html), StandardCharsets.UTF_8);
     }
 }

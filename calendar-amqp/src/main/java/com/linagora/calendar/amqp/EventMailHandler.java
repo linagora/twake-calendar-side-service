@@ -18,7 +18,11 @@
 
 package com.linagora.calendar.amqp;
 
+import static com.linagora.calendar.amqp.EventEmailConsumer.X_PUBLICLY_CANCELLED_BY_HEADER;
+import static com.linagora.calendar.amqp.EventEmailConsumer.X_PUBLICLY_CREATED_HEADER;
 import static com.linagora.calendar.amqp.EventFieldConverter.extractCalendarURL;
+import static com.linagora.calendar.amqp.model.CalendarEventBookingConfirmedNotificationEmail.X_PUBLICLY_CREATOR_HEADER;
+import static com.linagora.calendar.amqp.model.CalendarEventCancelNotificationEmail.DISPLAY_FORWARD_WARNING;
 import static com.linagora.calendar.smtp.template.MimeAttachment.ATTACHMENT_DISPOSITION_TYPE;
 
 import java.nio.charset.StandardCharsets;
@@ -30,6 +34,7 @@ import jakarta.inject.Inject;
 import jakarta.inject.Named;
 
 import org.apache.commons.lang3.BooleanUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.Domain;
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.MaybeSender;
@@ -62,6 +67,7 @@ import com.linagora.calendar.smtp.template.MessageGenerator;
 import com.linagora.calendar.smtp.template.MimeAttachment;
 import com.linagora.calendar.smtp.template.TemplateType;
 import com.linagora.calendar.smtp.template.content.model.EventInCalendarLinkFactory;
+import com.linagora.calendar.smtp.template.content.model.PersonModel;
 import com.linagora.calendar.smtp.template.content.model.ReplyContentModelBuilder;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -101,7 +107,6 @@ public class EventMailHandler {
     }
 
     private static final Logger LOGGER = LoggerFactory.getLogger(EventMailHandler.class);
-    private static final String X_PUBLICLY_CREATED_PROPERTY = "X-PUBLICLY-CREATED";
     private final MailSender.Factory mailSenderFactory;
     private final MessageGenerator.Factory messageGeneratorFactory;
     private final EventInCalendarLinkFactory eventInCalendarLinkFactory;
@@ -245,12 +250,39 @@ public class EventMailHandler {
             List<MimeAttachment> attachments = cancelAttachments();
 
             MailAddress fromAddress = event.base().senderEmail();
-            return messageGenerator.generate(recipientUser, fromAddress,
-                    event.toPugModel(resolvedSettings.locale(), resolvedSettings.zoneId(), eventInCalendarLinkFactory, isInternalUser), attachments)
+            return messageGenerator.generate(recipientUser, fromAddress, toPugModel(resolvedSettings), attachments)
                 .map(message -> {
                     message.getHeader().addField(new RawField("Auto-Submitted", "auto-generated"));
                     return message;
                 });
+        }
+
+        private Map<String, Object> toPugModel(ResolvedSettings resolvedSettings) {
+            if (publiclyCreated()) {
+                return event.toPugModel(resolvedSettings.locale(), resolvedSettings.zoneId(), eventInCalendarLinkFactory, isInternalUser,
+                    booker(), canceler(), !DISPLAY_FORWARD_WARNING);
+            }
+            return event.toPugModel(resolvedSettings.locale(), resolvedSettings.zoneId(), eventInCalendarLinkFactory, isInternalUser);
+        }
+
+        private PersonModel booker() {
+            String bookerEmail = EventParseUtils.getPropertyValueIgnoreCase(event.base().getFirstVEvent(), X_PUBLICLY_CREATOR_HEADER)
+                .orElseThrow(() -> new EventMailHandlerException("Missing " + X_PUBLICLY_CREATOR_HEADER + " for publicly created cancel event"));
+            return personOfEmail(bookerEmail);
+        }
+
+        private PersonModel canceler() {
+            return EventParseUtils.getPropertyValueIgnoreCase(event.base().getFirstVEvent(), X_PUBLICLY_CANCELLED_BY_HEADER)
+                .map(this::personOfEmail)
+                .orElseGet(() -> PersonModel.from(EventParseUtils.getOrganizer(event.base().getFirstVEvent())));
+        }
+
+        private PersonModel personOfEmail(String email) {
+            return EventParseUtils.getAttendees(event.base().getFirstVEvent()).stream()
+                .filter(person -> person.email().asString().equalsIgnoreCase(email))
+                .findFirst()
+                .map(PersonModel::from)
+                .orElseGet(() -> new PersonModel(StringUtils.EMPTY, email));
         }
 
         private List<MimeAttachment> cancelAttachments() {
@@ -261,7 +293,7 @@ public class EventMailHandler {
         }
 
         private boolean publiclyCreated() {
-            return EventParseUtils.getPropertyValueIgnoreCase(event.base().getFirstVEvent(), X_PUBLICLY_CREATED_PROPERTY)
+            return EventParseUtils.getPropertyValueIgnoreCase(event.base().getFirstVEvent(), X_PUBLICLY_CREATED_HEADER)
                 .map(BooleanUtils::toBoolean)
                 .orElse(false);
         }
