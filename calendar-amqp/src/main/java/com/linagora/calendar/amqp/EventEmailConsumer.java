@@ -19,18 +19,21 @@
 package com.linagora.calendar.amqp;
 
 import static com.linagora.calendar.amqp.CalendarAmqpModule.INJECT_KEY_DAV;
+import static com.linagora.calendar.amqp.model.CalendarEventBookingConfirmedNotificationEmail.X_PUBLICLY_CREATOR_HEADER;
 import static com.linagora.calendar.amqp.model.CalendarEventNotificationEmail.GET_FIRST_VEVENT_FUNCTION;
 import static org.apache.james.backends.rabbitmq.Constants.DURABLE;
 import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
 import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.io.Closeable;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 import jakarta.annotation.PreDestroy;
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.BooleanUtils;
+import org.apache.commons.lang3.Strings;
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.ReceiverProvider;
@@ -56,6 +59,7 @@ import com.linagora.calendar.storage.event.EventParseUtils;
 import com.rabbitmq.client.BuiltinExchangeType;
 
 import net.fortuna.ical4j.model.Calendar;
+import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.property.Method;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
@@ -73,8 +77,9 @@ public class EventEmailConsumer implements Closeable, Startable {
     public static final String EXCHANGE_NAME = "calendar:event:notificationEmail:send";
     public static final String QUEUE_NAME = "tcalendar:event:notificationEmail:send";
     public static final String DEAD_LETTER_QUEUE = "tcalendar:event:notificationEmail:send:dead-letter";
+    public static final String X_PUBLICLY_CREATED_HEADER = "X-PUBLICLY-CREATED";
+    public static final String X_PUBLICLY_CANCELLED_BY_HEADER = "X-PUBLICLY-CANCELLED-BY";
 
-    private static final String X_PUBLICLY_CREATED_HEADER = "X-PUBLICLY-CREATED";
     private static final boolean PUBLIC_AGENDA_EVENT = true;
     private static final Logger LOGGER = LoggerFactory.getLogger(EventEmailConsumer.class);
     private static final boolean REQUEUE_ON_NACK = true;
@@ -218,6 +223,12 @@ public class EventEmailConsumer implements Closeable, Startable {
                     .doOnSuccess(any -> replySentMetric.increment());
             }
             case Method.VALUE_CANCEL -> {
+                if (publicAgendaEvent(calendarEventMessage.event())) {
+                    if (shouldIgnoreBookerCancellationToCreator(calendarEventMessage)) {
+                        yield Mono.empty();
+                    }
+                }
+
                 LOGGER.info("Received calendar event message with method CANCEL and eventPath {}", calendarEventMessage.eventPath());
                 CalendarEventCancelNotificationEmail calendarEventCancelNotificationEmail = CalendarEventCancelNotificationEmail.from(calendarEventMessage);
                 yield eventMailHandler.handleCancelEvent(calendarEventCancelNotificationEmail)
@@ -230,6 +241,20 @@ public class EventEmailConsumer implements Closeable, Startable {
             }
             default -> throw new IllegalArgumentException("Unknown method: " + calendarEventMessage.method());
         };
+    }
+
+    private boolean shouldIgnoreBookerCancellationToCreator(CalendarEventNotificationEmailDTO dto) {
+        VEvent event = GET_FIRST_VEVENT_FUNCTION.apply(dto.event());
+        Optional<String> creator = EventParseUtils.getPropertyValueIgnoreCase(event, X_PUBLICLY_CREATOR_HEADER)
+            .map(ItipLocalDeliveryDTO::stripMailto);
+        Optional<String> cancelledBy = EventParseUtils.getPropertyValueIgnoreCase(event, X_PUBLICLY_CANCELLED_BY_HEADER)
+            .map(ItipLocalDeliveryDTO::stripMailto);
+
+        return creator.filter(value -> Strings.CI.equals(value, dto.recipientEmail().asString()))
+            .filter(value -> cancelledBy
+                .filter(cancelledByValue -> Strings.CI.equals(cancelledByValue, value))
+                .isPresent())
+            .isPresent();
     }
 
     private boolean publicAgendaEvent(Calendar calendar) {
