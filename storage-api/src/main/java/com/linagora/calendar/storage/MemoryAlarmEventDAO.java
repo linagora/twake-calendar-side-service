@@ -63,6 +63,12 @@ public class MemoryAlarmEventDAO implements AlarmEventDAO {
     }
 
     @Override
+    public Mono<Void> deleteByEventPath(EventUid eventUid, String eventPath) {
+        return Mono.fromRunnable(() -> store.values().removeIf(
+            alarmEvent -> alarmEvent.eventUid().equals(eventUid) && alarmEvent.eventPath().equals(eventPath)));
+    }
+
+    @Override
     public Flux<AlarmEvent> findAlarmsToTrigger(Instant time) {
         return Flux.fromStream(store.values().stream()
             .filter(e -> !e.alarmTime().isAfter(time)));

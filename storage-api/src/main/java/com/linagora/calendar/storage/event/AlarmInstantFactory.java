@@ -107,6 +107,10 @@ public interface AlarmInstantFactory {
 
         @Override
         public Optional<AlarmInstant> computeNextAlarmInstant(Calendar calendar, Username username, Optional<Instant> sinceInstant) {
+            if (EventParseUtils.isCancelled(calendar)) {
+                return Optional.empty();
+            }
+
             Instant sinceInstantValue = sinceInstant.orElse(clock.instant());
             MailAddress userMailAddress = Throwing.supplier(username::asMailAddress).get();
             return listUpcomingAcceptedVEvents(calendar, username).stream()

@@ -76,6 +76,7 @@ import net.fortuna.ical4j.model.property.RecurrenceId;
 import net.fortuna.ical4j.model.property.Sequence;
 import net.fortuna.ical4j.model.property.Summary;
 import net.fortuna.ical4j.model.property.Uid;
+import net.fortuna.ical4j.model.property.immutable.ImmutableMethod;
 
 public class EventParseUtils {
     public enum DuplicateAttendeePolicy {
@@ -372,6 +373,13 @@ public class EventParseUtils {
 
     public static boolean isCancelled(VEvent event) {
         return event.getStatus() != null && "CANCELLED".equalsIgnoreCase(event.getStatus().getValue());
+    }
+
+    public static boolean isCancelled(Calendar calendar) {
+        return calendar.getProperty(Property.METHOD)
+            .map(Content::getValue)
+            .filter(ImmutableMethod.CANCEL.getValue()::equalsIgnoreCase)
+            .isPresent();
     }
 
     public static Map<String, List<VEvent>> groupByUid(Calendar calendar) {

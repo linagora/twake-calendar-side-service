@@ -839,6 +839,38 @@ public class AlarmInstantFactoryTest {
     }
 
     @Test
+    void shouldReturnEmptyWhenCalendarMethodIsCancel() {
+        // A cancellation sent by the organizer carries METHOD:CANCEL, without necessarily setting STATUS:CANCELLED
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            METHOD:CANCEL
+            BEGIN:VEVENT
+            UID:789012
+            DTSTAMP:20250728T000000Z
+            SEQUENCE:2
+            DTSTART:20250829T100000Z
+            DTEND:20250829T110000Z
+            SUMMARY:Meeting
+            ORGANIZER:mailto:john@example.com
+            ATTENDEE;CN=Jane Doe;PARTSTAT=ACCEPTED:mailto:jane@example.com
+            BEGIN:VALARM
+            ACTION:EMAIL
+            ATTENDEE:mailto:jane@example.com
+            TRIGGER:-PT30M
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+        AlarmInstantFactory testee = testee(Instant.parse("2025-07-28T00:00:00Z"));
+
+        assertThat(testee.computeNextAlarmInstant(calendar, Username.of("jane@example.com")))
+            .isEmpty();
+    }
+
+    @Test
     void shouldPickLatestVersionWhenMultipleVEventsSameUIDWithoutRecurrence() {
         // two VEVENT with same UID, different SEQUENCE
         String ics = """

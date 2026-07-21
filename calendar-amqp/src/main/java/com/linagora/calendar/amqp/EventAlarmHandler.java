@@ -114,7 +114,7 @@ public class EventAlarmHandler {
                     return upsertUpcomingAlarmRequest(username, eventCalendar, maybeNextAlarmInstant.get(), alarmMessageDTO.eventPath());
                 } else {
                     LOGGER.debug("No upcoming alarm found for {} at {}", username.asString(), alarmMessageDTO.eventPath());
-                    return doDeleteAlarmEvent(username, extractEventUid(alarmMessageDTO));
+                    return doDeleteAlarmEvent(username, alarmMessageDTO);
                 }
             });
     }
@@ -143,21 +143,22 @@ public class EventAlarmHandler {
 
     public Mono<Void> handleDelete(CalendarAlarmMessageDTO alarmMessageDTO) {
         return openPaaSUserDAO.retrieve(alarmMessageDTO.extractCalendarURL().base())
-            .flatMap(openPaaSUser -> handleDelete(openPaaSUser.username(), alarmMessageDTO));
+            .flatMap(openPaaSUser -> doDeleteAlarmEvent(openPaaSUser.username(), alarmMessageDTO));
     }
 
-    private Mono<Void> handleDelete(Username username, CalendarAlarmMessageDTO message) {
-        return Mono.fromCallable(() -> extractEventUid(message))
-            .flatMap(eventUid -> doDeleteAlarmEvent(username, eventUid));
-    }
-
-    private Mono<Void> doDeleteAlarmEvent(Username username, EventUid eventUid) {
-        return alarmEventDAO.delete(eventUid, Throwing.supplier(username::asMailAddress).get())
-            .doOnSuccess(unused -> LOGGER.debug("Deleted alarm event for {} with UID {}", username.asString(), eventUid.value()))
-            .onErrorResume(error -> {
-                LOGGER.error("Failed to delete alarm event for {} with UID {}", username.asString(), eventUid.value(), error);
-                return Mono.empty();
-            });
+    /**
+     * Alarms scheduled by a calendar object may target recipients that are not attendees of the event
+     * (VALARM ATTENDEE delegation), thus deletion is scoped to the calendar object rather than to its owner.
+     */
+    private Mono<Void> doDeleteAlarmEvent(Username username, CalendarAlarmMessageDTO alarmMessageDTO) {
+        String eventPath = alarmMessageDTO.eventPath();
+        return Mono.fromCallable(() -> extractEventUid(alarmMessageDTO))
+            .flatMap(eventUid -> alarmEventDAO.deleteByEventPath(eventUid, eventPath)
+                .doOnSuccess(unused -> LOGGER.debug("Deleted alarm events of {} for {}", eventPath, username.asString()))
+                .onErrorResume(error -> {
+                    LOGGER.error("Failed to delete alarm events of {} for {}", eventPath, username.asString(), error);
+                    return Mono.empty();
+                }));
     }
 
     private EventUid extractEventUid(CalendarAlarmMessageDTO alarmMessageDTO) {

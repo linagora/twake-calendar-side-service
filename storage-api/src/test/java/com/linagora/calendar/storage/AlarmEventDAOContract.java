@@ -109,6 +109,41 @@ public interface AlarmEventDAOContract {
     }
 
     @Test
+    default void deleteByEventPathShouldRemoveEveryRecipientOfThatCalendarObject() throws AddressException {
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+        String eventPath = "/calendars/xxx/yyy/zzz.ics";
+        AlarmEvent attendeeAlarm = new AlarmEvent(new EventUid("1"), now, now, NO_RECURRING, Optional.empty(),
+            new MailAddress("attendee@abc.com"), "ics", eventPath, AlarmAction.EMAIL);
+        AlarmEvent delegatedAlarm = new AlarmEvent(new EventUid("1"), now, now, NO_RECURRING, Optional.empty(),
+            new MailAddress("delegated@abc.com"), "ics", eventPath, AlarmAction.EMAIL);
+
+        getDAO().create(attendeeAlarm).block();
+        getDAO().create(delegatedAlarm).block();
+        getDAO().deleteByEventPath(new EventUid("1"), eventPath).block();
+
+        assertThat(List.of(
+            Optional.ofNullable(getDAO().find(new EventUid("1"), new MailAddress("attendee@abc.com")).block()),
+            Optional.ofNullable(getDAO().find(new EventUid("1"), new MailAddress("delegated@abc.com")).block())))
+            .containsExactly(Optional.empty(), Optional.empty());
+    }
+
+    @Test
+    default void deleteByEventPathShouldNotRemoveAlarmsOfOtherCalendarObjects() throws AddressException {
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+        AlarmEvent organizerCopy = new AlarmEvent(new EventUid("1"), now, now, NO_RECURRING, Optional.empty(),
+            new MailAddress("recipient@abc.com"), "ics", "/calendars/organizer/organizer/zzz.ics", AlarmAction.EMAIL);
+        AlarmEvent attendeeCopy = new AlarmEvent(new EventUid("1"), now, now, NO_RECURRING, Optional.empty(),
+            new MailAddress("attendee@abc.com"), "ics", "/calendars/attendee/attendee/zzz.ics", AlarmAction.EMAIL);
+
+        getDAO().create(organizerCopy).block();
+        getDAO().create(attendeeCopy).block();
+        getDAO().deleteByEventPath(new EventUid("1"), "/calendars/organizer/organizer/zzz.ics").block();
+
+        assertThat(getDAO().find(new EventUid("1"), new MailAddress("attendee@abc.com")).block())
+            .isEqualTo(attendeeCopy);
+    }
+
+    @Test
     default void shouldGetAlarmEventsByTime() throws AddressException {
         Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
         AlarmEvent e1 = new AlarmEvent(
