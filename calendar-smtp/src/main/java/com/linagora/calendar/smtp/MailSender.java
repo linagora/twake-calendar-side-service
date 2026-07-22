@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.security.cert.X509Certificate;
+import java.time.Duration;
 import java.util.Collection;
 import java.util.List;
 
@@ -42,6 +43,7 @@ import com.google.common.collect.ImmutableList;
 
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
+import reactor.util.retry.Retry;
 
 public interface MailSender {
     Logger LOGGER = LoggerFactory.getLogger(MailSender.class);
@@ -56,6 +58,16 @@ public interface MailSender {
         class Default implements Factory {
             private static final String DEFAULT_PROTOCOL = "TLS";
             private static final String UTF_8_ENCODING = "UTF-8";
+            private static final int MAX_SMTP_CONNECT_RETRIES = 3;
+            private static final Duration SMTP_CONNECT_RETRY_BACKOFF = Duration.ofMillis(100);
+
+            private static final Retry RETRY_CONNECT =
+                Retry.backoff(MAX_SMTP_CONNECT_RETRIES, SMTP_CONNECT_RETRY_BACKOFF)
+                    .maxBackoff(Duration.ofSeconds(5))
+                    .filter(IOException.class::isInstance)
+                    .doBeforeRetry(retrySignal -> LOGGER.warn("Retrying SMTP connection after transient failure (attempt {}/{})",
+                        retrySignal.totalRetries() + 1, MAX_SMTP_CONNECT_RETRIES, retrySignal.failure()))
+                    .onRetryExhaustedThrow((spec, signal) -> signal.failure());
             public static final X509TrustManager TRUST_ALL = new X509TrustManager() {
                 public X509Certificate[] getAcceptedIssuers() {
                     return null;
@@ -108,7 +120,9 @@ public interface MailSender {
                         }
                     }));
                     return new MailSender.Default(authClient, configuration, eventEmailFilter);
-                }).subscribeOn(Schedulers.boundedElastic());
+                })
+                .subscribeOn(Schedulers.boundedElastic())
+                .retryWhen(RETRY_CONNECT);
             }
         }
     }
