@@ -83,7 +83,8 @@ public class SabreAsyncSchedulingExtension implements BeforeAllCallback, BeforeE
             QueueArguments.Builder::new,
             new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING),
             localRecipientResolver(),
-            DEFAULT_ITIP_EVENT_MESSAGES_PREFETCH_COUNT);
+            DEFAULT_ITIP_EVENT_MESSAGES_PREFETCH_COUNT,
+            Clock.systemUTC());
         itipLocalDeliveryConsumer.init();
     }
 

@@ -25,6 +25,7 @@ import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.io.Closeable;
 import java.net.URI;
+import java.time.Clock;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -112,7 +113,8 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
                                      @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier,
                                      CalDavClient calDavClient,
                                      LocalRecipientResolver localRecipientResolver,
-                                     @Named("itipEventMessagesPrefetchCount") int prefetchCount) {
+                                     @Named("itipEventMessagesPrefetchCount") int prefetchCount,
+                                     Clock clock) {
         this.receiverProvider = channelPool::createReceiver;
         this.sender = channelPool.getSender();
         this.calDavClient = calDavClient;
@@ -120,7 +122,7 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
         this.prefetchCount = prefetchCount;
         this.queueArgumentSupplier = queueArgumentSupplier;
         this.itipEmailNotificationPublisher = new ItipEmailNotificationPublisher(sender,
-            bytes -> new OutboundMessage(EventEmailConsumer.EXCHANGE_NAME, EMPTY_ROUTING_KEY, bytes));
+            bytes -> new OutboundMessage(EventEmailConsumer.EXCHANGE_NAME, EMPTY_ROUTING_KEY, bytes), clock);
     }
 
     private static void declareExchangeAndQueue(Supplier<Builder> queueArgumentSupplier, Sender sender) {

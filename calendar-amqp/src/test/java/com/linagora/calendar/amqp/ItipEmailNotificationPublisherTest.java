@@ -24,6 +24,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import java.net.URI;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 
@@ -44,13 +47,21 @@ class ItipEmailNotificationPublisherTest {
     private static final String CALENDAR_ID = "team-calendar";
     private static final URI EVENT_PATH = URI.create("/calendars/openpaas/team-calendar/event-uid@test.ics");
 
+    // All the fixtures below start on 2026-04-01, so a clock anchored before that keeps them upcoming.
+    private static final Clock CLOCK_BEFORE_EVENTS = Clock.fixed(Instant.parse("2026-01-01T00:00:00Z"), ZoneOffset.UTC);
+
     private ItipEmailNotificationPublisher testee;
 
     @BeforeEach
     void setUp() {
-        testee = new ItipEmailNotificationPublisher(
+        testee = publisherWithClock(CLOCK_BEFORE_EVENTS);
+    }
+
+    private static ItipEmailNotificationPublisher publisherWithClock(Clock clock) {
+        return new ItipEmailNotificationPublisher(
             mock(Sender.class),
-            body -> new OutboundMessage("exchange", "routingKey", body));
+            body -> new OutboundMessage("exchange", "routingKey", body),
+            clock);
     }
 
     @Nested
@@ -177,6 +188,34 @@ class ItipEmailNotificationPublisherTest {
                                 }
                             }""");
                 });
+        }
+
+        @Test
+        void rescheduleFromPastToFutureShouldStillNotify() {
+            // Issue #976: the event was at 10:00, has just passed (clock is 10:05), and gets moved to 11:00.
+            // The past-guard must be based on the new time (11:00, still upcoming) so the attendee is notified.
+            Clock justAfterOldStart = Clock.fixed(Instant.parse("2026-04-01T10:05:00Z"), ZoneOffset.UTC);
+            String rescheduledToFuture = SINGLE_REQUEST_NEW
+                .replace("DTSTART:20260401T103000Z", "DTSTART:20260401T110000Z")
+                .replace("DTEND:20260401T113000Z", "DTEND:20260401T120000Z");
+            ItipLocalDeliveryDTO dto = dto(Method.VALUE_REQUEST, rescheduledToFuture, Optional.of(SINGLE_REQUEST_OLD));
+
+            List<NotificationEmailDTO> notifications = publisherWithClock(justAfterOldStart)
+                .buildNotificationMessages(dto, EVENT_PATH, Optional.of(parseIcs(SINGLE_REQUEST_OLD)));
+
+            assertThat(notifications).hasSize(1);
+        }
+
+        @Test
+        void updateShouldBeSuppressedWhenNewEventIsAlreadyInThePast() {
+            // The new start (10:30) is already past relative to the clock (11:00): no point emailing.
+            Clock afterNewStart = Clock.fixed(Instant.parse("2026-04-01T11:00:00Z"), ZoneOffset.UTC);
+            ItipLocalDeliveryDTO dto = dto(Method.VALUE_REQUEST, SINGLE_REQUEST_NEW, Optional.of(SINGLE_REQUEST_OLD));
+
+            List<NotificationEmailDTO> notifications = publisherWithClock(afterNewStart)
+                .buildNotificationMessages(dto, EVENT_PATH, Optional.of(parseIcs(SINGLE_REQUEST_OLD)));
+
+            assertThat(notifications).isEmpty();
         }
 
         @Test
