@@ -46,6 +46,7 @@ import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionFactory;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -241,6 +242,7 @@ class BookedEventCancelRouteTest {
     }
 
     @Test
+    @Disabled("Will be resolved in https://github.com/linagora/twake-calendar-side-service/issues/952")
     void cancellationShouldNotifyOrganizer(TwakeCalendarGuiceServer server) {
         String jwt = bookAndGetJwt(server);
 

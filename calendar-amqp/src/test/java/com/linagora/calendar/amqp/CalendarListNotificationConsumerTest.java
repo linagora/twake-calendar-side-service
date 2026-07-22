@@ -20,6 +20,8 @@ import static com.linagora.calendar.amqp.TestFixture.RETRY_BACKOFF_CONFIGURATION
 import static com.linagora.calendar.amqp.TestFixture.awaitAtMost;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.net.URI;
 import java.time.Clock;
@@ -92,6 +94,7 @@ public class CalendarListNotificationConsumerTest {
     private EventBus eventBus;
     private CalDavClient calDavClient;
     private CalendarListNotificationConsumer consumer;
+    private CalendarListNotificationHandler handler;
     private MongoDBOpenPaaSDomainDAO domainDAO;
     private OpenPaaSUserDAO openPaaSUserDAO;
     private ResourceDAO resourceDAO;
@@ -133,7 +136,7 @@ public class CalendarListNotificationConsumerTest {
         resourceDAO = new MongoDBResourceDAO(mongoDB, Clock.systemUTC());
         TeamCalendarRepository teamCalendarRepository = new MongoDBTeamCalendarRepository(mongoDB, Clock.systemUTC());
 
-        CalendarListNotificationHandler handler = new CalendarListNotificationHandler(eventBus, openPaaSUserDAO, resourceDAO, teamCalendarRepository);
+        handler = new CalendarListNotificationHandler(eventBus, openPaaSUserDAO, resourceDAO, teamCalendarRepository);
         consumer = new CalendarListNotificationConsumer(channelPool, QueueArguments.Builder::new, handler);
         consumer.init();
     }
@@ -256,6 +259,29 @@ public class CalendarListNotificationConsumerTest {
                 assertThat(event.calendarURL()).isEqualTo(calendarURL);
                 assertThat(event.changeType()).isEqualTo(ChangeType.DELETED);
             }));
+    }
+
+    @Test
+    void shouldIgnoreDeletedCalendarWhenOwnerCannotBeResolved() {
+        String deletedOwnerId = UUID.randomUUID().toString().replace("-", "").substring(0, 24);
+        CalendarListNotificationConsumer.CalendarListChangesMessage message = new CalendarListNotificationConsumer.CalendarListChangesMessage(
+            "/calendars/{ownerId}/{ownerId}".replace("{ownerId}", deletedOwnerId),
+            null);
+
+        assertThatCode(() -> handler.handle(CalendarListNotificationConsumer.CalendarListExchange.CALENDAR_DELETED, message).block())
+            .doesNotThrowAnyException();
+    }
+
+    @Test
+    void shouldThrowWhenCreatedCalendarOwnerCannotBeResolved() {
+        String unknownOwnerId = UUID.randomUUID().toString().replace("-", "").substring(0, 24);
+        CalendarListNotificationConsumer.CalendarListChangesMessage message = new CalendarListNotificationConsumer.CalendarListChangesMessage(
+            "/calendars/{ownerId}/{ownerId}".replace("{ownerId}", unknownOwnerId),
+            null);
+
+        assertThatThrownBy(() -> handler.handle(CalendarListNotificationConsumer.CalendarListExchange.CALENDAR_CREATED, message).block())
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessage("Can not resolve base id " + unknownOwnerId);
     }
 
     @Test

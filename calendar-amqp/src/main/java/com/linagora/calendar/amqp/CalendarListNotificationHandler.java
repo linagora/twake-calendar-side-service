@@ -64,7 +64,7 @@ public class CalendarListNotificationHandler {
         ChangeType changeType = resolveChangeType(exchange, message);
 
         return openPaaSUserDAO.retrieve(calendarURL.base())
-            .switchIfEmpty(Mono.defer(() -> ignoreKnownNonUserOwner(calendarURL)))
+            .switchIfEmpty(Mono.defer(() -> ignoreKnownNonUserOwner(exchange, calendarURL)))
             .flatMap(user -> eventBus.dispatch(
                     CalendarListChangedEvent.of(user.username(), calendarURL, changeType),
                     new UsernameRegistrationKey(user.username()))
@@ -72,7 +72,7 @@ public class CalendarListNotificationHandler {
                 .then());
     }
 
-    private Mono<OpenPaaSUser> ignoreKnownNonUserOwner(CalendarURL calendarURL) {
+    private Mono<OpenPaaSUser> ignoreKnownNonUserOwner(CalendarListExchange exchange, CalendarURL calendarURL) {
         return resourceDAO.findById(ResourceId.from(calendarURL.base()))
             .hasElement()
             .flatMap(isResource -> {
@@ -80,16 +80,20 @@ public class CalendarListNotificationHandler {
                     LOGGER.debug("Ignore calendar list notification for resource calendar {}", calendarURL.asUri());
                     return Mono.empty();
                 }
-                return ignoreTeamCalendarOwner(calendarURL);
+                return ignoreTeamCalendarOwner(exchange, calendarURL);
             });
     }
 
-    private Mono<OpenPaaSUser> ignoreTeamCalendarOwner(CalendarURL calendarURL) {
+    private Mono<OpenPaaSUser> ignoreTeamCalendarOwner(CalendarListExchange exchange, CalendarURL calendarURL) {
         return teamCalendarRepository.retrieve(TeamCalendarId.from(calendarURL.base()))
             .hasElement()
             .flatMap(isTeamCalendar -> {
                 if (isTeamCalendar) {
                     LOGGER.debug("Ignore calendar list notification for team calendar {}", calendarURL.asUri());
+                    return Mono.empty();
+                }
+                if (exchange == CalendarListExchange.CALENDAR_DELETED) {
+                    LOGGER.debug("Ignore deleted calendar list notification for unknown owner {}", calendarURL.asUri());
                     return Mono.empty();
                 }
                 return Mono.error(() -> new IllegalStateException("Can not resolve base id " + calendarURL.base().value()));

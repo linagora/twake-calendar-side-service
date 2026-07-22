@@ -393,6 +393,37 @@ public class CalDavClient extends DavClient {
             });
     }
 
+    public Mono<Void> deleteCalendarHome(OpenPaaSId domainId, OpenPaaSId calendarHomeId) {
+        return deleteCalendarHome(httpClientWithTechnicalToken(domainId), calendarHomeId);
+    }
+
+    public Mono<Void> deleteCalendarHome(Mono<HttpClient> httpClientPublisher, OpenPaaSId calendarHomeId) {
+        Preconditions.checkArgument(httpClientPublisher != null, "httpClientPublisher must not be null");
+        Preconditions.checkArgument(calendarHomeId != null, "calendarHomeId must not be null");
+
+        String uri = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/" + calendarHomeId.value();
+        return httpClientPublisher.flatMap(client -> client
+            .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_JSON))
+            .request(HttpMethod.DELETE)
+            .uri(uri)
+            .responseSingle((response, responseContent) -> {
+                if (response.status().code() == HttpStatus.SC_NO_CONTENT || response.status().code() == HttpStatus.SC_NOT_FOUND) {
+                    return Mono.empty();
+                } else {
+                    if (response.status().code() == HttpStatus.SC_NOT_IMPLEMENTED) {
+                        LOGGER.info("Could not delete calendar home {}", calendarHomeId.value());
+                        return Mono.empty();
+                    }
+                    return responseContent.asString(StandardCharsets.UTF_8)
+                        .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                        .flatMap(responseBody -> Mono.error(new DavClientException("""
+                                Unexpected status code: %d when deleting calendar home '%s'
+                                %s
+                                """.formatted(response.status().code(), uri, responseBody))));
+                }
+            }));
+    }
+
     public Mono<Void> createNewCalendar(Username username, OpenPaaSId userId, NewCalendar newCalendar) {
         String uri = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/" + userId.value() + ".json";
         return httpClientWithImpersonation(username)
