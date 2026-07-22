@@ -1622,7 +1622,7 @@ public class CalDavClientTest {
         CalendarURL calendarURL = new CalendarURL(user.id(), new OpenPaaSId(calendarId));
 
         testee.updateCalendarProperties(user.username(), calendarURL,
-            new CalendarPropertiesUpdate(Optional.of("Updated name"), Optional.empty(), Optional.empty())).block();
+            CalendarPropertiesUpdate.withName("Updated name")).block();
 
         String metadata = davTestHelper.getCalendarMetadata(user, new OpenPaaSId(calendarId)).block();
         assertThatJson(metadata).node("dav:name").isEqualTo("Updated name");
@@ -1636,7 +1636,7 @@ public class CalDavClientTest {
         CalendarURL calendarURL = new CalendarURL(user.id(), new OpenPaaSId(UUID.randomUUID().toString()));
 
         assertThatThrownBy(() -> testee.updateCalendarProperties(user.username(), calendarURL,
-            new CalendarPropertiesUpdate(Optional.of("Updated name"), Optional.empty(), Optional.empty())).block())
+            CalendarPropertiesUpdate.withName("Updated name")).block())
             .isInstanceOf(CalendarNotFoundException.class);
     }
 

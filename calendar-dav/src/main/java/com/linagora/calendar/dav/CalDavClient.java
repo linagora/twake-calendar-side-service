@@ -108,6 +108,10 @@ public class CalDavClient extends DavClient {
             Preconditions.checkArgument(name.isPresent() || color.isPresent() || description.isPresent(),
                 "At least one of 'dav:name', 'apple:color', 'caldav:description' must be provided");
         }
+
+        public static CalendarPropertiesUpdate withName(String name) {
+            return new CalendarPropertiesUpdate(Optional.of(name), Optional.empty(), Optional.empty());
+        }
     }
 
     public record CalendarSharingUpdate(@JsonProperty(value = "share", required = true) Share share) {
@@ -617,8 +621,18 @@ public class CalDavClient extends DavClient {
      * through a PROPPATCH on the calendar JSON endpoint.
      */
     public Mono<Void> updateCalendarProperties(Username username, CalendarURL calendarURL, CalendarPropertiesUpdate update) {
+        return updateCalendarProperties(Mono.just(httpClientWithImpersonation(username)), calendarURL, update);
+    }
+
+    public Mono<Void> updateCalendarProperties(OpenPaaSId domainId, CalendarURL calendarURL, CalendarPropertiesUpdate update) {
+        return updateCalendarProperties(httpClientWithTechnicalToken(domainId), calendarURL, update);
+    }
+
+    public Mono<Void> updateCalendarProperties(Mono<HttpClient> httpClientPublisher,
+                                               CalendarURL calendarURL,
+                                               CalendarPropertiesUpdate update) {
         String uri = calendarURL.asUri() + ".json";
-        return httpClientWithImpersonation(username)
+        return httpClientPublisher.flatMap(client -> client
             .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, JSON_CHARSET_UTF_8)
                 .add(HttpHeaderNames.ACCEPT, DEFAULT_JSON_ACCEPT))
             .request(HttpMethod.valueOf("PROPPATCH"))
@@ -632,7 +646,7 @@ public class CalDavClient extends DavClient {
                         Unexpected status code: %d when updating properties of calendar '%s'
                         %s
                         """.formatted(response.status().code(), uri, errorBody))));
-            });
+            }));
     }
 
     /**
@@ -839,6 +853,33 @@ public class CalDavClient extends DavClient {
                             """.formatted(uri, status, body)));
                     });
             });
+    }
+
+    public Mono<byte[]> propfindCalendarCollection(OpenPaaSId domainId, CalendarURL calendarUrl) {
+        return propfindCalendarCollection(httpClientWithTechnicalToken(domainId), calendarUrl);
+    }
+
+    public Mono<byte[]> propfindCalendarCollection(Mono<HttpClient> httpClientPublisher, CalendarURL calendarUrl) {
+        String uri = calendarUrl.asUri().toString();
+
+        return httpClientPublisher.flatMap(client -> client
+            .headers(headers -> headers.add("Depth", "0"))
+            .request(HttpMethod.valueOf("PROPFIND"))
+            .uri(uri)
+            .responseSingle((response, content) -> {
+                int status = response.status().code();
+                return content.asByteArray()
+                    .defaultIfEmpty(new byte[0])
+                    .flatMap(body -> switch (status) {
+                        case 207 -> Mono.just(body);
+                        case HttpStatus.SC_NOT_FOUND -> Mono.error(new CalendarNotFoundException(calendarUrl));
+                        default -> Mono.error(new DavClientException("""
+                            Unexpected response when PROPFIND calendar collection '%s'
+                            Status: %d
+                            Body: %s
+                            """.formatted(uri, status, new String(body, StandardCharsets.UTF_8))));
+                    });
+            }));
     }
 
     /**

@@ -29,12 +29,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.equalTo;
 
+import java.io.ByteArrayInputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+
+import javax.xml.parsers.DocumentBuilderFactory;
 
 import org.apache.james.backends.opensearch.DockerOpenSearchExtension;
 import org.apache.james.core.Domain;
@@ -46,6 +49,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.w3c.dom.Document;
+import org.w3c.dom.NodeList;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.linagora.calendar.app.AppTestHelper;
@@ -116,6 +121,50 @@ class TeamCalendarFlowIntegrationTest {
         bob = provisionUser(server, "bob");
         alice = provisionUser(server, "alice");
         nonMember = provisionUser(server, "non_member");
+    }
+
+    @Test
+    void createTeamCalendarShouldCreateDefaultDavCalendarWithDisplayName(TwakeCalendarGuiceServer server) {
+        // Given a team calendar is created from WebAdmin
+        TeamCalendarId teamCalendarId = createTeamCalendar(server, "technical-name", "Custom Team Name");
+
+        // When the canonical team calendar DAV collection is requested
+        String responseBody = propfindDisplayName(technicalTokenDavRequestSpecification(server),
+            CalendarURL.from(teamCalendarId.asOpenPaaSId()).asUri().toASCIIString());
+
+        // Then the collection already exists and exposes the WebAdmin display name
+        assertThat(extractDisplayName(responseBody))
+            .isEqualTo("Custom Team Name");
+    }
+
+    @Test
+    void teamCalendarMemberShouldSeeDelegatedCalendarWithTeamCalendarDisplayName(TwakeCalendarGuiceServer server) {
+        // Given Bob is added as a member after the team calendar is created
+        TeamCalendarId teamCalendarId = createTeamCalendar(server, "delegated-technical-name", "Delegated Custom Team");
+        grantMember(server, teamCalendarId, bob, "dav:read");
+        CalendarURL delegatedCalendar = findVisibleTeamCalendar(bob, teamCalendarId);
+
+        // When Bob requests the delegated team calendar properties
+        String responseBody = propfindDisplayName(davRequestSpecification(bob), delegatedCalendar.asUri().toASCIIString());
+
+        // Then Bob sees the display name copied from the canonical team calendar
+        assertThat(extractDisplayName(responseBody))
+            .isEqualTo("Delegated Custom Team");
+    }
+
+    @Test
+    void updateTeamCalendarDisplayNameShouldUpdateDefaultDavCalendarDisplayName(TwakeCalendarGuiceServer server) {
+        // Given a team calendar default DAV collection exists
+        TeamCalendarId teamCalendarId = createTeamCalendar(server, "rename-technical-name", "Initial Team Name");
+
+        // When WebAdmin updates the team calendar display name
+        updateTeamCalendarDisplayName(server, teamCalendarId, "Renamed Team Calendar");
+
+        // Then the canonical team calendar DAV collection exposes the updated display name
+        String responseBody = propfindDisplayName(technicalTokenDavRequestSpecification(server),
+            CalendarURL.from(teamCalendarId.asOpenPaaSId()).asUri().toASCIIString());
+        assertThat(extractDisplayName(responseBody))
+            .isEqualTo("Renamed Team Calendar");
     }
 
     @Test
@@ -242,6 +291,56 @@ class TeamCalendarFlowIntegrationTest {
             .statusCode(207);
     }
 
+    private String propfindDisplayName(RequestSpecification requestSpecification, String path) {
+        return given(requestSpecification)
+            .contentType("application/xml")
+            .header("Depth", "0")
+            .body("""
+                <d:propfind xmlns:d="DAV:">
+                  <d:prop>
+                    <d:displayname/>
+                  </d:prop>
+                </d:propfind>
+                """)
+        .when()
+            .request("PROPFIND", path)
+        .then()
+            .statusCode(207)
+            .extract()
+            .body()
+            .asString();
+    }
+
+    private String extractDisplayName(String responseBody) {
+        try {
+            DocumentBuilderFactory documentBuilderFactory = DocumentBuilderFactory.newInstance();
+            documentBuilderFactory.setNamespaceAware(true);
+            Document document = documentBuilderFactory.newDocumentBuilder()
+                .parse(new ByteArrayInputStream(responseBody.getBytes(StandardCharsets.UTF_8)));
+
+            NodeList displayNames = document.getElementsByTagNameNS("DAV:", "displayname");
+            if (displayNames.getLength() == 0) {
+                throw new IllegalStateException("DAV displayname is missing from PROPFIND response");
+            }
+            return displayNames.item(0).getTextContent();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to extract DAV displayname from PROPFIND response", e);
+        }
+    }
+
+    private RequestSpecification technicalTokenDavRequestSpecification(TwakeCalendarGuiceServer server) {
+        DavConfiguration davConfiguration = sabreDavExtension.dockerSabreDavSetup().davConfiguration();
+        String technicalToken = TECHNICAL_TOKEN_SERVICE_TESTING.generate(server.getProbe(CalendarDataProbe.class).domainId(DOMAIN))
+            .block()
+            .value();
+
+        return new RequestSpecBuilder()
+            .setBaseUri(davConfiguration.baseUrl().toASCIIString())
+            .setConfig(newConfig().encoderConfig(encoderConfig().defaultContentCharset(StandardCharsets.UTF_8)))
+            .addHeader("TwakeCalendarToken", technicalToken)
+            .build();
+    }
+
     private TeamCalendarId createTeamCalendar(TwakeCalendarGuiceServer server, String name, String displayName) {
         String payload = """
             {
@@ -259,6 +358,21 @@ class TeamCalendarFlowIntegrationTest {
             .statusCode(201)
             .extract()
             .path("id"));
+    }
+
+    private void updateTeamCalendarDisplayName(TwakeCalendarGuiceServer server, TeamCalendarId teamCalendarId, String displayName) {
+        String payload = """
+            {
+              "displayName": "{displayName}"
+            }
+            """.replace("{displayName}", displayName);
+
+        given(webAdminSpecification(server))
+            .body(payload)
+        .when()
+            .patch("/domains/{domain}/team-calendars/{teamCalendarId}", DOMAIN.asString(), teamCalendarId.value())
+        .then()
+            .statusCode(200);
     }
 
     private void grantMember(TwakeCalendarGuiceServer server, TeamCalendarId teamCalendarId, OpenPaaSUser member, String davRight) {

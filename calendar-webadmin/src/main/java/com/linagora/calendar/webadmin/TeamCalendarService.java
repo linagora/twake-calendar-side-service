@@ -20,9 +20,14 @@ package com.linagora.calendar.webadmin;
 
 import jakarta.inject.Inject;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.Domain;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.CalDavClient.CalendarPropertiesUpdate;
+import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.TeamCalendarInsertRequest;
@@ -36,6 +41,8 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 public class TeamCalendarService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(TeamCalendarService.class);
+
     private final OpenPaaSDomainDAO domainDAO;
     private final TeamCalendarRepository teamCalendarRepository;
     private final CalDavClient calDavClient;
@@ -51,7 +58,8 @@ public class TeamCalendarService {
 
     public Mono<TeamCalendar> create(Domain domainName, String name, String displayName) {
         return resolveDomain(domainName)
-            .flatMap(domain -> teamCalendarRepository.create(new TeamCalendarInsertRequest(domain, name, displayName)));
+            .flatMap(domain -> teamCalendarRepository.create(new TeamCalendarInsertRequest(domain, name, displayName)))
+            .flatMap(teamCalendar -> createDavCalendar(teamCalendar).thenReturn(teamCalendar));
     }
 
     public Flux<TeamCalendar> list(Domain domainName) {
@@ -68,8 +76,8 @@ public class TeamCalendarService {
 
     public Mono<TeamCalendar> updateDisplayName(Domain domainName, TeamCalendarId id, String displayName) {
         return retrieve(domainName, id)
-            // TODO https://github.com/linagora/twake-calendar-side-service/issues/859
-            .then(teamCalendarRepository.updateDisplayName(id, displayName));
+            .flatMap(teamCalendar -> updateDavCalendar(teamCalendar, displayName)
+                .then(teamCalendarRepository.updateDisplayName(id, displayName)));
     }
 
     public Mono<Void> delete(Domain domainName, TeamCalendarId id) {
@@ -84,5 +92,26 @@ public class TeamCalendarService {
     private Mono<OpenPaaSDomain> resolveDomain(Domain domainName) {
         return domainDAO.retrieve(domainName)
             .switchIfEmpty(Mono.error(() -> new DomainNotFoundException(domainName)));
+    }
+
+    private Mono<Void> createDavCalendar(TeamCalendar teamCalendar) {
+        CalendarURL calendarURL = CalendarURL.from(teamCalendar.id().asOpenPaaSId());
+        CalendarPropertiesUpdate calendarProperties = CalendarPropertiesUpdate.withName(
+            StringUtils.defaultIfBlank(teamCalendar.displayName(), teamCalendar.name()));
+
+        return calDavClient.propfindCalendarCollection(teamCalendar.domainId(), calendarURL)
+            .then(calDavClient.updateCalendarProperties(teamCalendar.domainId(), calendarURL, calendarProperties))
+            .doOnError(error -> LOGGER.error("Failed to create default DAV calendar for team calendar '{}' in domain '{}' at '{}'",
+                teamCalendar.id().value(), teamCalendar.domainId().value(), calendarURL.asUri(), error));
+    }
+
+    private Mono<Void> updateDavCalendar(TeamCalendar teamCalendar, String displayName) {
+        CalendarURL calendarURL = CalendarURL.from(teamCalendar.id().asOpenPaaSId());
+        CalendarPropertiesUpdate calendarProperties = CalendarPropertiesUpdate.withName(displayName);
+
+        return calDavClient.propfindCalendarCollection(teamCalendar.domainId(), calendarURL)
+            .then(calDavClient.updateCalendarProperties(teamCalendar.domainId(), calendarURL, calendarProperties))
+            .doOnError(error -> LOGGER.error("Failed to update default DAV calendar display name for team calendar '{}' in domain '{}' at '{}'",
+                teamCalendar.id().value(), teamCalendar.domainId().value(), calendarURL.asUri(), error));
     }
 }
