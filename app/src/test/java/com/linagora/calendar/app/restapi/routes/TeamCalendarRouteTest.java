@@ -62,7 +62,6 @@ import io.restassured.RestAssured;
 import io.restassured.authentication.PreemptiveBasicAuthScheme;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.specification.RequestSpecification;
-import net.javacrumbs.jsonunit.core.Option;
 
 public class TeamCalendarRouteTest {
     private static final String DEFAULT_USER_PASSWORD = "secret";
@@ -148,7 +147,6 @@ public class TeamCalendarRouteTest {
             .body().asString();
 
         assertThatJson(actualResponse)
-            .withOptions(Option.IGNORING_ARRAY_ORDER)
             .isEqualTo("""
                 {
                     "timestamps": {
@@ -161,36 +159,16 @@ public class TeamCalendarRouteTest {
                     "domain": {
                         "name": "open-paas.org",
                         "_id": "{domainId}",
-                        "schemaVersion": 1,
-                        "administrators": [
-                            {
-                                "user_id": "{domainAdminId1}",
-                                "timestamps": {
-                                    "creation": "1970-01-01T00:00:00.000Z"
-                                }
-                            },
-                            {
-                                "user_id": "{domainAdminId2}",
-                                "timestamps": {
-                                    "creation": "1970-01-01T00:00:00.000Z"
-                                }
-                            }
-                        ],
                         "timestamps": {
                             "creation": "${json-unit.ignore}"
                         },
                         "hostnames": [
                             "open-paas.org"
                         ],
-                        "injections": [],
-                        "company_name": "open-paas.org",
-                        "__v": 0
-                    },
-                    "__v": 0
+                        "company_name": "open-paas.org"
+                    }
                 }
                 """.replace("{teamCalendarId}", teamCalendarId.value())
-                .replace("{domainAdminId1}", openPaaSUser.id().value())
-                .replace("{domainAdminId2}", openPaaSUser2.id().value())
                 .replace("{domainId}", teamCalendar.domain().id().value()));
     }
 

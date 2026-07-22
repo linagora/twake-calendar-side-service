@@ -19,6 +19,8 @@
 package com.linagora.calendar.restapi.routes;
 
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 
 import jakarta.inject.Inject;
 
@@ -34,8 +36,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.github.fge.lambdas.Throwing;
+import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.restapi.NotFoundException;
-import com.linagora.calendar.storage.OpenPaaSDomainAdminDAO;
+import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.TeamCalendarRepository;
@@ -58,12 +61,7 @@ public class TeamCalendarRoute extends CalendarRoute {
                                    @JsonProperty("_id") String id,
                                    String name,
                                    String displayName,
-                                   DomainRoute.ResponseDTO domain) {
-
-        @JsonProperty("__v")
-        public int getVersion() {
-            return 0;
-        }
+                                   DomainDTO domain) {
 
         record TimestampsDTO(
             @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSSX", timezone = "UTC")
@@ -75,9 +73,49 @@ public class TeamCalendarRoute extends CalendarRoute {
         }
     }
 
+    public static class DomainDTO {
+        private final OpenPaaSDomain domain;
+
+        DomainDTO(OpenPaaSDomain domain) {
+            this.domain = domain;
+        }
+
+        @JsonProperty("timestamps")
+        public Timestamp getTimestamps() {
+            return new Timestamp();
+        }
+
+        @JsonProperty("hostnames")
+        public ImmutableList<String> getHostnames() {
+            return ImmutableList.of(domain.domain().asString());
+        }
+
+        @JsonProperty("_id")
+        public String getId() {
+            return domain.id().value();
+        }
+
+        @JsonProperty("name")
+        public String getName() {
+            return domain.domain().asString();
+        }
+
+        @JsonProperty("company_name")
+        public String getCompanyName() {
+            return domain.domain().asString();
+        }
+    }
+
+    public static class Timestamp {
+        @JsonProperty("creation")
+        @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSSX")
+        public ZonedDateTime getCreation() {
+            return ZonedDateTime.ofInstant(Instant.EPOCH, ZoneOffset.UTC);
+        }
+    }
+
     private final TeamCalendarRepository teamCalendarRepository;
     private final OpenPaaSDomainDAO openPaaSDomainDAO;
-    private final OpenPaaSDomainAdminDAO domainAdminDAO;
     private final CrossDomainAccessControl crossDomainAccessControl;
 
     @Inject
@@ -85,12 +123,10 @@ public class TeamCalendarRoute extends CalendarRoute {
                              MetricFactory metricFactory,
                              TeamCalendarRepository teamCalendarRepository,
                              OpenPaaSDomainDAO openPaaSDomainDAO,
-                             OpenPaaSDomainAdminDAO domainAdminDAO,
                              CrossDomainAccessControl crossDomainAccessControl) {
         super(authenticator, metricFactory);
         this.teamCalendarRepository = teamCalendarRepository;
         this.openPaaSDomainDAO = openPaaSDomainDAO;
-        this.domainAdminDAO = domainAdminDAO;
         this.crossDomainAccessControl = crossDomainAccessControl;
     }
 
@@ -113,16 +149,14 @@ public class TeamCalendarRoute extends CalendarRoute {
                 .then());
     }
 
-    private Mono<DomainRoute.ResponseDTO> retrieveAuthorizedDomainResponse(OpenPaaSId domainId, MailboxSession session) {
+    private Mono<DomainDTO> retrieveAuthorizedDomainResponse(OpenPaaSId domainId, MailboxSession session) {
         return openPaaSDomainDAO.retrieve(domainId)
             .filter(domain -> !crossDomainAccessControl.denies(session, domain.domain()))
             .switchIfEmpty(Mono.error(NotFoundException::new))
-            .flatMap(domain -> domainAdminDAO.listAdmins(domainId)
-                .collectList()
-                .map(adminList -> new DomainRoute.ResponseDTO(domain, adminList)));
+            .map(DomainDTO::new);
     }
 
-    private TeamCalendarResponseDTO buildResponseDTO(TeamCalendar teamCalendar, DomainRoute.ResponseDTO domainResponseDTO) {
+    private TeamCalendarResponseDTO buildResponseDTO(TeamCalendar teamCalendar, DomainDTO domainResponseDTO) {
         TeamCalendarResponseDTO.TimestampsDTO timestampsDTO =
             new TeamCalendarResponseDTO.TimestampsDTO(teamCalendar.creation(), teamCalendar.updated());
 
