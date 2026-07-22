@@ -57,6 +57,7 @@ import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.smtp.MailSenderConfiguration;
 import com.linagora.calendar.smtp.MockSmtpServerExtension;
+import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.model.Resource;
 import com.linagora.calendar.storage.model.TeamCalendar;
@@ -292,7 +293,56 @@ public class EntityRouteTest {
     }
 
     @Test
-    void adminShouldAccessEntityFromAnotherDomain() {
+    void shouldReturn404WhenAccessingUserFromAnotherDomain(TwakeCalendarGuiceServer server) {
+        OpenPaaSUser otherDomainUser = addUser(server, randomDomain());
+
+        given()
+            .when()
+            .get(String.format("/api/entity/%s", otherDomainUser.id().value()))
+        .then()
+            .statusCode(404);
+    }
+
+    @Test
+    void shouldReturn404WhenAccessingTeamCalendarFromAnotherDomain(TwakeCalendarGuiceServer server) {
+        Domain otherDomain = randomDomain();
+        server.getProbe(CalendarDataProbe.class)
+            .addDomain(otherDomain);
+        TeamCalendar otherDomainTeamCalendar = server.getProbe(TeamCalendarProbe.class)
+            .save(otherDomain, "support", "Support Team");
+
+        given()
+            .when()
+            .get(String.format("/api/entity/%s", otherDomainTeamCalendar.id().value()))
+        .then()
+            .statusCode(404);
+    }
+
+    @Test
+    void shouldReturn404WhenAccessingDomainFromAnotherDomain(TwakeCalendarGuiceServer server) {
+        OpenPaaSId otherDomainId = addDomain(server, randomDomain());
+
+        given()
+            .when()
+            .get(String.format("/api/entity/%s", otherDomainId.value()))
+        .then()
+            .statusCode(404);
+    }
+
+    @Test
+    void adminShouldAccessUserFromAnotherDomain() {
+        given(buildRequestSpec(ADMIN, ADMIN_PASSWORD, restApiPort))
+            .when()
+            .get(String.format("/api/entity/%s", openPaaSUser.id().value()))
+        .then()
+            .statusCode(200)
+            .contentType(JSON)
+            .body("user._id", equalTo(openPaaSUser.id().value()))
+            .body("user.preferredEmail", equalTo(openPaaSUser.username().asString()));
+    }
+
+    @Test
+    void adminShouldAccessTeamCalendarFromAnotherDomain() {
         given(buildRequestSpec(ADMIN, ADMIN_PASSWORD, restApiPort))
             .when()
             .get(String.format("/api/entity/%s", teamCalendar.id().value()))
@@ -301,6 +351,30 @@ public class EntityRouteTest {
             .contentType(JSON)
             .body("teamCalendar._id", equalTo(teamCalendar.id().value()))
             .body("teamCalendar.name", equalTo(teamCalendar.name()));
+    }
+
+    @Test
+    void adminShouldAccessResourceFromAnotherDomain() {
+        given(buildRequestSpec(ADMIN, ADMIN_PASSWORD, restApiPort))
+            .when()
+            .get(String.format("/api/entity/%s", resource.id().value()))
+        .then()
+            .statusCode(200)
+            .contentType(JSON)
+            .body("resource._id", equalTo(resource.id().value()))
+            .body("resource.name", equalTo(resource.name()));
+    }
+
+    @Test
+    void adminShouldAccessDomainFromAnotherDomain() {
+        given(buildRequestSpec(ADMIN, ADMIN_PASSWORD, restApiPort))
+            .when()
+            .get(String.format("/api/entity/%s", resource.domain().value()))
+        .then()
+            .statusCode(200)
+            .contentType(JSON)
+            .body("domain._id", equalTo(resource.domain().value()))
+            .body("domain.name", equalTo(domain.asString()));
     }
 
     @Test
@@ -327,5 +401,23 @@ public class EntityRouteTest {
             .setConfig(newConfig().encoderConfig(encoderConfig().defaultContentCharset(StandardCharsets.UTF_8))
                 .redirect(redirectConfig().followRedirects(false)))
             .build();
+    }
+
+    private OpenPaaSUser addUser(TwakeCalendarGuiceServer server, Domain domain) {
+        Username username = Username.fromLocalPartWithDomain(UUID.randomUUID().toString(), domain);
+        OpenPaaSId id = server.getProbe(CalendarDataProbe.class)
+            .addDomain(domain)
+            .addUser(username, DEFAULT_USER_PASSWORD);
+        return new OpenPaaSUser(username, id, "", "");
+    }
+
+    private OpenPaaSId addDomain(TwakeCalendarGuiceServer server, Domain domain) {
+        CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class)
+            .addDomain(domain);
+        return calendarDataProbe.domainId(domain);
+    }
+
+    private Domain randomDomain() {
+        return Domain.of("domain-" + UUID.randomUUID() + ".tld");
     }
 }
