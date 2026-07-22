@@ -182,7 +182,6 @@ public class EntityRouteTest {
                         "domain": {
                             "name": "open-paas.org",
                             "_id": "{domainId}",
-                            "schemaVersion": 1,
                             "administrators": [
                                 {
                                     "user_id": "{domainAdminId1}",
@@ -203,11 +202,8 @@ public class EntityRouteTest {
                             "hostnames": [
                                 "open-paas.org"
                             ],
-                            "injections": [],
-                            "company_name": "open-paas.org",
-                            "__v": 0
-                        },
-                        "__v": 0
+                            "company_name": "open-paas.org"
+                        }
                     }
                 }
                 """.replace("{resourceId}", resource.id().value())

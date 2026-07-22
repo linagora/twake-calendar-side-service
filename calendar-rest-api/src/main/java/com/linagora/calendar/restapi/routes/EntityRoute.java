@@ -19,10 +19,14 @@
 package com.linagora.calendar.restapi.routes;
 
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.util.List;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.http.Authenticator;
 import org.apache.james.mailbox.MailboxSession;
@@ -36,7 +40,10 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.github.fge.lambdas.Throwing;
+import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.restapi.NotFoundException;
+import com.linagora.calendar.storage.DomainAdministrator;
+import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainAdminDAO;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -45,6 +52,8 @@ import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.ResourceDAO;
 import com.linagora.calendar.storage.TeamCalendarRepository;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
+import com.linagora.calendar.storage.model.Resource;
+import com.linagora.calendar.storage.model.ResourceAdministrator;
 import com.linagora.calendar.storage.model.ResourceId;
 import com.linagora.calendar.storage.model.TeamCalendar;
 import com.linagora.calendar.storage.model.TeamCalendarId;
@@ -70,19 +79,19 @@ public class EntityRoute extends CalendarRoute {
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     record EntityResponseDTO(@JsonProperty("user") UserRoute.ResponseDTO user,
-                             @JsonProperty("resource") ResourceRoute.ResourceResponseDTO resource,
-                             @JsonProperty("domain") DomainRoute.ResponseDTO domain,
+                             @JsonProperty("resource") ResourceResponseDTO resource,
+                             @JsonProperty("domain") DomainResponseDTO domain,
                              @JsonProperty("teamCalendar") TeamCalendarResponseDTO teamCalendar) {
 
         static EntityResponseDTO forUser(UserRoute.ResponseDTO user) {
             return new EntityResponseDTO(user, null, null, null);
         }
 
-        static EntityResponseDTO forResource(ResourceRoute.ResourceResponseDTO resource) {
+        static EntityResponseDTO forResource(ResourceResponseDTO resource) {
             return new EntityResponseDTO(null, resource, null, null);
         }
 
-        static EntityResponseDTO forDomain(DomainRoute.ResponseDTO domain) {
+        static EntityResponseDTO forDomain(DomainResponseDTO domain) {
             return new EntityResponseDTO(null, null, domain, null);
         }
 
@@ -91,29 +100,129 @@ public class EntityRoute extends CalendarRoute {
         }
     }
 
+    record ResourceResponseDTO(TimestampsDTO timestamps,
+                               boolean deleted,
+                               @JsonProperty("_id") String id,
+                               String name,
+                               String description,
+                               String type,
+                               String icon,
+                               List<AdministratorDTO> administrators,
+                               String creator,
+                               DomainDTO domain) {
+
+        record AdministratorDTO(@JsonProperty("id") String idRef,
+                                @JsonProperty("objectType") String objectType) {
+
+            static AdministratorDTO from(ResourceAdministrator entity) {
+                return new AdministratorDTO(entity.refId().value(), entity.objectType());
+            }
+
+            @JsonProperty("_id")
+            public String getId() {
+                return idRef;
+            }
+        }
+
+        static ResourceResponseDTO from(Resource resource, DomainDTO domain) {
+            List<AdministratorDTO> administrators = CollectionUtils.emptyIfNull(resource.administrators())
+                .stream()
+                .map(AdministratorDTO::from)
+                .toList();
+
+            return new ResourceResponseDTO(new TimestampsDTO(resource.creation(), resource.updated()),
+                resource.deleted(), resource.id().value(), resource.name(), resource.description(),
+                resource.type(), resource.icon(), administrators, resource.creator().value(), domain);
+        }
+    }
+
     record TeamCalendarResponseDTO(TimestampsDTO timestamps,
                                    @JsonProperty("_id") String id,
                                    String name,
                                    String displayName,
-                                   DomainRoute.ResponseDTO domain) {
+                                   DomainDTO domain) {
 
-        @JsonProperty("__v")
-        public int getVersion() {
-            return 0;
-        }
-
-        record TimestampsDTO(
-            @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSSX", timezone = "UTC")
-            Instant creation,
-
-            @JsonInclude(JsonInclude.Include.NON_NULL)
-            @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSSX", timezone = "UTC")
-            Instant updatedAt) {
-        }
-
-        static TeamCalendarResponseDTO from(TeamCalendar teamCalendar, DomainRoute.ResponseDTO domain) {
+        static TeamCalendarResponseDTO from(TeamCalendar teamCalendar, DomainDTO domain) {
             return new TeamCalendarResponseDTO(new TimestampsDTO(teamCalendar.creation(), teamCalendar.updated()),
                 teamCalendar.id().value(), teamCalendar.name(), teamCalendar.displayName(), domain);
+        }
+    }
+
+    record TimestampsDTO(
+        @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSSX", timezone = "UTC")
+        Instant creation,
+
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSSX", timezone = "UTC")
+        Instant updatedAt) {
+    }
+
+    public static class DomainDTO {
+        private final OpenPaaSDomain domain;
+
+        DomainDTO(OpenPaaSDomain domain) {
+            this.domain = domain;
+        }
+
+        @JsonProperty("timestamps")
+        public Timestamp getTimestamps() {
+            return new Timestamp();
+        }
+
+        @JsonProperty("hostnames")
+        public ImmutableList<String> getHostnames() {
+            return ImmutableList.of(domain.domain().asString());
+        }
+
+        @JsonProperty("_id")
+        public String getId() {
+            return domain.id().value();
+        }
+
+        @JsonProperty("name")
+        public String getName() {
+            return domain.domain().asString();
+        }
+
+        @JsonProperty("company_name")
+        public String getCompanyName() {
+            return domain.domain().asString();
+        }
+    }
+
+    public static class DomainResponseDTO extends DomainDTO {
+        private final ImmutableList<AdministratorDTO> admins;
+
+        public record AdministratorDTO(@JsonProperty("user_id") String userId) {
+
+            static AdministratorDTO from(DomainAdministrator admin) {
+                return new AdministratorDTO(admin.userId().value());
+            }
+
+            @JsonProperty("timestamps")
+            public Timestamp getTimestamps() {
+                return new Timestamp();
+            }
+        }
+
+        DomainResponseDTO(OpenPaaSDomain domain, List<DomainAdministrator> adminList) {
+            super(domain);
+            this.admins = adminList.stream()
+                .map(AdministratorDTO::from)
+                .collect(ImmutableList.toImmutableList());
+        }
+
+        @JsonProperty("administrators")
+        public ImmutableList<AdministratorDTO> getAdministrators() {
+            return admins;
+        }
+    }
+
+    public static class Timestamp {
+        @JsonProperty("creation")
+        @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSSX")
+        public ZonedDateTime getCreation() {
+            return ZonedDateTime.ofInstant(Instant.EPOCH, ZoneOffset.UTC);
         }
     }
 
@@ -168,7 +277,7 @@ public class EntityRoute extends CalendarRoute {
     private Mono<EntityResponseDTO> asResourceEntity(String id, MailboxSession session) {
         return resourceDAO.findById(new ResourceId(id))
             .flatMap(resource -> retrieveAuthorizedDomainResponse(resource.domain(), session)
-                .map(domain -> EntityResponseDTO.forResource(ResourceRoute.ResourceResponseDTO.from(resource, domain))));
+                .map(domain -> EntityResponseDTO.forResource(ResourceResponseDTO.from(resource, domain))));
     }
 
     private Mono<EntityResponseDTO> asUserEntity(String id, MailboxSession session) {
@@ -198,12 +307,16 @@ public class EntityRoute extends CalendarRoute {
             .map(tuple -> new UserRoute.ResponseDTO(user, tuple.getT1().id(), tuple.getT2().zoneId().toString()));
     }
 
-    private Mono<DomainRoute.ResponseDTO> retrieveAuthorizedDomainResponse(OpenPaaSId domainId, MailboxSession session) {
+    private Mono<OpenPaaSDomain> retrieveAuthorizedDomain(OpenPaaSId domainId, MailboxSession session) {
         return domainDAO.retrieve(domainId)
             .filter(domain -> !crossDomainAccessControl.denies(session, domain.domain()))
-            .switchIfEmpty(Mono.error(NotFoundException::new))
-            .flatMap(domain -> domainAdminDAO.listAdmins(domainId)
+            .switchIfEmpty(Mono.error(NotFoundException::new));
+    }
+
+    private Mono<DomainResponseDTO> retrieveAuthorizedDomainResponse(OpenPaaSId domainId, MailboxSession session) {
+        return retrieveAuthorizedDomain(domainId, session)
+            .flatMap(domain -> domainAdminDAO.listAdmins(domain.id())
                 .collectList()
-                .map(adminList -> new DomainRoute.ResponseDTO(domain, adminList)));
+                .map(adminList -> new DomainResponseDTO(domain, adminList)));
     }
 }
