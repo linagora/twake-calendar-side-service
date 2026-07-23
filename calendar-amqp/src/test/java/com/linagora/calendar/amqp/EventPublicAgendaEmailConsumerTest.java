@@ -259,6 +259,7 @@ public class EventPublicAgendaEmailConsumerTest {
 
     @Test
     void shouldSendEmailWhenOrganizerPartStatUpdatedFromNeedsActionToAcceptedOnPublicAgenda() {
+        // Given: a public agenda event waiting for organizer confirmation.
         String eventUid = UUID.randomUUID().toString();
         String initialCalendarData = generatePublicAgendaCalendar(eventUid, organizer.username().asString(),
             attendee.username().asString(), PartStat.NEEDS_ACTION, INITIAL_SEQUENCE);
@@ -266,11 +267,13 @@ public class EventPublicAgendaEmailConsumerTest {
         calmlyAwaitDuringNoEmail
             .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).isEmpty());
 
+        // When: organizer accepts the event.
         mockSmtpExtension.clear();
         String updatedCalendarData = generatePublicAgendaCalendar(eventUid, organizer.username().asString(),
             attendee.username().asString(), PartStat.ACCEPTED, UPDATED_SEQUENCE);
         davTestHelper.upsertCalendar(organizer, updatedCalendarData, eventUid);
 
+        // Then: the booker receives a booking-confirmed email.
         awaitAtMostForEmailDelivery
             .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
 
@@ -294,6 +297,41 @@ public class EventPublicAgendaEmailConsumerTest {
             .contains("METHOD:REQUEST");
         assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo(organizer.username().asString());
         assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(attendee.username().asString());
+    }
+
+    @Test
+    void shouldSendCancelEmailToBookerWhenOrganizerDeletesAcceptedPublicAgendaEvent() {
+        // Given: an accepted public agenda event already confirmed to the booker.
+        String eventUid = UUID.randomUUID().toString();
+        String calendarData = generatePublicAgendaCalendar(eventUid, organizer.username().asString(),
+            attendee.username().asString(), PartStat.ACCEPTED, UPDATED_SEQUENCE);
+        davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
+        awaitAtMostForEmailDelivery
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+        mockSmtpExtension.clear();
+
+        // When: organizer deletes the event.
+        davTestHelper.deleteCalendar(organizer, eventUid);
+
+        // Then: the booker receives a cancel email
+        awaitAtMostForEmailDelivery
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
+        String message = smtpMailsResponse.getString("[0].message");
+
+        assertSoftly(softly -> {
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo(organizer.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(attendee.username().asString());
+            softly.assertThat(message)
+                .contains("Subject: Event Publicly created meeting from")
+                .contains("canceled")
+                .contains("Content-Type: text/html; charset=UTF-8");
+            softly.assertThat(getHtml(message))
+                .contains("has canceled an event")
+                .contains("Van Tung TRAN")
+                .contains("Bob");
+        });
     }
 
     @Test
