@@ -95,6 +95,17 @@ public class ResourceRoute extends CalendarRoute {
                 return idRef;
             }
         }
+
+        static ResourceResponseDTO from(Resource resource, DomainRoute.ResponseDTO domain) {
+            List<AdministratorDTO> administrators = CollectionUtils.emptyIfNull(resource.administrators())
+                .stream()
+                .map(AdministratorDTO::from)
+                .toList();
+
+            return new ResourceResponseDTO(new TimestampsDTO(resource.creation(), resource.updated()),
+                resource.deleted(), resource.id().value(), resource.name(), resource.description(),
+                resource.type(), resource.icon(), administrators, resource.creator().value(), domain);
+        }
     }
 
     private final ResourceDAO resourceDAO;
@@ -126,7 +137,7 @@ public class ResourceRoute extends CalendarRoute {
         return resourceDAO.findById(resourceId)
             .switchIfEmpty(Mono.error(NotFoundException::new))
             .flatMap(resource -> retrieveAuthorizedDomainResponse(resource.domain(), session)
-                .map(domainResponse -> buildResponseDTO(resource, domainResponse)))
+                .map(domainResponse -> ResourceResponseDTO.from(resource, domainResponse)))
             .map(Throwing.function(OBJECT_MAPPER::writeValueAsBytes))
             .flatMap(bytes -> res.status(200)
                 .header("Content-Type", "application/json;charset=utf-8")
@@ -145,19 +156,5 @@ public class ResourceRoute extends CalendarRoute {
         return domainAdminDAO.listAdmins(domainId)
             .collectList()
             .map(adminList -> new DomainRoute.ResponseDTO(domain, adminList));
-    }
-
-    private ResourceResponseDTO buildResponseDTO(Resource resource,  DomainRoute.ResponseDTO domainResponseDTO) {
-        List<ResourceResponseDTO.AdministratorDTO> administrators = CollectionUtils.emptyIfNull(resource.administrators())
-            .stream()
-            .map(ResourceResponseDTO.AdministratorDTO::from)
-            .toList();
-
-        ResourceResponseDTO.TimestampsDTO timestampsDTO = new ResourceResponseDTO.TimestampsDTO(resource.creation(), resource.updated());
-
-        return new ResourceResponseDTO(timestampsDTO, resource.deleted(), resource.id().value(),
-            resource.name(), resource.description(), resource.type(), resource.icon(),
-            administrators, resource.creator().value(),
-            domainResponseDTO);
     }
 }

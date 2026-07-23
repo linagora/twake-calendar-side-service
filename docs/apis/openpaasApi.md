@@ -588,6 +588,70 @@ Will return
 
 Most fields are hard coded to please the SPAs.
 
+### GET /api/entity/{id}
+
+```
+GET /api/entity/{id}
+```
+
+Aggregates `GET /api/resources/{id}`, `GET /api/users/{id}`, `GET /api/domains/{id}` and
+`GET /api/team-calendars/{id}` behind a single endpoint. It resolves the type of the entity from its id and
+returns the matching entity wrapped under a discriminating key: `user`, `resource`, `domain` or `teamCalendar`.
+The wrapped payload is identical to the one served by the corresponding dedicated endpoint.
+
+Cross-domain access is denied: a non-existent id, or an entity belonging to a domain the authenticated user may
+not access, returns a `404`.
+
+A user response:
+
+```json
+{
+  "user": {
+    "preferredEmail": "btellier@linagora.com",
+    "_id": "abcdef",
+    "objectType": "user",
+    "...": "..."
+  }
+}
+```
+
+A resource response:
+
+```json
+{
+  "resource": {
+    "_id": "abc123",
+    "name": "Meeting Room A",
+    "...": "..."
+  }
+}
+```
+
+A domain response:
+
+```json
+{
+  "domain": {
+    "_id": "abc123",
+    "name": "linagora.com",
+    "...": "..."
+  }
+}
+```
+
+A team calendar response:
+
+```json
+{
+  "teamCalendar": {
+    "_id": "abc123",
+    "name": "engineering",
+    "displayName": "Engineering Team",
+    "...": "..."
+  }
+}
+```
+
 ### GET /api/technicalToken/introspect
 
 Technical tokes are used by the side service to interact with Sabre (this is mandatory for resource management and
