@@ -37,6 +37,7 @@ services:
       - "8000:8000"
 
   fe-calendar:
+    profiles: ["openpaas"]
     image: linagora/esn-frontend-calendar:govmu-02
     hostname: calendar.linagora.local
     environment:
@@ -47,6 +48,7 @@ services:
       - tcalendar
 
   fe-excal:
+    profiles: ["openpaas"]
     image: linagora/esn-frontend-calendar-public:main
     hostname: excal.linagora.local
     environment:
@@ -57,6 +59,7 @@ services:
       - tcalendar
 
   fe-contacts:
+    profiles: ["openpaas"]
     image: linagora/esn-frontend-contacts:17-01-2025
     hostname: contacts.linagora.local
     environment:
@@ -67,6 +70,7 @@ services:
       - tcalendar
 
   fe-account:
+    profiles: ["openpaas"]
     image: linagora/esn-frontend-account:main
     hostname: account.linagora.local
     environment:
