@@ -185,6 +185,7 @@ class BookedEventGetRouteTest {
                         ["transp", {}, "text", "OPAQUE"],
                         ["summary", {}, "text", "30-min intro call"],
                         ["dtstamp", {}, "date-time", "${json-unit.ignore}"],
+                        ["sequence", {}, "integer", 0],
                         ["dtstart", {}, "date-time", "2036-01-26T09:00:00Z"],
                         ["duration", {}, "duration", "PT30M"],
                         ["organizer", {"cn": "%s"}, "cal-address", "mailto:%s"],

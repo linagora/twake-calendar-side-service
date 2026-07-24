@@ -312,6 +312,8 @@ class BookingLinkReservationRouteTest {
                 .isEqualTo("20360126T093000Z");
             softly.assertThat(getPropertyValue.apply(Property.DURATION))
                 .isEqualTo("PT30M");
+            softly.assertThat(getPropertyValue.apply(Property.SEQUENCE))
+                .isEqualTo("0");
             softly.assertThat(EventParseUtils.getOrganizer(event))
                 .get()
                 .extracting(Person::cn, person -> person.email().asString(), Person::partStat)

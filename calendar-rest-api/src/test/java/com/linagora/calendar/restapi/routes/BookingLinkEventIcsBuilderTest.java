@@ -74,6 +74,7 @@ public class BookingLinkEventIcsBuilderTest {
             TRANSP:OPAQUE
             SUMMARY:30-min intro call
             DTSTAMP:20360101T000000Z
+            SEQUENCE:0
             DTSTART:20360126T093000Z
             DURATION:PT30M
             ORGANIZER;CN=Alice Owner:mailto:owner@example.com
@@ -121,6 +122,7 @@ public class BookingLinkEventIcsBuilderTest {
             TRANSP:OPAQUE
             SUMMARY:eventTitle
             DTSTAMP:20360101T000000Z
+            SEQUENCE:0
             DTSTART:20360126T093000Z
             DURATION:PT30M
             ORGANIZER;CN=Alice Owner:mailto:owner@example.com
@@ -186,6 +188,7 @@ public class BookingLinkEventIcsBuilderTest {
             TRANSP:OPAQUE
             SUMMARY:eventTitle
             DTSTAMP:20360101T000000Z
+            SEQUENCE:0
             DTSTART:20360126T093000Z
             DURATION:PT30M
             ORGANIZER:mailto:owner@example.com
