@@ -19,7 +19,8 @@ services:
       - web-proxy
 
   tcalendar-side-service:
-    image: linagora/twake-calendar-side-service:branch-master
+#    image: linagora/twake-calendar-side-service:latest
+    image: linagora/twake-calendar-side-service:2.4.4.3
     container_name: tcalendar-side-service.linagora.local
     depends_on:
       - mongo
@@ -133,7 +134,7 @@ services:
       RABBITMQ_DEFAULT_PASS: tcalendar
 
   sabre_dav:
-    image: linagora/esn-sabre:2.3.3
+    image: linagora/esn-sabre:2.4.4.2
     container_name: sabre_dav
     hostname: sabre-dav.linagora.local
     networks:
