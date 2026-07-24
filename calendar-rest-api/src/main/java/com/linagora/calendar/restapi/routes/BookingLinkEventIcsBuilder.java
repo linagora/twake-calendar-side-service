@@ -56,6 +56,7 @@ import net.fortuna.ical4j.model.property.Description;
 import net.fortuna.ical4j.model.property.DtStamp;
 import net.fortuna.ical4j.model.property.DtStart;
 import net.fortuna.ical4j.model.property.Organizer;
+import net.fortuna.ical4j.model.property.Sequence;
 import net.fortuna.ical4j.model.property.Summary;
 import net.fortuna.ical4j.model.property.Transp;
 import net.fortuna.ical4j.model.property.Uid;
@@ -131,6 +132,7 @@ public class BookingLinkEventIcsBuilder {
             .add(TRANSP_OPAQUE)
             .add(new Summary(request.title()))
             .add(new DtStamp(clock.instant()))
+            .add(new Sequence(0))
             .add(new DtStart<>(request.slotStartUtc()))
             .add(new net.fortuna.ical4j.model.property.Duration(eventDuration))
             .addAll(buildOrganizer(organizer, autoAccept))
