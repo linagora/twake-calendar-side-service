@@ -19,11 +19,13 @@
 package com.linagora.calendar.storage.booking;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Optional;
 
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.model.ResourceId;
 
 public record BookingLinkInsertRequest(CalendarURL calendarUrl,
                                        Duration eventDuration,
@@ -33,10 +35,16 @@ public record BookingLinkInsertRequest(CalendarURL calendarUrl,
                                        ExtraAttendees extraAttendees,
                                        Optional<String> name,
                                        Optional<String> description,
-                                       Optional<String> color) {
+                                       Optional<String> color,
+                                       Optional<String> location,
+                                       Optional<EventVisibility> visibility,
+                                       Optional<EventTransparency> transparency,
+                                       List<ResourceId> resources,
+                                       Optional<BookingLinkAlarm> alarm) {
     public static final boolean ACTIVE = true;
     public static final boolean AUTO_ACCEPT = false;
     public static final ExtraAttendees NO_EXTRA_ATTENDEE = ExtraAttendees.NONE;
+    public static final List<ResourceId> NO_RESOURCE = List.of();
 
     public BookingLinkInsertRequest {
         Preconditions.checkNotNull(calendarUrl, "'calendarUrl' must not be null");
@@ -47,6 +55,24 @@ public record BookingLinkInsertRequest(CalendarURL calendarUrl,
         Preconditions.checkNotNull(name, "'name' must not be null");
         Preconditions.checkNotNull(description, "'description' must not be null");
         Preconditions.checkNotNull(color, "'color' must not be null");
+        Preconditions.checkNotNull(location, "'location' must not be null");
+        Preconditions.checkNotNull(visibility, "'visibility' must not be null");
+        Preconditions.checkNotNull(transparency, "'transparency' must not be null");
+        Preconditions.checkNotNull(resources, "'resources' must not be null");
+        Preconditions.checkNotNull(alarm, "'alarm' must not be null");
+    }
+
+    public BookingLinkInsertRequest(CalendarURL calendarUrl,
+                                    Duration eventDuration,
+                                    boolean active,
+                                    boolean autoAccept,
+                                    Optional<AvailabilityRules> availabilityRules,
+                                    ExtraAttendees extraAttendees,
+                                    Optional<String> name,
+                                    Optional<String> description,
+                                    Optional<String> color) {
+        this(calendarUrl, eventDuration, active, autoAccept, availabilityRules, extraAttendees, name, description, color,
+            Optional.empty(), Optional.empty(), Optional.empty(), NO_RESOURCE, Optional.empty());
     }
 
     public BookingLinkInsertRequest(CalendarURL calendarUrl,

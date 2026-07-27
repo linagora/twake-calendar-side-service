@@ -19,12 +19,14 @@
 package com.linagora.calendar.storage.booking;
 
 import java.time.Duration;
+import java.util.List;
 
 import org.apache.james.util.ValuePatch;
 
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.model.ResourceId;
 
 public record BookingLinkPatchRequest(ValuePatch<CalendarURL> calendarUrl,
                                       ValuePatch<Duration> duration,
@@ -34,7 +36,12 @@ public record BookingLinkPatchRequest(ValuePatch<CalendarURL> calendarUrl,
                                       ValuePatch<ExtraAttendees> extraAttendees,
                                       ValuePatch<String> name,
                                       ValuePatch<String> description,
-                                      ValuePatch<String> color) {
+                                      ValuePatch<String> color,
+                                      ValuePatch<String> location,
+                                      ValuePatch<EventVisibility> visibility,
+                                      ValuePatch<EventTransparency> transparency,
+                                      ValuePatch<List<ResourceId>> resources,
+                                      ValuePatch<BookingLinkAlarm> alarm) {
     public BookingLinkPatchRequest {
         Preconditions.checkNotNull(calendarUrl, "'calendarUrl' must not be null");
         Preconditions.checkNotNull(duration, "'eventDuration' must not be null");
@@ -45,6 +52,11 @@ public record BookingLinkPatchRequest(ValuePatch<CalendarURL> calendarUrl,
         Preconditions.checkNotNull(name, "'name' must not be null");
         Preconditions.checkNotNull(description, "'description' must not be null");
         Preconditions.checkNotNull(color, "'color' must not be null");
+        Preconditions.checkNotNull(location, "'location' must not be null");
+        Preconditions.checkNotNull(visibility, "'visibility' must not be null");
+        Preconditions.checkNotNull(transparency, "'transparency' must not be null");
+        Preconditions.checkNotNull(resources, "'resources' must not be null");
+        Preconditions.checkNotNull(alarm, "'alarm' must not be null");
         Preconditions.checkArgument(!calendarUrl.isRemoved(), "'calendarUrl' can not be removed");
         Preconditions.checkArgument(!duration.isRemoved(), "'eventDuration' can not be removed");
         Preconditions.checkArgument(!active.isRemoved(), "'active' can not be removed");
@@ -62,7 +74,25 @@ public record BookingLinkPatchRequest(ValuePatch<CalendarURL> calendarUrl,
             || !extraAttendees.isKept()
             || !name.isKept()
             || !description.isKept()
-            || !color.isKept(), "At least one updatable field is required");
+            || !color.isKept()
+            || !location.isKept()
+            || !visibility.isKept()
+            || !transparency.isKept()
+            || !resources.isKept()
+            || !alarm.isKept(), "At least one updatable field is required");
+    }
+
+    public BookingLinkPatchRequest(ValuePatch<CalendarURL> calendarUrl,
+                                   ValuePatch<Duration> duration,
+                                   ValuePatch<Boolean> active,
+                                   ValuePatch<Boolean> autoAccept,
+                                   ValuePatch<AvailabilityRules> availabilityRules,
+                                   ValuePatch<ExtraAttendees> extraAttendees,
+                                   ValuePatch<String> name,
+                                   ValuePatch<String> description,
+                                   ValuePatch<String> color) {
+        this(calendarUrl, duration, active, autoAccept, availabilityRules, extraAttendees, name, description, color,
+            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep());
     }
 
     public BookingLinkPatchRequest(ValuePatch<CalendarURL> calendarUrl,

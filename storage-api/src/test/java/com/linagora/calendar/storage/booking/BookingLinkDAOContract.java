@@ -39,6 +39,7 @@ import com.linagora.calendar.api.booking.AvailabilityRule.WeeklyAvailabilityRule
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.model.ResourceId;
 
 public interface BookingLinkDAOContract {
     Username USER_1 = Username.of("user1@linagora.com");
@@ -52,6 +53,9 @@ public interface BookingLinkDAOContract {
     AvailabilityRules UPDATED_AVAILABILITY_RULES = AvailabilityRules.of(new WeeklyAvailabilityRule(DayOfWeek.FRIDAY, LocalTime.parse("08:00"), LocalTime.parse("12:00")));
     OpenPaaSId EXTRA_ATTENDEE_1 = new OpenPaaSId("659387b9d486dc0046aeffb1");
     OpenPaaSId EXTRA_ATTENDEE_2 = new OpenPaaSId("659387b9d486dc0046aeffb2");
+    ResourceId RESOURCE_1 = new ResourceId("659387b9d486dc0046aeffc1");
+    ResourceId RESOURCE_2 = new ResourceId("659387b9d486dc0046aeffc2");
+    BookingLinkAlarm ALARM = new BookingLinkAlarm("-PT10M");
 
     BookingLinkDAO testee();
 
@@ -519,6 +523,282 @@ public interface BookingLinkDAOContract {
         BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
 
         assertThat(updated.extraAttendees()).isEqualTo(ExtraAttendees.of(EXTRA_ATTENDEE_1));
+    }
+
+    @Test
+    default void insertShouldPersistLocation() {
+        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
+            Optional.of(AVAILABILITY_RULES), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
+            Optional.of("Room 3"), Optional.empty(), Optional.empty(), List.of(), Optional.empty());
+
+        BookingLink created = testee().insert(USER_1, request).block();
+
+        assertThat(created.location()).contains("Room 3");
+
+        BookingLink found = testee().findByPublicId(USER_1, created.publicId()).block();
+        assertThat(found).isEqualTo(created);
+    }
+
+    @Test
+    default void insertShouldDefaultLocationToEmpty() {
+        BookingLink created = testee().insert(USER_1, INSERT_REQUEST).block();
+
+        assertThat(created.location()).isEmpty();
+    }
+
+    @Test
+    default void updateShouldApplyLocation() {
+        BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
+        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
+            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
+            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
+            ValuePatch.modifyTo("Room 3"), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep());
+
+        BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
+
+        assertThat(updated.location()).contains("Room 3");
+        assertThat(testee().findByPublicId(USER_1, inserted.publicId()).block()).isEqualTo(updated);
+    }
+
+    @Test
+    default void updateShouldAllowRemovingLocation() {
+        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
+            Optional.of(AVAILABILITY_RULES), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
+            Optional.of("Room 3"), Optional.empty(), Optional.empty(), List.of(), Optional.empty());
+        BookingLink inserted = testee().insert(USER_1, request).block();
+        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
+            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
+            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
+            ValuePatch.remove(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep());
+
+        BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
+
+        assertThat(updated.location()).isEmpty();
+    }
+
+    @Test
+    default void insertShouldPersistVisibility() {
+        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
+            Optional.of(AVAILABILITY_RULES), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
+            Optional.empty(), Optional.of(EventVisibility.PRIVATE), Optional.empty(), List.of(), Optional.empty());
+
+        BookingLink created = testee().insert(USER_1, request).block();
+
+        assertThat(created.visibility()).contains(EventVisibility.PRIVATE);
+
+        BookingLink found = testee().findByPublicId(USER_1, created.publicId()).block();
+        assertThat(found).isEqualTo(created);
+    }
+
+    @Test
+    default void insertShouldDefaultVisibilityToEmpty() {
+        BookingLink created = testee().insert(USER_1, INSERT_REQUEST).block();
+
+        assertThat(created.visibility()).isEmpty();
+    }
+
+    @Test
+    default void updateShouldApplyVisibility() {
+        BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
+        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
+            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
+            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
+            ValuePatch.keep(), ValuePatch.modifyTo(EventVisibility.PRIVATE), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep());
+
+        BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
+
+        assertThat(updated.visibility()).contains(EventVisibility.PRIVATE);
+        assertThat(testee().findByPublicId(USER_1, inserted.publicId()).block()).isEqualTo(updated);
+    }
+
+    @Test
+    default void updateShouldAllowRemovingVisibility() {
+        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
+            Optional.of(AVAILABILITY_RULES), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
+            Optional.empty(), Optional.of(EventVisibility.PRIVATE), Optional.empty(), List.of(), Optional.empty());
+        BookingLink inserted = testee().insert(USER_1, request).block();
+        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
+            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
+            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
+            ValuePatch.keep(), ValuePatch.remove(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep());
+
+        BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
+
+        assertThat(updated.visibility()).isEmpty();
+    }
+
+    @Test
+    default void insertShouldPersistTransparency() {
+        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
+            Optional.of(AVAILABILITY_RULES), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
+            Optional.empty(), Optional.empty(), Optional.of(EventTransparency.TRANSPARENT), List.of(), Optional.empty());
+
+        BookingLink created = testee().insert(USER_1, request).block();
+
+        assertThat(created.transparency()).contains(EventTransparency.TRANSPARENT);
+
+        BookingLink found = testee().findByPublicId(USER_1, created.publicId()).block();
+        assertThat(found).isEqualTo(created);
+    }
+
+    @Test
+    default void insertShouldDefaultTransparencyToEmpty() {
+        BookingLink created = testee().insert(USER_1, INSERT_REQUEST).block();
+
+        assertThat(created.transparency()).isEmpty();
+    }
+
+    @Test
+    default void updateShouldApplyTransparency() {
+        BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
+        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
+            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
+            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
+            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.modifyTo(EventTransparency.TRANSPARENT), ValuePatch.keep(), ValuePatch.keep());
+
+        BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
+
+        assertThat(updated.transparency()).contains(EventTransparency.TRANSPARENT);
+        assertThat(testee().findByPublicId(USER_1, inserted.publicId()).block()).isEqualTo(updated);
+    }
+
+    @Test
+    default void updateShouldAllowRemovingTransparency() {
+        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
+            Optional.of(AVAILABILITY_RULES), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
+            Optional.empty(), Optional.empty(), Optional.of(EventTransparency.TRANSPARENT), List.of(), Optional.empty());
+        BookingLink inserted = testee().insert(USER_1, request).block();
+        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
+            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
+            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
+            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.remove(), ValuePatch.keep(), ValuePatch.keep());
+
+        BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
+
+        assertThat(updated.transparency()).isEmpty();
+    }
+
+    @Test
+    default void insertShouldPersistResources() {
+        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
+            Optional.of(AVAILABILITY_RULES), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
+            Optional.empty(), Optional.empty(), Optional.empty(), List.of(RESOURCE_1, RESOURCE_2), Optional.empty());
+
+        BookingLink created = testee().insert(USER_1, request).block();
+
+        assertThat(created.resources()).containsExactly(RESOURCE_1, RESOURCE_2);
+
+        BookingLink found = testee().findByPublicId(USER_1, created.publicId()).block();
+        assertThat(found).isEqualTo(created);
+    }
+
+    @Test
+    default void insertShouldDefaultResourcesToEmpty() {
+        BookingLink created = testee().insert(USER_1, INSERT_REQUEST).block();
+
+        assertThat(created.resources()).isEmpty();
+
+        BookingLink found = testee().findByPublicId(USER_1, created.publicId()).block();
+        assertThat(found.resources()).isEmpty();
+    }
+
+    @Test
+    default void updateShouldApplyResources() {
+        BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
+        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
+            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
+            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
+            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.modifyTo(List.of(RESOURCE_1)), ValuePatch.keep());
+
+        BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
+
+        assertThat(updated.resources()).containsExactly(RESOURCE_1);
+        assertThat(testee().findByPublicId(USER_1, inserted.publicId()).block()).isEqualTo(updated);
+    }
+
+    @Test
+    default void updateShouldAllowRemovingResources() {
+        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
+            Optional.of(AVAILABILITY_RULES), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
+            Optional.empty(), Optional.empty(), Optional.empty(), List.of(RESOURCE_1), Optional.empty());
+        BookingLink inserted = testee().insert(USER_1, request).block();
+        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
+            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
+            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
+            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.remove(), ValuePatch.keep());
+
+        BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
+
+        assertThat(updated.resources()).isEmpty();
+        assertThat(testee().findByPublicId(USER_1, inserted.publicId()).block().resources()).isEmpty();
+    }
+
+    @Test
+    default void updateShouldKeepResourcesWhenNotSpecified() {
+        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
+            Optional.of(AVAILABILITY_RULES), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
+            Optional.empty(), Optional.empty(), Optional.empty(), List.of(RESOURCE_1), Optional.empty());
+        BookingLink inserted = testee().insert(USER_1, request).block();
+        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
+            ValuePatch.keep(),
+            ValuePatch.modifyTo(UPDATED_DURATION),
+            ValuePatch.keep(),
+            ValuePatch.keep());
+
+        BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
+
+        assertThat(updated.resources()).containsExactly(RESOURCE_1);
+    }
+
+    @Test
+    default void insertShouldPersistAlarm() {
+        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
+            Optional.of(AVAILABILITY_RULES), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
+            Optional.empty(), Optional.empty(), Optional.empty(), List.of(), Optional.of(ALARM));
+
+        BookingLink created = testee().insert(USER_1, request).block();
+
+        assertThat(created.alarm()).contains(ALARM);
+
+        BookingLink found = testee().findByPublicId(USER_1, created.publicId()).block();
+        assertThat(found).isEqualTo(created);
+    }
+
+    @Test
+    default void insertShouldDefaultAlarmToEmpty() {
+        BookingLink created = testee().insert(USER_1, INSERT_REQUEST).block();
+
+        assertThat(created.alarm()).isEmpty();
+    }
+
+    @Test
+    default void updateShouldApplyAlarm() {
+        BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
+        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
+            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
+            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
+            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.modifyTo(ALARM));
+
+        BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
+
+        assertThat(updated.alarm()).contains(ALARM);
+        assertThat(testee().findByPublicId(USER_1, inserted.publicId()).block()).isEqualTo(updated);
+    }
+
+    @Test
+    default void updateShouldAllowRemovingAlarm() {
+        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
+            Optional.of(AVAILABILITY_RULES), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
+            Optional.empty(), Optional.empty(), Optional.empty(), List.of(), Optional.of(ALARM));
+        BookingLink inserted = testee().insert(USER_1, request).block();
+        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
+            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
+            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
+            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.remove());
+
+        BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
+
+        assertThat(updated.alarm()).isEmpty();
     }
 
     @Test
