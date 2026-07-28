@@ -367,11 +367,10 @@ class OpensearchDavCalendarSearchRouteSharedCalendarTest {
     void searchShouldReturnResourceCalendarEventWhenRequesterIsResourceAdministrator(TwakeCalendarGuiceServer server) {
         // Given Bob has DAV read/write rights on a resource calendar R/R containing an indexed event.
         Resource resource = server.getProbe(ResourceProbe.class)
-            .save(alice, "search admin resource " + UUID.randomUUID(), "projector", List.of());
+            .save(alice, "search admin resource " + UUID.randomUUID(), "projector", List.of(bob.id()));
         CalendarURL resourceCalendar = CalendarURL.from(resource.id().asOpenPaaSId());
         EventUid eventUid = new EventUid("event-resource-admin-" + UUID.randomUUID());
         String summary = "resource admin searchable event " + UUID.randomUUID();
-        calDavClient.grantReadWriteRights(resource.domain(), resource.id(), List.of(bob.username())).block();
         davTestHelper.upsertCalendar(alice, generateCalendarData(eventUid, summary, alice, resource), eventUid);
         String resourceEventId = awaitAtMost.until(
             () -> davTestHelper.findFirstEventId(resource.id(), resource.domain()),

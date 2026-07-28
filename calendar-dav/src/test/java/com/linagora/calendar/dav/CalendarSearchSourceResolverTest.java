@@ -204,7 +204,7 @@ class CalendarSearchSourceResolverTest {
             .getOpenPaaSProvisioningService()
             .getDomain()
             .block();
-        ResourceId resourceId = createResource(domain, requester, List.of(requester));
+        ResourceId resourceId = createResource(domain, requester);
         CalendarURL resourceCalendar = CalendarURL.from(resourceId.asOpenPaaSId());
         calDavClient.grantReadWriteRights(domain.id(), resourceId, List.of(requester.username())).block();
 
@@ -224,7 +224,7 @@ class CalendarSearchSourceResolverTest {
             .getOpenPaaSProvisioningService()
             .getDomain()
             .block();
-        ResourceId resourceId = createResource(domain, sourceUser, List.of());
+        ResourceId resourceId = createResource(domain, sourceUser);
         CalendarURL resourceCalendar = CalendarURL.from(resourceId.asOpenPaaSId());
         CalendarURL subscribedCalendar = davTestHelper.subscribeToSharedCalendar(requester, SubscribedCalendarRequest.builder()
             .id("subscribed-resource-" + UUID.randomUUID())
@@ -255,7 +255,7 @@ class CalendarSearchSourceResolverTest {
             .getOpenPaaSProvisioningService()
             .createUser(Username.fromLocalPartWithDomain("user-" + UUID.randomUUID(), foreignDomain.domain()))
             .block();
-        ResourceId resourceId = createResource(foreignDomain, foreignAdmin, List.of(foreignAdmin));
+        ResourceId resourceId = createResource(foreignDomain, foreignAdmin);
         CalendarURL resourceCalendar = CalendarURL.from(resourceId.asOpenPaaSId());
         calDavClient.grantReadWriteRights(foreignDomain.id(), resourceId, List.of(foreignAdmin.username())).block();
 
@@ -309,7 +309,7 @@ class CalendarSearchSourceResolverTest {
             .orElseThrow(() -> new AssertionError("No mirror calendar found"));
     }
 
-    private ResourceId createResource(OpenPaaSDomain domain, OpenPaaSUser creator, List<OpenPaaSUser> administrators) {
+    private ResourceId createResource(OpenPaaSDomain domain, OpenPaaSUser creator) {
         ResourceInsertRequest insertRequest = new ResourceInsertRequest(
             creator.id(),
             "Resource calendar search source resolver test",

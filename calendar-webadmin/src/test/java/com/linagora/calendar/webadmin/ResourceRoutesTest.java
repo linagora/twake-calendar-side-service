@@ -27,6 +27,7 @@ import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
 
 import java.time.Clock;
+import java.util.List;
 import java.util.UUID;
 
 import javax.net.ssl.SSLException;
@@ -69,6 +70,7 @@ class ResourceRoutesTest {
     private OpenPaaSUserDAO userDAO;
     private MongoDBOpenPaaSDomainDAO domainDAO;
     private MongoDBResourceDAO resourceDAO;
+    private ResourceService resourceService;
 
     @BeforeEach
     void setUp() throws SSLException {
@@ -77,7 +79,7 @@ class ResourceRoutesTest {
         userDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
         resourceDAO = new MongoDBResourceDAO(mongoDB, Clock.system(UTC));
         CalDavClient calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
-        ResourceService resourceService = new ResourceService(userDAO, resourceDAO, calDavClient);
+        resourceService = new ResourceService(userDAO, resourceDAO, calDavClient);
 
         webAdminServer = WebAdminUtils.createWebAdminServer(
             new ResourceRoutes(domainDAO, userDAO,
@@ -90,6 +92,14 @@ class ResourceRoutesTest {
     @AfterEach
     void tearDown() {
         webAdminServer.destroy();
+    }
+
+    private ResourceId createResource(OpenPaaSDomain domain, OpenPaaSUser creator, OpenPaaSUser... administrators) {
+        return resourceService.create(
+            new ResourceInsertRequest(creator.id(), "Descripting", domain.id(), "laptop", "Resource name"),
+            List.of(administrators).stream()
+                .map(OpenPaaSUser::username)
+                .toList()).block();
     }
 
     @Test
@@ -132,12 +142,12 @@ class ResourceRoutesTest {
         OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
         OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
         OpenPaaSUser user2 = userDAO.add(Username.of("user2@linagora.com")).block();
-        ResourceId resourceId = resourceDAO.insert(new ResourceInsertRequest(user1.id(), "Descripting", domain.id(), "laptop", "Resource name")).block();
+        ResourceId resourceId = createResource(domain, user1, user1, user2);
 
         OpenPaaSDomain domain2 = domainDAO.add(Domain.of("twake.app")).block();
         OpenPaaSUser user3 = userDAO.add(Username.of("user3@twake.app")).block();
         OpenPaaSUser user4 = userDAO.add(Username.of("user4@twake.app")).block();
-        resourceDAO.insert(new ResourceInsertRequest(user3.id(), "Descripting", domain2.id(), "laptop", "Resource name")).block();
+        createResource(domain2, user3, user3, user4);
 
         String string = when()
             .get("/domains/linagora.com/resources")
@@ -178,7 +188,7 @@ class ResourceRoutesTest {
         OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
         OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
         OpenPaaSUser user2 = userDAO.add(Username.of("user2@linagora.com")).block();
-        ResourceId resourceId = resourceDAO.insert(new ResourceInsertRequest(user1.id(), "Descripting", domain.id(), "laptop", "Resource name")).block();
+        ResourceId resourceId = createResource(domain, user1, user1, user2);
 
         String string = when()
             .get("/domains/linagora.com/resources/" + resourceId.value())
@@ -219,7 +229,7 @@ class ResourceRoutesTest {
         OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
         OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
         OpenPaaSUser user2 = userDAO.add(Username.of("user2@linagora.com")).block();
-        ResourceId resourceId = resourceDAO.insert(new ResourceInsertRequest(user1.id(), "Descripting", domain.id(), "laptop", "Resource name")).block();
+        ResourceId resourceId = createResource(domain, user1, user1, user2);
 
         given()
             .body("""
@@ -272,7 +282,7 @@ class ResourceRoutesTest {
         OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
         OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
         OpenPaaSUser user2 = userDAO.add(Username.of("user2@linagora.com")).block();
-        ResourceId resourceId = resourceDAO.insert(new ResourceInsertRequest(user1.id(), "Descripting", domain.id(), "laptop", "Resource name")).block();
+        ResourceId resourceId = createResource(domain, user1, user1, user2);
 
         given()
             .body("""
@@ -600,14 +610,7 @@ class ResourceRoutesTest {
                                "id": "RESOURCE_ID_1",
                                "icon": "laptop",
                                "domain": "linagora.com",
-                               "administrators": [
-                                   {
-                                       "email": "user1@linagora.com"
-                                   },
-                                   {
-                                       "email": "user2@linagora.com"
-                                   }
-                               ]
+                               "administrators": []
                            }
                            """
             .replace("RESOURCE_ID_1", resourceId.value()));

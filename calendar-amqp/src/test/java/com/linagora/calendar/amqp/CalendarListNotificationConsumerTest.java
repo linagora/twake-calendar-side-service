@@ -18,6 +18,7 @@ package com.linagora.calendar.amqp;
 
 import static com.linagora.calendar.amqp.TestFixture.RETRY_BACKOFF_CONFIGURATION;
 import static com.linagora.calendar.amqp.TestFixture.awaitAtMost;
+import static com.linagora.calendar.dav.ResourceService.ONLY_ACTIVE;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -59,6 +60,7 @@ import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalDavClient.NewCalendar;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
+import com.linagora.calendar.dav.ResourceService;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.dav.dto.SubscribedCalendarRequest;
 import com.linagora.calendar.storage.CalendarListChangedEvent;
@@ -72,6 +74,7 @@ import com.linagora.calendar.storage.ResourceDAO;
 import com.linagora.calendar.storage.ResourceInsertRequest;
 import com.linagora.calendar.storage.TeamCalendarRepository;
 import com.linagora.calendar.storage.UsernameRegistrationKey;
+import com.linagora.calendar.storage.model.Resource;
 import com.linagora.calendar.storage.model.ResourceId;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
@@ -97,6 +100,7 @@ public class CalendarListNotificationConsumerTest {
     private MongoDBOpenPaaSDomainDAO domainDAO;
     private OpenPaaSUserDAO openPaaSUserDAO;
     private ResourceDAO resourceDAO;
+    private ResourceService resourceService;
 
     @BeforeAll
     static void beforeAll(DockerSabreDavSetup dockerSabreDavSetup) throws Exception {
@@ -133,6 +137,7 @@ public class CalendarListNotificationConsumerTest {
         domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
         openPaaSUserDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
         resourceDAO = new MongoDBResourceDAO(mongoDB, Clock.systemUTC());
+        resourceService = new ResourceService(openPaaSUserDAO, resourceDAO, calDavClient);
         TeamCalendarRepository teamCalendarRepository = new MongoDBTeamCalendarRepository(mongoDB, Clock.systemUTC());
 
         handler = new CalendarListNotificationHandler(eventBus, openPaaSUserDAO, resourceDAO, teamCalendarRepository);
@@ -695,7 +700,7 @@ public class CalendarListNotificationConsumerTest {
             Queue<CalendarListChangedEvent> eventsReceived = new ConcurrentLinkedQueue<>();
             registerListener(bob, eventsReceived);
 
-            ResourceId resourceId = createResourceViaWebAdmin(creator, "TV", List.of());
+            ResourceId resourceId = createResource(creator, "TV", List.of());
 
             SubscribedCalendarRequest subscribedCalendarRequest = SubscribedCalendarRequest.builder()
                 .id(UUID.randomUUID().toString())
@@ -724,7 +729,7 @@ public class CalendarListNotificationConsumerTest {
             Queue<CalendarListChangedEvent> eventsReceived = new ConcurrentLinkedQueue<>();
             registerListener(bob, eventsReceived);
 
-            createResourceViaWebAdmin(creator, "TV", List.of(bob));
+            createResource(creator, "TV", List.of(bob));
 
             awaitAtMost.untilAsserted(() -> assertThat(eventsReceived)
                 .anySatisfy(event -> {
@@ -741,7 +746,7 @@ public class CalendarListNotificationConsumerTest {
             Queue<CalendarListChangedEvent> eventsReceived = new ConcurrentLinkedQueue<>();
             registerListener(bob, eventsReceived);
 
-            ResourceId resourceId = createResourceViaWebAdmin(creator, "TV", List.of());
+            ResourceId resourceId = createResource(creator, "TV", List.of());
 
             SubscribedCalendarRequest subscribedCalendarRequest = SubscribedCalendarRequest.builder()
                 .id(UUID.randomUUID().toString())
@@ -770,10 +775,10 @@ public class CalendarListNotificationConsumerTest {
             Queue<CalendarListChangedEvent> eventsReceived = new ConcurrentLinkedQueue<>();
             registerListener(bob, eventsReceived);
 
-            ResourceId resourceId = createResourceViaWebAdmin(creator, "TV", List.of(bob));
+            ResourceId resourceId = createResource(creator, "TV", List.of(bob));
             CalendarURL delegatedCalendarURL = getDelegatedCalendarURL(bob);
 
-            revokeResourceAdminRightsViaWebAdmin(creator, resourceId, List.of(bob));
+            clearResourceAdmins(resourceId);
 
             awaitAtMost.untilAsserted(() -> assertThat(eventsReceived)
                 .anySatisfy(event -> {
@@ -790,7 +795,7 @@ public class CalendarListNotificationConsumerTest {
             Queue<CalendarListChangedEvent> eventsReceived = new ConcurrentLinkedQueue<>();
             registerListener(bob, eventsReceived);
 
-            createResourceViaWebAdmin(creator, "TV", List.of(bob));
+            createResource(creator, "TV", List.of(bob));
             CalendarURL delegatedCalendarURL = getDelegatedCalendarURL(bob);
 
             calDavClient.deleteCalendar(bob.username(), delegatedCalendarURL).block();
@@ -803,36 +808,21 @@ public class CalendarListNotificationConsumerTest {
                 }));
         }
 
-        private ResourceId createResourceViaWebAdmin(OpenPaaSUser creator, String resourceName, List<OpenPaaSUser> administrators) {
+        private ResourceId createResource(OpenPaaSUser creator, String resourceName, List<OpenPaaSUser> administrators) {
             OpenPaaSId domainId = domainDAO.retrieve(creator.username().getDomainPart().get())
                 .map(OpenPaaSDomain::id)
                 .block();
 
             ResourceInsertRequest resourceInsertRequest = new ResourceInsertRequest(
                 creator.id(), "resource description", domainId, "tv", resourceName);
-            ResourceId resourceId = resourceDAO.insert(resourceInsertRequest).block();
-
-            if (!administrators.isEmpty()) {
-                calDavClient.grantReadWriteRights(domainId, resourceId, administrators.stream()
-                    .map(OpenPaaSUser::username)
-                    .toList()).block();
-            }
-
-            return resourceId;
+            return resourceService.create(resourceInsertRequest, administrators.stream()
+                .map(OpenPaaSUser::username)
+                .toList()).block();
         }
 
-        private void revokeResourceAdminRightsViaWebAdmin(OpenPaaSUser actor, ResourceId resourceId, List<OpenPaaSUser> administrators) {
-            OpenPaaSId domainId = domainDAO.retrieve(actor.username().getDomainPart().get())
-                .map(OpenPaaSDomain::id)
-                .block();
-
-            List<Username> adminUsernames = administrators.stream()
-                .map(OpenPaaSUser::username)
-                .toList();
-
-            if (!adminUsernames.isEmpty()) {
-                calDavClient.revokeWriteRights(domainId, resourceId, adminUsernames).block();
-            }
+        private void clearResourceAdmins(ResourceId resourceId) {
+            Resource resource = resourceService.retrieve(resourceId, ONLY_ACTIVE).block();
+            resourceService.updateAdmins(resource, List.of()).block();
         }
     }
 
