@@ -51,16 +51,25 @@ import com.linagora.calendar.dav.DavTestHelper;
 import static com.linagora.calendar.storage.TestFixture.awaitAtMost;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.routes.BookingLinkExtraAttendeeResolver;
+import com.linagora.calendar.restapi.routes.BookingLinkResourceResolver;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.ResourceInsertRequest;
 import com.linagora.calendar.storage.booking.BookingLink;
+import com.linagora.calendar.storage.booking.BookingLinkAlarm;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
+import com.linagora.calendar.storage.booking.EventTransparency;
+import com.linagora.calendar.storage.booking.EventVisibility;
 import com.linagora.calendar.storage.booking.ExtraAttendees;
+import com.linagora.calendar.storage.model.ResourceAdministrator;
+import com.linagora.calendar.storage.model.ResourceId;
 import com.linagora.calendar.storage.mongodb.MongoDBBookingLinkDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
+import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
 import com.linagora.calendar.webadmin.service.BookingLinkEventDeletionService;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
@@ -73,6 +82,8 @@ public class BookingLinkUserRoutesTest {
 
     private WebAdminServer webAdminServer;
     private MongoDBBookingLinkDAO bookingLinkDAO;
+    private MongoDBResourceDAO resourceDAO;
+    private MongoDBOpenPaaSDomainDAO domainDAO;
     private CalDavClient calDavClient;
     private DavTestHelper davTestHelper;
     private OpenPaaSUser user;
@@ -81,11 +92,12 @@ public class BookingLinkUserRoutesTest {
     @BeforeEach
     void setUp() throws SSLException {
         MongoDatabase mongoDB = sabreDavExtension.dockerSabreDavSetup().getMongoDB();
-        MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
+        domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
         OpenPaaSUserDAO userDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
         calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         bookingLinkDAO = new MongoDBBookingLinkDAO(mongoDB, Clock.system(UTC));
+        resourceDAO = new MongoDBResourceDAO(mongoDB, Clock.system(UTC));
 
         user = sabreDavExtension.newTestUser();
         otherUser = sabreDavExtension.newTestUser();
@@ -96,10 +108,18 @@ public class BookingLinkUserRoutesTest {
 
         webAdminServer = WebAdminUtils.createWebAdminServer(
             new BookingLinkUserRoutes(userDAO, bookingLinkDAO, calDavClient, taskManager, eventDeletionService,
-                new BookingLinkExtraAttendeeResolver(userDAO), new JsonTransformer()))
+                new BookingLinkExtraAttendeeResolver(userDAO), new BookingLinkResourceResolver(resourceDAO, domainDAO), new JsonTransformer()))
             .start();
 
         RestAssured.requestSpecification = WebAdminUtils.buildRequestSpecification(webAdminServer).build();
+    }
+
+    private ResourceId saveResource(OpenPaaSUser owner) {
+        OpenPaaSDomain domain = domainDAO.retrieve(owner.username().getDomainPart().orElseThrow()).block();
+        return resourceDAO.insert(new ResourceInsertRequest(
+                List.of(new ResourceAdministrator(owner.id(), "user")),
+                owner.id(), "Projector description", domain.id(), "projector", "Projector"))
+            .block();
     }
 
     @AfterEach
@@ -265,6 +285,418 @@ public class BookingLinkUserRoutesTest {
             .post("/users/{username}/booking-links", user.username().asString())
         .then()
             .statusCode(400);
+    }
+
+    @Test
+    void createShouldStoreLocation() {
+        String publicId = given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "location": "Room 3"
+                }
+                """.formatted(defaultCalendarUrl(user)))
+        .when()
+            .post("/users/{username}/booking-links", user.username().asString())
+        .then()
+            .statusCode(201)
+            .extract().jsonPath().getString("bookingLinkPublicId");
+
+        BookingLink stored = bookingLinkDAO.findByPublicId(user.username(), new BookingLinkPublicId(UUID.fromString(publicId))).block();
+        assertThat(stored.location()).contains("Room 3");
+    }
+
+    @Test
+    void createShouldStoreVisibility() {
+        String publicId = given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "visibility": "PRIVATE"
+                }
+                """.formatted(defaultCalendarUrl(user)))
+        .when()
+            .post("/users/{username}/booking-links", user.username().asString())
+        .then()
+            .statusCode(201)
+            .extract().jsonPath().getString("bookingLinkPublicId");
+
+        BookingLink stored = bookingLinkDAO.findByPublicId(user.username(), new BookingLinkPublicId(UUID.fromString(publicId))).block();
+        assertThat(stored.visibility()).contains(EventVisibility.PRIVATE);
+    }
+
+    @Test
+    void createShouldReturn400WhenVisibilityInvalid() {
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "visibility": "SECRET"
+                }
+                """.formatted(defaultCalendarUrl(user)))
+        .when()
+            .post("/users/{username}/booking-links", user.username().asString())
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
+    void createShouldStoreTransparency() {
+        String publicId = given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "transparency": "TRANSPARENT"
+                }
+                """.formatted(defaultCalendarUrl(user)))
+        .when()
+            .post("/users/{username}/booking-links", user.username().asString())
+        .then()
+            .statusCode(201)
+            .extract().jsonPath().getString("bookingLinkPublicId");
+
+        BookingLink stored = bookingLinkDAO.findByPublicId(user.username(), new BookingLinkPublicId(UUID.fromString(publicId))).block();
+        assertThat(stored.transparency()).contains(EventTransparency.TRANSPARENT);
+    }
+
+    @Test
+    void createShouldReturn400WhenTransparencyInvalid() {
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "transparency": "INVALID"
+                }
+                """.formatted(defaultCalendarUrl(user)))
+        .when()
+            .post("/users/{username}/booking-links", user.username().asString())
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
+    void createShouldStoreResources() {
+        ResourceId resourceId = saveResource(user);
+
+        String publicId = given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "resources": ["%s"]
+                }
+                """.formatted(defaultCalendarUrl(user), resourceId.value()))
+        .when()
+            .post("/users/{username}/booking-links", user.username().asString())
+        .then()
+            .statusCode(201)
+            .extract().jsonPath().getString("bookingLinkPublicId");
+
+        BookingLink stored = bookingLinkDAO.findByPublicId(user.username(), new BookingLinkPublicId(UUID.fromString(publicId))).block();
+        assertThat(stored.resources()).containsExactly(resourceId);
+    }
+
+    @Test
+    void createShouldReturn400WhenResourceDoesNotExist() {
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "resources": ["659387b9d486dc0046aeffff"]
+                }
+                """.formatted(defaultCalendarUrl(user)))
+        .when()
+            .post("/users/{username}/booking-links", user.username().asString())
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
+    void createShouldStoreAlarm() {
+        String publicId = given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "alarm": "-PT10M"
+                }
+                """.formatted(defaultCalendarUrl(user)))
+        .when()
+            .post("/users/{username}/booking-links", user.username().asString())
+        .then()
+            .statusCode(201)
+            .extract().jsonPath().getString("bookingLinkPublicId");
+
+        BookingLink stored = bookingLinkDAO.findByPublicId(user.username(), new BookingLinkPublicId(UUID.fromString(publicId))).block();
+        assertThat(stored.alarm()).contains(new BookingLinkAlarm("-PT10M"));
+    }
+
+    @Test
+    void createShouldReturn400WhenAlarmInvalid() {
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "alarm": "not-a-duration"
+                }
+                """.formatted(defaultCalendarUrl(user)))
+        .when()
+            .post("/users/{username}/booking-links", user.username().asString())
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
+    void patchShouldUpdateLocation() {
+        BookingLink bookingLink = insertBookingLink(user);
+
+        given()
+            .body("""
+                {
+                    "location": "Room 5"
+                }
+                """)
+        .when()
+            .patch("/users/{username}/booking-links/{publicId}", user.username().asString(), bookingLink.publicId().value().toString())
+        .then()
+            .statusCode(204);
+
+        BookingLink stored = bookingLinkDAO.findByPublicId(user.username(), bookingLink.publicId()).block();
+        assertThat(stored.location()).contains("Room 5");
+    }
+
+    @Test
+    void patchShouldRemoveLocationWhenNull() {
+        BookingLink bookingLink = insertBookingLink(user);
+
+        given()
+            .body("""
+                {
+                    "location": null
+                }
+                """)
+        .when()
+            .patch("/users/{username}/booking-links/{publicId}", user.username().asString(), bookingLink.publicId().value().toString())
+        .then()
+            .statusCode(204);
+
+        BookingLink stored = bookingLinkDAO.findByPublicId(user.username(), bookingLink.publicId()).block();
+        assertThat(stored.location()).isEmpty();
+    }
+
+    @Test
+    void patchShouldUpdateVisibility() {
+        BookingLink bookingLink = insertBookingLink(user);
+
+        given()
+            .body("""
+                { "visibility": "PRIVATE" }
+                """)
+        .when()
+            .patch("/users/{username}/booking-links/{publicId}", user.username().asString(), bookingLink.publicId().value().toString())
+        .then()
+            .statusCode(204);
+
+        BookingLink stored = bookingLinkDAO.findByPublicId(user.username(), bookingLink.publicId()).block();
+        assertThat(stored.visibility()).contains(EventVisibility.PRIVATE);
+    }
+
+    @Test
+    void patchShouldReturn400WhenVisibilityInvalid() {
+        BookingLink bookingLink = insertBookingLink(user);
+
+        given()
+            .body("""
+                { "visibility": "SECRET" }
+                """)
+        .when()
+            .patch("/users/{username}/booking-links/{publicId}", user.username().asString(), bookingLink.publicId().value().toString())
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
+    void patchShouldRemoveVisibilityWhenNull() {
+        BookingLink bookingLink = insertBookingLink(user);
+
+        given()
+            .body("""
+                { "visibility": null }
+                """)
+        .when()
+            .patch("/users/{username}/booking-links/{publicId}", user.username().asString(), bookingLink.publicId().value().toString())
+        .then()
+            .statusCode(204);
+
+        BookingLink stored = bookingLinkDAO.findByPublicId(user.username(), bookingLink.publicId()).block();
+        assertThat(stored.visibility()).isEmpty();
+    }
+
+    @Test
+    void patchShouldUpdateTransparency() {
+        BookingLink bookingLink = insertBookingLink(user);
+
+        given()
+            .body("""
+                { "transparency": "TRANSPARENT" }
+                """)
+        .when()
+            .patch("/users/{username}/booking-links/{publicId}", user.username().asString(), bookingLink.publicId().value().toString())
+        .then()
+            .statusCode(204);
+
+        BookingLink stored = bookingLinkDAO.findByPublicId(user.username(), bookingLink.publicId()).block();
+        assertThat(stored.transparency()).contains(EventTransparency.TRANSPARENT);
+    }
+
+    @Test
+    void patchShouldReturn400WhenTransparencyInvalid() {
+        BookingLink bookingLink = insertBookingLink(user);
+
+        given()
+            .body("""
+                { "transparency": "INVALID" }
+                """)
+        .when()
+            .patch("/users/{username}/booking-links/{publicId}", user.username().asString(), bookingLink.publicId().value().toString())
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
+    void patchShouldRemoveTransparencyWhenNull() {
+        BookingLink bookingLink = insertBookingLink(user);
+
+        given()
+            .body("""
+                { "transparency": null }
+                """)
+        .when()
+            .patch("/users/{username}/booking-links/{publicId}", user.username().asString(), bookingLink.publicId().value().toString())
+        .then()
+            .statusCode(204);
+
+        BookingLink stored = bookingLinkDAO.findByPublicId(user.username(), bookingLink.publicId()).block();
+        assertThat(stored.transparency()).isEmpty();
+    }
+
+    @Test
+    void patchShouldUpdateAlarm() {
+        BookingLink bookingLink = insertBookingLink(user);
+
+        given()
+            .body("""
+                { "alarm": "-PT15M" }
+                """)
+        .when()
+            .patch("/users/{username}/booking-links/{publicId}", user.username().asString(), bookingLink.publicId().value().toString())
+        .then()
+            .statusCode(204);
+
+        BookingLink stored = bookingLinkDAO.findByPublicId(user.username(), bookingLink.publicId()).block();
+        assertThat(stored.alarm()).contains(new BookingLinkAlarm("-PT15M"));
+    }
+
+    @Test
+    void patchShouldReturn400WhenAlarmInvalid() {
+        BookingLink bookingLink = insertBookingLink(user);
+
+        given()
+            .body("""
+                { "alarm": "not-a-duration" }
+                """)
+        .when()
+            .patch("/users/{username}/booking-links/{publicId}", user.username().asString(), bookingLink.publicId().value().toString())
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
+    void patchShouldRemoveAlarmWhenSetToNull() {
+        BookingLink bookingLink = bookingLinkDAO.insert(user.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(user.id()), Duration.ofMinutes(30), BookingLinkInsertRequest.ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
+                Optional.empty(), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
+                Optional.empty(), Optional.empty(), Optional.empty(), List.of(), Optional.of(new BookingLinkAlarm("-PT10M")))).block();
+
+        given()
+            .body("""
+                { "alarm": null }
+                """)
+        .when()
+            .patch("/users/{username}/booking-links/{publicId}", user.username().asString(), bookingLink.publicId().value().toString())
+        .then()
+            .statusCode(204);
+
+        BookingLink stored = bookingLinkDAO.findByPublicId(user.username(), bookingLink.publicId()).block();
+        assertThat(stored.alarm()).isEmpty();
+    }
+
+    @Test
+    void patchShouldUpdateResources() {
+        BookingLink bookingLink = insertBookingLink(user);
+        ResourceId resourceId = saveResource(user);
+
+        given()
+            .body("""
+                { "resources": ["%s"] }
+                """.formatted(resourceId.value()))
+        .when()
+            .patch("/users/{username}/booking-links/{publicId}", user.username().asString(), bookingLink.publicId().value().toString())
+        .then()
+            .statusCode(204);
+
+        BookingLink stored = bookingLinkDAO.findByPublicId(user.username(), bookingLink.publicId()).block();
+        assertThat(stored.resources()).containsExactly(resourceId);
+    }
+
+    @Test
+    void patchShouldReturn400WhenResourceDoesNotExist() {
+        BookingLink bookingLink = insertBookingLink(user);
+
+        given()
+            .body("""
+                { "resources": ["659387b9d486dc0046aeffff"] }
+                """)
+        .when()
+            .patch("/users/{username}/booking-links/{publicId}", user.username().asString(), bookingLink.publicId().value().toString())
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
+    void patchShouldRemoveResourcesWhenSetToNull() {
+        BookingLink bookingLink = bookingLinkDAO.insert(user.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(user.id()), Duration.ofMinutes(30), BookingLinkInsertRequest.ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
+                Optional.empty(), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
+                Optional.empty(), Optional.empty(), Optional.empty(), List.of(saveResource(user)), Optional.empty())).block();
+
+        given()
+            .body("""
+                { "resources": null }
+                """)
+        .when()
+            .patch("/users/{username}/booking-links/{publicId}", user.username().asString(), bookingLink.publicId().value().toString())
+        .then()
+            .statusCode(204);
+
+        BookingLink stored = bookingLinkDAO.findByPublicId(user.username(), bookingLink.publicId()).block();
+        assertThat(stored.resources()).isEmpty();
     }
 
     @Test

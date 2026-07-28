@@ -36,7 +36,6 @@ import java.util.List;
 
 import javax.net.ssl.SSLException;
 
-import org.apache.james.core.Username;
 import org.apache.james.json.DTOConverter;
 import org.apache.james.server.task.json.dto.AdditionalInformationDTO;
 import org.apache.james.server.task.json.dto.AdditionalInformationDTOModule;
@@ -58,6 +57,7 @@ import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.routes.BookingLinkExtraAttendeeResolver;
+import com.linagora.calendar.restapi.routes.BookingLinkResourceResolver;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
@@ -67,6 +67,7 @@ import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 import com.linagora.calendar.storage.mongodb.MongoDBBookingLinkDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
+import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
 import com.linagora.calendar.webadmin.service.BookingLinkEventDeletionService;
 import com.linagora.calendar.webadmin.task.BookingLinkEventDeletionTaskAdditionalInformationDTO;
 import com.mongodb.reactivestreams.client.MongoDatabase;
@@ -90,6 +91,7 @@ public class BookingLinkEventDeletionTest {
         OpenPaaSUserDAO userDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
         calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         bookingLinkDAO = new MongoDBBookingLinkDAO(mongoDB, Clock.system(UTC));
+        MongoDBResourceDAO resourceDAO = new MongoDBResourceDAO(mongoDB, Clock.system(UTC));
 
         user = sabreDavExtension.newTestUser();
 
@@ -98,7 +100,7 @@ public class BookingLinkEventDeletionTest {
 
         webAdminServer = WebAdminUtils.createWebAdminServer(
                 new BookingLinkUserRoutes(userDAO, bookingLinkDAO, calDavClient, taskManager, eventDeletionService,
-                    new BookingLinkExtraAttendeeResolver(userDAO), new JsonTransformer()),
+                    new BookingLinkExtraAttendeeResolver(userDAO), new BookingLinkResourceResolver(resourceDAO, domainDAO), new JsonTransformer()),
                 new TasksRoutes(taskManager,
                     new JsonTransformer(),
                     new DTOConverter<>(ImmutableSet.<AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO>>builder()
