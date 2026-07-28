@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.amqp;
 
+import static com.linagora.calendar.dav.ResourceService.ONLY_ACTIVE;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static com.linagora.calendar.storage.configuration.EntryIdentifier.LANGUAGE_IDENTIFIER;
 import static com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.TimeZoneSettingReader.TIMEZONE_IDENTIFIER;
@@ -81,6 +82,7 @@ import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalDavEventRepository;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
+import com.linagora.calendar.dav.ResourceService;
 import com.linagora.calendar.smtp.MailSender;
 import com.linagora.calendar.smtp.MailSenderConfiguration;
 import com.linagora.calendar.smtp.MockSmtpServerExtension;
@@ -92,7 +94,6 @@ import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.ResourceDAO;
 import com.linagora.calendar.storage.ResourceInsertRequest;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
-import com.linagora.calendar.storage.model.ResourceAdministrator;
 import com.linagora.calendar.storage.model.ResourceId;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
@@ -133,9 +134,9 @@ public class EventResourceConsumerTest {
     private static DavTestHelper davTestHelper;
     private static Channel channel;
 
-    private ResourceDAO resourceDAO;
     private CalDavEventRepository calDavEventRepository;
     private CalDavClient calDavClient;
+    private ResourceService resourceService;
     private EventResourceConsumer consumer;
 
     @BeforeAll
@@ -221,7 +222,8 @@ public class EventResourceConsumerTest {
         MongoDatabase mongoDB = sabreDavExtension.dockerSabreDavSetup().getMongoDB();
         MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
         OpenPaaSUserDAO openPaaSUserDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
-        resourceDAO = new MongoDBResourceDAO(mongoDB, Clock.systemUTC());
+        ResourceDAO resourceDAO = new MongoDBResourceDAO(mongoDB, Clock.systemUTC());
+        resourceService = new ResourceService(openPaaSUserDAO, resourceDAO, calDavClient);
 
         MessageGenerator.Factory messageFactory = MessageGenerator.factory(mailTemplateConfig, fileSystem, openPaaSUserDAO);
 
@@ -229,10 +231,9 @@ public class EventResourceConsumerTest {
         when(jwtSigner.generate(anyMap()))
             .thenReturn(Mono.just("jwtSecret"));
 
-        EventResourceHandler eventResourceHandler = new EventResourceHandler(resourceDAO,
+        EventResourceHandler eventResourceHandler = new EventResourceHandler(resourceService,
             mailSenderFactory,
             messageFactory,
-            openPaaSUserDAO,
             domainDAO,
             settingsResolver,
             eventEmailFilter,
@@ -257,13 +258,7 @@ public class EventResourceConsumerTest {
     @Test
     void shouldSendResourceRequestEmailWhenNewEventIsCreated(DockerSabreDavSetup dockerSabreDavSetup) {
         OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
-        ResourceInsertRequest request = new ResourceInsertRequest(
-            resourceAdmin.id(),
-            "Test resource description",
-            domain.id(),
-            "icon.png",
-            "Projector");
-        ResourceId resourceId = resourceDAO.insert(request).block();
+        ResourceId resourceId = createResource(domain, resourceAdmin, resourceAdmin);
 
         String eventUid = UUID.randomUUID().toString();
         String calendarData = generateCalendarData(
@@ -316,13 +311,7 @@ public class EventResourceConsumerTest {
     @Test
     void shouldAcceptEventsWhenNoAdministrators(DockerSabreDavSetup dockerSabreDavSetup) throws Exception {
         OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
-        ResourceInsertRequest request = new ResourceInsertRequest(
-            resourceAdmin.id(),
-            "Test resource description",
-            domain.id(),
-            "icon.png",
-            "Projector");
-        ResourceId resourceId = resourceDAO.insert(request).block();
+        ResourceId resourceId = createResource(domain, resourceAdmin);
 
         String eventUid = UUID.randomUUID().toString();
         String calendarData = generateCalendarData(
@@ -347,13 +336,7 @@ public class EventResourceConsumerTest {
     @Test
     void shouldNotSendResourceRequestEmailWhenNoAdmin(DockerSabreDavSetup dockerSabreDavSetup) throws InterruptedException {
         OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
-        ResourceInsertRequest request = new ResourceInsertRequest(
-            resourceAdmin.id(),
-            "Test resource description",
-            domain.id(),
-            "icon.png",
-            "Projector");
-        ResourceId resourceId = resourceDAO.insert(request).block();
+        ResourceId resourceId = createResource(domain, resourceAdmin);
 
         String eventUid = UUID.randomUUID().toString();
         String calendarData = generateCalendarData(
@@ -376,14 +359,10 @@ public class EventResourceConsumerTest {
     @Test
     void shouldNotSendResourceRequestEmailWhenResourceHasBeenDeleted(DockerSabreDavSetup dockerSabreDavSetup) throws InterruptedException {
         OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
-        ResourceInsertRequest request = new ResourceInsertRequest(
-            resourceAdmin.id(),
-            "Test resource description",
-            domain.id(),
-            "icon.png",
-            "Projector");
-        ResourceId resourceId = resourceDAO.insert(request).block();
-        resourceDAO.softDelete(resourceId).block();
+        ResourceId resourceId = createResource(domain, resourceAdmin);
+        resourceService.retrieve(resourceId, !ONLY_ACTIVE)
+            .flatMap(resourceService::delete)
+            .block();
 
         String eventUid = UUID.randomUUID().toString();
         String calendarData = generateCalendarData(
@@ -406,13 +385,7 @@ public class EventResourceConsumerTest {
     @Test
     void shouldSendResourceReplyEmailWhenResourceRequestIsAccepted(DockerSabreDavSetup dockerSabreDavSetup) {
         OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
-        ResourceInsertRequest request = new ResourceInsertRequest(
-            resourceAdmin.id(),
-            "Test resource description",
-            domain.id(),
-            "icon.png",
-            "Projector");
-        ResourceId resourceId = resourceDAO.insert(request).block();
+        ResourceId resourceId = createResource(domain, resourceAdmin, resourceAdmin);
 
         String eventUid = UUID.randomUUID().toString();
         String calendarData = generateCalendarData(
@@ -465,13 +438,7 @@ public class EventResourceConsumerTest {
     @Test
     void shouldSendResourceReplyEmailWhenResourceRequestIsDeclined(DockerSabreDavSetup dockerSabreDavSetup) {
         OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
-        ResourceInsertRequest request = new ResourceInsertRequest(
-            resourceAdmin.id(),
-            "Test resource description",
-            domain.id(),
-            "icon.png",
-            "Projector");
-        ResourceId resourceId = resourceDAO.insert(request).block();
+        ResourceId resourceId = createResource(domain, resourceAdmin, resourceAdmin);
 
         String eventUid = UUID.randomUUID().toString();
         String calendarData = generateCalendarData(
@@ -524,13 +491,7 @@ public class EventResourceConsumerTest {
     @Test
     void shouldAutoAcceptWhenOrganizerIsAdminOfResource(DockerSabreDavSetup dockerSabreDavSetup) throws Exception {
         OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
-        ResourceInsertRequest request = new ResourceInsertRequest(
-            organizer.id(),
-            "Test resource description",
-            domain.id(),
-            "icon.png",
-            "Projector");
-        ResourceId resourceId = resourceDAO.insert(request).block();
+        ResourceId resourceId = createResource(domain, organizer, organizer);
 
         String eventUid = UUID.randomUUID().toString();
         String calendarData = generateCalendarData(
@@ -555,13 +516,7 @@ public class EventResourceConsumerTest {
     @Test
     void shouldNotSendEmailWhenOrganizerIsAdminOfResource(DockerSabreDavSetup dockerSabreDavSetup) throws InterruptedException {
         OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
-        ResourceInsertRequest request = new ResourceInsertRequest(
-            organizer.id(),
-            "Test resource description",
-            domain.id(),
-            "icon.png",
-            "Projector");
-        ResourceId resourceId = resourceDAO.insert(request).block();
+        ResourceId resourceId = createResource(domain, organizer, organizer);
 
         String eventUid = UUID.randomUUID().toString();
         String calendarData = generateCalendarData(
@@ -589,13 +544,7 @@ public class EventResourceConsumerTest {
 
         // When creating resource projector with resourceAdmin as administrator
         OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
-        ResourceInsertRequest request = new ResourceInsertRequest(
-            resourceAdmin.id(),
-            "Test resource description",
-            domain.id(),
-            "icon.png",
-            "Projector");
-        ResourceId resourceId = resourceDAO.insert(request).block();
+        ResourceId resourceId = createResource(domain, resourceAdmin, resourceAdmin);
 
         // And organizer creates an event booking the resource projector
         String eventUid = UUID.randomUUID().toString();
@@ -728,5 +677,18 @@ public class EventResourceConsumerTest {
             .build();
 
         channel.basicPublish(exchange, EMPTY_ROUTING_KEY, basicProperties, message.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private ResourceId createResource(OpenPaaSDomain domain, OpenPaaSUser creator, OpenPaaSUser... administrators) {
+        ResourceInsertRequest request = new ResourceInsertRequest(
+            creator.id(),
+            "Test resource description",
+            domain.id(),
+            "icon.png",
+            "Projector");
+
+        return resourceService.create(request, List.of(administrators).stream()
+            .map(OpenPaaSUser::username)
+            .toList()).block();
     }
 }

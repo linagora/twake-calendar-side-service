@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.amqp;
 
+import static com.linagora.calendar.dav.ResourceService.ONLY_ACTIVE;
 import static com.linagora.calendar.storage.event.EventParseUtils.DuplicateAttendeePolicy.KEEP_FIRST;
 
 import java.net.URL;
@@ -37,7 +38,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
-import org.apache.james.util.ReactorUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,6 +45,8 @@ import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.api.JwtSigner;
 import com.linagora.calendar.dav.CalDavEventRepository;
+import com.linagora.calendar.dav.ResourceService;
+import com.linagora.calendar.dav.ResourceService.ResourceWithAdministration;
 import com.linagora.calendar.smtp.EventEmailFilter;
 import com.linagora.calendar.smtp.Mail;
 import com.linagora.calendar.smtp.MailSender;
@@ -57,8 +59,7 @@ import com.linagora.calendar.smtp.template.content.model.EventTimeModel;
 import com.linagora.calendar.smtp.template.content.model.LocationModel;
 import com.linagora.calendar.smtp.template.content.model.PersonModel;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
-import com.linagora.calendar.storage.OpenPaaSUserDAO;
-import com.linagora.calendar.storage.ResourceDAO;
+import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.event.EventParseUtils;
@@ -97,10 +98,9 @@ public class EventResourceHandler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(EventResourceHandler.class);
 
-    private final ResourceDAO resourceDAO;
+    private final ResourceService resourceService;
     private final MailSender.Factory mailSenderFactory;
     private final MessageGenerator.Factory messageGeneratorFactory;
-    private final OpenPaaSUserDAO userDAO;
     private final OpenPaaSDomainDAO domainDAO;
     private final SettingsBasedResolver settingsResolver;
     private final EventEmailFilter eventEmailFilter;
@@ -111,19 +111,18 @@ public class EventResourceHandler {
     private final CalDavEventRepository calDavEventRepository;
 
     @Inject
-    public EventResourceHandler(ResourceDAO resourceDAO,
+    public EventResourceHandler(ResourceService resourceService,
                                 MailSender.Factory mailSenderFactory,
                                 MessageGenerator.Factory messageGeneratorFactory,
-                                OpenPaaSUserDAO userDAO, OpenPaaSDomainDAO domainDAO,
+                                OpenPaaSDomainDAO domainDAO,
                                 @Named("language_timezone") SettingsBasedResolver settingsResolver,
                                 EventEmailFilter eventEmailFilter,
                                 MailTemplateConfiguration mailTemplateConfiguration,
                                 @Named("selfUrl") URL calendarBaseUrl,
                                 JwtSigner jwtSigner, CalDavEventRepository calDavEventRepository) {
-        this.resourceDAO = resourceDAO;
+        this.resourceService = resourceService;
         this.mailSenderFactory = mailSenderFactory;
         this.messageGeneratorFactory = messageGeneratorFactory;
-        this.userDAO = userDAO;
         this.domainDAO = domainDAO;
         this.settingsResolver = settingsResolver;
         this.eventEmailFilter = eventEmailFilter;
@@ -138,27 +137,26 @@ public class EventResourceHandler {
     public Mono<Void> handleCreateEvent(CalendarResourceMessageDTO message) {
         LOGGER.debug("Handle create event with resource message containing resourceId {} and resourceEventId {} and eventPath {}",
             message.resourceId(), message.eventId(), message.eventPath());
-        return resourceDAO.findById(new ResourceId(message.resourceId()))
-            .filter(resource -> !resource.deleted())
-            .flatMap(resource -> shouldAutoAccept(message, resource)
+        return resourceService.retrieveWithAdministration(new ResourceId(message.resourceId()), ONLY_ACTIVE)
+            .flatMap(resourceWithAdministration -> shouldAutoAccept(message, resourceWithAdministration)
                 .flatMap(autoAccept -> autoAccept
-                    ? acceptInvite(message, resource)
-                    : sendValidationEmailToAdministrators(message, resource)));
+                    ? acceptInvite(message, resourceWithAdministration.resource())
+                    : sendValidationEmailToAdministrators(message, resourceWithAdministration)));
     }
 
-    private Mono<Boolean> shouldAutoAccept(CalendarResourceMessageDTO message, Resource resource) {
-        if (resource.administrators().isEmpty()) {
+    private Mono<Boolean> shouldAutoAccept(CalendarResourceMessageDTO message, ResourceWithAdministration resourceWithAdministration) {
+        if (resourceWithAdministration.administrators().isEmpty()) {
             return Mono.just(true);
         }
         return Mono.justOrEmpty(getOrganizerEmail(message))
-            .flatMap(organizerEmail -> isOrganizerAdmin(resource, organizerEmail));
+            .map(organizerEmail -> isOrganizerAdmin(resourceWithAdministration.administrators(), organizerEmail));
     }
 
-    private Mono<Boolean> isOrganizerAdmin(Resource resource, MailAddress organizerEmail) {
+    private boolean isOrganizerAdmin(List<OpenPaaSUser> administrators, MailAddress organizerEmail) {
         Username organizerUsername = Username.fromMailAddress(organizerEmail);
-        return userDAO.retrieve(organizerUsername)
-            .map(organizer -> resource.administrators().stream()
-                .anyMatch(admin -> admin.refId().equals(organizer.id())));
+        return administrators.stream()
+            .map(OpenPaaSUser::username)
+            .anyMatch(organizerUsername::equals);
     }
 
     private Mono<Void> acceptInvite(CalendarResourceMessageDTO message, Resource resource) {
@@ -166,11 +164,10 @@ public class EventResourceHandler {
             .flatMap(domain -> calDavEventRepository.updatePartStat(domain, resource.id(), message.eventId(), PartStat.ACCEPTED));
     }
 
-    private Mono<Void> sendValidationEmailToAdministrators(CalendarResourceMessageDTO message, Resource resource) {
-        return Flux.fromIterable(resource.administrators())
-            .flatMap(resourceAdministrator -> userDAO.retrieve(resourceAdministrator.refId()), ReactorUtils.DEFAULT_CONCURRENCY)
+    private Mono<Void> sendValidationEmailToAdministrators(CalendarResourceMessageDTO message, ResourceWithAdministration resourceWithAdministration) {
+        return Flux.fromIterable(resourceWithAdministration.administrators())
             .filter(Throwing.predicate(openPaaSUser -> eventEmailFilter.shouldProcess(openPaaSUser.username().asMailAddress())))
-            .flatMap(Throwing.function(openPaaSUser -> sendRequestMail(message, resource.name(), openPaaSUser.username().asMailAddress())))
+            .flatMap(Throwing.function(openPaaSUser -> sendRequestMail(message, resourceWithAdministration.resource().name(), openPaaSUser.username().asMailAddress())))
             .then();
     }
 
@@ -185,14 +182,12 @@ public class EventResourceHandler {
     }
 
     private Mono<Void> handleReplyEvent(CalendarResourceMessageDTO message, boolean approved) {
-        return resourceDAO.findById(new ResourceId(message.resourceId()))
-            .filter(resource -> !resource.deleted())
-            .filter(resource -> !resource.administrators().isEmpty())
-            .flatMap(resource -> Mono.justOrEmpty(getOrganizerEmail(message))
+        return resourceService.retrieveWithAdministration(new ResourceId(message.resourceId()), ONLY_ACTIVE)
+            .filter(resourceWithAdministration -> !resourceWithAdministration.administrators().isEmpty())
+            .flatMap(resourceWithAdministration -> Mono.justOrEmpty(getOrganizerEmail(message))
                 .filter(eventEmailFilter::shouldProcess)
-                .flatMap(organizerEmail -> isOrganizerAdmin(resource, organizerEmail)
-                    .filter(isAdmin -> !isAdmin)
-                    .flatMap(ignored -> sendReplyMail(message, resource.name(), organizerEmail, approved))));
+                .filter(organizerEmail -> !isOrganizerAdmin(resourceWithAdministration.administrators(), organizerEmail))
+                .flatMap(organizerEmail -> sendReplyMail(message, resourceWithAdministration.resource().name(), organizerEmail, approved)));
     }
 
     private Optional<MailAddress> getOrganizerEmail(CalendarResourceMessageDTO calendarResourceMessageDTO) {
