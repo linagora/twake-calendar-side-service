@@ -555,17 +555,6 @@ Please note that resource administrators:
  - are emailed upon events created that book the resource
  - have delegation write access to the calendar of the resource. Removing an administrator revokes this delegation right.
 
-### Repositioning write rights for admins on resource calendar
-
-```
-POST /domains/linagora.com/resources?task=repositionWriteRights
-```
-
-Will iterate on each resource and ensure current administrators have delegation write access to the resource calendar,
-allowing them to accept, reject and counter events in the name of the resource.
-
-Note that existing delegation write access granted to users no longer listed as administrators will not be revoked.
-
 ## Team calendar routes
 
 Team calendar routes manage team calendar metadata.
