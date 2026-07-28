@@ -371,10 +371,11 @@ class BookedEventCancelRouteTest {
 
     private BookingLink insertActiveBookingLink(TwakeCalendarGuiceServer server) {
         return server.getProbe(BookingLinkProbe.class)
-            .insert(openPaaSUser.username(), new BookingLinkInsertRequest(
-                CalendarURL.from(openPaaSUser.id()),
-                DURATION_30_MINUTES,
-                AVAILABILITY_RULE));
+            .insert(openPaaSUser.username(), BookingLinkInsertRequest.builder()
+                .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+                .eventDuration(DURATION_30_MINUTES)
+                .availabilityRules(AVAILABILITY_RULE)
+                .build());
     }
 
     private List<String> getAvailableSlots(BookingLinkPublicId bookingLinkPublicId) {

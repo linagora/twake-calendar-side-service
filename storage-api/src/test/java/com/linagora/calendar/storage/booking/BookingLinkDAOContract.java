@@ -47,7 +47,7 @@ public interface BookingLinkDAOContract {
     CalendarURL CALENDAR_URL = new CalendarURL(new OpenPaaSId("659387b9d486dc0046aeff91"), new OpenPaaSId("659387b9d486dc0046aeff92"));
     Duration EVENT_DURATION = Duration.ofMinutes(30);
     AvailabilityRules AVAILABILITY_RULES = AvailabilityRules.of(new WeeklyAvailabilityRule(DayOfWeek.MONDAY, LocalTime.parse("09:00"), LocalTime.parse("17:00")));
-    BookingLinkInsertRequest INSERT_REQUEST = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, Optional.of(AVAILABILITY_RULES));
+    BookingLinkInsertRequest INSERT_REQUEST = BookingLinkInsertRequest.builder().calendarUrl(CALENDAR_URL).eventDuration(EVENT_DURATION).availabilityRules(AVAILABILITY_RULES).build();
     CalendarURL UPDATED_CALENDAR_URL = new CalendarURL(new OpenPaaSId("659387b9d486dc0046aeffaa"), new OpenPaaSId("659387b9d486dc0046aeffab"));
     Duration UPDATED_DURATION = Duration.ofMinutes(45);
     AvailabilityRules UPDATED_AVAILABILITY_RULES = AvailabilityRules.of(new WeeklyAvailabilityRule(DayOfWeek.FRIDAY, LocalTime.parse("08:00"), LocalTime.parse("12:00")));
@@ -180,11 +180,9 @@ public interface BookingLinkDAOContract {
 
     @Test
     default void updateShouldFailWhenPublicIdDoesNotExist() {
-        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            ValuePatch.modifyTo(UPDATED_CALENDAR_URL),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep());
+        BookingLinkPatchRequest patchRequest = BookingLinkPatchRequest.builder()
+            .calendarUrl(ValuePatch.modifyTo(UPDATED_CALENDAR_URL))
+            .build();
 
         assertThatThrownBy(() -> testee().update(USER_1, new BookingLinkPublicId(UUID.randomUUID()), patchRequest).block())
             .isInstanceOf(BookingLinkNotFoundException.class);
@@ -193,11 +191,9 @@ public interface BookingLinkDAOContract {
     @Test
     default void updateShouldFailWhenPublicIdBelongsToAnotherUsername() {
         BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
-        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            ValuePatch.modifyTo(UPDATED_CALENDAR_URL),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep());
+        BookingLinkPatchRequest patchRequest = BookingLinkPatchRequest.builder()
+            .calendarUrl(ValuePatch.modifyTo(UPDATED_CALENDAR_URL))
+            .build();
 
         assertThatThrownBy(() -> testee().update(USER_2, inserted.publicId(), patchRequest).block())
             .isInstanceOf(BookingLinkNotFoundException.class);
@@ -206,11 +202,9 @@ public interface BookingLinkDAOContract {
     @Test
     default void updateFailureShouldNotChangeExistingData() {
         BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
-        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            ValuePatch.modifyTo(UPDATED_CALENDAR_URL),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep());
+        BookingLinkPatchRequest patchRequest = BookingLinkPatchRequest.builder()
+            .calendarUrl(ValuePatch.modifyTo(UPDATED_CALENDAR_URL))
+            .build();
 
         assertThatThrownBy(() -> testee().update(USER_2, inserted.publicId(), patchRequest).block())
             .isInstanceOf(BookingLinkNotFoundException.class);
@@ -222,11 +216,12 @@ public interface BookingLinkDAOContract {
     @Test
     default void updateShouldApplyNewValues() {
         BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
-        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            ValuePatch.modifyTo(UPDATED_CALENDAR_URL),
-            ValuePatch.modifyTo(UPDATED_DURATION),
-            ValuePatch.modifyTo(!ACTIVE),
-            ValuePatch.modifyTo(UPDATED_AVAILABILITY_RULES));
+        BookingLinkPatchRequest patchRequest = BookingLinkPatchRequest.builder()
+            .calendarUrl(ValuePatch.modifyTo(UPDATED_CALENDAR_URL))
+            .duration(ValuePatch.modifyTo(UPDATED_DURATION))
+            .active(ValuePatch.modifyTo(!ACTIVE))
+            .availabilityRules(ValuePatch.modifyTo(UPDATED_AVAILABILITY_RULES))
+            .build();
         clock().setInstant(inserted.updatedAt().plusSeconds(1));
 
         BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
@@ -248,11 +243,9 @@ public interface BookingLinkDAOContract {
     @Test
     default void updateShouldUpdateExistingRecordWithoutCreatingNewOne() {
         BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
-        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            ValuePatch.keep(),
-            ValuePatch.modifyTo(UPDATED_DURATION),
-            ValuePatch.keep(),
-            ValuePatch.keep());
+        BookingLinkPatchRequest patchRequest = BookingLinkPatchRequest.builder()
+            .duration(ValuePatch.modifyTo(UPDATED_DURATION))
+            .build();
 
         assertThat(testee().findByUsername(USER_1).collectList().block())
             .hasSize(1);
@@ -274,11 +267,9 @@ public interface BookingLinkDAOContract {
     @Test
     default void updateShouldAllowResetAvailabilityRules() {
         BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
-        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.remove());
+        BookingLinkPatchRequest patchRequest = BookingLinkPatchRequest.builder()
+            .availabilityRules(ValuePatch.remove())
+            .build();
 
         BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
 
@@ -287,8 +278,13 @@ public interface BookingLinkDAOContract {
 
     @Test
     default void insertShouldPersistNameAndDescription() {
-        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE,
-            Optional.of(AVAILABILITY_RULES), Optional.of("Intro call"), Optional.of("Book a 30-minute intro call"));
+        BookingLinkInsertRequest request = BookingLinkInsertRequest.builder()
+            .calendarUrl(CALENDAR_URL)
+            .eventDuration(EVENT_DURATION)
+            .availabilityRules(AVAILABILITY_RULES)
+            .name("Intro call")
+            .description("Book a 30-minute intro call")
+            .build();
 
         BookingLink created = testee().insert(USER_1, request).block();
 
@@ -310,13 +306,10 @@ public interface BookingLinkDAOContract {
     @Test
     default void updateShouldApplyNameAndDescription() {
         BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
-        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.modifyTo("Updated name"),
-            ValuePatch.modifyTo("Updated description"));
+        BookingLinkPatchRequest patchRequest = BookingLinkPatchRequest.builder()
+            .name(ValuePatch.modifyTo("Updated name"))
+            .description(ValuePatch.modifyTo("Updated description"))
+            .build();
 
         BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
 
@@ -326,16 +319,18 @@ public interface BookingLinkDAOContract {
 
     @Test
     default void updateShouldAllowRemovingNameAndDescription() {
-        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE,
-            Optional.of(AVAILABILITY_RULES), Optional.of("Intro call"), Optional.of("Some description"));
+        BookingLinkInsertRequest request = BookingLinkInsertRequest.builder()
+            .calendarUrl(CALENDAR_URL)
+            .eventDuration(EVENT_DURATION)
+            .availabilityRules(AVAILABILITY_RULES)
+            .name("Intro call")
+            .description("Some description")
+            .build();
         BookingLink inserted = testee().insert(USER_1, request).block();
-        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.remove(),
-            ValuePatch.remove());
+        BookingLinkPatchRequest patchRequest = BookingLinkPatchRequest.builder()
+            .name(ValuePatch.remove())
+            .description(ValuePatch.remove())
+            .build();
 
         BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
 
@@ -345,8 +340,12 @@ public interface BookingLinkDAOContract {
 
     @Test
     default void insertShouldPersistAutoAccept() {
-        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, true,
-            Optional.of(AVAILABILITY_RULES), Optional.empty(), Optional.empty());
+        BookingLinkInsertRequest request = BookingLinkInsertRequest.builder()
+            .calendarUrl(CALENDAR_URL)
+            .eventDuration(EVENT_DURATION)
+            .autoAccept(true)
+            .availabilityRules(AVAILABILITY_RULES)
+            .build();
 
         BookingLink created = testee().insert(USER_1, request).block();
 
@@ -366,14 +365,9 @@ public interface BookingLinkDAOContract {
     @Test
     default void updateShouldApplyAutoAccept() {
         BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
-        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.modifyTo(true),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep());
+        BookingLinkPatchRequest patchRequest = BookingLinkPatchRequest.builder()
+            .autoAccept(ValuePatch.modifyTo(true))
+            .build();
 
         BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
 
@@ -382,8 +376,12 @@ public interface BookingLinkDAOContract {
 
     @Test
     default void insertShouldPersistColor() {
-        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
-            Optional.of(AVAILABILITY_RULES), Optional.empty(), Optional.empty(), Optional.of("#123456"));
+        BookingLinkInsertRequest request = BookingLinkInsertRequest.builder()
+            .calendarUrl(CALENDAR_URL)
+            .eventDuration(EVENT_DURATION)
+            .availabilityRules(AVAILABILITY_RULES)
+            .color("#123456")
+            .build();
 
         BookingLink created = testee().insert(USER_1, request).block();
 
@@ -404,15 +402,9 @@ public interface BookingLinkDAOContract {
     @Test
     default void updateShouldApplyColor() {
         BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
-        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.modifyTo("#abcdef"));
+        BookingLinkPatchRequest patchRequest = BookingLinkPatchRequest.builder()
+            .color(ValuePatch.modifyTo("#abcdef"))
+            .build();
 
         BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
 
@@ -421,18 +413,16 @@ public interface BookingLinkDAOContract {
 
     @Test
     default void updateShouldAllowRemovingColor() {
-        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
-            Optional.of(AVAILABILITY_RULES), Optional.empty(), Optional.empty(), Optional.of("#123456"));
+        BookingLinkInsertRequest request = BookingLinkInsertRequest.builder()
+            .calendarUrl(CALENDAR_URL)
+            .eventDuration(EVENT_DURATION)
+            .availabilityRules(AVAILABILITY_RULES)
+            .color("#123456")
+            .build();
         BookingLink inserted = testee().insert(USER_1, request).block();
-        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.remove());
+        BookingLinkPatchRequest patchRequest = BookingLinkPatchRequest.builder()
+            .color(ValuePatch.remove())
+            .build();
 
         BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
 
@@ -441,8 +431,12 @@ public interface BookingLinkDAOContract {
 
     @Test
     default void insertShouldPersistExtraAttendees() {
-        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
-            Optional.of(AVAILABILITY_RULES), ExtraAttendees.of(EXTRA_ATTENDEE_1, EXTRA_ATTENDEE_2), Optional.empty(), Optional.empty(), Optional.empty());
+        BookingLinkInsertRequest request = BookingLinkInsertRequest.builder()
+            .calendarUrl(CALENDAR_URL)
+            .eventDuration(EVENT_DURATION)
+            .availabilityRules(AVAILABILITY_RULES)
+            .extraAttendees(ExtraAttendees.of(EXTRA_ATTENDEE_1, EXTRA_ATTENDEE_2))
+            .build();
 
         BookingLink created = testee().insert(USER_1, request).block();
 
@@ -465,16 +459,9 @@ public interface BookingLinkDAOContract {
     @Test
     default void updateShouldApplyExtraAttendees() {
         BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
-        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.modifyTo(ExtraAttendees.of(EXTRA_ATTENDEE_1)),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep());
+        BookingLinkPatchRequest patchRequest = BookingLinkPatchRequest.builder()
+            .extraAttendees(ValuePatch.modifyTo(ExtraAttendees.of(EXTRA_ATTENDEE_1)))
+            .build();
 
         BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
 
@@ -484,19 +471,16 @@ public interface BookingLinkDAOContract {
 
     @Test
     default void updateShouldAllowRemovingExtraAttendees() {
-        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
-            Optional.of(AVAILABILITY_RULES), ExtraAttendees.of(EXTRA_ATTENDEE_1), Optional.empty(), Optional.empty(), Optional.empty());
+        BookingLinkInsertRequest request = BookingLinkInsertRequest.builder()
+            .calendarUrl(CALENDAR_URL)
+            .eventDuration(EVENT_DURATION)
+            .availabilityRules(AVAILABILITY_RULES)
+            .extraAttendees(ExtraAttendees.of(EXTRA_ATTENDEE_1))
+            .build();
         BookingLink inserted = testee().insert(USER_1, request).block();
-        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.remove(),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep());
+        BookingLinkPatchRequest patchRequest = BookingLinkPatchRequest.builder()
+            .extraAttendees(ValuePatch.remove())
+            .build();
 
         BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
 
@@ -506,19 +490,16 @@ public interface BookingLinkDAOContract {
 
     @Test
     default void updateShouldKeepExtraAttendeesWhenNotSpecified() {
-        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
-            Optional.of(AVAILABILITY_RULES), ExtraAttendees.of(EXTRA_ATTENDEE_1), Optional.empty(), Optional.empty(), Optional.empty());
+        BookingLinkInsertRequest request = BookingLinkInsertRequest.builder()
+            .calendarUrl(CALENDAR_URL)
+            .eventDuration(EVENT_DURATION)
+            .availabilityRules(AVAILABILITY_RULES)
+            .extraAttendees(ExtraAttendees.of(EXTRA_ATTENDEE_1))
+            .build();
         BookingLink inserted = testee().insert(USER_1, request).block();
-        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            ValuePatch.keep(),
-            ValuePatch.modifyTo(UPDATED_DURATION),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep(),
-            ValuePatch.keep());
+        BookingLinkPatchRequest patchRequest = BookingLinkPatchRequest.builder()
+            .duration(ValuePatch.modifyTo(UPDATED_DURATION))
+            .build();
 
         BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
 
@@ -527,9 +508,12 @@ public interface BookingLinkDAOContract {
 
     @Test
     default void insertShouldPersistLocation() {
-        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
-            Optional.of(AVAILABILITY_RULES), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
-            Optional.of("Room 3"), Optional.empty(), Optional.empty(), List.of(), Optional.empty());
+        BookingLinkInsertRequest request = BookingLinkInsertRequest.builder()
+            .calendarUrl(CALENDAR_URL)
+            .eventDuration(EVENT_DURATION)
+            .availabilityRules(AVAILABILITY_RULES)
+            .location("Room 3")
+            .build();
 
         BookingLink created = testee().insert(USER_1, request).block();
 
@@ -549,10 +533,9 @@ public interface BookingLinkDAOContract {
     @Test
     default void updateShouldApplyLocation() {
         BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
-        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
-            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
-            ValuePatch.modifyTo("Room 3"), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep());
+        BookingLinkPatchRequest patchRequest = BookingLinkPatchRequest.builder()
+            .location(ValuePatch.modifyTo("Room 3"))
+            .build();
 
         BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
 
@@ -562,14 +545,16 @@ public interface BookingLinkDAOContract {
 
     @Test
     default void updateShouldAllowRemovingLocation() {
-        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
-            Optional.of(AVAILABILITY_RULES), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
-            Optional.of("Room 3"), Optional.empty(), Optional.empty(), List.of(), Optional.empty());
+        BookingLinkInsertRequest request = BookingLinkInsertRequest.builder()
+            .calendarUrl(CALENDAR_URL)
+            .eventDuration(EVENT_DURATION)
+            .availabilityRules(AVAILABILITY_RULES)
+            .location("Room 3")
+            .build();
         BookingLink inserted = testee().insert(USER_1, request).block();
-        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
-            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
-            ValuePatch.remove(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep());
+        BookingLinkPatchRequest patchRequest = BookingLinkPatchRequest.builder()
+            .location(ValuePatch.remove())
+            .build();
 
         BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
 
@@ -578,9 +563,12 @@ public interface BookingLinkDAOContract {
 
     @Test
     default void insertShouldPersistVisibility() {
-        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
-            Optional.of(AVAILABILITY_RULES), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
-            Optional.empty(), Optional.of(EventVisibility.PRIVATE), Optional.empty(), List.of(), Optional.empty());
+        BookingLinkInsertRequest request = BookingLinkInsertRequest.builder()
+            .calendarUrl(CALENDAR_URL)
+            .eventDuration(EVENT_DURATION)
+            .availabilityRules(AVAILABILITY_RULES)
+            .visibility(EventVisibility.PRIVATE)
+            .build();
 
         BookingLink created = testee().insert(USER_1, request).block();
 
@@ -600,10 +588,9 @@ public interface BookingLinkDAOContract {
     @Test
     default void updateShouldApplyVisibility() {
         BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
-        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
-            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
-            ValuePatch.keep(), ValuePatch.modifyTo(EventVisibility.PRIVATE), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep());
+        BookingLinkPatchRequest patchRequest = BookingLinkPatchRequest.builder()
+            .visibility(ValuePatch.modifyTo(EventVisibility.PRIVATE))
+            .build();
 
         BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
 
@@ -613,14 +600,16 @@ public interface BookingLinkDAOContract {
 
     @Test
     default void updateShouldAllowRemovingVisibility() {
-        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
-            Optional.of(AVAILABILITY_RULES), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
-            Optional.empty(), Optional.of(EventVisibility.PRIVATE), Optional.empty(), List.of(), Optional.empty());
+        BookingLinkInsertRequest request = BookingLinkInsertRequest.builder()
+            .calendarUrl(CALENDAR_URL)
+            .eventDuration(EVENT_DURATION)
+            .availabilityRules(AVAILABILITY_RULES)
+            .visibility(EventVisibility.PRIVATE)
+            .build();
         BookingLink inserted = testee().insert(USER_1, request).block();
-        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
-            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
-            ValuePatch.keep(), ValuePatch.remove(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep());
+        BookingLinkPatchRequest patchRequest = BookingLinkPatchRequest.builder()
+            .visibility(ValuePatch.remove())
+            .build();
 
         BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
 
@@ -629,9 +618,12 @@ public interface BookingLinkDAOContract {
 
     @Test
     default void insertShouldPersistTransparency() {
-        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
-            Optional.of(AVAILABILITY_RULES), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
-            Optional.empty(), Optional.empty(), Optional.of(EventTransparency.TRANSPARENT), List.of(), Optional.empty());
+        BookingLinkInsertRequest request = BookingLinkInsertRequest.builder()
+            .calendarUrl(CALENDAR_URL)
+            .eventDuration(EVENT_DURATION)
+            .availabilityRules(AVAILABILITY_RULES)
+            .transparency(EventTransparency.TRANSPARENT)
+            .build();
 
         BookingLink created = testee().insert(USER_1, request).block();
 
@@ -651,10 +643,9 @@ public interface BookingLinkDAOContract {
     @Test
     default void updateShouldApplyTransparency() {
         BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
-        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
-            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
-            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.modifyTo(EventTransparency.TRANSPARENT), ValuePatch.keep(), ValuePatch.keep());
+        BookingLinkPatchRequest patchRequest = BookingLinkPatchRequest.builder()
+            .transparency(ValuePatch.modifyTo(EventTransparency.TRANSPARENT))
+            .build();
 
         BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
 
@@ -664,14 +655,16 @@ public interface BookingLinkDAOContract {
 
     @Test
     default void updateShouldAllowRemovingTransparency() {
-        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
-            Optional.of(AVAILABILITY_RULES), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
-            Optional.empty(), Optional.empty(), Optional.of(EventTransparency.TRANSPARENT), List.of(), Optional.empty());
+        BookingLinkInsertRequest request = BookingLinkInsertRequest.builder()
+            .calendarUrl(CALENDAR_URL)
+            .eventDuration(EVENT_DURATION)
+            .availabilityRules(AVAILABILITY_RULES)
+            .transparency(EventTransparency.TRANSPARENT)
+            .build();
         BookingLink inserted = testee().insert(USER_1, request).block();
-        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
-            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
-            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.remove(), ValuePatch.keep(), ValuePatch.keep());
+        BookingLinkPatchRequest patchRequest = BookingLinkPatchRequest.builder()
+            .transparency(ValuePatch.remove())
+            .build();
 
         BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
 
@@ -680,9 +673,12 @@ public interface BookingLinkDAOContract {
 
     @Test
     default void insertShouldPersistResources() {
-        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
-            Optional.of(AVAILABILITY_RULES), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
-            Optional.empty(), Optional.empty(), Optional.empty(), List.of(RESOURCE_1, RESOURCE_2), Optional.empty());
+        BookingLinkInsertRequest request = BookingLinkInsertRequest.builder()
+            .calendarUrl(CALENDAR_URL)
+            .eventDuration(EVENT_DURATION)
+            .availabilityRules(AVAILABILITY_RULES)
+            .resources(List.of(RESOURCE_1, RESOURCE_2))
+            .build();
 
         BookingLink created = testee().insert(USER_1, request).block();
 
@@ -705,10 +701,9 @@ public interface BookingLinkDAOContract {
     @Test
     default void updateShouldApplyResources() {
         BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
-        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
-            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
-            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.modifyTo(List.of(RESOURCE_1)), ValuePatch.keep());
+        BookingLinkPatchRequest patchRequest = BookingLinkPatchRequest.builder()
+            .resources(ValuePatch.modifyTo(List.of(RESOURCE_1)))
+            .build();
 
         BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
 
@@ -718,14 +713,16 @@ public interface BookingLinkDAOContract {
 
     @Test
     default void updateShouldAllowRemovingResources() {
-        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
-            Optional.of(AVAILABILITY_RULES), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
-            Optional.empty(), Optional.empty(), Optional.empty(), List.of(RESOURCE_1), Optional.empty());
+        BookingLinkInsertRequest request = BookingLinkInsertRequest.builder()
+            .calendarUrl(CALENDAR_URL)
+            .eventDuration(EVENT_DURATION)
+            .availabilityRules(AVAILABILITY_RULES)
+            .resources(List.of(RESOURCE_1))
+            .build();
         BookingLink inserted = testee().insert(USER_1, request).block();
-        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
-            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
-            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.remove(), ValuePatch.keep());
+        BookingLinkPatchRequest patchRequest = BookingLinkPatchRequest.builder()
+            .resources(ValuePatch.remove())
+            .build();
 
         BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
 
@@ -735,15 +732,16 @@ public interface BookingLinkDAOContract {
 
     @Test
     default void updateShouldKeepResourcesWhenNotSpecified() {
-        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
-            Optional.of(AVAILABILITY_RULES), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
-            Optional.empty(), Optional.empty(), Optional.empty(), List.of(RESOURCE_1), Optional.empty());
+        BookingLinkInsertRequest request = BookingLinkInsertRequest.builder()
+            .calendarUrl(CALENDAR_URL)
+            .eventDuration(EVENT_DURATION)
+            .availabilityRules(AVAILABILITY_RULES)
+            .resources(List.of(RESOURCE_1))
+            .build();
         BookingLink inserted = testee().insert(USER_1, request).block();
-        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            ValuePatch.keep(),
-            ValuePatch.modifyTo(UPDATED_DURATION),
-            ValuePatch.keep(),
-            ValuePatch.keep());
+        BookingLinkPatchRequest patchRequest = BookingLinkPatchRequest.builder()
+            .duration(ValuePatch.modifyTo(UPDATED_DURATION))
+            .build();
 
         BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
 
@@ -752,9 +750,12 @@ public interface BookingLinkDAOContract {
 
     @Test
     default void insertShouldPersistAlarm() {
-        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
-            Optional.of(AVAILABILITY_RULES), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
-            Optional.empty(), Optional.empty(), Optional.empty(), List.of(), Optional.of(ALARM));
+        BookingLinkInsertRequest request = BookingLinkInsertRequest.builder()
+            .calendarUrl(CALENDAR_URL)
+            .eventDuration(EVENT_DURATION)
+            .availabilityRules(AVAILABILITY_RULES)
+            .alarm(ALARM)
+            .build();
 
         BookingLink created = testee().insert(USER_1, request).block();
 
@@ -774,10 +775,9 @@ public interface BookingLinkDAOContract {
     @Test
     default void updateShouldApplyAlarm() {
         BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
-        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
-            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
-            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.modifyTo(ALARM));
+        BookingLinkPatchRequest patchRequest = BookingLinkPatchRequest.builder()
+            .alarm(ValuePatch.modifyTo(ALARM))
+            .build();
 
         BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
 
@@ -787,14 +787,16 @@ public interface BookingLinkDAOContract {
 
     @Test
     default void updateShouldAllowRemovingAlarm() {
-        BookingLinkInsertRequest request = new BookingLinkInsertRequest(CALENDAR_URL, EVENT_DURATION, ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
-            Optional.of(AVAILABILITY_RULES), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
-            Optional.empty(), Optional.empty(), Optional.empty(), List.of(), Optional.of(ALARM));
+        BookingLinkInsertRequest request = BookingLinkInsertRequest.builder()
+            .calendarUrl(CALENDAR_URL)
+            .eventDuration(EVENT_DURATION)
+            .availabilityRules(AVAILABILITY_RULES)
+            .alarm(ALARM)
+            .build();
         BookingLink inserted = testee().insert(USER_1, request).block();
-        BookingLinkPatchRequest patchRequest = new BookingLinkPatchRequest(
-            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
-            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(),
-            ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.keep(), ValuePatch.remove());
+        BookingLinkPatchRequest patchRequest = BookingLinkPatchRequest.builder()
+            .alarm(ValuePatch.remove())
+            .build();
 
         BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
 

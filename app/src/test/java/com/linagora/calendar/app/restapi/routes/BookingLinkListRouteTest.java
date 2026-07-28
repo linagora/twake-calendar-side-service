@@ -29,7 +29,6 @@ import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.LocalTime;
 import java.time.ZoneId;
-import java.util.Optional;
 
 import org.apache.http.HttpStatus;
 import org.apache.james.utils.GuiceProbe;
@@ -133,9 +132,9 @@ class BookingLinkListRouteTest {
     @Test
     void shouldReturn200WithAllBookingLinksOfUser() {
         BookingLink first = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
         BookingLink second = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(60), false, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(60)).active(false).build());
 
         String response = given()
         .when()
@@ -175,7 +174,7 @@ class BookingLinkListRouteTest {
         AvailabilityRules rules = AvailabilityRules.of(
             new WeeklyAvailabilityRule(DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(17, 0), UTC));
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.of(rules)));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).availabilityRules(rules).build());
 
         String response = given()
         .when()
@@ -207,7 +206,7 @@ class BookingLinkListRouteTest {
     void shouldNotReturnBookingLinksOfOtherUsers() {
         OpenPaaSUser otherUser = sabreDavExtension.newTestUser();
         bookingLinkProbe.insertBookingLink(otherUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(otherUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(otherUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         String response = given()
         .when()
@@ -223,7 +222,7 @@ class BookingLinkListRouteTest {
     @Test
     void shouldNotReturnDeletedBookingLinks() {
         BookingLink toDelete = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
         bookingLinkProbe.deleteBookingLink(openPaaSUser.username(), toDelete.publicId());
 
         String response = given()

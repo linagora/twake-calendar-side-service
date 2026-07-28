@@ -62,60 +62,105 @@ public record BookingLinkInsertRequest(CalendarURL calendarUrl,
         Preconditions.checkNotNull(alarm, "'alarm' must not be null");
     }
 
-    public BookingLinkInsertRequest(CalendarURL calendarUrl,
-                                    Duration eventDuration,
-                                    boolean active,
-                                    boolean autoAccept,
-                                    Optional<AvailabilityRules> availabilityRules,
-                                    ExtraAttendees extraAttendees,
-                                    Optional<String> name,
-                                    Optional<String> description,
-                                    Optional<String> color) {
-        this(calendarUrl, eventDuration, active, autoAccept, availabilityRules, extraAttendees, name, description, color,
-            Optional.empty(), Optional.empty(), Optional.empty(), NO_RESOURCE, Optional.empty());
+    public static Builder builder() {
+        return new Builder();
     }
 
-    public BookingLinkInsertRequest(CalendarURL calendarUrl,
-                                    Duration eventDuration,
-                                    boolean active,
-                                    boolean autoAccept,
-                                    Optional<AvailabilityRules> availabilityRules,
-                                    Optional<String> name,
-                                    Optional<String> description,
-                                    Optional<String> color) {
-        this(calendarUrl, eventDuration, active, autoAccept, availabilityRules, NO_EXTRA_ATTENDEE, name, description, color);
-    }
+    public static class Builder {
+        private CalendarURL calendarUrl;
+        private Duration eventDuration;
+        private boolean active = ACTIVE;
+        private boolean autoAccept = AUTO_ACCEPT;
+        private Optional<AvailabilityRules> availabilityRules = Optional.empty();
+        private ExtraAttendees extraAttendees = NO_EXTRA_ATTENDEE;
+        private Optional<String> name = Optional.empty();
+        private Optional<String> description = Optional.empty();
+        private Optional<String> color = Optional.empty();
+        private Optional<String> location = Optional.empty();
+        private Optional<EventVisibility> visibility = Optional.empty();
+        private Optional<EventTransparency> transparency = Optional.empty();
+        private List<ResourceId> resources = NO_RESOURCE;
+        private Optional<BookingLinkAlarm> alarm = Optional.empty();
 
-    public BookingLinkInsertRequest(CalendarURL calendarUrl,
-                                    Duration eventDuration,
-                                    boolean active,
-                                    boolean autoAccept,
-                                    Optional<AvailabilityRules> availabilityRules,
-                                    Optional<String> name,
-                                    Optional<String> description) {
-        this(calendarUrl, eventDuration, active, autoAccept, availabilityRules, name, description, Optional.empty());
-    }
+        public Builder calendarUrl(CalendarURL calendarUrl) {
+            this.calendarUrl = calendarUrl;
+            return this;
+        }
 
-    public BookingLinkInsertRequest(CalendarURL calendarUrl,
-                                    Duration eventDuration,
-                                    boolean active,
-                                    Optional<AvailabilityRules> availabilityRules,
-                                    Optional<String> name,
-                                    Optional<String> description) {
-        this(calendarUrl, eventDuration, active, AUTO_ACCEPT, availabilityRules, name, description);
-    }
+        public Builder eventDuration(Duration eventDuration) {
+            this.eventDuration = eventDuration;
+            return this;
+        }
 
-    public BookingLinkInsertRequest(CalendarURL calendarUrl,
-                                    Duration eventDuration,
-                                    boolean active,
-                                    Optional<AvailabilityRules> availabilityRules) {
-        this(calendarUrl, eventDuration, active, availabilityRules, Optional.empty(), Optional.empty());
-    }
+        public Builder active(boolean active) {
+            this.active = active;
+            return this;
+        }
 
-    public BookingLinkInsertRequest(CalendarURL calendarUrl,
-                                    Duration eventDuration,
-                                    AvailabilityRules availabilityRules) {
-        this(calendarUrl, eventDuration, ACTIVE, Optional.of(availabilityRules));
+        public Builder autoAccept(boolean autoAccept) {
+            this.autoAccept = autoAccept;
+            return this;
+        }
+
+        public Builder availabilityRules(AvailabilityRules availabilityRules) {
+            this.availabilityRules = Optional.of(availabilityRules);
+            return this;
+        }
+
+        public Builder availabilityRules(Optional<AvailabilityRules> availabilityRules) {
+            this.availabilityRules = availabilityRules;
+            return this;
+        }
+
+        public Builder extraAttendees(ExtraAttendees extraAttendees) {
+            this.extraAttendees = extraAttendees;
+            return this;
+        }
+
+        public Builder name(String name) {
+            this.name = Optional.of(name);
+            return this;
+        }
+
+        public Builder description(String description) {
+            this.description = Optional.of(description);
+            return this;
+        }
+
+        public Builder color(String color) {
+            this.color = Optional.of(color);
+            return this;
+        }
+
+        public Builder location(String location) {
+            this.location = Optional.of(location);
+            return this;
+        }
+
+        public Builder visibility(EventVisibility visibility) {
+            this.visibility = Optional.of(visibility);
+            return this;
+        }
+
+        public Builder transparency(EventTransparency transparency) {
+            this.transparency = Optional.of(transparency);
+            return this;
+        }
+
+        public Builder resources(List<ResourceId> resources) {
+            this.resources = resources;
+            return this;
+        }
+
+        public Builder alarm(BookingLinkAlarm alarm) {
+            this.alarm = Optional.of(alarm);
+            return this;
+        }
+
+        public BookingLinkInsertRequest build() {
+            return new BookingLinkInsertRequest(calendarUrl, eventDuration, active, autoAccept, availabilityRules, extraAttendees,
+                name, description, color, location, visibility, transparency, resources, alarm);
+        }
     }
 
 }

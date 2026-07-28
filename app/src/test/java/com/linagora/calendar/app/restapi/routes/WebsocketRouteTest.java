@@ -2533,12 +2533,11 @@ class WebsocketRouteTest {
     }
 
     private BookingLinkInsertRequest bookingLinkInsertRequest(OpenPaaSUser user) {
-        return new BookingLinkInsertRequest(CalendarURL.from(user.id()),
-            Duration.ofMinutes(30),
-            BookingLinkInsertRequest.ACTIVE,
-            Optional.empty(),
-            Optional.of("Intro call"),
-            Optional.empty());
+        return BookingLinkInsertRequest.builder()
+            .calendarUrl(CalendarURL.from(user.id()))
+            .eventDuration(Duration.ofMinutes(30))
+            .name("Intro call")
+            .build();
     }
 
     private String importIcsIntoCalendar(TwakeCalendarGuiceServer guiceServer,

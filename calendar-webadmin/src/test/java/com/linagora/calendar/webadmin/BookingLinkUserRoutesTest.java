@@ -133,9 +133,10 @@ public class BookingLinkUserRoutesTest {
 
     private BookingLink insertBookingLink(OpenPaaSUser user) {
         return bookingLinkDAO.insert(user.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(user.id()), Duration.ofMinutes(30),
-                new AvailabilityRules(List.of(new WeeklyAvailabilityRule(java.time.DayOfWeek.MONDAY,
-                    java.time.LocalTime.of(9, 0), java.time.LocalTime.of(17, 0), UTC)))))
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(user.id())).eventDuration(Duration.ofMinutes(30))
+                .availabilityRules(new AvailabilityRules(List.of(new WeeklyAvailabilityRule(java.time.DayOfWeek.MONDAY,
+                    java.time.LocalTime.of(9, 0), java.time.LocalTime.of(17, 0), UTC))))
+                .build())
             .block();
     }
 
@@ -630,9 +631,11 @@ public class BookingLinkUserRoutesTest {
     @Test
     void patchShouldRemoveAlarmWhenSetToNull() {
         BookingLink bookingLink = bookingLinkDAO.insert(user.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(user.id()), Duration.ofMinutes(30), BookingLinkInsertRequest.ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
-                Optional.empty(), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
-                Optional.empty(), Optional.empty(), Optional.empty(), List.of(), Optional.of(new BookingLinkAlarm("-PT10M")))).block();
+            BookingLinkInsertRequest.builder()
+                .calendarUrl(CalendarURL.from(user.id()))
+                .eventDuration(Duration.ofMinutes(30))
+                .alarm(new BookingLinkAlarm("-PT10M"))
+                .build()).block();
 
         given()
             .body("""
@@ -682,9 +685,11 @@ public class BookingLinkUserRoutesTest {
     @Test
     void patchShouldRemoveResourcesWhenSetToNull() {
         BookingLink bookingLink = bookingLinkDAO.insert(user.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(user.id()), Duration.ofMinutes(30), BookingLinkInsertRequest.ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
-                Optional.empty(), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
-                Optional.empty(), Optional.empty(), Optional.empty(), List.of(saveResource(user)), Optional.empty())).block();
+            BookingLinkInsertRequest.builder()
+                .calendarUrl(CalendarURL.from(user.id()))
+                .eventDuration(Duration.ofMinutes(30))
+                .resources(List.of(saveResource(user)))
+                .build()).block();
 
         given()
             .body("""

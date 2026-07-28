@@ -277,9 +277,10 @@ public class BookingLinkEventDeletionTest {
 
     private BookingLink insertBookingLink() {
         return bookingLinkDAO.insert(user.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(user.id()), Duration.ofMinutes(30),
-                new AvailabilityRules(List.of(new WeeklyAvailabilityRule(java.time.DayOfWeek.MONDAY,
-                    java.time.LocalTime.of(9, 0), java.time.LocalTime.of(17, 0), UTC)))))
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(user.id())).eventDuration(Duration.ofMinutes(30))
+                .availabilityRules(new AvailabilityRules(List.of(new WeeklyAvailabilityRule(java.time.DayOfWeek.MONDAY,
+                    java.time.LocalTime.of(9, 0), java.time.LocalTime.of(17, 0), UTC))))
+                .build())
             .block();
     }
 

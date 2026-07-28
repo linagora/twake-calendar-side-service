@@ -31,7 +31,6 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 import org.apache.http.HttpStatus;
@@ -132,7 +131,7 @@ class BookingLinkGetRouteTest {
     @Test
     void shouldReturn200WithExpectedBodyWhenNoAvailabilityRules() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         String response = given()
         .when()
@@ -158,10 +157,11 @@ class BookingLinkGetRouteTest {
     @Test
     void shouldReturn200WithExtraAttendeesWhenSet() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE,
-                BookingLinkInsertRequest.AUTO_ACCEPT, Optional.empty(),
-                ExtraAttendees.of(new OpenPaaSId("659387b9d486dc0046aeffb1"), new OpenPaaSId("659387b9d486dc0046aeffb2")),
-                Optional.empty(), Optional.empty(), Optional.empty()));
+            BookingLinkInsertRequest.builder()
+                .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+                .eventDuration(Duration.ofMinutes(30))
+                .extraAttendees(ExtraAttendees.of(new OpenPaaSId("659387b9d486dc0046aeffb1"), new OpenPaaSId("659387b9d486dc0046aeffb2")))
+                .build());
 
         String response = given()
         .when()
@@ -191,7 +191,7 @@ class BookingLinkGetRouteTest {
             new WeeklyAvailabilityRule(DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(12, 0), ZONE_HO_CHI_MINH),
             new WeeklyAvailabilityRule(DayOfWeek.MONDAY, LocalTime.of(13, 0), LocalTime.of(17, 0), ZoneId.of("Europe/London")));
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.of(rules)));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).availabilityRules(rules).build());
 
         String response = given()
         .when()
@@ -225,7 +225,7 @@ class BookingLinkGetRouteTest {
                 LocalDateTime.parse("2026-01-26T02:00:00").atZone(UTC),
                 LocalDateTime.parse("2026-01-30T02:00:00").atZone(UTC)));
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(60), NOT_ACTIVE, Optional.of(rules)));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(60)).active(NOT_ACTIVE).availabilityRules(rules).build());
 
         String response = given()
         .when()
@@ -259,7 +259,7 @@ class BookingLinkGetRouteTest {
                 LocalDateTime.parse("2026-01-26T00:00:00").atZone(ZoneId.of("Europe/London")),
                 LocalDateTime.parse("2026-01-30T00:00:00").atZone(ZoneId.of("Europe/London"))));
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.of(rules)));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).availabilityRules(rules).build());
 
         String response = given()
         .when()
@@ -289,8 +289,12 @@ class BookingLinkGetRouteTest {
     @Test
     void shouldReturn200WithNameAndDescription() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE,
-                Optional.empty(), Optional.of("Intro call"), Optional.of("Book a 30-minute introduction call")));
+            BookingLinkInsertRequest.builder()
+                .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+                .eventDuration(Duration.ofMinutes(30))
+                .name("Intro call")
+                .description("Book a 30-minute introduction call")
+                .build());
 
         String response = given()
         .when()
@@ -318,8 +322,11 @@ class BookingLinkGetRouteTest {
     @Test
     void shouldReturn200WithAutoAccept() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, true,
-                Optional.empty(), Optional.empty(), Optional.empty()));
+            BookingLinkInsertRequest.builder()
+                .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+                .eventDuration(Duration.ofMinutes(30))
+                .autoAccept(true)
+                .build());
 
         String response = given()
         .when()
@@ -345,8 +352,11 @@ class BookingLinkGetRouteTest {
     @Test
     void shouldReturn200WithCustomColor() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE,
-                BookingLinkInsertRequest.AUTO_ACCEPT, Optional.empty(), Optional.empty(), Optional.empty(), Optional.of("#FF8800")));
+            BookingLinkInsertRequest.builder()
+                .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+                .eventDuration(Duration.ofMinutes(30))
+                .color("#FF8800")
+                .build());
 
         String response = given()
         .when()
@@ -372,9 +382,11 @@ class BookingLinkGetRouteTest {
     @Test
     void shouldReturn200WithLocation() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
-                Optional.empty(), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
-                Optional.of("Room 3, Building A"), Optional.empty(), Optional.empty(), List.of(), Optional.empty()));
+            BookingLinkInsertRequest.builder()
+                .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+                .eventDuration(Duration.ofMinutes(30))
+                .location("Room 3, Building A")
+                .build());
 
         String response = given()
         .when()
@@ -400,9 +412,11 @@ class BookingLinkGetRouteTest {
     @Test
     void shouldReturn200WithVisibility() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
-                Optional.empty(), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
-                Optional.empty(), Optional.of(EventVisibility.PRIVATE), Optional.empty(), List.of(), Optional.empty()));
+            BookingLinkInsertRequest.builder()
+                .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+                .eventDuration(Duration.ofMinutes(30))
+                .visibility(EventVisibility.PRIVATE)
+                .build());
 
         String response = given()
         .when()
@@ -428,9 +442,11 @@ class BookingLinkGetRouteTest {
     @Test
     void shouldReturn200WithTransparency() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
-                Optional.empty(), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
-                Optional.empty(), Optional.empty(), Optional.of(EventTransparency.TRANSPARENT), List.of(), Optional.empty()));
+            BookingLinkInsertRequest.builder()
+                .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+                .eventDuration(Duration.ofMinutes(30))
+                .transparency(EventTransparency.TRANSPARENT)
+                .build());
 
         String response = given()
         .when()
@@ -456,10 +472,11 @@ class BookingLinkGetRouteTest {
     @Test
     void shouldReturn200WithResources() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
-                Optional.empty(), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
-                Optional.empty(), Optional.empty(), Optional.empty(),
-                List.of(new ResourceId("659387b9d486dc0046aeffc1"), new ResourceId("659387b9d486dc0046aeffc2")), Optional.empty()));
+            BookingLinkInsertRequest.builder()
+                .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+                .eventDuration(Duration.ofMinutes(30))
+                .resources(List.of(new ResourceId("659387b9d486dc0046aeffc1"), new ResourceId("659387b9d486dc0046aeffc2")))
+                .build());
 
         String response = given()
         .when()
@@ -485,9 +502,11 @@ class BookingLinkGetRouteTest {
     @Test
     void shouldReturn200WithAlarm() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
-                Optional.empty(), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
-                Optional.empty(), Optional.empty(), Optional.empty(), List.of(), Optional.of(new BookingLinkAlarm("-PT10M"))));
+            BookingLinkInsertRequest.builder()
+                .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+                .eventDuration(Duration.ofMinutes(30))
+                .alarm(new BookingLinkAlarm("-PT10M"))
+                .build());
 
         String response = given()
         .when()
@@ -523,7 +542,7 @@ class BookingLinkGetRouteTest {
     void shouldReturn404WhenBookingLinkBelongsToAnotherUser() {
         OpenPaaSUser otherUser = sabreDavExtension.newTestUser();
         BookingLink inserted = bookingLinkProbe.insertBookingLink(otherUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(otherUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(otherUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         given()
         .when()
@@ -535,7 +554,7 @@ class BookingLinkGetRouteTest {
     @Test
     void shouldReturn401WhenUnauthenticated() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         with()
             .auth().none()
