@@ -26,7 +26,6 @@ import static com.mongodb.client.model.Indexes.ascending;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Date;
-import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
@@ -41,7 +40,6 @@ import com.linagora.calendar.storage.ResourceInsertRequest;
 import com.linagora.calendar.storage.ResourceNotFoundException;
 import com.linagora.calendar.storage.ResourceUpdateRequest;
 import com.linagora.calendar.storage.model.Resource;
-import com.linagora.calendar.storage.model.ResourceAdministrator;
 import com.linagora.calendar.storage.model.ResourceId;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.IndexOptions;
@@ -59,7 +57,6 @@ public class MongoDBResourceDAO implements ResourceDAO {
 
     public static final String COLLECTION = "resources";
     public static final String ID_FIELD = "_id";
-    public static final String ADMINISTRATORS_FIELD = "administrators";
     public static final String CREATOR_FIELD = "creator";
     public static final String DELETED_FIELD = "deleted";
     public static final String DESCRIPTION_FIELD = "description";
@@ -70,8 +67,6 @@ public class MongoDBResourceDAO implements ResourceDAO {
     public static final String UPDATED_FIELD = "updatedAt";
     public static final String TYPE_FIELD = "type";
     public static final String TIMESTAMPS = "timestamps";
-    public static final String ADMIN_ID = "id";
-    public static final String ADMIN_OBJECT_TYPE = "objectType";
 
     private final MongoCollection<Document> collection;
     public final Clock clock;
@@ -170,7 +165,7 @@ public class MongoDBResourceDAO implements ResourceDAO {
 
     private Document toDocument(ResourceInsertRequest request) {
         Date now = Date.from(clock.instant());
-        return new Document().append(ADMINISTRATORS_FIELD, List.of())
+        return new Document()
             .append(CREATOR_FIELD, new ObjectId(request.creator().value()))
             .append(DELETED_FIELD, !DELETED)
             .append(DESCRIPTION_FIELD, request.description())
@@ -185,8 +180,7 @@ public class MongoDBResourceDAO implements ResourceDAO {
 
     private Document toDocument(Resource resource) {
         Document doc = new Document();
-        doc.append(ADMINISTRATORS_FIELD, resource.administrators().stream().map(this::toDocument).toList())
-            .append(CREATOR_FIELD, new ObjectId(resource.creator().value()))
+        doc.append(CREATOR_FIELD, new ObjectId(resource.creator().value()))
             .append(DELETED_FIELD, resource.deleted())
             .append(DESCRIPTION_FIELD, resource.description())
             .append(DOMAIN_FIELD, new ObjectId(resource.domain().value()))
@@ -204,8 +198,6 @@ public class MongoDBResourceDAO implements ResourceDAO {
 
         return new Resource(
             new ResourceId(doc.getObjectId(ID_FIELD).toHexString()),
-            ((List<Document>) doc.get(ADMINISTRATORS_FIELD)).stream()
-                .map(this::fromAdminDocument).toList(),
             new OpenPaaSId(doc.getObjectId(CREATOR_FIELD).toHexString()),
             doc.getBoolean(DELETED_FIELD, !DELETED),
             doc.getString(DESCRIPTION_FIELD),
@@ -215,19 +207,6 @@ public class MongoDBResourceDAO implements ResourceDAO {
             timestamps.creation(),
             timestamps.updatedAt(),
             doc.getString(TYPE_FIELD)
-        );
-    }
-
-    private Document toDocument(ResourceAdministrator admin) {
-        return new Document()
-            .append(ADMIN_ID, admin.refId().value())
-            .append(ADMIN_OBJECT_TYPE, admin.objectType());
-    }
-
-    private ResourceAdministrator fromAdminDocument(Document doc) {
-        return new ResourceAdministrator(
-            new OpenPaaSId(doc.getString(ADMIN_ID)),
-            doc.getString(ADMIN_OBJECT_TYPE)
         );
     }
 
