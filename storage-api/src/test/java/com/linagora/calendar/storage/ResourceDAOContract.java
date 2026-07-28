@@ -188,7 +188,6 @@ public interface ResourceDAOContract {
 
         Resource expected = new Resource(
             resourceId,
-            List.of(),
             CREATOR1,
             !DELETED,
             "UpdatedDesc",

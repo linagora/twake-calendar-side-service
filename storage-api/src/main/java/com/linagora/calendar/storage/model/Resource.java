@@ -20,15 +20,12 @@ package com.linagora.calendar.storage.model;
 
 import java.time.Clock;
 import java.time.Instant;
-import java.util.List;
-import java.util.List;
 
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.ResourceInsertRequest;
 import com.linagora.calendar.storage.ResourceUpdateRequest;
 
 public record Resource(ResourceId id,
-                       List<ResourceAdministrator> administrators,
                        OpenPaaSId creator,
                        boolean deleted,
                        String description,
@@ -46,7 +43,6 @@ public record Resource(ResourceId id,
         Instant now = clock.instant();
         return new Resource(
             id,
-            List.of(),
             req.creator(),
             !DELETED,
             req.description(),
@@ -61,7 +57,6 @@ public record Resource(ResourceId id,
     public Resource update(ResourceUpdateRequest req, Instant updated) {
         return new Resource(
             this.id,
-            this.administrators,
             this.creator,
             this.deleted,
             req.description().orElse(this.description),
@@ -77,7 +72,6 @@ public record Resource(ResourceId id,
     public Resource markAsDeleted(Instant updated) {
         return new Resource(
             this.id,
-            this.administrators,
             this.creator,
             DELETED,
             this.description,

@@ -773,7 +773,7 @@ public class CalendarListNotificationConsumerTest {
             ResourceId resourceId = createResourceViaWebAdmin(creator, "TV", List.of(bob));
             CalendarURL delegatedCalendarURL = getDelegatedCalendarURL(bob);
 
-            revokeResourceAdminRightsViaWebAdmin(creator, resourceId);
+            revokeResourceAdminRightsViaWebAdmin(creator, resourceId, List.of(bob));
 
             awaitAtMost.untilAsserted(() -> assertThat(eventsReceived)
                 .anySatisfy(event -> {
@@ -821,15 +821,12 @@ public class CalendarListNotificationConsumerTest {
             return resourceId;
         }
 
-        private void revokeResourceAdminRightsViaWebAdmin(OpenPaaSUser actor, ResourceId resourceId) {
+        private void revokeResourceAdminRightsViaWebAdmin(OpenPaaSUser actor, ResourceId resourceId, List<OpenPaaSUser> administrators) {
             OpenPaaSId domainId = domainDAO.retrieve(actor.username().getDomainPart().get())
                 .map(OpenPaaSDomain::id)
                 .block();
 
-            List<Username> adminUsernames = resourceDAO.findById(resourceId).block()
-                .administrators().stream()
-                .filter(admin -> "user".equalsIgnoreCase(admin.objectType()))
-                .flatMap(admin -> Optional.ofNullable(openPaaSUserDAO.retrieve(admin.refId()).block()).stream())
+            List<Username> adminUsernames = administrators.stream()
                 .map(OpenPaaSUser::username)
                 .toList();
 

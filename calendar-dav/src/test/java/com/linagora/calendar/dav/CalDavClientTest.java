@@ -68,7 +68,6 @@ import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.ResourceInsertRequest;
 import com.linagora.calendar.storage.TeamCalendarInsertRequest;
-import com.linagora.calendar.storage.model.ResourceAdministrator;
 import com.linagora.calendar.storage.model.ResourceId;
 import com.linagora.calendar.storage.model.TeamCalendar;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;

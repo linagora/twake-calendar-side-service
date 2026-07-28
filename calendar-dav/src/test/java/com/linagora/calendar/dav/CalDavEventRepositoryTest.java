@@ -49,7 +49,6 @@ import com.linagora.calendar.storage.ResourceInsertRequest;
 import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.eventsearch.EventUid;
-import com.linagora.calendar.storage.model.ResourceAdministrator;
 import com.linagora.calendar.storage.model.ResourceId;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
@@ -339,11 +338,10 @@ public class CalDavEventRepositoryTest {
     @Test
     void updatePartStatShouldUpdateResourcePartStatSuccessfully() {
         // Given
-        ResourceAdministrator administrator = new ResourceAdministrator(organizer.id(), "user");
         OpenPaaSDomain domain = domainDAO.retrieve(organizer.username().getDomainPart().get()).block();
 
         ResourceInsertRequest insertRequest = new ResourceInsertRequest(
-            administrator.refId(),
+            organizer.id(),
             "This is a projector made in China",
             domain.id(),
             "projector",
