@@ -37,6 +37,7 @@ import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalDavClient.CalendarAccess;
 import com.linagora.calendar.restapi.ForbiddenException;
 import com.linagora.calendar.restapi.RestApiConfiguration;
+import com.linagora.calendar.restapi.routes.BookingLinkEventIcsBuilder.BookingEventOptions;
 import com.linagora.calendar.restapi.routes.BookingLinkEventIcsBuilder.BuildResult;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingRequest.BookingAttendee;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -56,6 +57,7 @@ public class BookingLinkReservationService {
     private final PublicAgendaProposalNotifier publicAgendaProposalNotifier;
     private final BookingLinkRequestAcknowledgementNotifier bookingLinkRequestAcknowledgementNotifier;
     private final BookingLinkExtraAttendeeResolver extraAttendeeResolver;
+    private final BookingLinkResourceResolver resourceResolver;
 
     @Inject
     public BookingLinkReservationService(Clock clock,
@@ -65,11 +67,13 @@ public class BookingLinkReservationService {
                                          OpenPaaSUserDAO openPaaSUserDAO,
                                          PublicAgendaProposalNotifier publicAgendaProposalNotifier,
                                          BookingLinkRequestAcknowledgementNotifier bookingLinkRequestAcknowledgementNotifier,
-                                         BookingLinkExtraAttendeeResolver extraAttendeeResolver) {
+                                         BookingLinkExtraAttendeeResolver extraAttendeeResolver,
+                                         BookingLinkResourceResolver resourceResolver) {
         this.calDavClient = calDavClient;
         this.bookingLinkSlotsService = bookingLinkSlotsService;
         this.openPaaSUserDAO = openPaaSUserDAO;
         this.extraAttendeeResolver = extraAttendeeResolver;
+        this.resourceResolver = resourceResolver;
         this.publicAgendaProposalNotifier = publicAgendaProposalNotifier;
         this.bookingLinkRequestAcknowledgementNotifier = bookingLinkRequestAcknowledgementNotifier;
         this.bookingLinkEventIcsBuilder = new BookingLinkEventIcsBuilder(clock, new MeetingConferenceLinkResolver.Visio(restApiConfiguration));
@@ -106,12 +110,14 @@ public class BookingLinkReservationService {
     }
 
     private Mono<BookedEvent> createBooking(BookingLink bookingLink, BookingRequest request) {
-        return Mono.zip(openPaaSUserDAO.retrieve(bookingLink.username()), resolveExtraAttendees(bookingLink))
+        return Mono.zip(openPaaSUserDAO.retrieve(bookingLink.username()), resolveExtraAttendees(bookingLink), resolveResources(bookingLink))
             .flatMap(tuple -> {
                 OpenPaaSUser organizer = tuple.getT1();
+                BookingEventOptions options = new BookingEventOptions(bookingLink.location(),
+                    bookingLink.visibility(), bookingLink.transparency(), tuple.getT3(), bookingLink.alarm());
                 BuildResult eventIcsResult = bookingLinkEventIcsBuilder.build(request,
                     BookingAttendee.from(organizer.fullName(), organizer.username().asString()), tuple.getT2(),
-                    bookingLink.duration(), bookingLink.publicId(), bookingLink.autoAccept());
+                    bookingLink.duration(), bookingLink.publicId(), bookingLink.autoAccept(), options);
 
                 BookedEvent bookedEvent = new BookedEvent(
                     bookingLink.publicId().value(),
@@ -129,6 +135,12 @@ public class BookingLinkReservationService {
     private Mono<List<BookingAttendee>> resolveExtraAttendees(BookingLink bookingLink) {
         return extraAttendeeResolver.resolveExisting(bookingLink.extraAttendees().participants())
             .map(user -> BookingAttendee.from(user.fullName(), user.username().asString()))
+            .collectList();
+    }
+
+    private Mono<List<BookingAttendee>> resolveResources(BookingLink bookingLink) {
+        return resourceResolver.resolveExisting(bookingLink.username(), bookingLink.resources())
+            .map(resource -> BookingAttendee.from(resource.name(), resource.mailAddress().asString()))
             .collectList();
     }
 

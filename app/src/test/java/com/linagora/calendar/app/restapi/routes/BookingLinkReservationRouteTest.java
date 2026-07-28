@@ -68,6 +68,7 @@ import com.linagora.calendar.api.booking.AvailabilityRule.FixedAvailabilityRule;
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.app.AppTestHelper;
 import com.linagora.calendar.app.BookingLinkProbe;
+import com.linagora.calendar.app.ResourceProbe;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
@@ -85,11 +86,15 @@ import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
+import com.linagora.calendar.storage.booking.BookingLinkAlarm;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
+import com.linagora.calendar.storage.booking.EventTransparency;
+import com.linagora.calendar.storage.booking.EventVisibility;
 import com.linagora.calendar.storage.booking.ExtraAttendees;
 import com.linagora.calendar.storage.event.EventFields.Person;
 import com.linagora.calendar.storage.event.EventParseUtils;
+import com.linagora.calendar.storage.model.Resource;
 import com.linagora.calendar.storage.model.TeamCalendarId;
 
 import io.restassured.RestAssured;
@@ -137,9 +142,14 @@ class BookingLinkReservationRouteTest {
                 MaybeSender.getMailSender("no-reply@openpaas.org"))),
         binder -> binder.bind(MailSenderConfiguration.class)
             .toInstance(mailSenderConfigurationFunction.apply(mockSmtpExtension)),
-        binder -> Multibinder.newSetBinder(binder, GuiceProbe.class)
-            .addBinding()
-            .to(BookingLinkProbe.class));
+        binder -> {
+            Multibinder.newSetBinder(binder, GuiceProbe.class)
+                .addBinding()
+                .to(BookingLinkProbe.class);
+            Multibinder.newSetBinder(binder, GuiceProbe.class)
+                .addBinding()
+                .to(ResourceProbe.class);
+        });
 
     @AfterAll
     static void afterAll() {
@@ -1644,6 +1654,45 @@ class BookingLinkReservationRouteTest {
             .filter(line -> line.startsWith("ATTENDEE") && line.contains(extraAttendee.username().asString())))
             .describedAs("the booker already is an attendee: no duplicate ATTENDEE with a conflicting PARTSTAT")
             .hasSize(1);
+    }
+
+    @Test
+    void bookingShouldCarryLocationVisibilityTransparencyResourceAndAlarmOntoEvent(TwakeCalendarGuiceServer server) {
+        Resource resource = server.getProbe(ResourceProbe.class).save(openPaaSUser, "Projector", "projector");
+        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(
+            CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES, BookingLinkInsertRequest.ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
+            Optional.of(AVAILABILITY_RULE), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
+            Optional.of("Room 3"), Optional.of(EventVisibility.PRIVATE), Optional.of(EventTransparency.TRANSPARENT),
+            List.of(resource.id()), Optional.of(new BookingLinkAlarm("-PT10M")));
+        BookingLink inserted = server.getProbe(BookingLinkProbe.class).insert(openPaaSUser.username(), insertRequest);
+        String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();
+
+        given()
+            .auth().none()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body(bodyRequest(slotStartUtc))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED);
+
+        String unfoldedCalendar = exportCalendar(openPaaSUser).replace("\r\n ", "");
+
+        assertThat(unfoldedCalendar)
+            .contains("LOCATION:Room 3")
+            .contains("CLASS:PRIVATE")
+            .contains("TRANSP:TRANSPARENT")
+            .contains("ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=RESOURCE;PARTSTAT=NEEDS-ACTION;CN=Projector:mailto:"
+                + resource.id().value() + "@" + openPaaSUser.username().getDomainPart().orElseThrow().asString())
+            .containsIgnoringNewLines("""
+                BEGIN:VALARM
+                ACTION:EMAIL
+                TRIGGER:-PT10M
+                ATTENDEE:mailto:%s
+                ATTENDEE:mailto:creator@example.com
+                ATTENDEE:mailto:vana@example.com
+                END:VALARM
+                """.formatted(openPaaSUser.username().asString()));
     }
 
     private BookingLink insertActiveBookingLink(TwakeCalendarGuiceServer server) {

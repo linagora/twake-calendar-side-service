@@ -20,11 +20,13 @@ package com.linagora.calendar.restapi.routes;
 
 import static com.linagora.calendar.restapi.RestApiConstants.JSON_HEADER;
 
+import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 
 import jakarta.inject.Inject;
 
@@ -36,9 +38,11 @@ import org.slf4j.LoggerFactory;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.restapi.ErrorType;
 import com.linagora.calendar.restapi.routes.response.BookingLinkSlotsResponse;
+import com.linagora.calendar.restapi.routes.response.BookingLinkSlotsResponse.ResourceDTO;
 import com.linagora.calendar.storage.booking.BookingLinkNotActiveException;
 import com.linagora.calendar.storage.booking.BookingLinkNotFoundException;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
+import com.linagora.calendar.storage.model.Resource;
 
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -60,12 +64,15 @@ public class BookingLinkSlotsRoute extends PublicRoute {
     private static final Duration MAX_QUERY_RANGE = Duration.ofDays(60);
 
     private final BookingLinkSlotsService bookingLinkSlotsService;
+    private final ResourcePhotoUrlFactory resourcePhotoUrlFactory;
 
     @Inject
     public BookingLinkSlotsRoute(MetricFactory metricFactory,
-                                 BookingLinkSlotsService bookingLinkSlotsService) {
+                                 BookingLinkSlotsService bookingLinkSlotsService,
+                                 ResourcePhotoUrlFactory resourcePhotoUrlFactory) {
         super(metricFactory);
         this.bookingLinkSlotsService = bookingLinkSlotsService;
+        this.resourcePhotoUrlFactory = resourcePhotoUrlFactory;
     }
 
     protected Endpoint endpoint() {
@@ -147,10 +154,20 @@ public class BookingLinkSlotsRoute extends PublicRoute {
                                   Instant queryEnd,
                                   ZoneId zoneId,
                                   BookingLinkSlotsService.SlotsResult result) {
-        return Mono.fromCallable(() -> BookingLinkSlotsResponse.of(result.bookingLink(), result.owner(), queryStart, queryEnd, result.slots(), zoneId).jsonAsBytes())
+        return Mono.fromCallable(() -> BookingLinkSlotsResponse.of(result.bookingLink(), result.owner(), queryStart, queryEnd,
+                result.slots(), zoneId, toResourceDTOs(result.resources())).jsonAsBytes())
             .flatMap(bytes -> response.status(HttpResponseStatus.OK)
                 .headers(JSON_HEADER)
                 .sendByteArray(Mono.just(bytes))
                 .then());
+    }
+
+    private List<ResourceDTO> toResourceDTOs(List<Resource> resources) {
+        return resources.stream()
+            .map(resource -> new ResourceDTO(resource.name(),
+                Optional.ofNullable(resource.icon())
+                    .map(resourcePhotoUrlFactory::resolveURL)
+                    .map(URI::toASCIIString)))
+            .toList();
     }
 }

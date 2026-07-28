@@ -43,6 +43,8 @@ public record BookingLinkSlotsResponse(long durationMinutes,
                                        Optional<String> name,
                                        Optional<String> description,
                                        String color,
+                                       Optional<String> location,
+                                       Optional<List<ResourceDTO>> resources,
                                        OwnerDTO owner,
                                        RangeDTO range,
                                        List<SlotDTO> slots) {
@@ -51,12 +53,15 @@ public record BookingLinkSlotsResponse(long durationMinutes,
         .registerModule(new Jdk8Module())
         .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
-    public static BookingLinkSlotsResponse of(BookingLink bookingLink, OpenPaaSUser owner, Instant from, Instant to, Set<AvailabilitySlot> slots, ZoneId zoneId) {
+    public static BookingLinkSlotsResponse of(BookingLink bookingLink, OpenPaaSUser owner, Instant from, Instant to,
+                                              Set<AvailabilitySlot> slots, ZoneId zoneId, List<ResourceDTO> resourceList) {
         return new BookingLinkSlotsResponse(bookingLink.duration().toMinutes(),
             bookingLink.autoAccept(),
             bookingLink.name(),
             bookingLink.description(),
             bookingLink.colorOrDefault(),
+            bookingLink.location(),
+            Optional.of(resourceList).filter(list -> !list.isEmpty()),
             new OwnerDTO(owner.fullName(), owner.username().asString()),
             new RangeDTO(from.atZone(zoneId), to.atZone(zoneId)),
             slots.stream()
@@ -64,6 +69,10 @@ public record BookingLinkSlotsResponse(long durationMinutes,
                 .sorted()
                 .map(start -> new SlotDTO(start.atZone(zoneId)))
                 .toList());
+    }
+
+    public record ResourceDTO(@JsonProperty("name") String name,
+                              @JsonProperty("photoUrl") Optional<String> photoUrl) {
     }
 
     public record OwnerDTO(@JsonProperty("displayName") String displayName,

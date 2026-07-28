@@ -28,15 +28,20 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 
 import com.github.fge.lambdas.Throwing;
+import com.linagora.calendar.restapi.routes.BookingLinkEventIcsBuilder.BookingEventOptions;
 import com.linagora.calendar.restapi.routes.BookingLinkEventIcsBuilder.BuildResult;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingRequest;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingRequest.BookingAttendee;
+import com.linagora.calendar.storage.booking.BookingLinkAlarm;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
+import com.linagora.calendar.storage.booking.EventTransparency;
+import com.linagora.calendar.storage.booking.EventVisibility;
 
 import net.fortuna.ical4j.model.property.Uid;
 import net.fortuna.ical4j.util.UidGenerator;
@@ -72,6 +77,7 @@ public class BookingLinkEventIcsBuilderTest {
             BEGIN:VEVENT
             UID:event-123
             TRANSP:OPAQUE
+            CLASS:PUBLIC
             SUMMARY:30-min intro call
             DTSTAMP:20360101T000000Z
             SEQUENCE:0
@@ -82,7 +88,6 @@ public class BookingLinkEventIcsBuilderTest {
             ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED;CN=BOB:mailto:creator@example.com
             ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED;CN=Nguyen Van A:mailto:vana@example.com
             DESCRIPTION:Please call via Zoom.\\nVisio: https://jitsi.example.com
-            CLASS:PUBLIC
             X-PUBLICLY-CREATED;VALUE=BOOLEAN:TRUE
             X-PUBLICLY-CREATOR:creator@example.com
             X-OPENPAAS-BOOKING-LINK:a1b2c3d4-e5f6-4a5b-8c7d-0e1f2a3b4c5d
@@ -120,6 +125,7 @@ public class BookingLinkEventIcsBuilderTest {
             BEGIN:VEVENT
             UID:event-123
             TRANSP:OPAQUE
+            CLASS:PUBLIC
             SUMMARY:eventTitle
             DTSTAMP:20360101T000000Z
             SEQUENCE:0
@@ -129,7 +135,6 @@ public class BookingLinkEventIcsBuilderTest {
             ATTENDEE;RSVP=TRUE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=Alice Owner:mailto:owner@example.com
             ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED;CN=BOB:mailto:creator@example.com
             ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED;CN=Nguyen Van A:mailto:vana@example.com
-            CLASS:PUBLIC
             X-PUBLICLY-CREATED;VALUE=BOOLEAN:TRUE
             X-PUBLICLY-CREATOR:creator@example.com
             X-OPENPAAS-BOOKING-LINK:a1b2c3d4-e5f6-4a5b-8c7d-0e1f2a3b4c5d
@@ -186,6 +191,7 @@ public class BookingLinkEventIcsBuilderTest {
             BEGIN:VEVENT
             UID:event-123
             TRANSP:OPAQUE
+            CLASS:PUBLIC
             SUMMARY:eventTitle
             DTSTAMP:20360101T000000Z
             SEQUENCE:0
@@ -194,7 +200,6 @@ public class BookingLinkEventIcsBuilderTest {
             ORGANIZER:mailto:owner@example.com
             ATTENDEE;RSVP=TRUE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION:mailto:owner@example.com
             ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED:mailto:creator@example.com
-            CLASS:PUBLIC
             X-PUBLICLY-CREATED;VALUE=BOOLEAN:TRUE
             X-PUBLICLY-CREATOR:creator@example.com
             X-OPENPAAS-BOOKING-LINK:a1b2c3d4-e5f6-4a5b-8c7d-0e1f2a3b4c5d
@@ -327,6 +332,107 @@ public class BookingLinkEventIcsBuilderTest {
 
         assertThat(new String(result.icsBytes(), StandardCharsets.UTF_8))
             .doesNotContain("METHOD:");
+    }
+
+    @Test
+    void buildShouldIncludeLocationWhenPresent() {
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+
+        BookingEventOptions options = new BookingEventOptions(Optional.of("Room 3"),
+            Optional.empty(), Optional.empty(), List.of(), Optional.empty());
+
+        String ics = new String(testee.build(bookingRequest(), OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, options)
+            .icsBytes(), StandardCharsets.UTF_8);
+
+        assertThat(ics)
+            .contains("LOCATION:Room 3");
+    }
+
+    @Test
+    void buildShouldUsePrivateClassWhenVisibilityPrivate() {
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+
+        BookingEventOptions options = new BookingEventOptions(Optional.empty(),
+            Optional.of(EventVisibility.PRIVATE), Optional.empty(), List.of(), Optional.empty());
+
+        String ics = new String(testee.build(bookingRequest(), OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, options)
+            .icsBytes(), StandardCharsets.UTF_8);
+
+        assertThat(ics)
+            .contains("CLASS:PRIVATE")
+            .doesNotContain("CLASS:PUBLIC");
+    }
+
+    @Test
+    void buildShouldUseTransparentWhenTransparencyTransparent() {
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+
+        BookingEventOptions options = new BookingEventOptions(Optional.empty(),
+            Optional.empty(), Optional.of(EventTransparency.TRANSPARENT), List.of(), Optional.empty());
+
+        String ics = new String(testee.build(bookingRequest(), OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, options)
+            .icsBytes(), StandardCharsets.UTF_8);
+
+        assertThat(ics)
+            .contains("TRANSP:TRANSPARENT")
+            .doesNotContain("TRANSP:OPAQUE");
+    }
+
+    @Test
+    void buildShouldAddResourcesAsResourceAttendees() {
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+
+        BookingEventOptions options = new BookingEventOptions(Optional.empty(), Optional.empty(), Optional.empty(),
+            List.of(BookingAttendee.from("Projector", "projector-id@example.com")), Optional.empty());
+
+        String ics = new String(testee.build(bookingRequest(), OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, options)
+            .icsBytes(), StandardCharsets.UTF_8);
+
+        assertThat(ics)
+            .contains("ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=RESOURCE;PARTSTAT=NEEDS-ACTION;CN=Projector:mailto:projector-id@example.com");
+    }
+
+    @Test
+    void buildShouldAddEmailAlarmAddressedToEveryAttendee() {
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+
+        BookingRequest request = new BookingRequest(
+            Instant.parse("2036-01-26T09:30:00Z"),
+            BookingAttendee.from("BOB", "creator@example.com"),
+            List.of(BookingAttendee.from("Nguyen Van A", "vana@example.com")),
+            "eventTitle",
+            false,
+            null);
+        BookingEventOptions options = new BookingEventOptions(Optional.empty(), Optional.empty(), Optional.empty(),
+            List.of(), Optional.of(new BookingLinkAlarm("-PT10M")));
+
+        String ics = new String(testee.build(request, OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, options)
+            .icsBytes(), StandardCharsets.UTF_8);
+
+        assertThat(ics)
+            .containsIgnoringNewLines("""
+                BEGIN:VALARM
+                ACTION:EMAIL
+                TRIGGER:-PT10M
+                ATTENDEE:mailto:owner@example.com
+                ATTENDEE:mailto:creator@example.com
+                ATTENDEE:mailto:vana@example.com
+                END:VALARM
+                """);
+    }
+
+    @Test
+    void buildWithoutOptionsShouldDefaultToOpaquePublicWithoutAlarm() {
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+
+        String ics = new String(testee.build(bookingRequest(), OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, BookingEventOptions.none())
+            .icsBytes(), StandardCharsets.UTF_8);
+
+        assertThat(ics)
+            .contains("TRANSP:OPAQUE")
+            .contains("CLASS:PUBLIC")
+            .doesNotContain("BEGIN:VALARM")
+            .doesNotContain("LOCATION:");
     }
 
     private BookingRequest bookingRequest() {

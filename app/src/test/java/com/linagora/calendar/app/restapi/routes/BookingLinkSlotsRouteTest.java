@@ -55,12 +55,18 @@ import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiServerProbe;
+import com.linagora.calendar.app.ResourceProbe;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
+import com.linagora.calendar.storage.booking.BookingLinkAlarm;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
+import com.linagora.calendar.storage.booking.EventTransparency;
+import com.linagora.calendar.storage.booking.EventVisibility;
 import com.linagora.calendar.storage.booking.ExtraAttendees;
+import com.linagora.calendar.storage.model.Resource;
+import com.linagora.calendar.storage.model.ResourceId;
 
 import io.restassured.RestAssured;
 import io.restassured.builder.RequestSpecBuilder;
@@ -89,9 +95,14 @@ class BookingLinkSlotsRouteTest {
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB),
         AppTestHelper.OIDC_BY_PASS_MODULE,
         DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
-        binder -> Multibinder.newSetBinder(binder, GuiceProbe.class)
-            .addBinding()
-            .to(BookingLinkProbe.class));
+        binder -> {
+            Multibinder.newSetBinder(binder, GuiceProbe.class)
+                .addBinding()
+                .to(BookingLinkProbe.class);
+            Multibinder.newSetBinder(binder, GuiceProbe.class)
+                .addBinding()
+                .to(ResourceProbe.class);
+        });
 
     @AfterAll
     static void afterAll() {
@@ -168,6 +179,75 @@ class BookingLinkSlotsRouteTest {
             .describedAs("should omit optional booking link name and description when unset")
             .doesNotContain("\"name\"")
             .doesNotContain("\"description\"");
+    }
+
+    @Test
+    void shouldExposeLocationAndResources(TwakeCalendarGuiceServer server) {
+        Resource resource = server.getProbe(ResourceProbe.class).save(openPaaSUser, "Projector", "projector");
+        BookingLink inserted = server.getProbe(BookingLinkProbe.class).insert(openPaaSUser.username(),
+            insertRequestWith(Optional.of("Room 3, Building A"), List.of(resource.id()), Optional.empty(), Optional.empty(), Optional.empty()));
+
+        String response = given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .queryParam("from", FROM_20360126)
+            .queryParam("to", TO_20360127)
+        .when()
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(JSON)
+            .extract().body().asString();
+
+        assertThatJson(response)
+            .inPath("$.location")
+            .isEqualTo("\"Room 3, Building A\"");
+        assertThatJson(response)
+            .inPath("$.resources")
+            .isEqualTo("""
+                [ { "name": "Projector", "photoUrl": "https://twcalendar.linagora.com/images/icon/projector.svg" } ]
+                """);
+    }
+
+    @Test
+    void shouldSkipDeletedResource(TwakeCalendarGuiceServer server) {
+        Resource resource = server.getProbe(ResourceProbe.class).save(openPaaSUser, "Projector", "projector");
+        server.getProbe(ResourceProbe.class).remove(resource.id());
+        BookingLink inserted = server.getProbe(BookingLinkProbe.class).insert(openPaaSUser.username(),
+            insertRequestWith(Optional.empty(), List.of(resource.id()), Optional.empty(), Optional.empty(), Optional.empty()));
+
+        String response = given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .queryParam("from", FROM_20360126)
+            .queryParam("to", TO_20360127)
+        .when()
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract().body().asString();
+
+        assertThat(response).doesNotContain("\"resources\"");
+    }
+
+    @Test
+    void shouldNotExposeVisibilityTransparencyNorAlarm(TwakeCalendarGuiceServer server) {
+        BookingLink inserted = server.getProbe(BookingLinkProbe.class).insert(openPaaSUser.username(),
+            insertRequestWith(Optional.empty(), List.of(), Optional.of(EventVisibility.PRIVATE),
+                Optional.of(EventTransparency.TRANSPARENT), Optional.of(new BookingLinkAlarm("-PT10M"))));
+
+        String response = given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .queryParam("from", FROM_20360126)
+            .queryParam("to", TO_20360127)
+        .when()
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract().body().asString();
+
+        assertThat(response)
+            .doesNotContain("\"visibility\"")
+            .doesNotContain("\"transparency\"")
+            .doesNotContain("\"alarm\"");
     }
 
     @Test
@@ -1097,6 +1177,17 @@ class BookingLinkSlotsRouteTest {
                         "details": "The booking link with public id %s is not available"
                     }
                 }""".formatted(inserted.publicId().value()));
+    }
+
+    private BookingLinkInsertRequest insertRequestWith(Optional<String> location,
+                                                       List<ResourceId> resources,
+                                                       Optional<EventVisibility> visibility,
+                                                       Optional<EventTransparency> transparency,
+                                                       Optional<BookingLinkAlarm> alarm) {
+        return new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES, BookingLinkInsertRequest.ACTIVE,
+            BookingLinkInsertRequest.AUTO_ACCEPT, Optional.of(AVAILABILITY_RULE), ExtraAttendees.NONE,
+            Optional.empty(), Optional.empty(), Optional.empty(),
+            location, visibility, transparency, resources, alarm);
     }
 
     private OpenPaaSUser createTestUser(TwakeCalendarGuiceServer server, String prefix) {

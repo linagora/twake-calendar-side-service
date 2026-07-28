@@ -29,6 +29,11 @@ Public users can use booking links to book events.
 | `name`              | string (optional)| Display name of the booking link                                            |
 | `description`       | string (optional)| Description of the booking link                                             |
 | `color`             | string           | Display color of the booking link, as a `#RRGGBB` hex string. Always present in responses, defaulting to `#6B4ECC` when not set. |
+| `location`          | string (optional)| Location carried onto every event booked through this link                  |
+| `visibility`        | string (optional)| One of `PUBLIC`, `PRIVATE`. Sets the `CLASS` of every booked event          |
+| `transparency`      | string (optional)| One of `OPAQUE`, `TRANSPARENT`. Sets the `TRANSP` of every booked event      |
+| `resources`         | array (optional) | Resource ids added as attendees of every booked event. Omitted from responses when empty. See [Resources](#resources). |
+| `alarm`             | string (optional)| ISO-8601 duration relative to the event start (e.g. `-PT10M`). See [Alarm](#alarm). |
 
 ### Availability rule object
 
@@ -92,6 +97,34 @@ Constraints:
 - Each `participant` must be the OpenPaaS id of an existing user, and must not be the booking link owner.
 - At most 20 participants. Duplicates are ignored.
 
+### Resources
+
+A booking link may carry `resources`: a flat array of resource ids, added as `CUTYPE=RESOURCE` attendees
+(`PARTSTAT=NEEDS-ACTION`) of every booked event so the resource acceptance workflow applies.
+
+```json
+{
+    "resources": ["68a1b2c3d4e5f60718293a4b", "68a1b2c3d4e5f60718293a4c"]
+}
+```
+
+Constraints:
+
+- Each id must be an existing, non-deleted resource belonging to the booking link owner's domain.
+- At most 20 resources. Duplicates are ignored.
+
+### Alarm
+
+A booking link may carry an `alarm`: an ISO-8601 duration relative to the event start (e.g. `-PT10M` for ten
+minutes before), added as an email VALARM addressed to the event attendees on every booked event. The trigger
+must be negative.
+
+```json
+{
+    "alarm": "-PT10M"
+}
+```
+
 ---
 
 ## Endpoints
@@ -113,6 +146,11 @@ Create a new booking link for the authenticated user.
 | `name`              | no       | Display name of the booking link. Blank values are ignored.                                                                                              |
 | `description`       | no       | Description of the booking link. Blank values are ignored.                                                                                               |
 | `color`             | no       | Display color as a `#RRGGBB` hex string. Blank values are ignored. Defaults to `#6B4ECC` when omitted.                                                    |
+| `location`          | no       | Location of every booked event. Blank values are ignored.                                                                                                |
+| `visibility`        | no       | One of `PUBLIC`, `PRIVATE`.                                                                                                                               |
+| `transparency`      | no       | One of `OPAQUE`, `TRANSPARENT`.                                                                                                                           |
+| `resources`         | no       | Array of resource ids. See [Resources](#resources).                                                                                                      |
+| `alarm`             | no       | ISO-8601 duration relative to the event start (e.g. `-PT10M`). See [Alarm](#alarm).                                                                      |
 
 **Sample request**
 ```
@@ -128,6 +166,11 @@ Content-Type: application/json
     "name": "Intro call",
     "description": "Book a 30-minute introduction call",
     "color": "#6B4ECC",
+    "location": "Room 3, Building A",
+    "visibility": "PRIVATE",
+    "transparency": "TRANSPARENT",
+    "resources": ["68a1b2c3d4e5f60718293a4b"],
+    "alarm": "-PT10M",
     "extraAttendees": { "and": [{ "participant": "67c3a792e4b0884b05ef8af0" }, { "participant": "67c3a792e4b0884b05ef8af1" }] },
     "availabilityRules": [
         { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "timeZone": "Asia/Ho_Chi_Minh" },
@@ -151,7 +194,7 @@ Content-Type: application/json
 
 | Status | Cause                                          |
 |--------|------------------------------------------------|
-| 400    | Missing or invalid field, unknown rule type, invalid `timeZone`, calendar not found or inaccessible, unknown extra attendee, extra attendee is the owner |
+| 400    | Missing or invalid field, unknown rule type, invalid `timeZone`, calendar not found or inaccessible, unknown extra attendee, extra attendee is the owner, invalid `visibility`/`transparency`/`alarm`, unknown or cross-domain resource |
 | 401    | Unauthenticated                                |
 
 ---
@@ -188,8 +231,9 @@ Content-Type: application/json
 ]
 ```
 
-Fields `availabilityRules`, `extraAttendees`, `name` and `description` are omitted from each entry when not set.
-The `color` field is always present, defaulting to `#6B4ECC` when not set.
+Fields `availabilityRules`, `extraAttendees`, `name`, `description`, `location`, `visibility`, `transparency`,
+`resources` and `alarm` are omitted from each entry when not set. The `color` field is always present, defaulting
+to `#6B4ECC` when not set.
 
 **Error responses**
 
@@ -231,8 +275,9 @@ Content-Type: application/json
 }
 ```
 
-Fields `availabilityRules`, `extraAttendees`, `name` and `description` are omitted from the response when not set.
-The `color` field is always present, defaulting to `#6B4ECC` when not set.
+Fields `availabilityRules`, `extraAttendees`, `name`, `description`, `location`, `visibility`, `transparency`,
+`resources` and `alarm` are omitted from the response when not set. The `color` field is always present, defaulting
+to `#6B4ECC` when not set.
 
 **Error responses**
 
@@ -264,6 +309,11 @@ All fields are optional. Include only the fields to update.
 | `name`              | New display name. Set to `null` or a blank value to remove it.                                                   |
 | `description`       | New description. Set to `null` or a blank value to remove it.                                                    |
 | `color`             | New display color as a `#RRGGBB` hex string. Set to `null` or a blank value to remove it (the default `#6B4ECC` then applies). |
+| `location`          | New location. Set to `null` or a blank value to remove it.                                                       |
+| `visibility`        | One of `PUBLIC`, `PRIVATE`. Set to `null` or a blank value to remove it.                                         |
+| `transparency`      | One of `OPAQUE`, `TRANSPARENT`. Set to `null` or a blank value to remove it.                                     |
+| `resources`         | Replaces all existing resources. Set to `null` or `[]` to remove them all. See [Resources](#resources).         |
+| `alarm`             | ISO-8601 duration relative to the event start (e.g. `-PT10M`). Set to `null` or a blank value to remove it.      |
 
 **Sample request — update duration and deactivate**
 ```
@@ -310,7 +360,7 @@ HTTP/1.1 204 No Content
 
 | Status | Cause                                                             |
 |--------|-------------------------------------------------------------------|
-| 400    | No field provided, invalid value, invalid `timeZone`, calendar not found or inaccessible, unknown extra attendee, extra attendee is the owner |
+| 400    | No field provided, invalid value, invalid `timeZone`, calendar not found or inaccessible, unknown extra attendee, extra attendee is the owner, invalid `visibility`/`transparency`/`alarm`, unknown or cross-domain resource |
 | 401    | Unauthenticated                                                   |
 | 404    | Booking link not found or belongs to another user                 |
 
@@ -408,6 +458,10 @@ Content-Type: application/json
   "name": "Interview",
   "description": "A 30 minutes interview",
   "color": "#6B4ECC",
+  "location": "Room 3, Building A",
+  "resources": [
+    { "name": "Projector", "photoUrl": "https://excal.linagora.com/images/icon/projector.svg" }
+  ],
   "owner": {
     "displayName": "John Doe",
     "email": "john.doe@open-paas.org"
@@ -427,6 +481,8 @@ Content-Type: application/json
 The `owner` object exposes the public booking link owner `displayName` and `email`.
 
 The response also exposes the booking link `autoAccept` flag, along with the optional `name` and `description` (omitted when not set) and the `color` (always present, defaulting to `#6B4ECC`), so the bookee can access that information too.
+
+The public slots response also exposes the booking link `location` and `resources` (each with a `name` and, when the resource has an icon, a `photoUrl`), both omitted when not set.
 
 **Error responses**
 
