@@ -60,7 +60,7 @@ public record Resource(ResourceId id,
     public Resource update(ResourceUpdateRequest req, Instant updated) {
         return new Resource(
             this.id,
-            req.administrators().orElse(this.administrators),
+            this.administrators,
             this.creator,
             this.deleted,
             req.description().orElse(this.description),

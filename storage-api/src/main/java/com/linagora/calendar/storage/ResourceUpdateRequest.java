@@ -18,13 +18,9 @@
 
 package com.linagora.calendar.storage;
 
-import java.util.List;
 import java.util.Optional;
-
-import com.linagora.calendar.storage.model.ResourceAdministrator;
 
 public record ResourceUpdateRequest(Optional<String> name,
                                     Optional<String> description,
-                                    Optional<String> icon,
-                                    Optional<List<ResourceAdministrator>> administrators) {
+                                    Optional<String> icon) {
 }
