@@ -40,7 +40,6 @@ import com.linagora.calendar.webadmin.task.AlarmScheduleTaskAdditionalInformatio
 import com.linagora.calendar.webadmin.task.BookingLinkEventDeletionTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.CalendarArchivalTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.CalendarEventsReindexTaskAdditionalInformationDTO;
-import com.linagora.calendar.webadmin.task.RepositionResourceRightsTaskAdditionalInformationDTO;
 
 public class CalendarRoutesModule extends AbstractModule {
     public static final String USER_CALENDAR_TASKS_KEY = "USER_CALENDAR";
@@ -91,12 +90,6 @@ public class CalendarRoutesModule extends AbstractModule {
     @ProvidesIntoSet
     public AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO> alarmScheduleTaskAdditionalInformation() {
         return AlarmScheduleTaskAdditionalInformationDTO.module();
-    }
-
-    @Named(DTOModuleInjections.WEBADMIN_DTO)
-    @ProvidesIntoSet
-    public AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO> repositionResourceRightsTaskAdditionalInformation() {
-        return RepositionResourceRightsTaskAdditionalInformationDTO.module();
     }
 
     @Named(DTOModuleInjections.WEBADMIN_DTO)

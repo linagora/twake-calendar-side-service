@@ -317,30 +317,6 @@ class TwakeCalendarGuiceServerTest  {
     }
 
     @Test
-    void shouldExposeWebAdminRepositionResourceRightsTask() {
-        String taskId = given()
-            .when()
-            .post("/domains/linagora.com/resources?task=repositionWriteRights")
-            .jsonPath()
-            .get("taskId");
-
-        given()
-            .basePath(TasksRoutes.BASE)
-        .when()
-            .get(taskId + "/await")
-        .then()
-            .body("status", is(notNullValue()))
-            .body("taskId", is(taskId))
-            .body("type", is("reposition-resource-rights"))
-            .body("additionalInformation.processedResourceCount", is(notNullValue()))
-            .body("additionalInformation.failedResourceCount", is(notNullValue()))
-            .body("additionalInformation.timestamp", is(notNullValue()))
-            .body("additionalInformation.type", is("reposition-resource-rights"))
-            .body("startedDate", is(notNullValue()))
-            .body("submitDate", is(notNullValue()));
-    }
-
-    @Test
     void shouldExposeWebAdminCalendarArchivalAllTask() {
         String taskId = given()
             .when()
