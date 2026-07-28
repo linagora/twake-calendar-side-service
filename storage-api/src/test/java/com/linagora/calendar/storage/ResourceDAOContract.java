@@ -195,13 +195,12 @@ public interface ResourceDAOContract {
         ResourceUpdateRequest updateRequest = new ResourceUpdateRequest(
             Optional.of("UpdatedName"),
             Optional.of("UpdatedDesc"),
-            Optional.of("updatedIcon.png"),
-            Optional.of(List.of(new ResourceAdministrator(new OpenPaaSId("admin2"), "user"))));
+            Optional.of("updatedIcon.png"));
         Resource updated = dao().update(resourceId, updateRequest).block();
 
         Resource expected = new Resource(
             resourceId,
-            List.of(new ResourceAdministrator(new OpenPaaSId("admin2"), "user")),
+            List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user")),
             CREATOR1,
             !DELETED,
             "UpdatedDesc",
@@ -411,8 +410,7 @@ public interface ResourceDAOContract {
         ResourceUpdateRequest updateRequest = new ResourceUpdateRequest(
             Optional.of("Name"),
             Optional.of("Desc"),
-            Optional.of("icon.png"),
-            Optional.of(List.of(new ResourceAdministrator(new OpenPaaSId("admin1"), "user"))));
+            Optional.of("icon.png"));
 
         assertThatThrownBy(() -> dao().update(new ResourceId("659387b9d486dc0046aeff29"), updateRequest).block())
             .isInstanceOf(ResourceNotFoundException.class);
@@ -432,8 +430,7 @@ public interface ResourceDAOContract {
         ResourceUpdateRequest updateRequest = new ResourceUpdateRequest(
             Optional.of("UpdatedName"),
             Optional.of("UpdatedDesc"),
-            Optional.of("updatedIcon.png"),
-            Optional.of(List.of(new ResourceAdministrator(new OpenPaaSId("admin2"), "user"))));
+            Optional.of("updatedIcon.png"));
 
         assertThatThrownBy(() -> dao().update(resourceId, updateRequest).block())
             .isInstanceOf(ResourceNotFoundException.class);

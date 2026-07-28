@@ -189,7 +189,7 @@ public class ResourceRoutes implements Routes {
 
         return retrieveActiveResource(resourceId, domain.id())
             .flatMap(resourceService::delete)
-            .doOnSuccess(any -> res.status(HttpStatus.NO_CONTENT_204))
+            .doOnSuccess(_ -> res.status(HttpStatus.NO_CONTENT_204))
             .thenReturn(StringUtils.EMPTY)
             .onErrorMap(ResourceNotFoundException.class, exception -> resourceNotFound(resourceId))
             .block();
@@ -230,7 +230,7 @@ public class ResourceRoutes implements Routes {
 
         return retrieveActiveResource(resourceId, domain.id())
             .flatMap(resource -> updateResourceFromDTO(resource, dto))
-            .doOnSuccess(any -> res.status(HttpStatus.NO_CONTENT_204))
+            .doOnSuccess(_ -> res.status(HttpStatus.NO_CONTENT_204))
             .thenReturn(StringUtils.EMPTY)
             .onErrorMap(ResourceNotFoundException.class, exception -> resourceNotFound(resourceId))
             .block();
@@ -238,14 +238,15 @@ public class ResourceRoutes implements Routes {
 
     private Mono<Void> updateResourceFromDTO(Resource resource, ResourceUpdateDTO dto) {
         return dto.administrators()
-            .map(administrators -> updateResourceAndAdministrators(resource, dto, administrators))
-            .orElseGet(() -> resourceService.update(resource.id(), buildUpdateRequest(dto, Optional.empty())));
+            .map(administrators -> resourceService.updateAdmins(resource, administratorUsernamesFromDTO(administrators)))
+            .orElse(Mono.empty())
+            .then(resourceService.update(resource.id(), buildUpdateRequest(dto)));
     }
 
-    private Mono<Void> updateResourceAndAdministrators(Resource resource, ResourceUpdateDTO dto, List<AdministratorDTO> administrators) {
-        return resolveAdministratorsFromDTO(administrators)
-            .flatMap(adminMap -> resourceService.updateAdmins(resource, adminMap.keySet())
-                .then(resourceService.update(resource.id(), buildUpdateRequest(dto, Optional.of(adminMap.values().stream().toList())))));
+    private List<Username> administratorUsernamesFromDTO(List<AdministratorDTO> administrators) {
+        return Optional.ofNullable(administrators).orElse(List.of()).stream()
+            .map(dto -> Username.of(dto.email()))
+            .toList();
     }
 
     private Mono<Map<Username, ResourceAdministrator>> resolveAdministratorsFromDTO(List<AdministratorDTO> dtos) {
@@ -313,8 +314,8 @@ public class ResourceRoutes implements Routes {
             .haltError();
     }
 
-    private ResourceUpdateRequest buildUpdateRequest(ResourceUpdateDTO dto, Optional<List<ResourceAdministrator>> adminsOpt) {
-        return new ResourceUpdateRequest(dto.name(), dto.description(), dto.icon(), adminsOpt);
+    private ResourceUpdateRequest buildUpdateRequest(ResourceUpdateDTO dto) {
+        return new ResourceUpdateRequest(dto.name(), dto.description(), dto.icon());
     }
 
 }
