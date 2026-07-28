@@ -45,6 +45,7 @@ import org.testcontainers.shaded.com.google.common.collect.ImmutableList;
 
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.ResourceService;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -78,11 +79,11 @@ class ResourceRoutesTest {
         userDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
         resourceDAO = new MongoDBResourceDAO(mongoDB, Clock.system(UTC));
         CalDavClient calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
+        ResourceService resourceService = new ResourceService(userDAO, resourceDAO, calDavClient);
 
-        ResourceAdministratorService resourceAdministratorService = new ResourceAdministratorService(calDavClient, userDAO);
         webAdminServer = WebAdminUtils.createWebAdminServer(
-            new ResourceRoutes(resourceDAO, domainDAO, userDAO,
-                new JsonTransformer(), resourceAdministratorService)).start();
+            new ResourceRoutes(domainDAO, userDAO,
+                new JsonTransformer(), resourceService)).start();
 
         RestAssured.requestSpecification = WebAdminUtils.buildRequestSpecification(webAdminServer)
             .build();

@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.webadmin;
 
+import static com.linagora.calendar.dav.ResourceService.ONLY_ACTIVE;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -40,12 +42,13 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.linagora.calendar.dav.ResourceService;
+import com.linagora.calendar.dav.ResourceService.ResourceWithAdministration;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
-import com.linagora.calendar.storage.ResourceDAO;
 import com.linagora.calendar.storage.ResourceInsertRequest;
 import com.linagora.calendar.storage.ResourceNotFoundException;
 import com.linagora.calendar.storage.ResourceUpdateRequest;
@@ -78,9 +81,15 @@ public class ResourceRoutes implements Routes {
     public record ResourceDTO(String name, boolean deleted, String description, String id, String icon, String domain,
                               List<AdministratorDTO> administrators,
                               String creator) {
-        public static ResourceDTO fromDomainObject(Resource domainObject, Domain domain, List<AdministratorDTO> administrators, String creator) {
+        public static ResourceDTO fromDomainObject(Resource domainObject, Domain domain, List<OpenPaaSUser> administrators, String creator) {
             return new ResourceDTO(domainObject.name(), domainObject.deleted(), domainObject.description(), domainObject.id().value(),
-                domainObject.icon(), domain.asString(), administrators, creator);
+                domainObject.icon(), domain.asString(), toAdministratorDTOs(administrators), creator);
+        }
+
+        private static List<AdministratorDTO> toAdministratorDTOs(List<OpenPaaSUser> administrators) {
+            return administrators.stream()
+                .map(user -> new AdministratorDTO(user.username().asString()))
+                .toList();
         }
     }
 
@@ -127,25 +136,22 @@ public class ResourceRoutes implements Routes {
         return DOMAINS;
     }
 
-    private final ResourceDAO resourceDAO;
     private final OpenPaaSDomainDAO domainDAO;
     private final OpenPaaSUserDAO userDAO;
     private final JsonTransformer jsonTransformer;
-    private final ResourceAdministratorService  resourceAdministratorService;
     private final JsonExtractor<ResourceCreationDTO> creationDTOJsonExtractor;
     private final JsonExtractor<ResourceUpdateDTO> updateDTOJsonExtractor;
+    private final ResourceService resourceService;
 
     @Inject
-    public ResourceRoutes(ResourceDAO resourceDAO,
-                          OpenPaaSDomainDAO domainDAO,
+    public ResourceRoutes(OpenPaaSDomainDAO domainDAO,
                           OpenPaaSUserDAO userDAO,
                           JsonTransformer jsonTransformer,
-                          ResourceAdministratorService resourceAdministratorService) {
-        this.resourceDAO = resourceDAO;
+                          ResourceService resourceService) {
         this.domainDAO = domainDAO;
         this.userDAO = userDAO;
         this.jsonTransformer = jsonTransformer;
-        this.resourceAdministratorService = resourceAdministratorService;
+        this.resourceService = resourceService;
         creationDTOJsonExtractor = new JsonExtractor<>(ResourceCreationDTO.class);
         updateDTOJsonExtractor = new JsonExtractor<>(ResourceUpdateDTO.class);
     }
@@ -161,7 +167,7 @@ public class ResourceRoutes implements Routes {
 
     private List<ResourceDTO> listResources(Request req) {
         OpenPaaSDomain domain = asDomainObject(req);
-        return resourceDAO.findByDomain(domain.id())
+        return resourceService.listByDomain(domain.id())
             .flatMap(this::toDto, ReactorUtils.LOW_CONCURRENCY)
             .collectList()
             .block();
@@ -171,8 +177,7 @@ public class ResourceRoutes implements Routes {
         OpenPaaSDomain domain = asDomainObject(req);
         ResourceId id = new ResourceId(req.params("id"));
 
-        return resourceDAO.findById(id)
-            .filter(resource -> resource.domain().equals(domain.id()))
+        return resourceService.retrieveWithAdministration(id, domain.id(), !ONLY_ACTIVE)
             .flatMap(this::toDto)
             .blockOptional()
             .orElseThrow(() -> resourceNotFound(id));
@@ -182,9 +187,8 @@ public class ResourceRoutes implements Routes {
         OpenPaaSDomain domain = asDomainObject(req);
         ResourceId resourceId = new ResourceId(req.params("id"));
 
-        return findNotDeletedResourceInDomain(resourceId, domain.id())
-            .flatMap(currentResource -> resourceAdministratorService.revokeAdmins(currentResource)
-                .then(resourceDAO.softDelete(resourceId)))
+        return retrieveActiveResource(resourceId, domain.id())
+            .flatMap(resourceService::delete)
             .doOnSuccess(any -> res.status(HttpStatus.NO_CONTENT_204))
             .thenReturn(StringUtils.EMPTY)
             .onErrorMap(ResourceNotFoundException.class, exception -> resourceNotFound(resourceId))
@@ -204,9 +208,7 @@ public class ResourceRoutes implements Routes {
             .flatMap(tuple -> {
                 OpenPaaSId creatorId = tuple.getT1();
                 Map<Username, ResourceAdministrator> adminMap = tuple.getT2();
-                return resourceDAO.insert(buildInsertRequest(adminMap, creatorId, creationDTO, domain.id()))
-                    .flatMap(resourceId -> resourceAdministratorService.setAdmins(domain.id(), resourceId, adminMap.keySet())
-                        .thenReturn(resourceId));
+                return resourceService.create(buildInsertRequest(adminMap, creatorId, creationDTO, domain.id()), adminMap.keySet());
             })
             .map(resourceId -> {
                 res.header(HttpHeader.LOCATION.asString(), DOMAINS + "/" + domain.domain().asString() + "/resources/" + resourceId.value());
@@ -226,16 +228,24 @@ public class ResourceRoutes implements Routes {
         ResourceUpdateDTO dto = updateDTOJsonExtractor.parse(req.body());
         ResourceId resourceId = new ResourceId(req.params("id"));
 
-        return findNotDeletedResourceInDomain(resourceId, domain.id())
-            .flatMap(resource -> dto.administrators()
-                .map(admins -> resourceAdministratorService.updateAdmins(resource, admins).map(Optional::of))
-                .orElse(Mono.just(Optional.empty()))
-                .map(adminsOpt -> buildUpdateRequest(dto, adminsOpt))
-                .flatMap(updateRequest -> resourceDAO.update(resourceId, updateRequest)))
+        return retrieveActiveResource(resourceId, domain.id())
+            .flatMap(resource -> updateResourceFromDTO(resource, dto))
             .doOnSuccess(any -> res.status(HttpStatus.NO_CONTENT_204))
             .thenReturn(StringUtils.EMPTY)
             .onErrorMap(ResourceNotFoundException.class, exception -> resourceNotFound(resourceId))
             .block();
+    }
+
+    private Mono<Void> updateResourceFromDTO(Resource resource, ResourceUpdateDTO dto) {
+        return dto.administrators()
+            .map(administrators -> updateResourceAndAdministrators(resource, dto, administrators))
+            .orElseGet(() -> resourceService.update(resource.id(), buildUpdateRequest(dto, Optional.empty())));
+    }
+
+    private Mono<Void> updateResourceAndAdministrators(Resource resource, ResourceUpdateDTO dto, List<AdministratorDTO> administrators) {
+        return resolveAdministratorsFromDTO(administrators)
+            .flatMap(adminMap -> resourceService.updateAdmins(resource, adminMap.keySet())
+                .then(resourceService.update(resource.id(), buildUpdateRequest(dto, Optional.of(adminMap.values().stream().toList())))));
     }
 
     private Mono<Map<Username, ResourceAdministrator>> resolveAdministratorsFromDTO(List<AdministratorDTO> dtos) {
@@ -266,9 +276,8 @@ public class ResourceRoutes implements Routes {
         }
     }
 
-    private Mono<Resource> findNotDeletedResourceInDomain(ResourceId resourceId, OpenPaaSId domainId) {
-        return resourceDAO.findById(resourceId)
-            .filter(resource -> !resource.deleted() && resource.domain().equals(domainId))
+    private Mono<Resource> retrieveActiveResource(ResourceId resourceId, OpenPaaSId domainId) {
+        return resourceService.retrieve(resourceId, domainId, ONLY_ACTIVE)
             .switchIfEmpty(Mono.error(() -> new ResourceNotFoundException(resourceId)));
     }
 
@@ -276,12 +285,18 @@ public class ResourceRoutes implements Routes {
         return Mono.zip(
                 domainDAO.retrieve(resource.domain()),
                 userDAO.retrieve(resource.creator()),
-                Flux.fromIterable(resource.administrators())
-                    .map(ResourceAdministrator::refId)
-                    .flatMap(userDAO::retrieve, ReactorUtils.LOW_CONCURRENCY)
-                    .map(u -> new AdministratorDTO(u.username().asString()))
-                    .collectList())
+                resourceService.listAdminUsers(resource))
             .map(tuple -> ResourceDTO.fromDomainObject(resource, tuple.getT1().domain(), tuple.getT3(), tuple.getT2().username().asString()));
+    }
+
+    private Mono<ResourceDTO> toDto(ResourceWithAdministration resourceWithAdministration) {
+        Resource resource = resourceWithAdministration.resource();
+
+        return Mono.zip(
+                domainDAO.retrieve(resource.domain()),
+                userDAO.retrieve(resource.creator()))
+            .map(tuple -> ResourceDTO.fromDomainObject(
+                resource, tuple.getT1().domain(), resourceWithAdministration.administrators(), tuple.getT2().username().asString()));
     }
 
     private Mono<OpenPaaSUser> retrieveExistingUser(Username username) {
