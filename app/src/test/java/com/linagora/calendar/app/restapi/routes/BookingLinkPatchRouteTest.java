@@ -58,13 +58,19 @@ import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
+import com.linagora.calendar.app.ResourceProbe;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
+import com.linagora.calendar.storage.booking.BookingLinkAlarm;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
+import com.linagora.calendar.storage.booking.EventTransparency;
+import com.linagora.calendar.storage.booking.EventVisibility;
 import com.linagora.calendar.storage.booking.ExtraAttendees;
+import com.linagora.calendar.storage.model.Resource;
+import com.linagora.calendar.storage.model.ResourceId;
 
 import io.restassured.RestAssured;
 import io.restassured.authentication.PreemptiveBasicAuthScheme;
@@ -95,6 +101,9 @@ class BookingLinkPatchRouteTest {
             Multibinder.newSetBinder(binder, GuiceProbe.class)
                 .addBinding()
                 .to(BookingLinkProbe.class);
+            Multibinder.newSetBinder(binder, GuiceProbe.class)
+                .addBinding()
+                .to(ResourceProbe.class);
         });
 
     @AfterAll
@@ -186,6 +195,259 @@ class BookingLinkPatchRouteTest {
 
         BookingLink updated = bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
         assertThat(updated.autoAccept()).isTrue();
+    }
+
+    @Test
+    void shouldPersistUpdatedLocation() {
+        BookingLink inserted = insertMinimal();
+
+        given()
+            .body("""
+                { "location": "Room 3" }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        assertThat(bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId()).location()).contains("Room 3");
+    }
+
+    @Test
+    void shouldRemoveLocationWhenSetToNull() {
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
+                Optional.empty(), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
+                Optional.of("Room 3"), Optional.empty(), Optional.empty(), List.of(), Optional.empty()));
+
+        given()
+            .body("""
+                { "location": null }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        assertThat(bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId()).location()).isEmpty();
+    }
+
+    @Test
+    void shouldPersistUpdatedVisibility() {
+        BookingLink inserted = insertMinimal();
+
+        given()
+            .body("""
+                { "visibility": "PRIVATE" }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        assertThat(bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId()).visibility()).contains(EventVisibility.PRIVATE);
+    }
+
+    @Test
+    void shouldRemoveVisibilityWhenSetToNull() {
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
+                Optional.empty(), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
+                Optional.empty(), Optional.of(EventVisibility.PRIVATE), Optional.empty(), List.of(), Optional.empty()));
+
+        given()
+            .body("""
+                { "visibility": null }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        assertThat(bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId()).visibility()).isEmpty();
+    }
+
+    @Test
+    void shouldReturn400WhenVisibilityIsInvalid() {
+        BookingLink inserted = insertMinimal();
+
+        given()
+            .body("""
+                { "visibility": "SECRET" }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @Test
+    void shouldPersistUpdatedTransparency() {
+        BookingLink inserted = insertMinimal();
+
+        given()
+            .body("""
+                { "transparency": "TRANSPARENT" }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        assertThat(bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId()).transparency()).contains(EventTransparency.TRANSPARENT);
+    }
+
+    @Test
+    void shouldRemoveTransparencyWhenSetToNull() {
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
+                Optional.empty(), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
+                Optional.empty(), Optional.empty(), Optional.of(EventTransparency.TRANSPARENT), List.of(), Optional.empty()));
+
+        given()
+            .body("""
+                { "transparency": null }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        assertThat(bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId()).transparency()).isEmpty();
+    }
+
+    @Test
+    void shouldReturn400WhenTransparencyIsInvalid() {
+        BookingLink inserted = insertMinimal();
+
+        given()
+            .body("""
+                { "transparency": "INVALID" }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @Test
+    void shouldPersistUpdatedResources(TwakeCalendarGuiceServer server) {
+        Resource resource = server.getProbe(ResourceProbe.class).save(openPaaSUser, "Projector", "projector");
+        BookingLink inserted = insertMinimal();
+
+        given()
+            .body("""
+                { "resources": ["%s"] }
+                """.formatted(resource.id().value()))
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        assertThat(bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId()).resources()).containsExactly(resource.id());
+    }
+
+    @Test
+    void shouldRemoveResourcesWhenSetToEmptyArray(TwakeCalendarGuiceServer server) {
+        Resource resource = server.getProbe(ResourceProbe.class).save(openPaaSUser, "Projector", "projector");
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
+                Optional.empty(), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
+                Optional.empty(), Optional.empty(), Optional.empty(), List.of(resource.id()), Optional.empty()));
+
+        given()
+            .body("""
+                { "resources": [] }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        assertThat(bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId()).resources()).isEmpty();
+    }
+
+    @Test
+    void shouldRemoveResourcesWhenSetToNull(TwakeCalendarGuiceServer server) {
+        Resource resource = server.getProbe(ResourceProbe.class).save(openPaaSUser, "Projector", "projector");
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
+                Optional.empty(), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
+                Optional.empty(), Optional.empty(), Optional.empty(), List.of(resource.id()), Optional.empty()));
+
+        given()
+            .body("""
+                { "resources": null }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        assertThat(bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId()).resources()).isEmpty();
+    }
+
+    @Test
+    void shouldReturn400WhenResourceDoesNotExist() {
+        BookingLink inserted = insertMinimal();
+
+        given()
+            .body("""
+                { "resources": ["659387b9d486dc0046aeffff"] }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @Test
+    void shouldPersistUpdatedAlarm() {
+        BookingLink inserted = insertMinimal();
+
+        given()
+            .body("""
+                { "alarm": "-PT10M" }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        assertThat(bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId()).alarm()).contains(new BookingLinkAlarm("-PT10M"));
+    }
+
+    @Test
+    void shouldRemoveAlarmWhenSetToNull() {
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
+                Optional.empty(), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
+                Optional.empty(), Optional.empty(), Optional.empty(), List.of(), Optional.of(new BookingLinkAlarm("-PT10M"))));
+
+        given()
+            .body("""
+                { "alarm": null }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        assertThat(bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId()).alarm()).isEmpty();
+    }
+
+    @Test
+    void shouldReturn400WhenAlarmTriggerIsInvalid() {
+        BookingLink inserted = insertMinimal();
+
+        given()
+            .body("""
+                { "alarm": "not-a-duration" }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
     }
 
     @Test
@@ -911,5 +1173,10 @@ class BookingLinkPatchRouteTest {
             .body("error.code", equalTo(400))
             .body("error.message", equalTo("Bad request"))
             .body("error.details", equalTo("Calendar not found or access denied: " + nonExistentCalendarUrl.asUri()));
+    }
+
+    private BookingLink insertMinimal() {
+        return bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
     }
 }

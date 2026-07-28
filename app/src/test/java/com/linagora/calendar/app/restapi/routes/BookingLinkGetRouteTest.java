@@ -59,8 +59,12 @@ import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
+import com.linagora.calendar.storage.booking.BookingLinkAlarm;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
+import com.linagora.calendar.storage.booking.EventTransparency;
+import com.linagora.calendar.storage.booking.EventVisibility;
 import com.linagora.calendar.storage.booking.ExtraAttendees;
+import com.linagora.calendar.storage.model.ResourceId;
 
 import io.restassured.RestAssured;
 import io.restassured.authentication.PreemptiveBasicAuthScheme;
@@ -361,6 +365,147 @@ class BookingLinkGetRouteTest {
                     "active": true,
                     "autoAccept": false,
                     "color": "#FF8800"
+                }
+                """.formatted(inserted.publicId().value(), CalendarURL.from(openPaaSUser.id()).asUri().toString()));
+    }
+
+    @Test
+    void shouldReturn200WithLocation() {
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
+                Optional.empty(), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
+                Optional.of("Room 3, Building A"), Optional.empty(), Optional.empty(), List.of(), Optional.empty()));
+
+        String response = given()
+        .when()
+            .get("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract().body().asString();
+
+        assertThatJson(response)
+            .isEqualTo("""
+                {
+                    "publicId": "%s",
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "autoAccept": false,
+                    "color": "#6B4ECC",
+                    "location": "Room 3, Building A"
+                }
+                """.formatted(inserted.publicId().value(), CalendarURL.from(openPaaSUser.id()).asUri().toString()));
+    }
+
+    @Test
+    void shouldReturn200WithVisibility() {
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
+                Optional.empty(), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
+                Optional.empty(), Optional.of(EventVisibility.PRIVATE), Optional.empty(), List.of(), Optional.empty()));
+
+        String response = given()
+        .when()
+            .get("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract().body().asString();
+
+        assertThatJson(response)
+            .isEqualTo("""
+                {
+                    "publicId": "%s",
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "autoAccept": false,
+                    "color": "#6B4ECC",
+                    "visibility": "PRIVATE"
+                }
+                """.formatted(inserted.publicId().value(), CalendarURL.from(openPaaSUser.id()).asUri().toString()));
+    }
+
+    @Test
+    void shouldReturn200WithTransparency() {
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
+                Optional.empty(), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
+                Optional.empty(), Optional.empty(), Optional.of(EventTransparency.TRANSPARENT), List.of(), Optional.empty()));
+
+        String response = given()
+        .when()
+            .get("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract().body().asString();
+
+        assertThatJson(response)
+            .isEqualTo("""
+                {
+                    "publicId": "%s",
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "autoAccept": false,
+                    "color": "#6B4ECC",
+                    "transparency": "TRANSPARENT"
+                }
+                """.formatted(inserted.publicId().value(), CalendarURL.from(openPaaSUser.id()).asUri().toString()));
+    }
+
+    @Test
+    void shouldReturn200WithResources() {
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
+                Optional.empty(), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
+                Optional.empty(), Optional.empty(), Optional.empty(),
+                List.of(new ResourceId("659387b9d486dc0046aeffc1"), new ResourceId("659387b9d486dc0046aeffc2")), Optional.empty()));
+
+        String response = given()
+        .when()
+            .get("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract().body().asString();
+
+        assertThatJson(response)
+            .isEqualTo("""
+                {
+                    "publicId": "%s",
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "autoAccept": false,
+                    "color": "#6B4ECC",
+                    "resources": ["659387b9d486dc0046aeffc1", "659387b9d486dc0046aeffc2"]
+                }
+                """.formatted(inserted.publicId().value(), CalendarURL.from(openPaaSUser.id()).asUri().toString()));
+    }
+
+    @Test
+    void shouldReturn200WithAlarm() {
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, BookingLinkInsertRequest.AUTO_ACCEPT,
+                Optional.empty(), ExtraAttendees.NONE, Optional.empty(), Optional.empty(), Optional.empty(),
+                Optional.empty(), Optional.empty(), Optional.empty(), List.of(), Optional.of(new BookingLinkAlarm("-PT10M"))));
+
+        String response = given()
+        .when()
+            .get("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract().body().asString();
+
+        assertThatJson(response)
+            .isEqualTo("""
+                {
+                    "publicId": "%s",
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "autoAccept": false,
+                    "color": "#6B4ECC",
+                    "alarm": "-PT10M"
                 }
                 """.formatted(inserted.publicId().value(), CalendarURL.from(openPaaSUser.id()).asUri().toString()));
     }

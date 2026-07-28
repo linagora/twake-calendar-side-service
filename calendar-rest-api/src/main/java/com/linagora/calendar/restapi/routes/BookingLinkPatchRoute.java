@@ -43,14 +43,19 @@ import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.restapi.ForbiddenException;
 import com.linagora.calendar.restapi.routes.dto.AvailabilityRuleDTO;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.booking.BookingLinkAlarm;
 import com.linagora.calendar.storage.booking.BookingLinkColorUtil;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.booking.BookingLinkExtraAttendeeUtil;
 import com.linagora.calendar.storage.booking.BookingLinkNotFoundException;
 import com.linagora.calendar.storage.booking.BookingLinkPatchRequest;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
+import com.linagora.calendar.storage.booking.BookingLinkResourceUtil;
+import com.linagora.calendar.storage.booking.EventTransparency;
+import com.linagora.calendar.storage.booking.EventVisibility;
 import com.linagora.calendar.storage.booking.ExtraAttendees;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
+import com.linagora.calendar.storage.model.ResourceId;
 
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -70,6 +75,11 @@ public class BookingLinkPatchRoute extends CalendarRoute {
     private static final String FIELD_NAME = "name";
     private static final String FIELD_DESCRIPTION = "description";
     private static final String FIELD_COLOR = "color";
+    private static final String FIELD_LOCATION = "location";
+    private static final String FIELD_VISIBILITY = "visibility";
+    private static final String FIELD_TRANSPARENCY = "transparency";
+    private static final String FIELD_RESOURCES = "resources";
+    private static final String FIELD_ALARM = "alarm";
 
     public record PatchDto(@JsonProperty(FIELD_CALENDAR_URL) Optional<String> calendarUrl,
                            @JsonProperty(FIELD_DURATION_MINUTES) Optional<Integer> durationMinutes,
@@ -79,13 +89,19 @@ public class BookingLinkPatchRoute extends CalendarRoute {
                            @JsonProperty(FIELD_EXTRA_ATTENDEES) Optional<JsonNode> extraAttendees,
                            @JsonProperty(FIELD_NAME) Optional<String> name,
                            @JsonProperty(FIELD_DESCRIPTION) Optional<String> description,
-                           @JsonProperty(FIELD_COLOR) Optional<String> color) {
+                           @JsonProperty(FIELD_COLOR) Optional<String> color,
+                           @JsonProperty(FIELD_LOCATION) Optional<String> location,
+                           @JsonProperty(FIELD_VISIBILITY) Optional<String> visibility,
+                           @JsonProperty(FIELD_TRANSPARENCY) Optional<String> transparency,
+                           @JsonProperty(FIELD_RESOURCES) Optional<List<String>> resources,
+                           @JsonProperty(FIELD_ALARM) Optional<String> alarm) {
     }
 
     private final BookingLinkDAO bookingLinkDAO;
     private final CalDavClient calDavClient;
     private final SettingsBasedResolver settingsResolver;
     private final BookingLinkExtraAttendeeResolver extraAttendeeResolver;
+    private final BookingLinkResourceResolver resourceResolver;
 
     @Inject
     public BookingLinkPatchRoute(Authenticator authenticator,
@@ -93,12 +109,14 @@ public class BookingLinkPatchRoute extends CalendarRoute {
                                  BookingLinkDAO bookingLinkDAO,
                                  CalDavClient calDavClient,
                                  @Named("businessHours") SettingsBasedResolver settingsResolver,
-                                 BookingLinkExtraAttendeeResolver extraAttendeeResolver) {
+                                 BookingLinkExtraAttendeeResolver extraAttendeeResolver,
+                                 BookingLinkResourceResolver resourceResolver) {
         super(authenticator, metricFactory);
         this.bookingLinkDAO = bookingLinkDAO;
         this.calDavClient = calDavClient;
         this.settingsResolver = settingsResolver;
         this.extraAttendeeResolver = extraAttendeeResolver;
+        this.resourceResolver = resourceResolver;
     }
 
     @Override
@@ -119,6 +137,9 @@ public class BookingLinkPatchRoute extends CalendarRoute {
                     validateCalendarAccess(calendarURL, session).thenReturn(patchRequest)).orElse(Mono.just(patchRequest)))
             .flatMap(patchRequest -> extraAttendeeResolver.validate(session.getUser(),
                     patchRequest.extraAttendees().getOrElse(ExtraAttendees.NONE).participants())
+                .thenReturn(patchRequest))
+            .flatMap(patchRequest -> resourceResolver.validate(session.getUser(),
+                    patchRequest.resources().getOrElse(List.of()))
                 .thenReturn(patchRequest))
             .flatMap(patchRequest -> bookingLinkDAO.update(session.getUser(), publicId, patchRequest))
             .then(response.status(HttpResponseStatus.NO_CONTENT).send().then())
@@ -148,7 +169,12 @@ public class BookingLinkPatchRoute extends CalendarRoute {
                 parseExtraAttendees(node, dto),
                 parseName(node, dto),
                 parseDescription(node, dto),
-                parseColor(node, dto));
+                parseColor(node, dto),
+                parseLocation(node, dto),
+                parseVisibility(node, dto),
+                parseTransparency(node, dto),
+                parseResources(node, dto),
+                parseAlarm(node, dto));
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
@@ -246,6 +272,52 @@ public class BookingLinkPatchRoute extends CalendarRoute {
             return ValuePatch.keep();
         }
         return BookingLinkColorUtil.sanitize(dto.color())
+            .map(ValuePatch::modifyTo)
+            .orElseGet(ValuePatch::remove);
+    }
+
+    private ValuePatch<String> parseLocation(JsonNode node, PatchDto dto) {
+        if (!node.has(FIELD_LOCATION)) {
+            return ValuePatch.keep();
+        }
+        return dto.location().map(String::trim).filter(location -> !location.isEmpty())
+            .map(ValuePatch::modifyTo)
+            .orElseGet(ValuePatch::remove);
+    }
+
+    private ValuePatch<EventVisibility> parseVisibility(JsonNode node, PatchDto dto) {
+        if (!node.has(FIELD_VISIBILITY)) {
+            return ValuePatch.keep();
+        }
+        return dto.visibility().map(String::trim).filter(visibility -> !visibility.isEmpty())
+            .map(EventVisibility::fromString)
+            .map(ValuePatch::modifyTo)
+            .orElseGet(ValuePatch::remove);
+    }
+
+    private ValuePatch<EventTransparency> parseTransparency(JsonNode node, PatchDto dto) {
+        if (!node.has(FIELD_TRANSPARENCY)) {
+            return ValuePatch.keep();
+        }
+        return dto.transparency().map(String::trim).filter(transparency -> !transparency.isEmpty())
+            .map(EventTransparency::fromString)
+            .map(ValuePatch::modifyTo)
+            .orElseGet(ValuePatch::remove);
+    }
+
+    private ValuePatch<List<ResourceId>> parseResources(JsonNode node, PatchDto dto) {
+        if (!node.has(FIELD_RESOURCES)) {
+            return ValuePatch.keep();
+        }
+        return BookingLinkResourceUtil.parsePatch(dto.resources());
+    }
+
+    private ValuePatch<BookingLinkAlarm> parseAlarm(JsonNode node, PatchDto dto) {
+        if (!node.has(FIELD_ALARM)) {
+            return ValuePatch.keep();
+        }
+        return dto.alarm().map(String::trim).filter(alarm -> !alarm.isEmpty())
+            .map(BookingLinkAlarm::new)
             .map(ValuePatch::modifyTo)
             .orElseGet(ValuePatch::remove);
     }
