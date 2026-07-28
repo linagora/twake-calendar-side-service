@@ -44,7 +44,6 @@ import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.ResourceInsertRequest;
-import com.linagora.calendar.storage.model.ResourceAdministrator;
 import com.linagora.calendar.storage.model.ResourceId;
 import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
 
@@ -312,9 +311,6 @@ class CalendarSearchSourceResolverTest {
 
     private ResourceId createResource(OpenPaaSDomain domain, OpenPaaSUser creator, List<OpenPaaSUser> administrators) {
         ResourceInsertRequest insertRequest = new ResourceInsertRequest(
-            administrators.stream()
-                .map(administrator -> new ResourceAdministrator(administrator.id(), "user"))
-                .toList(),
             creator.id(),
             "Resource calendar search source resolver test",
             domain.id(),

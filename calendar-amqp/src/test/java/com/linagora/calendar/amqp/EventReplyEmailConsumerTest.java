@@ -467,7 +467,6 @@ public class EventReplyEmailConsumerTest {
         ResourceAdministrator administrator = new ResourceAdministrator(organizer.id(), "user");
         OpenPaaSDomain openPaaSDomain = domainDAO.retrieve(organizer.username().getDomainPart().get()).block();
         ResourceInsertRequest insertRequest = new ResourceInsertRequest(
-            List.of(administrator),
             administrator.refId(),
             "This is a projector made in China",
             openPaaSDomain.id(),

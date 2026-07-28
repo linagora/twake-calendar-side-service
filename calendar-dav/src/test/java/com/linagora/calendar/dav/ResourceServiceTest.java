@@ -20,6 +20,7 @@ package com.linagora.calendar.dav;
 
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Clock;
 import java.util.List;
@@ -140,8 +141,39 @@ class ResourceServiceTest {
             .isFalse();
     }
 
+    @Test
+    void createShouldFailWhenAdministratorDoesNotExist() {
+        OpenPaaSUser creator = sabreDavExtension.newTestUser(Optional.of("creator_"));
+        Username missingAdministrator = Username.of("missing_admin@" + domain.domain().asString());
+        ResourceInsertRequest request = new ResourceInsertRequest(
+            creator.id(),
+            "Resource administrator resolver test",
+            domain.id(),
+            "projector",
+            "Resource " + UUID.randomUUID());
+        long resourceCountBefore = resourceDAO.findAll().count().block();
+
+        assertThatThrownBy(() -> testee.create(request, List.of(missingAdministrator)).block())
+            .isInstanceOf(ResourceAdministratorNotFoundException.class)
+            .hasMessage("Resource administrator '%s' must exist".formatted(missingAdministrator.asString()));
+
+        assertThat(resourceDAO.findAll().count().block())
+            .isEqualTo(resourceCountBefore);
+    }
+
+    @Test
+    void updateAdminsShouldFailWhenAdministratorDoesNotExist() {
+        OpenPaaSUser creator = sabreDavExtension.newTestUser(Optional.of("creator_"));
+        Resource resource = createResource(creator);
+        Username missingAdministrator = Username.of("missing_admin@" + domain.domain().asString());
+
+        assertThatThrownBy(() -> testee.updateAdmins(resource, List.of(missingAdministrator)).block())
+            .isInstanceOf(ResourceAdministratorNotFoundException.class)
+            .hasMessage("Resource administrator '%s' must exist".formatted(missingAdministrator.asString()));
+    }
+
     private Resource createResource(OpenPaaSUser creator) {
-        ResourceId resourceId = resourceDAO.insert(new ResourceInsertRequest(List.of(),
+        ResourceId resourceId = resourceDAO.insert(new ResourceInsertRequest(
                 creator.id(),
                 "Resource administrator resolver test",
                 domain.id(),

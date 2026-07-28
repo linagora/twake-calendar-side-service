@@ -16,11 +16,12 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage;
+package com.linagora.calendar.dav;
 
-public record ResourceInsertRequest(OpenPaaSId creator,
-                                    String description,
-                                    OpenPaaSId domain,
-                                    String icon,
-                                    String name) {
+import org.apache.james.core.Username;
+
+public class ResourceAdministratorNotFoundException extends RuntimeException {
+    public ResourceAdministratorNotFoundException(Username username) {
+        super("Resource administrator '%s' must exist".formatted(username.asString()));
+    }
 }

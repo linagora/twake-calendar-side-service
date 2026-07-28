@@ -63,7 +63,6 @@ import com.linagora.calendar.storage.ResourceInsertRequest;
 import com.linagora.calendar.storage.TeamCalendarInsertRequest;
 import com.linagora.calendar.storage.TeamCalendarRepository;
 import com.linagora.calendar.storage.model.Resource;
-import com.linagora.calendar.storage.model.ResourceAdministrator;
 import com.linagora.calendar.storage.model.ResourceId;
 import com.linagora.calendar.storage.model.TeamCalendar;
 
@@ -86,19 +85,19 @@ class PeopleSearchRouteTest {
         }
 
         public Resource save(OpenPaaSUser requestUser, String name, String icon) {
-            return save(requestUser, name, icon, List.of(requestUser.id()));
-        }
-
-        public Resource save(OpenPaaSUser requestUser, String name, String icon, List<OpenPaaSId> adminIds) {
-            ResourceInsertRequest insertRequest = buildInsertRequest(requestUser, name, icon, adminIds);
+            ResourceInsertRequest insertRequest = buildInsertRequest(requestUser, name, icon);
 
             return resourceDAO.insert(insertRequest)
                 .flatMap(resourceDAO::findById)
                 .block();
         }
 
+        public Resource save(OpenPaaSUser requestUser, String name, String icon, List<OpenPaaSId> adminIds) {
+            return save(requestUser, name, icon);
+        }
+
         public ResourceId saveAndRemove(OpenPaaSUser requestUser, String name, String icon) {
-            ResourceInsertRequest insertRequest = buildInsertRequest(requestUser, name, icon, List.of(requestUser.id()));
+            ResourceInsertRequest insertRequest = buildInsertRequest(requestUser, name, icon);
 
             return resourceDAO.insert(insertRequest)
                 .flatMap(resourceId -> resourceDAO.softDelete(resourceId).thenReturn(resourceId))
@@ -109,15 +108,11 @@ class PeopleSearchRouteTest {
             return resourceDAO.findAll().collectList().block();
         }
 
-        private ResourceInsertRequest buildInsertRequest(OpenPaaSUser requestUser, String name, String icon, List<OpenPaaSId> adminIds) {
-            List<ResourceAdministrator> administrators = adminIds.stream()
-                .map(id -> new ResourceAdministrator(id, "user"))
-                .toList();
-
+        private ResourceInsertRequest buildInsertRequest(OpenPaaSUser requestUser, String name, String icon) {
             OpenPaaSDomain domain = domainDAO.retrieve(requestUser.username().getDomainPart().orElseThrow())
                 .block();
 
-            return new ResourceInsertRequest(administrators, requestUser.id(), name + " description", domain.id(), icon, name);
+            return new ResourceInsertRequest(requestUser.id(), name + " description", domain.id(), icon, name);
         }
     }
 

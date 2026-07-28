@@ -21,7 +21,6 @@ package com.linagora.calendar.webadmin;
 import static com.linagora.calendar.dav.ResourceService.ONLY_ACTIVE;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 import jakarta.inject.Inject;
@@ -42,6 +41,7 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.linagora.calendar.dav.ResourceAdministratorNotFoundException;
 import com.linagora.calendar.dav.ResourceService;
 import com.linagora.calendar.dav.ResourceService.ResourceWithAdministration;
 import com.linagora.calendar.storage.OpenPaaSDomain;
@@ -53,10 +53,8 @@ import com.linagora.calendar.storage.ResourceInsertRequest;
 import com.linagora.calendar.storage.ResourceNotFoundException;
 import com.linagora.calendar.storage.ResourceUpdateRequest;
 import com.linagora.calendar.storage.model.Resource;
-import com.linagora.calendar.storage.model.ResourceAdministrator;
 import com.linagora.calendar.storage.model.ResourceId;
 
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import spark.HaltException;
 import spark.Request;
@@ -202,25 +200,22 @@ public class ResourceRoutes implements Routes {
         Mono<OpenPaaSId> creatorIdMono = retrieveExistingUser(Username.of(creationDTO.creator))
             .map(OpenPaaSUser::id);
 
-        Mono<Map<Username, ResourceAdministrator>> adminMapMono = resolveAdministratorsFromDTO(creationDTO.administrators);
+        List<Username> administrators = administratorUsernamesFromDTO(creationDTO.administrators);
 
-        return Mono.zip(creatorIdMono, adminMapMono)
-            .flatMap(tuple -> {
-                OpenPaaSId creatorId = tuple.getT1();
-                Map<Username, ResourceAdministrator> adminMap = tuple.getT2();
-                return resourceService.create(buildInsertRequest(adminMap, creatorId, creationDTO, domain.id()), adminMap.keySet());
-            })
+        return creatorIdMono
+            .flatMap(creatorId -> resourceService.create(buildInsertRequest(creatorId, creationDTO, domain.id()), administrators))
             .map(resourceId -> {
                 res.header(HttpHeader.LOCATION.asString(), DOMAINS + "/" + domain.domain().asString() + "/resources/" + resourceId.value());
                 res.status(HttpStatus.CREATED_201);
                 return StringUtils.EMPTY;
             })
+            .onErrorMap(ResourceAdministratorNotFoundException.class, this::badRequest)
             .block();
     }
 
-    private ResourceInsertRequest buildInsertRequest(Map<Username, ResourceAdministrator> adminMap, OpenPaaSId creatorId,
+    private ResourceInsertRequest buildInsertRequest(OpenPaaSId creatorId,
                                                      ResourceCreationDTO creationDTO, OpenPaaSId domainId) {
-        return new ResourceInsertRequest(adminMap.values().stream().toList(), creatorId, creationDTO.description, domainId, creationDTO.icon, creationDTO.name);
+        return new ResourceInsertRequest(creatorId, creationDTO.description, domainId, creationDTO.icon, creationDTO.name);
     }
 
     private String updateResource(Request req, Response res) throws JsonExtractException {
@@ -232,6 +227,7 @@ public class ResourceRoutes implements Routes {
             .flatMap(resource -> updateResourceFromDTO(resource, dto))
             .doOnSuccess(_ -> res.status(HttpStatus.NO_CONTENT_204))
             .thenReturn(StringUtils.EMPTY)
+            .onErrorMap(ResourceAdministratorNotFoundException.class, this::badRequest)
             .onErrorMap(ResourceNotFoundException.class, exception -> resourceNotFound(resourceId))
             .block();
     }
@@ -247,13 +243,6 @@ public class ResourceRoutes implements Routes {
         return Optional.ofNullable(administrators).orElse(List.of()).stream()
             .map(dto -> Username.of(dto.email()))
             .toList();
-    }
-
-    private Mono<Map<Username, ResourceAdministrator>> resolveAdministratorsFromDTO(List<AdministratorDTO> dtos) {
-        return Flux.fromIterable(dtos == null ? List.of() : dtos)
-            .map(dto -> Username.of(dto.email()))
-            .flatMap(this::retrieveExistingUser)
-            .collectMap(OpenPaaSUser::username, user -> new ResourceAdministrator(user.id(), "user"));
     }
 
     private OpenPaaSDomain asDomainObject(Request request) {
@@ -311,6 +300,15 @@ public class ResourceRoutes implements Routes {
             .statusCode(HttpStatus.NOT_FOUND_404)
             .type(ErrorResponder.ErrorType.NOT_FOUND)
             .message("Resource does not exist")
+            .haltError();
+    }
+
+    private HaltException badRequest(Exception exception) {
+        return ErrorResponder.builder()
+            .statusCode(HttpStatus.BAD_REQUEST_400)
+            .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+            .message(exception.getMessage())
+            .cause(exception)
             .haltError();
     }
 
