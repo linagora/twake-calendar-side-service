@@ -18,12 +18,13 @@
 
 package com.linagora.calendar.restapi.routes;
 
+import static com.linagora.calendar.dav.ResourceService.ONLY_ACTIVE;
+
 import java.time.Instant;
 import java.util.List;
 
 import jakarta.inject.Inject;
 
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.http.Authenticator;
 import org.apache.james.mailbox.MailboxSession;
@@ -36,14 +37,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.github.fge.lambdas.Throwing;
+import com.linagora.calendar.dav.ResourceService;
+import com.linagora.calendar.dav.ResourceService.ResourceWithAdministration;
 import com.linagora.calendar.restapi.NotFoundException;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainAdminDAO;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
-import com.linagora.calendar.storage.ResourceDAO;
+import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.model.Resource;
-import com.linagora.calendar.storage.model.ResourceAdministrator;
 import com.linagora.calendar.storage.model.ResourceId;
 
 import io.netty.handler.codec.http.HttpMethod;
@@ -83,22 +85,26 @@ public class ResourceRoute extends CalendarRoute {
             Instant updatedAt) {
         }
 
-        record AdministratorDTO(@JsonProperty("id") String idRef,
-                                @JsonProperty("objectType") String objectType) {
+        record AdministratorDTO(@JsonProperty("id") String idRef) {
 
-            static AdministratorDTO from(ResourceAdministrator entity) {
-                return new AdministratorDTO(entity.refId().value(), entity.objectType());
+            static AdministratorDTO from(OpenPaaSUser user) {
+                return new AdministratorDTO(user.id().value());
             }
 
             @JsonProperty("_id")
             public String getId() {
                 return idRef;
             }
+
+            @JsonProperty("objectType")
+            public String getObjectType() {
+                return "user";
+            }
         }
 
-        static ResourceResponseDTO from(Resource resource, DomainRoute.ResponseDTO domain) {
-            List<AdministratorDTO> administrators = CollectionUtils.emptyIfNull(resource.administrators())
-                .stream()
+        static ResourceResponseDTO from(ResourceWithAdministration resourceWithAdministration, DomainRoute.ResponseDTO domain) {
+            Resource resource = resourceWithAdministration.resource();
+            List<AdministratorDTO> administrators = resourceWithAdministration.administrators().stream()
                 .map(AdministratorDTO::from)
                 .toList();
 
@@ -108,19 +114,19 @@ public class ResourceRoute extends CalendarRoute {
         }
     }
 
-    private final ResourceDAO resourceDAO;
+    private final ResourceService resourceService;
     private final OpenPaaSDomainDAO openPaaSDomainDAO;
     private final OpenPaaSDomainAdminDAO domainAdminDAO;
     private final CrossDomainAccessControl crossDomainAccessControl;
 
     @Inject
     public ResourceRoute(Authenticator authenticator,
-                         MetricFactory metricFactory, ResourceDAO resourceDAO,
+                         MetricFactory metricFactory, ResourceService resourceService,
                          OpenPaaSDomainDAO openPaaSDomainDAO,
                          OpenPaaSDomainAdminDAO domainAdminDAO,
                          CrossDomainAccessControl crossDomainAccessControl) {
         super(authenticator, metricFactory);
-        this.resourceDAO = resourceDAO;
+        this.resourceService = resourceService;
         this.openPaaSDomainDAO = openPaaSDomainDAO;
         this.domainAdminDAO = domainAdminDAO;
         this.crossDomainAccessControl = crossDomainAccessControl;
@@ -134,10 +140,10 @@ public class ResourceRoute extends CalendarRoute {
     @Override
     Mono<Void> handleRequest(HttpServerRequest req, HttpServerResponse res, MailboxSession session) {
         ResourceId resourceId = new ResourceId(req.param(RESOURCE_ID_PATH_PARAM));
-        return resourceDAO.findById(resourceId)
+        return resourceService.retrieveWithAdministration(resourceId, !ONLY_ACTIVE)
             .switchIfEmpty(Mono.error(NotFoundException::new))
-            .flatMap(resource -> retrieveAuthorizedDomainResponse(resource.domain(), session)
-                .map(domainResponse -> ResourceResponseDTO.from(resource, domainResponse)))
+            .flatMap(resourceWithAdministration -> retrieveAuthorizedDomainResponse(resourceWithAdministration.resource().domain(), session)
+                .map(domainResponse -> ResourceResponseDTO.from(resourceWithAdministration, domainResponse)))
             .map(Throwing.function(OBJECT_MAPPER::writeValueAsBytes))
             .flatMap(bytes -> res.status(200)
                 .header("Content-Type", "application/json;charset=utf-8")

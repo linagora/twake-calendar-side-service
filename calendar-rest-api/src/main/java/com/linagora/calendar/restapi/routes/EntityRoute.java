@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.restapi.routes;
 
+import static com.linagora.calendar.dav.ResourceService.ONLY_ACTIVE;
+
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
@@ -26,7 +28,6 @@ import java.util.List;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.http.Authenticator;
 import org.apache.james.mailbox.MailboxSession;
@@ -41,6 +42,8 @@ import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableList;
+import com.linagora.calendar.dav.ResourceService;
+import com.linagora.calendar.dav.ResourceService.ResourceWithAdministration;
 import com.linagora.calendar.restapi.NotFoundException;
 import com.linagora.calendar.storage.DomainAdministrator;
 import com.linagora.calendar.storage.OpenPaaSDomain;
@@ -49,11 +52,9 @@ import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
-import com.linagora.calendar.storage.ResourceDAO;
 import com.linagora.calendar.storage.TeamCalendarRepository;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.model.Resource;
-import com.linagora.calendar.storage.model.ResourceAdministrator;
 import com.linagora.calendar.storage.model.ResourceId;
 import com.linagora.calendar.storage.model.TeamCalendar;
 import com.linagora.calendar.storage.model.TeamCalendarId;
@@ -111,22 +112,26 @@ public class EntityRoute extends CalendarRoute {
                                String creator,
                                DomainDTO domain) {
 
-        record AdministratorDTO(@JsonProperty("id") String idRef,
-                                @JsonProperty("objectType") String objectType) {
+        record AdministratorDTO(@JsonProperty("id") String idRef) {
 
-            static AdministratorDTO from(ResourceAdministrator entity) {
-                return new AdministratorDTO(entity.refId().value(), entity.objectType());
+            static AdministratorDTO from(OpenPaaSUser user) {
+                return new AdministratorDTO(user.id().value());
             }
 
             @JsonProperty("_id")
             public String getId() {
                 return idRef;
             }
+
+            @JsonProperty("objectType")
+            public String getObjectType() {
+                return "user";
+            }
         }
 
-        static ResourceResponseDTO from(Resource resource, DomainDTO domain) {
-            List<AdministratorDTO> administrators = CollectionUtils.emptyIfNull(resource.administrators())
-                .stream()
+        static ResourceResponseDTO from(ResourceWithAdministration resourceWithAdministration, DomainDTO domain) {
+            Resource resource = resourceWithAdministration.resource();
+            List<AdministratorDTO> administrators = resourceWithAdministration.administrators().stream()
                 .map(AdministratorDTO::from)
                 .toList();
 
@@ -226,7 +231,7 @@ public class EntityRoute extends CalendarRoute {
         }
     }
 
-    private final ResourceDAO resourceDAO;
+    private final ResourceService resourceService;
     private final OpenPaaSUserDAO userDAO;
     private final OpenPaaSDomainDAO domainDAO;
     private final OpenPaaSDomainAdminDAO domainAdminDAO;
@@ -237,7 +242,7 @@ public class EntityRoute extends CalendarRoute {
     @Inject
     public EntityRoute(Authenticator authenticator,
                        MetricFactory metricFactory,
-                       ResourceDAO resourceDAO,
+                       ResourceService resourceService,
                        OpenPaaSUserDAO userDAO,
                        OpenPaaSDomainDAO domainDAO,
                        OpenPaaSDomainAdminDAO domainAdminDAO,
@@ -245,7 +250,7 @@ public class EntityRoute extends CalendarRoute {
                        @Named("language_timezone") SettingsBasedResolver settingsResolver,
                        CrossDomainAccessControl crossDomainAccessControl) {
         super(authenticator, metricFactory);
-        this.resourceDAO = resourceDAO;
+        this.resourceService = resourceService;
         this.userDAO = userDAO;
         this.domainDAO = domainDAO;
         this.domainAdminDAO = domainAdminDAO;
@@ -275,9 +280,9 @@ public class EntityRoute extends CalendarRoute {
     }
 
     private Mono<EntityResponseDTO> asResourceEntity(String id, MailboxSession session) {
-        return resourceDAO.findById(new ResourceId(id))
-            .flatMap(resource -> retrieveAuthorizedDomainResponse(resource.domain(), session)
-                .map(domain -> EntityResponseDTO.forResource(ResourceResponseDTO.from(resource, domain))));
+        return resourceService.retrieveWithAdministration(new ResourceId(id), !ONLY_ACTIVE)
+            .flatMap(resourceWithAdministration -> retrieveAuthorizedDomainResponse(resourceWithAdministration.resource().domain(), session)
+                .map(domain -> EntityResponseDTO.forResource(ResourceResponseDTO.from(resourceWithAdministration, domain))));
     }
 
     private Mono<EntityResponseDTO> asUserEntity(String id, MailboxSession session) {

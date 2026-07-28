@@ -32,9 +32,9 @@ import org.apache.james.metrics.api.MetricFactory;
 
 import com.google.inject.AbstractModule;
 import com.google.inject.multibindings.Multibinder;
+import com.linagora.calendar.dav.ResourceService;
 import com.linagora.calendar.storage.OpenPaaSDomainAdminDAO;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
-import com.linagora.calendar.storage.ResourceDAO;
 import com.linagora.calendar.storage.UploadedFileDAO;
 
 import io.netty.handler.codec.http.HttpMethod;
@@ -88,11 +88,11 @@ public final class LegacyRoutes {
         @Inject
         public Resource(Authenticator authenticator,
                         MetricFactory metricFactory,
-                        ResourceDAO resourceDAO,
+                        ResourceService resourceService,
                         OpenPaaSDomainDAO openPaaSDomainDAO,
                         OpenPaaSDomainAdminDAO domainAdminDAO,
                         CrossDomainAccessControl crossDomainAccessControl) {
-            super(authenticator, metricFactory, resourceDAO, openPaaSDomainDAO, domainAdminDAO, crossDomainAccessControl);
+            super(authenticator, metricFactory, resourceService, openPaaSDomainDAO, domainAdminDAO, crossDomainAccessControl);
         }
 
         @Override

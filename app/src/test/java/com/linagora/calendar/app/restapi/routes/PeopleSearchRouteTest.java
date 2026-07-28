@@ -53,11 +53,13 @@ import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.app.modules.MemoryAutoCompleteModule;
+import com.linagora.calendar.dav.ResourceService;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
+import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.ResourceDAO;
 import com.linagora.calendar.storage.ResourceInsertRequest;
 import com.linagora.calendar.storage.TeamCalendarInsertRequest;
@@ -77,11 +79,16 @@ class PeopleSearchRouteTest {
     static class ResourceProbe implements GuiceProbe {
         private final ResourceDAO resourceDAO;
         private final OpenPaaSDomainDAO domainDAO;
+        private final OpenPaaSUserDAO userDAO;
+        private final ResourceService resourceService;
 
         @Inject
-        ResourceProbe(ResourceDAO resourceDAO, OpenPaaSDomainDAO domainDAO) {
+        ResourceProbe(ResourceDAO resourceDAO, OpenPaaSDomainDAO domainDAO,
+                      OpenPaaSUserDAO userDAO, ResourceService resourceService) {
             this.resourceDAO = resourceDAO;
             this.domainDAO = domainDAO;
+            this.userDAO = userDAO;
+            this.resourceService = resourceService;
         }
 
         public Resource save(OpenPaaSUser requestUser, String name, String icon) {
@@ -93,7 +100,11 @@ class PeopleSearchRouteTest {
         }
 
         public Resource save(OpenPaaSUser requestUser, String name, String icon, List<OpenPaaSId> adminIds) {
-            return save(requestUser, name, icon);
+            Resource resource = save(requestUser, name, icon);
+            resourceService.updateAdmins(resource, adminIds.stream()
+                .map(userId -> userDAO.retrieve(userId).block().username())
+                .toList()).block();
+            return resource;
         }
 
         public ResourceId saveAndRemove(OpenPaaSUser requestUser, String name, String icon) {
@@ -102,10 +113,6 @@ class PeopleSearchRouteTest {
             return resourceDAO.insert(insertRequest)
                 .flatMap(resourceId -> resourceDAO.softDelete(resourceId).thenReturn(resourceId))
                 .block();
-        }
-
-        public List<Resource> listAll() {
-            return resourceDAO.findAll().collectList().block();
         }
 
         private ResourceInsertRequest buildInsertRequest(OpenPaaSUser requestUser, String name, String icon) {
@@ -528,7 +535,7 @@ class PeopleSearchRouteTest {
         // given
         OpenPaaSUser openPaaSUser = server.getProbe(CalendarDataProbe.class).getUser(USERNAME);
         ResourceProbe resourceProbe = server.getProbe(ResourceProbe.class);
-        resourceProbe.save(openPaaSUser, "meeting-room", "laptop");
+        Resource resource = resourceProbe.save(openPaaSUser, "meeting-room", "laptop");
 
         // when
         String response = given()
@@ -547,7 +554,6 @@ class PeopleSearchRouteTest {
             .asString();
 
         // then
-        Resource firstResource = resourceProbe.listAll().getFirst();
         assertThatJson(response)
             .withOptions(Option.IGNORING_ARRAY_ORDER)
             .isEqualTo("""
@@ -560,7 +566,7 @@ class PeopleSearchRouteTest {
                     "phoneNumbers": [],
                     "photos": [ { "url": "https://twcalendar.linagora.com/images/icon/laptop.svg", "type": "default" } ]
                   }
-                ]""".formatted(firstResource.id().value(), firstResource.id().value() + "@" + DOMAIN));
+                ]""".formatted(resource.id().value(), resource.id().value() + "@" + DOMAIN));
     }
 
     @Test
