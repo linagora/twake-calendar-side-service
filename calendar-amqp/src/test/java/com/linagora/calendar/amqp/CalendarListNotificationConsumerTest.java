@@ -72,7 +72,6 @@ import com.linagora.calendar.storage.ResourceDAO;
 import com.linagora.calendar.storage.ResourceInsertRequest;
 import com.linagora.calendar.storage.TeamCalendarRepository;
 import com.linagora.calendar.storage.UsernameRegistrationKey;
-import com.linagora.calendar.storage.model.ResourceAdministrator;
 import com.linagora.calendar.storage.model.ResourceId;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
@@ -809,9 +808,7 @@ public class CalendarListNotificationConsumerTest {
                 .map(OpenPaaSDomain::id)
                 .block();
 
-            ResourceInsertRequest resourceInsertRequest = new ResourceInsertRequest(administrators.stream()
-                .map(admin -> new ResourceAdministrator(admin.id(), "user"))
-                .toList(),
+            ResourceInsertRequest resourceInsertRequest = new ResourceInsertRequest(
                 creator.id(), "resource description", domainId, "tv", resourceName);
             ResourceId resourceId = resourceDAO.insert(resourceInsertRequest).block();
 

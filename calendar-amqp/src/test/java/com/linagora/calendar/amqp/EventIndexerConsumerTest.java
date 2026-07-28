@@ -792,7 +792,7 @@ public class EventIndexerConsumerTest {
         // Given: resource A exists.
         OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
         ResourceId resourceId = new MongoDBResourceDAO(dockerSabreDavSetup.getMongoDB(), Clock.systemUTC())
-            .insert(new ResourceInsertRequest(List.of(), bob.id(),
+            .insert(new ResourceInsertRequest(bob.id(),
                 "Resource A description", domain.id(), "projector", "Resource A"))
             .block();
         String eventUid = UUID.randomUUID().toString();

@@ -74,10 +74,14 @@ public class ResourceService {
     }
 
     public Mono<ResourceId> create(ResourceInsertRequest request, Collection<Username> admins) {
-        return resourceDAO.insert(request)
-            .flatMap(resourceId -> calDavClient.grantReadWriteRights(request.domain(), resourceId, admins)
-                .doOnError(err -> LOGGER.error("Error granting rights for resource {}", resourceId.value(), err))
-                .thenReturn(resourceId));
+        return resolveValidAdministrators(admins)
+            .map(administrators -> administrators.stream()
+                .map(OpenPaaSUser::username)
+                .toList())
+            .flatMap(adminUsernames -> resourceDAO.insert(request)
+                .flatMap(resourceId -> calDavClient.grantReadWriteRights(request.domain(), resourceId, adminUsernames)
+                    .doOnError(err -> LOGGER.error("Error granting rights for resource {}", resourceId.value(), err))
+                    .thenReturn(resourceId)));
     }
 
     public Mono<Void> delete(Resource resource) {
@@ -195,7 +199,7 @@ public class ResourceService {
     private Mono<List<OpenPaaSUser>> resolveValidAdministrators(Collection<Username> administrators) {
         return Flux.fromIterable(administrators)
             .flatMap(username -> userDAO.retrieve(username)
-                .switchIfEmpty(Mono.error(() -> new IllegalArgumentException("username '%s' must exist".formatted(username.asString())))))
+                .switchIfEmpty(Mono.error(() -> new ResourceAdministratorNotFoundException(username))))
             .collectMap(OpenPaaSUser::username)
             .map(adminMap -> adminMap.values().stream().toList());
     }

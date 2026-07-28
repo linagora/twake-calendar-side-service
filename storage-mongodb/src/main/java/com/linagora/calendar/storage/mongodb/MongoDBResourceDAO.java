@@ -170,7 +170,7 @@ public class MongoDBResourceDAO implements ResourceDAO {
 
     private Document toDocument(ResourceInsertRequest request) {
         Date now = Date.from(clock.instant());
-        return new Document().append(ADMINISTRATORS_FIELD, request.administrators().stream().map(this::toDocument).toList())
+        return new Document().append(ADMINISTRATORS_FIELD, List.of())
             .append(CREATOR_FIELD, new ObjectId(request.creator().value()))
             .append(DELETED_FIELD, !DELETED)
             .append(DESCRIPTION_FIELD, request.description())

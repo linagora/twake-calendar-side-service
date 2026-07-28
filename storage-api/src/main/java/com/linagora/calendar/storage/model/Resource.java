@@ -21,6 +21,7 @@ package com.linagora.calendar.storage.model;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.List;
 
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.ResourceInsertRequest;
@@ -45,7 +46,7 @@ public record Resource(ResourceId id,
         Instant now = clock.instant();
         return new Resource(
             id,
-            req.administrators(),
+            List.of(),
             req.creator(),
             !DELETED,
             req.description(),

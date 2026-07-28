@@ -41,7 +41,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.testcontainers.shaded.com.google.common.collect.ImmutableList;
 
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.linagora.calendar.dav.CalDavClient;
@@ -51,7 +50,6 @@ import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.ResourceInsertRequest;
-import com.linagora.calendar.storage.model.ResourceAdministrator;
 import com.linagora.calendar.storage.model.ResourceId;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
@@ -134,18 +132,12 @@ class ResourceRoutesTest {
         OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
         OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
         OpenPaaSUser user2 = userDAO.add(Username.of("user2@linagora.com")).block();
-        ResourceAdministrator admin1 = new ResourceAdministrator(user1.id(), "user");
-        ResourceAdministrator admin2 = new ResourceAdministrator(user2.id(), "user");
-        ResourceId resourceId = resourceDAO.insert(new ResourceInsertRequest(ImmutableList.of(admin1, admin2),
-            user1.id(), "Descripting", domain.id(), "laptop", "Resource name")).block();
+        ResourceId resourceId = resourceDAO.insert(new ResourceInsertRequest(user1.id(), "Descripting", domain.id(), "laptop", "Resource name")).block();
 
         OpenPaaSDomain domain2 = domainDAO.add(Domain.of("twake.app")).block();
         OpenPaaSUser user3 = userDAO.add(Username.of("user3@twake.app")).block();
         OpenPaaSUser user4 = userDAO.add(Username.of("user4@twake.app")).block();
-        ResourceAdministrator admin3 = new ResourceAdministrator(user3.id(), "user");
-        ResourceAdministrator admin4 = new ResourceAdministrator(user4.id(), "user");
-        resourceDAO.insert(new ResourceInsertRequest(ImmutableList.of(admin3, admin4),
-            user3.id(), "Descripting", domain2.id(), "laptop", "Resource name")).block();
+        resourceDAO.insert(new ResourceInsertRequest(user3.id(), "Descripting", domain2.id(), "laptop", "Resource name")).block();
 
         String string = when()
             .get("/domains/linagora.com/resources")
@@ -186,10 +178,7 @@ class ResourceRoutesTest {
         OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
         OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
         OpenPaaSUser user2 = userDAO.add(Username.of("user2@linagora.com")).block();
-        ResourceAdministrator admin1 = new ResourceAdministrator(user1.id(), "user");
-        ResourceAdministrator admin2 = new ResourceAdministrator(user2.id(), "user");
-        ResourceId resourceId = resourceDAO.insert(new ResourceInsertRequest(ImmutableList.of(admin1, admin2),
-            user1.id(), "Descripting", domain.id(), "laptop", "Resource name")).block();
+        ResourceId resourceId = resourceDAO.insert(new ResourceInsertRequest(user1.id(), "Descripting", domain.id(), "laptop", "Resource name")).block();
 
         String string = when()
             .get("/domains/linagora.com/resources/" + resourceId.value())
@@ -230,10 +219,7 @@ class ResourceRoutesTest {
         OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
         OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
         OpenPaaSUser user2 = userDAO.add(Username.of("user2@linagora.com")).block();
-        ResourceAdministrator admin1 = new ResourceAdministrator(user1.id(), "user");
-        ResourceAdministrator admin2 = new ResourceAdministrator(user2.id(), "user");
-        ResourceId resourceId = resourceDAO.insert(new ResourceInsertRequest(ImmutableList.of(admin1, admin2),
-            user1.id(), "Descripting", domain.id(), "laptop", "Resource name")).block();
+        ResourceId resourceId = resourceDAO.insert(new ResourceInsertRequest(user1.id(), "Descripting", domain.id(), "laptop", "Resource name")).block();
 
         given()
             .body("""
@@ -286,10 +272,7 @@ class ResourceRoutesTest {
         OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
         OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
         OpenPaaSUser user2 = userDAO.add(Username.of("user2@linagora.com")).block();
-        ResourceAdministrator admin1 = new ResourceAdministrator(user1.id(), "user");
-        ResourceAdministrator admin2 = new ResourceAdministrator(user2.id(), "user");
-        ResourceId resourceId = resourceDAO.insert(new ResourceInsertRequest(ImmutableList.of(admin1, admin2),
-            user1.id(), "Descripting", domain.id(), "laptop", "Resource name")).block();
+        ResourceId resourceId = resourceDAO.insert(new ResourceInsertRequest(user1.id(), "Descripting", domain.id(), "laptop", "Resource name")).block();
 
         given()
             .body("""
@@ -337,10 +320,7 @@ class ResourceRoutesTest {
         OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
         OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
         OpenPaaSUser user2 = userDAO.add(Username.of("user2@linagora.com")).block();
-        ResourceAdministrator admin1 = new ResourceAdministrator(user1.id(), "user");
-        ResourceAdministrator admin2 = new ResourceAdministrator(user2.id(), "user");
-        ResourceId resourceId = resourceDAO.insert(new ResourceInsertRequest(ImmutableList.of(admin1, admin2),
-            user1.id(), "Descripting", domain.id(), "laptop", "Resource name")).block();
+        ResourceId resourceId = resourceDAO.insert(new ResourceInsertRequest(user1.id(), "Descripting", domain.id(), "laptop", "Resource name")).block();
 
         given()
             .body("""
@@ -591,10 +571,7 @@ class ResourceRoutesTest {
         OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
         OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
         OpenPaaSUser user2 = userDAO.add(Username.of("user2@linagora.com")).block();
-        ResourceAdministrator admin1 = new ResourceAdministrator(user1.id(), "user");
-        ResourceAdministrator admin2 = new ResourceAdministrator(user2.id(), "user");
-        ResourceId resourceId = resourceDAO.insert(new ResourceInsertRequest(ImmutableList.of(admin1, admin2),
-            user1.id(), "Descripting", domain.id(), "laptop", "Resource name")).block();
+        ResourceId resourceId = resourceDAO.insert(new ResourceInsertRequest(user1.id(), "Descripting", domain.id(), "laptop", "Resource name")).block();
 
         when()
             .delete("/domains/linagora.com/resources/" + resourceId.value())

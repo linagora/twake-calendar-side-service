@@ -258,7 +258,6 @@ public class EventResourceConsumerTest {
     void shouldSendResourceRequestEmailWhenNewEventIsCreated(DockerSabreDavSetup dockerSabreDavSetup) {
         OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
         ResourceInsertRequest request = new ResourceInsertRequest(
-            List.of(new ResourceAdministrator(resourceAdmin.id(), "user")),
             resourceAdmin.id(),
             "Test resource description",
             domain.id(),
@@ -318,7 +317,6 @@ public class EventResourceConsumerTest {
     void shouldAcceptEventsWhenNoAdministrators(DockerSabreDavSetup dockerSabreDavSetup) throws Exception {
         OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
         ResourceInsertRequest request = new ResourceInsertRequest(
-            List.of(),
             resourceAdmin.id(),
             "Test resource description",
             domain.id(),
@@ -350,7 +348,6 @@ public class EventResourceConsumerTest {
     void shouldNotSendResourceRequestEmailWhenNoAdmin(DockerSabreDavSetup dockerSabreDavSetup) throws InterruptedException {
         OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
         ResourceInsertRequest request = new ResourceInsertRequest(
-            List.of(),
             resourceAdmin.id(),
             "Test resource description",
             domain.id(),
@@ -380,7 +377,6 @@ public class EventResourceConsumerTest {
     void shouldNotSendResourceRequestEmailWhenResourceHasBeenDeleted(DockerSabreDavSetup dockerSabreDavSetup) throws InterruptedException {
         OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
         ResourceInsertRequest request = new ResourceInsertRequest(
-            List.of(new ResourceAdministrator(resourceAdmin.id(), "user")),
             resourceAdmin.id(),
             "Test resource description",
             domain.id(),
@@ -411,7 +407,6 @@ public class EventResourceConsumerTest {
     void shouldSendResourceReplyEmailWhenResourceRequestIsAccepted(DockerSabreDavSetup dockerSabreDavSetup) {
         OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
         ResourceInsertRequest request = new ResourceInsertRequest(
-            List.of(new ResourceAdministrator(resourceAdmin.id(), "user")),
             resourceAdmin.id(),
             "Test resource description",
             domain.id(),
@@ -471,7 +466,6 @@ public class EventResourceConsumerTest {
     void shouldSendResourceReplyEmailWhenResourceRequestIsDeclined(DockerSabreDavSetup dockerSabreDavSetup) {
         OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
         ResourceInsertRequest request = new ResourceInsertRequest(
-            List.of(new ResourceAdministrator(resourceAdmin.id(), "user")),
             resourceAdmin.id(),
             "Test resource description",
             domain.id(),
@@ -531,7 +525,6 @@ public class EventResourceConsumerTest {
     void shouldAutoAcceptWhenOrganizerIsAdminOfResource(DockerSabreDavSetup dockerSabreDavSetup) throws Exception {
         OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
         ResourceInsertRequest request = new ResourceInsertRequest(
-            List.of(new ResourceAdministrator(organizer.id(), "user")),
             organizer.id(),
             "Test resource description",
             domain.id(),
@@ -563,7 +556,6 @@ public class EventResourceConsumerTest {
     void shouldNotSendEmailWhenOrganizerIsAdminOfResource(DockerSabreDavSetup dockerSabreDavSetup) throws InterruptedException {
         OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
         ResourceInsertRequest request = new ResourceInsertRequest(
-            List.of(new ResourceAdministrator(organizer.id(), "user")),
             organizer.id(),
             "Test resource description",
             domain.id(),
@@ -598,7 +590,6 @@ public class EventResourceConsumerTest {
         // When creating resource projector with resourceAdmin as administrator
         OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
         ResourceInsertRequest request = new ResourceInsertRequest(
-            List.of(new ResourceAdministrator(resourceAdmin.id(), "user")),
             resourceAdmin.id(),
             "Test resource description",
             domain.id(),

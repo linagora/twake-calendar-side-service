@@ -1176,7 +1176,6 @@ public class CalDavClientTest {
             .block();
         ResourceId resourceId = new MongoDBResourceDAO(sabreDavExtension.dockerSabreDavSetup().getMongoDB(), Clock.systemUTC())
             .insert(new ResourceInsertRequest(
-                List.of(new ResourceAdministrator(admin.id(), "user")),
                 admin.id(),
                 "Resource calendar used by CalDAV REPORT tests",
                 domain.id(),

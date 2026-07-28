@@ -343,7 +343,6 @@ public class CalDavEventRepositoryTest {
         OpenPaaSDomain domain = domainDAO.retrieve(organizer.username().getDomainPart().get()).block();
 
         ResourceInsertRequest insertRequest = new ResourceInsertRequest(
-            List.of(administrator),
             administrator.refId(),
             "This is a projector made in China",
             domain.id(),

@@ -241,7 +241,6 @@ public class CalendarRoutesTest {
     void reindexShouldIndexResourceCalendarEvent() {
         OpenPaaSDomain domain = domainDAO.retrieve(openPaaSUser.username().getDomainPart().orElseThrow()).block();
         ResourceId resourceId = resourceDAO.insert(new ResourceInsertRequest(
-            List.of(new ResourceAdministrator(openPaaSUser.id(), "user")),
             openPaaSUser.id(),
             "Resource calendar used by reindex tests",
             domain.id(),
@@ -474,7 +473,6 @@ public class CalendarRoutesTest {
     void reindexShouldRemoveOldEventsForDeletedResource() {
         OpenPaaSDomain domain = domainDAO.retrieve(openPaaSUser.username().getDomainPart().orElseThrow()).block();
         ResourceId resourceId = resourceDAO.insert(new ResourceInsertRequest(
-            List.of(new ResourceAdministrator(openPaaSUser.id(), "user")),
             openPaaSUser.id(),
             "Deleted resource calendar used by reindex tests",
             domain.id(),
