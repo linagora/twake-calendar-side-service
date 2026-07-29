@@ -95,6 +95,7 @@ public class CalendarEventIndexMappingFactory {
         String KEYWORD = "keyword";
         String PREFIX_KEY = "calendar_event_";
         String CN_NAME_ANALYZER = PREFIX_KEY + "cn_name_analyzer";
+        String CN_NAME_SEARCH_ANALYZER = PREFIX_KEY + "cn_name_search_analyzer";
         String KEEP_MAIL_AND_URL_ANALYZER = PREFIX_KEY + "keep_mail_and_url_analyzer";
         String SUMMARY_PREFIX_ANALYZER = PREFIX_KEY + "summary_prefix_analyzer";
         String SUMMARY_SEARCH_PREFIX_ANALYZER = PREFIX_KEY + "summary_search_prefix_analyzer";
@@ -107,6 +108,13 @@ public class CalendarEventIndexMappingFactory {
             .put(CN_NAME_ANALYZER, new Analyzer(new CustomAnalyzer.Builder()
                 .tokenizer(STANDARD)
                 .filter(EDGE_NGRAM_FILTER, "lowercase", PRESERVED_ASCII_FOLDING_FILTER)
+                .build()))
+            // Search side must not edge-ngram the query: otherwise "Point" produces the gram "poi" which
+            // matches unrelated names such as "Poizat" (issue #996). Keeping the standard tokenizer makes
+            // each query word a prefix match against the indexed name grams.
+            .put(CN_NAME_SEARCH_ANALYZER, new Analyzer(new CustomAnalyzer.Builder()
+                .tokenizer(STANDARD)
+                .filter("lowercase", PRESERVED_ASCII_FOLDING_FILTER)
                 .build()))
             .put(SUMMARY_PREFIX_ANALYZER, new Analyzer(new CustomAnalyzer.Builder()
                 .tokenizer(STANDARD)
@@ -181,6 +189,7 @@ public class CalendarEventIndexMappingFactory {
 
         Property cnNameTextProperty = new TextProperty.Builder()
             .analyzer(CalendarAnalyzers.CN_NAME_ANALYZER)
+            .searchAnalyzer(CalendarAnalyzers.CN_NAME_SEARCH_ANALYZER)
             .build()._toProperty();
 
         Property emailCNObjectProperty = new ObjectProperty.Builder()

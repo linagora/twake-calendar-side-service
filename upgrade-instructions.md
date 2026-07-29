@@ -4,6 +4,87 @@ This document describes breaking changes and migration steps required when upgra
 
 ## 2.4.3 (upcoming)
 
+### Stop edge-ngramming the query against organizer / attendee names in event search
+
+Date: 30/07/2026
+
+Event search matched unrelated events (see issue #996): the `cn` fields (`organizer.cn`, `attendees.cn`,
+`resources.cn`) used the same edge-ngram analyzer at index and search time. The query itself was therefore
+split into 3-to-7-character grams, so searching `Point collaboration` produced the gram `poi`, which matched
+any event having an attendee named e.g. `Poizat`.
+
+A dedicated search analyzer `calendar_event_cn_name_search_analyzer` (standard tokenizer, lowercase,
+ascii folding, no edge-ngram) is now applied to the `cn` fields: each query word must be a prefix of an
+indexed name word instead of sharing any gram with it.
+
+#### Breaking Change
+
+Existing indices keep the old search behaviour (and its false positives) until their mapping is updated.
+The new analyzer must be added to the index settings, which requires closing the index for a few seconds.
+No reindex is needed: the change only affects search-time analysis, indexed documents are untouched.
+
+#### Required Actions
+
+**1. Close the index, add the search analyzer to the settings, then reopen it:**
+
+```bash
+POST /calendar_events/_close
+
+PUT /calendar_events/_settings
+{
+  "analysis": {
+    "analyzer": {
+      "calendar_event_cn_name_search_analyzer": {
+        "type": "custom",
+        "tokenizer": "standard",
+        "filter": ["lowercase", "preserved_ascii_folding_filter"]
+      }
+    }
+  }
+}
+
+POST /calendar_events/_open
+```
+
+**2. Apply the search analyzer to the `cn` fields** (a live mapping update, `search_analyzer` is updatable):
+
+```bash
+PUT /calendar_events/_mapping
+{
+  "properties": {
+    "organizer": {
+      "properties": {
+        "cn": {
+          "type": "text",
+          "analyzer": "calendar_event_cn_name_analyzer",
+          "search_analyzer": "calendar_event_cn_name_search_analyzer"
+        }
+      }
+    },
+    "attendees": {
+      "properties": {
+        "cn": {
+          "type": "text",
+          "analyzer": "calendar_event_cn_name_analyzer",
+          "search_analyzer": "calendar_event_cn_name_search_analyzer"
+        }
+      }
+    },
+    "resources": {
+      "properties": {
+        "cn": {
+          "type": "text",
+          "analyzer": "calendar_event_cn_name_analyzer",
+          "search_analyzer": "calendar_event_cn_name_search_analyzer"
+        }
+      }
+    }
+  }
+}
+```
+
+**Note:** Replace `calendar_events` with your actual index name if different.
+
 ### Collapse recurring event occurrences in the calendar event search index
 
 Date: 02/07/2026

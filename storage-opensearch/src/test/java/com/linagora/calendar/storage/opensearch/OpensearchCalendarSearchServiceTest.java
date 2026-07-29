@@ -40,6 +40,7 @@ import org.opensearch.client.opensearch.OpenSearchAsyncClient;
 import org.opensearch.client.transport.rest_client.RestClientTransport;
 
 import com.linagora.calendar.storage.event.EventFields;
+import com.linagora.calendar.storage.event.EventFields.Person;
 import com.linagora.calendar.storage.eventsearch.CalendarEvents;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchServiceContract;
@@ -213,6 +214,37 @@ public class OpensearchCalendarSearchServiceTest implements CalendarSearchServic
         EventSearchQuery query2 = simpleQuery(search, event.calendarURL());
 
         List<EventFields> searchResults = testee().search(query2)
+            .collectList().block();
+
+        assertThat(searchResults).hasSize(0);
+    }
+
+    @Test
+    void searchShouldNotEdgeNgramTheQueryAgainstNames() throws Exception {
+        // Reproduces issue #996: the query used to be edge-ngrammed at search time too, so "Point collaboration"
+        // produced the gram "poi" which matched the unrelated attendee name "Poizat".
+        EventFields event = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("Kickoff - AI")
+            .attendees(List.of(Person.of("Theo Poizat", "tpoizat@domain.tld")))
+            .calendarURL(generateCalendarURL())
+            .build();
+
+        testee().index(CalendarEvents.of(event)).block();
+
+        // Verify that the document has been indexed and that a multi-word name search still matches
+        EventSearchQuery nameQuery = simpleQuery("Theo Poizat", event.calendarURL());
+        CALMLY_AWAIT.untilAsserted(() -> {
+            List<EventFields> searchResults = testee().search(nameQuery)
+                .collectList().block();
+
+            assertThat(searchResults).hasSize(1)
+                .containsExactly(event);
+        });
+
+        EventSearchQuery unrelatedQuery = simpleQuery("Point collaboration", event.calendarURL());
+
+        List<EventFields> searchResults = testee().search(unrelatedQuery)
             .collectList().block();
 
         assertThat(searchResults).hasSize(0);
