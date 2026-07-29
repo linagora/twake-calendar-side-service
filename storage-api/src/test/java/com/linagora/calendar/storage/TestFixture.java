@@ -19,7 +19,19 @@
 package com.linagora.calendar.storage;
 
 import java.time.Duration;
+import java.util.concurrent.TimeUnit;
+
+import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionFactory;
 
 public interface TestFixture {
     TechnicalTokenService TECHNICAL_TOKEN_SERVICE_TESTING = new TechnicalTokenService.Impl("technicalTokenSecret", Duration.ofSeconds(120));
+
+    ConditionFactory calmlyAwait = Awaitility.with()
+        .pollInterval(Duration.ofMillis(500))
+        .and()
+        .with()
+        .pollDelay(Duration.ofMillis(500))
+        .await();
+    ConditionFactory awaitAtMost = calmlyAwait.atMost(20, TimeUnit.SECONDS);
 }

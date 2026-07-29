@@ -53,7 +53,7 @@ import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalDavEventRepository;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DavTestHelper;
-import com.linagora.calendar.dav.Fixture;
+import static com.linagora.calendar.storage.TestFixture.awaitAtMost;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.scheduling.AlarmEventSchedulerConfiguration;
 import com.linagora.calendar.smtp.MailSenderConfiguration;
@@ -178,7 +178,7 @@ public class AlarmEventSchedulerTest {
         // Given
         davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
 
-        Fixture.awaitAtMost.untilAsserted(() ->
+        awaitAtMost.untilAsserted(() ->
             assertThat(alarmStore.find(eventUid, organizer.username().asString())).isPresent());
 
         clearSmtpInbox();
@@ -190,7 +190,7 @@ public class AlarmEventSchedulerTest {
 
         Supplier<JsonPath> smtpMailsResponseSupplier = () -> given(mockSMTPRequestSpecification()).get("/smtpMails").jsonPath();
 
-        Fixture.awaitAtMost.untilAsserted(() -> {
+        awaitAtMost.untilAsserted(() -> {
             JsonPath jp = smtpMailsResponseSupplier.get();
             assertThat(jp.getList("")).hasSize(1);
             String organizerAddr = organizer.username().asString();
@@ -201,7 +201,7 @@ public class AlarmEventSchedulerTest {
                 .contains("Subject: Notification: Twake Calendar - Sprint planning #04");
         });
 
-        Fixture.awaitAtMost.untilAsserted(() ->
+        awaitAtMost.untilAsserted(() ->
             assertThat(alarmStore.find(eventUid, organizer.username().asString())).isEmpty());
     }
 
@@ -242,7 +242,7 @@ public class AlarmEventSchedulerTest {
         davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
 
         // Update attendee participation status
-        Fixture.awaitAtMost.untilAsserted(() -> {
+        awaitAtMost.untilAsserted(() -> {
             assertThatCode(() -> {
                 calDavEventRepository.updatePartStat(attendee1.username(), attendee1.id(), eventUid, PartStat.ACCEPTED).block();
                 calDavEventRepository.updatePartStat(attendee2.username(), attendee2.id(), eventUid, PartStat.ACCEPTED).block();
@@ -251,7 +251,7 @@ public class AlarmEventSchedulerTest {
         });
 
         // Then (DB state before trigger)
-        Fixture.awaitAtMost.untilAsserted(() -> {
+        awaitAtMost.untilAsserted(() -> {
             assertThat(alarmStore.find(eventUid.value(), attendee1.username().asString())).isPresent();
             assertThat(alarmStore.find(eventUid.value(), attendee2.username().asString())).isPresent();
             assertThat(alarmStore.find(eventUid.value(), attendee3.username().asString())).isEmpty(); // DECLINED
@@ -268,7 +268,7 @@ public class AlarmEventSchedulerTest {
 
         // Then (emails should be sent only to accepted attendees)
         String alarmEmailSubjectExpected = "Subject: Notification: Twake Calendar - Sprint planning #04";
-        Fixture.awaitAtMost.untilAsserted(() -> {
+        awaitAtMost.untilAsserted(() -> {
             JsonPath jp = smtpMailsResponseSupplier.get();
 
             // Attendee1
@@ -285,7 +285,7 @@ public class AlarmEventSchedulerTest {
         });
 
         // Then (cleanup: alarms removed after sending)
-        Fixture.awaitAtMost.untilAsserted(() -> {
+        awaitAtMost.untilAsserted(() -> {
             assertThat(alarmStore.find(eventUid.value(), attendee1.username().asString())).isEmpty();
             assertThat(alarmStore.find(eventUid.value(), attendee2.username().asString())).isEmpty();
         });

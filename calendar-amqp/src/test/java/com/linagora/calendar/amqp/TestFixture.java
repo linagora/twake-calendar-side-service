@@ -26,8 +26,8 @@ import java.util.concurrent.TimeUnit;
 import org.apache.james.events.RetryBackoffConfiguration;
 import org.apache.james.mime4j.dom.Message;
 import org.apache.james.mime4j.message.DefaultMessageBuilder;
-import org.testcontainers.shaded.org.awaitility.Awaitility;
-import org.testcontainers.shaded.org.awaitility.core.ConditionFactory;
+import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionFactory;
 
 public interface TestFixture {
     ConditionFactory calmlyAwait = Awaitility.with()

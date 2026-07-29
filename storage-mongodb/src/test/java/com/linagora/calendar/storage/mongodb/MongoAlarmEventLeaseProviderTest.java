@@ -33,7 +33,7 @@ import org.apache.james.core.MailAddress;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
-import org.testcontainers.shaded.org.awaitility.Awaitility;
+import org.awaitility.Awaitility;
 
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.storage.AlarmEvent;

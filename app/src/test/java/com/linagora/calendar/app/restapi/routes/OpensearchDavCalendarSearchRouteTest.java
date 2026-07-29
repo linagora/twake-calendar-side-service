@@ -21,6 +21,7 @@ package com.linagora.calendar.app.restapi.routes;
 import static com.linagora.calendar.app.AppTestHelper.OPENSEARCH_TEST_MODULE;
 import static com.linagora.calendar.dav.DavModuleTestHelper.FROM_SABRE_EXTENSION;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
+import static com.linagora.calendar.storage.TestFixture.awaitAtMost;
 import static io.restassured.RestAssured.given;
 import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
@@ -51,7 +52,6 @@ import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavCalendarObject;
 import com.linagora.calendar.dav.DavTestHelper;
-import com.linagora.calendar.dav.Fixture;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.OpenPaaSUser;
 
@@ -308,7 +308,7 @@ class OpensearchDavCalendarSearchRouteTest implements CalendarSearchRouteContrac
             }
             """.formatted(openPaasUser.id().value(), openPaasUser.id().value(), summary);
 
-        Fixture.awaitAtMost.untilAsserted(() -> {
+        awaitAtMost.untilAsserted(() -> {
             String actualHref = given()
                 .auth().preemptive()
                 .basic(openPaasUser.username().asString(), PASSWORD)

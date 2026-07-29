@@ -74,8 +74,8 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mockito;
-import org.testcontainers.shaded.org.awaitility.Awaitility;
-import org.testcontainers.shaded.org.awaitility.core.ConditionFactory;
+import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionFactory;
 
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.api.EventParticipationActionLinkFactory;
@@ -85,7 +85,6 @@ import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalDavEventRepository;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
-import com.linagora.calendar.dav.Fixture;
 import com.linagora.calendar.smtp.EventEmailFilter;
 import com.linagora.calendar.smtp.MailSender;
 import com.linagora.calendar.smtp.MailSenderConfiguration;
@@ -120,6 +119,11 @@ public class EventReplyEmailConsumerTest {
         .pollDelay(Duration.ofMillis(500))
         .await();
     private final ConditionFactory awaitAtMost = calmlyAwait.atMost(200, TimeUnit.SECONDS);
+    private final ConditionFactory negativeAwait = Awaitility.with()
+        .pollInterval(Duration.ofMillis(200))
+        .pollDelay(Duration.ZERO)
+        .await()
+        .during(Duration.ofSeconds(1));
 
     @RegisterExtension
     @Order(1)
@@ -404,7 +408,7 @@ public class EventReplyEmailConsumerTest {
     }
 
     @Test
-    void shouldRecoverWhenEventHandlerHasTemporaryException() throws InterruptedException {
+    void shouldRecoverWhenEventHandlerHasTemporaryException() {
         String eventUid = UUID.randomUUID().toString();
         String calendarData = generateCalendarData(
             eventUid,
@@ -417,10 +421,11 @@ public class EventReplyEmailConsumerTest {
         // Mock exception
         when(eventEmailFilter.shouldProcess(any(MailAddress.class)))
             .thenThrow(new RuntimeException("Temporary exception"));
+        Mockito.clearInvocations(eventEmailFilter);
 
         updateAttendeePartStat(eventUid, PartStat.ACCEPTED);
 
-        Thread.sleep(1000); // Wait for the exception to be processed
+        awaitAtMost.untilAsserted(() -> Mockito.verify(eventEmailFilter, Mockito.atLeastOnce()).shouldProcess(any(MailAddress.class)));
 
         // Recover
         Mockito.reset(eventEmailFilter);
@@ -440,7 +445,7 @@ public class EventReplyEmailConsumerTest {
     }
 
     @Test
-    void shouldNotSendEmailWhenRecipientIsNotInWhitelist() throws InterruptedException {
+    void shouldNotSendEmailWhenRecipientIsNotInWhitelist() {
         when(eventEmailFilter.shouldProcess(any(MailAddress.class)))
             .thenReturn(false);
 
@@ -457,8 +462,8 @@ public class EventReplyEmailConsumerTest {
         waitForEventCreation(attendee);
         updateAttendeePartStat(eventUid, PartStat.ACCEPTED);
 
-        Thread.sleep(1000); // Wait for the message to be processed
-        assertThat(smtpMailsResponseSupplier.get().getList("")).isEmpty();
+        negativeAwait
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).isEmpty());
     }
 
     @Test
@@ -513,7 +518,7 @@ public class EventReplyEmailConsumerTest {
             .replace("{partStat}", PartStat.NEEDS_ACTION.getValue());
 
         davTestHelper.upsertCalendar(organizer, icalData, eventUid);
-        Fixture.awaitAtMost.untilAsserted(() ->
+        awaitAtMost.untilAsserted(() ->
             assertThat(davTestHelper.findFirstEventId(resourceId, openPaaSDomain.id()))
                 .withFailMessage("Event not created for resource: " + resourceId.value())
                 .isPresent());
@@ -522,8 +527,8 @@ public class EventReplyEmailConsumerTest {
         calDavEventRepository().updatePartStat(openPaaSDomain, resourceId, eventPathId, PartStat.ACCEPTED).block();
 
 
-        Thread.sleep(2000); // Wait for the message to be processed
-        assertThat(smtpMailsResponseSupplier.get().getList("")).isEmpty();
+        negativeAwait
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).isEmpty());
     }
 
     private CalDavEventRepository calDavEventRepository() throws SSLException {

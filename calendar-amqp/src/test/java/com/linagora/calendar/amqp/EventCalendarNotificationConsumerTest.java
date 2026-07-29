@@ -161,8 +161,8 @@ public class EventCalendarNotificationConsumerTest {
 
         // Verify only the correct listener receives the event
         awaitAtMost.untilAsserted(() -> assertThat(eventReceived.get()).isTrue());
-        Thread.sleep(100);
-        assertThat(eventReceived2.get()).isFalse();
+        awaitAtMost.during(Duration.ofMillis(100))
+            .untilAsserted(() -> assertThat(eventReceived2.get()).isFalse());
     }
 
     private void publishMessage(String exchange, String message) throws IOException {

@@ -1927,7 +1927,8 @@ class WebsocketRouteTest {
         String calendarUri = calendar.asUri().toString();
         // Trigger an initial esn-Sabre provisioning
         importIcsIntoCalendar(guiceServer, calendar, calendarUri, bob);
-        SECONDS.sleep(1);
+        await().atMost(Duration.ofSeconds(5))
+            .untilAsserted(() -> assertThat(calDavClient.findUserCalendarList(bob).block().calendars()).isNotEmpty());
 
         AddressBookURL addressBook = new AddressBookURL(bob.id(), "collected");
         String addressBookUri = addressBook.asUri().toString();

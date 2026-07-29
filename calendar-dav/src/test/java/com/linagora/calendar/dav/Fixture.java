@@ -21,8 +21,8 @@ package com.linagora.calendar.dav;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
-import org.testcontainers.shaded.org.awaitility.Awaitility;
-import org.testcontainers.shaded.org.awaitility.core.ConditionFactory;
+import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionFactory;
 
 public interface Fixture {
 

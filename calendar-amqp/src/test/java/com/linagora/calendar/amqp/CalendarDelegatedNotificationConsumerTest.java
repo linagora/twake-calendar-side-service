@@ -62,6 +62,8 @@ import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.mockito.Mockito;
+import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionFactory;
 
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.dav.CalDavClient;
@@ -97,6 +99,11 @@ import io.restassured.specification.RequestSpecification;
 import reactor.core.publisher.Mono;
 
 public class CalendarDelegatedNotificationConsumerTest {
+    private static final ConditionFactory negativeAwait = Awaitility.with()
+        .pollInterval(Duration.ofMillis(200))
+        .pollDelay(Duration.ZERO)
+        .await()
+        .during(Duration.ofSeconds(1));
 
     @RegisterExtension
     @Order(1)
@@ -301,7 +308,7 @@ public class CalendarDelegatedNotificationConsumerTest {
     }
 
     @Test
-    void shouldNotSendMailWhenEventEmailFilterRejects() throws InterruptedException {
+    void shouldNotSendMailWhenEventEmailFilterRejects() {
         when(eventEmailFilter.shouldProcess(any())).thenReturn(false);
 
         String calendarName = "Bob Private FilterTest";
@@ -315,9 +322,8 @@ public class CalendarDelegatedNotificationConsumerTest {
         calDavClient.patchReadWriteDelegations(domain.id(), new CalendarURL(bob.id(), new OpenPaaSId(bobCalendar.id())),
             List.of(alice.username()), List.of()).block();
 
-        Thread.sleep(1000);
         // Then: no mail should be sent
-        awaitAtMost.untilAsserted(() ->
+        negativeAwait.untilAsserted(() ->
             assertThat(smtpMailsResponseSupplier.get().getList("")).isEmpty());
     }
 
@@ -351,7 +357,7 @@ public class CalendarDelegatedNotificationConsumerTest {
     }
 
     @Test
-    void shouldNotSendMailWhenSelfSubscribedToSharedCalendar() throws InterruptedException {
+    void shouldNotSendMailWhenSelfSubscribedToSharedCalendar() {
         // Given: Bob shares calendar with read access
         davTestHelper.updateCalendarAcl(bob, CalendarURL.from(bob.id()).asUri(), "{DAV:}read");
 
@@ -366,9 +372,8 @@ public class CalendarDelegatedNotificationConsumerTest {
         // When: Alice subscribes to the shared calendar herself
         davTestHelper.subscribeToSharedCalendar(alice, subscribedCalendarRequest);
 
-        Thread.sleep(1000);
         // Then: No notification email is sent
-        awaitAtMost.untilAsserted(() ->
+        negativeAwait.untilAsserted(() ->
             assertThat(smtpMailsResponseSupplier.get().getList("")).isEmpty());
     }
 }

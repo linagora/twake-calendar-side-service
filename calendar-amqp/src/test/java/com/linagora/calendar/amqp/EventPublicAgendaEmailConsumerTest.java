@@ -70,8 +70,8 @@ import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.mockito.Mockito;
-import org.testcontainers.shaded.org.awaitility.Awaitility;
-import org.testcontainers.shaded.org.awaitility.core.ConditionFactory;
+import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionFactory;
 
 import com.linagora.calendar.api.EventParticipationActionLinkFactory;
 import com.linagora.calendar.api.Participation;

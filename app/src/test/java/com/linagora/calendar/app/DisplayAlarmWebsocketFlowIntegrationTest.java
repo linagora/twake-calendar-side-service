@@ -61,7 +61,7 @@ import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DavTestHelper;
-import com.linagora.calendar.dav.Fixture;
+import static com.linagora.calendar.storage.TestFixture.awaitAtMost;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.scheduling.AlarmEventSchedulerConfiguration;
@@ -185,7 +185,7 @@ class DisplayAlarmWebsocketFlowIntegrationTest {
         davTestHelper.upsertCalendar(bob, ics, eventUid);
 
         // Wait for alarm event to be created
-        Fixture.awaitAtMost
+        awaitAtMost
             .untilAsserted(() -> {
                 Optional<AlarmEvent> alarmEventOpt = alarmStore.find(eventUid, bob.username().asString());
                 assertThat(alarmEventOpt).isPresent();
@@ -211,7 +211,7 @@ class DisplayAlarmWebsocketFlowIntegrationTest {
         clock.setInstant(start.minus(TRIGGER).plusSeconds(1).toInstant());
 
         // THEN: Bob receives the alarm notification via WebSocket
-        Fixture.awaitAtMost.untilAsserted(() -> {
+        awaitAtMost.untilAsserted(() -> {
             String alarmMessage = awaitMessage(messages, msg -> msg.contains("eventSummary"));
             String expected = """
                 {
@@ -241,7 +241,7 @@ class DisplayAlarmWebsocketFlowIntegrationTest {
         davTestHelper.upsertCalendar(alice, ics, eventUid);
 
         // Wait for Alice's alarm event to be created
-        Fixture.awaitAtMost
+        awaitAtMost
             .untilAsserted(() -> {
                 Optional<AlarmEvent> alarmEventOpt = alarmStore.find(eventUid, alice.username().asString());
                 assertThat(alarmEventOpt).isPresent();
@@ -276,7 +276,7 @@ class DisplayAlarmWebsocketFlowIntegrationTest {
             clock.setInstant(start.minus(TRIGGER).plusSeconds(1).toInstant());
 
             // THEN: Alice should receive her alarm notification
-            Fixture.awaitAtMost.untilAsserted(() -> {
+            awaitAtMost.untilAsserted(() -> {
                 String aliceAlarmMessage = awaitMessage(aliceMessages, msg -> msg.contains("eventSummary"));
                 assertThatJson(aliceAlarmMessage)
                     .node("alarms[0].eventSummary")
