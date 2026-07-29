@@ -3,6 +3,12 @@ issuer: https://sso.linagora.local
 storage:
   type: memory
 
+sessions:
+  cookieName: "dex_session"
+  absoluteLifetime: "24h"
+  validIfNotUsedFor: "12h"
+  ssoSharedWithDefault: "all"
+
 web:
   http: 0.0.0.0:5556
   allowedOrigins:
