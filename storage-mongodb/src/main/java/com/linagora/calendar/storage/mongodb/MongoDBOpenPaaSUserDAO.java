@@ -21,6 +21,7 @@ package com.linagora.calendar.storage.mongodb;
 import static com.linagora.calendar.storage.mongodb.MongoConstants.MONGO_DUPLICATE_KEY_CODE;
 
 import java.util.List;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
 import jakarta.inject.Inject;
@@ -52,6 +53,7 @@ import reactor.core.publisher.Mono;
 public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
     public static final String COLLECTION = "users";
     private static final Logger LOGGER = LoggerFactory.getLogger(MongoDBOpenPaaSUserDAO.class);
+    private static final String PASSWORD_FIELD = "password";
 
     private final MongoDatabase database;
     private final MongoDBOpenPaaSDomainDAO domainDAO;
@@ -95,7 +97,7 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
                 .append("firstname", firstName)
                 .append("lastname", lastName)
                 .append("firstnames", computeFirstnames(firstName))
-                .append("password", "secret")
+                .append(PASSWORD_FIELD, generatePasswordPlaceholder())
                 .append("email", username.asString()) // not part of OpenPaaS datamodel but helps solve concurrency
                 .append("domains", List.of(new Document("domain_id", new ObjectId(domain.id().value()))))
                 .append("accounts", List.of(new Document()
@@ -208,6 +210,10 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
             .trimResults()
             .omitEmptyStrings()
             .splitToList(firstname);
+    }
+
+    private String generatePasswordPlaceholder() {
+        return UUID.randomUUID().toString();
     }
 
     @Override
