@@ -34,8 +34,11 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.linagora.calendar.api.booking.AvailableSlotsCalculator.AvailabilitySlot;
+import com.linagora.calendar.restapi.routes.dto.BookingLinkAlarmDTO;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
+import com.linagora.calendar.storage.booking.EventTransparency;
+import com.linagora.calendar.storage.booking.EventVisibility;
 
 @JsonInclude(JsonInclude.Include.NON_ABSENT)
 public record BookingLinkSlotsResponse(long durationMinutes,
@@ -45,6 +48,9 @@ public record BookingLinkSlotsResponse(long durationMinutes,
                                        String color,
                                        Optional<String> location,
                                        Optional<List<ResourceDTO>> resources,
+                                       Optional<String> visibility,
+                                       Optional<String> transparency,
+                                       Optional<List<BookingLinkAlarmDTO>> alarm,
                                        OwnerDTO owner,
                                        RangeDTO range,
                                        List<SlotDTO> slots) {
@@ -62,6 +68,9 @@ public record BookingLinkSlotsResponse(long durationMinutes,
             bookingLink.colorOrDefault(),
             bookingLink.location(),
             Optional.of(resourceList).filter(list -> !list.isEmpty()),
+            bookingLink.visibility().map(EventVisibility::value),
+            bookingLink.transparency().map(EventTransparency::value),
+            BookingLinkAlarmDTO.from(bookingLink.alarm()),
             new OwnerDTO(owner.fullName(), owner.username().asString()),
             new RangeDTO(from.atZone(zoneId), to.atZone(zoneId)),
             slots.stream()

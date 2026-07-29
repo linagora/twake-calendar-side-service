@@ -230,7 +230,7 @@ class BookingLinkSlotsRouteTest {
     }
 
     @Test
-    void shouldNotExposeVisibilityTransparencyNorAlarm(TwakeCalendarGuiceServer server) {
+    void shouldExposeVisibilityTransparencyAndAlarm(TwakeCalendarGuiceServer server) {
         BookingLink inserted = server.getProbe(BookingLinkProbe.class).insert(openPaaSUser.username(),
             insertRequestWith(Optional.empty(), List.of(), Optional.of(EventVisibility.PRIVATE),
                 Optional.of(EventTransparency.TRANSPARENT), List.of(new BookingLinkAlarm("-PT10M", BookingLinkAlarmAction.EMAIL))));
@@ -245,10 +245,11 @@ class BookingLinkSlotsRouteTest {
             .statusCode(HttpStatus.SC_OK)
             .extract().body().asString();
 
-        assertThat(response)
-            .doesNotContain("\"visibility\"")
-            .doesNotContain("\"transparency\"")
-            .doesNotContain("\"alarm\"");
+        assertThatJson(response).inPath("$.visibility").isEqualTo("\"PRIVATE\"");
+        assertThatJson(response).inPath("$.transparency").isEqualTo("\"TRANSPARENT\"");
+        assertThatJson(response).inPath("$.alarm").isEqualTo("""
+            [ { "period": "-PT10M", "action": "EMAIL" } ]
+            """);
     }
 
     @Test

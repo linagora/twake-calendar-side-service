@@ -464,6 +464,9 @@ Content-Type: application/json
   "resources": [
     { "name": "Projector", "photoUrl": "https://excal.linagora.com/images/icon/projector.svg" }
   ],
+  "visibility": "PRIVATE",
+  "transparency": "TRANSPARENT",
+  "alarm": [ { "period": "-PT10M", "action": "EMAIL" } ],
   "owner": {
     "displayName": "John Doe",
     "email": "john.doe@open-paas.org"
@@ -484,7 +487,7 @@ The `owner` object exposes the public booking link owner `displayName` and `emai
 
 The response also exposes the booking link `autoAccept` flag, along with the optional `name` and `description` (omitted when not set) and the `color` (always present, defaulting to `#6B4ECC`), so the bookee can access that information too.
 
-The public slots response also exposes the booking link `location` and `resources` (each with a `name` and, when the resource has an icon, a `photoUrl`), both omitted when not set.
+The public slots response also exposes the booking link `location`, `resources` (each with a `name` and, when the resource has an icon, a `photoUrl`), `visibility`, `transparency` and `alarm`, each omitted when not set.
 
 **Error responses**
 
