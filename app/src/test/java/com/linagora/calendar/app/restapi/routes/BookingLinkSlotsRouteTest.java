@@ -55,7 +55,7 @@ import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiServerProbe;
-import com.linagora.calendar.app.ResourceProbe;
+import com.linagora.calendar.app.restapi.routes.PeopleSearchRouteTest.ResourceProbe;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;

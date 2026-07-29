@@ -19,6 +19,7 @@
 package com.linagora.calendar.webadmin;
 
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
+import static com.linagora.calendar.storage.TestFixture.awaitAtMost;
 import static io.restassured.RestAssured.given;
 import static java.time.ZoneOffset.UTC;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
@@ -48,7 +49,7 @@ import com.linagora.calendar.api.booking.AvailabilityRule.WeeklyAvailabilityRule
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavTestHelper;
-import static com.linagora.calendar.storage.TestFixture.awaitAtMost;
+import com.linagora.calendar.dav.ResourceService;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.routes.BookingLinkExtraAttendeeResolver;
 import com.linagora.calendar.restapi.routes.BookingLinkResourceResolver;
@@ -65,7 +66,6 @@ import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 import com.linagora.calendar.storage.booking.EventTransparency;
 import com.linagora.calendar.storage.booking.EventVisibility;
 import com.linagora.calendar.storage.booking.ExtraAttendees;
-import com.linagora.calendar.storage.model.ResourceAdministrator;
 import com.linagora.calendar.storage.model.ResourceId;
 import com.linagora.calendar.storage.mongodb.MongoDBBookingLinkDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
@@ -87,6 +87,7 @@ public class BookingLinkUserRoutesTest {
     private MongoDBOpenPaaSDomainDAO domainDAO;
     private CalDavClient calDavClient;
     private DavTestHelper davTestHelper;
+    private ResourceService resourceService;
     private OpenPaaSUser user;
     private OpenPaaSUser otherUser;
 
@@ -99,6 +100,7 @@ public class BookingLinkUserRoutesTest {
         davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         bookingLinkDAO = new MongoDBBookingLinkDAO(mongoDB, Clock.system(UTC));
         resourceDAO = new MongoDBResourceDAO(mongoDB, Clock.system(UTC));
+        resourceService = new ResourceService(userDAO, resourceDAO, calDavClient);
 
         user = sabreDavExtension.newTestUser();
         otherUser = sabreDavExtension.newTestUser();
@@ -117,10 +119,9 @@ public class BookingLinkUserRoutesTest {
 
     private ResourceId saveResource(OpenPaaSUser owner) {
         OpenPaaSDomain domain = domainDAO.retrieve(owner.username().getDomainPart().orElseThrow()).block();
-        return resourceDAO.insert(new ResourceInsertRequest(
-                List.of(new ResourceAdministrator(owner.id(), "user")),
-                owner.id(), "Projector description", domain.id(), "projector", "Projector"))
-            .block();
+        return resourceService.create(new ResourceInsertRequest(owner.id(),
+                "Projector description", domain.id(), "projector", "Projector"),
+            List.of(owner.username())).block();
     }
 
     @AfterEach

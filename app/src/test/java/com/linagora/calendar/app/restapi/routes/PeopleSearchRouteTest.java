@@ -107,12 +107,23 @@ class PeopleSearchRouteTest {
             return resource;
         }
 
+        public Resource saveInDomain(OpenPaaSId domainId, OpenPaaSId owner, String name, String icon) {
+            ResourceInsertRequest insertRequest = new ResourceInsertRequest(owner, name + " description", domainId, icon, name);
+            return resourceDAO.insert(insertRequest)
+                .flatMap(resourceDAO::findById)
+                .block();
+        }
+
         public ResourceId saveAndRemove(OpenPaaSUser requestUser, String name, String icon) {
             ResourceInsertRequest insertRequest = buildInsertRequest(requestUser, name, icon);
 
             return resourceDAO.insert(insertRequest)
                 .flatMap(resourceId -> resourceDAO.softDelete(resourceId).thenReturn(resourceId))
                 .block();
+        }
+
+        public void remove(ResourceId resourceId) {
+            resourceDAO.softDelete(resourceId).block();
         }
 
         private ResourceInsertRequest buildInsertRequest(OpenPaaSUser requestUser, String name, String icon) {

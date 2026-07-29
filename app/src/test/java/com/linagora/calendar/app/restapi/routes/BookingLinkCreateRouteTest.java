@@ -54,17 +54,18 @@ import com.linagora.calendar.api.booking.AvailabilityRule.WeeklyAvailabilityRule
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.app.AppTestHelper;
 import com.linagora.calendar.app.BookingLinkProbe;
-import com.linagora.calendar.app.ResourceProbe;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
+import com.linagora.calendar.app.restapi.routes.PeopleSearchRouteTest.ResourceProbe;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkAlarm;
@@ -678,8 +679,9 @@ class BookingLinkCreateRouteTest {
     @Test
     void shouldReturn400WhenResourceBelongsToAnotherDomain() {
         Domain otherDomain = Domain.of("other-domain.tld");
-        calendarDataProbe.addDomain(otherDomain);
-        Resource otherDomainResource = resourceProbe.saveInDomain(otherDomain, openPaaSUser.id(), "Projector", "projector");
+        OpenPaaSId otherDomainId = calendarDataProbe.addDomain(otherDomain)
+            .domainId(otherDomain);
+        Resource otherDomainResource = resourceProbe.saveInDomain(otherDomainId, openPaaSUser.id(), "Projector", "projector");
 
         given()
             .body("""
