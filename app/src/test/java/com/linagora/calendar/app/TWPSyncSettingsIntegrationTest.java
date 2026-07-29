@@ -260,6 +260,8 @@ class TWPSyncSettingsIntegrationTest {
 
         // publish AMQP message for non-existing user
         publishAmqpSettingsMessage(createSettingsUpdateMessage(unknownUser, Map.of(LANGUAGE_KEY, LANGUAGE_FR), FIRST_VERSION));
+        // Wait a bit for consumer to process & error handling to complete
+        Thread.sleep(500);
 
         // publish a valid message for an existing user
         publishAmqpSettingsMessage(createSettingsUpdateMessage(USERNAME, Map.of(LANGUAGE_KEY, LANGUAGE_FR), FIRST_VERSION + 1));

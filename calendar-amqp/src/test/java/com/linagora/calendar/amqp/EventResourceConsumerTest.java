@@ -542,6 +542,7 @@ public class EventResourceConsumerTest {
     void shouldNotCrashWhenReceivingInvalidAMQPMessage(DockerSabreDavSetup dockerSabreDavSetup) throws Exception {
         // Given an invalid AMQP message
         publishMessage(EventResourceConsumer.Queue.CREATE.exchangeName(), "invalid json");
+        Thread.sleep(1000);
 
         // When creating resource projector with resourceAdmin as administrator
         OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();

@@ -579,6 +579,7 @@ public class AlarmEventCreateTest {
     void shouldNotCrashWhenReceivingInvalidAMQPMessage() throws Exception {
         // Given an invalid AMQP message
         publishMessage(EventAlarmConsumer.Queue.CREATE.exchangeName(), "invalid json");
+        Thread.sleep(1000);
 
         // When: Organizer creates an event with VALARM
         String eventUid = UUID.randomUUID().toString();

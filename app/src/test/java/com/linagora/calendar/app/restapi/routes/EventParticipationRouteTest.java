@@ -36,7 +36,6 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -480,10 +479,7 @@ class EventParticipationRouteTest {
             jwtYesSet.add(extractJwtFromUrl(links.get("yes")));
             jwtNoSet.add(extractJwtFromUrl(links.get("no")));
             jwtMaybeSet.add(extractJwtFromUrl(links.get("maybe")));
-            long generatedAtSecond = Instant.now().getEpochSecond();
-            Awaitility.await()
-                .atMost(Duration.ofSeconds(2))
-                .until(() -> Instant.now().getEpochSecond() > generatedAtSecond);
+            Thread.sleep(1000);
         }
 
         assertSoftly(softly -> {
