@@ -40,7 +40,7 @@ public record BookingLinkInsertRequest(CalendarURL calendarUrl,
                                        Optional<EventVisibility> visibility,
                                        Optional<EventTransparency> transparency,
                                        List<ResourceId> resources,
-                                       Optional<BookingLinkAlarm> alarm) {
+                                       List<BookingLinkAlarm> alarm) {
     public static final boolean ACTIVE = true;
     public static final boolean AUTO_ACCEPT = false;
     public static final ExtraAttendees NO_EXTRA_ATTENDEE = ExtraAttendees.NONE;
@@ -80,7 +80,7 @@ public record BookingLinkInsertRequest(CalendarURL calendarUrl,
         private Optional<EventVisibility> visibility = Optional.empty();
         private Optional<EventTransparency> transparency = Optional.empty();
         private List<ResourceId> resources = NO_RESOURCE;
-        private Optional<BookingLinkAlarm> alarm = Optional.empty();
+        private List<BookingLinkAlarm> alarm = List.of();
 
         public Builder calendarUrl(CalendarURL calendarUrl) {
             this.calendarUrl = calendarUrl;
@@ -152,8 +152,8 @@ public record BookingLinkInsertRequest(CalendarURL calendarUrl,
             return this;
         }
 
-        public Builder alarm(BookingLinkAlarm alarm) {
-            this.alarm = Optional.of(alarm);
+        public Builder alarm(List<BookingLinkAlarm> alarm) {
+            this.alarm = alarm;
             return this;
         }
 

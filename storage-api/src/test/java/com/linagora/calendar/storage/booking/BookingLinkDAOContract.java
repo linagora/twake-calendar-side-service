@@ -55,7 +55,7 @@ public interface BookingLinkDAOContract {
     OpenPaaSId EXTRA_ATTENDEE_2 = new OpenPaaSId("659387b9d486dc0046aeffb2");
     ResourceId RESOURCE_1 = new ResourceId("659387b9d486dc0046aeffc1");
     ResourceId RESOURCE_2 = new ResourceId("659387b9d486dc0046aeffc2");
-    BookingLinkAlarm ALARM = new BookingLinkAlarm("-PT10M");
+    BookingLinkAlarm ALARM = new BookingLinkAlarm("-PT10M", BookingLinkAlarmAction.EMAIL);
 
     BookingLinkDAO testee();
 
@@ -754,7 +754,7 @@ public interface BookingLinkDAOContract {
             .calendarUrl(CALENDAR_URL)
             .eventDuration(EVENT_DURATION)
             .availabilityRules(AVAILABILITY_RULES)
-            .alarm(ALARM)
+            .alarm(List.of(ALARM))
             .build();
 
         BookingLink created = testee().insert(USER_1, request).block();
@@ -776,7 +776,7 @@ public interface BookingLinkDAOContract {
     default void updateShouldApplyAlarm() {
         BookingLink inserted = testee().insert(USER_1, INSERT_REQUEST).block();
         BookingLinkPatchRequest patchRequest = BookingLinkPatchRequest.builder()
-            .alarm(ValuePatch.modifyTo(ALARM))
+            .alarm(ValuePatch.modifyTo(List.of(ALARM)))
             .build();
 
         BookingLink updated = testee().update(USER_1, inserted.publicId(), patchRequest).block();
@@ -791,7 +791,7 @@ public interface BookingLinkDAOContract {
             .calendarUrl(CALENDAR_URL)
             .eventDuration(EVENT_DURATION)
             .availabilityRules(AVAILABILITY_RULES)
-            .alarm(ALARM)
+            .alarm(List.of(ALARM))
             .build();
         BookingLink inserted = testee().insert(USER_1, request).block();
         BookingLinkPatchRequest patchRequest = BookingLinkPatchRequest.builder()

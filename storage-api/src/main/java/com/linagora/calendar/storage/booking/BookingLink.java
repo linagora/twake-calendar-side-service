@@ -45,7 +45,7 @@ public record BookingLink(Username username,
                           Optional<EventVisibility> visibility,
                           Optional<EventTransparency> transparency,
                           List<ResourceId> resources,
-                          Optional<BookingLinkAlarm> alarm,
+                          List<BookingLinkAlarm> alarm,
                           Instant createdAt,
                           Instant updatedAt) {
 
@@ -116,7 +116,7 @@ public record BookingLink(Username username,
         private Optional<EventVisibility> visibility = Optional.empty();
         private Optional<EventTransparency> transparency = Optional.empty();
         private List<ResourceId> resources = List.of();
-        private Optional<BookingLinkAlarm> alarm = Optional.empty();
+        private List<BookingLinkAlarm> alarm = List.of();
         private Instant createdAt;
         private Instant updatedAt;
 
@@ -195,7 +195,7 @@ public record BookingLink(Username username,
             return this;
         }
 
-        public Builder alarm(Optional<BookingLinkAlarm> alarm) {
+        public Builder alarm(List<BookingLinkAlarm> alarm) {
             this.alarm = alarm;
             return this;
         }

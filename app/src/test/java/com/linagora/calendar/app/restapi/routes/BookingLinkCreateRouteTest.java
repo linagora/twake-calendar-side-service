@@ -68,6 +68,7 @@ import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkAlarm;
+import com.linagora.calendar.storage.booking.BookingLinkAlarmAction;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 import com.linagora.calendar.storage.booking.EventTransparency;
 import com.linagora.calendar.storage.booking.EventVisibility;
@@ -725,7 +726,7 @@ class BookingLinkCreateRouteTest {
                     "calendarUrl": "%s",
                     "durationMinutes": 30,
                     "active": true,
-                    "alarm": "-PT10M"
+                    "alarm": [ { "period": "-PT10M", "action": "EMAIL" } ]
                 }
                 """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
         .when()
@@ -736,7 +737,7 @@ class BookingLinkCreateRouteTest {
 
         BookingLink stored = bookingLinkProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
 
-        assertThat(stored.alarm()).contains(new BookingLinkAlarm("-PT10M"));
+        assertThat(stored.alarm()).contains(new BookingLinkAlarm("-PT10M", BookingLinkAlarmAction.EMAIL));
     }
 
     @Test
@@ -747,7 +748,7 @@ class BookingLinkCreateRouteTest {
                     "calendarUrl": "%s",
                     "durationMinutes": 30,
                     "active": true,
-                    "alarm": "not-a-duration"
+                    "alarm": [ { "period": "not-a-duration", "action": "EMAIL" } ]
                 }
                 """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
         .when()
@@ -757,14 +758,14 @@ class BookingLinkCreateRouteTest {
     }
 
     @Test
-    void shouldReturn400WhenAlarmTriggerIsPositive() {
+    void shouldReturn400WhenAlarmPeriodIsPositive() {
         given()
             .body("""
                 {
                     "calendarUrl": "%s",
                     "durationMinutes": 30,
                     "active": true,
-                    "alarm": "PT10M"
+                    "alarm": [ { "period": "PT10M", "action": "EMAIL" } ]
                 }
                 """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
         .when()

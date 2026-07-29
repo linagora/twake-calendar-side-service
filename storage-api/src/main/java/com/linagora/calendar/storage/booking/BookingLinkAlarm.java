@@ -36,42 +36,43 @@ import net.fortuna.ical4j.model.component.VAlarm;
 import net.fortuna.ical4j.model.property.Trigger;
 
 /**
- * An email reminder on the event created from a booking link: {@code trigger} is the VALARM TRIGGER duration,
- * relative to the event start, e.g. {@code -PT10M} for ten minutes before.
+ * An alarm on the event created from a booking link: {@code period} is the VALARM TRIGGER duration relative to
+ * the event start, e.g. {@code -PT10M} for ten minutes before, and {@code action} the VALARM ACTION.
  *
- * <p>The trigger is held as its RFC 5545 dur-value spelling, ical4j doing the parsing: {@code -P1W} is valid
+ * <p>The period is held as its RFC 5545 dur-value spelling, ical4j doing the parsing: {@code -P1W} is valid
  * there while {@link Duration#parse(CharSequence)} rejects the week designator.
  */
-public record BookingLinkAlarm(String trigger) {
+public record BookingLinkAlarm(String period, BookingLinkAlarmAction action) {
 
     private static final ZonedDateTime REFERENCE = Instant.EPOCH.atZone(ZoneOffset.UTC);
 
     public BookingLinkAlarm {
-        Preconditions.checkArgument(StringUtils.isNotBlank(trigger), "'alarm' must not be blank");
-        trigger = StringUtils.upperCase(StringUtils.trim(trigger), Locale.US);
+        Preconditions.checkArgument(StringUtils.isNotBlank(period), "'alarm.period' must not be blank");
+        Preconditions.checkNotNull(action, "'alarm.action' must not be null");
+        period = StringUtils.upperCase(StringUtils.trim(period), Locale.US);
 
-        ZonedDateTime alarmTime = REFERENCE.plus(parseTemporalAmount(trigger));
+        ZonedDateTime alarmTime = REFERENCE.plus(parseTemporalAmount(period));
         Preconditions.checkArgument(!alarmTime.isAfter(REFERENCE),
-            "'alarm' trigger must not be positive: an alarm fires ahead of the event start");
+            "'alarm.period' must not be positive: an alarm fires ahead of the event start");
     }
 
-    public TemporalAmount triggerAsTemporalAmount() {
-        return parseTemporalAmount(trigger);
+    public TemporalAmount periodAsTemporalAmount() {
+        return parseTemporalAmount(period);
     }
 
-    private static TemporalAmount parseTemporalAmount(String trigger) {
+    private static TemporalAmount parseTemporalAmount(String period) {
         try {
             VAlarm alarm = new VAlarm();
-            alarm.add(new Trigger(new ParameterList(List.of()), trigger));
+            alarm.add(new Trigger(new ParameterList(List.of()), period));
             return alarm.getProperty(Property.TRIGGER)
                 .map(property -> ((Trigger) property).getDuration())
                 .orElseThrow();
         } catch (Exception e) {
-            throw new IllegalArgumentException(invalidTriggerMessage(trigger), e);
+            throw new IllegalArgumentException(invalidPeriodMessage(period), e);
         }
     }
 
-    private static String invalidTriggerMessage(String trigger) {
-        return "Wrong alarm format: '" + trigger + "'";
+    private static String invalidPeriodMessage(String period) {
+        return "Wrong alarm period format: '" + period + "'";
     }
 }

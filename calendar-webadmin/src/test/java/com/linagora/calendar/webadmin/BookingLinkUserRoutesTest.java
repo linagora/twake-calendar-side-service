@@ -59,6 +59,7 @@ import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.ResourceInsertRequest;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkAlarm;
+import com.linagora.calendar.storage.booking.BookingLinkAlarmAction;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 import com.linagora.calendar.storage.booking.EventTransparency;
@@ -433,7 +434,7 @@ public class BookingLinkUserRoutesTest {
                     "calendarUrl": "%s",
                     "durationMinutes": 30,
                     "active": true,
-                    "alarm": "-PT10M"
+                    "alarm": [ { "period": "-PT10M", "action": "EMAIL" } ]
                 }
                 """.formatted(defaultCalendarUrl(user)))
         .when()
@@ -443,7 +444,7 @@ public class BookingLinkUserRoutesTest {
             .extract().jsonPath().getString("bookingLinkPublicId");
 
         BookingLink stored = bookingLinkDAO.findByPublicId(user.username(), new BookingLinkPublicId(UUID.fromString(publicId))).block();
-        assertThat(stored.alarm()).contains(new BookingLinkAlarm("-PT10M"));
+        assertThat(stored.alarm()).contains(new BookingLinkAlarm("-PT10M", BookingLinkAlarmAction.EMAIL));
     }
 
     @Test
@@ -454,7 +455,7 @@ public class BookingLinkUserRoutesTest {
                     "calendarUrl": "%s",
                     "durationMinutes": 30,
                     "active": true,
-                    "alarm": "not-a-duration"
+                    "alarm": [ { "period": "not-a-duration", "action": "EMAIL" } ]
                 }
                 """.formatted(defaultCalendarUrl(user)))
         .when()
@@ -603,7 +604,7 @@ public class BookingLinkUserRoutesTest {
 
         given()
             .body("""
-                { "alarm": "-PT15M" }
+                { "alarm": [ { "period": "-PT15M", "action": "EMAIL" } ] }
                 """)
         .when()
             .patch("/users/{username}/booking-links/{publicId}", user.username().asString(), bookingLink.publicId().value().toString())
@@ -611,7 +612,7 @@ public class BookingLinkUserRoutesTest {
             .statusCode(204);
 
         BookingLink stored = bookingLinkDAO.findByPublicId(user.username(), bookingLink.publicId()).block();
-        assertThat(stored.alarm()).contains(new BookingLinkAlarm("-PT15M"));
+        assertThat(stored.alarm()).contains(new BookingLinkAlarm("-PT15M", BookingLinkAlarmAction.EMAIL));
     }
 
     @Test
@@ -620,7 +621,7 @@ public class BookingLinkUserRoutesTest {
 
         given()
             .body("""
-                { "alarm": "not-a-duration" }
+                { "alarm": [ { "period": "not-a-duration", "action": "EMAIL" } ] }
                 """)
         .when()
             .patch("/users/{username}/booking-links/{publicId}", user.username().asString(), bookingLink.publicId().value().toString())
@@ -634,7 +635,7 @@ public class BookingLinkUserRoutesTest {
             BookingLinkInsertRequest.builder()
                 .calendarUrl(CalendarURL.from(user.id()))
                 .eventDuration(Duration.ofMinutes(30))
-                .alarm(new BookingLinkAlarm("-PT10M"))
+                .alarm(List.of(new BookingLinkAlarm("-PT10M", BookingLinkAlarmAction.EMAIL)))
                 .build()).block();
 
         given()

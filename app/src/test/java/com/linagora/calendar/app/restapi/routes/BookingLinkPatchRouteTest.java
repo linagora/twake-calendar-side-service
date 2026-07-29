@@ -65,6 +65,7 @@ import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkAlarm;
+import com.linagora.calendar.storage.booking.BookingLinkAlarmAction;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.booking.EventTransparency;
 import com.linagora.calendar.storage.booking.EventVisibility;
@@ -416,14 +417,14 @@ class BookingLinkPatchRouteTest {
 
         given()
             .body("""
-                { "alarm": "-PT10M" }
+                { "alarm": [ { "period": "-PT10M", "action": "EMAIL" } ] }
                 """)
         .when()
             .patch("/api/booking-links/" + inserted.publicId().value())
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
-        assertThat(bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId()).alarm()).contains(new BookingLinkAlarm("-PT10M"));
+        assertThat(bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId()).alarm()).contains(new BookingLinkAlarm("-PT10M", BookingLinkAlarmAction.EMAIL));
     }
 
     @Test
@@ -432,7 +433,7 @@ class BookingLinkPatchRouteTest {
             BookingLinkInsertRequest.builder()
                 .calendarUrl(CalendarURL.from(openPaaSUser.id()))
                 .eventDuration(Duration.ofMinutes(30))
-                .alarm(new BookingLinkAlarm("-PT10M"))
+                .alarm(List.of(new BookingLinkAlarm("-PT10M", BookingLinkAlarmAction.EMAIL)))
                 .build());
 
         given()
@@ -448,12 +449,26 @@ class BookingLinkPatchRouteTest {
     }
 
     @Test
-    void shouldReturn400WhenAlarmTriggerIsInvalid() {
+    void shouldReturn400WhenAlarmPeriodIsInvalid() {
         BookingLink inserted = insertMinimal();
 
         given()
             .body("""
-                { "alarm": "not-a-duration" }
+                { "alarm": [ { "period": "not-a-duration", "action": "EMAIL" } ] }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @Test
+    void shouldReturn400WhenAlarmActionIsInvalid() {
+        BookingLink inserted = insertMinimal();
+
+        given()
+            .body("""
+                { "alarm": [ { "period": "-PT10M", "action": "INVALID" } ] }
                 """)
         .when()
             .patch("/api/booking-links/" + inserted.publicId().value())

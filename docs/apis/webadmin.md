@@ -1314,7 +1314,7 @@ Content-Type: application/json
     "visibility": "PRIVATE",
     "transparency": "TRANSPARENT",
     "resources": ["68a1b2c3d4e5f60718293a4b"],
-    "alarm": "-PT10M",
+    "alarm": [ { "period": "-PT10M", "action": "EMAIL" } ],
     "availabilityRules": [
       { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "17:00", "timeZone": "UTC" }
     ]
@@ -1358,7 +1358,7 @@ POST /users/{username}/booking-links
   "visibility": "PRIVATE",
   "transparency": "TRANSPARENT",
   "resources": ["68a1b2c3d4e5f60718293a4b"],
-  "alarm": "-PT10M",
+  "alarm": [ { "period": "-PT10M", "action": "EMAIL" } ],
   "extraAttendees": { "and": [{ "participant": "67c3a792e4b0884b05ef8af0" }] },
   "availabilityRules": [
     { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "timeZone": "Europe/Paris" }
@@ -1372,7 +1372,7 @@ POST /users/{username}/booking-links
 narrows down the offered slots. Only a single `and` of `participant` leaves is supported today. See the 
 [booking link API](bookingLink.md#extra-attendees) for details.
 
-`resources` are resource ids of the owner's domain added as attendees, and `alarm` is an ISO-8601 trigger added as an email reminder.
+`resources` are resource ids of the owner's domain added as attendees, and `alarm` is an array of `{period, action}` alarms added to the booked events.
 
 ```
 HTTP/1.1 201 Created

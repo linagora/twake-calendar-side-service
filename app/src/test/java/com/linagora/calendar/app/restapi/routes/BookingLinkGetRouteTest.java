@@ -59,6 +59,7 @@ import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkAlarm;
+import com.linagora.calendar.storage.booking.BookingLinkAlarmAction;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.booking.EventTransparency;
 import com.linagora.calendar.storage.booking.EventVisibility;
@@ -505,7 +506,7 @@ class BookingLinkGetRouteTest {
             BookingLinkInsertRequest.builder()
                 .calendarUrl(CalendarURL.from(openPaaSUser.id()))
                 .eventDuration(Duration.ofMinutes(30))
-                .alarm(new BookingLinkAlarm("-PT10M"))
+                .alarm(List.of(new BookingLinkAlarm("-PT10M", BookingLinkAlarmAction.EMAIL)))
                 .build());
 
         String response = given()
@@ -524,7 +525,7 @@ class BookingLinkGetRouteTest {
                     "active": true,
                     "autoAccept": false,
                     "color": "#6B4ECC",
-                    "alarm": "-PT10M"
+                    "alarm": [ { "period": "-PT10M", "action": "EMAIL" } ]
                 }
                 """.formatted(inserted.publicId().value(), CalendarURL.from(openPaaSUser.id()).asUri().toString()));
     }

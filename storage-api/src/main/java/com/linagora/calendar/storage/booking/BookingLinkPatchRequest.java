@@ -41,7 +41,7 @@ public record BookingLinkPatchRequest(ValuePatch<CalendarURL> calendarUrl,
                                       ValuePatch<EventVisibility> visibility,
                                       ValuePatch<EventTransparency> transparency,
                                       ValuePatch<List<ResourceId>> resources,
-                                      ValuePatch<BookingLinkAlarm> alarm) {
+                                      ValuePatch<List<BookingLinkAlarm>> alarm) {
     public BookingLinkPatchRequest {
         Preconditions.checkNotNull(calendarUrl, "'calendarUrl' must not be null");
         Preconditions.checkNotNull(duration, "'eventDuration' must not be null");
@@ -104,7 +104,7 @@ public record BookingLinkPatchRequest(ValuePatch<CalendarURL> calendarUrl,
         private ValuePatch<EventVisibility> visibility = ValuePatch.keep();
         private ValuePatch<EventTransparency> transparency = ValuePatch.keep();
         private ValuePatch<List<ResourceId>> resources = ValuePatch.keep();
-        private ValuePatch<BookingLinkAlarm> alarm = ValuePatch.keep();
+        private ValuePatch<List<BookingLinkAlarm>> alarm = ValuePatch.keep();
 
         public Builder calendarUrl(ValuePatch<CalendarURL> calendarUrl) {
             this.calendarUrl = calendarUrl;
@@ -171,7 +171,7 @@ public record BookingLinkPatchRequest(ValuePatch<CalendarURL> calendarUrl,
             return this;
         }
 
-        public Builder alarm(ValuePatch<BookingLinkAlarm> alarm) {
+        public Builder alarm(ValuePatch<List<BookingLinkAlarm>> alarm) {
             this.alarm = alarm;
             return this;
         }

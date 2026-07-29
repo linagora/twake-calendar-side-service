@@ -116,7 +116,9 @@ public class MemoryBookingLinkDAO implements BookingLinkDAO {
                 builder.resources(request.resources()
                     .notKeptOrElse(Optional.of(existing.resources()))
                     .orElse(List.of()));
-                builder.alarm(request.alarm().notKeptOrElse(existing.alarm()));
+                builder.alarm(request.alarm()
+                    .notKeptOrElse(Optional.of(existing.alarm()))
+                    .orElse(List.of()));
                 return builder.updatedAt(now).build();
             });
 

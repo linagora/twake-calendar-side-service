@@ -49,8 +49,8 @@ import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.restapi.ForbiddenException;
 import com.linagora.calendar.restapi.routes.dto.AvailabilityRuleDTO;
+import com.linagora.calendar.restapi.routes.dto.BookingLinkAlarmDTO;
 import com.linagora.calendar.storage.CalendarURL;
-import com.linagora.calendar.storage.booking.BookingLinkAlarm;
 import com.linagora.calendar.storage.booking.BookingLinkColorUtil;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.booking.BookingLinkExtraAttendeeUtil;
@@ -82,7 +82,7 @@ public class BookingLinkCreateRoute extends CalendarRoute {
                                               @JsonProperty("visibility") Optional<String> visibility,
                                               @JsonProperty("transparency") Optional<String> transparency,
                                               @JsonProperty("resources") Optional<List<String>> resources,
-                                              @JsonProperty("alarm") Optional<String> alarm) {
+                                              @JsonProperty("alarm") Optional<List<BookingLinkAlarmDTO>> alarm) {
 
         public static BookingLinkInsertRequest toBookingLinkInsertRequest(CreateBookingLinkRequestDTO request,
                                                                           ZoneId defaultZone,
@@ -105,7 +105,7 @@ public class BookingLinkCreateRoute extends CalendarRoute {
                 normalize(request.visibility).map(EventVisibility::fromString),
                 normalize(request.transparency).map(EventTransparency::fromString),
                 BookingLinkResourceUtil.parse(request.resources),
-                normalize(request.alarm).map(BookingLinkAlarm::new));
+                BookingLinkAlarmDTO.toBookingLinkAlarms(request.alarm));
         }
 
         private static Optional<String> normalize(Optional<String> value) {

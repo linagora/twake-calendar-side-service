@@ -33,7 +33,7 @@ Public users can use booking links to book events.
 | `visibility`        | string (optional)| One of `PUBLIC`, `PRIVATE`. Sets the `CLASS` of every booked event          |
 | `transparency`      | string (optional)| One of `OPAQUE`, `TRANSPARENT`. Sets the `TRANSP` of every booked event      |
 | `resources`         | array (optional) | Resource ids added as attendees of every booked event. Omitted from responses when empty. See [Resources](#resources). |
-| `alarm`             | string (optional)| ISO-8601 duration relative to the event start (e.g. `-PT10M`). See [Alarm](#alarm). |
+| `alarm`             | array (optional) | Alarms of every booked event, each `{period, action}`. Omitted from responses when empty. See [Alarm](#alarm). |
 
 ### Availability rule object
 
@@ -115,13 +115,15 @@ Constraints:
 
 ### Alarm
 
-A booking link may carry an `alarm`: an ISO-8601 duration relative to the event start (e.g. `-PT10M` for ten
-minutes before), added as an email VALARM addressed to the event attendees on every booked event. The trigger
-must be negative.
+A booking link may carry an `alarm`: an array of alarms, each added as a VALARM addressed to the event attendees
+on every booked event. Each entry has:
+
+- `period` — ISO-8601 duration relative to the event start (e.g. `-PT10M` for ten minutes before), must be negative.
+- `action` — now only `EMAIL`.
 
 ```json
 {
-    "alarm": "-PT10M"
+    "alarm": [ { "period": "-PT10M", "action": "EMAIL" } ]
 }
 ```
 
@@ -150,7 +152,7 @@ Create a new booking link for the authenticated user.
 | `visibility`        | no       | One of `PUBLIC`, `PRIVATE`.                                                                                                                               |
 | `transparency`      | no       | One of `OPAQUE`, `TRANSPARENT`.                                                                                                                           |
 | `resources`         | no       | Array of resource ids. See [Resources](#resources).                                                                                                      |
-| `alarm`             | no       | ISO-8601 duration relative to the event start (e.g. `-PT10M`). See [Alarm](#alarm).                                                                      |
+| `alarm`             | no       | Array of alarms, each `{period, action}`. See [Alarm](#alarm).                                                                                           |
 
 **Sample request**
 ```
@@ -170,7 +172,7 @@ Content-Type: application/json
     "visibility": "PRIVATE",
     "transparency": "TRANSPARENT",
     "resources": ["68a1b2c3d4e5f60718293a4b"],
-    "alarm": "-PT10M",
+    "alarm": [ { "period": "-PT10M", "action": "EMAIL" } ],
     "extraAttendees": { "and": [{ "participant": "67c3a792e4b0884b05ef8af0" }, { "participant": "67c3a792e4b0884b05ef8af1" }] },
     "availabilityRules": [
         { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "timeZone": "Asia/Ho_Chi_Minh" },
@@ -313,7 +315,7 @@ All fields are optional. Include only the fields to update.
 | `visibility`        | One of `PUBLIC`, `PRIVATE`. Set to `null` or a blank value to remove it.                                         |
 | `transparency`      | One of `OPAQUE`, `TRANSPARENT`. Set to `null` or a blank value to remove it.                                     |
 | `resources`         | Replaces all existing resources. Set to `null` or `[]` to remove them all. See [Resources](#resources).         |
-| `alarm`             | ISO-8601 duration relative to the event start (e.g. `-PT10M`). Set to `null` or a blank value to remove it.      |
+| `alarm`             | Replaces all alarms with an array of `{period, action}`. Set to `null` or `[]` to remove them all.               |
 
 **Sample request — update duration and deactivate**
 ```

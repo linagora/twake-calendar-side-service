@@ -43,6 +43,7 @@ import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkAlarm;
+import com.linagora.calendar.storage.booking.BookingLinkAlarmAction;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.booking.BookingLinkNotFoundException;
@@ -86,6 +87,8 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
     private static final String FIELD_TRANSPARENCY = "transparency";
     private static final String FIELD_RESOURCES = "resources";
     private static final String FIELD_ALARM = "alarm";
+    private static final String FIELD_ALARM_PERIOD = "period";
+    private static final String FIELD_ALARM_ACTION = "action";
     private static final String FIELD_CREATED_AT = "createdAt";
     private static final String FIELD_UPDATED_AT = "updatedAt";
 
@@ -276,7 +279,7 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
             unsetFields.append(FIELD_RESOURCES, "");
         }
         if (request.alarm().isModified()) {
-            setFields.append(FIELD_ALARM, request.alarm().get().trigger());
+            setFields.append(FIELD_ALARM, serializeAlarms(request.alarm().get()));
         } else if (request.alarm().isRemoved()) {
             unsetFields.append(FIELD_ALARM, "");
         }
@@ -314,7 +317,9 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
         if (!bookingLink.resources().isEmpty()) {
             doc.append(FIELD_RESOURCES, serializeResources(bookingLink.resources()));
         }
-        bookingLink.alarm().ifPresent(alarm -> doc.append(FIELD_ALARM, alarm.trigger()));
+        if (!bookingLink.alarm().isEmpty()) {
+            doc.append(FIELD_ALARM, serializeAlarms(bookingLink.alarm()));
+        }
 
         return doc;
     }
@@ -322,6 +327,19 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
     private List<String> serializeResources(List<ResourceId> resources) {
         return resources.stream()
             .map(ResourceId::value)
+            .toList();
+    }
+
+    private List<Document> serializeAlarms(List<BookingLinkAlarm> alarms) {
+        return alarms.stream()
+            .map(alarm -> new Document(FIELD_ALARM_PERIOD, alarm.period()).append(FIELD_ALARM_ACTION, alarm.action().value()))
+            .toList();
+    }
+
+    private List<BookingLinkAlarm> deserializeAlarms(List<Document> alarms) {
+        return alarms.stream()
+            .map(alarm -> new BookingLinkAlarm(alarm.getString(FIELD_ALARM_PERIOD),
+                BookingLinkAlarmAction.fromString(alarm.getString(FIELD_ALARM_ACTION))))
             .toList();
     }
 
@@ -400,7 +418,9 @@ public class MongoDBBookingLinkDAO implements BookingLinkDAO {
         List<ResourceId> resources = Optional.ofNullable(doc.getList(FIELD_RESOURCES, String.class))
             .map(ids -> ids.stream().map(ResourceId::new).toList())
             .orElse(List.of());
-        Optional<BookingLinkAlarm> alarm = Optional.ofNullable(doc.getString(FIELD_ALARM)).map(BookingLinkAlarm::new);
+        List<BookingLinkAlarm> alarm = Optional.ofNullable(doc.getList(FIELD_ALARM, Document.class))
+            .map(this::deserializeAlarms)
+            .orElse(List.of());
 
         return BookingLink.builder()
             .username(username)

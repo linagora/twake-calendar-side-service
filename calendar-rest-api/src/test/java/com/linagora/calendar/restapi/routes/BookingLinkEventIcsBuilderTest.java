@@ -39,6 +39,7 @@ import com.linagora.calendar.restapi.routes.BookingLinkEventIcsBuilder.BuildResu
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingRequest;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingRequest.BookingAttendee;
 import com.linagora.calendar.storage.booking.BookingLinkAlarm;
+import com.linagora.calendar.storage.booking.BookingLinkAlarmAction;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 import com.linagora.calendar.storage.booking.EventTransparency;
 import com.linagora.calendar.storage.booking.EventVisibility;
@@ -339,7 +340,7 @@ public class BookingLinkEventIcsBuilderTest {
         BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
 
         BookingEventOptions options = new BookingEventOptions(Optional.of("Room 3"),
-            Optional.empty(), Optional.empty(), List.of(), Optional.empty());
+            Optional.empty(), Optional.empty(), List.of(), List.of());
 
         String ics = new String(testee.build(bookingRequest(), OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, options)
             .icsBytes(), StandardCharsets.UTF_8);
@@ -353,7 +354,7 @@ public class BookingLinkEventIcsBuilderTest {
         BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
 
         BookingEventOptions options = new BookingEventOptions(Optional.empty(),
-            Optional.of(EventVisibility.PRIVATE), Optional.empty(), List.of(), Optional.empty());
+            Optional.of(EventVisibility.PRIVATE), Optional.empty(), List.of(), List.of());
 
         String ics = new String(testee.build(bookingRequest(), OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, options)
             .icsBytes(), StandardCharsets.UTF_8);
@@ -368,7 +369,7 @@ public class BookingLinkEventIcsBuilderTest {
         BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
 
         BookingEventOptions options = new BookingEventOptions(Optional.empty(),
-            Optional.empty(), Optional.of(EventTransparency.TRANSPARENT), List.of(), Optional.empty());
+            Optional.empty(), Optional.of(EventTransparency.TRANSPARENT), List.of(), List.of());
 
         String ics = new String(testee.build(bookingRequest(), OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, options)
             .icsBytes(), StandardCharsets.UTF_8);
@@ -383,7 +384,7 @@ public class BookingLinkEventIcsBuilderTest {
         BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
 
         BookingEventOptions options = new BookingEventOptions(Optional.empty(), Optional.empty(), Optional.empty(),
-            List.of(BookingAttendee.from("Projector", "projector-id@example.com")), Optional.empty());
+            List.of(BookingAttendee.from("Projector", "projector-id@example.com")), List.of());
 
         String ics = new String(testee.build(bookingRequest(), OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, options)
             .icsBytes(), StandardCharsets.UTF_8);
@@ -404,7 +405,7 @@ public class BookingLinkEventIcsBuilderTest {
             false,
             null);
         BookingEventOptions options = new BookingEventOptions(Optional.empty(), Optional.empty(), Optional.empty(),
-            List.of(), Optional.of(new BookingLinkAlarm("-PT10M")));
+            List.of(), List.of(new BookingLinkAlarm("-PT10M", BookingLinkAlarmAction.EMAIL), new BookingLinkAlarm("-P1W", BookingLinkAlarmAction.EMAIL)));
 
         String ics = new String(testee.build(request, OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, options)
             .icsBytes(), StandardCharsets.UTF_8);
@@ -414,6 +415,13 @@ public class BookingLinkEventIcsBuilderTest {
                 BEGIN:VALARM
                 ACTION:EMAIL
                 TRIGGER:-PT10M
+                ATTENDEE:mailto:owner@example.com
+                ATTENDEE:mailto:creator@example.com
+                ATTENDEE:mailto:vana@example.com
+                END:VALARM
+                BEGIN:VALARM
+                ACTION:EMAIL
+                TRIGGER:-P1W
                 ATTENDEE:mailto:owner@example.com
                 ATTENDEE:mailto:creator@example.com
                 ATTENDEE:mailto:vana@example.com

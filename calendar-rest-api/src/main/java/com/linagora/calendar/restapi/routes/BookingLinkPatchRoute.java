@@ -42,6 +42,7 @@ import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.restapi.ForbiddenException;
 import com.linagora.calendar.restapi.routes.dto.AvailabilityRuleDTO;
+import com.linagora.calendar.restapi.routes.dto.BookingLinkAlarmDTO;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.booking.BookingLinkAlarm;
 import com.linagora.calendar.storage.booking.BookingLinkColorUtil;
@@ -94,7 +95,7 @@ public class BookingLinkPatchRoute extends CalendarRoute {
                            @JsonProperty(FIELD_VISIBILITY) Optional<String> visibility,
                            @JsonProperty(FIELD_TRANSPARENCY) Optional<String> transparency,
                            @JsonProperty(FIELD_RESOURCES) Optional<List<String>> resources,
-                           @JsonProperty(FIELD_ALARM) Optional<String> alarm) {
+                           @JsonProperty(FIELD_ALARM) Optional<List<BookingLinkAlarmDTO>> alarm) {
     }
 
     private final BookingLinkDAO bookingLinkDAO;
@@ -312,12 +313,13 @@ public class BookingLinkPatchRoute extends CalendarRoute {
         return BookingLinkResourceUtil.parsePatch(dto.resources());
     }
 
-    private ValuePatch<BookingLinkAlarm> parseAlarm(JsonNode node, PatchDto dto) {
+    private ValuePatch<List<BookingLinkAlarm>> parseAlarm(JsonNode node, PatchDto dto) {
         if (!node.has(FIELD_ALARM)) {
             return ValuePatch.keep();
         }
-        return dto.alarm().map(String::trim).filter(alarm -> !alarm.isEmpty())
-            .map(BookingLinkAlarm::new)
+        return dto.alarm()
+            .map(BookingLinkAlarmDTO::toBookingLinkAlarms)
+            .filter(alarms -> !alarms.isEmpty())
             .map(ValuePatch::modifyTo)
             .orElseGet(ValuePatch::remove);
     }

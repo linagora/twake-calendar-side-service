@@ -25,7 +25,6 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.linagora.calendar.storage.booking.BookingLink;
-import com.linagora.calendar.storage.booking.BookingLinkAlarm;
 import com.linagora.calendar.storage.booking.BookingLinkExtraAttendeeUtil;
 import com.linagora.calendar.storage.booking.BookingLinkResourceUtil;
 import com.linagora.calendar.storage.booking.EventTransparency;
@@ -46,7 +45,7 @@ public record BookingLinkDTO(@JsonProperty("publicId") String publicId,
                              @JsonProperty("visibility") Optional<String> visibility,
                              @JsonProperty("transparency") Optional<String> transparency,
                              @JsonProperty("resources") Optional<List<String>> resources,
-                             @JsonProperty("alarm") Optional<String> alarm) {
+                             @JsonProperty("alarm") Optional<List<BookingLinkAlarmDTO>> alarm) {
 
     public static BookingLinkDTO from(BookingLink bookingLink) {
         Optional<List<AvailabilityRuleDTO>> ruleDTOs = bookingLink.availabilityRules()
@@ -77,6 +76,6 @@ public record BookingLinkDTO(@JsonProperty("publicId") String publicId,
             bookingLink.visibility().map(EventVisibility::value),
             bookingLink.transparency().map(EventTransparency::value),
             resources,
-            bookingLink.alarm().map(BookingLinkAlarm::trigger));
+            BookingLinkAlarmDTO.from(bookingLink.alarm()));
     }
 }

@@ -87,6 +87,7 @@ import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkAlarm;
+import com.linagora.calendar.storage.booking.BookingLinkAlarmAction;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 import com.linagora.calendar.storage.booking.EventTransparency;
@@ -1698,7 +1699,7 @@ class BookingLinkReservationRouteTest {
             .visibility(EventVisibility.PRIVATE)
             .transparency(EventTransparency.TRANSPARENT)
             .resources(List.of(resource.id()))
-            .alarm(new BookingLinkAlarm("-PT10M"))
+            .alarm(List.of(new BookingLinkAlarm("-PT10M", BookingLinkAlarmAction.EMAIL)))
             .build();
         BookingLink inserted = server.getProbe(BookingLinkProbe.class).insert(openPaaSUser.username(), insertRequest);
         String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();

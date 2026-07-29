@@ -54,6 +54,7 @@ import com.linagora.calendar.restapi.routes.BookingLinkCreateRoute.CreateBooking
 import com.linagora.calendar.restapi.routes.BookingLinkExtraAttendeeResolver;
 import com.linagora.calendar.restapi.routes.BookingLinkPatchRoute.PatchDto;
 import com.linagora.calendar.restapi.routes.BookingLinkResourceResolver;
+import com.linagora.calendar.restapi.routes.dto.BookingLinkAlarmDTO;
 import com.linagora.calendar.restapi.routes.dto.BookingLinkDTO;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -449,12 +450,13 @@ public class BookingLinkUserRoutes implements Routes {
         return BookingLinkResourceUtil.parsePatch(dto.resources());
     }
 
-    private ValuePatch<BookingLinkAlarm> parseAlarm(JsonNode node, PatchDto dto) {
+    private ValuePatch<List<BookingLinkAlarm>> parseAlarm(JsonNode node, PatchDto dto) {
         if (!node.has(FIELD_ALARM)) {
             return ValuePatch.keep();
         }
-        return dto.alarm().map(String::trim).filter(alarm -> !alarm.isEmpty())
-            .map(BookingLinkAlarm::new)
+        return dto.alarm()
+            .map(BookingLinkAlarmDTO::toBookingLinkAlarms)
+            .filter(alarms -> !alarms.isEmpty())
             .map(ValuePatch::modifyTo)
             .orElseGet(ValuePatch::remove);
     }

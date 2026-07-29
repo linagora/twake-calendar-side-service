@@ -106,9 +106,9 @@ public class BookingLinkEventIcsBuilder {
                                       Optional<EventVisibility> visibility,
                                       Optional<EventTransparency> transparency,
                                       List<BookingAttendee> resources,
-                                      Optional<BookingLinkAlarm> alarm) {
+                                      List<BookingLinkAlarm> alarm) {
         public static BookingEventOptions none() {
-            return new BookingEventOptions(Optional.empty(), Optional.empty(), Optional.empty(), List.of(), Optional.empty());
+            return new BookingEventOptions(Optional.empty(), Optional.empty(), Optional.empty(), List.of(), List.of());
         }
     }
 
@@ -201,9 +201,9 @@ public class BookingLinkEventIcsBuilder {
             new XProperty(X_OPENPAAS_VIDEOCONFERENCE, visioLink.toString()).add(Value.URI)));
 
         VEvent event = new VEvent(new PropertyList(properties.build()));
+        List<BookingAttendee> alarmRecipients = alarmRecipients(request, organizer, newExtraAttendees);
         options.alarm()
-            .map(alarm -> buildAlarm(alarm, alarmRecipients(request, organizer, newExtraAttendees)))
-            .ifPresent(event::add);
+            .forEach(alarm -> event.add(buildAlarm(alarm, alarmRecipients)));
 
         ValidationResult validationResult = event.validate();
         if (validationResult.hasErrors()) {
@@ -228,8 +228,8 @@ public class BookingLinkEventIcsBuilder {
 
     private VAlarm buildAlarm(BookingLinkAlarm alarm, List<BookingAttendee> recipients) {
         VAlarm vAlarm = new VAlarm();
-        vAlarm.add(new Action(Action.VALUE_EMAIL));
-        vAlarm.add(new Trigger(new ParameterList(List.of()), alarm.trigger()));
+        vAlarm.add(new Action(alarm.action().value()));
+        vAlarm.add(new Trigger(new ParameterList(List.of()), alarm.period()));
         recipients.forEach(recipient ->
             vAlarm.add(new Attendee(URI.create(MAIL_TO_PREFIX + recipient.email().asString()))));
         return vAlarm;

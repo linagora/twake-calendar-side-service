@@ -61,6 +61,7 @@ import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkAlarm;
+import com.linagora.calendar.storage.booking.BookingLinkAlarmAction;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.booking.EventTransparency;
 import com.linagora.calendar.storage.booking.EventVisibility;
@@ -185,7 +186,7 @@ class BookingLinkSlotsRouteTest {
     void shouldExposeLocationAndResources(TwakeCalendarGuiceServer server) {
         Resource resource = server.getProbe(ResourceProbe.class).save(openPaaSUser, "Projector", "projector");
         BookingLink inserted = server.getProbe(BookingLinkProbe.class).insert(openPaaSUser.username(),
-            insertRequestWith(Optional.of("Room 3, Building A"), List.of(resource.id()), Optional.empty(), Optional.empty(), Optional.empty()));
+            insertRequestWith(Optional.of("Room 3, Building A"), List.of(resource.id()), Optional.empty(), Optional.empty(), List.of()));
 
         String response = given()
             .pathParam("bookingLinkPublicId", inserted.publicId().value())
@@ -213,7 +214,7 @@ class BookingLinkSlotsRouteTest {
         Resource resource = server.getProbe(ResourceProbe.class).save(openPaaSUser, "Projector", "projector");
         server.getProbe(ResourceProbe.class).remove(resource.id());
         BookingLink inserted = server.getProbe(BookingLinkProbe.class).insert(openPaaSUser.username(),
-            insertRequestWith(Optional.empty(), List.of(resource.id()), Optional.empty(), Optional.empty(), Optional.empty()));
+            insertRequestWith(Optional.empty(), List.of(resource.id()), Optional.empty(), Optional.empty(), List.of()));
 
         String response = given()
             .pathParam("bookingLinkPublicId", inserted.publicId().value())
@@ -232,7 +233,7 @@ class BookingLinkSlotsRouteTest {
     void shouldNotExposeVisibilityTransparencyNorAlarm(TwakeCalendarGuiceServer server) {
         BookingLink inserted = server.getProbe(BookingLinkProbe.class).insert(openPaaSUser.username(),
             insertRequestWith(Optional.empty(), List.of(), Optional.of(EventVisibility.PRIVATE),
-                Optional.of(EventTransparency.TRANSPARENT), Optional.of(new BookingLinkAlarm("-PT10M"))));
+                Optional.of(EventTransparency.TRANSPARENT), List.of(new BookingLinkAlarm("-PT10M", BookingLinkAlarmAction.EMAIL))));
 
         String response = given()
             .pathParam("bookingLinkPublicId", inserted.publicId().value())
@@ -1195,7 +1196,7 @@ class BookingLinkSlotsRouteTest {
                                                        List<ResourceId> resources,
                                                        Optional<EventVisibility> visibility,
                                                        Optional<EventTransparency> transparency,
-                                                       Optional<BookingLinkAlarm> alarm) {
+                                                       List<BookingLinkAlarm> alarm) {
         return new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES, BookingLinkInsertRequest.ACTIVE,
             BookingLinkInsertRequest.AUTO_ACCEPT, Optional.of(AVAILABILITY_RULE), ExtraAttendees.NONE,
             Optional.empty(), Optional.empty(), Optional.empty(),
