@@ -84,8 +84,10 @@ services:
       - "8082:80"
 
   oidc:
-    image: ghcr.io/dexidp/dex:latest
+    image: ghcr.io/dexidp/dex@sha256:edd1d651b502a6afd0cc18cffb3733b8ab7910718d83dbb44906f10f84970282
     container_name: sso.linagora.local
+    environment:
+      DEX_SESSIONS_ENABLED: "true"
     ports:
       - "5556:5556"
     volumes:
