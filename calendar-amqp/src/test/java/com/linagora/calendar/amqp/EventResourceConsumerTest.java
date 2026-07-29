@@ -72,8 +72,8 @@ import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.mockito.Mockito;
-import org.testcontainers.shaded.org.awaitility.Awaitility;
-import org.testcontainers.shaded.org.awaitility.core.ConditionFactory;
+import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionFactory;
 
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.smtp.EventEmailFilter;
@@ -118,6 +118,11 @@ public class EventResourceConsumerTest {
         .pollDelay(Duration.ofMillis(500))
         .await();
     private final ConditionFactory awaitAtMost = calmlyAwait.atMost(20, TimeUnit.SECONDS);
+    private final ConditionFactory negativeAwait = Awaitility.with()
+        .pollInterval(Duration.ofMillis(200))
+        .pollDelay(Duration.ZERO)
+        .await()
+        .during(Duration.ofSeconds(3));
 
     @RegisterExtension
     @Order(1)
@@ -334,7 +339,7 @@ public class EventResourceConsumerTest {
     }
 
     @Test
-    void shouldNotSendResourceRequestEmailWhenNoAdmin(DockerSabreDavSetup dockerSabreDavSetup) throws InterruptedException {
+    void shouldNotSendResourceRequestEmailWhenNoAdmin(DockerSabreDavSetup dockerSabreDavSetup) {
         OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
         ResourceId resourceId = createResource(domain, resourceAdmin);
 
@@ -351,13 +356,12 @@ public class EventResourceConsumerTest {
             resourceId.value());
         davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
 
-        Thread.sleep(3000); // Wait a bit to ensure no email is sent
-
-        awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(0));
+        negativeAwait
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(0));
     }
 
     @Test
-    void shouldNotSendResourceRequestEmailWhenResourceHasBeenDeleted(DockerSabreDavSetup dockerSabreDavSetup) throws InterruptedException {
+    void shouldNotSendResourceRequestEmailWhenResourceHasBeenDeleted(DockerSabreDavSetup dockerSabreDavSetup) {
         OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
         ResourceId resourceId = createResource(domain, resourceAdmin);
         resourceService.retrieve(resourceId, !ONLY_ACTIVE)
@@ -377,9 +381,8 @@ public class EventResourceConsumerTest {
             resourceId.value());
         davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
 
-        Thread.sleep(3000); // Wait a bit to ensure no email is sent
-
-        awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(0));
+        negativeAwait
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(0));
     }
 
     @Test
@@ -531,9 +534,8 @@ public class EventResourceConsumerTest {
             resourceId.value());
         davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
 
-        Thread.sleep(3000); // Wait a bit to ensure no email is sent
-
-        awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(0));
+        negativeAwait
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(0));
     }
 
     @Test

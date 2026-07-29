@@ -55,8 +55,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.mockito.ArgumentMatchers;
-import org.testcontainers.shaded.org.awaitility.Awaitility;
-import org.testcontainers.shaded.org.awaitility.core.ConditionFactory;
+import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionFactory;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -602,9 +602,11 @@ public class ItipLocalDeliveryConsumerTest {
         publishToConsumer(payload);
 
         // An invalid address is necessarily not local: the message is ignored (acked), not dead-lettered.
-        Thread.sleep(1000);
-        assertThat(channel.basicGet(ItipLocalDeliveryConsumer.DEAD_LETTER_QUEUE, true)).isNull();
-        WireMock.verify(0, WireMock.postRequestedFor(WireMock.urlEqualTo("/itip")));
+        AWAIT_AT_MOST.during(Duration.ofSeconds(1))
+            .untilAsserted(() -> {
+                assertThat(channel.basicGet(ItipLocalDeliveryConsumer.DEAD_LETTER_QUEUE, true)).isNull();
+                WireMock.verify(0, WireMock.postRequestedFor(WireMock.urlEqualTo("/itip")));
+            });
     }
 
     @Test

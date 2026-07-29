@@ -29,6 +29,8 @@ import java.util.Optional;
 
 import org.apache.james.core.MailAddress;
 import org.apache.james.utils.UpdatableTickingClock;
+import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionFactory;
 import org.junit.jupiter.api.Test;
 
 import com.github.fge.lambdas.Throwing;
@@ -41,6 +43,11 @@ import io.restassured.path.json.JsonPath;
 
 public interface AlarmEventSchedulerContract {
     boolean NO_RECURRING = false;
+    ConditionFactory negativeAwait = Awaitility.with()
+        .pollInterval(Duration.ofMillis(200))
+        .pollDelay(Duration.ZERO)
+        .await()
+        .during(Duration.ofSeconds(1));
 
     AlarmEventScheduler scheduler();
 
@@ -132,12 +139,12 @@ public interface AlarmEventSchedulerContract {
 
         alarmEventDAO().create(event).block();
 
-        Thread.sleep(1000);
-        assertThat(getSmtpMailbox().getList("")).hasSize(0);
+        negativeAwait
+            .untilAsserted(() -> assertThat(getSmtpMailbox().getList("")).hasSize(0));
     }
 
     @Test
-    default void shouldNotSendAlarmEmailWhenEventStartTimeLessThanNow() throws InterruptedException {
+    default void shouldNotSendAlarmEmailWhenEventStartTimeLessThanNow() {
         scheduler().start();
         Instant now = clock().instant();
         AlarmEvent event = new AlarmEvent(
@@ -167,8 +174,8 @@ public interface AlarmEventSchedulerContract {
             AlarmAction.EMAIL);
         alarmEventDAO().create(event).block();
 
-        Thread.sleep(1000);
-        assertThat(getSmtpMailbox().getList("")).hasSize(0);
+        negativeAwait
+            .untilAsserted(() -> assertThat(getSmtpMailbox().getList("")).hasSize(0));
     }
 
 }

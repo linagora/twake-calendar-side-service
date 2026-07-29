@@ -42,8 +42,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
-import org.testcontainers.shaded.org.awaitility.Awaitility;
-import org.testcontainers.shaded.org.awaitility.core.ConditionFactory;
+import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionFactory;
 
 import org.apache.commons.configuration2.MapConfiguration;
 
@@ -72,6 +72,11 @@ public class EventCalendarConsumerTest {
         .pollDelay(Duration.ofMillis(500))
         .await();
     private final ConditionFactory awaitAtMost = calmlyAwait.atMost(20, TimeUnit.SECONDS);
+    private final ConditionFactory negativeAwait = Awaitility.with()
+        .pollInterval(Duration.ofMillis(200))
+        .pollDelay(Duration.ZERO)
+        .await()
+        .during(Duration.ofSeconds(3));
 
     @RegisterExtension
     static SabreDavExtension sabreDavExtension = SabreDavExtension.shared();
@@ -163,7 +168,7 @@ public class EventCalendarConsumerTest {
     }
 
     @Test
-    void shouldNotSetNonDefaultCalendarPubliclyVisible(DockerSabreDavSetup dockerSabreDavSetup) throws InterruptedException {
+    void shouldNotSetNonDefaultCalendarPubliclyVisible(DockerSabreDavSetup dockerSabreDavSetup) {
         setupConsumer(DEFAULT_CALENDAR_PUBLIC_VISIBILITY);
 
         OpenPaaSUser user = sabreDavExtension.newTestUser();
@@ -177,34 +182,35 @@ public class EventCalendarConsumerTest {
         );
         calDavClient.createNewCalendar(user.username(), user.id(), newCalendar).block();
 
-        Thread.sleep(3000); // wait for the consumer to process the message
+        negativeAwait
+            .untilAsserted(() -> {
+                String actual = davTestHelper.getCalendarMetadata(user, new OpenPaaSId(newCalendarId)).block();
 
-        String actual = davTestHelper.getCalendarMetadata(user, new OpenPaaSId(newCalendarId)).block();
-
-        assertThatJson(actual)
-            .inPath("$.acl")
-            .isArray()
-            .doesNotContain("""
+                assertThatJson(actual)
+                    .inPath("$.acl")
+                    .isArray()
+                    .doesNotContain("""
                     {
                       "privilege": "{DAV:}read",
                       "principal": "{DAV:}authenticated",
                       "protected": true
                     }
                     """);
-        assertThatJson(actual)
-            .inPath("$.acl")
-            .isArray()
-            .contains("""
+                assertThatJson(actual)
+                    .inPath("$.acl")
+                    .isArray()
+                    .contains("""
                     {
                         "privilege": "{urn:ietf:params:xml:ns:caldav}read-free-busy",
                         "principal": "{DAV:}authenticated",
                         "protected": true
                     }
                     """);
+            });
     }
 
     @Test
-    void shouldNotSetDefaultCalendarPubliclyVisibleWhenItIsNotEnabledInConfig(DockerSabreDavSetup dockerSabreDavSetup) throws InterruptedException {
+    void shouldNotSetDefaultCalendarPubliclyVisibleWhenItIsNotEnabledInConfig(DockerSabreDavSetup dockerSabreDavSetup) {
         setupConsumer(DefaultCalendarPublicVisibility.PRIVATE);
 
         OpenPaaSUser user = sabreDavExtension.newTestUser();
@@ -212,30 +218,30 @@ public class EventCalendarConsumerTest {
         // To ensure calendar is activated
         davTestHelper.getCalendarMetadata(user).block();
 
-        Thread.sleep(3000); // wait for the consumer to process the message
+        negativeAwait
+            .untilAsserted(() -> {
+                String actual = davTestHelper.getCalendarMetadata(user).block();
 
-        String actual = davTestHelper.getCalendarMetadata(user).block();
-
-        assertThatJson(actual)
-            .inPath("$.acl")
-            .isArray()
-            .doesNotContain("""
+                assertThatJson(actual)
+                    .inPath("$.acl")
+                    .isArray()
+                    .doesNotContain("""
                     {
                       "privilege": "{DAV:}read",
                       "principal": "{DAV:}authenticated",
                       "protected": true
                     }
                     """);
-        assertThatJson(actual)
-            .inPath("$.acl")
-            .isArray()
-            .contains("""
+                assertThatJson(actual)
+                    .inPath("$.acl")
+                    .isArray()
+                    .contains("""
                     {
                         "privilege": "{urn:ietf:params:xml:ns:caldav}read-free-busy",
                         "principal": "{DAV:}authenticated",
                         "protected": true
                     }
                     """);
+            });
     }
 }
-

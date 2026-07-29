@@ -67,6 +67,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.mockito.Mockito;
+import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionFactory;
 
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.smtp.EventEmailFilter;
@@ -104,6 +106,11 @@ public class AlarmEventCreateTest {
 
     private static final SettingsBasedResolver settingsResolver = mock(SettingsBasedResolver.class);
     private static final EventEmailFilter eventEmailFilter = spy(EventEmailFilter.acceptAll());
+    private static final ConditionFactory negativeAwait = Awaitility.with()
+        .pollInterval(Duration.ofMillis(200))
+        .pollDelay(Duration.ZERO)
+        .await()
+        .during(Duration.ofSeconds(1));
 
     private static OpenPaaSUserDAO openPaaSUserDAO;
     private static ReactorRabbitMQChannelPool channelPool;
@@ -494,11 +501,11 @@ public class AlarmEventCreateTest {
         // When: Organizer creates an event with VALARM
         davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
 
-        Thread.sleep(1000);
         // Then: No AlarmEvent should be created for the organizer
-        assertThat(alarmEventDAO.find(new EventUid(eventUid),
-            organizer.username().asMailAddress()).blockOptional())
-            .isEmpty();
+        negativeAwait
+            .untilAsserted(() -> assertThat(alarmEventDAO.find(new EventUid(eventUid),
+                organizer.username().asMailAddress()).blockOptional())
+                .isEmpty());
     }
 
 
@@ -527,11 +534,11 @@ public class AlarmEventCreateTest {
         // When: Organizer creates an event with VALARM
         davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
 
-        Thread.sleep(1000);
         // Then: No AlarmEvent should be created for the organizer
-        assertThat(alarmEventDAO.find(new EventUid(eventUid),
-            organizer.username().asMailAddress()).blockOptional())
-            .isEmpty();
+        negativeAwait
+            .untilAsserted(() -> assertThat(alarmEventDAO.find(new EventUid(eventUid),
+                organizer.username().asMailAddress()).blockOptional())
+                .isEmpty());
     }
 
     @Test
@@ -561,12 +568,11 @@ public class AlarmEventCreateTest {
         // When: Organizer creates the event in CalDAV
         davTestHelper.upsertCalendar(organizer, calendarData, eventUid);
 
-        Thread.sleep(1000);
-
         // Then: No AlarmEvent should be created for the external attendee
-        assertThat(alarmEventDAO.find(new EventUid(eventUid), new MailAddress(externalAttendeeEmail))
-            .blockOptional())
-            .isEmpty();
+        negativeAwait
+            .untilAsserted(() -> assertThat(alarmEventDAO.find(new EventUid(eventUid), new MailAddress(externalAttendeeEmail))
+                .blockOptional())
+                .isEmpty());
     }
 
     @Test

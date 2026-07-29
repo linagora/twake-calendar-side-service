@@ -59,8 +59,8 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mockito;
-import org.testcontainers.shaded.org.awaitility.Awaitility;
-import org.testcontainers.shaded.org.awaitility.core.ConditionFactory;
+import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionFactory;
 
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
@@ -330,12 +330,6 @@ public class EventIndexerConsumerTest {
             .replace("{attendee1}", attendee1.username().asString());
 
         davTestHelper.upsertCalendar(openPaasUser, calendarData, eventUid);
-
-        try {
-            Thread.sleep(2000);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
 
         assertEventExistsInSearch(openPaasUser.username(), summary, eventUid);
 
@@ -1072,7 +1066,7 @@ public class EventIndexerConsumerTest {
         }
 
         @Test
-        void shouldRecoverWhenIndexerFailsTemporarilyDuringIndexing() throws InterruptedException {
+        void shouldRecoverWhenIndexerFailsTemporarilyDuringIndexing() {
             Mockito.doReturn(Mono.defer(() -> Mono.error(new RuntimeException("mock exception"))))
                 .when(calendarSearchService).index(any());
 
@@ -1080,7 +1074,7 @@ public class EventIndexerConsumerTest {
             String calendarData = getSampleCalendar(eventUid);
             davTestHelper.upsertCalendar(openPaasUser, calendarData, eventUid);
 
-            Thread.sleep(500);
+            awaitAtMost.untilAsserted(() -> Mockito.verify(calendarSearchService, Mockito.atLeastOnce()).index(any()));
             Mockito.reset(calendarSearchService);
 
             davTestHelper.upsertCalendar(openPaasUser, calendarData, eventUid);
@@ -1089,7 +1083,7 @@ public class EventIndexerConsumerTest {
         }
 
         @Test
-        void shouldDeleteSuccessfullyAfterTemporaryIndexerFailure() throws InterruptedException {
+        void shouldDeleteSuccessfullyAfterTemporaryIndexerFailure() {
             String eventUid = UUID.randomUUID().toString();
             String calendarData = getSampleCalendar(eventUid);
             davTestHelper.upsertCalendar(openPaasUser, calendarData, eventUid);
@@ -1105,7 +1099,7 @@ public class EventIndexerConsumerTest {
                 .when(calendarSearchService).delete(any(), any());
 
             davTestHelper.deleteCalendar(openPaasUser, eventUid);
-            Thread.sleep(500);
+            awaitAtMost.untilAsserted(() -> Mockito.verify(calendarSearchService, Mockito.atLeastOnce()).delete(any(), any()));
 
             Mockito.reset(calendarSearchService);
             davTestHelper.deleteCalendar(openPaasUser, eventUid2);
@@ -1125,7 +1119,6 @@ public class EventIndexerConsumerTest {
                     amqpMessage.getBytes(UTF_8))))
                 .block();
 
-            Thread.sleep(200);
             String eventUid = UUID.randomUUID().toString();
             String calendarData = getSampleCalendar(eventUid);
             davTestHelper.upsertCalendar(openPaasUser, calendarData, eventUid);

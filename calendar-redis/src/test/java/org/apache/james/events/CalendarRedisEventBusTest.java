@@ -178,10 +178,10 @@ public class CalendarRedisEventBusTest implements SingleEventBusKeyContract, Mul
 
         eventBus.dispatch(EVENT, ImmutableSet.of(KEY_1)).block();
 
-        TimeUnit.SECONDS.sleep(1);
-        SoftAssertions.assertSoftly(softly -> {
-            softly.assertThat(listener.getEvents()).hasSize(1);
-            softly.assertThat(otherListener.getEvents()).isEmpty();
-        });
+        awaitAtMostThirtySeconds.during(Duration.ofSeconds(1))
+            .untilAsserted(() -> SoftAssertions.assertSoftly(softly -> {
+                softly.assertThat(listener.getEvents()).hasSize(1);
+                softly.assertThat(otherListener.getEvents()).isEmpty();
+            }));
     }
 }

@@ -55,7 +55,7 @@ import com.google.inject.multibindings.Multibinder;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
-import com.linagora.calendar.dav.Fixture;
+import static com.linagora.calendar.storage.TestFixture.awaitAtMost;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.saas.TWPCalendarSubscriptionModule;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -148,7 +148,7 @@ class SaaSSubscriptionIntegrationTest {
             .setBasePath("/")
             .build();
 
-        Fixture.awaitAtMost.untilAsserted(() -> given(webadminRequestSpecification)
+        awaitAtMost.untilAsserted(() -> given(webadminRequestSpecification)
             .get("/healthcheck")
             .then()
             .statusCode(200)
@@ -178,7 +178,7 @@ class SaaSSubscriptionIntegrationTest {
         String message = createDomainSubscriptionMessage(domainName);
         publishDomainSubscriptionMessage(message);
 
-        Fixture.awaitAtMost.untilAsserted(() -> {
+        awaitAtMost.untilAsserted(() -> {
             assertThat(server.getProbe(CalendarDataProbe.class).domainId(Domain.of(domainName))).isNotNull();
         });
     }
@@ -190,14 +190,14 @@ class SaaSSubscriptionIntegrationTest {
 
         // First create the domain
         publishDomainSubscriptionMessage(createDomainSubscriptionMessage(domainName));
-        Fixture.awaitAtMost.untilAsserted(() ->
+        awaitAtMost.untilAsserted(() ->
             assertThat(server.getProbe(CalendarDataProbe.class).domainId(Domain.of(domainName))).isNotNull());
 
         // Then create the user
         String userMessage = createUserSubscriptionMessage(userEmail);
         publishUserSubscriptionMessage(userMessage);
 
-        Fixture.awaitAtMost.untilAsserted(() -> {
+        awaitAtMost.untilAsserted(() -> {
             OpenPaaSUser user = server.getProbe(CalendarDataProbe.class).getUser(Username.of(userEmail));
             assertThat(user).isNotNull();
             assertThat(user.username().asString()).isEqualTo(userEmail);
@@ -215,7 +215,7 @@ class SaaSSubscriptionIntegrationTest {
         publishDomainSubscriptionMessage(createDomainSubscriptionMessage(domain1));
         publishDomainSubscriptionMessage(createDomainSubscriptionMessage(domain2));
 
-        Fixture.awaitAtMost.untilAsserted(() -> {
+        awaitAtMost.untilAsserted(() -> {
             assertThat(server.getProbe(CalendarDataProbe.class).domainId(Domain.of(domain1))).isNotNull();
             assertThat(server.getProbe(CalendarDataProbe.class).domainId(Domain.of(domain2))).isNotNull();
         });
@@ -224,7 +224,7 @@ class SaaSSubscriptionIntegrationTest {
         publishUserSubscriptionMessage(createUserSubscriptionMessage(user1));
         publishUserSubscriptionMessage(createUserSubscriptionMessage(user2));
 
-        Fixture.awaitAtMost.untilAsserted(() -> {
+        awaitAtMost.untilAsserted(() -> {
             assertThat(server.getProbe(CalendarDataProbe.class).getUser(Username.of(user1))).isNotNull();
             assertThat(server.getProbe(CalendarDataProbe.class).getUser(Username.of(user2))).isNotNull();
         });
@@ -239,13 +239,13 @@ class SaaSSubscriptionIntegrationTest {
         String domainName = "after-invalid-" + UUID.randomUUID() + ".tld";
         publishDomainSubscriptionMessage(createDomainSubscriptionMessage(domainName));
 
-        Fixture.awaitAtMost.untilAsserted(() ->
+        awaitAtMost.untilAsserted(() ->
             assertThat(server.getProbe(CalendarDataProbe.class).domainId(Domain.of(domainName))).isNotNull());
     }
 
     @Test
     void shouldExposeWebAdminHealthcheck() {
-        Fixture.awaitAtMost.untilAsserted(() -> {
+        awaitAtMost.untilAsserted(() -> {
             String body = given(webadminRequestSpecification)
                 .when()
                 .get("/healthcheck")

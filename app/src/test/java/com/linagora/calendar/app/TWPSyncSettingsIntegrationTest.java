@@ -49,7 +49,7 @@ import com.google.inject.Inject;
 import com.google.inject.multibindings.Multibinder;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.DavModuleTestHelper;
-import com.linagora.calendar.dav.Fixture;
+import static com.linagora.calendar.storage.TestFixture.awaitAtMost;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.saas.TWPCalendarSettingsModule;
 import com.linagora.tmail.saas.rabbitmq.settings.TWPSettingsConsumer;
@@ -144,7 +144,7 @@ class TWPSyncSettingsIntegrationTest {
             .setBasePath("/")
             .build();
 
-        Fixture.awaitAtMost.untilAsserted(() -> given(webadminRequestSpecification)
+        awaitAtMost.untilAsserted(() -> given(webadminRequestSpecification)
             .get("/healthcheck")
         .then()
             .statusCode(200)
@@ -162,7 +162,7 @@ class TWPSyncSettingsIntegrationTest {
         String message = createSettingsUpdateMessage(USERNAME, Map.of(LANGUAGE_KEY, LANGUAGE_FR), FIRST_VERSION);
         publishAmqpSettingsMessage(message);
 
-        Fixture.awaitAtMost.untilAsserted(() -> {
+        awaitAtMost.untilAsserted(() -> {
             given()
                 .body(QUERY_LANGUAGE)
             .when()
@@ -201,7 +201,7 @@ class TWPSyncSettingsIntegrationTest {
         publishAmqpSettingsMessage(message);
 
         // Then: verify language is updated AND timezone is preserved
-        Fixture.awaitAtMost.untilAsserted(() -> {
+        awaitAtMost.untilAsserted(() -> {
             String updatedResponseJson =
                 given()
                     .body("""
@@ -230,27 +230,28 @@ class TWPSyncSettingsIntegrationTest {
     }
 
     @Test
-    void shouldApplyHighestVersionWhenMessagesArriveOutOfOrder() throws InterruptedException {
+    void shouldApplyHighestVersionWhenMessagesArriveOutOfOrder() {
         // When: publish out-of-order AMQP messages
         publishAmqpSettingsMessage(createSettingsUpdateMessage(USERNAME, Map.of(LANGUAGE_KEY, LANGUAGE_EN), FIRST_VERSION + 1));
         publishAmqpSettingsMessage(createSettingsUpdateMessage(USERNAME, Map.of(LANGUAGE_KEY, LANGUAGE_FR), FIRST_VERSION + 2));
         publishAmqpSettingsMessage(createSettingsUpdateMessage(USERNAME, Map.of(LANGUAGE_KEY, "vi"), FIRST_VERSION));
 
         // Then: wait until consumer finishes and highest version is applied
-        Thread.sleep(2000);
-        String responseJson =
-            given()
-                .body(QUERY_LANGUAGE)
-            .when()
-                .post("/api/configurations")
-            .then()
-                .statusCode(200)
-                .extract()
-                .asString();
+        awaitAtMost.untilAsserted(() -> {
+            String responseJson =
+                given()
+                    .body(QUERY_LANGUAGE)
+                .when()
+                    .post("/api/configurations")
+                .then()
+                    .statusCode(200)
+                    .extract()
+                    .asString();
 
-        String finalLanguage = JsonPath.from(responseJson)
-            .getString("[0].configurations.find { it.name == 'language' }.value");
-        assertThat(finalLanguage).isEqualTo(LANGUAGE_FR);
+            String finalLanguage = JsonPath.from(responseJson)
+                .getString("[0].configurations.find { it.name == 'language' }.value");
+            assertThat(finalLanguage).isEqualTo(LANGUAGE_FR);
+        });
     }
 
     @Test
@@ -266,7 +267,7 @@ class TWPSyncSettingsIntegrationTest {
         publishAmqpSettingsMessage(createSettingsUpdateMessage(USERNAME, Map.of(LANGUAGE_KEY, LANGUAGE_FR), FIRST_VERSION + 1));
 
         // Then
-        Fixture.awaitAtMost.untilAsserted(() -> {
+        awaitAtMost.untilAsserted(() -> {
             String responseJson =
                 given()
                     .body(QUERY_LANGUAGE)
@@ -388,7 +389,7 @@ class TWPSyncSettingsIntegrationTest {
 
     @Test
     void shouldExposeWebAdminHealthcheck() {
-        Fixture.awaitAtMost.untilAsserted(() -> {
+        awaitAtMost.untilAsserted(() -> {
             String body = given(webadminRequestSpecification)
             .when()
                 .get("/healthcheck")

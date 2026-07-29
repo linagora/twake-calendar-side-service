@@ -19,7 +19,7 @@
 package com.linagora.calendar.app.restapi.routes;
 
 import static com.linagora.calendar.app.restapi.routes.ImportRouteTest.mailSenderConfigurationFunction;
-import static com.linagora.calendar.dav.Fixture.awaitAtMost;
+import static com.linagora.calendar.storage.TestFixture.awaitAtMost;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static io.restassured.RestAssured.given;
 import static io.restassured.config.EncoderConfig.encoderConfig;
@@ -476,10 +476,10 @@ class EventParticipationRouteTest {
                 .jsonPath()
                 .getMap("links");
 
-            Thread.sleep(1000);
             jwtYesSet.add(extractJwtFromUrl(links.get("yes")));
             jwtNoSet.add(extractJwtFromUrl(links.get("no")));
             jwtMaybeSet.add(extractJwtFromUrl(links.get("maybe")));
+            Thread.sleep(1000);
         }
 
         assertSoftly(softly -> {

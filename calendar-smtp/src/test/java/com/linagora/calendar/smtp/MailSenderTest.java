@@ -21,6 +21,7 @@ package com.linagora.calendar.smtp;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
+import static org.awaitility.Awaitility.await;
 
 import org.junit.jupiter.api.AfterEach;
 import org.mockito.Mockito;
@@ -314,9 +315,11 @@ class MailSenderTest {
 
         mailSender.send(mail).block();
 
-        Thread.sleep(1000);
-        JsonPath response = RestAssured.get("/smtpMails").jsonPath();
-        assertThat(response.getList("")).hasSize(0);
+        await().during(Duration.ofSeconds(1))
+            .untilAsserted(() -> {
+                JsonPath response = RestAssured.get("/smtpMails").jsonPath();
+                assertThat(response.getList("")).hasSize(0);
+            });
     }
 
     @Test

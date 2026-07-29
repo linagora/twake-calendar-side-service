@@ -48,7 +48,7 @@ import com.linagora.calendar.api.booking.AvailabilityRule.WeeklyAvailabilityRule
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavTestHelper;
-import com.linagora.calendar.dav.Fixture;
+import static com.linagora.calendar.storage.TestFixture.awaitAtMost;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.routes.BookingLinkExtraAttendeeResolver;
 import com.linagora.calendar.storage.CalendarURL;
@@ -358,7 +358,7 @@ public class BookingLinkUserRoutesTest {
     }
 
     private CalendarURL findMirrorCalendar(OpenPaaSUser user) {
-        return Fixture.awaitAtMost.until(() -> calDavClient.findUserCalendarList(user)
+        return awaitAtMost.until(() -> calDavClient.findUserCalendarList(user)
             .map(response -> response.calendars()
                 .keySet()
                 .stream()

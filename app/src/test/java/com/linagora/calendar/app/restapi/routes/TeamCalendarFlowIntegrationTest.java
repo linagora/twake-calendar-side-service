@@ -19,7 +19,7 @@ package com.linagora.calendar.app.restapi.routes;
 
 import static com.linagora.calendar.app.AppTestHelper.OPENSEARCH_TEST_MODULE;
 import static com.linagora.calendar.dav.DavModuleTestHelper.FROM_SABRE_EXTENSION;
-import static com.linagora.calendar.dav.Fixture.awaitAtMost;
+import static com.linagora.calendar.storage.TestFixture.awaitAtMost;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static io.restassured.RestAssured.given;
 import static io.restassured.config.EncoderConfig.encoderConfig;
