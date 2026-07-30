@@ -38,6 +38,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.apache.http.HttpStatus;
+import org.apache.james.core.Domain;
 import org.apache.james.utils.GuiceProbe;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -57,16 +58,23 @@ import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
+import com.linagora.calendar.app.ResourceProbe;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
+import com.linagora.calendar.storage.booking.BookingLinkAlarm;
+import com.linagora.calendar.storage.booking.BookingLinkAlarmAction;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
+import com.linagora.calendar.storage.booking.EventTransparency;
+import com.linagora.calendar.storage.booking.EventVisibility;
 import com.linagora.calendar.storage.booking.ExtraAttendees;
+import com.linagora.calendar.storage.model.Resource;
 
 import io.restassured.RestAssured;
 import io.restassured.authentication.PreemptiveBasicAuthScheme;
@@ -94,6 +102,9 @@ class BookingLinkCreateRouteTest {
             Multibinder.newSetBinder(binder, GuiceProbe.class)
                 .addBinding()
                 .to(BookingLinkProbe.class);
+            Multibinder.newSetBinder(binder, GuiceProbe.class)
+                .addBinding()
+                .to(ResourceProbe.class);
         });
 
     @AfterAll
@@ -102,6 +113,7 @@ class BookingLinkCreateRouteTest {
     }
 
     private BookingLinkProbe bookingLinkProbe;
+    private ResourceProbe resourceProbe;
     private OpenPaaSUser openPaaSUser;
     private CalendarDataProbe calendarDataProbe;
     private CalDavClient calDavClient;
@@ -115,6 +127,7 @@ class BookingLinkCreateRouteTest {
         calendarDataProbe.addUserToRepository(openPaaSUser.username(), PASSWORD);
 
         bookingLinkProbe = server.getProbe(BookingLinkProbe.class);
+        resourceProbe = server.getProbe(ResourceProbe.class);
 
         calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
@@ -518,6 +531,249 @@ class BookingLinkCreateRouteTest {
         assertThat(stored.availabilityRules()).isEqualTo(Optional.of(AvailabilityRules.of(
             new WeeklyAvailabilityRule(DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(17, 0), ZoneId.of("Europe/Paris"))
         )));
+    }
+
+    @Test
+    void shouldPersistBookingLinkWithLocation() {
+        String publicId = given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "location": "Room 3, Building A"
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED)
+            .extract().jsonPath().getString("bookingLinkPublicId");
+
+        BookingLink stored = bookingLinkProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
+
+        assertThat(stored.location()).contains("Room 3, Building A");
+    }
+
+    @Test
+    void shouldPersistBookingLinkWithVisibility() {
+        String publicId = given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "visibility": "PRIVATE"
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED)
+            .extract().jsonPath().getString("bookingLinkPublicId");
+
+        BookingLink stored = bookingLinkProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
+
+        assertThat(stored.visibility()).contains(EventVisibility.PRIVATE);
+    }
+
+    @Test
+    void shouldReturn400WhenVisibilityIsInvalid() {
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "visibility": "SECRET"
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @Test
+    void shouldPersistBookingLinkWithTransparency() {
+        String publicId = given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "transparency": "TRANSPARENT"
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED)
+            .extract().jsonPath().getString("bookingLinkPublicId");
+
+        BookingLink stored = bookingLinkProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
+
+        assertThat(stored.transparency()).contains(EventTransparency.TRANSPARENT);
+    }
+
+    @Test
+    void shouldReturn400WhenTransparencyIsInvalid() {
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "transparency": "MAYBE"
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @Test
+    void shouldPersistBookingLinkWithResources() {
+        Resource resource = resourceProbe.save(openPaaSUser, "Projector", "projector");
+
+        String publicId = given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "resources": ["%s"]
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString(), resource.id().value()))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED)
+            .extract().jsonPath().getString("bookingLinkPublicId");
+
+        BookingLink stored = bookingLinkProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
+
+        assertThat(stored.resources()).containsExactly(resource.id());
+    }
+
+    @Test
+    void shouldReturn400WhenResourceDoesNotExist() {
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "resources": ["659387b9d486dc0046aeffff"]
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+
+        assertThat(bookingLinkProbe.listBookingLinks(openPaaSUser.username())).isEmpty();
+    }
+
+    @Test
+    void shouldReturn400WhenResourceBelongsToAnotherDomain() {
+        Domain otherDomain = Domain.of("other-domain.tld");
+        OpenPaaSId otherDomainId = calendarDataProbe.addDomain(otherDomain)
+            .domainId(otherDomain);
+        Resource otherDomainResource = resourceProbe.saveInDomain(otherDomainId, openPaaSUser.id(), "Projector", "projector");
+
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "resources": ["%s"]
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString(), otherDomainResource.id().value()))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+
+        assertThat(bookingLinkProbe.listBookingLinks(openPaaSUser.username())).isEmpty();
+    }
+
+    @Test
+    void shouldReturn400WhenResourceIsDeleted() {
+        Resource resource = resourceProbe.save(openPaaSUser, "Projector", "projector");
+        resourceProbe.remove(resource.id());
+
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "resources": ["%s"]
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString(), resource.id().value()))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @Test
+    void shouldPersistBookingLinkWithAlarm() {
+        String publicId = given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "alarm": [ { "period": "-PT10M", "action": "EMAIL" } ]
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED)
+            .extract().jsonPath().getString("bookingLinkPublicId");
+
+        BookingLink stored = bookingLinkProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
+
+        assertThat(stored.alarm()).contains(new BookingLinkAlarm("-PT10M", BookingLinkAlarmAction.EMAIL));
+    }
+
+    @Test
+    void shouldReturn400WhenAlarmTriggerIsInvalid() {
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "alarm": [ { "period": "not-a-duration", "action": "EMAIL" } ]
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @Test
+    void shouldReturn400WhenAlarmPeriodIsPositive() {
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "alarm": [ { "period": "PT10M", "action": "EMAIL" } ]
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
     }
 
     @Test

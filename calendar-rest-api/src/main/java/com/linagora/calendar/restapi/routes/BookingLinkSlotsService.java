@@ -48,6 +48,7 @@ import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.booking.BookingLinkNotActiveException;
 import com.linagora.calendar.storage.booking.BookingLinkNotFoundException;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
+import com.linagora.calendar.storage.model.Resource;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -55,21 +56,24 @@ import reactor.core.publisher.Mono;
 public class BookingLinkSlotsService {
     private static final Logger LOGGER = LoggerFactory.getLogger(BookingLinkSlotsService.class);
 
-    public record SlotsResult(BookingLink bookingLink, OpenPaaSUser owner, Set<AvailabilitySlot> slots) {
+    public record SlotsResult(BookingLink bookingLink, OpenPaaSUser owner, Set<AvailabilitySlot> slots, List<Resource> resources) {
     }
 
     private final Clock clock;
     private final BookingLinkDAO bookingLinkDAO;
     private final OpenPaaSUserDAO openPaaSUserDAO;
     private final CalDavClient calDavClient;
+    private final BookingLinkResourceResolver resourceResolver;
     private final AvailableSlotsCalculator availableSlotsCalculator;
 
     @Inject
-    public BookingLinkSlotsService(Clock clock, BookingLinkDAO bookingLinkDAO, OpenPaaSUserDAO openPaaSUserDAO, CalDavClient calDavClient) {
+    public BookingLinkSlotsService(Clock clock, BookingLinkDAO bookingLinkDAO, OpenPaaSUserDAO openPaaSUserDAO,
+                                   CalDavClient calDavClient, BookingLinkResourceResolver resourceResolver) {
         this.clock = clock;
         this.bookingLinkDAO = bookingLinkDAO;
         this.openPaaSUserDAO = openPaaSUserDAO;
         this.calDavClient = calDavClient;
+        this.resourceResolver = resourceResolver;
         this.availableSlotsCalculator = new AvailableSlotsCalculator.Default();
     }
 
@@ -77,8 +81,14 @@ public class BookingLinkSlotsService {
         return getBookingLink(publicId)
             .flatMap(bookingLink -> Mono.zip(
                     retrieveOwner(bookingLink),
-                    computeSlots(bookingLink, from, to))
-                .map(tuple -> new SlotsResult(bookingLink, tuple.getT1(), tuple.getT2())));
+                    computeSlots(bookingLink, from, to),
+                    resolveResources(bookingLink))
+                .map(tuple -> new SlotsResult(bookingLink, tuple.getT1(), tuple.getT2(), tuple.getT3())));
+    }
+
+    private Mono<List<Resource>> resolveResources(BookingLink bookingLink) {
+        return resourceResolver.resolveNames(bookingLink.resources())
+            .collectList();
     }
 
     Mono<Set<AvailabilitySlot>> computeSlots(BookingLink bookingLink, Instant from, Instant to) {

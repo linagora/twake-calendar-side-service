@@ -1310,6 +1310,11 @@ Content-Type: application/json
     "name": "Intro call",
     "description": "Book a 30-minute introduction call",
     "color": "#6B4ECC",
+    "location": "Room 3, Building A",
+    "visibility": "PRIVATE",
+    "transparency": "TRANSPARENT",
+    "resources": ["68a1b2c3d4e5f60718293a4b"],
+    "alarm": [ { "period": "-PT10M", "action": "EMAIL" } ],
     "availabilityRules": [
       { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "17:00", "timeZone": "UTC" }
     ]
@@ -1317,8 +1322,9 @@ Content-Type: application/json
 ]
 ```
 
-`availabilityRules`, `extraAttendees`, `name` and `description` are omitted from an entry when not set.
-The `color` field is always present, defaulting to `#6B4ECC` when not set.
+`availabilityRules`, `extraAttendees`, `name`, `description`, `location`, `visibility`, `transparency`,
+`resources` and `alarm` are omitted from an entry when not set. The `color` field is always present, defaulting
+to `#6B4ECC` when not set.
 
 **Status codes**:
 - `200`: the list is returned (possibly empty)
@@ -1348,6 +1354,11 @@ POST /users/{username}/booking-links
   "name": "Intro call",
   "description": "Book a 30-minute introduction call",
   "color": "#6B4ECC",
+  "location": "Room 3, Building A",
+  "visibility": "PRIVATE",
+  "transparency": "TRANSPARENT",
+  "resources": ["68a1b2c3d4e5f60718293a4b"],
+  "alarm": [ { "period": "-PT10M", "action": "EMAIL" } ],
   "extraAttendees": { "and": [{ "participant": "67c3a792e4b0884b05ef8af0" }] },
   "availabilityRules": [
     { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "timeZone": "Europe/Paris" }
@@ -1355,11 +1366,13 @@ POST /users/{username}/booking-links
 }
 ```
 
-`calendarUrl`, `durationMinutes` and `active` are required. `autoAccept` (default `false`), `availabilityRules`, `extraAttendees` (empty by default), `name`, `description` and `color` (default `#6B4ECC`) are optional.
+`calendarUrl`, `durationMinutes` and `active` are required. `autoAccept` (default `false`), `availabilityRules`, `extraAttendees` (empty by default), `name`, `description`, `color` (default `#6B4ECC`), `location`, `visibility` (`PUBLIC`/`PRIVATE`), `transparency` (`OPAQUE`/`TRANSPARENT`), `resources` and `alarm` are optional.
 
 `extraAttendees` holds a tree of the registered users invited on every booked event, and whose availability
-narrows down the offered slots. Only a single `and` of `participant` leaves is supported today. See the
+narrows down the offered slots. Only a single `and` of `participant` leaves is supported today. See the 
 [booking link API](bookingLink.md#extra-attendees) for details.
+
+`resources` are resource ids of the owner's domain added as attendees, and `alarm` is an array of `{period, action}` alarms added to the booked events.
 
 ```
 HTTP/1.1 201 Created
@@ -1373,7 +1386,7 @@ Content-Type: application/json
 
 **Status codes**:
 - `201`: the booking link was created
-- `400`: invalid `username`, missing/invalid field, unknown rule type, invalid `timeZone`, the calendar does not exist for that user, or an extra attendee is unknown or is the owner
+- `400`: invalid `username`, missing/invalid field, unknown rule type, invalid `timeZone`, the calendar does not exist for that user, an extra attendee is unknown or is the owner, invalid `visibility`/`transparency`/`alarm`, or a resource is unknown or in another domain
 - `404`: the user does not exist
 
 ### Updating a booking link
@@ -1388,11 +1401,12 @@ PATCH /users/{username}/booking-links/{publicId}
 
 Only the fields present in the body are updated. At least one field must be provided.
 Set `availabilityRules` to `null` to remove all rules. Set `extraAttendees` to `null` or `{"and": []}` to
-remove them all. Set `name` or `description` to `null` or a blank value to remove them.
+remove them all. Set `resources` to `null` or `[]` to remove them all. Set `name`, `description`, `location`,
+`visibility`, `transparency` or `alarm` to `null` or a blank value to remove them.
 
 **Status codes**:
 - `204`: the booking link was updated
-- `400`: invalid `username` or `publicId`, no field provided, invalid value, invalid `timeZone`, or the calendar does not exist for that user
+- `400`: invalid `username` or `publicId`, no field provided, invalid value, invalid `timeZone`, the calendar does not exist for that user, invalid `visibility`/`transparency`/`alarm`, or a resource is unknown or in another domain
 - `404`: the user does not exist, or the booking link does not exist for that user
 
 ### Deleting a booking link

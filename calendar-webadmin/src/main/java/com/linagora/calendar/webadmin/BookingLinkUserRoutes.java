@@ -53,12 +53,15 @@ import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.restapi.routes.BookingLinkCreateRoute.CreateBookingLinkRequestDTO;
 import com.linagora.calendar.restapi.routes.BookingLinkExtraAttendeeResolver;
 import com.linagora.calendar.restapi.routes.BookingLinkPatchRoute.PatchDto;
+import com.linagora.calendar.restapi.routes.BookingLinkResourceResolver;
+import com.linagora.calendar.restapi.routes.dto.BookingLinkAlarmDTO;
 import com.linagora.calendar.restapi.routes.dto.BookingLinkDTO;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.booking.BookingLink;
+import com.linagora.calendar.storage.booking.BookingLinkAlarm;
 import com.linagora.calendar.storage.booking.BookingLinkColorUtil;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.booking.BookingLinkExtraAttendeeUtil;
@@ -66,7 +69,11 @@ import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.booking.BookingLinkNotFoundException;
 import com.linagora.calendar.storage.booking.BookingLinkPatchRequest;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
+import com.linagora.calendar.storage.booking.BookingLinkResourceUtil;
+import com.linagora.calendar.storage.booking.EventTransparency;
+import com.linagora.calendar.storage.booking.EventVisibility;
 import com.linagora.calendar.storage.booking.ExtraAttendees;
+import com.linagora.calendar.storage.model.ResourceId;
 import com.linagora.calendar.webadmin.service.BookingLinkEventDeletionService;
 import com.linagora.calendar.webadmin.task.BookingLinkEventDeletionTask;
 
@@ -109,6 +116,11 @@ public class BookingLinkUserRoutes implements Routes {
     private static final String FIELD_NAME = "name";
     private static final String FIELD_DESCRIPTION = "description";
     private static final String FIELD_COLOR = "color";
+    private static final String FIELD_LOCATION = "location";
+    private static final String FIELD_VISIBILITY = "visibility";
+    private static final String FIELD_TRANSPARENCY = "transparency";
+    private static final String FIELD_RESOURCES = "resources";
+    private static final String FIELD_ALARM = "alarm";
     private static final String FIELD_PUBLIC_ID = "bookingLinkPublicId";
     private static final ZoneId DEFAULT_ZONE = ZoneId.of("UTC");
 
@@ -120,6 +132,7 @@ public class BookingLinkUserRoutes implements Routes {
     private final TaskManager taskManager;
     private final BookingLinkEventDeletionService eventDeletionService;
     private final BookingLinkExtraAttendeeResolver extraAttendeeResolver;
+    private final BookingLinkResourceResolver resourceResolver;
     private final JsonTransformer jsonTransformer;
 
     @Inject
@@ -129,6 +142,7 @@ public class BookingLinkUserRoutes implements Routes {
                                  TaskManager taskManager,
                                  BookingLinkEventDeletionService eventDeletionService,
                                  BookingLinkExtraAttendeeResolver extraAttendeeResolver,
+                                 BookingLinkResourceResolver resourceResolver,
                                  JsonTransformer jsonTransformer) {
         this.userDAO = userDAO;
         this.bookingLinkDAO = bookingLinkDAO;
@@ -136,6 +150,7 @@ public class BookingLinkUserRoutes implements Routes {
         this.taskManager = taskManager;
         this.eventDeletionService = eventDeletionService;
         this.extraAttendeeResolver = extraAttendeeResolver;
+        this.resourceResolver = resourceResolver;
         this.jsonTransformer = jsonTransformer;
     }
 
@@ -221,6 +236,7 @@ public class BookingLinkUserRoutes implements Routes {
 
         BookingLink bookingLink = validateCalendarAccess(user.username(), insertRequest.calendarUrl())
             .then(validateExtraAttendees(user.username(), insertRequest.extraAttendees().participants()))
+            .then(validateResources(user.username(), insertRequest.resources()))
             .then(bookingLinkDAO.insert(user.username(), insertRequest))
             .block();
 
@@ -241,6 +257,7 @@ public class BookingLinkUserRoutes implements Routes {
 
         validateCalendar
             .then(validateExtraAttendees(username, patchRequest.extraAttendees().getOrElse(ExtraAttendees.NONE).participants()))
+            .then(validateResources(username, patchRequest.resources().getOrElse(List.of())))
             .then(bookingLinkDAO.update(username, publicId, patchRequest))
             .onErrorMap(BookingLinkNotFoundException.class, e -> bookingLinkNotFound(publicId))
             .block();
@@ -299,7 +316,12 @@ public class BookingLinkUserRoutes implements Routes {
                 parseExtraAttendees(node, dto),
                 parseName(node, dto),
                 parseDescription(node, dto),
-                parseColor(node, dto));
+                parseColor(node, dto),
+                parseLocation(node, dto),
+                parseVisibility(node, dto),
+                parseTransparency(node, dto),
+                parseResources(node, dto),
+                parseAlarm(node, dto));
         } catch (IllegalArgumentException e) {
             throw badRequest(e.getMessage(), e);
         } catch (Exception e) {
@@ -392,8 +414,60 @@ public class BookingLinkUserRoutes implements Routes {
             .orElseGet(ValuePatch::remove);
     }
 
+    private ValuePatch<String> parseLocation(JsonNode node, PatchDto dto) {
+        if (!node.has(FIELD_LOCATION)) {
+            return ValuePatch.keep();
+        }
+        return dto.location().map(String::trim).filter(location -> !location.isEmpty())
+            .map(ValuePatch::modifyTo)
+            .orElseGet(ValuePatch::remove);
+    }
+
+    private ValuePatch<EventVisibility> parseVisibility(JsonNode node, PatchDto dto) {
+        if (!node.has(FIELD_VISIBILITY)) {
+            return ValuePatch.keep();
+        }
+        return dto.visibility().map(String::trim).filter(visibility -> !visibility.isEmpty())
+            .map(EventVisibility::fromString)
+            .map(ValuePatch::modifyTo)
+            .orElseGet(ValuePatch::remove);
+    }
+
+    private ValuePatch<EventTransparency> parseTransparency(JsonNode node, PatchDto dto) {
+        if (!node.has(FIELD_TRANSPARENCY)) {
+            return ValuePatch.keep();
+        }
+        return dto.transparency().map(String::trim).filter(transparency -> !transparency.isEmpty())
+            .map(EventTransparency::fromString)
+            .map(ValuePatch::modifyTo)
+            .orElseGet(ValuePatch::remove);
+    }
+
+    private ValuePatch<List<ResourceId>> parseResources(JsonNode node, PatchDto dto) {
+        if (!node.has(FIELD_RESOURCES)) {
+            return ValuePatch.keep();
+        }
+        return BookingLinkResourceUtil.parsePatch(dto.resources());
+    }
+
+    private ValuePatch<List<BookingLinkAlarm>> parseAlarm(JsonNode node, PatchDto dto) {
+        if (!node.has(FIELD_ALARM)) {
+            return ValuePatch.keep();
+        }
+        return dto.alarm()
+            .map(BookingLinkAlarmDTO::toBookingLinkAlarms)
+            .filter(alarms -> !alarms.isEmpty())
+            .map(ValuePatch::modifyTo)
+            .orElseGet(ValuePatch::remove);
+    }
+
     private Mono<Void> validateExtraAttendees(Username username, List<OpenPaaSId> extraAttendees) {
         return extraAttendeeResolver.validate(username, extraAttendees)
+            .onErrorMap(IllegalArgumentException.class, e -> badRequest(e.getMessage(), e));
+    }
+
+    private Mono<Void> validateResources(Username username, List<ResourceId> resources) {
+        return resourceResolver.validate(username, resources)
             .onErrorMap(IllegalArgumentException.class, e -> badRequest(e.getMessage(), e));
     }
 

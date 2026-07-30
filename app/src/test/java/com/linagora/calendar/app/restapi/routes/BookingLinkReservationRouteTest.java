@@ -72,6 +72,7 @@ import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
+import com.linagora.calendar.app.ResourceProbe;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalendarTestUtil;
 import com.linagora.calendar.dav.DavModuleTestHelper;
@@ -85,11 +86,16 @@ import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
+import com.linagora.calendar.storage.booking.BookingLinkAlarm;
+import com.linagora.calendar.storage.booking.BookingLinkAlarmAction;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
+import com.linagora.calendar.storage.booking.EventTransparency;
+import com.linagora.calendar.storage.booking.EventVisibility;
 import com.linagora.calendar.storage.booking.ExtraAttendees;
 import com.linagora.calendar.storage.event.EventFields.Person;
 import com.linagora.calendar.storage.event.EventParseUtils;
+import com.linagora.calendar.storage.model.Resource;
 import com.linagora.calendar.storage.model.TeamCalendarId;
 
 import io.restassured.RestAssured;
@@ -137,9 +143,14 @@ class BookingLinkReservationRouteTest {
                 MaybeSender.getMailSender("no-reply@openpaas.org"))),
         binder -> binder.bind(MailSenderConfiguration.class)
             .toInstance(mailSenderConfigurationFunction.apply(mockSmtpExtension)),
-        binder -> Multibinder.newSetBinder(binder, GuiceProbe.class)
-            .addBinding()
-            .to(BookingLinkProbe.class));
+        binder -> {
+            Multibinder.newSetBinder(binder, GuiceProbe.class)
+                .addBinding()
+                .to(BookingLinkProbe.class);
+            Multibinder.newSetBinder(binder, GuiceProbe.class)
+                .addBinding()
+                .to(ResourceProbe.class);
+        });
 
     @AfterAll
     static void afterAll() {
@@ -405,9 +416,13 @@ class BookingLinkReservationRouteTest {
     @Test
     void shouldSendAcknowledgementEmailToBookerWhenBookingCreated(TwakeCalendarGuiceServer server) {
         // Given: an active booking link with a description and an available slot.
-        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(
-            CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES, BookingLinkInsertRequest.ACTIVE,
-            Optional.of(AVAILABILITY_RULE), Optional.of("Intro call"), Optional.of("A short call to get to know each other"));
+        BookingLinkInsertRequest insertRequest = BookingLinkInsertRequest.builder()
+            .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+            .eventDuration(DURATION_30_MINUTES)
+            .availabilityRules(AVAILABILITY_RULE)
+            .name("Intro call")
+            .description("A short call to get to know each other")
+            .build();
         BookingLink inserted = server.getProbe(BookingLinkProbe.class)
             .insert(openPaaSUser.username(), insertRequest);
         String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();
@@ -466,9 +481,12 @@ class BookingLinkReservationRouteTest {
     @Test
     void acknowledgementEmailShouldContainAWorkingLinkToTheReservationPage(TwakeCalendarGuiceServer server) {
         // Given: an active booking link with an available slot.
-        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(
-            CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES, BookingLinkInsertRequest.ACTIVE,
-            Optional.of(AVAILABILITY_RULE), Optional.of("Intro call"), Optional.empty());
+        BookingLinkInsertRequest insertRequest = BookingLinkInsertRequest.builder()
+            .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+            .eventDuration(DURATION_30_MINUTES)
+            .availabilityRules(AVAILABILITY_RULE)
+            .name("Intro call")
+            .build();
         BookingLink inserted = server.getProbe(BookingLinkProbe.class)
             .insert(openPaaSUser.username(), insertRequest);
         String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();
@@ -501,9 +519,12 @@ class BookingLinkReservationRouteTest {
     @Test
     void shouldAutoAcceptOrganizerAndSkipNotificationsWhenAutoAcceptEnabled(TwakeCalendarGuiceServer server) {
         // Given: an active booking link that auto-accepts bookings.
-        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(
-            CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES, BookingLinkInsertRequest.ACTIVE, true,
-            Optional.of(AVAILABILITY_RULE), Optional.empty(), Optional.empty());
+        BookingLinkInsertRequest insertRequest = BookingLinkInsertRequest.builder()
+            .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+            .eventDuration(DURATION_30_MINUTES)
+            .autoAccept(true)
+            .availabilityRules(AVAILABILITY_RULE)
+            .build();
         BookingLink inserted = server.getProbe(BookingLinkProbe.class)
             .insert(openPaaSUser.username(), insertRequest);
         String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();
@@ -844,11 +865,13 @@ class BookingLinkReservationRouteTest {
 
     @Test
     void shouldReturnUnprocessableEntityWhenStartUtcDoesNotMatchAnyAvailableSlot(TwakeCalendarGuiceServer server) {
-        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(
-            CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES,
-            AvailabilityRules.of(new FixedAvailabilityRule(
+        BookingLinkInsertRequest insertRequest = BookingLinkInsertRequest.builder()
+            .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+            .eventDuration(DURATION_30_MINUTES)
+            .availabilityRules(AvailabilityRules.of(new FixedAvailabilityRule(
                 ZonedDateTime.parse("2036-01-26T09:00:00Z"),
-                ZonedDateTime.parse("2036-01-26T10:00:00Z"))));
+                ZonedDateTime.parse("2036-01-26T10:00:00Z"))))
+            .build();
         BookingLink inserted = server.getProbe(BookingLinkProbe.class)
             .insert(openPaaSUser.username(), insertRequest);
 
@@ -916,9 +939,10 @@ class BookingLinkReservationRouteTest {
     void shouldReturnUnprocessableEntityWhenRequestedSlotIsBusyAndAvailabilityRulesAreEmpty(TwakeCalendarGuiceServer server) {
         // Given: a booking link without availability rules. Such a link is "effectively open"
         // (any 30-minute aligned slot is bookable), but busy intervals must still be honoured.
-        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(
-            CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES,
-            BookingLinkInsertRequest.ACTIVE, Optional.empty());
+        BookingLinkInsertRequest insertRequest = BookingLinkInsertRequest.builder()
+            .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+            .eventDuration(DURATION_30_MINUTES)
+            .build();
         BookingLink inserted = server.getProbe(BookingLinkProbe.class)
             .insert(openPaaSUser.username(), insertRequest);
 
@@ -961,9 +985,10 @@ class BookingLinkReservationRouteTest {
     @Test
     void shouldCreateBookingWhenSlotIsFreeAndAvailabilityRulesAreEmpty(TwakeCalendarGuiceServer server) {
         // Given: a booking link without availability rules and a free (non-busy) aligned slot.
-        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(
-            CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES,
-            BookingLinkInsertRequest.ACTIVE, Optional.empty());
+        BookingLinkInsertRequest insertRequest = BookingLinkInsertRequest.builder()
+            .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+            .eventDuration(DURATION_30_MINUTES)
+            .build();
         BookingLink inserted = server.getProbe(BookingLinkProbe.class)
             .insert(openPaaSUser.username(), insertRequest);
 
@@ -1306,11 +1331,12 @@ class BookingLinkReservationRouteTest {
 
     @Test
     void shouldReturnBadRequestWhenBookingLinkIsInactive(TwakeCalendarGuiceServer server) {
-        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(
-            CalendarURL.from(openPaaSUser.id()),
-            DURATION_30_MINUTES,
-            false,
-            Optional.of(AVAILABILITY_RULE));
+        BookingLinkInsertRequest insertRequest = BookingLinkInsertRequest.builder()
+            .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+            .eventDuration(DURATION_30_MINUTES)
+            .active(false)
+            .availabilityRules(AVAILABILITY_RULE)
+            .build();
         BookingLink inserted = server.getProbe(BookingLinkProbe.class)
             .insert(openPaaSUser.username(), insertRequest);
 
@@ -1371,7 +1397,7 @@ class BookingLinkReservationRouteTest {
             .block(), Optional::isPresent).get();
 
         BookingLink inserted = server.getProbe(BookingLinkProbe.class)
-            .insert(delegate.username(), new BookingLinkInsertRequest(delegatedCalendar, DURATION_30_MINUTES, AVAILABILITY_RULE));
+            .insert(delegate.username(), BookingLinkInsertRequest.builder().calendarUrl(delegatedCalendar).eventDuration(DURATION_30_MINUTES).availabilityRules(AVAILABILITY_RULE).build());
 
         given()
             .pathParam("bookingLinkPublicId", inserted.publicId().value())
@@ -1395,7 +1421,7 @@ class BookingLinkReservationRouteTest {
             "20360126T093000Z", "20360126T100000Z");
 
         BookingLink inserted = server.getProbe(BookingLinkProbe.class)
-            .insert(openPaaSUser.username(), new BookingLinkInsertRequest(teamCalendar, DURATION_30_MINUTES, AVAILABILITY_RULE));
+            .insert(openPaaSUser.username(), BookingLinkInsertRequest.builder().calendarUrl(teamCalendar).eventDuration(DURATION_30_MINUTES).availabilityRules(AVAILABILITY_RULE).build());
 
         // When Bob requests the booking link slots.
         List<String> availableSlots = getAvailableSlots(inserted.publicId());
@@ -1436,8 +1462,12 @@ class BookingLinkReservationRouteTest {
         // Given Bob owns an auto-accept booking link backed by a read-write team calendar.
         CalendarURL teamCalendar = createVisibleTeamCalendar(server, openPaaSUser, "Auto Accept Team", "dav:read-write");
         BookingLink inserted = server.getProbe(BookingLinkProbe.class)
-            .insert(openPaaSUser.username(), new BookingLinkInsertRequest(teamCalendar, DURATION_30_MINUTES,
-                true, true, Optional.of(AVAILABILITY_RULE), Optional.empty(), Optional.empty()));
+            .insert(openPaaSUser.username(), BookingLinkInsertRequest.builder()
+                .calendarUrl(teamCalendar)
+                .eventDuration(DURATION_30_MINUTES)
+                .autoAccept(true)
+                .availabilityRules(AVAILABILITY_RULE)
+                .build());
 
         // When a requester books an available slot.
         given()
@@ -1466,9 +1496,12 @@ class BookingLinkReservationRouteTest {
             "20360126T093000Z", "20360126T100000Z");
 
         BookingLink inserted = server.getProbe(BookingLinkProbe.class)
-            .insert(openPaaSUser.username(), new BookingLinkInsertRequest(teamCalendar, DURATION_30_MINUTES,
-                true, BookingLinkInsertRequest.AUTO_ACCEPT, Optional.of(AVAILABILITY_RULE), ExtraAttendees.of(extraAttendee.id()),
-                Optional.empty(), Optional.empty(), Optional.empty()));
+            .insert(openPaaSUser.username(), BookingLinkInsertRequest.builder()
+                .calendarUrl(teamCalendar)
+                .eventDuration(DURATION_30_MINUTES)
+                .availabilityRules(AVAILABILITY_RULE)
+                .extraAttendees(ExtraAttendees.of(extraAttendee.id()))
+                .build());
 
         // When Bob requests the booking link slots.
         List<String> availableSlots = getAvailableSlots(inserted.publicId());
@@ -1503,9 +1536,9 @@ class BookingLinkReservationRouteTest {
         CalendarURL aliceTeamCalendar = findVisibleTeamCalendar(alice, "Shared Team");
 
         BookingLink bobBookingLink = server.getProbe(BookingLinkProbe.class)
-            .insert(openPaaSUser.username(), new BookingLinkInsertRequest(bobTeamCalendar, DURATION_30_MINUTES, AVAILABILITY_RULE));
+            .insert(openPaaSUser.username(), BookingLinkInsertRequest.builder().calendarUrl(bobTeamCalendar).eventDuration(DURATION_30_MINUTES).availabilityRules(AVAILABILITY_RULE).build());
         BookingLink aliceBookingLink = server.getProbe(BookingLinkProbe.class)
-            .insert(alice.username(), new BookingLinkInsertRequest(aliceTeamCalendar, DURATION_30_MINUTES, AVAILABILITY_RULE));
+            .insert(alice.username(), BookingLinkInsertRequest.builder().calendarUrl(aliceTeamCalendar).eventDuration(DURATION_30_MINUTES).availabilityRules(AVAILABILITY_RULE).build());
 
         // When a requester books Bob's link at 09:00.
         given()
@@ -1532,7 +1565,7 @@ class BookingLinkReservationRouteTest {
         CalendarURL aliceTeamCalendar = findVisibleTeamCalendar(alice, "Organizer Team");
 
         BookingLink aliceBookingLink = server.getProbe(BookingLinkProbe.class)
-            .insert(alice.username(), new BookingLinkInsertRequest(aliceTeamCalendar, DURATION_30_MINUTES, AVAILABILITY_RULE));
+            .insert(alice.username(), BookingLinkInsertRequest.builder().calendarUrl(aliceTeamCalendar).eventDuration(DURATION_30_MINUTES).availabilityRules(AVAILABILITY_RULE).build());
 
         // When a requester books Alice's link.
         given()
@@ -1555,7 +1588,7 @@ class BookingLinkReservationRouteTest {
         // Given Bob owns a booking link backed by a read-only team calendar.
         CalendarURL teamCalendar = createVisibleTeamCalendar(server, openPaaSUser, "Read Only Team", "dav:read");
         BookingLink inserted = server.getProbe(BookingLinkProbe.class)
-            .insert(openPaaSUser.username(), new BookingLinkInsertRequest(teamCalendar, DURATION_30_MINUTES, AVAILABILITY_RULE));
+            .insert(openPaaSUser.username(), BookingLinkInsertRequest.builder().calendarUrl(teamCalendar).eventDuration(DURATION_30_MINUTES).availabilityRules(AVAILABILITY_RULE).build());
 
         // When a requester books an available slot.
         given()
@@ -1575,9 +1608,12 @@ class BookingLinkReservationRouteTest {
         OpenPaaSUser extraAttendee = calendarDataProbe.getUser(extraAttendeeUsername);
 
         BookingLink inserted = server.getProbe(BookingLinkProbe.class)
-            .insert(openPaaSUser.username(), new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES,
-                true, BookingLinkInsertRequest.AUTO_ACCEPT, Optional.of(AVAILABILITY_RULE), ExtraAttendees.of(extraAttendee.id()),
-                Optional.empty(), Optional.empty(), Optional.empty()));
+            .insert(openPaaSUser.username(), BookingLinkInsertRequest.builder()
+                .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+                .eventDuration(DURATION_30_MINUTES)
+                .availabilityRules(AVAILABILITY_RULE)
+                .extraAttendees(ExtraAttendees.of(extraAttendee.id()))
+                .build());
 
         given()
             .pathParam("bookingLinkPublicId", inserted.publicId().value())
@@ -1599,9 +1635,12 @@ class BookingLinkReservationRouteTest {
     void shouldStillBookWhenAnExtraAttendeeNoLongerExists(TwakeCalendarGuiceServer server) {
         // An extra attendee deleted after the booking link creation must not make the link unbookable.
         BookingLink inserted = server.getProbe(BookingLinkProbe.class)
-            .insert(openPaaSUser.username(), new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES,
-                true, BookingLinkInsertRequest.AUTO_ACCEPT, Optional.of(AVAILABILITY_RULE), ExtraAttendees.of(new OpenPaaSId("659387b9d486dc0046aeffff")),
-                Optional.empty(), Optional.empty(), Optional.empty()));
+            .insert(openPaaSUser.username(), BookingLinkInsertRequest.builder()
+                .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+                .eventDuration(DURATION_30_MINUTES)
+                .availabilityRules(AVAILABILITY_RULE)
+                .extraAttendees(ExtraAttendees.of(new OpenPaaSId("659387b9d486dc0046aeffff")))
+                .build());
 
         given()
             .pathParam("bookingLinkPublicId", inserted.publicId().value())
@@ -1620,9 +1659,12 @@ class BookingLinkReservationRouteTest {
         OpenPaaSUser extraAttendee = calendarDataProbe.getUser(extraAttendeeUsername);
 
         BookingLink inserted = server.getProbe(BookingLinkProbe.class)
-            .insert(openPaaSUser.username(), new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), DURATION_30_MINUTES,
-                true, BookingLinkInsertRequest.AUTO_ACCEPT, Optional.of(AVAILABILITY_RULE), ExtraAttendees.of(extraAttendee.id()),
-                Optional.empty(), Optional.empty(), Optional.empty()));
+            .insert(openPaaSUser.username(), BookingLinkInsertRequest.builder()
+                .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+                .eventDuration(DURATION_30_MINUTES)
+                .availabilityRules(AVAILABILITY_RULE)
+                .extraAttendees(ExtraAttendees.of(extraAttendee.id()))
+                .build());
 
         given()
             .pathParam("bookingLinkPublicId", inserted.publicId().value())
@@ -1646,11 +1688,56 @@ class BookingLinkReservationRouteTest {
             .hasSize(1);
     }
 
+    @Test
+    void bookingShouldCarryLocationVisibilityTransparencyResourceAndAlarmOntoEvent(TwakeCalendarGuiceServer server) {
+        Resource resource = server.getProbe(ResourceProbe.class).save(openPaaSUser, "Projector", "projector");
+        BookingLinkInsertRequest insertRequest = BookingLinkInsertRequest.builder()
+            .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+            .eventDuration(DURATION_30_MINUTES)
+            .availabilityRules(AVAILABILITY_RULE)
+            .location("Room 3")
+            .visibility(EventVisibility.PRIVATE)
+            .transparency(EventTransparency.TRANSPARENT)
+            .resources(List.of(resource.id()))
+            .alarm(List.of(new BookingLinkAlarm("-PT10M", BookingLinkAlarmAction.EMAIL)))
+            .build();
+        BookingLink inserted = server.getProbe(BookingLinkProbe.class).insert(openPaaSUser.username(), insertRequest);
+        String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();
+
+        given()
+            .auth().none()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body(bodyRequest(slotStartUtc))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED);
+
+        String unfoldedCalendar = exportCalendar(openPaaSUser).replace("\r\n ", "");
+
+        assertThat(unfoldedCalendar)
+            .contains("LOCATION:Room 3")
+            .contains("CLASS:PRIVATE")
+            .contains("TRANSP:TRANSPARENT")
+            .contains("ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=RESOURCE;PARTSTAT=NEEDS-ACTION;CN=Projector:mailto:"
+                + resource.id().value() + "@" + openPaaSUser.username().getDomainPart().orElseThrow().asString())
+            .containsIgnoringNewLines("""
+                BEGIN:VALARM
+                ACTION:EMAIL
+                TRIGGER:-PT10M
+                ATTENDEE:mailto:%s
+                ATTENDEE:mailto:creator@example.com
+                ATTENDEE:mailto:vana@example.com
+                END:VALARM
+                """.formatted(openPaaSUser.username().asString()));
+    }
+
     private BookingLink insertActiveBookingLink(TwakeCalendarGuiceServer server) {
-        BookingLinkInsertRequest insertRequest = new BookingLinkInsertRequest(
-            CalendarURL.from(openPaaSUser.id()),
-            DURATION_30_MINUTES,
-            AVAILABILITY_RULE);
+        BookingLinkInsertRequest insertRequest = BookingLinkInsertRequest.builder()
+            .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+            .eventDuration(DURATION_30_MINUTES)
+            .availabilityRules(AVAILABILITY_RULE)
+            .build();
         return server.getProbe(BookingLinkProbe.class)
             .insert(openPaaSUser.username(), insertRequest);
     }

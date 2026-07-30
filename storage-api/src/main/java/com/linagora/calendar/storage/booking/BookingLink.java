@@ -20,6 +20,7 @@ package com.linagora.calendar.storage.booking;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import org.apache.james.core.Username;
@@ -27,6 +28,7 @@ import org.apache.james.core.Username;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.model.ResourceId;
 
 public record BookingLink(Username username,
                           BookingLinkPublicId publicId,
@@ -39,6 +41,11 @@ public record BookingLink(Username username,
                           Optional<String> name,
                           Optional<String> description,
                           Optional<String> color,
+                          Optional<String> location,
+                          Optional<EventVisibility> visibility,
+                          Optional<EventTransparency> transparency,
+                          List<ResourceId> resources,
+                          List<BookingLinkAlarm> alarm,
                           Instant createdAt,
                           Instant updatedAt) {
 
@@ -55,6 +62,11 @@ public record BookingLink(Username username,
         Preconditions.checkNotNull(name, "'name' must not be null");
         Preconditions.checkNotNull(description, "'description' must not be null");
         Preconditions.checkNotNull(color, "'color' must not be null");
+        Preconditions.checkNotNull(location, "'location' must not be null");
+        Preconditions.checkNotNull(visibility, "'visibility' must not be null");
+        Preconditions.checkNotNull(transparency, "'transparency' must not be null");
+        Preconditions.checkNotNull(resources, "'resources' must not be null");
+        Preconditions.checkNotNull(alarm, "'alarm' must not be null");
         Preconditions.checkNotNull(createdAt, "'createdAt' must not be null");
     }
 
@@ -79,6 +91,11 @@ public record BookingLink(Username username,
             .name(name)
             .description(description)
             .color(color)
+            .location(location)
+            .visibility(visibility)
+            .transparency(transparency)
+            .resources(resources)
+            .alarm(alarm)
             .createdAt(createdAt)
             .updatedAt(updatedAt);
     }
@@ -95,6 +112,11 @@ public record BookingLink(Username username,
         private Optional<String> name = Optional.empty();
         private Optional<String> description = Optional.empty();
         private Optional<String> color = Optional.empty();
+        private Optional<String> location = Optional.empty();
+        private Optional<EventVisibility> visibility = Optional.empty();
+        private Optional<EventTransparency> transparency = Optional.empty();
+        private List<ResourceId> resources = List.of();
+        private List<BookingLinkAlarm> alarm = List.of();
         private Instant createdAt;
         private Instant updatedAt;
 
@@ -153,6 +175,31 @@ public record BookingLink(Username username,
             return this;
         }
 
+        public Builder location(Optional<String> location) {
+            this.location = location;
+            return this;
+        }
+
+        public Builder visibility(Optional<EventVisibility> visibility) {
+            this.visibility = visibility;
+            return this;
+        }
+
+        public Builder transparency(Optional<EventTransparency> transparency) {
+            this.transparency = transparency;
+            return this;
+        }
+
+        public Builder resources(List<ResourceId> resources) {
+            this.resources = resources;
+            return this;
+        }
+
+        public Builder alarm(List<BookingLinkAlarm> alarm) {
+            this.alarm = alarm;
+            return this;
+        }
+
         public Builder createdAt(Instant createdAt) {
             this.createdAt = createdAt;
             return this;
@@ -164,7 +211,8 @@ public record BookingLink(Username username,
         }
 
         public BookingLink build() {
-            return new BookingLink(username, publicId, calendarUrl, duration, active, autoAccept, availabilityRules, extraAttendees, name, description, color, createdAt, updatedAt);
+            return new BookingLink(username, publicId, calendarUrl, duration, active, autoAccept, availabilityRules, extraAttendees,
+                name, description, color, location, visibility, transparency, resources, alarm, createdAt, updatedAt);
         }
     }
 

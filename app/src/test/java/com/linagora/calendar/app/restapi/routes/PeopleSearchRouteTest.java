@@ -28,7 +28,6 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.not;
 
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 import java.util.UUID;
 
 import jakarta.inject.Inject;
@@ -48,24 +47,18 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import com.google.inject.multibindings.Multibinder;
 import com.linagora.calendar.app.AppTestHelper;
+import com.linagora.calendar.app.ResourceProbe;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.app.modules.MemoryAutoCompleteModule;
-import com.linagora.calendar.dav.ResourceService;
 import com.linagora.calendar.restapi.RestApiServerProbe;
-import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
-import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
-import com.linagora.calendar.storage.OpenPaaSUserDAO;
-import com.linagora.calendar.storage.ResourceDAO;
-import com.linagora.calendar.storage.ResourceInsertRequest;
 import com.linagora.calendar.storage.TeamCalendarInsertRequest;
 import com.linagora.calendar.storage.TeamCalendarRepository;
 import com.linagora.calendar.storage.model.Resource;
-import com.linagora.calendar.storage.model.ResourceId;
 import com.linagora.calendar.storage.model.TeamCalendar;
 
 import io.restassured.RestAssured;
@@ -75,54 +68,6 @@ import io.restassured.http.ContentType;
 import net.javacrumbs.jsonunit.core.Option;
 
 class PeopleSearchRouteTest {
-
-    static class ResourceProbe implements GuiceProbe {
-        private final ResourceDAO resourceDAO;
-        private final OpenPaaSDomainDAO domainDAO;
-        private final OpenPaaSUserDAO userDAO;
-        private final ResourceService resourceService;
-
-        @Inject
-        ResourceProbe(ResourceDAO resourceDAO, OpenPaaSDomainDAO domainDAO,
-                      OpenPaaSUserDAO userDAO, ResourceService resourceService) {
-            this.resourceDAO = resourceDAO;
-            this.domainDAO = domainDAO;
-            this.userDAO = userDAO;
-            this.resourceService = resourceService;
-        }
-
-        public Resource save(OpenPaaSUser requestUser, String name, String icon) {
-            ResourceInsertRequest insertRequest = buildInsertRequest(requestUser, name, icon);
-
-            return resourceDAO.insert(insertRequest)
-                .flatMap(resourceDAO::findById)
-                .block();
-        }
-
-        public Resource save(OpenPaaSUser requestUser, String name, String icon, List<OpenPaaSId> adminIds) {
-            Resource resource = save(requestUser, name, icon);
-            resourceService.updateAdmins(resource, adminIds.stream()
-                .map(userId -> userDAO.retrieve(userId).block().username())
-                .toList()).block();
-            return resource;
-        }
-
-        public ResourceId saveAndRemove(OpenPaaSUser requestUser, String name, String icon) {
-            ResourceInsertRequest insertRequest = buildInsertRequest(requestUser, name, icon);
-
-            return resourceDAO.insert(insertRequest)
-                .flatMap(resourceId -> resourceDAO.softDelete(resourceId).thenReturn(resourceId))
-                .block();
-        }
-
-        private ResourceInsertRequest buildInsertRequest(OpenPaaSUser requestUser, String name, String icon) {
-            OpenPaaSDomain domain = domainDAO.retrieve(requestUser.username().getDomainPart().orElseThrow())
-                .block();
-
-            return new ResourceInsertRequest(requestUser.id(), name + " description", domain.id(), icon, name);
-        }
-    }
-
     static class TeamCalendarProbe implements GuiceProbe {
         private final TeamCalendarRepository teamCalendarRepository;
         private final OpenPaaSDomainDAO domainDAO;

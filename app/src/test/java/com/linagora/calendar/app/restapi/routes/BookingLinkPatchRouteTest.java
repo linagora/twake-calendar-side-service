@@ -55,6 +55,7 @@ import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
+import com.linagora.calendar.app.ResourceProbe;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
@@ -63,8 +64,13 @@ import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
+import com.linagora.calendar.storage.booking.BookingLinkAlarm;
+import com.linagora.calendar.storage.booking.BookingLinkAlarmAction;
 import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
+import com.linagora.calendar.storage.booking.EventTransparency;
+import com.linagora.calendar.storage.booking.EventVisibility;
 import com.linagora.calendar.storage.booking.ExtraAttendees;
+import com.linagora.calendar.storage.model.Resource;
 
 import io.restassured.RestAssured;
 import io.restassured.authentication.PreemptiveBasicAuthScheme;
@@ -95,6 +101,9 @@ class BookingLinkPatchRouteTest {
             Multibinder.newSetBinder(binder, GuiceProbe.class)
                 .addBinding()
                 .to(BookingLinkProbe.class);
+            Multibinder.newSetBinder(binder, GuiceProbe.class)
+                .addBinding()
+                .to(ResourceProbe.class);
         });
 
     @AfterAll
@@ -140,7 +149,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldReturn204WhenUpdatingActive() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         given()
             .body("""
@@ -155,7 +164,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldPersistUpdatedActive() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         given()
             .body("""
@@ -173,7 +182,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldPersistUpdatedAutoAccept() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         given()
             .body("""
@@ -189,9 +198,288 @@ class BookingLinkPatchRouteTest {
     }
 
     @Test
+    void shouldPersistUpdatedLocation() {
+        BookingLink inserted = insertMinimal();
+
+        given()
+            .body("""
+                { "location": "Room 3" }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        assertThat(bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId()).location()).contains("Room 3");
+    }
+
+    @Test
+    void shouldRemoveLocationWhenSetToNull() {
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            BookingLinkInsertRequest.builder()
+                .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+                .eventDuration(Duration.ofMinutes(30))
+                .location("Room 3")
+                .build());
+
+        given()
+            .body("""
+                { "location": null }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        assertThat(bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId()).location()).isEmpty();
+    }
+
+    @Test
+    void shouldPersistUpdatedVisibility() {
+        BookingLink inserted = insertMinimal();
+
+        given()
+            .body("""
+                { "visibility": "PRIVATE" }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        assertThat(bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId()).visibility()).contains(EventVisibility.PRIVATE);
+    }
+
+    @Test
+    void shouldRemoveVisibilityWhenSetToNull() {
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            BookingLinkInsertRequest.builder()
+                .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+                .eventDuration(Duration.ofMinutes(30))
+                .visibility(EventVisibility.PRIVATE)
+                .build());
+
+        given()
+            .body("""
+                { "visibility": null }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        assertThat(bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId()).visibility()).isEmpty();
+    }
+
+    @Test
+    void shouldReturn400WhenVisibilityIsInvalid() {
+        BookingLink inserted = insertMinimal();
+
+        given()
+            .body("""
+                { "visibility": "SECRET" }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @Test
+    void shouldPersistUpdatedTransparency() {
+        BookingLink inserted = insertMinimal();
+
+        given()
+            .body("""
+                { "transparency": "TRANSPARENT" }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        assertThat(bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId()).transparency()).contains(EventTransparency.TRANSPARENT);
+    }
+
+    @Test
+    void shouldRemoveTransparencyWhenSetToNull() {
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            BookingLinkInsertRequest.builder()
+                .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+                .eventDuration(Duration.ofMinutes(30))
+                .transparency(EventTransparency.TRANSPARENT)
+                .build());
+
+        given()
+            .body("""
+                { "transparency": null }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        assertThat(bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId()).transparency()).isEmpty();
+    }
+
+    @Test
+    void shouldReturn400WhenTransparencyIsInvalid() {
+        BookingLink inserted = insertMinimal();
+
+        given()
+            .body("""
+                { "transparency": "INVALID" }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @Test
+    void shouldPersistUpdatedResources(TwakeCalendarGuiceServer server) {
+        Resource resource = server.getProbe(ResourceProbe.class).save(openPaaSUser, "Projector", "projector");
+        BookingLink inserted = insertMinimal();
+
+        given()
+            .body("""
+                { "resources": ["%s"] }
+                """.formatted(resource.id().value()))
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        assertThat(bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId()).resources()).containsExactly(resource.id());
+    }
+
+    @Test
+    void shouldRemoveResourcesWhenSetToEmptyArray(TwakeCalendarGuiceServer server) {
+        Resource resource = server.getProbe(ResourceProbe.class).save(openPaaSUser, "Projector", "projector");
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            BookingLinkInsertRequest.builder()
+                .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+                .eventDuration(Duration.ofMinutes(30))
+                .resources(List.of(resource.id()))
+                .build());
+
+        given()
+            .body("""
+                { "resources": [] }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        assertThat(bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId()).resources()).isEmpty();
+    }
+
+    @Test
+    void shouldRemoveResourcesWhenSetToNull(TwakeCalendarGuiceServer server) {
+        Resource resource = server.getProbe(ResourceProbe.class).save(openPaaSUser, "Projector", "projector");
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            BookingLinkInsertRequest.builder()
+                .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+                .eventDuration(Duration.ofMinutes(30))
+                .resources(List.of(resource.id()))
+                .build());
+
+        given()
+            .body("""
+                { "resources": null }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        assertThat(bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId()).resources()).isEmpty();
+    }
+
+    @Test
+    void shouldReturn400WhenResourceDoesNotExist() {
+        BookingLink inserted = insertMinimal();
+
+        given()
+            .body("""
+                { "resources": ["659387b9d486dc0046aeffff"] }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @Test
+    void shouldPersistUpdatedAlarm() {
+        BookingLink inserted = insertMinimal();
+
+        given()
+            .body("""
+                { "alarm": [ { "period": "-PT10M", "action": "EMAIL" } ] }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        assertThat(bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId()).alarm()).contains(new BookingLinkAlarm("-PT10M", BookingLinkAlarmAction.EMAIL));
+    }
+
+    @Test
+    void shouldRemoveAlarmWhenSetToNull() {
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            BookingLinkInsertRequest.builder()
+                .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+                .eventDuration(Duration.ofMinutes(30))
+                .alarm(List.of(new BookingLinkAlarm("-PT10M", BookingLinkAlarmAction.EMAIL)))
+                .build());
+
+        given()
+            .body("""
+                { "alarm": null }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        assertThat(bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId()).alarm()).isEmpty();
+    }
+
+    @Test
+    void shouldReturn400WhenAlarmPeriodIsInvalid() {
+        BookingLink inserted = insertMinimal();
+
+        given()
+            .body("""
+                { "alarm": [ { "period": "not-a-duration", "action": "EMAIL" } ] }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @Test
+    void shouldReturn400WhenAlarmActionIsInvalid() {
+        BookingLink inserted = insertMinimal();
+
+        given()
+            .body("""
+                { "alarm": [ { "period": "-PT10M", "action": "INVALID" } ] }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @Test
     void shouldPersistUpdatedNameAndDescription() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         given()
             .body("""
@@ -210,8 +498,12 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldRemoveNameAndDescriptionWhenSetToNull() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE,
-                Optional.empty(), Optional.of("Intro call"), Optional.of("Some description")));
+            BookingLinkInsertRequest.builder()
+                .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+                .eventDuration(Duration.ofMinutes(30))
+                .name("Intro call")
+                .description("Some description")
+                .build());
 
         given()
             .body("""
@@ -230,7 +522,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldPersistUpdatedColor() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         given()
             .body("""
@@ -248,8 +540,11 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldRemoveColorWhenSetToNull() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE,
-                BookingLinkInsertRequest.AUTO_ACCEPT, Optional.empty(), Optional.empty(), Optional.empty(), Optional.of("#FF8800")));
+            BookingLinkInsertRequest.builder()
+                .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+                .eventDuration(Duration.ofMinutes(30))
+                .color("#FF8800")
+                .build());
 
         given()
             .body("""
@@ -267,7 +562,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldReturn400WhenColorIsNotAValidHexColor() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         given()
             .body("""
@@ -282,7 +577,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldPersistUpdatedDurationMinutes() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         given()
             .body("""
@@ -300,7 +595,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldPersistUpdatedCalendarUrl() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         String newCalendarId = "custom-" + UUID.randomUUID();
         CalDavClient.NewCalendar newCalendar = new CalDavClient.NewCalendar(
@@ -330,7 +625,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldPersistUpdatedWeeklyAvailabilityRules() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         given()
             .body("""
@@ -355,7 +650,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldPersistUpdatedFixedAvailabilityRule() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         given()
             .body("""
@@ -381,7 +676,7 @@ class BookingLinkPatchRouteTest {
         AvailabilityRules existingRules = AvailabilityRules.of(
             new WeeklyAvailabilityRule(DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(17, 0), UTC));
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.of(existingRules)));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).availabilityRules(existingRules).build());
 
         given()
             .body("""
@@ -400,7 +695,7 @@ class BookingLinkPatchRouteTest {
     void shouldPersistUpdatedExtraAttendees(TwakeCalendarGuiceServer server) {
         OpenPaaSUser extraAttendee = newProvisionedUser(server);
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         given()
             .body("""
@@ -419,9 +714,11 @@ class BookingLinkPatchRouteTest {
     void shouldRemoveExtraAttendeesWhenSetToNull(TwakeCalendarGuiceServer server) {
         OpenPaaSUser extraAttendee = newProvisionedUser(server);
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE,
-                BookingLinkInsertRequest.AUTO_ACCEPT, Optional.empty(), ExtraAttendees.of(extraAttendee.id()),
-                Optional.empty(), Optional.empty(), Optional.empty()));
+            BookingLinkInsertRequest.builder()
+                .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+                .eventDuration(Duration.ofMinutes(30))
+                .extraAttendees(ExtraAttendees.of(extraAttendee.id()))
+                .build());
 
         given()
             .body("""
@@ -440,9 +737,11 @@ class BookingLinkPatchRouteTest {
     void shouldReturn400WhenUpdatedExtraAttendeeDoesNotExist(TwakeCalendarGuiceServer server) {
         OpenPaaSUser extraAttendee = newProvisionedUser(server);
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE,
-                BookingLinkInsertRequest.AUTO_ACCEPT, Optional.empty(), ExtraAttendees.of(extraAttendee.id()),
-                Optional.empty(), Optional.empty(), Optional.empty()));
+            BookingLinkInsertRequest.builder()
+                .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+                .eventDuration(Duration.ofMinutes(30))
+                .extraAttendees(ExtraAttendees.of(extraAttendee.id()))
+                .build());
 
         given()
             .body("""
@@ -461,9 +760,11 @@ class BookingLinkPatchRouteTest {
     void shouldReturn400WhenUpdatedExtraAttendeesContainsTheOwner(TwakeCalendarGuiceServer server) {
         OpenPaaSUser extraAttendee = newProvisionedUser(server);
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE,
-                BookingLinkInsertRequest.AUTO_ACCEPT, Optional.empty(), ExtraAttendees.of(extraAttendee.id()),
-                Optional.empty(), Optional.empty(), Optional.empty()));
+            BookingLinkInsertRequest.builder()
+                .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+                .eventDuration(Duration.ofMinutes(30))
+                .extraAttendees(ExtraAttendees.of(extraAttendee.id()))
+                .build());
 
         given()
             .body("""
@@ -481,7 +782,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldReturn400WhenUpdatedExtraAttendeeIsBlank() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         given()
             .body("""
@@ -498,7 +799,7 @@ class BookingLinkPatchRouteTest {
         AvailabilityRules existingRules = AvailabilityRules.of(
             new WeeklyAvailabilityRule(DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(17, 0), UTC));
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.of(existingRules)));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).availabilityRules(existingRules).build());
 
         given()
             .body("""
@@ -532,7 +833,7 @@ class BookingLinkPatchRouteTest {
     void shouldReturn404WhenBookingLinkBelongsToAnotherUser() {
         OpenPaaSUser otherUser = sabreDavExtension.newTestUser();
         BookingLink inserted = bookingLinkProbe.insertBookingLink(otherUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(otherUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(otherUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         given()
             .body("""
@@ -547,7 +848,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldReturn400WhenRequestContainsUnknownFields() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         given()
             .body("""
@@ -563,7 +864,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldReturn400WhenBodyIsEmpty() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         given()
             .body("")
@@ -577,7 +878,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldReturn400WhenBodyIsInvalidJson() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         given()
             .body("not-valid-json")
@@ -591,7 +892,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldReturn400WhenNoFieldIsUpdated() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         given()
             .body("{}")
@@ -604,7 +905,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldReturn400WhenDurationMinutesIsZero() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         given()
             .body("""
@@ -620,7 +921,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldReturn400WhenDurationMinutesIsNegative() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         given()
             .body("""
@@ -636,7 +937,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldReturn400WhenTimezoneIsInvalid() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         given()
             .body("""
@@ -656,7 +957,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldReturn400WhenWeeklyRuleIsMissingDayOfWeek() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         given()
             .body("""
@@ -676,7 +977,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldReturn400WhenWeeklyRuleHasInvalidDayOfWeek() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         given()
             .body("""
@@ -696,7 +997,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldReturn400WhenWeeklyRuleStartTimeIsInvalid() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         given()
             .body("""
@@ -716,7 +1017,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldReturn400WhenFixedRuleStartTimeIsInvalid() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         given()
             .body("""
@@ -736,7 +1037,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldReturn400WhenAvailabilityRuleTypeIsUnknown() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         given()
             .body("""
@@ -756,7 +1057,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldReturn401WhenUnauthenticated() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         with()
             .auth().none()
@@ -785,7 +1086,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldReturn400WhenCalendarUrlIsNull() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         given()
             .body("""
@@ -801,7 +1102,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldReturn400WhenDurationMinutesIsNull() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         given()
             .body("""
@@ -817,7 +1118,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldReturn400WhenActiveIsNull() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         given()
             .body("""
@@ -833,7 +1134,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldReturn400WhenAvailabilityRulesIsEmptyArray() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         given()
             .body("""
@@ -851,7 +1152,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldReturn400WhenFixedRuleStartIsAfterEnd() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         given()
             .body("""
@@ -871,7 +1172,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldReturn400WhenCalendarUrlBelongsToAnotherUser() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         OpenPaaSUser otherUser = sabreDavExtension.newTestUser();
         String otherCalendarId = "other-" + UUID.randomUUID();
@@ -894,7 +1195,7 @@ class BookingLinkPatchRouteTest {
     @Test
     void shouldReturn400WhenCalendarDoesNotExist() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
-            new BookingLinkInsertRequest(CalendarURL.from(openPaaSUser.id()), Duration.ofMinutes(30), ACTIVE, Optional.empty()));
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
 
         CalendarURL nonExistentCalendarUrl = new CalendarURL(openPaaSUser.id(), new OpenPaaSId("nonexistentCalendar"));
 
@@ -911,5 +1212,10 @@ class BookingLinkPatchRouteTest {
             .body("error.code", equalTo(400))
             .body("error.message", equalTo("Bad request"))
             .body("error.details", equalTo("Calendar not found or access denied: " + nonExistentCalendarUrl.asUri()));
+    }
+
+    private BookingLink insertMinimal() {
+        return bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
     }
 }
