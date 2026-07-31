@@ -97,6 +97,13 @@ Constraints:
 - Each `participant` must be the OpenPaaS id of an existing user, and must not be the booking link owner.
 - At most 20 participants. Duplicates are ignored.
 
+In `GET` and list responses each `participant` leaf also carries the resolved `name` and `email` (omitted when
+the user no longer exists):
+
+```json
+{ "extraAttendees": { "and": [ { "participant": "67c3a792e4b0884b05ef8af0", "name": "Bob Smith", "email": "bob@open-paas.org" } ] } }
+```
+
 ### Resources
 
 A booking link may carry `resources`: a flat array of resource ids, added as `CUTYPE=RESOURCE` attendees
@@ -106,6 +113,13 @@ A booking link may carry `resources`: a flat array of resource ids, added as `CU
 {
     "resources": ["68a1b2c3d4e5f60718293a4b", "68a1b2c3d4e5f60718293a4c"]
 }
+```
+
+In `GET` and list responses `resources` is returned as objects `{id, name}`, the `name` being the resolved
+resource name (omitted when the resource no longer exists):
+
+```json
+{ "resources": [ { "id": "68a1b2c3d4e5f60718293a4b", "name": "Projector" } ] }
 ```
 
 Constraints:
@@ -226,6 +240,12 @@ Content-Type: application/json
         "name": "Intro call",
         "description": "Book a 30-minute introduction call",
         "color": "#6B4ECC",
+        "location": "Room 3, Building A",
+        "visibility": "PRIVATE",
+        "transparency": "TRANSPARENT",
+        "resources": [ { "id": "68a1b2c3d4e5f60718293a4b", "name": "Projector" } ],
+        "alarm": [ { "period": "-PT10M", "action": "EMAIL" } ],
+        "extraAttendees": { "and": [ { "participant": "67c3a792e4b0884b05ef8af0", "name": "Bob Smith", "email": "bob@open-paas.org" } ] },
         "availabilityRules": [
             { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "17:00", "timeZone": "Asia/Ho_Chi_Minh" }
         ]
@@ -269,6 +289,12 @@ Content-Type: application/json
     "name": "Intro call",
     "description": "Book a 30-minute introduction call",
     "color": "#6B4ECC",
+    "location": "Room 3, Building A",
+    "visibility": "PRIVATE",
+    "transparency": "TRANSPARENT",
+    "resources": [ { "id": "68a1b2c3d4e5f60718293a4b", "name": "Projector" } ],
+    "alarm": [ { "period": "-PT10M", "action": "EMAIL" } ],
+    "extraAttendees": { "and": [ { "participant": "67c3a792e4b0884b05ef8af0", "name": "Bob Smith", "email": "bob@open-paas.org" } ] },
     "availabilityRules": [
         { "type": "weekly", "dayOfWeek": "MON", "start": "09:00", "end": "12:00", "timeZone": "Asia/Ho_Chi_Minh" },
         { "type": "weekly", "dayOfWeek": "MON", "start": "13:00", "end": "17:00", "timeZone": "Europe/London" },

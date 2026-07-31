@@ -47,6 +47,7 @@ import com.linagora.calendar.api.booking.AvailabilityRule.WeeklyAvailabilityRule
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.app.AppTestHelper;
 import com.linagora.calendar.app.BookingLinkProbe;
+import com.linagora.calendar.app.ResourceProbe;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
@@ -55,7 +56,6 @@ import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.CalendarURL;
-import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkAlarm;
@@ -64,7 +64,7 @@ import com.linagora.calendar.storage.booking.BookingLinkInsertRequest;
 import com.linagora.calendar.storage.booking.EventTransparency;
 import com.linagora.calendar.storage.booking.EventVisibility;
 import com.linagora.calendar.storage.booking.ExtraAttendees;
-import com.linagora.calendar.storage.model.ResourceId;
+import com.linagora.calendar.storage.model.Resource;
 
 import io.restassured.RestAssured;
 import io.restassured.authentication.PreemptiveBasicAuthScheme;
@@ -73,7 +73,6 @@ import io.restassured.http.ContentType;
 
 class BookingLinkGetRouteTest {
 
-    private static final boolean ACTIVE = true;
     private static final boolean NOT_ACTIVE = false;
     private static final String PASSWORD = "secret";
     private static final ZoneId ZONE_HO_CHI_MINH = ZoneId.of("Asia/Ho_Chi_Minh");
@@ -96,6 +95,9 @@ class BookingLinkGetRouteTest {
             Multibinder.newSetBinder(binder, GuiceProbe.class)
                 .addBinding()
                 .to(BookingLinkProbe.class);
+            Multibinder.newSetBinder(binder, GuiceProbe.class)
+                .addBinding()
+                .to(ResourceProbe.class);
         });
 
     @AfterAll
@@ -104,6 +106,7 @@ class BookingLinkGetRouteTest {
     }
 
     private BookingLinkProbe bookingLinkProbe;
+    private ResourceProbe resourceProbe;
     private OpenPaaSUser openPaaSUser;
 
     @BeforeEach
@@ -114,6 +117,7 @@ class BookingLinkGetRouteTest {
         calendarDataProbe.addUserToRepository(openPaaSUser.username(), PASSWORD);
 
         bookingLinkProbe = server.getProbe(BookingLinkProbe.class);
+        resourceProbe = server.getProbe(ResourceProbe.class);
 
         PreemptiveBasicAuthScheme basicAuthScheme = new PreemptiveBasicAuthScheme();
         basicAuthScheme.setUserName(openPaaSUser.username().asString());
@@ -156,12 +160,14 @@ class BookingLinkGetRouteTest {
     }
 
     @Test
-    void shouldReturn200WithExtraAttendeesWhenSet() {
+    void shouldReturn200WithExtraAttendeesWhenSet(TwakeCalendarGuiceServer server) {
+        OpenPaaSUser firstAttendee = newProvisionedUser(server);
+        OpenPaaSUser secondAttendee = newProvisionedUser(server);
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             BookingLinkInsertRequest.builder()
                 .calendarUrl(CalendarURL.from(openPaaSUser.id()))
                 .eventDuration(Duration.ofMinutes(30))
-                .extraAttendees(ExtraAttendees.of(new OpenPaaSId("659387b9d486dc0046aeffb1"), new OpenPaaSId("659387b9d486dc0046aeffb2")))
+                .extraAttendees(ExtraAttendees.of(firstAttendee.id(), secondAttendee.id()))
                 .build());
 
         String response = given()
@@ -180,10 +186,12 @@ class BookingLinkGetRouteTest {
                     "durationMinutes": 30,
                     "active": true,
                     "autoAccept": false,
-                    "extraAttendees": { "and": [ { "participant": "659387b9d486dc0046aeffb1" }, { "participant": "659387b9d486dc0046aeffb2" } ] },
+                    "extraAttendees": { "and": [ { "participant": "%s", "name": "%s", "email": "%s" }, { "participant": "%s", "name": "%s", "email": "%s" } ] },
                     "color": "#6B4ECC"
                 }
-                """.formatted(inserted.publicId().value(), CalendarURL.from(openPaaSUser.id()).asUri().toString()));
+                """.formatted(inserted.publicId().value(), CalendarURL.from(openPaaSUser.id()).asUri().toString(),
+                firstAttendee.id().value(), firstAttendee.fullName(), firstAttendee.username().asString(),
+                secondAttendee.id().value(), secondAttendee.fullName(), secondAttendee.username().asString()));
     }
 
     @Test
@@ -472,11 +480,13 @@ class BookingLinkGetRouteTest {
 
     @Test
     void shouldReturn200WithResources() {
+        Resource projector = resourceProbe.save(openPaaSUser, "Projector", "projector");
+        Resource whiteboard = resourceProbe.save(openPaaSUser, "Whiteboard", "whiteboard");
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             BookingLinkInsertRequest.builder()
                 .calendarUrl(CalendarURL.from(openPaaSUser.id()))
                 .eventDuration(Duration.ofMinutes(30))
-                .resources(List.of(new ResourceId("659387b9d486dc0046aeffc1"), new ResourceId("659387b9d486dc0046aeffc2")))
+                .resources(List.of(projector.id(), whiteboard.id()))
                 .build());
 
         String response = given()
@@ -495,9 +505,18 @@ class BookingLinkGetRouteTest {
                     "active": true,
                     "autoAccept": false,
                     "color": "#6B4ECC",
-                    "resources": ["659387b9d486dc0046aeffc1", "659387b9d486dc0046aeffc2"]
+                    "resources": [ { "id": "%s", "name": "Projector" }, { "id": "%s", "name": "Whiteboard" } ]
                 }
-                """.formatted(inserted.publicId().value(), CalendarURL.from(openPaaSUser.id()).asUri().toString()));
+                """.formatted(inserted.publicId().value(), CalendarURL.from(openPaaSUser.id()).asUri().toString(),
+                projector.id().value(), whiteboard.id().value()));
+    }
+
+    private OpenPaaSUser newProvisionedUser(TwakeCalendarGuiceServer server) {
+        OpenPaaSUser user = sabreDavExtension.newTestUser();
+        CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
+        calendarDataProbe.addDomain(user.username().getDomainPart().get());
+        calendarDataProbe.addUserToRepository(user.username(), PASSWORD);
+        return user;
     }
 
     @Test

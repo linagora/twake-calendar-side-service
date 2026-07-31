@@ -30,7 +30,6 @@ import org.apache.james.jmap.http.Authenticator;
 import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.metrics.api.MetricFactory;
 
-import com.linagora.calendar.restapi.routes.dto.BookingLinkDTO;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.booking.BookingLinkNotFoundException;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
@@ -46,13 +45,16 @@ public class BookingLinkGetRoute extends CalendarRoute {
     private static final String PUBLIC_ID_PARAM = "bookingLinkPublicId";
 
     private final BookingLinkDAO bookingLinkDAO;
+    private final BookingLinkDTOFactory bookingLinkDTOFactory;
 
     @Inject
     public BookingLinkGetRoute(Authenticator authenticator,
                                MetricFactory metricFactory,
-                               BookingLinkDAO bookingLinkDAO) {
+                               BookingLinkDAO bookingLinkDAO,
+                               BookingLinkDTOFactory bookingLinkDTOFactory) {
         super(authenticator, metricFactory);
         this.bookingLinkDAO = bookingLinkDAO;
+        this.bookingLinkDTOFactory = bookingLinkDTOFactory;
     }
 
     @Override
@@ -66,10 +68,10 @@ public class BookingLinkGetRoute extends CalendarRoute {
 
         return bookingLinkDAO.findByPublicId(session.getUser(), publicId)
             .switchIfEmpty(Mono.error(new BookingLinkNotFoundException(publicId)))
-            .flatMap(bookingLink -> response.status(HttpResponseStatus.OK)
+            .flatMap(bookingLinkDTOFactory::create)
+            .flatMap(dto -> response.status(HttpResponseStatus.OK)
                 .headers(JSON_HEADER)
-                .sendByteArray(Mono.fromCallable(() ->
-                    OBJECT_MAPPER_DEFAULT.writeValueAsBytes(BookingLinkDTO.from(bookingLink))))
+                .sendByteArray(Mono.fromCallable(() -> OBJECT_MAPPER_DEFAULT.writeValueAsBytes(dto)))
                 .then())
             .onErrorResume(BookingLinkNotFoundException.class, e ->
                 response.status(HttpResponseStatus.NOT_FOUND).send().then());

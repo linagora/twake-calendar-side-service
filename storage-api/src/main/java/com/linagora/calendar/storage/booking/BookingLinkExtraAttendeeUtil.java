@@ -19,6 +19,7 @@
 package com.linagora.calendar.storage.booking;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.StreamSupport;
 
@@ -31,6 +32,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.OpenPaaSUser;
 
 /**
  * JSON representation of the {@link ExtraAttendees} tree:
@@ -46,6 +48,8 @@ public class BookingLinkExtraAttendeeUtil {
 
     private static final String FIELD_AND = "and";
     private static final String FIELD_PARTICIPANT = "participant";
+    private static final String FIELD_NAME = "name";
+    private static final String FIELD_EMAIL = "email";
 
     public static ExtraAttendees parse(Optional<JsonNode> raw) {
         return value(raw)
@@ -80,8 +84,12 @@ public class BookingLinkExtraAttendeeUtil {
         return ExtraAttendees.of(participants);
     }
 
-    public static JsonNode serialize(ExtraAttendees extraAttendees) {
-        return serialize(extraAttendees.root());
+    /**
+     * Serializes the tree; each 'participant' leaf also carries the resolved 'name' and 'email' when {@code users}
+     * holds the matching user for that id (omitted otherwise).
+     */
+    public static JsonNode serialize(ExtraAttendees extraAttendees, Map<OpenPaaSId, OpenPaaSUser> users) {
+        return serialize(extraAttendees.root(), users);
     }
 
     /**
@@ -103,14 +111,20 @@ public class BookingLinkExtraAttendeeUtil {
         return new OpenPaaSId(value);
     }
 
-    private static JsonNode serialize(ExtraAttendeeNode node) {
+    private static JsonNode serialize(ExtraAttendeeNode node, Map<OpenPaaSId, OpenPaaSUser> users) {
         return switch (node) {
-            case ExtraAttendeeNode.Participant participant -> JsonNodeFactory.instance.objectNode()
-                .put(FIELD_PARTICIPANT, participant.id().value());
+            case ExtraAttendeeNode.Participant participant -> {
+                ObjectNode result = JsonNodeFactory.instance.objectNode()
+                    .put(FIELD_PARTICIPANT, participant.id().value());
+                Optional.ofNullable(users.get(participant.id()))
+                    .ifPresent(user -> result.put(FIELD_NAME, user.fullName())
+                        .put(FIELD_EMAIL, user.username().asString()));
+                yield result;
+            }
             case ExtraAttendeeNode.And and -> {
                 ArrayNode children = JsonNodeFactory.instance.arrayNode();
                 and.children().stream()
-                    .map(BookingLinkExtraAttendeeUtil::serialize)
+                    .map(child -> serialize(child, users))
                     .forEach(children::add);
                 ObjectNode result = JsonNodeFactory.instance.objectNode();
                 result.set(FIELD_AND, children);

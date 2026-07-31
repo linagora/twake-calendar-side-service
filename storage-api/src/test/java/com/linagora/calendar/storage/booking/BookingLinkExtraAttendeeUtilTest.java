@@ -22,9 +22,11 @@ import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.IntStream;
 
+import org.apache.james.core.Username;
 import org.apache.james.util.ValuePatch;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -34,6 +36,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.NullNode;
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.OpenPaaSUser;
 
 class BookingLinkExtraAttendeeUtilTest {
 
@@ -145,21 +148,48 @@ class BookingLinkExtraAttendeeUtilTest {
     void serializeShouldRoundTrip() {
         ExtraAttendees extraAttendees = ExtraAttendees.of(ATTENDEE_1, ATTENDEE_2);
 
-        assertThat(BookingLinkExtraAttendeeUtil.parse(BookingLinkExtraAttendeeUtil.serialize(extraAttendees)))
+        assertThat(BookingLinkExtraAttendeeUtil.parse(BookingLinkExtraAttendeeUtil.serialize(extraAttendees, Map.of())))
             .isEqualTo(extraAttendees);
     }
 
     @Test
     void serializeShouldWriteAndOfParticipants() {
-        assertThatJson(BookingLinkExtraAttendeeUtil.serialize(ExtraAttendees.of(ATTENDEE_1, ATTENDEE_2)).toString())
+        assertThatJson(BookingLinkExtraAttendeeUtil.serialize(ExtraAttendees.of(ATTENDEE_1, ATTENDEE_2), Map.of()).toString())
             .isEqualTo("""
                 {"and": [{"participant": "659387b9d486dc0046aeffb1"}, {"participant": "659387b9d486dc0046aeffb2"}]}""");
     }
 
     @Test
     void serializeShouldWriteEmptyAndWhenNone() {
-        assertThatJson(BookingLinkExtraAttendeeUtil.serialize(ExtraAttendees.NONE).toString())
+        assertThatJson(BookingLinkExtraAttendeeUtil.serialize(ExtraAttendees.NONE, Map.of()).toString())
             .isEqualTo("""
                 {"and": []}""");
+    }
+
+    @Test
+    void serializeWithUsersShouldAddNameAndEmailToEachParticipant() {
+        Map<OpenPaaSId, OpenPaaSUser> users = Map.of(
+            ATTENDEE_1, new OpenPaaSUser(Username.of("bob@open-paas.org"), ATTENDEE_1, "Bob", "Smith"),
+            ATTENDEE_2, new OpenPaaSUser(Username.of("alice@open-paas.org"), ATTENDEE_2, "Alice", "Doe"));
+
+        assertThatJson(BookingLinkExtraAttendeeUtil.serialize(ExtraAttendees.of(ATTENDEE_1, ATTENDEE_2), users).toString())
+            .isEqualTo("""
+                {"and": [
+                    {"participant": "659387b9d486dc0046aeffb1", "name": "Bob Smith", "email": "bob@open-paas.org"},
+                    {"participant": "659387b9d486dc0046aeffb2", "name": "Alice Doe", "email": "alice@open-paas.org"}
+                ]}""");
+    }
+
+    @Test
+    void serializeWithUsersShouldOmitNameAndEmailForUnresolvedParticipant() {
+        Map<OpenPaaSId, OpenPaaSUser> users = Map.of(
+            ATTENDEE_1, new OpenPaaSUser(Username.of("bob@open-paas.org"), ATTENDEE_1, "Bob", "Smith"));
+
+        assertThatJson(BookingLinkExtraAttendeeUtil.serialize(ExtraAttendees.of(ATTENDEE_1, ATTENDEE_2), users).toString())
+            .isEqualTo("""
+                {"and": [
+                    {"participant": "659387b9d486dc0046aeffb1", "name": "Bob Smith", "email": "bob@open-paas.org"},
+                    {"participant": "659387b9d486dc0046aeffb2"}
+                ]}""");
     }
 }

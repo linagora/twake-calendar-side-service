@@ -28,7 +28,6 @@ import org.apache.james.jmap.http.Authenticator;
 import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.metrics.api.MetricFactory;
 
-import com.linagora.calendar.restapi.routes.dto.BookingLinkDTO;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
 
 import io.netty.handler.codec.http.HttpMethod;
@@ -40,13 +39,16 @@ import reactor.netty.http.server.HttpServerResponse;
 public class BookingLinkListRoute extends CalendarRoute {
 
     private final BookingLinkDAO bookingLinkDAO;
+    private final BookingLinkDTOFactory bookingLinkDTOFactory;
 
     @Inject
     public BookingLinkListRoute(Authenticator authenticator,
                                 MetricFactory metricFactory,
-                                BookingLinkDAO bookingLinkDAO) {
+                                BookingLinkDAO bookingLinkDAO,
+                                BookingLinkDTOFactory bookingLinkDTOFactory) {
         super(authenticator, metricFactory);
         this.bookingLinkDAO = bookingLinkDAO;
+        this.bookingLinkDTOFactory = bookingLinkDTOFactory;
     }
 
     @Override
@@ -57,7 +59,7 @@ public class BookingLinkListRoute extends CalendarRoute {
     @Override
     Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response, MailboxSession session) {
         return bookingLinkDAO.findByUsername(session.getUser())
-            .map(BookingLinkDTO::from)
+            .concatMap(bookingLinkDTOFactory::create)
             .collectList()
             .flatMap(bookingLinks -> response.status(HttpResponseStatus.OK)
                 .headers(JSON_HEADER)

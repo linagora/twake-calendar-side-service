@@ -19,16 +19,19 @@
 package com.linagora.calendar.restapi.routes.dto;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
 import com.linagora.calendar.storage.booking.BookingLinkExtraAttendeeUtil;
-import com.linagora.calendar.storage.booking.BookingLinkResourceUtil;
 import com.linagora.calendar.storage.booking.EventTransparency;
 import com.linagora.calendar.storage.booking.EventVisibility;
+import com.linagora.calendar.storage.model.ResourceId;
 
 @JsonInclude(JsonInclude.Include.NON_ABSENT)
 public record BookingLinkDTO(@JsonProperty("publicId") String publicId,
@@ -44,10 +47,24 @@ public record BookingLinkDTO(@JsonProperty("publicId") String publicId,
                              @JsonProperty("location") Optional<String> location,
                              @JsonProperty("visibility") Optional<String> visibility,
                              @JsonProperty("transparency") Optional<String> transparency,
-                             @JsonProperty("resources") Optional<List<String>> resources,
+                             @JsonProperty("resources") Optional<List<ResourceDTO>> resources,
                              @JsonProperty("alarm") Optional<List<BookingLinkAlarmDTO>> alarm) {
 
+    /**
+     * A resource of the booking link, with its resolved display `name` when available (omitted otherwise).
+     */
+    @JsonInclude(JsonInclude.Include.NON_ABSENT)
+    public record ResourceDTO(@JsonProperty("id") String id,
+                              @JsonProperty("name") Optional<String> name) {
+    }
+
     public static BookingLinkDTO from(BookingLink bookingLink) {
+        return from(bookingLink, Map.of(), Map.of());
+    }
+
+    public static BookingLinkDTO from(BookingLink bookingLink,
+                                      Map<OpenPaaSId, OpenPaaSUser> extraAttendeesMap,
+                                      Map<ResourceId, String> resourceNames) {
         Optional<List<AvailabilityRuleDTO>> ruleDTOs = bookingLink.availabilityRules()
             .map(rules -> rules.values().stream()
                 .map(AvailabilityRuleDTO::from)
@@ -55,11 +72,13 @@ public record BookingLinkDTO(@JsonProperty("publicId") String publicId,
 
         Optional<JsonNode> extraAttendees = Optional.of(bookingLink.extraAttendees())
             .filter(attendees -> !attendees.isEmpty())
-            .map(BookingLinkExtraAttendeeUtil::serialize);
+            .map(attendees -> BookingLinkExtraAttendeeUtil.serialize(attendees, extraAttendeesMap));
 
-        Optional<List<String>> resources = Optional.of(bookingLink.resources())
+        Optional<List<ResourceDTO>> resources = Optional.of(bookingLink.resources())
             .filter(list -> !list.isEmpty())
-            .map(BookingLinkResourceUtil::serialize);
+            .map(list -> list.stream()
+                .map(id -> new ResourceDTO(id.value(), Optional.ofNullable(resourceNames.get(id))))
+                .toList());
 
         return new BookingLinkDTO(
             bookingLink.publicId().value().toString(),

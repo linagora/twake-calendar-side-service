@@ -62,12 +62,6 @@ public class BookingLinkResourceUtil {
         return resources;
     }
 
-    public static List<String> serialize(List<ResourceId> resources) {
-        return resources.stream()
-            .map(ResourceId::value)
-            .toList();
-    }
-
     private static ResourceId parseResourceId(String value) {
         String trimmed = StringUtils.trimToEmpty(value);
         Preconditions.checkArgument(!trimmed.isEmpty(), "'resources' entries must not be blank");
