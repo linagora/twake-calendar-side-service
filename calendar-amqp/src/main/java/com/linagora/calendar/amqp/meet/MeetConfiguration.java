@@ -34,7 +34,8 @@ public record MeetConfiguration(boolean enabled,
                                 String clientSecret,
                                 URI externalApiBaseUrl,
                                 boolean trustAllSslCerts,
-                                Duration responseTimeout) {
+                                Duration responseTimeout,
+                                Optional<String> roomAccessLevel) {
 
     public static final Duration DEFAULT_RESPONSE_TIMEOUT = Duration.ofSeconds(10);
 
@@ -44,6 +45,19 @@ public record MeetConfiguration(boolean enabled,
     static final String MEET_EXTERNAL_API_BASE_URL_PROPERTY = "meet.external.api.base.url";
     static final String MEET_TRUST_ALL_SSL_CERTS_PROPERTY = "meet.rest.client.trust.all.ssl.certs";
     static final String MEET_RESPONSE_TIMEOUT_PROPERTY = "meet.rest.client.response.timeout";
+    /**
+     * Access level requested for rooms this service creates. Empty leaves the
+     * choice to Meet, whose {@code EXTERNAL_API_DEFAULT_ACCESS_LEVEL} defaults
+     * to {@code trusted}.
+     *
+     * <p>That default deserves a deliberate decision rather than a shrug: a
+     * {@code trusted} room only admits authenticated users of the instance, so
+     * an external guest invited to a meeting cannot get in — and the organiser
+     * being present changes nothing. Deployments that invite guests want
+     * {@code public} here, which Meet also gates behind its own
+     * {@code EXTERNAL_API_ALLOW_PUBLIC_ACCESS}.
+     */
+    static final String MEET_ROOM_ACCESS_LEVEL_PROPERTY = "meet.room.access_level";
 
     public static MeetConfiguration from(Configuration configuration) {
         boolean enabled = Boolean.parseBoolean(readProperty(configuration, MEET_ENABLED_PROPERTY, "false"));
@@ -71,7 +85,12 @@ public record MeetConfiguration(boolean enabled,
             })
             .orElse(DEFAULT_RESPONSE_TIMEOUT);
 
-        return new MeetConfiguration(true, clientId, clientSecret, URI.create(baseUrl), trustAllSslCerts, responseTimeout);
+        Optional<String> roomAccessLevel = Optional.ofNullable(readProperty(configuration, MEET_ROOM_ACCESS_LEVEL_PROPERTY, null))
+            .map(StringUtils::trimToNull)
+            .map(Optional::of)
+            .orElse(Optional.empty());
+
+        return new MeetConfiguration(true, clientId, clientSecret, URI.create(baseUrl), trustAllSslCerts, responseTimeout, roomAccessLevel);
     }
 
     /**
@@ -97,6 +116,6 @@ public record MeetConfiguration(boolean enabled,
     }
 
     public static MeetConfiguration disabled() {
-        return new MeetConfiguration(false, null, null, null, false, DEFAULT_RESPONSE_TIMEOUT);
+        return new MeetConfiguration(false, null, null, null, false, DEFAULT_RESPONSE_TIMEOUT, Optional.empty());
     }
 }

@@ -70,7 +70,8 @@ public class MeetHostDelegationServiceTest {
             "test-client-secret",
             URI.create("http://localhost:" + wireMockServer.port()),
             false,
-            Duration.ofSeconds(5));
+            Duration.ofSeconds(5),
+            Optional.empty());
         MeetApplicationClient client = new MeetApplicationClient(configuration);
         service = new MeetHostDelegationService(configuration, client);
     }
