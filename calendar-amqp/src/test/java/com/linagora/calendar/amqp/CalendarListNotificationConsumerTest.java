@@ -61,6 +61,8 @@ import com.linagora.calendar.dav.CalDavClient.NewCalendar;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.ResourceService;
+import com.linagora.calendar.dav.DavRight;
+import com.linagora.calendar.dav.ResourceService.ResourceAdministrator;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.dav.dto.SubscribedCalendarRequest;
 import com.linagora.calendar.storage.CalendarListChangedEvent;
@@ -816,13 +818,13 @@ public class CalendarListNotificationConsumerTest {
             ResourceInsertRequest resourceInsertRequest = new ResourceInsertRequest(
                 creator.id(), "resource description", domainId, "tv", resourceName);
             return resourceService.create(resourceInsertRequest, administrators.stream()
-                .map(OpenPaaSUser::username)
+                .map(user -> new ResourceAdministrator(user.username(), DavRight.ADMINISTRATION))
                 .toList()).block();
         }
 
         private void clearResourceAdmins(ResourceId resourceId) {
             Resource resource = resourceService.retrieve(resourceId, ONLY_ACTIVE).block();
-            resourceService.updateAdmins(resource, List.of()).block();
+            resourceService.updateAdmins(resource, List.<ResourceService.ResourceAdministrator>of()).block();
         }
     }
 

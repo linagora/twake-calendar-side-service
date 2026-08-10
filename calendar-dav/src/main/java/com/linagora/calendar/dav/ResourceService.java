@@ -21,6 +21,7 @@ package com.linagora.calendar.dav;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -33,6 +34,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Sets;
+import com.linagora.calendar.dav.CalDavClient.CalendarSharingUpdate;
+import com.linagora.calendar.dav.CalDavClient.CalendarSharingUpdate.AddSharee;
+import com.linagora.calendar.dav.CalDavClient.CalendarSharingUpdate.RemoveSharee;
+import com.linagora.calendar.dav.CalDavClient.CalendarSharingUpdate.Share;
 import com.linagora.calendar.dav.dto.CalendarDetailsResponse.CalendarInvite;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.MailtoUri;
@@ -50,17 +55,65 @@ import reactor.core.publisher.Mono;
 
 @Singleton
 public class ResourceService {
-    public record ResourceWithAdministration(Resource resource, List<OpenPaaSUser> administrators) {
+    public record ResourceAdministrator(Username username, DavRight davRight) {
+        public static Optional<ResourceAdministrator> from(CalendarInvite invite) {
+            if (!MailtoUri.hasMailtoPrefix(invite.href())) {
+                return Optional.empty();
+            }
+            return invite.access()
+                .flatMap(DavRight::fromAccess)
+                .filter(right -> right != DavRight.READ)
+                .map(right -> new ResourceAdministrator(Username.of(MailtoUri.stripMailtoPrefix(invite.href())), right));
+        }
+
+        public static AddSharee asAddSharee(ResourceAdministrator administrator) {
+            return switch (administrator.davRight) {
+                case READ_WRITE -> AddSharee.readWrite("mailto:" + administrator.username.asString());
+                case ADMINISTRATION -> AddSharee.administration("mailto:" + administrator.username.asString());
+                default -> throw new IllegalArgumentException("Unsupported resource administrator DAV right: " + administrator.davRight);
+            };
+        }
     }
 
-    private record AdminChanges(Set<OpenPaaSId> toAdd, Set<OpenPaaSId> toRemove) {
+    public record ResourceWithAdministration(Resource resource, List<ResolvedAdministrator> administratorsWithRight) {
+        public record ResolvedAdministrator(OpenPaaSUser user, DavRight davRight) {
+        }
+
+        public List<OpenPaaSUser> administrators() {
+            return administratorsWithRight.stream()
+                .map(ResolvedAdministrator::user)
+                .toList();
+        }
+    }
+
+    private record AdminChanges(Set<ResourceAdministrator> toAddOrUpdate, Set<Username> toRemove) {
+        public static AdminChanges adding(Collection<ResourceAdministrator> administrators) {
+            return new AdminChanges(Set.copyOf(administrators), Set.of());
+        }
+
+        public static AdminChanges between(Collection<ResourceAdministrator> currentAdministrators,
+                                           Collection<ResourceAdministrator> newAdministrators) {
+            Set<ResourceAdministrator> currentAdministratorSet = Set.copyOf(currentAdministrators);
+            Set<ResourceAdministrator> newAdministratorSet = Set.copyOf(newAdministrators);
+            Set<Username> currentUsernames = currentAdministratorSet.stream()
+                .map(ResourceAdministrator::username)
+                .collect(Collectors.toSet());
+            Set<Username> newUsernames = newAdministratorSet.stream()
+                .map(ResourceAdministrator::username)
+                .collect(Collectors.toSet());
+            return new AdminChanges(Set.copyOf(Sets.difference(newAdministratorSet, currentAdministratorSet)),
+                Set.copyOf(Sets.difference(currentUsernames, newUsernames)));
+        }
+
+        public boolean isEmpty() {
+            return toAddOrUpdate.isEmpty() && toRemove.isEmpty();
+        }
     }
 
     public static final boolean ONLY_ACTIVE = true;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ResourceService.class);
     private static final Map<String, String> WITH_RIGHTS = Map.of("withRights", "true");
-    private static final int READ_WRITE_ACCESS = 3;
 
     private final OpenPaaSUserDAO userDAO;
     private final ResourceDAO resourceDAO;
@@ -73,19 +126,15 @@ public class ResourceService {
         this.calDavClient = calDavClient;
     }
 
-    public Mono<ResourceId> create(ResourceInsertRequest request, Collection<Username> admins) {
+    public Mono<ResourceId> create(ResourceInsertRequest request, List<ResourceAdministrator> admins) {
         return resolveValidAdministrators(admins)
-            .map(administrators -> administrators.stream()
-                .map(OpenPaaSUser::username)
-                .toList())
-            .flatMap(adminUsernames -> resourceDAO.insert(request)
-                .flatMap(resourceId -> calDavClient.grantReadWriteRights(request.domain(), resourceId, adminUsernames)
-                    .doOnError(err -> LOGGER.error("Error granting rights for resource {}", resourceId.value(), err))
-                    .thenReturn(resourceId)));
+            .flatMap(administrators -> resourceDAO.insert(request)
+                .delayUntil(resourceId -> applyCalDavPatch(request.domain(), resourceId, AdminChanges.adding(administrators))));
     }
 
     public Mono<Void> delete(Resource resource) {
-        return resolveAdminUsernames(resource.domain(), resource.id())
+        return fetchAdministratorsFromSabre(resource.domain(), resource.id())
+            .map(ResourceAdministrator::username)
             .collectList()
             .flatMap(adminUsers -> calDavClient.revokeWriteRights(resource.domain(), resource.id(), adminUsers)
                 .doOnError(error -> LOGGER.error("Error revoking write rights for resource {}", resource.id().value(), error)))
@@ -93,15 +142,18 @@ public class ResourceService {
     }
 
     public Mono<Boolean> isAdministrator(Resource resource, Username username) {
-        return resolveAdminUsers(resource.domain(), resource.id())
-            .filter(user -> user.username().equals(username))
-            .hasElements();
+        return fetchAdministratorsFromSabre(resource.domain(), resource.id())
+            .any(administrator -> administrator.username().equals(username));
     }
 
-
     public Mono<List<OpenPaaSUser>> listAdminUsers(Resource resource) {
-        return resolveAdminUsers(resource.domain(), resource.id())
+        return listAdministratorsWithRights(resource)
+            .map(ResourceWithAdministration.ResolvedAdministrator::user)
             .collectList();
+    }
+
+    public Mono<List<ResourceAdministrator>> listAdministrators(Resource resource) {
+        return fetchAdministratorsFromSabre(resource.domain(), resource.id()).collectList();
     }
 
     public Flux<Resource> listByDomain(OpenPaaSId domainId) {
@@ -115,13 +167,9 @@ public class ResourceService {
 
     public Mono<ResourceWithAdministration> retrieveWithAdministration(ResourceId resourceId, boolean includeActive) {
         return retrieve(resourceId, includeActive)
-            .flatMap(resource -> listAdminUsers(resource)
+            .flatMap(resource -> listAdministratorsWithRights(resource)
+                .collectList()
                 .map(administrators -> new ResourceWithAdministration(resource, administrators)));
-    }
-
-    public Mono<ResourceWithAdministration> retrieveWithAdministration(ResourceId resourceId, OpenPaaSId domainId, boolean includeActive) {
-        return retrieveWithAdministration(resourceId, includeActive)
-            .filter(resourceWithAdministration -> resourceWithAdministration.resource().domain().equals(domainId));
     }
 
     public Mono<Resource> retrieve(ResourceId resourceId, OpenPaaSId domainId, boolean includeActive) {
@@ -134,73 +182,60 @@ public class ResourceService {
             .then();
     }
 
-    public Mono<Void> updateAdmins(Resource resource, Collection<Username> administrators) {
+    public Mono<Void> updateAdmins(Resource resource, Collection<ResourceAdministrator> administrators) {
         return resolveValidAdministrators(administrators)
-            .flatMap(newAdmins -> detectUserAdminChanges(resource, newAdmins)
-                .flatMap(changes -> applyCalDavPatch(resource, changes))
-                .then());
+            .flatMap(newAdmins -> listAdministrators(resource)
+                .map(currentAdmins -> AdminChanges.between(currentAdmins, newAdmins)))
+            .flatMap(changes -> applyCalDavPatch(resource.domain(), resource.id(), changes));
     }
 
-    private Mono<Void> applyCalDavPatch(Resource resource, AdminChanges changes) {
-        return Mono.zip(findUsernamesByIds(changes.toAdd()), findUsernamesByIds(changes.toRemove()))
-            .flatMap(tuple -> calDavClient.patchReadWriteDelegations(
-                resource.domain(), CalendarURL.from(resource.id().asOpenPaaSId()), tuple.getT1(), tuple.getT2()))
-            .doOnError(err -> LOGGER.error("Error patching CalDAV delegation for resource {}", resource.id().value(), err));
+    public Mono<Void> updateAdmins(Resource resource, List<Username> administrators) {
+        return updateAdmins(resource, administrators.stream()
+            .map(username -> new ResourceAdministrator(username, DavRight.READ_WRITE))
+            .toList());
     }
 
-    private Mono<AdminChanges> detectUserAdminChanges(Resource currentResource, Collection<OpenPaaSUser> newAdmins) {
-        Mono<Set<OpenPaaSId>> currentIdsMono = listAdminUsers(currentResource)
-            .map(adminUsers -> adminUsers.stream().map(OpenPaaSUser::id)
-                .collect(Collectors.toSet()));
-        Set<OpenPaaSId> newIds = newAdmins.stream()
-            .map(OpenPaaSUser::id)
-            .collect(Collectors.toSet());
-
-        return currentIdsMono.map(currentIds -> {
-            Set<OpenPaaSId> toAdd = Sets.difference(newIds, currentIds);
-            Set<OpenPaaSId> toRemove = Sets.difference(currentIds, newIds);
-            return new AdminChanges(toAdd, toRemove);
-        });
+    private Mono<Void> applyCalDavPatch(OpenPaaSId domainId, ResourceId resourceId, AdminChanges changes) {
+        if (changes.isEmpty()) {
+            return Mono.empty();
+        }
+        List<RemoveSharee> removals = changes.toRemove().stream()
+            .map(username -> new RemoveSharee("mailto:" + username.asString()))
+            .toList();
+        return calDavClient.updateCalendarShares(domainId, CalendarURL.from(resourceId.asOpenPaaSId()),
+                new CalendarSharingUpdate(new Share(changes.toAddOrUpdate().stream()
+                    .map(ResourceAdministrator::asAddSharee)
+                    .toList(), removals)))
+            .doOnError(err -> LOGGER.error("Error patching CalDAV delegation for resource {}", resourceId.value(), err));
     }
 
-    private Mono<List<Username>> findUsernamesByIds(Collection<OpenPaaSId> ids) {
-        return Flux.fromIterable(ids)
-            .flatMap(id -> userDAO.retrieve(id)
-                .map(OpenPaaSUser::username)
-                .switchIfEmpty(Mono.error(() -> new IllegalArgumentException("User id '" + id + "' does not exist"))), ReactorUtils.LOW_CONCURRENCY)
-            .collectList();
-    }
-
-    private boolean isReadWriteMailtoInvite(CalendarInvite invite) {
-        return MailtoUri.hasMailtoPrefix(invite.href())
-            && invite.access().filter(access -> access == READ_WRITE_ACCESS).isPresent();
-    }
-
-    private Flux<OpenPaaSUser> resolveAdminUsers(OpenPaaSId domainId, ResourceId resourceId) {
-        return resolveAdminUsernames(domainId, resourceId)
-            .flatMap(username -> userDAO.retrieve(username)
-                .switchIfEmpty(Mono.defer(() -> {
-                    LOGGER.warn("Ignoring resource administrator '{}' for resource '{}' because user does not exist",
-                        username.asString(), resourceId.value());
-                    return Mono.empty();
-                })), ReactorUtils.LOW_CONCURRENCY)
-            .distinct(OpenPaaSUser::id);
-    }
-
-    private Flux<Username> resolveAdminUsernames(OpenPaaSId domainId, ResourceId resourceId) {
+    private Flux<ResourceAdministrator> fetchAdministratorsFromSabre(OpenPaaSId domainId, ResourceId resourceId) {
         CalendarURL calendarURL = CalendarURL.from(resourceId.asOpenPaaSId());
         return calDavClient.fetchCalendarDetails(domainId, calendarURL, WITH_RIGHTS)
             .flatMapMany(response -> Flux.fromIterable(response.invites()))
-            .filter(this::isReadWriteMailtoInvite)
-            .map(invite -> Username.of(MailtoUri.stripMailtoPrefix(invite.href())))
-            .distinct();
+            .flatMap(invite -> Mono.justOrEmpty(ResourceAdministrator.from(invite)))
+            .distinct(ResourceAdministrator::username);
     }
 
-    private Mono<List<OpenPaaSUser>> resolveValidAdministrators(Collection<Username> administrators) {
-        return Flux.fromIterable(administrators)
-            .flatMap(username -> userDAO.retrieve(username)
-                .switchIfEmpty(Mono.error(() -> new ResourceAdministratorNotFoundException(username))))
-            .collectMap(OpenPaaSUser::username)
-            .map(adminMap -> adminMap.values().stream().toList());
+    private Flux<ResourceWithAdministration.ResolvedAdministrator> listAdministratorsWithRights(Resource resource) {
+        return fetchAdministratorsFromSabre(resource.domain(), resource.id())
+            .flatMap(administrator -> userDAO.retrieve(administrator.username())
+                .map(user -> new ResourceWithAdministration.ResolvedAdministrator(user, administrator.davRight()))
+                .switchIfEmpty(Mono.defer(() -> {
+                    LOGGER.warn("Ignoring resource administrator '{}' for resource '{}' because user does not exist",
+                        administrator.username().asString(), resource.id().value());
+                    return Mono.empty();
+                })), ReactorUtils.LOW_CONCURRENCY)
+            .distinct(administrator -> administrator.user().id());
     }
+
+    private Mono<List<ResourceAdministrator>> resolveValidAdministrators(Collection<ResourceAdministrator> administrators) {
+        return Flux.fromIterable(administrators)
+            .flatMap(admin -> userDAO.retrieve(admin.username())
+                .map(ignored -> admin)
+                .switchIfEmpty(Mono.error(() -> new ResourceAdministratorNotFoundException(admin.username()))))
+            .distinct(ResourceAdministrator::username)
+            .collectList();
+    }
+
 }

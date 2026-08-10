@@ -50,6 +50,8 @@ import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.ResourceService;
+import com.linagora.calendar.dav.DavRight;
+import com.linagora.calendar.dav.ResourceService.ResourceAdministrator;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.routes.BookingLinkExtraAttendeeResolver;
 import com.linagora.calendar.restapi.routes.BookingLinkResourceResolver;
@@ -121,7 +123,7 @@ public class BookingLinkUserRoutesTest {
         OpenPaaSDomain domain = domainDAO.retrieve(owner.username().getDomainPart().orElseThrow()).block();
         return resourceService.create(new ResourceInsertRequest(owner.id(),
                 "Projector description", domain.id(), "projector", "Projector"),
-            List.of(owner.username())).block();
+            List.of(new ResourceAdministrator(owner.username(), DavRight.ADMINISTRATION))).block();
     }
 
     @AfterEach

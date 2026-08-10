@@ -443,8 +443,14 @@ Will list existing resources for that domain:
     "domain": "linagora.com",
     "creator":"user1@linagora.com",
     "administrators": [
-      {"email": "user1@linagora.com"},
-      {"email": "user2@linagora.com"}
+      {
+        "email": "user1@linagora.com",
+        "davRight": "dav:read-write"
+      },
+      {
+        "email": "user2@linagora.com",
+        "davRight": "dav:administration"
+      }
     ]
   }
 ]
@@ -473,8 +479,14 @@ Will return the corresponding resource:
     "icon": "laptop",
     "domain": "linagora.com",
     "administrators": [
-      {"email": "user1@linagora.com"},
-      {"email": "user2@linagora.com"}
+      {
+        "email": "user1@linagora.com",
+        "davRight": "dav:read-write"
+      },
+      {
+        "email": "user2@linagora.com",
+        "davRight": "dav:administration"
+      }
     ]
   }
 ```
@@ -501,8 +513,14 @@ POST /domains/linagora.com/resources
   "creator":"user1@linagora.com",
   "icon": "laptop",
   "administrators": [
-    {"email": "user1@linagora.com"},
-    {"email": "user2@linagora.com"}
+    {
+      "email": "user1@linagora.com",
+      "davRight": "dav:read-write"
+    },
+    {
+      "email": "user2@linagora.com",
+      "davRight": "dav:administration"
+    }
   ]
 }
 ```
@@ -529,9 +547,8 @@ Status codes:
 A resource without administrator is not subject to the validation flow: any event request with this resource is
 automatically accepted.
 
-Please note that resource administrators:
- - are emailed upon events created that book the resource
- - have delegation write access to the calendar of the resource
+An administrator has `email` and an optional `davRight`: `dav:read-write` (access 3, default) or
+`dav:administration` (access 5). Responses return `davRight`.
 
 ### Updating a resource
 
@@ -542,7 +559,10 @@ PATCH /domains/linagora.com/resources/RESOURCE_ID
   "description": "Descripting 2",
   "icon": "battery",
   "administrators": [
-    {"email": "user2@linagora.com"}
+    {
+      "email": "user2@linagora.com",
+      "davRight": "dav:administration"
+    }
   ]
 }
 ```
@@ -551,9 +571,7 @@ Would update the resource accordingly. Each field is optional; omitting a field 
 
 Status codes: 204 if updated, 400 if invalid (e.g. administrator not found), 404 if domain or resource not found.
 
-Please note that resource administrators:
- - are emailed upon events created that book the resource
- - have delegation write access to the calendar of the resource. Removing an administrator revokes this delegation right.
+Both rights can update event participation; only `dav:administration` can manage the resource ACL.
 
 ## Team calendar routes
 

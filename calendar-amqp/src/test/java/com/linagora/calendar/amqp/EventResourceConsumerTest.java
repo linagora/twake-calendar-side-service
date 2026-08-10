@@ -83,6 +83,8 @@ import com.linagora.calendar.dav.CalDavEventRepository;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.ResourceService;
+import com.linagora.calendar.dav.DavRight;
+import com.linagora.calendar.dav.ResourceService.ResourceAdministrator;
 import com.linagora.calendar.smtp.MailSender;
 import com.linagora.calendar.smtp.MailSenderConfiguration;
 import com.linagora.calendar.smtp.MockSmtpServerExtension;
@@ -690,7 +692,7 @@ public class EventResourceConsumerTest {
             "Projector");
 
         return resourceService.create(request, List.of(administrators).stream()
-            .map(OpenPaaSUser::username)
+            .map(user -> new ResourceAdministrator(user.username(), DavRight.ADMINISTRATION))
             .toList()).block();
     }
 }
