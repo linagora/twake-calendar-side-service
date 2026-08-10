@@ -18,6 +18,9 @@
 
 package com.linagora.calendar.dav;
 
+import static com.linagora.calendar.dav.ResourceService.ResourceAdministrator;
+import static com.linagora.calendar.dav.ResourceService.ResourceWithAdministration.ResolvedAdministrator;
+import static com.linagora.calendar.dav.ResourceService.ONLY_ACTIVE;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -73,7 +76,7 @@ class ResourceServiceTest {
     }
 
     @Test
-    void listAdminUsersShouldReturnOnlyReadWriteMailtoUsers() {
+    void listAdministratorsShouldReturnReadWriteAndAdministrationMailtoUsers() {
         OpenPaaSUser creator = sabreDavExtension.newTestUser(Optional.of("creator_"));
         OpenPaaSUser readWriteUser = sabreDavExtension.newTestUser(Optional.of("admin_"));
         OpenPaaSUser reader = sabreDavExtension.newTestUser(Optional.of("reader_"));
@@ -85,11 +88,35 @@ class ResourceServiceTest {
             AddSharee.read(mailto(reader)),
             AddSharee.administration(mailto(davAdmin)));
 
-        List<OpenPaaSUser> actual = testee.listAdminUsers(resource)
+        List<ResourceService.ResourceAdministrator> actual = testee.listAdministrators(resource)
             .block();
 
         assertThat(actual)
-            .containsExactly(readWriteUser);
+            .containsExactlyInAnyOrder(
+                new ResourceAdministrator(readWriteUser.username(), DavRight.READ_WRITE),
+                new ResourceAdministrator(davAdmin.username(), DavRight.ADMINISTRATION));
+    }
+
+    @Test
+    void retrieveWithAdministrationShouldKeepAdministratorsAndTheirDavRights() {
+        OpenPaaSUser creator = sabreDavExtension.newTestUser(Optional.of("creator_"));
+        OpenPaaSUser readWriteUser = sabreDavExtension.newTestUser(Optional.of("admin_"));
+        OpenPaaSUser davAdmin = sabreDavExtension.newTestUser(Optional.of("dav_admin_"));
+        Resource resource = createResource(creator);
+
+        share(resource.id(),
+            AddSharee.readWrite(mailto(readWriteUser)),
+            AddSharee.administration(mailto(davAdmin)));
+
+        ResourceService.ResourceWithAdministration actual = testee.retrieveWithAdministration(resource.id(), ONLY_ACTIVE)
+            .block();
+
+        assertThat(actual.administratorsWithRight())
+            .containsExactlyInAnyOrder(
+                new ResolvedAdministrator(readWriteUser, DavRight.READ_WRITE),
+                new ResolvedAdministrator(davAdmin, DavRight.ADMINISTRATION));
+        assertThat(actual.administrators())
+            .containsExactlyInAnyOrder(readWriteUser, davAdmin);
     }
 
     @Test
@@ -153,7 +180,8 @@ class ResourceServiceTest {
             "Resource " + UUID.randomUUID());
         long resourceCountBefore = resourceDAO.findAll().count().block();
 
-        assertThatThrownBy(() -> testee.create(request, List.of(missingAdministrator)).block())
+        assertThatThrownBy(() -> testee.create(request, List.of(new ResourceAdministrator(
+            missingAdministrator, DavRight.ADMINISTRATION))).block())
             .isInstanceOf(ResourceAdministratorNotFoundException.class)
             .hasMessage("Resource administrator '%s' must exist".formatted(missingAdministrator.asString()));
 

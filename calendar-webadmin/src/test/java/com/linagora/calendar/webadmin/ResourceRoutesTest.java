@@ -46,6 +46,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.ResourceService;
+import com.linagora.calendar.dav.DavRight;
+import com.linagora.calendar.dav.ResourceService.ResourceAdministrator;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -98,7 +100,7 @@ class ResourceRoutesTest {
         return resourceService.create(
             new ResourceInsertRequest(creator.id(), "Descripting", domain.id(), "laptop", "Resource name"),
             List.of(administrators).stream()
-                .map(OpenPaaSUser::username)
+                .map(user -> new ResourceAdministrator(user.username(), DavRight.ADMINISTRATION))
                 .toList()).block();
     }
 
@@ -159,7 +161,7 @@ class ResourceRoutesTest {
             .asString();
 
         assertThatJson(string)
-            .withOptions(Option.IGNORING_ARRAY_ORDER)
+            .withOptions(Option.IGNORING_ARRAY_ORDER, Option.IGNORING_EXTRA_FIELDS)
             .isEqualTo("""
                            [
                            {
@@ -201,7 +203,7 @@ class ResourceRoutesTest {
 
 
         assertThatJson(string)
-            .withOptions(Option.IGNORING_ARRAY_ORDER)
+            .withOptions(Option.IGNORING_ARRAY_ORDER, Option.IGNORING_EXTRA_FIELDS)
             .isEqualTo("""
                            {
                                "name": "Resource name",
@@ -258,6 +260,7 @@ class ResourceRoutesTest {
             .asString();
 
         assertThatJson(string)
+            .withOptions(Option.IGNORING_EXTRA_FIELDS)
             .isEqualTo("""
                            {
                                "name": "Resource name 2",
@@ -302,7 +305,7 @@ class ResourceRoutesTest {
             .asString();
 
         assertThatJson(string)
-            .withOptions(Option.IGNORING_ARRAY_ORDER)
+            .withOptions(Option.IGNORING_ARRAY_ORDER, Option.IGNORING_EXTRA_FIELDS)
             .isEqualTo("""
                            {
                                "name": "Resource name 2",
@@ -400,7 +403,7 @@ class ResourceRoutesTest {
 
         assertThatJson(string)
             .whenIgnoringPaths("[0].id")
-            .withOptions(Option.IGNORING_ARRAY_ORDER)
+            .withOptions(Option.IGNORING_ARRAY_ORDER, Option.IGNORING_EXTRA_FIELDS)
             .isEqualTo("""
                            [{
                                "name": "Resource name",
@@ -677,7 +680,145 @@ class ResourceRoutesTest {
             .as("DAV invite list should contain admin delegation entry")
             .isNotEmpty()
             .anySatisfy(invite ->
-                assertThat(invite.get("href").asText()).contains(admin.username().asString()));
+                assertThat(invite.get("href").asText()).contains(admin.username().asString())
+                    .satisfies(_ -> assertThat(invite.get("access").asInt()).isEqualTo(3)));
+
+        String resource = when()
+            .get("/domains/" + DOMAIN + "/resources/" + resourceId)
+            .then()
+            .statusCode(200)
+            .extract()
+            .asString();
+
+        assertThatJson(resource)
+            .inPath("$.administrators[0].davRight")
+            .isEqualTo("dav:read-write");
+    }
+
+    @Test
+    void createResourceShouldSupportAdministrationRight() {
+        OpenPaaSUser creator = sabreDavExtension.newTestUser();
+        OpenPaaSUser admin = sabreDavExtension.newTestUser();
+
+        String location = given()
+            .body("""
+                {
+                    "name": "Managed Room",
+                    "description": "Room with ACL administrator",
+                    "creator": "%s",
+                    "icon": "door",
+                    "administrators": [
+                        {
+                            "email": "%s",
+                            "davRight": "dav:administration"
+                        }
+                    ]
+                }
+                """.formatted(creator.username().asString(), admin.username().asString()))
+            .post("/domains/" + DOMAIN + "/resources")
+            .then()
+            .statusCode(201)
+            .extract()
+            .header("Location");
+
+        String resourceId = location.substring(location.lastIndexOf('/') + 1);
+        OpenPaaSDomain openPaaSDomain = domainDAO.retrieve(creator.username().getDomainPart().get()).block();
+        ArrayNode invites = sabreDavExtension.davTestHelper()
+            .getCalendarDelegateInvites(openPaaSDomain.id(), new ResourceId(resourceId))
+            .block();
+
+        assertThat(invites)
+            .anySatisfy(invite -> {
+                assertThat(invite.get("href").asText()).contains(admin.username().asString());
+                assertThat(invite.get("access").asInt()).isEqualTo(5);
+            });
+
+        String resource = when()
+            .get("/domains/" + DOMAIN + "/resources/" + resourceId)
+            .then()
+            .statusCode(200)
+            .extract()
+            .asString();
+
+        assertThatJson(resource)
+            .inPath("$.administrators[0].davRight")
+            .isEqualTo("dav:administration");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"abcxyz", "dav:unsupported"})
+    void createResourceShouldRejectUnsupportedAdministratorRight(String davRight) {
+        OpenPaaSUser creator = sabreDavExtension.newTestUser();
+        OpenPaaSUser administrator = sabreDavExtension.newTestUser();
+
+        String response = given()
+            .body("""
+                {
+                    "name": "Invalid right room",
+                    "description": "Room with invalid administrator right",
+                    "creator": "%s",
+                    "icon": "door",
+                    "administrators": [{ "email": "%s", "davRight": "%s" }]
+                }
+                """.formatted(creator.username().asString(), administrator.username().asString(), davRight))
+            .post("/domains/" + DOMAIN + "/resources")
+            .then()
+            .statusCode(400)
+            .extract()
+            .asString();
+
+        assertThatJson(response)
+            .inPath("$.message")
+            .isEqualTo("Unsupported DAV right: " + davRight);
+    }
+
+    @Test
+    void updateResourceShouldSupportUpdateAdministratorDavRight() {
+        OpenPaaSUser creator = sabreDavExtension.newTestUser();
+        OpenPaaSUser admin = sabreDavExtension.newTestUser();
+
+        String location = given()
+            .body("""
+                {
+                    "name": "Upgradeable Room",
+                    "description": "Room with upgradeable administrator",
+                    "creator": "%s",
+                    "icon": "door",
+                    "administrators": [{ "email": "%s" }]
+                }
+                """.formatted(creator.username().asString(), admin.username().asString()))
+            .post("/domains/" + DOMAIN + "/resources")
+            .then()
+            .statusCode(201)
+            .extract()
+            .header("Location");
+
+        String resourceId = location.substring(location.lastIndexOf('/') + 1);
+        given()
+            .body("""
+                {
+                    "administrators": [
+                        {
+                            "email": "%s",
+                            "davRight": "dav:administration"
+                        }
+                    ]
+                }
+                """.formatted(admin.username().asString()))
+            .patch("/domains/" + DOMAIN + "/resources/" + resourceId)
+            .then()
+            .statusCode(204);
+
+        OpenPaaSDomain openPaaSDomain = domainDAO.retrieve(creator.username().getDomainPart().get()).block();
+        ArrayNode invites = sabreDavExtension.davTestHelper()
+            .getCalendarDelegateInvites(openPaaSDomain.id(), new ResourceId(resourceId))
+            .block();
+
+        assertThat(invites)
+            .anySatisfy(invite -> {
+                assertThat(invite.get("href").asText()).contains(admin.username().asString());
+                assertThat(invite.get("access").asInt()).isEqualTo(5);
+            });
     }
 
     @Test

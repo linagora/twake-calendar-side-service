@@ -71,6 +71,8 @@ import com.linagora.calendar.dav.CalDavClient.NewCalendar;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.ResourceService;
+import com.linagora.calendar.dav.DavRight;
+import com.linagora.calendar.dav.ResourceService.ResourceAdministrator;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.dav.dto.SubscribedCalendarRequest;
 import com.linagora.calendar.smtp.EventEmailFilter;
@@ -352,7 +354,7 @@ public class CalendarDelegatedNotificationConsumerTest {
             "tv",
             resourceName);
         resourceService.create(resourceInsertRequest, administrators.stream()
-            .map(OpenPaaSUser::username)
+            .map(user -> new ResourceAdministrator(user.username(), DavRight.ADMINISTRATION))
             .toList()).block();
     }
 

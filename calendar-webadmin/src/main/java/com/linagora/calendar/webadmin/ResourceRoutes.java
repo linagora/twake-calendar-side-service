@@ -39,11 +39,11 @@ import org.eclipse.jetty.http.HttpStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.linagora.calendar.dav.DavRight;
 import com.linagora.calendar.dav.ResourceAdministratorNotFoundException;
 import com.linagora.calendar.dav.ResourceService;
-import com.linagora.calendar.dav.ResourceService.ResourceWithAdministration;
+import com.linagora.calendar.dav.ResourceService.ResourceAdministrator;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -69,63 +69,51 @@ public class ResourceRoutes implements Routes {
     public static final String RESOURCES_PATH = DOMAINS + "/" + DOMAIN_PARAM + "/resources";
     private static final String RESOURCE_PATH = RESOURCES_PATH + "/:id";
 
-    public record AdministratorDTO(String email) {
-        @JsonCreator
-        public AdministratorDTO(@JsonProperty("email") String email) {
-            this.email = email;
+    public record AdministratorDTO(@JsonProperty(value = "email", required = true) String email,
+                                   @JsonProperty("davRight") String davRight) {
+        private static final DavRight RIGHT_DEFAULT = DavRight.READ_WRITE;
+
+        public static AdministratorDTO from(ResourceAdministrator administrator) {
+            return new AdministratorDTO(administrator.username().asString(), administrator.davRight().value());
+        }
+
+        public ResourceAdministrator toResourceAdministrator() {
+            if (StringUtils.isBlank(email)) {
+                throw new IllegalArgumentException("Administrator must provide 'email'");
+            }
+            DavRight right = DavRight.fromValue(Optional.ofNullable(davRight).orElse(RIGHT_DEFAULT.value()));
+            return new ResourceAdministrator(Username.of(email), right);
         }
     }
 
     public record ResourceDTO(String name, boolean deleted, String description, String id, String icon, String domain,
                               List<AdministratorDTO> administrators,
                               String creator) {
-        public static ResourceDTO fromDomainObject(Resource domainObject, Domain domain, List<OpenPaaSUser> administrators, String creator) {
-            return new ResourceDTO(domainObject.name(), domainObject.deleted(), domainObject.description(), domainObject.id().value(),
-                domainObject.icon(), domain.asString(), toAdministratorDTOs(administrators), creator);
-        }
-
-        private static List<AdministratorDTO> toAdministratorDTOs(List<OpenPaaSUser> administrators) {
-            return administrators.stream()
-                .map(user -> new AdministratorDTO(user.username().asString()))
-                .toList();
+        public static ResourceDTO from(Resource resource, Domain domain, List<ResourceAdministrator> administrators, String creator) {
+            return new ResourceDTO(resource.name(), resource.deleted(), resource.description(), resource.id().value(),
+                resource.icon(), domain.asString(), administrators.stream().map(AdministratorDTO::from).toList(), creator);
         }
     }
 
-    public record ResourceCreationDTO(String name, String description, String icon,
-                                      List<AdministratorDTO> administrators, String creator) {
-        @JsonCreator
-        public ResourceCreationDTO(@JsonProperty("name") String name,
-                                   @JsonProperty("description") String description,
-                                   @JsonProperty("icon") String icon,
-                                   @JsonProperty("administrators") List<AdministratorDTO> administrators,
-                                   @JsonProperty("creator") String creator) {
-            this.name = name;
-            this.description = description;
-            this.icon = icon;
-            this.administrators = administrators;
-            this.creator = creator;
+    public record ResourceCreationDTO(@JsonProperty("name") String name,
+                                      @JsonProperty("description") String description,
+                                      @JsonProperty("icon") String icon,
+                                      @JsonProperty("administrators") List<AdministratorDTO> administrators,
+                                      @JsonProperty("creator") String creator) {
+        public ResourceInsertRequest toInsertRequest(OpenPaaSId creatorId, OpenPaaSId domainId) {
+            return new ResourceInsertRequest(creatorId, description, domainId, icon, name);
         }
     }
 
-    public record ResourceUpdateDTO(String id, Optional<String> name, Optional<String> description,
-                                    Optional<String> icon,
-                                    Optional<String> domain, Optional<List<AdministratorDTO>> administrators,
-                                    Optional<String> creator) {
-        @JsonCreator
-        public ResourceUpdateDTO(@JsonProperty("id") String id,
-                                 @JsonProperty("name") Optional<String> name,
-                                 @JsonProperty("description") Optional<String> description,
-                                 @JsonProperty("icon") Optional<String> icon,
-                                 @JsonProperty("domain") Optional<String> domain,
-                                 @JsonProperty("administrators") Optional<List<AdministratorDTO>> administrators,
-                                 @JsonProperty("creator") Optional<String> creator) {
-            this.id = id;
-            this.name = name;
-            this.description = description;
-            this.icon = icon;
-            this.domain = domain;
-            this.administrators = administrators;
-            this.creator = creator;
+    public record ResourceUpdateDTO(@JsonProperty("id") String id,
+                                    @JsonProperty("name") Optional<String> name,
+                                    @JsonProperty("description") Optional<String> description,
+                                    @JsonProperty("icon") Optional<String> icon,
+                                    @JsonProperty("domain") Optional<String> domain,
+                                    @JsonProperty("administrators") Optional<List<AdministratorDTO>> administrators,
+                                    @JsonProperty("creator") Optional<String> creator) {
+        public ResourceUpdateRequest toUpdateRequest() {
+            return new ResourceUpdateRequest(name, description, icon);
         }
     }
 
@@ -166,7 +154,7 @@ public class ResourceRoutes implements Routes {
     private List<ResourceDTO> listResources(Request req) {
         OpenPaaSDomain domain = asDomainObject(req);
         return resourceService.listByDomain(domain.id())
-            .flatMap(this::toDto, ReactorUtils.LOW_CONCURRENCY)
+            .flatMap(resource -> resolveResourceDTO(resource, domain.domain()), ReactorUtils.LOW_CONCURRENCY)
             .collectList()
             .block();
     }
@@ -175,8 +163,8 @@ public class ResourceRoutes implements Routes {
         OpenPaaSDomain domain = asDomainObject(req);
         ResourceId id = new ResourceId(req.params("id"));
 
-        return resourceService.retrieveWithAdministration(id, domain.id(), !ONLY_ACTIVE)
-            .flatMap(this::toDto)
+        return resourceService.retrieve(id, domain.id(), !ONLY_ACTIVE)
+            .flatMap(resource -> resolveResourceDTO(resource, domain.domain()))
             .blockOptional()
             .orElseThrow(() -> resourceNotFound(id));
     }
@@ -196,26 +184,20 @@ public class ResourceRoutes implements Routes {
     private String createResource(Request req, Response res) throws JsonExtractException {
         OpenPaaSDomain domain = asDomainObject(req);
         ResourceCreationDTO creationDTO = creationDTOJsonExtractor.parse(req.body());
-
         Mono<OpenPaaSId> creatorIdMono = retrieveExistingUser(Username.of(creationDTO.creator))
             .map(OpenPaaSUser::id);
-
-        List<Username> administrators = administratorUsernamesFromDTO(creationDTO.administrators);
+        List<ResourceAdministrator> administrators = toResourceAdministrators(creationDTO.administrators);
 
         return creatorIdMono
-            .flatMap(creatorId -> resourceService.create(buildInsertRequest(creatorId, creationDTO, domain.id()), administrators))
+            .flatMap(creatorId -> resourceService.create(creationDTO.toInsertRequest(creatorId, domain.id()), administrators))
             .map(resourceId -> {
                 res.header(HttpHeader.LOCATION.asString(), DOMAINS + "/" + domain.domain().asString() + "/resources/" + resourceId.value());
                 res.status(HttpStatus.CREATED_201);
                 return StringUtils.EMPTY;
             })
             .onErrorMap(ResourceAdministratorNotFoundException.class, this::badRequest)
+            .onErrorMap(IllegalArgumentException.class, this::badRequest)
             .block();
-    }
-
-    private ResourceInsertRequest buildInsertRequest(OpenPaaSId creatorId,
-                                                     ResourceCreationDTO creationDTO, OpenPaaSId domainId) {
-        return new ResourceInsertRequest(creatorId, creationDTO.description, domainId, creationDTO.icon, creationDTO.name);
     }
 
     private String updateResource(Request req, Response res) throws JsonExtractException {
@@ -228,21 +210,26 @@ public class ResourceRoutes implements Routes {
             .doOnSuccess(_ -> res.status(HttpStatus.NO_CONTENT_204))
             .thenReturn(StringUtils.EMPTY)
             .onErrorMap(ResourceAdministratorNotFoundException.class, this::badRequest)
+            .onErrorMap(IllegalArgumentException.class, this::badRequest)
             .onErrorMap(ResourceNotFoundException.class, exception -> resourceNotFound(resourceId))
             .block();
     }
 
     private Mono<Void> updateResourceFromDTO(Resource resource, ResourceUpdateDTO dto) {
         return dto.administrators()
-            .map(administrators -> resourceService.updateAdmins(resource, administratorUsernamesFromDTO(administrators)))
+            .map(administrators -> resourceService.updateAdmins(resource, toResourceAdministrators(administrators)))
             .orElse(Mono.empty())
-            .then(resourceService.update(resource.id(), buildUpdateRequest(dto)));
+            .then(resourceService.update(resource.id(), dto.toUpdateRequest()));
     }
 
-    private List<Username> administratorUsernamesFromDTO(List<AdministratorDTO> administrators) {
-        return Optional.ofNullable(administrators).orElse(List.of()).stream()
-            .map(dto -> Username.of(dto.email()))
-            .toList();
+    private List<ResourceAdministrator> toResourceAdministrators(List<AdministratorDTO> administrators) {
+        try {
+            return Optional.ofNullable(administrators).orElse(List.of()).stream()
+                .map(AdministratorDTO::toResourceAdministrator)
+                .toList();
+        } catch (IllegalArgumentException e) {
+            throw badRequest(e);
+        }
     }
 
     private OpenPaaSDomain asDomainObject(Request request) {
@@ -271,22 +258,11 @@ public class ResourceRoutes implements Routes {
             .switchIfEmpty(Mono.error(() -> new ResourceNotFoundException(resourceId)));
     }
 
-    private Mono<ResourceDTO> toDto(Resource resource) {
+    private Mono<ResourceDTO> resolveResourceDTO(Resource resource, Domain domain) {
         return Mono.zip(
-                domainDAO.retrieve(resource.domain()),
                 userDAO.retrieve(resource.creator()),
-                resourceService.listAdminUsers(resource))
-            .map(tuple -> ResourceDTO.fromDomainObject(resource, tuple.getT1().domain(), tuple.getT3(), tuple.getT2().username().asString()));
-    }
-
-    private Mono<ResourceDTO> toDto(ResourceWithAdministration resourceWithAdministration) {
-        Resource resource = resourceWithAdministration.resource();
-
-        return Mono.zip(
-                domainDAO.retrieve(resource.domain()),
-                userDAO.retrieve(resource.creator()))
-            .map(tuple -> ResourceDTO.fromDomainObject(
-                resource, tuple.getT1().domain(), resourceWithAdministration.administrators(), tuple.getT2().username().asString()));
+                resourceService.listAdministrators(resource))
+            .map(tuple -> ResourceDTO.from(resource, domain, tuple.getT2(), tuple.getT1().username().asString()));
     }
 
     private Mono<OpenPaaSUser> retrieveExistingUser(Username username) {
@@ -310,10 +286,6 @@ public class ResourceRoutes implements Routes {
             .message(exception.getMessage())
             .cause(exception)
             .haltError();
-    }
-
-    private ResourceUpdateRequest buildUpdateRequest(ResourceUpdateDTO dto) {
-        return new ResourceUpdateRequest(dto.name(), dto.description(), dto.icon());
     }
 
 }
