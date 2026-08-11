@@ -25,6 +25,7 @@ import jakarta.inject.Inject;
 import org.apache.james.utils.GuiceProbe;
 
 import com.linagora.calendar.dav.ResourceService;
+import com.linagora.calendar.dav.ResourceService.ResourceAdministrator;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -64,6 +65,10 @@ public class ResourceProbe implements GuiceProbe {
             .map(userId -> userDAO.retrieve(userId).block().username())
             .toList()).block();
         return resource;
+    }
+
+    public void updateAdmins(Resource resource, List<ResourceAdministrator> administrators) {
+        resourceService.updateAdmins(resource, administrators).block();
     }
 
     public Resource saveInDomain(OpenPaaSId domainId, OpenPaaSId owner, String name, String icon) {
