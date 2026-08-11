@@ -658,6 +658,57 @@ class BookingLinkReservationRouteTest {
     }
 
     @Test
+    void shouldSendDeclineEmailToBookerWhenOrganizerDeclinesProposal(TwakeCalendarGuiceServer server) {
+        // Given: a booking waiting for the owner to answer the proposal email.
+        BookingLink inserted = insertActiveBookingLink(server);
+        String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();
+
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body("""
+                {
+                  "startUtc": "%s",
+                  "creator": {
+                    "name": "BOB",
+                    "email": "creator@example.com"
+                  },
+                  "eventTitle": "30-min intro call"
+                }
+                """.formatted(slotStartUtc))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED);
+
+        List<String> actionLinks = extractParticipationActionLinks(getHtml(
+            messageForRecipient(awaitBookingEmails(), openPaaSUser.username().asString())));
+        given(mockSMTPRequestSpecification()).delete("/smtpMails").then();
+
+        // When: the owner clicks the "No" button of the proposal email.
+        given().when().get(toParticipationEndpoint(actionLinks.get(2)))
+            .then().statusCode(HttpStatus.SC_OK).contentType(JSON);
+
+        // Then: the booker is the only one told the proposal was declined.
+        JsonPath smtpMailsResponse = awaitMails(1);
+        String rawMessage = messageForRecipient(smtpMailsResponse, "creator@example.com");
+        String html = getHtml(rawMessage);
+
+        assertSoftly(softly -> {
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(rawMessage)
+                .contains("Subject: %s has declined your event proposal: 30-min intro call".formatted(openPaaSUser.fullName()))
+                .doesNotContain("text/calendar")
+                .doesNotContain("application/ics");
+            softly.assertThat(html)
+                .contains(openPaaSUser.fullName())
+                .contains("has declined your event proposal")
+                .contains("30-min intro call")
+                .contains("BOB")
+                .contains("(Proposer)");
+        });
+    }
+
+    @Test
     void shouldCreateBookingUsingSlotReturnedBySlotsEndpoint(TwakeCalendarGuiceServer server) {
         BookingLink inserted = insertActiveBookingLink(server);
 

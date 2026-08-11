@@ -28,6 +28,7 @@ import jakarta.inject.Inject;
 import jakarta.inject.Named;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.james.core.Username;
 import org.apache.james.jmap.Endpoint;
@@ -40,9 +41,11 @@ import com.linagora.calendar.api.EventParticipationActionLinkFactory;
 import com.linagora.calendar.api.EventParticipationActionLinkFactory.ActionLinks;
 import com.linagora.calendar.api.Participation;
 import com.linagora.calendar.api.ParticipationTokenSigner;
+import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalDavEventRepository;
 import com.linagora.calendar.dav.CalendarEventNotFoundException;
 import com.linagora.calendar.dav.CalendarEventUpdatePatch.AttendeePartStatusUpdatePatch;
+import com.linagora.calendar.dav.dto.CalendarReportJsonResponse;
 import com.linagora.calendar.dav.dto.VCalendarDto;
 import com.linagora.calendar.restapi.ErrorResponse;
 import com.linagora.calendar.restapi.ErrorType;
@@ -69,6 +72,8 @@ public class EventParticipationRoute extends PublicRoute {
     private final SettingsBasedResolver settingsResolver;
     private final EventParticipationActionLinkFactory actionLinkFactory;
     private final OpenPaaSUserDAO openPaaSUserDAO;
+    private final CalDavClient calDavClient;
+    private final PublicAgendaDeclineNotifier publicAgendaDeclineNotifier;
 
     @Inject
     public EventParticipationRoute(MetricFactory metricFactory,
@@ -76,7 +81,9 @@ public class EventParticipationRoute extends PublicRoute {
                                    CalDavEventRepository calDavEventRepository,
                                    @Named("language") SettingsBasedResolver settingsResolver,
                                    EventParticipationActionLinkFactory actionLinkFactory,
-                                   OpenPaaSUserDAO openPaaSUserDAO) {
+                                   OpenPaaSUserDAO openPaaSUserDAO,
+                                   CalDavClient calDavClient,
+                                   PublicAgendaDeclineNotifier publicAgendaDeclineNotifier) {
         super(metricFactory);
         this.participationTokenSigner = participationTokenSigner;
         this.calDavEventRepository = calDavEventRepository;
@@ -84,6 +91,8 @@ public class EventParticipationRoute extends PublicRoute {
 
         this.actionLinkFactory = actionLinkFactory;
         this.openPaaSUserDAO = openPaaSUserDAO;
+        this.calDavClient = calDavClient;
+        this.publicAgendaDeclineNotifier = publicAgendaDeclineNotifier;
     }
 
     protected Endpoint endpoint() {
@@ -137,8 +146,40 @@ public class EventParticipationRoute extends PublicRoute {
             .flatMap(isAttendeeInternalUser -> {
                 Username requestUser = resolveRequestUser(attendeeUsername, organizerUsername, isAttendeeInternalUser);
                 return calDavEventRepository.updatePartStat(requestUser, calendarId, eventUid, patch)
-                    .map(VCalendarDto::from)
-                    .map(dto -> Pair.of(dto, isAttendeeInternalUser));
+                    .doOnNext(reportResponse -> notifyPublicAgendaDecline(participationRequest, reportResponse)
+                        .subscribe())
+                    .map(reportResponse -> Pair.of(VCalendarDto.from(reportResponse), isAttendeeInternalUser));
+            });
+    }
+
+    /**
+     * A public agenda booking only reaches its booker through the regular iTIP flow once the owner accepts it:
+     * declining it would otherwise leave the booker waiting, so the decline email is sent from here.
+     *
+     * <p>This route answers every participation link of the product, so the bookings to notify are narrowed down in
+     * two steps. First on the token alone: the action must be {@code REJECTED}, and the answering attendee must be the
+     * organizer - {@link PublicAgendaProposalNotifier} mints a proposal email with both set to the agenda owner, so
+     * any other pair is an ordinary invitee declining their own invitation rather than the owner ruling on a booking.
+     * Testing this before the fetch keeps ordinary participation clicks free of any extra DAV call.
+     *
+     * <p>Then on the event itself, which only the fetch can tell: {@link BookedEventDeclined#from} yields an empty
+     * optional unless the event carries {@code X-PUBLICLY-CREATED} and names a booker to write to through
+     * {@code X-PUBLICLY-CREATOR}. An owner declining a regular event of their own calendar therefore mails nobody.
+     */
+    private Mono<Void> notifyPublicAgendaDecline(Participation participationRequest, CalendarReportJsonResponse reportResponse) {
+        if (participationRequest.action() != Participation.ParticipantAction.REJECTED
+            || !Strings.CI.equals(participationRequest.attendee().asString(), participationRequest.organizer().asString())) {
+            return Mono.empty();
+        }
+
+        Username owner = Username.fromMailAddress(participationRequest.organizer());
+        return calDavClient.fetchCalendarEvent(owner, reportResponse.calendarHref())
+            .flatMap(calendarObject -> Mono.justOrEmpty(BookedEventDeclined.from(owner, calendarObject.calendarData())))
+            .flatMap(publicAgendaDeclineNotifier::notify)
+            .onErrorResume(error -> {
+                LOGGER.warn("Failed to notify the booker that public agenda owner {} declined event {}",
+                    owner.asString(), participationRequest.eventUid(), error);
+                return Mono.empty();
             });
     }
 
