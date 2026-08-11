@@ -432,7 +432,9 @@ Example response:
     {
       "_id": "adminId",
       "id": "adminId",
-      "objectType": "user"
+      "objectType": "user",
+      "davRight": "dav:read-write",
+      "access": 3
     }
   ],
   "timestamps": {
@@ -444,9 +446,11 @@ Example response:
 }
 ```
 
+`davRight` and integer `access` are resolved from Sabre: 3 is `dav:read-write`, 5 is `dav:administration`.
+
 ### GET /linagora.esn.resource/api/resources/{resourceId} (Deprecated)
 
-Deprecated in favor of `GET /api/resources/{resourceId}`, kept for OpenPaaS backward compatibility.
+Deprecated in favor of `GET /api/resources/{resourceId}`. It returns the same administrator fields.
 
 
 ### GET /images/icon/{icon}.svg

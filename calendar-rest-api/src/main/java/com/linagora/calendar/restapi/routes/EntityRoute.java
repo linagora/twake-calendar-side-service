@@ -44,6 +44,7 @@ import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.dav.ResourceService;
 import com.linagora.calendar.dav.ResourceService.ResourceWithAdministration;
+import com.linagora.calendar.dav.ResourceService.ResourceWithAdministration.ResolvedAdministrator;
 import com.linagora.calendar.restapi.NotFoundException;
 import com.linagora.calendar.storage.DomainAdministrator;
 import com.linagora.calendar.storage.OpenPaaSDomain;
@@ -112,10 +113,12 @@ public class EntityRoute extends CalendarRoute {
                                String creator,
                                DomainDTO domain) {
 
-        record AdministratorDTO(@JsonProperty("id") String idRef) {
+        record AdministratorDTO(@JsonProperty("id") String idRef,
+                                String davRight,
+                                int access) {
 
-            static AdministratorDTO from(OpenPaaSUser user) {
-                return new AdministratorDTO(user.id().value());
+            static AdministratorDTO from(ResolvedAdministrator administrator) {
+                return new AdministratorDTO(administrator.user().id().value(), administrator.davRight().value(), administrator.davRight().access());
             }
 
             @JsonProperty("_id")
@@ -131,7 +134,7 @@ public class EntityRoute extends CalendarRoute {
 
         static ResourceResponseDTO from(ResourceWithAdministration resourceWithAdministration, DomainDTO domain) {
             Resource resource = resourceWithAdministration.resource();
-            List<AdministratorDTO> administrators = resourceWithAdministration.administrators().stream()
+            List<AdministratorDTO> administrators = resourceWithAdministration.administratorsWithRight().stream()
                 .map(AdministratorDTO::from)
                 .toList();
 

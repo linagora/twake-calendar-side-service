@@ -52,7 +52,9 @@ import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.app.ResourceProbe;
 import com.linagora.calendar.app.restapi.routes.PeopleSearchRouteTest.TeamCalendarProbe;
+import com.linagora.calendar.dav.DavRight;
 import com.linagora.calendar.dav.DavModuleTestHelper;
+import com.linagora.calendar.dav.ResourceService.ResourceAdministrator;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.smtp.MailSenderConfiguration;
@@ -127,6 +129,10 @@ public class EntityRouteTest {
 
         resource = server.getProbe(ResourceProbe.class)
             .save(openPaaSUser, "meeting-room", "room", List.of(openPaaSUser.id(), openPaaSUser2.id()));
+        server.getProbe(ResourceProbe.class)
+            .updateAdmins(resource, List.of(
+                new ResourceAdministrator(openPaaSUser.username(), DavRight.READ_WRITE),
+                new ResourceAdministrator(openPaaSUser2.username(), DavRight.ADMINISTRATION)));
         teamCalendar = server.getProbe(TeamCalendarProbe.class)
             .save(domain, "engineering", "Engineering Team");
 
@@ -170,12 +176,16 @@ public class EntityRouteTest {
                             {
                                 "id": "{adminId1}",
                                 "objectType": "user",
-                                "_id": "{adminId1}"
+                                "_id": "{adminId1}",
+                                "davRight": "dav:read-write",
+                                "access": 3
                             },
                             {
                                 "id": "{adminId2}",
                                 "objectType": "user",
-                                "_id": "{adminId2}"
+                                "_id": "{adminId2}",
+                                "davRight": "dav:administration",
+                                "access": 5
                             }
                         ],
                         "creator": "{creatorId}",
