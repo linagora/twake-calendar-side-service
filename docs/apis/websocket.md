@@ -234,6 +234,19 @@ When an address book import is triggered, the server notifies subscribed clients
 }
 ```
 
+#### Address Book contact change push
+
+Whenever a contact is created, updated, or deleted in a registered address book,
+the side-service pushes its current sync token.
+
+```json
+{
+  "/addressbooks/userA/collected": {
+    "syncToken": "2"
+  }
+}
+```
+
 #### Display Notification response
 Response when enabling or disabling display notifications:
 ```json

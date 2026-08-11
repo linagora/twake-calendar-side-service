@@ -32,6 +32,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.github.fge.lambdas.Throwing;
+import com.linagora.calendar.storage.AddressBookChangeEvent;
+import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.BookingLinkStateChangedEvent;
 import com.linagora.calendar.storage.CalendarChangeEvent;
 import com.linagora.calendar.storage.CalendarListChangedEvent;
@@ -48,6 +50,7 @@ public class CalendarEventSerializer implements EventSerializer {
         use = JsonTypeInfo.Id.NAME,
         property = "type")
     @JsonSubTypes({
+        @JsonSubTypes.Type(value = AddressBookChangeDTO.class),
         @JsonSubTypes.Type(value = CalendarChangeDTO.class),
         @JsonSubTypes.Type(value = CalendarListChangedDTO.class),
         @JsonSubTypes.Type(value = ImportEventDTO.class),
@@ -55,6 +58,19 @@ public class CalendarEventSerializer implements EventSerializer {
         @JsonSubTypes.Type(value = BookingLinkStateChangedDTO.class)
     })
     interface EventDTO {
+    }
+
+    record AddressBookChangeDTO(String eventId, String username, String addressBookUrl) implements EventDTO {
+        public static AddressBookChangeDTO from(AddressBookChangeEvent event) {
+            return new AddressBookChangeDTO(event.getEventId().getId().toString(),
+                event.getUsername().asString(),
+                event.addressBookURL().asUri().toASCIIString());
+        }
+
+        public AddressBookChangeEvent asEvent() {
+            return new AddressBookChangeEvent(Event.EventId.of(this.eventId()),
+                AddressBookURL.parse(this.addressBookUrl()));
+        }
     }
 
     record BookingLinkStateChangedDTO(String eventId, String username) implements EventDTO {
@@ -188,6 +204,7 @@ public class CalendarEventSerializer implements EventSerializer {
 
     private Optional<EventDTO> toDTO(Event event) {
         return Optional.ofNullable(switch (event) {
+            case AddressBookChangeEvent addressBookChangeEvent -> AddressBookChangeDTO.from(addressBookChangeEvent);
             case CalendarChangeEvent calendarChangeEvent -> CalendarChangeDTO.from(calendarChangeEvent);
             case CalendarListChangedEvent calendarListChangedEvent -> CalendarListChangedDTO.from(calendarListChangedEvent);
             case ImportEvent importEvent -> ImportEventDTO.from(importEvent);
@@ -199,6 +216,7 @@ public class CalendarEventSerializer implements EventSerializer {
 
     private Optional<Event> fromDTO(EventDTO eventDTO) {
         return Optional.ofNullable(switch (eventDTO) {
+            case AddressBookChangeDTO addressBookChangeDTO -> addressBookChangeDTO.asEvent();
             case CalendarChangeDTO calendarChangeDTO -> calendarChangeDTO.asEvent();
             case CalendarListChangedDTO calendarListChangedDTO -> calendarListChangedDTO.asEvent();
             case ImportEventDTO importEventDTO -> importEventDTO.asEvent();

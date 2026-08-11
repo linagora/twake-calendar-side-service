@@ -208,7 +208,7 @@ public class WebsocketRoute extends CalendarRoute {
             return Mono.justOrEmpty(context.subscriptionMap().get(alarmSubscriptionKey))
                 .map(existing -> EnableAlarmDisplayNotificationResponse.ENABLED_RESPONSE)
                 .switchIfEmpty(Mono.defer(() -> {
-                    WebSocketNotificationListener listener = new WebSocketNotificationListener(context.outbound(), calDavClient, username);
+                    WebSocketNotificationListener listener = new WebSocketNotificationListener(context.outbound(), calDavClient, cardDavClient, username);
                     UsernameRegistrationKey registrationKey = new UsernameRegistrationKey(username);
                     return Mono.from(eventBus.register(listener, registrationKey))
                         .doOnNext(registration -> context.subscriptionMap().put(alarmSubscriptionKey, registration))
@@ -257,7 +257,7 @@ public class WebsocketRoute extends CalendarRoute {
     private Mono<Registration> registerAddressBook(AddressBookSubscriptionKey subscriptionKey,
                                                    ClientContext context) {
         Username username = context.session().getUser();
-        WebSocketNotificationListener listener = new WebSocketNotificationListener(context.outbound(), calDavClient, username);
+        WebSocketNotificationListener listener = new WebSocketNotificationListener(context.outbound(), calDavClient, cardDavClient, username);
         AddressBookURL addressBookURL = subscriptionKey.addressBookURL();
         RegistrationKey registrationKey = new AddressBookURLRegistrationKey(addressBookURL);
         Mono<Void> accessValidation = validateAccessRights(username, addressBookURL);
@@ -268,7 +268,7 @@ public class WebsocketRoute extends CalendarRoute {
     private Mono<Registration> registerCalendar(CalendarSubscriptionKey subscriptionKey,
                                                 ClientContext context) {
         Username username = context.session().getUser();
-        WebSocketNotificationListener listener = new WebSocketNotificationListener(context.outbound(), calDavClient, username);
+        WebSocketNotificationListener listener = new WebSocketNotificationListener(context.outbound(), calDavClient, cardDavClient, username);
         CalendarURL calendarURL = subscriptionKey.calendarURL();
         RegistrationKey registrationKey = new CalendarURLRegistrationKey(calendarURL);
         Mono<Void> accessValidation = validateAccessRights(username, calendarURL);
