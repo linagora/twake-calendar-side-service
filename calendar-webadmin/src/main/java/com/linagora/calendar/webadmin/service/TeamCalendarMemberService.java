@@ -19,6 +19,7 @@
 package com.linagora.calendar.webadmin.service;
 
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
@@ -28,8 +29,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.linagora.calendar.dav.CalDavClient;
-import com.linagora.calendar.dav.CalDavClient.CalendarSharingUpdate;
+import com.linagora.calendar.dav.CalendarSharingUpdate;
 import com.linagora.calendar.dav.DavClientException;
+import com.linagora.calendar.dav.DavRight;
 import com.linagora.calendar.dav.dto.CalendarDetailsResponse.CalendarInvite;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.MailtoUri;
@@ -44,18 +46,16 @@ public class TeamCalendarMemberService {
     private static final Map<String, String> WITH_RIGHTS = Map.of("withRights", "true");
 
     public enum TeamCalendarRole {
-        VIEWER("viewer", "dav:read", 2),
-        MEMBER("member", "dav:read-write", 3),
-        MANAGER("manager", "dav:administration", 5);
+        VIEWER("viewer", DavRight.READ),
+        MEMBER("member", DavRight.READ_WRITE),
+        MANAGER("manager", DavRight.ADMINISTRATION);
 
         private final String value;
-        private final String davRight;
-        private final int davAccess;
+        private final DavRight davRight;
 
-        TeamCalendarRole(String value, String davRight, int davAccess) {
+        TeamCalendarRole(String value, DavRight davRight) {
             this.value = value;
             this.davRight = davRight;
-            this.davAccess = davAccess;
         }
 
         public String value() {
@@ -63,14 +63,19 @@ public class TeamCalendarMemberService {
         }
 
         public String davRight() {
-            return davRight;
+            return davRight.value();
         }
 
         public static TeamCalendarRole fromDavAccess(int davAccess) {
-            return Stream.of(values())
-                .filter(role -> role.davAccess == davAccess)
-                .findFirst()
+            return DavRight.fromAccess(davAccess)
+                .flatMap(TeamCalendarRole::fromDavRight)
                 .orElseThrow(() -> new IllegalArgumentException("Unsupported DAV delegation access: " + davAccess));
+        }
+
+        private static Optional<TeamCalendarRole> fromDavRight(DavRight davRight) {
+            return Stream.of(values())
+                .filter(role -> role.davRight == davRight)
+                .findFirst();
         }
     }
 

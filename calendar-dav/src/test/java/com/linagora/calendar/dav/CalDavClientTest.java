@@ -51,7 +51,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.CalDavClient.CalendarAccess;
 import com.linagora.calendar.dav.CalDavClient.CalendarPropertiesUpdate;
-import com.linagora.calendar.dav.CalDavClient.CalendarSharingUpdate;
 import com.linagora.calendar.dav.CalDavClient.NewCalendar;
 import com.linagora.calendar.dav.FreeBusyQueryResponseObject.BusyInterval;
 import com.linagora.calendar.dav.dto.CalendarDetailsResponse;
@@ -326,9 +325,8 @@ public class CalDavClientTest {
         String calendarId = UUID.randomUUID().toString();
         CalendarURL calendarURL = new CalendarURL(owner.id(), new OpenPaaSId(calendarId));
         String delegateMailto = "mailto:" + delegate.username().asString();
-        CalendarSharingUpdate sharingUpdate = new CalendarSharingUpdate(new CalendarSharingUpdate.Share(
-            List.of(CalendarSharingUpdate.AddSharee.readWrite(delegateMailto)),
-            List.of()));
+        CalendarSharingUpdate sharingUpdate = CalendarSharingUpdate.grant(
+            CalendarSharingUpdate.AddSharee.of(delegateMailto, DavRight.READ_WRITE));
 
         testee.createNewCalendar(owner.username(), owner.id(), new NewCalendar(calendarId, "Shared calendar", "#0000FF", "")).block();
         testee.updateCalendarShares(owner.username(), calendarURL, sharingUpdate).block();
@@ -580,10 +578,7 @@ public class CalDavClientTest {
         OpenPaaSId calendarId = teamCalendar.id().asOpenPaaSId();
         CalendarURL teamCalendarURL = CalendarURL.from(calendarId);
         String teamCalendarPrincipalUri = "principals/team-calendars/" + teamCalendar.id().value();
-        CalendarSharingUpdate sharingUpdate = new CalendarSharingUpdate(
-            new CalendarSharingUpdate.Share(
-                List.of(CalendarSharingUpdate.AddSharee.readWrite("mailto:" + member.username().asString())),
-                List.of()));
+        CalendarSharingUpdate sharingUpdate = CalendarSharingUpdate.grant(member.username(), DavRight.READ_WRITE);
 
         testee.updateCalendarShares(domain.id(), teamCalendarURL, sharingUpdate).block();
 
@@ -1647,10 +1642,7 @@ public class CalDavClientTest {
         CalendarURL calendarURL = new CalendarURL(owner.id(), new OpenPaaSId(calendarId));
 
         testee.updateCalendarShares(owner.username(), calendarURL,
-            new CalendarSharingUpdate(new CalendarSharingUpdate.Share(
-                List.of(new CalendarSharingUpdate.AddSharee("mailto:" + delegate.username().asString(),
-                    Optional.empty(), Optional.of(true), Optional.empty())),
-                List.of()))).block();
+            CalendarSharingUpdate.grant(delegate.username(), DavRight.READ_WRITE)).block();
 
         assertThat(testee.findUserCalendars(delegate.username(), delegate.id()).collectList().block())
             .anyMatch(url -> !url.calendarId().equals(delegate.id()));
@@ -1664,15 +1656,10 @@ public class CalDavClientTest {
         testee.createNewCalendar(owner.username(), owner.id(), new NewCalendar(calendarId, "Shared calendar", "#0000FF", "")).block();
         CalendarURL calendarURL = new CalendarURL(owner.id(), new OpenPaaSId(calendarId));
         testee.updateCalendarShares(owner.username(), calendarURL,
-            new CalendarSharingUpdate(new CalendarSharingUpdate.Share(
-                List.of(new CalendarSharingUpdate.AddSharee("mailto:" + delegate.username().asString(),
-                    Optional.empty(), Optional.of(true), Optional.empty())),
-                List.of()))).block();
+            CalendarSharingUpdate.grant(delegate.username(), DavRight.READ_WRITE)).block();
 
         testee.updateCalendarShares(owner.username(), calendarURL,
-            new CalendarSharingUpdate(new CalendarSharingUpdate.Share(
-                List.of(),
-                List.of(new CalendarSharingUpdate.RemoveSharee("mailto:" + delegate.username().asString()))))).block();
+            CalendarSharingUpdate.revoke(delegate.username())).block();
 
         assertThat(testee.findUserCalendars(delegate.username(), delegate.id()).collectList().block())
             .allMatch(url -> url.calendarId().equals(delegate.id()));
@@ -1699,8 +1686,7 @@ public class CalDavClientTest {
         OpenPaaSUser owner = createOpenPaaSUser();
         OpenPaaSUser delegate = createOpenPaaSUser();
         CalendarURL delegatedCalendar = shareCalendar(owner, delegate,
-            new CalendarSharingUpdate.AddSharee("mailto:" + delegate.username().asString(),
-                Optional.empty(), Optional.of(true), Optional.empty()));
+            CalendarSharingUpdate.AddSharee.of(delegate.username(), DavRight.READ_WRITE));
 
         assertThat(testee.resolveCalendarAccess(delegate.username(), delegatedCalendar).block()).isEqualTo(CalendarAccess.WRITABLE);
     }
@@ -1710,8 +1696,7 @@ public class CalDavClientTest {
         OpenPaaSUser owner = createOpenPaaSUser();
         OpenPaaSUser delegate = createOpenPaaSUser();
         CalendarURL delegatedCalendar = shareCalendar(owner, delegate,
-            new CalendarSharingUpdate.AddSharee("mailto:" + delegate.username().asString(),
-                Optional.of(true), Optional.empty(), Optional.empty()));
+            CalendarSharingUpdate.AddSharee.of(delegate.username(), DavRight.READ));
 
         assertThat(testee.resolveCalendarAccess(delegate.username(), delegatedCalendar).block()).isEqualTo(CalendarAccess.READ_ONLY);
     }
@@ -1721,8 +1706,7 @@ public class CalDavClientTest {
         OpenPaaSUser owner = createOpenPaaSUser();
         OpenPaaSUser delegate = createOpenPaaSUser();
         CalendarURL delegatedCalendar = shareCalendar(owner, delegate,
-            new CalendarSharingUpdate.AddSharee("mailto:" + delegate.username().asString(),
-                Optional.empty(), Optional.empty(), Optional.of(true)));
+            CalendarSharingUpdate.AddSharee.of(delegate.username(), DavRight.ADMINISTRATION));
 
         assertThat(testee.resolveCalendarAccess(delegate.username(), delegatedCalendar).block()).isEqualTo(CalendarAccess.WRITABLE);
     }
@@ -1733,7 +1717,7 @@ public class CalDavClientTest {
         CalendarURL calendarURL = new CalendarURL(owner.id(), new OpenPaaSId(calendarId));
 
         testee.updateCalendarShares(owner.username(), calendarURL,
-            new CalendarSharingUpdate(new CalendarSharingUpdate.Share(List.of(sharee), List.of()))).block();
+            CalendarSharingUpdate.grant(sharee)).block();
 
         return testee.findUserCalendars(delegate.username(), delegate.id()).collectList().block().stream()
             .filter(url -> !url.calendarId().equals(delegate.id()))
@@ -1748,10 +1732,7 @@ public class CalDavClientTest {
         CalendarURL calendarURL = new CalendarURL(owner.id(), new OpenPaaSId(UUID.randomUUID().toString()));
 
         assertThatThrownBy(() -> testee.updateCalendarShares(owner.username(), calendarURL,
-            new CalendarSharingUpdate(new CalendarSharingUpdate.Share(
-                List.of(new CalendarSharingUpdate.AddSharee("mailto:" + delegate.username().asString(),
-                    Optional.of(true), Optional.empty(), Optional.empty())),
-                List.of()))).block())
+            CalendarSharingUpdate.grant(delegate.username(), DavRight.READ)).block())
             .isInstanceOf(CalendarNotFoundException.class);
     }
 }

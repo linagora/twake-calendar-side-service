@@ -34,10 +34,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Sets;
-import com.linagora.calendar.dav.CalDavClient.CalendarSharingUpdate;
-import com.linagora.calendar.dav.CalDavClient.CalendarSharingUpdate.AddSharee;
-import com.linagora.calendar.dav.CalDavClient.CalendarSharingUpdate.RemoveSharee;
-import com.linagora.calendar.dav.CalDavClient.CalendarSharingUpdate.Share;
+import com.linagora.calendar.dav.CalendarSharingUpdate.AddSharee;
 import com.linagora.calendar.dav.dto.CalendarDetailsResponse.CalendarInvite;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.MailtoUri;
@@ -66,12 +63,8 @@ public class ResourceService {
                 .map(right -> new ResourceAdministrator(Username.of(MailtoUri.stripMailtoPrefix(invite.href())), right));
         }
 
-        public static AddSharee asAddSharee(ResourceAdministrator administrator) {
-            return switch (administrator.davRight) {
-                case READ_WRITE -> AddSharee.readWrite("mailto:" + administrator.username.asString());
-                case ADMINISTRATION -> AddSharee.administration("mailto:" + administrator.username.asString());
-                default -> throw new IllegalArgumentException("Unsupported resource administrator DAV right: " + administrator.davRight);
-            };
+        public AddSharee asAddSharee() {
+            return AddSharee.of(username, davRight);
         }
     }
 
@@ -107,6 +100,18 @@ public class ResourceService {
 
         public boolean isEmpty() {
             return toAddOrUpdate.isEmpty() && toRemove.isEmpty();
+        }
+
+        public List<AddSharee> listAddSharees() {
+            return toAddOrUpdate.stream()
+                .map(ResourceAdministrator::asAddSharee)
+                .toList();
+        }
+
+        public List<CalendarSharingUpdate.RemoveSharee> listRemoveSharees() {
+            return toRemove.stream()
+                .map(CalendarSharingUpdate.RemoveSharee::of)
+                .toList();
         }
     }
 
@@ -199,13 +204,11 @@ public class ResourceService {
         if (changes.isEmpty()) {
             return Mono.empty();
         }
-        List<RemoveSharee> removals = changes.toRemove().stream()
-            .map(username -> new RemoveSharee("mailto:" + username.asString()))
-            .toList();
         return calDavClient.updateCalendarShares(domainId, CalendarURL.from(resourceId.asOpenPaaSId()),
-                new CalendarSharingUpdate(new Share(changes.toAddOrUpdate().stream()
-                    .map(ResourceAdministrator::asAddSharee)
-                    .toList(), removals)))
+                CalendarSharingUpdate.builder()
+                    .grantAll(changes.listAddSharees())
+                    .revokeAll(changes.listRemoveSharees())
+                    .build())
             .doOnError(err -> LOGGER.error("Error patching CalDAV delegation for resource {}", resourceId.value(), err));
     }
 

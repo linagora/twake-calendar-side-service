@@ -38,9 +38,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
-import com.linagora.calendar.dav.CalDavClient.CalendarSharingUpdate;
-import com.linagora.calendar.dav.CalDavClient.CalendarSharingUpdate.AddSharee;
-import com.linagora.calendar.dav.CalDavClient.CalendarSharingUpdate.Share;
+import com.linagora.calendar.dav.CalendarSharingUpdate.AddSharee;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.MemoryOpenPaaSUserDAO;
 import com.linagora.calendar.storage.OpenPaaSDomain;
@@ -84,9 +82,9 @@ class ResourceServiceTest {
         Resource resource = createResource(creator);
 
         share(resource.id(),
-            AddSharee.readWrite(mailto(readWriteUser)),
-            AddSharee.read(mailto(reader)),
-            AddSharee.administration(mailto(davAdmin)));
+            AddSharee.of(readWriteUser.username(), DavRight.READ_WRITE),
+            AddSharee.of(reader.username(), DavRight.READ),
+            AddSharee.of(davAdmin.username(), DavRight.ADMINISTRATION));
 
         List<ResourceService.ResourceAdministrator> actual = testee.listAdministrators(resource)
             .block();
@@ -105,8 +103,8 @@ class ResourceServiceTest {
         Resource resource = createResource(creator);
 
         share(resource.id(),
-            AddSharee.readWrite(mailto(readWriteUser)),
-            AddSharee.administration(mailto(davAdmin)));
+            AddSharee.of(readWriteUser.username(), DavRight.READ_WRITE),
+            AddSharee.of(davAdmin.username(), DavRight.ADMINISTRATION));
 
         ResourceService.ResourceWithAdministration actual = testee.retrieveWithAdministration(resource.id(), ONLY_ACTIVE)
             .block();
@@ -141,8 +139,8 @@ class ResourceServiceTest {
         ResourceService resolver = new ResourceService(memoryUserDAO, resourceDAO, calDavClient);
 
         share(resource.id(),
-            AddSharee.readWrite(mailto(resolvedUser)),
-            AddSharee.readWrite(mailto(unresolvedUser)));
+            AddSharee.of(resolvedUser.username(), DavRight.READ_WRITE),
+            AddSharee.of(unresolvedUser.username(), DavRight.READ_WRITE));
 
         List<OpenPaaSUser> actual = resolver.listAdminUsers(resource)
             .block();
@@ -159,8 +157,8 @@ class ResourceServiceTest {
         Resource resource = createResource(creator);
 
         share(resource.id(),
-            AddSharee.readWrite(mailto(readWriteUser)),
-            AddSharee.read(mailto(reader)));
+            AddSharee.of(readWriteUser.username(), DavRight.READ_WRITE),
+            AddSharee.of(reader.username(), DavRight.READ));
 
         assertThat(testee.isAdministrator(resource, readWriteUser.username()).block())
             .isTrue();
@@ -214,11 +212,7 @@ class ResourceServiceTest {
     private void share(ResourceId resourceId, AddSharee... sharees) {
         calDavClient.updateCalendarShares(domain.id(),
             CalendarURL.from(resourceId.asOpenPaaSId()),
-            new CalendarSharingUpdate(new Share(List.of(sharees), List.of())))
+            CalendarSharingUpdate.grant(sharees))
             .block();
-    }
-
-    private String mailto(OpenPaaSUser user) {
-        return "mailto:" + user.username().asString();
     }
 }

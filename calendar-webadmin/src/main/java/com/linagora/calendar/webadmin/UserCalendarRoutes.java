@@ -41,6 +41,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.CalendarSharingUpdate;
 import com.linagora.calendar.dav.DavClientException;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -175,7 +176,7 @@ public class UserCalendarRoutes implements Routes {
 
     private String updateInvitees(Request request, Response response) {
         OpenPaaSUser user = retrieveUser(request);
-        CalDavClient.CalendarSharingUpdate sharingUpdate = parseBody(request, CalDavClient.CalendarSharingUpdate.class);
+        CalendarSharingUpdate sharingUpdate = parseBody(request, CalendarSharingUpdate.class);
         CalendarURL calendarURL = retrieveExistingCalendar(request, user);
 
         wrapDavErrors(() -> calDavClient.updateCalendarShares(user.username(), calendarURL, sharingUpdate).block());
