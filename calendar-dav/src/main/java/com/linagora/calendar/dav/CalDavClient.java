@@ -31,7 +31,6 @@ import java.util.Optional;
 import javax.net.ssl.SSLException;
 
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
 import org.apache.http.HttpStatus;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.james.core.Username;
@@ -111,54 +110,6 @@ public class CalDavClient extends DavClient {
 
         public static CalendarPropertiesUpdate withName(String name) {
             return new CalendarPropertiesUpdate(Optional.of(name), Optional.empty(), Optional.empty());
-        }
-    }
-
-    public record CalendarSharingUpdate(@JsonProperty(value = "share", required = true) Share share) {
-        private static final String MAILTO_PREFIX = "mailto:";
-
-        public CalendarSharingUpdate {
-            Preconditions.checkArgument(share != null, "'share' field is required");
-        }
-
-        public record Share(@JsonProperty("set") List<AddSharee> set,
-                            @JsonProperty("remove") List<RemoveSharee> remove) {
-            public Share {
-                set = Optional.ofNullable(set).orElse(List.of());
-                remove = Optional.ofNullable(remove).orElse(List.of());
-            }
-        }
-
-        @JsonInclude(JsonInclude.Include.NON_ABSENT)
-        public record AddSharee(@JsonProperty("dav:href") String davHref,
-                                @JsonProperty("dav:read") Optional<Boolean> read,
-                                @JsonProperty("dav:read-write") Optional<Boolean> readWrite,
-                                @JsonProperty("dav:administration") Optional<Boolean> administration) {
-            public static AddSharee read(String davHref) {
-                return new AddSharee(davHref, Optional.of(true), Optional.empty(), Optional.empty());
-            }
-
-            public static AddSharee readWrite(String davHref) {
-                return new AddSharee(davHref, Optional.empty(), Optional.of(true), Optional.empty());
-            }
-
-            public static AddSharee administration(String davHref) {
-                return new AddSharee(davHref, Optional.empty(), Optional.empty(), Optional.of(true));
-            }
-
-            public AddSharee {
-                Preconditions.checkArgument(Strings.CI.startsWith(davHref, MAILTO_PREFIX),
-                    "'dav:href' must be a '" + MAILTO_PREFIX + "' URI");
-                Preconditions.checkArgument(read.isPresent() || readWrite.isPresent() || administration.isPresent(),
-                    "One of 'dav:read', 'dav:read-write', 'dav:administration' must be provided");
-            }
-        }
-
-        public record RemoveSharee(@JsonProperty("dav:href") String davHref) {
-            public RemoveSharee {
-                Preconditions.checkArgument(Strings.CI.startsWith(davHref, MAILTO_PREFIX),
-                    "'dav:href' must be a '" + MAILTO_PREFIX + "' URI");
-            }
         }
     }
 

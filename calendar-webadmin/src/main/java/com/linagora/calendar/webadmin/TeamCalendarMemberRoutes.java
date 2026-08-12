@@ -21,8 +21,6 @@ import static org.apache.james.webadmin.Constants.SEPARATOR;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.function.Predicate;
-import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
 
@@ -38,8 +36,8 @@ import org.eclipse.jetty.http.HttpStatus;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.common.base.Preconditions;
-import com.linagora.calendar.dav.CalDavClient.CalendarSharingUpdate;
-import com.linagora.calendar.dav.CalDavClient.CalendarSharingUpdate.AddSharee;
+import com.linagora.calendar.dav.CalendarSharingUpdate;
+import com.linagora.calendar.dav.CalendarSharingUpdate.AddSharee;
 import com.linagora.calendar.dav.DavClientException;
 import com.linagora.calendar.storage.MailtoUri;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
@@ -64,8 +62,6 @@ public class TeamCalendarMemberRoutes implements Routes {
         + SEPARATOR + "team-calendars"
         + SEPARATOR + TEAM_CALENDAR_ID_PARAM
         + SEPARATOR + "members";
-    private static final Predicate<Optional<Boolean>> ENABLED_DAV_RIGHT = right -> right.orElse(false);
-
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module());
 
     public record TeamCalendarMemberResponse(String username, String role, String davRight) {
@@ -139,20 +135,12 @@ public class TeamCalendarMemberRoutes implements Routes {
     private Mono<Void> validateAddSharees(Domain domain, List<AddSharee> sharees) {
         return Flux.fromIterable(sharees)
             .flatMap(sharee -> {
-                validateSingleDavRight(sharee);
                 Username username = parseMemberUsername(domain, sharee.davHref());
                 return userDAO.retrieve(username)
                     .switchIfEmpty(Mono.error(() -> new IllegalArgumentException("Candidate member not found: " + username.asString())))
                     .then();
             })
             .then();
-    }
-
-    private void validateSingleDavRight(AddSharee sharee) {
-        long enabledRights = Stream.of(sharee.read(), sharee.readWrite(), sharee.administration())
-            .filter(ENABLED_DAV_RIGHT)
-            .count();
-        Preconditions.checkArgument(enabledRights == 1, "Exactly one of 'dav:read', 'dav:read-write', 'dav:administration' must be true");
     }
 
     private Username parseMemberUsername(Domain domain, String davHref) {
@@ -180,7 +168,11 @@ public class TeamCalendarMemberRoutes implements Routes {
         try {
             return OBJECT_MAPPER.readValue(request.bodyAsBytes(), type);
         } catch (Exception exception) {
-            String detail = Optional.ofNullable(ExceptionUtils.getRootCause(exception))
+            Throwable rootCause = ExceptionUtils.getRootCause(exception);
+            if (rootCause instanceof CalendarSharingUpdate.InvalidDavRightException) {
+                throw new IllegalArgumentException(rootCause.getMessage(), exception);
+            }
+            String detail = Optional.ofNullable(rootCause)
                 .map(Throwable::getMessage)
                 .orElse(exception.getMessage());
             throw new IllegalArgumentException("Invalid request body: " + detail, exception);

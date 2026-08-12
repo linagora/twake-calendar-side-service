@@ -34,10 +34,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.linagora.calendar.dav.CalDavClient;
-import com.linagora.calendar.dav.CalDavClient.CalendarSharingUpdate;
-import com.linagora.calendar.dav.CalDavClient.CalendarSharingUpdate.AddSharee;
-import com.linagora.calendar.dav.CalDavClient.CalendarSharingUpdate.RemoveSharee;
-import com.linagora.calendar.dav.CalDavClient.CalendarSharingUpdate.Share;
+import com.linagora.calendar.dav.CalendarSharingUpdate;
+import com.linagora.calendar.dav.DavRight;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.dav.SabreDavProvisioningService;
 import com.linagora.calendar.dav.dto.CalendarDetailsResponse;
@@ -128,14 +126,12 @@ class TeamCalendarMemberServiceTest {
                                                 OpenPaaSUser member,
                                                 OpenPaaSUser manager,
                                                 List<OpenPaaSUser> removedUsers) {
-        return new CalendarSharingUpdate(new Share(
-            List.of(
-                AddSharee.read(mailto(viewer)),
-                AddSharee.readWrite(mailto(member)),
-                AddSharee.administration(mailto(manager))),
-            removedUsers.stream()
-                .map(user -> new RemoveSharee(mailto(user)))
-                .toList()));
+        CalendarSharingUpdate.Builder builder = CalendarSharingUpdate.builder()
+            .grant(viewer.username(), DavRight.READ)
+            .grant(member.username(), DavRight.READ_WRITE)
+            .grant(manager.username(), DavRight.ADMINISTRATION);
+        removedUsers.forEach(user -> builder.revoke(user.username()));
+        return builder.build();
     }
 
     private String mailto(OpenPaaSUser user) {
