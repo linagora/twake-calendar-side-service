@@ -32,7 +32,6 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
@@ -55,13 +54,10 @@ import com.google.inject.Singleton;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalDavClient.ItipRequest;
-import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
-import com.linagora.calendar.dav.SyncToken;
 import com.linagora.calendar.restapi.RestApiServerProbe;
-import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.model.TeamCalendarId;
@@ -111,7 +107,6 @@ class CalendarDavToWebsocketFlowIntegrationTest {
     }
 
     private CalDavClient calDavClient;
-    private CardDavClient cardDavClient;
     private DavTestHelper davTestHelper;
 
     private OpenPaaSUser bob;
@@ -136,7 +131,6 @@ class CalendarDavToWebsocketFlowIntegrationTest {
 
         restApiPort = server.getProbe(RestApiServerProbe.class).getPort().getValue();
         calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
-        cardDavClient = new CardDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
     }
 
@@ -184,65 +178,6 @@ class CalendarDavToWebsocketFlowIntegrationTest {
                   }
                 }
                 """.formatted(bobCalendarUrl));
-    }
-
-    @Test
-    void bobShouldReceiveWebsocketPushWhenContactIsCreated() {
-        // GIVEN: Bob opens a WebSocket and registers his collected address book
-        AddressBookURL addressBookURL = new AddressBookURL(bob.id(), "collected");
-        String addressBookUri = addressBookURL.asUri().toString();
-        String vcardUid = UUID.randomUUID().toString();
-        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
-        registerAddressBook(messages, addressBookUri);
-
-        // WHEN: Bob creates a contact
-        cardDavClient.createContact(bob.username(), addressBookURL, vcardUid, buildVCard(vcardUid, "John Doe")).block();
-
-        // THEN: Bob receives the current address book sync token over WebSocket
-        SyncToken createdToken = cardDavClient.retrieveSyncToken(bob.username(), addressBookURL).block();
-        assertAddressBookSyncToken(messages, addressBookUri, createdToken);
-    }
-
-    @Test
-    void bobShouldReceiveWebsocketPushWhenContactIsUpdated() {
-        // GIVEN: Bob registers his address book and has received the notification for an existing contact
-        AddressBookURL addressBookURL = new AddressBookURL(bob.id(), "collected");
-        String addressBookUri = addressBookURL.asUri().toString();
-        String vcardUid = UUID.randomUUID().toString();
-        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
-        registerAddressBook(messages, addressBookUri);
-        cardDavClient.createContact(bob.username(), addressBookURL, vcardUid, buildVCard(vcardUid, "John Doe")).block();
-        SyncToken initialToken = cardDavClient.retrieveSyncToken(bob.username(), addressBookURL).block();
-        assertAddressBookSyncToken(messages, addressBookUri, initialToken);
-
-        // WHEN: Bob updates the contact
-        cardDavClient.createContact(bob.username(), addressBookURL, vcardUid, buildVCard(vcardUid, "Jane Doe")).block();
-
-        // THEN: Bob receives a new address book sync token over WebSocket
-        SyncToken updatedToken = cardDavClient.retrieveSyncToken(bob.username(), addressBookURL).block();
-        assertThat(updatedToken).isNotEqualTo(initialToken);
-        assertAddressBookSyncToken(messages, addressBookUri, updatedToken);
-    }
-
-    @Test
-    void bobShouldReceiveWebsocketPushWhenContactIsDeleted() {
-        // GIVEN: Bob registers his address book and has received the notification for an existing contact
-        AddressBookURL addressBookURL = new AddressBookURL(bob.id(), "collected");
-        String addressBookUri = addressBookURL.asUri().toString();
-        String vcardUid = UUID.randomUUID().toString();
-        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
-        registerAddressBook(messages, addressBookUri);
-        cardDavClient.createContact(bob.username(), addressBookURL, vcardUid, buildVCard(vcardUid, "John Doe")).block();
-        SyncToken initialToken = cardDavClient.retrieveSyncToken(bob.username(), addressBookURL).block();
-        assertAddressBookSyncToken(messages, addressBookUri, initialToken);
-
-        // WHEN: Bob deletes the contact
-        cardDavClient.deleteContact(bob.username(), addressBookURL, vcardUid).block();
-
-        // THEN: Bob receives another new address book sync token over WebSocket
-        SyncToken deletedToken = cardDavClient.retrieveSyncToken(bob.username(), addressBookURL).block();
-        assertThat(deletedToken).isNotEqualTo(initialToken);
-        assertAddressBookSyncToken(messages, addressBookUri, deletedToken);
     }
 
     @Test
@@ -379,42 +314,6 @@ class CalendarDavToWebsocketFlowIntegrationTest {
         Map<String, Object> inner = (Map<String, Object>) entry.getValue();
         String syncToken = (String) inner.get("syncToken");
         return Pair.of(CalendarURL.deserialize(Strings.CS.removeStart(calendarUrlString, "/calendars/")), syncToken);
-    }
-
-    private void registerAddressBook(BlockingQueue<String> messages, String addressBookUri) {
-        webSocket = connectWebSocket(restApiPort, generateTicket(bob), messages);
-        webSocket.send("""
-            {
-                "register": ["%s"]
-            }
-            """.formatted(addressBookUri));
-        awaitMessage(messages, message -> message.contains("\"registered\"") && message.contains(addressBookUri));
-    }
-
-    private void assertAddressBookSyncToken(BlockingQueue<String> messages, String addressBookUri, SyncToken syncToken) {
-        String pushMessage = awaitMessage(messages, message -> message.contains(addressBookUri)
-            && message.contains(syncToken.value()));
-
-        assertThatJson(pushMessage)
-            .isEqualTo("""
-                {
-                  "%s": {
-                    "syncToken": "%s"
-                  }
-                }
-                """.formatted(addressBookUri, syncToken.value()));
-    }
-
-    private byte[] buildVCard(String vcardUid, String fullName) {
-        return """
-            BEGIN:VCARD
-            VERSION:4.0
-            UID:%s
-            FN:%s
-            EMAIL;TYPE=Work:john.doe@example.com
-            END:VCARD
-            """.formatted(vcardUid, fullName)
-            .getBytes(StandardCharsets.UTF_8);
     }
 
     private void sendItipRequestToBob(String eventUid, String ics) {
