@@ -39,6 +39,17 @@
             <groupId>${project.groupId}</groupId>
             <artifactId>calendar-storage-api</artifactId>
         </dependency>
+        <!--
+            For the Meet application client only (com.linagora.calendar.amqp.meet).
+            That client speaks HTTP, not AMQP, and sits in this module because the
+            host-delegation consumer was its first caller; a follow-up could pull
+            the two classes into a module of their own rather than have the REST
+            layer depend on the messaging one.
+        -->
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>calendar-amqp</artifactId>
+        </dependency>
         <dependency>
             <groupId>${project.groupId}</groupId>
             <artifactId>calendar-dav</artifactId>
