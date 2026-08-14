@@ -167,6 +167,28 @@ public class CardDavClientTest {
     }
 
     @Test
+    void retrieveSyncTokenShouldReturnCurrentAddressBookToken() {
+        AddressBookURL addressBookURL = new AddressBookURL(user.id(), "contacts");
+
+        SyncToken initialToken = testee.retrieveSyncToken(user.username(), addressBookURL).block();
+
+        String vcardUid = UUID.randomUUID().toString();
+        String vcard = """
+            BEGIN:VCARD
+            VERSION:3.0
+            UID:%s
+            FN:John Doe
+            END:VCARD
+            """.formatted(vcardUid);
+        testee.createContact(user.username(), addressBookURL, vcardUid, vcard.getBytes(StandardCharsets.UTF_8)).block();
+
+        SyncToken updatedToken = testee.retrieveSyncToken(user.username(), addressBookURL).block();
+
+        assertThat(initialToken.value()).isNotBlank();
+        assertThat(updatedToken).isNotEqualTo(initialToken);
+    }
+
+    @Test
     void createDomainMembersAddressBookShouldNotThrowWhenCreatedFirstTime() {
         OpenPaaSDomain domain = mongoDBOpenPaaSDomainDAO.add(Domain.of("new-domain" + UUID.randomUUID() + ".tld")).block();
         assertThatCode(() -> testee.createDomainMembersAddressBook(domain.id()).block())

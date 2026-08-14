@@ -35,6 +35,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.dav.dto.SubscribedCalendarRequest;
+import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -456,6 +457,38 @@ public class DavTestHelper extends DavClient {
                     .switchIfEmpty(Mono.just(StringUtils.EMPTY))
                     .flatMap(error -> Mono.error(new DavClientException("""
                         Unexpected status code: %d when fetching events by sync-token '%s'
+                        %s
+                        """.formatted(response.status().code(), syncToken, error))));
+            });
+    }
+
+    public Mono<String> fetchContactsBySyncToken(OpenPaaSUser user, AddressBookURL addressBookURL, String syncToken) {
+        String body = """
+            <?xml version="1.0" encoding="utf-8" ?>
+            <d:sync-collection xmlns:d="DAV:">
+              <d:sync-token>{syncToken}</d:sync-token>
+              <d:sync-level>1</d:sync-level>
+              <d:prop>
+                <d:getetag/>
+              </d:prop>
+            </d:sync-collection>
+            """.replace("{syncToken}", syncToken);
+
+        return httpClientWithImpersonation(user.username())
+            .headers(headers -> headers
+                .add(HttpHeaderNames.ACCEPT, "application/xml")
+                .add(HttpHeaderNames.CONTENT_TYPE, "application/xml"))
+            .request(HttpMethod.valueOf("REPORT"))
+            .uri(addressBookURL.asUri().toASCIIString())
+            .send(Mono.just(Unpooled.wrappedBuffer(body.getBytes(StandardCharsets.UTF_8))))
+            .responseSingle((response, content) -> {
+                if (response.status().code() == HttpStatus.SC_MULTI_STATUS) {
+                    return content.asString(StandardCharsets.UTF_8);
+                }
+                return content.asString(StandardCharsets.UTF_8)
+                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .flatMap(error -> Mono.error(new DavClientException("""
+                        Unexpected status code: %d when fetching contacts by sync-token '%s'
                         %s
                         """.formatted(response.status().code(), syncToken, error))));
             });

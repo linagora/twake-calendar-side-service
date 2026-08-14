@@ -99,6 +99,7 @@ public class CardDavClient extends DavClient {
 
     public static final String LIMIT_PARAM = "limit";
 
+    private static final String SYNC_TOKEN_PROPERTY = "dav:syncToken";
     private static final Logger LOGGER = LoggerFactory.getLogger(CardDavClient.class);
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -530,4 +531,38 @@ public class CardDavClient extends DavClient {
                             .formatted(uriRequest, body), response.status().code())));
             });
     }
+
+    public Mono<SyncToken> retrieveSyncToken(Username username, AddressBookURL addressBookURL) {
+        String uri = addressBookURL.asUri().toASCIIString() + "?" + LIMIT_PARAM + "=0";
+
+        return httpClientWithImpersonation(username)
+            .headers(headers -> headers.add(HttpHeaderNames.ACCEPT, HttpHeaderValues.APPLICATION_JSON))
+            .get()
+            .uri(uri)
+            .responseSingle((response, content) -> content.asString(StandardCharsets.UTF_8)
+                .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                .flatMap(body -> switch (response.status().code()) {
+                    case HttpStatus.SC_OK -> Mono.fromCallable(() -> parseSyncToken(body))
+                        .flatMap(Mono::justOrEmpty)
+                        .switchIfEmpty(Mono.error(() -> new DavClientException("Missing '%s' when retrieving sync token for: %s".formatted(SYNC_TOKEN_PROPERTY, uri))));
+                    case HttpStatus.SC_NOT_FOUND -> Mono.error(new AddressBookNotFoundException(addressBookURL));
+                    case HttpStatus.SC_FORBIDDEN -> {
+                        LOGGER.debug("User {} has no rights to read address book {}", username.asString(), uri);
+                        yield Mono.empty();
+                    }
+                    default -> Mono.error(new DavClientException("""
+                        Unexpected response when retrieving sync-token for '%s'
+                        Status: %d
+                        Body: %s
+                        """.formatted(uri, response.status().code(), body)));
+                }));
+    }
+
+    private Optional<SyncToken> parseSyncToken(String body) throws JsonProcessingException {
+        return Optional.ofNullable(OBJECT_MAPPER.readTree(body))
+            .map(node -> node.path(SYNC_TOKEN_PROPERTY).asText(null))
+            .filter(StringUtils::isNotEmpty)
+            .map(SyncToken::new);
+    }
+
 }

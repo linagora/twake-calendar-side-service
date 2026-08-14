@@ -55,6 +55,7 @@ public class CalendarAmqpModule extends AbstractModule {
         bind(EventResourceConsumer.class).in(Scopes.SINGLETON);
         bind(EventCalendarConsumer.class).in(Scopes.SINGLETON);
         bind(EventCalendarNotificationConsumer.class).in(Scopes.SINGLETON);
+        bind(EventContactNotificationConsumer.class).in(Scopes.SINGLETON);
         bind(CalendarDelegatedNotificationConsumer.class).in(Scopes.SINGLETON);
         bind(CalendarListNotificationConsumer.class).in(Scopes.SINGLETON);
         bind(CalendarListNotificationHandler.class).in(Scopes.SINGLETON);
@@ -179,6 +180,18 @@ public class CalendarAmqpModule extends AbstractModule {
     public InitializationOperation initializeEventCalendarNotificationConsumer(EventCalendarNotificationConsumer instance) {
         return InitilizationOperationBuilder
             .forClass(EventCalendarNotificationConsumer.class)
+            .init(instance::init);
+    }
+
+    @ProvidesIntoSet
+    SimpleConnectionPool.ReconnectionHandler provideEventContactNotificationReconnectionHandler(EventContactNotificationReconnectionHandler reconnectionHandler) {
+        return reconnectionHandler;
+    }
+
+    @ProvidesIntoSet
+    public InitializationOperation initializeEventContactNotificationConsumer(EventContactNotificationConsumer instance) {
+        return InitilizationOperationBuilder
+            .forClass(EventContactNotificationConsumer.class)
             .init(instance::init);
     }
 

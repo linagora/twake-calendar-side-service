@@ -36,7 +36,10 @@ import com.fasterxml.jackson.annotation.JsonAnyGetter;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.dav.SyncToken;
+import com.linagora.calendar.storage.AddressBookChangeEvent;
+import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.CalendarChangeEvent;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.EventBusAlarmEvent;
@@ -50,6 +53,7 @@ import reactor.core.publisher.Sinks;
 
 public record WebSocketNotificationListener(Sinks.Many<WebsocketRoute.WebsocketMessage> outbound,
                                             CalDavClient calDavClient,
+                                            CardDavClient cardDavClient,
                                             Username username) implements EventListener.ReactiveEventListener {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(WebSocketNotificationListener.class);
@@ -58,6 +62,7 @@ public record WebSocketNotificationListener(Sinks.Many<WebsocketRoute.WebsocketM
     @Override
     public boolean isHandling(Event event) {
         return event instanceof CalendarChangeEvent
+            || event instanceof AddressBookChangeEvent
             || event instanceof ImportEvent
             || event instanceof EventBusAlarmEvent;
     }
@@ -66,6 +71,9 @@ public record WebSocketNotificationListener(Sinks.Many<WebsocketRoute.WebsocketM
     public Publisher<Void> reactiveEvent(Event event) {
         if (event instanceof CalendarChangeEvent calendarChangeEvent) {
             return handleCalendarChange(calendarChangeEvent);
+        }
+        if (event instanceof AddressBookChangeEvent addressBookChangeEvent) {
+            return handleAddressBookChange(addressBookChangeEvent);
         }
         if (event instanceof ImportEvent importEvent) {
             return handleImportChange(importEvent);
@@ -88,6 +96,13 @@ public record WebSocketNotificationListener(Sinks.Many<WebsocketRoute.WebsocketM
             .then();
     }
 
+    private Mono<Void> handleAddressBookChange(AddressBookChangeEvent event) {
+        AddressBookURL addressBookURL = event.addressBookURL();
+        return retrieveAddressBookSyncToken(username, addressBookURL)
+            .doOnNext(syncToken -> emit(new AddressBookChangeMessage(addressBookURL, syncToken)))
+            .then();
+    }
+
     private Mono<Void> handleImportChange(ImportEvent event) {
         return Mono.fromRunnable(() -> emit(ImportWebSocketMessage.from(event)))
             .then();
@@ -97,6 +112,12 @@ public record WebSocketNotificationListener(Sinks.Many<WebsocketRoute.WebsocketM
         return calDavClient.retrieveSyncToken(username, calendarURL)
             .doOnError(error -> LOGGER.error("Failed to retrieve SyncToken for {}", calendarURL.asUri(), error))
             .onErrorResume(error -> Mono.empty());
+    }
+
+    private Mono<SyncToken> retrieveAddressBookSyncToken(Username username, AddressBookURL addressBookURL) {
+        return cardDavClient.retrieveSyncToken(username, addressBookURL)
+            .doOnError(error -> LOGGER.error("Failed to retrieve SyncToken for {}", addressBookURL.asUri(), error))
+            .onErrorResume(_ -> Mono.empty());
     }
 
     private void emit(WebsocketRoute.WebsocketMessage message) {
@@ -160,6 +181,22 @@ public record WebSocketNotificationListener(Sinks.Many<WebsocketRoute.WebsocketM
         public String serialize() throws JsonProcessingException {
             return MAPPER.writeValueAsString(
                 MAPPER.createObjectNode().set(calendarURL.asUri().toASCIIString(),
+                    MAPPER.createObjectNode().put(SYNC_TOKEN_PROPERTY, syncToken.value())));
+        }
+    }
+
+    public record AddressBookChangeMessage(AddressBookURL addressBookURL,
+                                           SyncToken syncToken) implements WebsocketRoute.WebsocketMessage {
+        static final String SYNC_TOKEN_PROPERTY = "syncToken";
+
+        @Override
+        public WebSocketFrame asWebSocketFrame() throws JsonProcessingException {
+            return new TextWebSocketFrame(serialize());
+        }
+
+        public String serialize() throws JsonProcessingException {
+            return MAPPER.writeValueAsString(
+                MAPPER.createObjectNode().set(addressBookURL.asUri().toASCIIString(),
                     MAPPER.createObjectNode().put(SYNC_TOKEN_PROPERTY, syncToken.value())));
         }
     }
