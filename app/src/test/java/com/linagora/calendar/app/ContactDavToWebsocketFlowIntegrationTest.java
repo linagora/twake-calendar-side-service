@@ -26,6 +26,7 @@ import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
@@ -47,6 +48,7 @@ import com.google.inject.Singleton;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.dav.DavModuleTestHelper;
+import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.dav.SyncToken;
 import com.linagora.calendar.restapi.RestApiServerProbe;
@@ -61,6 +63,7 @@ import okhttp3.WebSocket;
 class ContactDavToWebsocketFlowIntegrationTest {
 
     private static final String PASSWORD = "secret";
+    private static final String SABRE_SYNC_TOKEN_PREFIX = "http://sabre.io/ns/sync/";
 
     @RegisterExtension
     @Order(1)
@@ -94,6 +97,7 @@ class ContactDavToWebsocketFlowIntegrationTest {
     }
 
     private CardDavClient cardDavClient;
+    private DavTestHelper davTestHelper;
     private OpenPaaSUser bob;
     private int restApiPort;
     private WebSocket webSocket;
@@ -108,6 +112,7 @@ class ContactDavToWebsocketFlowIntegrationTest {
 
         restApiPort = server.getProbe(RestApiServerProbe.class).getPort().getValue();
         cardDavClient = new CardDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
+        davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
     }
 
     @AfterEach
@@ -176,6 +181,70 @@ class ContactDavToWebsocketFlowIntegrationTest {
         assertAddressBookSyncToken(messages, addressBookUri, deletedToken);
     }
 
+    @Test
+    void contactCreateReportShouldMatchWebsocketSyncToken() {
+        // GIVEN: Bob registers his address book and remembers its current sync token
+        AddressBookURL addressBookURL = new AddressBookURL(bob.id(), "collected");
+        String addressBookUri = addressBookURL.asUri().toString();
+        String vcardUid = UUID.randomUUID().toString();
+        SyncToken initialToken = cardDavClient.retrieveSyncToken(bob.username(), addressBookURL).block();
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        registerAddressBook(messages, addressBookUri);
+
+        // WHEN: Bob creates a contact and receives a new sync token over WebSocket
+        cardDavClient.createContact(bob.username(), addressBookURL, vcardUid, buildVCard(vcardUid, "John Doe")).block();
+        SyncToken createdToken = awaitAddressBookSyncToken(messages, addressBookUri);
+        String reportResponse = davTestHelper.fetchContactsBySyncToken(bob, addressBookURL, SABRE_SYNC_TOKEN_PREFIX + initialToken.value()).block();
+
+        // THEN: Reporting from the previous token returns the created contact and the WebSocket token
+        assertThat(reportResponse)
+            .contains(addressBookUri + "/" + vcardUid + ".vcf", SABRE_SYNC_TOKEN_PREFIX + createdToken.value());
+    }
+
+    @Test
+    void contactUpdateReportShouldMatchWebsocketSyncToken() {
+        // GIVEN: Bob registers his address book and has received the token for an existing contact
+        AddressBookURL addressBookURL = new AddressBookURL(bob.id(), "collected");
+        String addressBookUri = addressBookURL.asUri().toString();
+        String vcardUid = UUID.randomUUID().toString();
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        registerAddressBook(messages, addressBookUri);
+        cardDavClient.createContact(bob.username(), addressBookURL, vcardUid, buildVCard(vcardUid, "John Doe")).block();
+        SyncToken initialToken = awaitAddressBookSyncToken(messages, addressBookUri);
+
+        // WHEN: Bob updates the contact and reports changes from the previous token
+        cardDavClient.createContact(bob.username(), addressBookURL, vcardUid, buildVCard(vcardUid, "Jane Doe")).block();
+        SyncToken updatedToken = awaitAddressBookSyncToken(messages, addressBookUri);
+        String reportResponse = davTestHelper.fetchContactsBySyncToken(
+            bob, addressBookURL, SABRE_SYNC_TOKEN_PREFIX + initialToken.value()).block();
+
+        // THEN: The report returns the updated contact and the WebSocket token
+        assertThat(reportResponse)
+            .contains(addressBookUri + "/" + vcardUid + ".vcf", SABRE_SYNC_TOKEN_PREFIX + updatedToken.value());
+    }
+
+    @Test
+    void contactDeleteReportShouldMatchWebsocketSyncToken() {
+        // GIVEN: Bob registers his address book and has received the token for an existing contact
+        AddressBookURL addressBookURL = new AddressBookURL(bob.id(), "collected");
+        String addressBookUri = addressBookURL.asUri().toString();
+        String vcardUid = UUID.randomUUID().toString();
+        BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+        registerAddressBook(messages, addressBookUri);
+        cardDavClient.createContact(bob.username(), addressBookURL, vcardUid, buildVCard(vcardUid, "John Doe")).block();
+        SyncToken initialToken = awaitAddressBookSyncToken(messages, addressBookUri);
+
+        // WHEN: Bob deletes the contact and reports changes from the previous token
+        cardDavClient.deleteContact(bob.username(), addressBookURL, vcardUid).block();
+        SyncToken deletedToken = awaitAddressBookSyncToken(messages, addressBookUri);
+        String reportResponse = davTestHelper.fetchContactsBySyncToken(
+            bob, addressBookURL, SABRE_SYNC_TOKEN_PREFIX + initialToken.value()).block();
+
+        // THEN: The report returns the deleted contact and the WebSocket token
+        assertThat(reportResponse)
+            .contains(addressBookUri + "/" + vcardUid + ".vcf", SABRE_SYNC_TOKEN_PREFIX + deletedToken.value());
+    }
+
     private void registerAddressBook(BlockingQueue<String> messages, String addressBookUri) {
         webSocket = connectWebSocket(restApiPort, generateTicket(bob), messages);
         webSocket.send("""
@@ -212,6 +281,24 @@ class ContactDavToWebsocketFlowIntegrationTest {
                 """
                 .replace("{addressBookUri}", addressBookUri)
                 .replace("{syncToken}", syncToken.value()));
+    }
+
+    private SyncToken awaitAddressBookSyncToken(BlockingQueue<String> messages, String addressBookUri) {
+        String pushMessage = awaitMessage(messages, message -> message.contains(addressBookUri)
+            && message.contains("\"syncToken\""));
+
+        assertThatJson(pushMessage)
+            .isEqualTo("""
+                {
+                  "{addressBookUri}": {
+                    "syncToken": "${json-unit.ignore}"
+                  }
+                }
+                """.replace("{addressBookUri}", addressBookUri));
+
+        Map<String, Object> root = JsonPath.from(pushMessage).get();
+        Map<String, Object> addressBookChange = (Map<String, Object>) root.get(addressBookUri);
+        return new SyncToken((String) addressBookChange.get("syncToken"));
     }
 
     private byte[] buildVCard(String vcardUid, String fullName) {
