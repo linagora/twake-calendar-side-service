@@ -50,7 +50,7 @@ public class BookingLinkExtraAttendeeUtil {
 
     private static final String FIELD_AND = "and";
     private static final String FIELD_PARTICIPANT = "participant";
-    private static final String FIELD_NAME = "name";
+    private static final String FIELD_DISPLAY_NAME = "displayName";
     private static final String FIELD_EMAIL = "email";
 
     public static ExtraAttendees parse(Optional<JsonNode> raw) {
@@ -91,8 +91,8 @@ public class BookingLinkExtraAttendeeUtil {
     }
 
     /**
-     * Public view of the tree: the very same shape, each participant leaf being replaced by the name and the
-     * email of the user it points to, internal ids being of no use to a bookee. Leaves whose user is not part of
+     * Public view of the tree: the very same shape, each participant leaf being replaced by the display name
+     * and the email of the user it points to, internal ids being of no use to a bookee. Leaves whose user is not part of
      * {@code users} - deleted since the booking link was created - are dropped, as are the nodes left empty.
      */
     public static Optional<JsonNode> serializeWithUserDetails(ExtraAttendees extraAttendees, List<OpenPaaSUser> users) {
@@ -123,7 +123,7 @@ public class BookingLinkExtraAttendeeUtil {
         return switch (node) {
             case ExtraAttendeeNode.Participant participant -> Optional.ofNullable(users.get(participant.id()))
                 .map(user -> JsonNodeFactory.instance.objectNode()
-                    .put(FIELD_NAME, user.fullName())
+                    .put(FIELD_DISPLAY_NAME, user.fullName())
                     .put(FIELD_EMAIL, user.username().asString()));
             case ExtraAttendeeNode.And and -> {
                 ArrayNode children = JsonNodeFactory.instance.arrayNode();

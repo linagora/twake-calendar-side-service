@@ -169,13 +169,13 @@ class BookingLinkExtraAttendeeUtilTest {
     }
 
     @Test
-    void serializeWithUserDetailsShouldWriteAndOfNamesAndEmails() {
+    void serializeWithUserDetailsShouldWriteAndOfDisplayNamesAndEmails() {
         assertThatJson(BookingLinkExtraAttendeeUtil.serializeWithUserDetails(ExtraAttendees.of(ATTENDEE_1, ATTENDEE_2),
                 List.of(JOHN, PETER))
             .map(JsonNode::toString)
             .orElseThrow())
             .isEqualTo("""
-                {"and": [{"name": "John Wick", "email": "john@abc.com"}, {"name": "Peter Parker", "email": "peter@abc.com"}]}""");
+                {"and": [{"displayName": "John Wick", "email": "john@abc.com"}, {"displayName": "Peter Parker", "email": "peter@abc.com"}]}""");
     }
 
     @Test
@@ -185,7 +185,7 @@ class BookingLinkExtraAttendeeUtilTest {
             .map(JsonNode::toString)
             .orElseThrow())
             .isEqualTo("""
-                {"and": [{"name": "Peter Parker", "email": "peter@abc.com"}, {"name": "John Wick", "email": "john@abc.com"}]}""");
+                {"and": [{"displayName": "Peter Parker", "email": "peter@abc.com"}, {"displayName": "John Wick", "email": "john@abc.com"}]}""");
     }
 
     @Test
@@ -195,7 +195,7 @@ class BookingLinkExtraAttendeeUtilTest {
             .map(JsonNode::toString)
             .orElseThrow())
             .isEqualTo("""
-                {"and": [{"name": "John Wick", "email": "john@abc.com"}]}""");
+                {"and": [{"displayName": "John Wick", "email": "john@abc.com"}]}""");
     }
 
     @Test

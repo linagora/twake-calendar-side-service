@@ -469,8 +469,8 @@ Content-Type: application/json
   "alarm": [ { "period": "-PT10M", "action": "EMAIL" } ],
   "extraAttendees": {
     "and": [
-      { "name": "John Wick", "email": "john@open-paas.org" },
-      { "name": "Peter Parker", "email": "peter@open-paas.org" }
+      { "displayName": "John Wick", "email": "john@open-paas.org" },
+      { "displayName": "Peter Parker", "email": "peter@open-paas.org" }
     ]
   },
   "owner": {
@@ -495,7 +495,7 @@ The response also exposes the booking link `autoAccept` flag, along with the opt
 
 The public slots response also exposes the booking link `location`, `resources` (each with a `name` and, when the resource has an icon, a `photoUrl`), `visibility`, `transparency` and `alarm`, each omitted when not set.
 
-`extraAttendees` holds the same tree as the authenticated representation, see [Extra attendees](#extra-attendees), each leaf carrying the `name` and the `email` of the attendee rather than their id.
+`extraAttendees` holds the same tree as the authenticated representation, see [Extra attendees](#extra-attendees), each leaf carrying the `displayName` and the `email` of the attendee rather than their id.
 
 **Error responses**
 

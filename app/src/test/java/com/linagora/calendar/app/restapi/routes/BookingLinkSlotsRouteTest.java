@@ -716,13 +716,13 @@ class BookingLinkSlotsRouteTest {
             .asString();
 
         assertThatJson(response)
-            .describedAs("should expose the extra attendees by name and email rather than by id")
+            .describedAs("should expose the extra attendees by display name and email rather than by id")
             .inPath("$.extraAttendees")
             .isEqualTo("""
                 {
                   "and": [
-                    { "name": "%s", "email": "%s" },
-                    { "name": "%s", "email": "%s" }
+                    { "displayName": "%s", "email": "%s" },
+                    { "displayName": "%s", "email": "%s" }
                   ]
                 }
                 """.formatted(john.fullName(), john.username().asString(),
