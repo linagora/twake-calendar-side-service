@@ -155,7 +155,7 @@ public class BookingLinkSlotsRoute extends PublicRoute {
                                   ZoneId zoneId,
                                   BookingLinkSlotsService.SlotsResult result) {
         return Mono.fromCallable(() -> BookingLinkSlotsResponse.of(result.bookingLink(), result.owner(), queryStart, queryEnd,
-                result.slots(), zoneId, toResourceDTOs(result.resources())).jsonAsBytes())
+                result.slots(), zoneId, toResourceDTOs(result.resources()), result.extraAttendees()).jsonAsBytes())
             .flatMap(bytes -> response.status(HttpResponseStatus.OK)
                 .headers(JSON_HEADER)
                 .sendByteArray(Mono.just(bytes))

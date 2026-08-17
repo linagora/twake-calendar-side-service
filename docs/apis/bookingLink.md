@@ -467,6 +467,12 @@ Content-Type: application/json
   "visibility": "PRIVATE",
   "transparency": "TRANSPARENT",
   "alarm": [ { "period": "-PT10M", "action": "EMAIL" } ],
+  "extraAttendees": {
+    "and": [
+      { "name": "John Wick", "email": "john@open-paas.org" },
+      { "name": "Peter Parker", "email": "peter@open-paas.org" }
+    ]
+  },
   "owner": {
     "displayName": "John Doe",
     "email": "john.doe@open-paas.org"
@@ -488,6 +494,8 @@ The `owner` object exposes the public booking link owner `displayName` and `emai
 The response also exposes the booking link `autoAccept` flag, along with the optional `name` and `description` (omitted when not set) and the `color` (always present, defaulting to `#6B4ECC`), so the bookee can access that information too.
 
 The public slots response also exposes the booking link `location`, `resources` (each with a `name` and, when the resource has an icon, a `photoUrl`), `visibility`, `transparency` and `alarm`, each omitted when not set.
+
+`extraAttendees` holds the same tree as the authenticated representation, see [Extra attendees](#extra-attendees), each leaf carrying the `name` and the `email` of the attendee rather than their id.
 
 **Error responses**
 

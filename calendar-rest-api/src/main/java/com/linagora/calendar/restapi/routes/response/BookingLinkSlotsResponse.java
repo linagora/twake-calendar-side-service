@@ -29,6 +29,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
@@ -37,12 +38,14 @@ import com.linagora.calendar.api.booking.AvailableSlotsCalculator.AvailabilitySl
 import com.linagora.calendar.restapi.routes.dto.BookingLinkAlarmDTO;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLink;
+import com.linagora.calendar.storage.booking.BookingLinkExtraAttendeeUtil;
 import com.linagora.calendar.storage.booking.EventTransparency;
 import com.linagora.calendar.storage.booking.EventVisibility;
 
 @JsonInclude(JsonInclude.Include.NON_ABSENT)
 public record BookingLinkSlotsResponse(long durationMinutes,
                                        boolean autoAccept,
+                                       Optional<JsonNode> extraAttendees,
                                        Optional<String> name,
                                        Optional<String> description,
                                        String color,
@@ -60,9 +63,11 @@ public record BookingLinkSlotsResponse(long durationMinutes,
         .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
     public static BookingLinkSlotsResponse of(BookingLink bookingLink, OpenPaaSUser owner, Instant from, Instant to,
-                                              Set<AvailabilitySlot> slots, ZoneId zoneId, List<ResourceDTO> resourceList) {
+                                              Set<AvailabilitySlot> slots, ZoneId zoneId, List<ResourceDTO> resourceList,
+                                              List<OpenPaaSUser> extraAttendees) {
         return new BookingLinkSlotsResponse(bookingLink.duration().toMinutes(),
             bookingLink.autoAccept(),
+            BookingLinkExtraAttendeeUtil.serializeWithUserDetails(bookingLink.extraAttendees(), extraAttendees),
             bookingLink.name(),
             bookingLink.description(),
             bookingLink.colorOrDefault(),
