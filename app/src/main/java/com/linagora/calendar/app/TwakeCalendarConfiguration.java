@@ -39,6 +39,7 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                                          CalendarEventSearchChoice calendarEventSearchChoice,
                                          boolean redisEnabled,
                                          boolean twpSettingEnabled,
+                                         boolean commonContactsEnabled,
                                          boolean saasSubscriptionEnabled) implements Configuration {
 
     public static final boolean ENABLED = true;
@@ -51,6 +52,7 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
         private Optional<AutoCompleteChoice> autoCompleteChoice;
         private Optional<Boolean> redisEnabled;
         private Optional<Boolean> twpSettingEnabled;
+        private Optional<Boolean> commonContactsEnabled;
         private Optional<Boolean> saasSubscriptionEnabled;
         private Optional<CalendarEventSearchChoice> calendarEventSearchChoice;
 
@@ -62,6 +64,7 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
             autoCompleteChoice = Optional.empty();
             redisEnabled = Optional.empty();
             twpSettingEnabled = Optional.empty();
+            commonContactsEnabled = Optional.empty();
             saasSubscriptionEnabled = Optional.empty();
             calendarEventSearchChoice = Optional.empty();
         }
@@ -98,6 +101,11 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
 
         public Builder enableTwpSetting() {
             twpSettingEnabled = Optional.of(true);
+            return this;
+        }
+
+        public Builder enableCommonContacts() {
+            commonContactsEnabled = Optional.of(true);
             return this;
         }
 
@@ -169,6 +177,11 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                 return configuration.getBoolean("twp.settings.enabled", !ENABLED);
             }));
 
+            boolean commonContactsEnabledValue = this.commonContactsEnabled.orElseGet(Throwing.supplier(() -> {
+                var configuration = propertiesProvider.getConfiguration("configuration");
+                return configuration.getBoolean("common.contacts.enabled", !ENABLED);
+            }));
+
             boolean saasSubscriptionEnabledValue = this.saasSubscriptionEnabled.orElseGet(Throwing.supplier(() -> {
                 var configuration = propertiesProvider.getConfiguration("configuration");
                 return configuration.getBoolean("saas.subscription.enabled", !ENABLED);
@@ -176,6 +189,10 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
 
             if (!twpSettingEnabledValue && saasSubscriptionEnabledValue) {
                 throw new IllegalArgumentException("TWP Setting must be enabled when SaaS Subscription is enabled");
+            }
+
+            if (!twpSettingEnabledValue && commonContactsEnabledValue) {
+                throw new IllegalArgumentException("TWP Setting must be enabled when Common Contacts is enabled");
             }
 
             CalendarEventSearchChoice calendarEventSearchChoice = this.calendarEventSearchChoice.orElseGet(Throwing.supplier(() -> {
@@ -196,6 +213,7 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                 calendarEventSearchChoice,
                 redisEnabledValue,
                 twpSettingEnabledValue,
+                commonContactsEnabledValue,
                 saasSubscriptionEnabledValue);
         }
 
