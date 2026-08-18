@@ -22,9 +22,11 @@ import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.stream.IntStream;
 
+import org.apache.james.core.Username;
 import org.apache.james.util.ValuePatch;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -34,12 +36,15 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.NullNode;
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.OpenPaaSUser;
 
 class BookingLinkExtraAttendeeUtilTest {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final OpenPaaSId ATTENDEE_1 = new OpenPaaSId("659387b9d486dc0046aeffb1");
     private static final OpenPaaSId ATTENDEE_2 = new OpenPaaSId("659387b9d486dc0046aeffb2");
+    private static final OpenPaaSUser JOHN = new OpenPaaSUser(Username.of("john@abc.com"), ATTENDEE_1, "John", "Wick");
+    private static final OpenPaaSUser PETER = new OpenPaaSUser(Username.of("peter@abc.com"), ATTENDEE_2, "Peter", "Parker");
 
     private static JsonNode json(String value) {
         try {
@@ -161,5 +166,47 @@ class BookingLinkExtraAttendeeUtilTest {
         assertThatJson(BookingLinkExtraAttendeeUtil.serialize(ExtraAttendees.NONE).toString())
             .isEqualTo("""
                 {"and": []}""");
+    }
+
+    @Test
+    void serializeWithUserDetailsShouldWriteAndOfDisplayNamesAndEmails() {
+        assertThatJson(BookingLinkExtraAttendeeUtil.serializeWithUserDetails(ExtraAttendees.of(ATTENDEE_1, ATTENDEE_2),
+                List.of(JOHN, PETER))
+            .map(JsonNode::toString)
+            .orElseThrow())
+            .isEqualTo("""
+                {"and": [{"displayName": "John Wick", "email": "john@abc.com"}, {"displayName": "Peter Parker", "email": "peter@abc.com"}]}""");
+    }
+
+    @Test
+    void serializeWithUserDetailsShouldKeepTheOrderOfTheTree() {
+        assertThatJson(BookingLinkExtraAttendeeUtil.serializeWithUserDetails(ExtraAttendees.of(ATTENDEE_2, ATTENDEE_1),
+                List.of(JOHN, PETER))
+            .map(JsonNode::toString)
+            .orElseThrow())
+            .isEqualTo("""
+                {"and": [{"displayName": "Peter Parker", "email": "peter@abc.com"}, {"displayName": "John Wick", "email": "john@abc.com"}]}""");
+    }
+
+    @Test
+    void serializeWithUserDetailsShouldSkipAttendeesWithoutUser() {
+        assertThatJson(BookingLinkExtraAttendeeUtil.serializeWithUserDetails(ExtraAttendees.of(ATTENDEE_1, ATTENDEE_2),
+                List.of(JOHN))
+            .map(JsonNode::toString)
+            .orElseThrow())
+            .isEqualTo("""
+                {"and": [{"displayName": "John Wick", "email": "john@abc.com"}]}""");
+    }
+
+    @Test
+    void serializeWithUserDetailsShouldReturnEmptyWhenNoAttendeeHasAUser() {
+        assertThat(BookingLinkExtraAttendeeUtil.serializeWithUserDetails(ExtraAttendees.of(ATTENDEE_1, ATTENDEE_2), List.of()))
+            .isEmpty();
+    }
+
+    @Test
+    void serializeWithUserDetailsShouldReturnEmptyWhenNone() {
+        assertThat(BookingLinkExtraAttendeeUtil.serializeWithUserDetails(ExtraAttendees.NONE, List.of()))
+            .isEmpty();
     }
 }

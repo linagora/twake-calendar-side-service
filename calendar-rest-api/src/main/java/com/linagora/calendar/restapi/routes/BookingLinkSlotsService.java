@@ -56,7 +56,8 @@ import reactor.core.publisher.Mono;
 public class BookingLinkSlotsService {
     private static final Logger LOGGER = LoggerFactory.getLogger(BookingLinkSlotsService.class);
 
-    public record SlotsResult(BookingLink bookingLink, OpenPaaSUser owner, Set<AvailabilitySlot> slots, List<Resource> resources) {
+    public record SlotsResult(BookingLink bookingLink, OpenPaaSUser owner, Set<AvailabilitySlot> slots,
+                              List<Resource> resources, List<OpenPaaSUser> extraAttendees) {
     }
 
     private final Clock clock;
@@ -64,16 +65,19 @@ public class BookingLinkSlotsService {
     private final OpenPaaSUserDAO openPaaSUserDAO;
     private final CalDavClient calDavClient;
     private final BookingLinkResourceResolver resourceResolver;
+    private final BookingLinkExtraAttendeeResolver extraAttendeeResolver;
     private final AvailableSlotsCalculator availableSlotsCalculator;
 
     @Inject
     public BookingLinkSlotsService(Clock clock, BookingLinkDAO bookingLinkDAO, OpenPaaSUserDAO openPaaSUserDAO,
-                                   CalDavClient calDavClient, BookingLinkResourceResolver resourceResolver) {
+                                   CalDavClient calDavClient, BookingLinkResourceResolver resourceResolver,
+                                   BookingLinkExtraAttendeeResolver extraAttendeeResolver) {
         this.clock = clock;
         this.bookingLinkDAO = bookingLinkDAO;
         this.openPaaSUserDAO = openPaaSUserDAO;
         this.calDavClient = calDavClient;
         this.resourceResolver = resourceResolver;
+        this.extraAttendeeResolver = extraAttendeeResolver;
         this.availableSlotsCalculator = new AvailableSlotsCalculator.Default();
     }
 
@@ -82,12 +86,18 @@ public class BookingLinkSlotsService {
             .flatMap(bookingLink -> Mono.zip(
                     retrieveOwner(bookingLink),
                     computeSlots(bookingLink, from, to),
-                    resolveResources(bookingLink))
-                .map(tuple -> new SlotsResult(bookingLink, tuple.getT1(), tuple.getT2(), tuple.getT3())));
+                    resolveResources(bookingLink),
+                    resolveExtraAttendees(bookingLink))
+                .map(tuple -> new SlotsResult(bookingLink, tuple.getT1(), tuple.getT2(), tuple.getT3(), tuple.getT4())));
     }
 
     private Mono<List<Resource>> resolveResources(BookingLink bookingLink) {
         return resourceResolver.resolveNames(bookingLink.resources())
+            .collectList();
+    }
+
+    private Mono<List<OpenPaaSUser>> resolveExtraAttendees(BookingLink bookingLink) {
+        return extraAttendeeResolver.resolveExisting(bookingLink.extraAttendees().participants())
             .collectList();
     }
 

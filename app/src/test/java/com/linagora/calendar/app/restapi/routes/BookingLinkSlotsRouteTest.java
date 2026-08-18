@@ -690,6 +690,69 @@ class BookingLinkSlotsRouteTest {
     }
 
     @Test
+    void shouldExposeExtraAttendees(TwakeCalendarGuiceServer server) {
+        OpenPaaSUser john = createTestUser(server, "john");
+        OpenPaaSUser peter = createTestUser(server, "peter");
+
+        BookingLinkInsertRequest insertRequest = BookingLinkInsertRequest.builder()
+            .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+            .eventDuration(DURATION_30_MINUTES)
+            .availabilityRules(AVAILABILITY_RULE)
+            .extraAttendees(ExtraAttendees.of(john.id(), peter.id()))
+            .build();
+        BookingLink inserted = server.getProbe(BookingLinkProbe.class).insert(openPaaSUser.username(), insertRequest);
+
+        String response = given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .queryParam("from", FROM_20360126)
+            .queryParam("to", TO_20360127)
+        .when()
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(JSON)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response)
+            .describedAs("should expose the extra attendees by display name and email rather than by id")
+            .inPath("$.extraAttendees")
+            .isEqualTo("""
+                {
+                  "and": [
+                    { "displayName": "%s", "email": "%s" },
+                    { "displayName": "%s", "email": "%s" }
+                  ]
+                }
+                """.formatted(john.fullName(), john.username().asString(),
+                peter.fullName(), peter.username().asString()));
+    }
+
+    @Test
+    void shouldSkipDeletedExtraAttendee(TwakeCalendarGuiceServer server) {
+        BookingLinkInsertRequest insertRequest = BookingLinkInsertRequest.builder()
+            .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+            .eventDuration(DURATION_30_MINUTES)
+            .availabilityRules(AVAILABILITY_RULE)
+            .extraAttendees(ExtraAttendees.of(new OpenPaaSId("659387b9d486dc0046aeffff")))
+            .build();
+        BookingLink inserted = server.getProbe(BookingLinkProbe.class).insert(openPaaSUser.username(), insertRequest);
+
+        String response = given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .queryParam("from", FROM_20360126)
+            .queryParam("to", TO_20360127)
+        .when()
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract().body().asString();
+
+        assertThat(response).doesNotContain("\"extraAttendees\"");
+    }
+
+    @Test
     void shouldExcludeOnlyCurrentUserBusyIntervalsFromReturnedSlots(TwakeCalendarGuiceServer server) {
         // Given: two users, where both have busy events at the same period,
         // but only user A owns the booking link being queried.
