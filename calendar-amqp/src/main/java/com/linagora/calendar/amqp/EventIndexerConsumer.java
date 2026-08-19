@@ -178,7 +178,7 @@ public class EventIndexerConsumer implements Closeable, Startable {
     };
 
     private Disposable doConsumeCalendarEventMessages(Queue queue, CalendarEventHandler calendarEventHandler) {
-        return RabbitMQConsumerSupport.consumeOnBoundedElastic(receiverProvider, queue.queueName,
+        return RabbitMQConsumerSupport.consume(receiverProvider, queue.queueName,
             RabbitMQConsumerSupport.ackNackWrapper(
                 ackDelivery -> messageConsume(ackDelivery, calendarEventHandler.deserialize(ackDelivery.getBody()), calendarEventHandler),
                 LOGGER, "Failed to consume calendar event message"));

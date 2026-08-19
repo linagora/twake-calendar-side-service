@@ -132,7 +132,7 @@ public class EventEmailConsumer implements Closeable, Startable {
     }
 
     private Disposable doConsumeCalendarEventMessages() {
-        return RabbitMQConsumerSupport.consumeOnBoundedElastic(receiverProvider, QUEUE_NAME,
+        return RabbitMQConsumerSupport.consume(receiverProvider, QUEUE_NAME,
             RabbitMQConsumerSupport.ackNackWrapper(this::consumeMessage,
                 LOGGER, "Error when consume calendar mail event message"));
     }

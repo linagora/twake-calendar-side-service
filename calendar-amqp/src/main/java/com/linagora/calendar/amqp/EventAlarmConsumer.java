@@ -153,7 +153,7 @@ public class EventAlarmConsumer implements Closeable, Startable {
     }
 
     private Disposable doConsumeCalendarEventMessages(Queue queue, PersistAlarmHandler persistAlarmHandler) {
-        return RabbitMQConsumerSupport.consumeOnBoundedElastic(receiverProvider, queue.queueName,
+        return RabbitMQConsumerSupport.consume(receiverProvider, queue.queueName,
             RabbitMQConsumerSupport.ackNackWrapper(delivery -> messageConsume(delivery, persistAlarmHandler),
                 LOGGER, "Error when consume calendar alarm event"));
     }

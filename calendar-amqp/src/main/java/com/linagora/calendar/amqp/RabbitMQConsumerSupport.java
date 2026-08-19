@@ -99,24 +99,15 @@ public final class RabbitMQConsumerSupport {
     }
 
     /**
-     * Consumes on the calling scheduler, matching consumers that never switch off the RabbitMQ
-     * receiver's own thread.
+     * Always consumes on {@link Schedulers#boundedElastic()}: {@code ackDelivery.ack()}/{@code nack()}
+     * go through the reactor-rabbitmq {@link Receiver}, which is not guaranteed non-blocking, so
+     * running the pipeline on the RabbitMQ client's own thread risks stalling delivery.
      */
     public static Disposable consume(ReceiverProvider receiverProvider, String queueName, Function<AcknowledgableDelivery, Mono<?>> handler) {
-        return delivery(receiverProvider, queueName)
-            .flatMap(handler, DEFAULT_CONCURRENCY)
-            .subscribe();
+        return consume(receiverProvider, queueName, DEFAULT_CONCURRENCY, handler);
     }
 
-    /**
-     * Consumes on {@link Schedulers#boundedElastic()}, matching consumers whose handler performs
-     * blocking or long-running work.
-     */
-    public static Disposable consumeOnBoundedElastic(ReceiverProvider receiverProvider, String queueName, Function<AcknowledgableDelivery, Mono<?>> handler) {
-        return consumeOnBoundedElastic(receiverProvider, queueName, DEFAULT_CONCURRENCY, handler);
-    }
-
-    public static Disposable consumeOnBoundedElastic(ReceiverProvider receiverProvider, String queueName, int prefetchCount, Function<AcknowledgableDelivery, Mono<?>> handler) {
+    public static Disposable consume(ReceiverProvider receiverProvider, String queueName, int prefetchCount, Function<AcknowledgableDelivery, Mono<?>> handler) {
         return delivery(receiverProvider, queueName, prefetchCount)
             .flatMap(handler, DEFAULT_CONCURRENCY)
             .subscribeOn(Schedulers.boundedElastic())

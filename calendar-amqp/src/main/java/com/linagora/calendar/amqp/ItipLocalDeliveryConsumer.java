@@ -140,7 +140,7 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     }
 
     private Disposable doConsumeMessages() {
-        return RabbitMQConsumerSupport.consumeOnBoundedElastic(receiverProvider, QUEUE_NAME, prefetchCount,
+        return RabbitMQConsumerSupport.consume(receiverProvider, QUEUE_NAME, prefetchCount,
             RabbitMQConsumerSupport.ackNackWrapper(this::consumeMessage,
                 LOGGER, "Error consuming calendar:itip:localDelivery message"));
     }

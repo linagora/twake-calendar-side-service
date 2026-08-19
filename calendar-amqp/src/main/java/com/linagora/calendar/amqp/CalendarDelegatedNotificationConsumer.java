@@ -104,7 +104,7 @@ public class CalendarDelegatedNotificationConsumer implements Closeable, Startab
     }
 
     private Disposable doConsume() {
-        return RabbitMQConsumerSupport.consumeOnBoundedElastic(receiverProvider, QUEUE,
+        return RabbitMQConsumerSupport.consume(receiverProvider, QUEUE,
             RabbitMQConsumerSupport.ackNackWrapper(this::handleMessage,
                 LOGGER, "Error when consuming calendar delegated notification event"));
     }
