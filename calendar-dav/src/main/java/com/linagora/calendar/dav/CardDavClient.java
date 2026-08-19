@@ -121,7 +121,7 @@ public class CardDavClient extends DavClient {
         super(config, technicalTokenService);
     }
 
-    public Mono<Void> createContact(Username username, AddressBookURL addressBookURL, String vcardUid, byte[] vcardPayload) {
+    public Mono<Void> upsertContact(Username username, AddressBookURL addressBookURL, String vcardUid, byte[] vcardPayload) {
         HttpClient authenticatedClient = httpClientWithImpersonation(username);
         return upsertContact(authenticatedClient, addressBookURL, vcardUid, vcardPayload);
     }
