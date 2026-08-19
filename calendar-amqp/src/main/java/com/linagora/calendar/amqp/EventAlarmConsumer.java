@@ -19,15 +19,11 @@
 package com.linagora.calendar.amqp;
 
 import static com.linagora.calendar.amqp.CalendarAmqpModule.INJECT_KEY_DAV;
-import static org.apache.james.backends.rabbitmq.Constants.DURABLE;
-import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
-import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.io.Closeable;
 import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.Map;
-import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import jakarta.annotation.PreDestroy;
@@ -47,25 +43,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.github.fge.lambdas.Throwing;
 import com.google.inject.name.Named;
-import com.rabbitmq.client.BuiltinExchangeType;
 
 import reactor.core.Disposable;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 import reactor.rabbitmq.AcknowledgableDelivery;
-import reactor.rabbitmq.BindingSpecification;
-import reactor.rabbitmq.ConsumeOptions;
-import reactor.rabbitmq.ExchangeSpecification;
-import reactor.rabbitmq.QueueSpecification;
-import reactor.rabbitmq.Receiver;
 import reactor.rabbitmq.Sender;
 
 public class EventAlarmConsumer implements Closeable, Startable {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module())
         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     private static final Logger LOGGER = LoggerFactory.getLogger(EventAlarmConsumer.class);
-    private static final boolean REQUEUE_ON_NACK = true;
 
     public enum Queue {
         CREATE("calendar:event:alarm:created", "tcalendar:event:alarm:created", "tcalendar:event:alarm:created:dead-letter"),
@@ -98,7 +85,8 @@ public class EventAlarmConsumer implements Closeable, Startable {
     }
 
     private final ReceiverProvider receiverProvider;
-    private final Consumer<Queue> declareExchangeAndQueue;
+    private final Sender sender;
+    private final Supplier<QueueArguments.Builder> queueArgumentSupplier;
     private final Map<Queue, Disposable> consumeDisposableMap;
     private final EventAlarmHandler eventAlarmHandler;
 
@@ -109,41 +97,16 @@ public class EventAlarmConsumer implements Closeable, Startable {
                               EventAlarmHandler eventAlarmHandler) {
         this.receiverProvider = channelPool::createReceiver;
         this.eventAlarmHandler = eventAlarmHandler;
-
-        Sender sender = channelPool.getSender();
-        this.declareExchangeAndQueue = eventQueue -> Flux.concat(
-                sender.declareExchange(ExchangeSpecification.exchange(eventQueue.exchangeName)
-                    .durable(DURABLE).type(BuiltinExchangeType.FANOUT.getType())),
-                sender.declareExchange(ExchangeSpecification.exchange(eventQueue.deadLetter)
-                    .durable(DURABLE).type(BuiltinExchangeType.FANOUT.getType())),
-                sender.declareQueue(QueueSpecification
-                    .queue(eventQueue.deadLetter)
-                    .durable(DURABLE)
-                    .arguments(queueArgumentSupplier.get()
-                        .build())),
-                sender.bind(BindingSpecification.binding()
-                    .exchange(eventQueue.deadLetter)
-                    .queue(eventQueue.deadLetter)
-                    .routingKey(EMPTY_ROUTING_KEY)),
-                sender.declareQueue(QueueSpecification
-                    .queue(eventQueue.queueName)
-                    .durable(DURABLE)
-                    .arguments(queueArgumentSupplier.get()
-                        .deadLetter(eventQueue.deadLetter)
-                        .build())),
-                sender.bind(BindingSpecification.binding()
-                    .exchange(eventQueue.exchangeName)
-                    .queue(eventQueue.queueName)
-                    .routingKey(EMPTY_ROUTING_KEY)))
-            .then()
-            .block();
-
+        this.sender = channelPool.getSender();
+        this.queueArgumentSupplier = queueArgumentSupplier;
         this.consumeDisposableMap = new EnumMap<>(Queue.class);
     }
 
     public void init() {
         Arrays.stream(Queue.values())
-            .forEach(declareExchangeAndQueue);
+            .forEach(queue -> RabbitMQConsumerSupport.declareBlocking(sender,
+                QueueDeclaration.of(queue.exchangeName(), queue.queueName(), queue.deadLetter()),
+                queueArgumentSupplier));
 
         start();
     }
@@ -190,28 +153,14 @@ public class EventAlarmConsumer implements Closeable, Startable {
     }
 
     private Disposable doConsumeCalendarEventMessages(Queue queue, PersistAlarmHandler persistAlarmHandler) {
-        return delivery(queue.queueName)
-            .flatMap(delivery -> messageConsume(delivery,
-                persistAlarmHandler), DEFAULT_CONCURRENCY)
-            .subscribeOn(Schedulers.boundedElastic())
-            .subscribe();
-    }
-
-    public Flux<AcknowledgableDelivery> delivery(String queue) {
-        return Flux.using(receiverProvider::createReceiver,
-            receiver -> receiver.consumeManualAck(queue, new ConsumeOptions().qos(DEFAULT_CONCURRENCY)),
-            Receiver::close);
+        return RabbitMQConsumerSupport.consumeOnBoundedElastic(receiverProvider, queue.queueName,
+            RabbitMQConsumerSupport.ackNackWrapper(delivery -> messageConsume(delivery, persistAlarmHandler),
+                LOGGER, "Error when consume calendar alarm event"));
     }
 
     private Mono<?> messageConsume(AcknowledgableDelivery ackDelivery, PersistAlarmHandler persistAlarmHandler) {
         return Mono.fromSupplier(Throwing.supplier(() -> OBJECT_MAPPER.readValue(ackDelivery.getBody(), CalendarAlarmMessageDTO.class)))
             .flatMap(message -> persistAlarmHandler.handle(message)
-                .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed calendar alarm event successfully {} '{}'", message.getClass().getSimpleName(), message.eventPath()))))
-            .doOnSuccess(result -> ackDelivery.ack())
-            .onErrorResume(error -> {
-                LOGGER.error("Error when consume calendar alarm event", error);
-                ackDelivery.nack(!REQUEUE_ON_NACK);
-                return Mono.empty();
-            });
+                .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed calendar alarm event successfully {} '{}'", message.getClass().getSimpleName(), message.eventPath()))));
     }
 }

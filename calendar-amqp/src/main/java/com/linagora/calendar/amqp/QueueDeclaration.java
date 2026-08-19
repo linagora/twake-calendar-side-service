@@ -18,31 +18,19 @@
 
 package com.linagora.calendar.amqp;
 
-import jakarta.inject.Inject;
+import java.util.List;
 
-import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
-import org.reactivestreams.Publisher;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import com.rabbitmq.client.Connection;
-
-import reactor.core.publisher.Mono;
-
-public class EventCalendarReconnectionHandler implements SimpleConnectionPool.ReconnectionHandler {
-    private static final Logger LOGGER = LoggerFactory.getLogger(EventCalendarReconnectionHandler.class);
-
-    private final EventCalendarConsumer eventCalendarConsumer;
-
-    @Inject
-    public EventCalendarReconnectionHandler(EventCalendarConsumer eventCalendarConsumer) {
-        this.eventCalendarConsumer = eventCalendarConsumer;
+/**
+ * Names an AMQP topology consumed by {@link RabbitMQConsumerSupport}: the exchange(s) publishing
+ * messages, the durable queue bound to them, and the dead-letter queue (also used as the
+ * dead-letter exchange name) that the queue forwards rejected messages to.
+ */
+public record QueueDeclaration(List<String> exchangeNames, String queueName, String deadLetter) {
+    public static QueueDeclaration of(String exchangeName, String queueName, String deadLetter) {
+        return new QueueDeclaration(List.of(exchangeName), queueName, deadLetter);
     }
 
-    @Override
-    public Publisher<Void> handleReconnection(Connection connection) {
-        return Mono.fromRunnable(eventCalendarConsumer::restart)
-            .doOnError(error -> LOGGER.error("Error while handle reconnection for disconnector consumer", error))
-            .then();
+    public static QueueDeclaration of(List<String> exchangeNames, String queueName, String deadLetter) {
+        return new QueueDeclaration(exchangeNames, queueName, deadLetter);
     }
 }

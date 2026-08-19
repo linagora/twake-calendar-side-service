@@ -19,9 +19,6 @@
 package com.linagora.calendar.amqp;
 
 import static com.linagora.calendar.amqp.CalendarAmqpModule.INJECT_KEY_DAV;
-import static org.apache.james.backends.rabbitmq.Constants.DURABLE;
-import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
-import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.io.Closeable;
 import java.nio.charset.StandardCharsets;
@@ -48,26 +45,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.fge.lambdas.Throwing;
 import com.google.inject.name.Named;
 import com.linagora.calendar.storage.CalendarURL;
-import com.rabbitmq.client.BuiltinExchangeType;
 
 import reactor.core.Disposable;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 import reactor.rabbitmq.AcknowledgableDelivery;
-import reactor.rabbitmq.BindingSpecification;
-import reactor.rabbitmq.ConsumeOptions;
-import reactor.rabbitmq.ExchangeSpecification;
-import reactor.rabbitmq.QueueSpecification;
-import reactor.rabbitmq.Receiver;
-import reactor.rabbitmq.Sender;
 
 public class CalendarDelegatedNotificationConsumer implements Closeable, Startable {
 
     public static final String QUEUE = "tcalendar:calendar:delegated:created";
     public static final String DEAD_LETTER_QUEUE = QUEUE + ":dead-letter";
     private static final String EXCHANGE = "calendar:calendar:created";
-    private static final boolean REQUEUE_ON_NACK = true;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
@@ -92,7 +79,9 @@ public class CalendarDelegatedNotificationConsumer implements Closeable, Startab
     }
 
     public void init() {
-        declareExchangeAndQueue(channelPool.getSender(), queueArgumentSupplier);
+        RabbitMQConsumerSupport.declareBlocking(channelPool.getSender(),
+            QueueDeclaration.of(EXCHANGE, QUEUE, DEAD_LETTER_QUEUE),
+            queueArgumentSupplier);
         start();
     }
 
@@ -114,56 +103,16 @@ public class CalendarDelegatedNotificationConsumer implements Closeable, Startab
         start();
     }
 
-    private void declareExchangeAndQueue(Sender sender, Supplier<QueueArguments.Builder> queueArguments) {
-        Flux.concat(sender.declareExchange(ExchangeSpecification.exchange(EXCHANGE)
-                    .durable(DURABLE)
-                    .type(BuiltinExchangeType.FANOUT.getType())),
-                sender.declareExchange(ExchangeSpecification.exchange(DEAD_LETTER_QUEUE)
-                    .durable(DURABLE)
-                    .type(BuiltinExchangeType.FANOUT.getType())),
-                sender.declareQueue(QueueSpecification.queue(DEAD_LETTER_QUEUE)
-                    .durable(DURABLE)
-                    .arguments(queueArguments.get().build())),
-                sender.bind(BindingSpecification.binding()
-                    .exchange(DEAD_LETTER_QUEUE)
-                    .queue(DEAD_LETTER_QUEUE)
-                    .routingKey(EMPTY_ROUTING_KEY)),
-                sender.declareQueue(QueueSpecification.queue(QUEUE)
-                    .durable(DURABLE)
-                    .arguments(queueArguments.get()
-                        .deadLetter(DEAD_LETTER_QUEUE)
-                        .build())),
-                sender.bind(BindingSpecification.binding()
-                    .exchange(EXCHANGE)
-                    .queue(QUEUE)
-                    .routingKey(EMPTY_ROUTING_KEY)))
-            .then()
-            .block();
-    }
-
     private Disposable doConsume() {
-        return consumeFromQueue(QUEUE)
-            .flatMap(this::handleMessage, DEFAULT_CONCURRENCY)
-            .subscribeOn(Schedulers.boundedElastic())
-            .subscribe();
-    }
-
-    private Flux<AcknowledgableDelivery> consumeFromQueue(String queue) {
-        return Flux.using(receiverProvider::createReceiver,
-            receiver -> receiver.consumeManualAck(queue, new ConsumeOptions().qos(DEFAULT_CONCURRENCY)),
-            Receiver::close);
+        return RabbitMQConsumerSupport.consumeOnBoundedElastic(receiverProvider, QUEUE,
+            RabbitMQConsumerSupport.ackNackWrapper(this::handleMessage,
+                LOGGER, "Error when consuming calendar delegated notification event"));
     }
 
     private Mono<Void> handleMessage(AcknowledgableDelivery acknowledgableDelivery) {
         return Mono.fromSupplier(Throwing.supplier(() -> CalendarDelegatedCreatedMessage.deserialize(acknowledgableDelivery.getBody())))
             .filter(hasDelegationRightKey())
-            .flatMap(notificationHandler::handle)
-            .doOnSuccess(any -> acknowledgableDelivery.ack())
-            .onErrorResume(error -> {
-                LOGGER.error("Error when consuming calendar delegated notification event", error);
-                acknowledgableDelivery.nack(!REQUEUE_ON_NACK);
-                return Mono.empty();
-            });
+            .flatMap(notificationHandler::handle);
     }
 
     private Predicate<CalendarDelegatedCreatedMessage> hasDelegationRightKey() {

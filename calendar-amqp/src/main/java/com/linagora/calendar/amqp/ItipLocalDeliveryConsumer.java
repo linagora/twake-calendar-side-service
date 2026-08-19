@@ -19,9 +19,7 @@
 package com.linagora.calendar.amqp;
 
 import static com.linagora.calendar.amqp.CalendarAmqpModule.INJECT_KEY_DAV;
-import static org.apache.james.backends.rabbitmq.Constants.DURABLE;
 import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
-import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.io.Closeable;
 import java.net.URI;
@@ -39,7 +37,6 @@ import jakarta.inject.Inject;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import org.apache.james.backends.rabbitmq.QueueArguments;
-import org.apache.james.backends.rabbitmq.QueueArguments.Builder;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.ReceiverProvider;
 import org.apache.james.core.MailAddress;
@@ -58,7 +55,6 @@ import com.linagora.calendar.dav.dto.CalendarReportJsonResponse;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.event.EventParseUtils;
-import com.rabbitmq.client.BuiltinExchangeType;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
@@ -68,14 +64,8 @@ import net.fortuna.ical4j.model.property.Method;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 import reactor.rabbitmq.AcknowledgableDelivery;
-import reactor.rabbitmq.BindingSpecification;
-import reactor.rabbitmq.ConsumeOptions;
-import reactor.rabbitmq.ExchangeSpecification;
 import reactor.rabbitmq.OutboundMessage;
-import reactor.rabbitmq.QueueSpecification;
-import reactor.rabbitmq.Receiver;
 import reactor.rabbitmq.Sender;
 
 /**
@@ -98,7 +88,6 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     private static final boolean SKIP = true;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ItipLocalDeliveryConsumer.class);
-    private static final boolean REQUEUE_ON_NACK = true;
     private final ReceiverProvider receiverProvider;
     private final Sender sender;
     private final CalDavClient calDavClient;
@@ -125,38 +114,14 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
             bytes -> new OutboundMessage(EventEmailConsumer.EXCHANGE_NAME, EMPTY_ROUTING_KEY, bytes), clock);
     }
 
-    private static void declareExchangeAndQueue(Supplier<Builder> queueArgumentSupplier, Sender sender) {
-        Flux.concat(
-                sender.declareExchange(ExchangeSpecification.exchange(EXCHANGE_NAME)
-                    .durable(DURABLE).type(BuiltinExchangeType.FANOUT.getType())),
-                sender.declareExchange(ExchangeSpecification.exchange(DEAD_LETTER_QUEUE)
-                    .durable(DURABLE).type(BuiltinExchangeType.FANOUT.getType())),
-                sender.declareQueue(QueueSpecification
-                    .queue(DEAD_LETTER_QUEUE)
-                    .durable(DURABLE)
-                    .arguments(queueArgumentSupplier.get().build())),
-                sender.bind(BindingSpecification.binding()
-                    .exchange(DEAD_LETTER_QUEUE)
-                    .queue(DEAD_LETTER_QUEUE)
-                    .routingKey(EMPTY_ROUTING_KEY)),
-                sender.declareQueue(QueueSpecification
-                    .queue(QUEUE_NAME)
-                    .durable(DURABLE)
-                    .arguments(queueArgumentSupplier.get().deadLetter(DEAD_LETTER_QUEUE).build())),
-                sender.bind(BindingSpecification.binding()
-                    .exchange(EXCHANGE_NAME)
-                    .queue(QUEUE_NAME)
-                    .routingKey(EMPTY_ROUTING_KEY)))
-            .then()
-            .block();
-    }
-
     public void init() {
         start();
     }
 
     public void start() {
-        declareExchangeAndQueue(queueArgumentSupplier, sender);
+        RabbitMQConsumerSupport.declareBlocking(sender,
+            QueueDeclaration.of(EXCHANGE_NAME, QUEUE_NAME, DEAD_LETTER_QUEUE),
+            queueArgumentSupplier);
         consumeDisposable = doConsumeMessages();
     }
 
@@ -174,17 +139,10 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
         }
     }
 
-    public Flux<AcknowledgableDelivery> delivery(String queue) {
-        return Flux.using(receiverProvider::createReceiver,
-            receiver -> receiver.consumeManualAck(queue, new ConsumeOptions().qos(prefetchCount)),
-            Receiver::close);
-    }
-
     private Disposable doConsumeMessages() {
-        return delivery(QUEUE_NAME)
-            .flatMap(this::consumeMessage, DEFAULT_CONCURRENCY)
-            .subscribeOn(Schedulers.boundedElastic())
-            .subscribe();
+        return RabbitMQConsumerSupport.consumeOnBoundedElastic(receiverProvider, QUEUE_NAME, prefetchCount,
+            RabbitMQConsumerSupport.ackNackWrapper(this::consumeMessage,
+                LOGGER, "Error consuming calendar:itip:localDelivery message"));
     }
 
     private Mono<Void> consumeMessage(AcknowledgableDelivery ackDelivery) {
@@ -194,12 +152,6 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
                     return fanOut(dto);
                 }
                 return processSingleRecipient(dto);
-            })
-            .doOnSuccess(ignored -> ackDelivery.ack())
-            .onErrorResume(error -> {
-                LOGGER.error("Error consuming calendar:itip:localDelivery message", error);
-                ackDelivery.nack(!REQUEUE_ON_NACK);
-                return Mono.empty();
             });
     }
 

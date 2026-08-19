@@ -18,8 +18,6 @@
 
 package com.linagora.calendar.amqp;
 
-import jakarta.inject.Inject;
-
 import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
 import org.reactivestreams.Publisher;
 import org.slf4j.Logger;
@@ -29,21 +27,25 @@ import com.rabbitmq.client.Connection;
 
 import reactor.core.publisher.Mono;
 
-public class EventEmailReconnectionHandler implements SimpleConnectionPool.ReconnectionHandler {
-    private static final Logger LOGGER = LoggerFactory.getLogger(EventEmailReconnectionHandler.class);
+/**
+ * Restarts a single consumer's declare/consume topology after a RabbitMQ reconnection. Every
+ * consumer in this package needed its own copy of this logic; this class replaces all of them.
+ */
+public class ConsumerReconnectionHandler implements SimpleConnectionPool.ReconnectionHandler {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ConsumerReconnectionHandler.class);
 
-    private final EventEmailConsumer eventEmailConsumer;
+    private final Runnable restart;
+    private final String errorMessage;
 
-    @Inject
-    public EventEmailReconnectionHandler(EventEmailConsumer eventEmailConsumer) {
-        this.eventEmailConsumer = eventEmailConsumer;
+    public ConsumerReconnectionHandler(Runnable restart, String errorMessage) {
+        this.restart = restart;
+        this.errorMessage = errorMessage;
     }
 
     @Override
     public Publisher<Void> handleReconnection(Connection connection) {
-        return Mono.fromRunnable(eventEmailConsumer::restart)
-            .doOnError(error -> LOGGER.error("Error while handle reconnection for email consumer", error))
+        return Mono.fromRunnable(restart)
+            .doOnError(error -> LOGGER.error(errorMessage, error))
             .then();
     }
 }
-

@@ -18,10 +18,6 @@
 
 package com.linagora.calendar.amqp;
 
-import static org.apache.james.backends.rabbitmq.Constants.DURABLE;
-import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
-import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
-
 import java.io.Closeable;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -47,22 +43,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableMap;
-import com.rabbitmq.client.BuiltinExchangeType;
 
 import reactor.core.Disposable;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.rabbitmq.AcknowledgableDelivery;
-import reactor.rabbitmq.BindingSpecification;
-import reactor.rabbitmq.ConsumeOptions;
-import reactor.rabbitmq.ExchangeSpecification;
-import reactor.rabbitmq.QueueSpecification;
-import reactor.rabbitmq.Receiver;
-import reactor.rabbitmq.Sender;
 
 public class EventAuditLogConsumer implements Closeable, Startable {
     private static final Logger LOGGER = LoggerFactory.getLogger(EventAuditLogConsumer.class);
-    private static final boolean REQUEUE_ON_NACK = true;
     static final String AUDIT_QUEUE = "tcalendar:audit";
     static final String AUDIT_DEAD_LETTER = "tcalendar:audit:dead-letter";
 
@@ -124,38 +111,9 @@ public class EventAuditLogConsumer implements Closeable, Startable {
     public EventAuditLogConsumer(ReactorRabbitMQChannelPool channelPool,
                                  @Named(CalendarAmqpModule.INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier) {
         this.receiverProvider = channelPool::createReceiver;
-        declareInfrastructure(channelPool.getSender(), queueArgumentSupplier);
-    }
-
-    private void declareInfrastructure(Sender sender, Supplier<QueueArguments.Builder> queueArgumentSupplier) {
-        Flux.concat(
-                sender.declareExchange(ExchangeSpecification.exchange(AUDIT_DEAD_LETTER)
-                    .durable(DURABLE).type(BuiltinExchangeType.FANOUT.getType())),
-                sender.declareQueue(QueueSpecification
-                    .queue(AUDIT_DEAD_LETTER)
-                    .durable(DURABLE)
-                    .arguments(queueArgumentSupplier.get()
-                        .build())),
-                sender.bind(BindingSpecification.binding()
-                    .exchange(AUDIT_DEAD_LETTER)
-                    .queue(AUDIT_DEAD_LETTER)
-                    .routingKey(EMPTY_ROUTING_KEY)),
-                sender.declareQueue(QueueSpecification
-                    .queue(AUDIT_QUEUE)
-                    .durable(DURABLE)
-                    .arguments(queueArgumentSupplier.get()
-                        .deadLetter(AUDIT_DEAD_LETTER)
-                        .build())))
-            .thenMany(Flux.fromIterable(EXCHANGES)
-                .flatMap(exchange -> Flux.concat(
-                    sender.declareExchange(ExchangeSpecification.exchange(exchange)
-                        .durable(DURABLE).type(BuiltinExchangeType.FANOUT.getType())),
-                    sender.bind(BindingSpecification.binding()
-                        .exchange(exchange)
-                        .queue(AUDIT_QUEUE)
-                        .routingKey(EMPTY_ROUTING_KEY)))))
-            .then()
-            .block();
+        RabbitMQConsumerSupport.declareBlocking(channelPool.getSender(),
+            QueueDeclaration.of(EXCHANGES, AUDIT_QUEUE, AUDIT_DEAD_LETTER),
+            queueArgumentSupplier);
     }
 
     public void init() {
@@ -181,15 +139,9 @@ public class EventAuditLogConsumer implements Closeable, Startable {
     }
 
     private Disposable doConsume() {
-        return delivery()
-            .flatMap(this::messageConsume, DEFAULT_CONCURRENCY)
-            .subscribe();
-    }
-
-    public Flux<AcknowledgableDelivery> delivery() {
-        return Flux.using(receiverProvider::createReceiver,
-            receiver -> receiver.consumeManualAck(AUDIT_QUEUE, new ConsumeOptions().qos(DEFAULT_CONCURRENCY)),
-            Receiver::close);
+        return RabbitMQConsumerSupport.consume(receiverProvider, AUDIT_QUEUE,
+            RabbitMQConsumerSupport.ackNackWrapper(this::messageConsume,
+                LOGGER, "Error when consume audit log event"));
     }
 
     private Mono<?> messageConsume(AcknowledgableDelivery ackDelivery) {
@@ -207,13 +159,7 @@ public class EventAuditLogConsumer implements Closeable, Startable {
                     })
                     .log(formatMessage(body, exchangeName));
             })
-            .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed audit log event")))
-            .doOnSuccess(result -> ackDelivery.ack())
-            .onErrorResume(error -> {
-                LOGGER.error("Error when consume audit log event", error);
-                ackDelivery.nack(!REQUEUE_ON_NACK);
-                return Mono.empty();
-            });
+            .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed audit log event")));
     }
 
     static String formatMessage(String body, String exchangeName) {

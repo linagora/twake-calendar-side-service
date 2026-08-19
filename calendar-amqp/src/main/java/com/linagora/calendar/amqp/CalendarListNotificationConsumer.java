@@ -19,9 +19,6 @@
 package com.linagora.calendar.amqp;
 
 import static com.linagora.calendar.amqp.CalendarAmqpModule.INJECT_KEY_DAV;
-import static org.apache.james.backends.rabbitmq.Constants.DURABLE;
-import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
-import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -50,23 +47,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.inject.name.Named;
 import com.linagora.calendar.storage.CalendarURL;
-import com.rabbitmq.client.BuiltinExchangeType;
 
 import reactor.core.Disposable;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.rabbitmq.AcknowledgableDelivery;
-import reactor.rabbitmq.BindingSpecification;
-import reactor.rabbitmq.ConsumeOptions;
-import reactor.rabbitmq.ExchangeSpecification;
-import reactor.rabbitmq.QueueSpecification;
-import reactor.rabbitmq.Receiver;
-import reactor.rabbitmq.Sender;
 
 public class CalendarListNotificationConsumer implements Closeable, Startable {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CalendarListNotificationConsumer.class);
-    private static final boolean REQUEUE_ON_NACK = true;
 
     public static final String QUEUE_NAME = "tcalendar:calendar:list:notification";
     public static final String DEAD_LETTER_QUEUE = QUEUE_NAME + ":dead-letter";
@@ -115,40 +103,10 @@ public class CalendarListNotificationConsumer implements Closeable, Startable {
         this.notificationHandler = notificationHandler;
     }
 
-    private static void declareExchangeAndQueue(Supplier<QueueArguments.Builder> queueArgumentSupplier, Sender sender) {
-        Flux.concat(Flux.fromIterable(EXCHANGES)
-                    .flatMap(exchange -> sender.declareExchange(ExchangeSpecification.exchange(exchange.asString())
-                        .durable(DURABLE)
-                        .type(BuiltinExchangeType.FANOUT.getType()))),
-                sender.declareExchange(ExchangeSpecification.exchange(DEAD_LETTER_QUEUE)
-                    .durable(DURABLE)
-                    .type(BuiltinExchangeType.FANOUT.getType())),
-                sender.declareQueue(QueueSpecification
-                    .queue(DEAD_LETTER_QUEUE)
-                    .durable(DURABLE)
-                    .arguments(queueArgumentSupplier.get()
-                        .build())),
-                sender.bind(BindingSpecification.binding()
-                    .exchange(DEAD_LETTER_QUEUE)
-                    .queue(DEAD_LETTER_QUEUE)
-                    .routingKey(EMPTY_ROUTING_KEY)),
-                sender.declareQueue(QueueSpecification
-                    .queue(QUEUE_NAME)
-                    .durable(DURABLE)
-                    .arguments(queueArgumentSupplier.get()
-                        .deadLetter(DEAD_LETTER_QUEUE)
-                        .build())),
-                Flux.fromIterable(EXCHANGES)
-                    .flatMap(exchange -> sender.bind(BindingSpecification.binding()
-                        .exchange(exchange.asString())
-                        .queue(QUEUE_NAME)
-                        .routingKey(EMPTY_ROUTING_KEY))))
-            .then()
-            .block();
-    }
-
     public void init() {
-        declareExchangeAndQueue(queueArgumentSupplier, channelPool.getSender());
+        RabbitMQConsumerSupport.declareBlocking(channelPool.getSender(),
+            QueueDeclaration.of(EXCHANGES.stream().map(CalendarListExchange::asString).toList(), QUEUE_NAME, DEAD_LETTER_QUEUE),
+            queueArgumentSupplier);
         start();
     }
 
@@ -173,15 +131,9 @@ public class CalendarListNotificationConsumer implements Closeable, Startable {
     }
 
     private Disposable doConsumeCalendarListMessages() {
-        return delivery(QUEUE_NAME)
-            .flatMap(this::messageConsume, DEFAULT_CONCURRENCY)
-            .subscribe();
-    }
-
-    public Flux<AcknowledgableDelivery> delivery(String queue) {
-        return Flux.using(receiverProvider::createReceiver,
-            receiver -> receiver.consumeManualAck(queue, new ConsumeOptions().qos(DEFAULT_CONCURRENCY)),
-            Receiver::close);
+        return RabbitMQConsumerSupport.consume(receiverProvider, QUEUE_NAME,
+            RabbitMQConsumerSupport.ackNackWrapper(this::messageConsume,
+                LOGGER, "Error when consume calendar list notification message"));
     }
 
     private Mono<Void> messageConsume(AcknowledgableDelivery ackDelivery) {
@@ -191,13 +143,7 @@ public class CalendarListNotificationConsumer implements Closeable, Startable {
 
         return Mono.fromCallable(() -> CalendarListChangesMessage.deserialize(ackDelivery.getBody()))
             .flatMap(message -> notificationHandler.handle(exchange, message)
-                .then())
-            .doOnSuccess(result -> ackDelivery.ack())
-            .onErrorResume(error -> {
-                LOGGER.error("Error when consume calendar list notification message", error);
-                ackDelivery.nack(!REQUEUE_ON_NACK);
-                return Mono.empty();
-            });
+                .then());
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

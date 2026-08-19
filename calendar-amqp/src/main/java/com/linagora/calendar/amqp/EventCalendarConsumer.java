@@ -19,15 +19,11 @@
 package com.linagora.calendar.amqp;
 
 import static com.linagora.calendar.amqp.CalendarAmqpModule.INJECT_KEY_DAV;
-import static org.apache.james.backends.rabbitmq.Constants.DURABLE;
-import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
-import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.io.Closeable;
 import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.Map;
-import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import jakarta.annotation.PreDestroy;
@@ -47,24 +43,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.github.fge.lambdas.Throwing;
 import com.google.inject.name.Named;
-import com.rabbitmq.client.BuiltinExchangeType;
 
 import reactor.core.Disposable;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.rabbitmq.AcknowledgableDelivery;
-import reactor.rabbitmq.BindingSpecification;
-import reactor.rabbitmq.ConsumeOptions;
-import reactor.rabbitmq.ExchangeSpecification;
-import reactor.rabbitmq.QueueSpecification;
-import reactor.rabbitmq.Receiver;
 import reactor.rabbitmq.Sender;
 
 public class EventCalendarConsumer implements Closeable, Startable {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module())
         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     private static final Logger LOGGER = LoggerFactory.getLogger(EventCalendarConsumer.class);
-    private static final boolean REQUEUE_ON_NACK = true;
 
     public enum Queue {
         CREATE("calendar:calendar:created", "tcalendar:calendar:created", "tcalendar:calendar:created:dead-letter");
@@ -89,7 +77,8 @@ public class EventCalendarConsumer implements Closeable, Startable {
     }
 
     private final ReceiverProvider receiverProvider;
-    private final Consumer<Queue> declareExchangeAndQueue;
+    private final Sender sender;
+    private final Supplier<QueueArguments.Builder> queueArgumentSupplier;
     private final Map<Queue, Disposable> consumeDisposableMap;
     private final EventCalendarHandler eventCalendarHandler;
 
@@ -100,41 +89,16 @@ public class EventCalendarConsumer implements Closeable, Startable {
                                  EventCalendarHandler eventCalendarHandler) {
         this.receiverProvider = channelPool::createReceiver;
         this.eventCalendarHandler = eventCalendarHandler;
-
-        Sender sender = channelPool.getSender();
-        this.declareExchangeAndQueue = eventQueue -> Flux.concat(
-                sender.declareExchange(ExchangeSpecification.exchange(eventQueue.exchangeName)
-                    .durable(DURABLE).type(BuiltinExchangeType.FANOUT.getType())),
-                sender.declareExchange(ExchangeSpecification.exchange(eventQueue.deadLetter)
-                    .durable(DURABLE).type(BuiltinExchangeType.FANOUT.getType())),
-                sender.declareQueue(QueueSpecification
-                    .queue(eventQueue.deadLetter)
-                    .durable(DURABLE)
-                    .arguments(queueArgumentSupplier.get()
-                        .build())),
-                sender.bind(BindingSpecification.binding()
-                    .exchange(eventQueue.deadLetter)
-                    .queue(eventQueue.deadLetter)
-                    .routingKey(EMPTY_ROUTING_KEY)),
-                sender.declareQueue(QueueSpecification
-                    .queue(eventQueue.queueName)
-                    .durable(DURABLE)
-                    .arguments(queueArgumentSupplier.get()
-                        .deadLetter(eventQueue.deadLetter)
-                        .build())),
-                sender.bind(BindingSpecification.binding()
-                    .exchange(eventQueue.exchangeName)
-                    .queue(eventQueue.queueName)
-                    .routingKey(EMPTY_ROUTING_KEY)))
-            .then()
-            .block();
-
+        this.sender = channelPool.getSender();
+        this.queueArgumentSupplier = queueArgumentSupplier;
         this.consumeDisposableMap = new EnumMap<>(Queue.class);
     }
 
     public void init() {
         Arrays.stream(Queue.values())
-            .forEach(declareExchangeAndQueue);
+            .forEach(queue -> RabbitMQConsumerSupport.declareBlocking(sender,
+                QueueDeclaration.of(queue.exchangeName, queue.queueName(), queue.deadLetter()),
+                queueArgumentSupplier));
 
         start();
     }
@@ -168,26 +132,14 @@ public class EventCalendarConsumer implements Closeable, Startable {
     }
 
     private Disposable doConsumeCalendarEventMessages(Queue queue, EventHandler eventHandler) {
-        return delivery(queue.queueName)
-            .flatMap(delivery -> messageConsume(delivery, eventHandler), DEFAULT_CONCURRENCY)
-            .subscribe();
-    }
-
-    public Flux<AcknowledgableDelivery> delivery(String queue) {
-        return Flux.using(receiverProvider::createReceiver,
-            receiver -> receiver.consumeManualAck(queue, new ConsumeOptions().qos(DEFAULT_CONCURRENCY)),
-            Receiver::close);
+        return RabbitMQConsumerSupport.consume(receiverProvider, queue.queueName,
+            RabbitMQConsumerSupport.ackNackWrapper(delivery -> messageConsume(delivery, eventHandler),
+                LOGGER, "Error when consume calendar amqp event"));
     }
 
     private Mono<?> messageConsume(AcknowledgableDelivery ackDelivery, EventHandler eventHandler) {
         return Mono.fromCallable(() -> Throwing.supplier(() -> OBJECT_MAPPER.readValue(ackDelivery.getBody(), CalendarMessageDTO.class)).get())
             .flatMap(message -> eventHandler.handle(message)
-                .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed calendar amqp event successfully {} '{}'", message.getClass().getSimpleName(), message.calendarPath()))))
-            .doOnSuccess(result -> ackDelivery.ack())
-            .onErrorResume(error -> {
-                LOGGER.error("Error when consume calendar amqp event", error);
-                ackDelivery.nack(!REQUEUE_ON_NACK);
-                return Mono.empty();
-            });
+                .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed calendar amqp event successfully {} '{}'", message.getClass().getSimpleName(), message.calendarPath()))));
     }
 }
