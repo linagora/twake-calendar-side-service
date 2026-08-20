@@ -2,9 +2,8 @@
  *  As a subpart of Twake Mail, this file is edited by Linagora.    *
  *                                                                  *
  *  https://twake-mail.com/                                         *
- *  https://linagora.com                                            *
  *                                                                  *
- *  This file is subject to The Affero Gnu Public License           *
+ *  This file is subject to The Affero General Public License       *
  *  version 3.                                                      *
  *                                                                  *
  *  https://www.gnu.org/licenses/agpl-3.0.en.html                   *
@@ -18,8 +17,6 @@
 
 package com.linagora.calendar.amqp;
 
-import jakarta.inject.Inject;
-
 import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
 import org.reactivestreams.Publisher;
 import org.slf4j.Logger;
@@ -29,20 +26,26 @@ import com.rabbitmq.client.Connection;
 
 import reactor.core.publisher.Mono;
 
-public class EventCalendarReconnectionHandler implements SimpleConnectionPool.ReconnectionHandler {
-    private static final Logger LOGGER = LoggerFactory.getLogger(EventCalendarReconnectionHandler.class);
+/** Restarts a consumer after a RabbitMQ reconnection. */
+public class ConsumerReconnectionHandler implements SimpleConnectionPool.ReconnectionHandler {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ConsumerReconnectionHandler.class);
 
-    private final EventCalendarConsumer eventCalendarConsumer;
+    private final Runnable restart;
+    private final String errorMessage;
 
-    @Inject
-    public EventCalendarReconnectionHandler(EventCalendarConsumer eventCalendarConsumer) {
-        this.eventCalendarConsumer = eventCalendarConsumer;
+    public ConsumerReconnectionHandler(Runnable restart, String errorMessage) {
+        this.restart = restart;
+        this.errorMessage = errorMessage;
     }
 
     @Override
     public Publisher<Void> handleReconnection(Connection connection) {
-        return Mono.fromRunnable(eventCalendarConsumer::restart)
-            .doOnError(error -> LOGGER.error("Error while handle reconnection for disconnector consumer", error))
+        return Mono.fromRunnable(restart)
+            // Handlers are chained: let later consumers restart even if this one fails.
+            .onErrorResume(error -> {
+                LOGGER.error(errorMessage, error);
+                return Mono.empty();
+            })
             .then();
     }
 }
