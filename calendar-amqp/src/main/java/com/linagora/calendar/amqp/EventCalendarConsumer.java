@@ -19,15 +19,10 @@
 package com.linagora.calendar.amqp;
 
 import static com.linagora.calendar.amqp.CalendarAmqpModule.INJECT_KEY_DAV;
-import static org.apache.james.backends.rabbitmq.Constants.DURABLE;
 import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
 import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.io.Closeable;
-import java.util.Arrays;
-import java.util.EnumMap;
-import java.util.Map;
-import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import jakarta.annotation.PreDestroy;
@@ -36,7 +31,6 @@ import jakarta.inject.Singleton;
 
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
-import org.apache.james.backends.rabbitmq.ReceiverProvider;
 import org.apache.james.lifecycle.api.Startable;
 import org.apache.james.util.ReactorUtils;
 import org.slf4j.Logger;
@@ -47,24 +41,17 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.github.fge.lambdas.Throwing;
 import com.google.inject.name.Named;
+import com.linagora.tmail.rabbitmq.ManagedRabbitMQConsumer;
+import com.linagora.tmail.rabbitmq.QueueDeclaration;
 import com.rabbitmq.client.BuiltinExchangeType;
 
-import reactor.core.Disposable;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.rabbitmq.AcknowledgableDelivery;
-import reactor.rabbitmq.BindingSpecification;
-import reactor.rabbitmq.ConsumeOptions;
-import reactor.rabbitmq.ExchangeSpecification;
-import reactor.rabbitmq.QueueSpecification;
-import reactor.rabbitmq.Receiver;
-import reactor.rabbitmq.Sender;
 
 public class EventCalendarConsumer implements Closeable, Startable {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module())
         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     private static final Logger LOGGER = LoggerFactory.getLogger(EventCalendarConsumer.class);
-    private static final boolean REQUEUE_ON_NACK = true;
 
     public enum Queue {
         CREATE("calendar:calendar:created", "tcalendar:calendar:created", "tcalendar:calendar:created:dead-letter");
@@ -88,9 +75,7 @@ public class EventCalendarConsumer implements Closeable, Startable {
         }
     }
 
-    private final ReceiverProvider receiverProvider;
-    private final Consumer<Queue> declareExchangeAndQueue;
-    private final Map<Queue, Disposable> consumeDisposableMap;
+    private final ManagedRabbitMQConsumer consumer;
     private final EventCalendarHandler eventCalendarHandler;
 
     @Inject
@@ -98,65 +83,34 @@ public class EventCalendarConsumer implements Closeable, Startable {
     public EventCalendarConsumer(ReactorRabbitMQChannelPool channelPool,
                                  @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier,
                                  EventCalendarHandler eventCalendarHandler) {
-        this.receiverProvider = channelPool::createReceiver;
         this.eventCalendarHandler = eventCalendarHandler;
-
-        Sender sender = channelPool.getSender();
-        this.declareExchangeAndQueue = eventQueue -> Flux.concat(
-                sender.declareExchange(ExchangeSpecification.exchange(eventQueue.exchangeName)
-                    .durable(DURABLE).type(BuiltinExchangeType.FANOUT.getType())),
-                sender.declareExchange(ExchangeSpecification.exchange(eventQueue.deadLetter)
-                    .durable(DURABLE).type(BuiltinExchangeType.FANOUT.getType())),
-                sender.declareQueue(QueueSpecification
-                    .queue(eventQueue.deadLetter)
-                    .durable(DURABLE)
-                    .arguments(queueArgumentSupplier.get()
-                        .build())),
-                sender.bind(BindingSpecification.binding()
-                    .exchange(eventQueue.deadLetter)
-                    .queue(eventQueue.deadLetter)
-                    .routingKey(EMPTY_ROUTING_KEY)),
-                sender.declareQueue(QueueSpecification
-                    .queue(eventQueue.queueName)
-                    .durable(DURABLE)
-                    .arguments(queueArgumentSupplier.get()
-                        .deadLetter(eventQueue.deadLetter)
-                        .build())),
-                sender.bind(BindingSpecification.binding()
-                    .exchange(eventQueue.exchangeName)
-                    .queue(eventQueue.queueName)
-                    .routingKey(EMPTY_ROUTING_KEY)))
-            .then()
-            .block();
-
-        this.consumeDisposableMap = new EnumMap<>(Queue.class);
+        Queue queue = Queue.CREATE;
+        this.consumer = new ManagedRabbitMQConsumer.Factory(channelPool)
+            .create(ManagedRabbitMQConsumer.Parameters.builder()
+                .queueDeclaration(QueueDeclaration.builder()
+                    .binding(queue.exchangeName, BuiltinExchangeType.FANOUT, EMPTY_ROUTING_KEY)
+                    .queue(queue.queueName)
+                    .deadLetterQueue(queue.deadLetter)
+                    .build())
+                .queueArguments(queueArgumentSupplier)
+                .qos(DEFAULT_CONCURRENCY)
+                .concurrency(DEFAULT_CONCURRENCY)
+                .handleDelivery(delivery -> messageConsume(delivery, handleCreateEvent()))
+                .build());
     }
 
     public void init() {
-        Arrays.stream(Queue.values())
-            .forEach(declareExchangeAndQueue);
-
-        start();
-    }
-
-    public void start() {
-        consumeDisposableMap.put(Queue.CREATE, doConsumeCalendarEventMessages(Queue.CREATE, handleCreateEvent()));
+        consumer.init();
     }
 
     public void restart() {
-        close();
-        consumeDisposableMap.clear();
-        start();
+        consumer.restart();
     }
 
     @Override
     @PreDestroy
     public void close() {
-        LOGGER.info("Trying to stop event calendar consumer");
-        consumeDisposableMap.values()
-            .stream()
-            .filter(disposable -> !disposable.isDisposed())
-            .forEach(Disposable::dispose);
+        consumer.close();
     }
 
     public interface EventHandler {
@@ -167,27 +121,9 @@ public class EventCalendarConsumer implements Closeable, Startable {
         return eventCalendarHandler::handleCreateEvent;
     }
 
-    private Disposable doConsumeCalendarEventMessages(Queue queue, EventHandler eventHandler) {
-        return delivery(queue.queueName)
-            .flatMap(delivery -> messageConsume(delivery, eventHandler), DEFAULT_CONCURRENCY)
-            .subscribe();
-    }
-
-    public Flux<AcknowledgableDelivery> delivery(String queue) {
-        return Flux.using(receiverProvider::createReceiver,
-            receiver -> receiver.consumeManualAck(queue, new ConsumeOptions().qos(DEFAULT_CONCURRENCY)),
-            Receiver::close);
-    }
-
-    private Mono<?> messageConsume(AcknowledgableDelivery ackDelivery, EventHandler eventHandler) {
+    private Mono<Void> messageConsume(AcknowledgableDelivery ackDelivery, EventHandler eventHandler) {
         return Mono.fromCallable(() -> Throwing.supplier(() -> OBJECT_MAPPER.readValue(ackDelivery.getBody(), CalendarMessageDTO.class)).get())
             .flatMap(message -> eventHandler.handle(message)
-                .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed calendar amqp event successfully {} '{}'", message.getClass().getSimpleName(), message.calendarPath()))))
-            .doOnSuccess(result -> ackDelivery.ack())
-            .onErrorResume(error -> {
-                LOGGER.error("Error when consume calendar amqp event", error);
-                ackDelivery.nack(!REQUEUE_ON_NACK);
-                return Mono.empty();
-            });
+                .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed calendar amqp event successfully {} '{}'", message.getClass().getSimpleName(), message.calendarPath()))));
     }
 }
