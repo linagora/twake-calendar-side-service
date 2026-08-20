@@ -31,6 +31,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import org.slf4j.Logger;
@@ -136,8 +137,9 @@ public class CalendarDiffCalculator {
 
         Optional<List<PropertyChange>> changes = computePropertyChanges(previousEvent, currentEvent);
         boolean organizerAcceptedTransition = organizerAcceptedTransition(previousEvent, currentEvent);
+        boolean organizerDeclinedBookingTransition = organizerDeclinedBookingTransition(previousEvent, currentEvent);
         boolean attendeePartStatChanged = attendeePartStatChanged(recipient, previousEvent, currentEvent);
-        boolean hasNoRelevantChanges = recipientWasAttending && recipientIsAttendingNow && changes.isEmpty() && !organizerAcceptedTransition && !attendeePartStatChanged;
+        boolean hasNoRelevantChanges = recipientWasAttending && recipientIsAttendingNow && changes.isEmpty() && !organizerAcceptedTransition && !organizerDeclinedBookingTransition && !attendeePartStatChanged;
         if (hasNoRelevantChanges) {
             return ImmutableList.of();
         }
@@ -222,6 +224,45 @@ public class CalendarDiffCalculator {
 
                 return wasDeclinedOrNeedAction && isNowAccepted;
             })
+            .orElse(false);
+    }
+
+    /**
+     * A publicly created booking the organizer turns down. The refusal is the answer the booker has
+     * been waiting for, so it has to be notified even though no other property moved: the organizer
+     * PARTSTAT is the only difference between the two versions.
+     *
+     * <p>Restricted to bookings on purpose. Outside that flow a declining organizer keeps the
+     * previous behaviour and notifies nobody, so ordinary meetings are unaffected.
+     */
+    private static boolean organizerDeclinedBookingTransition(VEvent previousEvent, VEvent currentEvent) {
+        if (!publiclyCreated(currentEvent)) {
+            return false;
+        }
+
+        return EventParseUtils.getOrganizer(previousEvent)
+            .map(organizer -> {
+                // Only from NEEDS-ACTION: DECLINED -> DECLINED is a no-op, not an answer.
+                boolean wasNotDeclined = EventParseUtils.getAttendees(previousEvent)
+                    .stream()
+                    .filter(person -> person.email().equals(organizer.email()))
+                    .flatMap(person -> person.partStat().stream())
+                    .noneMatch(stat -> stat.equals(PartStat.DECLINED));
+
+                boolean isNowDeclined = EventParseUtils.getAttendees(currentEvent)
+                    .stream()
+                    .filter(person -> person.email().equals(organizer.email()))
+                    .flatMap(person -> person.partStat().stream())
+                    .anyMatch(stat -> stat.equals(PartStat.DECLINED));
+
+                return wasNotDeclined && isNowDeclined;
+            })
+            .orElse(false);
+    }
+
+    private static boolean publiclyCreated(VEvent event) {
+        return EventParseUtils.getPropertyValueIgnoreCase(event, EventEmailConsumer.X_PUBLICLY_CREATED_HEADER)
+            .map(BooleanUtils::toBoolean)
             .orElse(false);
     }
 

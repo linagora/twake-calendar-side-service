@@ -26,6 +26,8 @@ import java.util.List;
 
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.linagora.calendar.amqp.CalendarDiffCalculator.EventDiff;
 import com.linagora.calendar.amqp.CalendarDiffCalculator.StringPropertyChange;
@@ -921,6 +923,63 @@ class CalendarDiffCalculatorTest {
                     assertThat(diff.isNewEvent()).isFalse();
                     assertThat(diff.serializeChanges()).isEmpty();
                 });
+        }
+    }
+
+    @Nested
+    class OrganizerDeclinedBookingTransition {
+
+        private String ics(String organizerPartStat, String publiclyCreated) {
+            return """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Test//Test//EN
+                METHOD:REQUEST
+                BEGIN:VEVENT
+                UID:uid-declined-booking@test
+                DTSTART:20260401T100000Z
+                DTEND:20260401T110000Z
+                SUMMARY:Booked slot
+                ATTENDEE;PARTSTAT={organizerPartStat};ROLE=CHAIR:mailto:alice@example.com
+                ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                ORGANIZER:mailto:alice@example.com
+                {publiclyCreated}
+                END:VEVENT
+                END:VCALENDAR
+                """.replace("{organizerPartStat}", organizerPartStat)
+                .replace("{publiclyCreated}", publiclyCreated);
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"ACCEPTED", "NEEDS-ACTION", "TENTATIVE"})
+        void organizerDecliningBookingReturnsDiffEvenWithoutOtherChanges(String organizerPartStat) {
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(RECIPIENT,
+                parse(ics("DECLINED", "X-PUBLICLY-CREATED:true")),
+                parse(ics(organizerPartStat, "X-PUBLICLY-CREATED:true")));
+
+            assertThat(diffs).singleElement()
+                .satisfies(diff -> {
+                    assertThat(diff.isNewEvent()).isFalse();
+                    assertThat(diff.serializeChanges()).isEmpty();
+                });
+        }
+
+        @Test
+        void organizerDecliningOrdinaryMeetingReturnsNoDiff() {
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(RECIPIENT,
+                parse(ics("DECLINED", "DESCRIPTION:Not a booking")),
+                parse(ics("NEEDS-ACTION", "DESCRIPTION:Not a booking")));
+
+            assertThat(diffs).isEmpty();
+        }
+
+        @Test
+        void alreadyDeclinedBookingReturnsNoDiff() {
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(RECIPIENT,
+                parse(ics("DECLINED", "X-PUBLICLY-CREATED:true")),
+                parse(ics("DECLINED", "X-PUBLICLY-CREATED:true")));
+
+            assertThat(diffs).isEmpty();
         }
     }
 
