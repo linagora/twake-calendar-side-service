@@ -19,6 +19,8 @@
 package com.linagora.calendar.amqp;
 
 import static com.linagora.calendar.amqp.CalendarAmqpModule.INJECT_KEY_DAV;
+import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
+import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.io.Closeable;
 import java.util.Arrays;
@@ -32,7 +34,6 @@ import jakarta.inject.Singleton;
 
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
-import org.apache.james.backends.rabbitmq.ReceiverProvider;
 import org.apache.james.lifecycle.api.Startable;
 import org.apache.james.util.ReactorUtils;
 import org.slf4j.Logger;
@@ -43,11 +44,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.github.fge.lambdas.Throwing;
 import com.google.inject.name.Named;
+import com.linagora.tmail.rabbitmq.ManagedRabbitMQConsumer;
+import com.linagora.tmail.rabbitmq.QueueDeclaration;
+import com.rabbitmq.client.BuiltinExchangeType;
 
-import reactor.core.Disposable;
 import reactor.core.publisher.Mono;
 import reactor.rabbitmq.AcknowledgableDelivery;
-import reactor.rabbitmq.Sender;
 
 public class EventAlarmConsumer implements Closeable, Startable {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module())
@@ -84,10 +86,7 @@ public class EventAlarmConsumer implements Closeable, Startable {
         }
     }
 
-    private final ReceiverProvider receiverProvider;
-    private final Sender sender;
-    private final Supplier<QueueArguments.Builder> queueArgumentSupplier;
-    private final Map<Queue, Disposable> consumeDisposableMap;
+    private final Map<Queue, ManagedRabbitMQConsumer> consumers;
     private final EventAlarmHandler eventAlarmHandler;
 
     @Inject
@@ -95,67 +94,56 @@ public class EventAlarmConsumer implements Closeable, Startable {
     public EventAlarmConsumer(ReactorRabbitMQChannelPool channelPool,
                               @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier,
                               EventAlarmHandler eventAlarmHandler) {
-        this.receiverProvider = channelPool::createReceiver;
         this.eventAlarmHandler = eventAlarmHandler;
-        this.sender = channelPool.getSender();
-        this.queueArgumentSupplier = queueArgumentSupplier;
-        this.consumeDisposableMap = new EnumMap<>(Queue.class);
+        this.consumers = new EnumMap<>(Queue.class);
+        ManagedRabbitMQConsumer.Factory factory = new ManagedRabbitMQConsumer.Factory(channelPool);
+        Arrays.stream(Queue.values())
+            .forEach(queue -> consumers.put(queue, factory.create(parameters(queue, queueArgumentSupplier))));
+    }
+
+    private ManagedRabbitMQConsumer.Parameters parameters(Queue queue, Supplier<QueueArguments.Builder> queueArgumentSupplier) {
+        return ManagedRabbitMQConsumer.Parameters.builder()
+            .queueDeclaration(QueueDeclaration.builder()
+                .binding(queue.exchangeName(), BuiltinExchangeType.FANOUT, EMPTY_ROUTING_KEY)
+                .queue(queue.queueName())
+                .deadLetterQueue(queue.deadLetter())
+                .build())
+            .queueArguments(queueArgumentSupplier)
+            .qos(DEFAULT_CONCURRENCY)
+            .concurrency(DEFAULT_CONCURRENCY)
+            .handleDelivery(delivery -> messageConsume(delivery, handlerFor(queue)).then())
+            .build();
     }
 
     public void init() {
-        Arrays.stream(Queue.values())
-            .forEach(queue -> RabbitMQConsumerSupport.declareBlocking(sender,
-                QueueDeclaration.of(queue.exchangeName(), queue.queueName(), queue.deadLetter()),
-                queueArgumentSupplier));
-
-        start();
+        consumers.values().forEach(ManagedRabbitMQConsumer::init);
     }
 
     public void start() {
-        consumeDisposableMap.put(Queue.CREATE, doConsumeCalendarEventMessages(Queue.CREATE, handlerAdd()));
-        consumeDisposableMap.put(Queue.REQUEST, doConsumeCalendarEventMessages(Queue.REQUEST, handlerAddOrUpdate()));
-        consumeDisposableMap.put(Queue.UPDATE, doConsumeCalendarEventMessages(Queue.UPDATE, handlerAddOrUpdate()));
-        consumeDisposableMap.put(Queue.DELETE, doConsumeCalendarEventMessages(Queue.DELETE, handlerDelete()));
-        consumeDisposableMap.put(Queue.CANCEL, doConsumeCalendarEventMessages(Queue.CANCEL, handlerDelete()));
+        consumers.values().forEach(ManagedRabbitMQConsumer::start);
     }
 
     public void restart() {
-        close();
-        consumeDisposableMap.clear();
-        start();
+        consumers.values().forEach(ManagedRabbitMQConsumer::restart);
     }
 
     @Override
     @PreDestroy
     public void close() {
         LOGGER.info("Trying to stop event alarm consumer");
-        consumeDisposableMap.values().forEach(disposable -> {
-            if (!disposable.isDisposed()) {
-                disposable.dispose();
-            }
-        });
+        consumers.values().forEach(ManagedRabbitMQConsumer::close);
     }
 
     public interface PersistAlarmHandler {
         Mono<?> handle(CalendarAlarmMessageDTO message);
     }
 
-    private PersistAlarmHandler handlerAdd() {
-        return eventAlarmHandler::handleCreate;
-    }
-
-    private PersistAlarmHandler handlerAddOrUpdate() {
-        return eventAlarmHandler::handleCreateOrUpdate;
-    }
-
-    private PersistAlarmHandler handlerDelete() {
-        return eventAlarmHandler::handleDelete;
-    }
-
-    private Disposable doConsumeCalendarEventMessages(Queue queue, PersistAlarmHandler persistAlarmHandler) {
-        return RabbitMQConsumerSupport.consume(receiverProvider, queue.queueName,
-            RabbitMQConsumerSupport.ackNackWrapper(delivery -> messageConsume(delivery, persistAlarmHandler),
-                LOGGER, "Error when consume calendar alarm event"));
+    private PersistAlarmHandler handlerFor(Queue queue) {
+        return switch (queue) {
+            case CREATE -> eventAlarmHandler::handleCreate;
+            case REQUEST, UPDATE -> eventAlarmHandler::handleCreateOrUpdate;
+            case DELETE, CANCEL -> eventAlarmHandler::handleDelete;
+        };
     }
 
     private Mono<?> messageConsume(AcknowledgableDelivery ackDelivery, PersistAlarmHandler persistAlarmHandler) {

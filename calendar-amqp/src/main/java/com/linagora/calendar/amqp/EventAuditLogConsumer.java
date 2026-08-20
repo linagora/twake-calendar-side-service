@@ -18,6 +18,9 @@
 
 package com.linagora.calendar.amqp;
 
+import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
+import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
+
 import java.io.Closeable;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -32,7 +35,6 @@ import jakarta.inject.Singleton;
 
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
-import org.apache.james.backends.rabbitmq.ReceiverProvider;
 import org.apache.james.lifecycle.api.Startable;
 import org.apache.james.util.AuditTrail;
 import org.apache.james.util.ReactorUtils;
@@ -43,8 +45,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableMap;
+import com.linagora.tmail.rabbitmq.ManagedRabbitMQConsumer;
+import com.linagora.tmail.rabbitmq.QueueDeclaration;
+import com.rabbitmq.client.BuiltinExchangeType;
 
-import reactor.core.Disposable;
 import reactor.core.publisher.Mono;
 import reactor.rabbitmq.AcknowledgableDelivery;
 
@@ -103,48 +107,48 @@ public class EventAuditLogConsumer implements Closeable, Startable {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private final ReceiverProvider receiverProvider;
-    private Disposable consumeDisposable;
+    private final ManagedRabbitMQConsumer consumer;
 
     @Inject
     @Singleton
     public EventAuditLogConsumer(ReactorRabbitMQChannelPool channelPool,
                                  @Named(CalendarAmqpModule.INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier) {
-        this.receiverProvider = channelPool::createReceiver;
-        RabbitMQConsumerSupport.declareBlocking(channelPool.getSender(),
-            QueueDeclaration.of(EXCHANGES, AUDIT_QUEUE, AUDIT_DEAD_LETTER),
-            queueArgumentSupplier);
+        QueueDeclaration.Builder declarationBuilder = QueueDeclaration.builder();
+        EXCHANGES.forEach(exchange -> declarationBuilder.binding(exchange, BuiltinExchangeType.FANOUT, EMPTY_ROUTING_KEY));
+
+        this.consumer = new ManagedRabbitMQConsumer.Factory(channelPool)
+            .create(ManagedRabbitMQConsumer.Parameters.builder()
+                .queueDeclaration(declarationBuilder
+                    .queue(AUDIT_QUEUE)
+                    .deadLetterQueue(AUDIT_DEAD_LETTER)
+                    .build())
+                .queueArguments(queueArgumentSupplier)
+                .qos(DEFAULT_CONCURRENCY)
+                .concurrency(DEFAULT_CONCURRENCY)
+                .handleDelivery(this::messageConsume)
+                .build());
     }
 
     public void init() {
-        start();
+        consumer.init();
     }
 
     public void start() {
-        consumeDisposable = doConsume();
+        consumer.start();
     }
 
     public void restart() {
-        close();
-        start();
+        consumer.restart();
     }
 
     @Override
     @PreDestroy
     public void close() {
         LOGGER.info("Trying to stop event audit log consumer");
-        if (consumeDisposable != null && !consumeDisposable.isDisposed()) {
-            consumeDisposable.dispose();
-        }
+        consumer.close();
     }
 
-    private Disposable doConsume() {
-        return RabbitMQConsumerSupport.consume(receiverProvider, AUDIT_QUEUE,
-            RabbitMQConsumerSupport.ackNackWrapper(this::messageConsume,
-                LOGGER, "Error when consume audit log event"));
-    }
-
-    private Mono<?> messageConsume(AcknowledgableDelivery ackDelivery) {
+    private Mono<Void> messageConsume(AcknowledgableDelivery ackDelivery) {
         return Mono.fromRunnable(() -> {
                 String body = new String(ackDelivery.getBody(), StandardCharsets.UTF_8);
                 String exchangeName = ackDelivery.getEnvelope().getExchange();

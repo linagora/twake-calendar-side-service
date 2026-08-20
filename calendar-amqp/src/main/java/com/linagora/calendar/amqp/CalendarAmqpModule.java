@@ -38,6 +38,7 @@ import com.google.inject.Singleton;
 import com.google.inject.multibindings.Multibinder;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.google.inject.name.Named;
+import com.linagora.tmail.rabbitmq.ConsumerReconnectionHandler;
 
 public class CalendarAmqpModule extends AbstractModule {
     public static final String INJECT_KEY_DAV = "dav";

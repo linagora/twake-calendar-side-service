@@ -21,6 +21,8 @@ package com.linagora.calendar.amqp;
 import static com.linagora.calendar.amqp.CalendarAmqpModule.INJECT_KEY_DAV;
 import static com.linagora.calendar.amqp.model.CalendarEventBookingConfirmedNotificationEmail.X_PUBLICLY_CREATOR_HEADER;
 import static com.linagora.calendar.amqp.model.CalendarEventNotificationEmail.GET_FIRST_VEVENT_FUNCTION;
+import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
+import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.io.Closeable;
 import java.util.Optional;
@@ -33,7 +35,6 @@ import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.Strings;
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
-import org.apache.james.backends.rabbitmq.ReceiverProvider;
 import org.apache.james.lifecycle.api.Startable;
 import org.apache.james.metrics.api.Metric;
 import org.apache.james.metrics.api.MetricFactory;
@@ -53,11 +54,13 @@ import com.linagora.calendar.amqp.model.CalendarEventReplyNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventUpdateNotificationEmail;
 import com.linagora.calendar.smtp.EventEmailFilter;
 import com.linagora.calendar.storage.event.EventParseUtils;
+import com.linagora.tmail.rabbitmq.ManagedRabbitMQConsumer;
+import com.linagora.tmail.rabbitmq.QueueDeclaration;
+import com.rabbitmq.client.BuiltinExchangeType;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.property.Method;
-import reactor.core.Disposable;
 import reactor.core.publisher.Mono;
 import reactor.rabbitmq.AcknowledgableDelivery;
 
@@ -73,7 +76,7 @@ public class EventEmailConsumer implements Closeable, Startable {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module())
         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
-    private final ReceiverProvider receiverProvider;
+    private final ManagedRabbitMQConsumer consumer;
     private final EventMailHandler eventMailHandler;
     private final EventEmailFilter eventEmailFilter;
     private final Metric inviteSentMetric;
@@ -84,22 +87,14 @@ public class EventEmailConsumer implements Closeable, Startable {
     private final Metric publicAgendaSentMetric;
     private final MetricFactory metricFactory;
 
-    private Disposable consumeDisposable;
-
     @Inject
     public EventEmailConsumer(ReactorRabbitMQChannelPool channelPool,
                               @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier,
                               EventMailHandler eventMailHandler,
                               EventEmailFilter eventEmailFilter,
                               MetricFactory metricFactory) {
-        this.receiverProvider = channelPool::createReceiver;
         this.eventMailHandler = eventMailHandler;
         this.eventEmailFilter = eventEmailFilter;
-
-        RabbitMQConsumerSupport.declareBlocking(channelPool.getSender(),
-            QueueDeclaration.of(EXCHANGE_NAME, QUEUE_NAME, DEAD_LETTER_QUEUE),
-            queueArgumentSupplier);
-
         this.metricFactory = metricFactory;
         inviteSentMetric = metricFactory.generate("calendar.imip.invite");
         replySentMetric = metricFactory.generate("calendar.imip.reply");
@@ -107,34 +102,38 @@ public class EventEmailConsumer implements Closeable, Startable {
         updateSentMetric = metricFactory.generate("calendar.imip.update");
         counterSentMetric = metricFactory.generate("calendar.imip.counter");
         publicAgendaSentMetric = metricFactory.generate("calendar.imip.public-agenda");
+
+        this.consumer = new ManagedRabbitMQConsumer.Factory(channelPool)
+            .create(ManagedRabbitMQConsumer.Parameters.builder()
+                .queueDeclaration(QueueDeclaration.builder()
+                    .binding(EXCHANGE_NAME, BuiltinExchangeType.FANOUT, EMPTY_ROUTING_KEY)
+                    .queue(QUEUE_NAME)
+                    .deadLetterQueue(DEAD_LETTER_QUEUE)
+                    .build())
+                .queueArguments(queueArgumentSupplier)
+                .qos(DEFAULT_CONCURRENCY)
+                .concurrency(DEFAULT_CONCURRENCY)
+                .handleDelivery(this::consumeMessage)
+                .build());
     }
 
     public void init() {
-        start();
+        consumer.init();
     }
 
     public void start() {
-        consumeDisposable = doConsumeCalendarEventMessages();
+        consumer.start();
     }
 
     public void restart() {
-        close();
-        start();
+        consumer.restart();
     }
 
     @Override
     @PreDestroy
     public void close() {
         LOGGER.info("Trying to stop event email consumer");
-        if (consumeDisposable != null && !consumeDisposable.isDisposed()) {
-            consumeDisposable.dispose();
-        }
-    }
-
-    private Disposable doConsumeCalendarEventMessages() {
-        return RabbitMQConsumerSupport.consume(receiverProvider, QUEUE_NAME,
-            RabbitMQConsumerSupport.ackNackWrapper(this::consumeMessage,
-                LOGGER, "Error when consume calendar mail event message"));
+        consumer.close();
     }
 
     private Mono<Void> consumeMessage(AcknowledgableDelivery ackDelivery) {

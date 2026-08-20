@@ -19,6 +19,8 @@
 package com.linagora.calendar.amqp;
 
 import static com.linagora.calendar.amqp.CalendarAmqpModule.INJECT_KEY_DAV;
+import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
+import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -34,7 +36,6 @@ import jakarta.inject.Inject;
 
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
-import org.apache.james.backends.rabbitmq.ReceiverProvider;
 import org.apache.james.lifecycle.api.Startable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,8 +48,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.inject.name.Named;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.tmail.rabbitmq.ManagedRabbitMQConsumer;
+import com.linagora.tmail.rabbitmq.QueueDeclaration;
+import com.rabbitmq.client.BuiltinExchangeType;
 
-import reactor.core.Disposable;
 import reactor.core.publisher.Mono;
 import reactor.rabbitmq.AcknowledgableDelivery;
 
@@ -86,54 +89,48 @@ public class CalendarListNotificationConsumer implements Closeable, Startable {
 
     private static final List<CalendarListExchange> EXCHANGES = List.of(CalendarListExchange.values());
 
-    private final ReceiverProvider receiverProvider;
     private final CalendarListNotificationHandler notificationHandler;
-    private final ReactorRabbitMQChannelPool channelPool;
-    private final Supplier<QueueArguments.Builder> queueArgumentSupplier;
-
-    private Disposable consumeDisposable;
+    private final ManagedRabbitMQConsumer consumer;
 
     @Inject
     public CalendarListNotificationConsumer(ReactorRabbitMQChannelPool channelPool,
                                             @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier,
                                             CalendarListNotificationHandler notificationHandler) {
-        this.channelPool = channelPool;
-        this.queueArgumentSupplier = queueArgumentSupplier;
-        this.receiverProvider = channelPool::createReceiver;
         this.notificationHandler = notificationHandler;
+
+        QueueDeclaration.Builder declarationBuilder = QueueDeclaration.builder();
+        EXCHANGES.forEach(exchange -> declarationBuilder.binding(exchange.asString(), BuiltinExchangeType.FANOUT, EMPTY_ROUTING_KEY));
+
+        this.consumer = new ManagedRabbitMQConsumer.Factory(channelPool)
+            .create(ManagedRabbitMQConsumer.Parameters.builder()
+                .queueDeclaration(declarationBuilder
+                    .queue(QUEUE_NAME)
+                    .deadLetterQueue(DEAD_LETTER_QUEUE)
+                    .build())
+                .queueArguments(queueArgumentSupplier)
+                .qos(DEFAULT_CONCURRENCY)
+                .concurrency(DEFAULT_CONCURRENCY)
+                .handleDelivery(this::messageConsume)
+                .build());
     }
 
     public void init() {
-        RabbitMQConsumerSupport.declareBlocking(channelPool.getSender(),
-            QueueDeclaration.of(EXCHANGES.stream().map(CalendarListExchange::asString).toList(), QUEUE_NAME, DEAD_LETTER_QUEUE),
-            queueArgumentSupplier);
-        start();
+        consumer.init();
     }
 
     public void start() {
-        if (consumeDisposable == null || consumeDisposable.isDisposed()) {
-            consumeDisposable = doConsumeCalendarListMessages();
-        }
+        consumer.start();
     }
 
     public void restart() {
-        close();
-        consumeDisposable = doConsumeCalendarListMessages();
+        consumer.restart();
     }
 
     @Override
     @PreDestroy
     public void close() {
         LOGGER.info("Trying to stop calendar list notification consumer");
-        if (consumeDisposable != null && !consumeDisposable.isDisposed()) {
-            consumeDisposable.dispose();
-        }
-    }
-
-    private Disposable doConsumeCalendarListMessages() {
-        return RabbitMQConsumerSupport.consume(receiverProvider, QUEUE_NAME,
-            RabbitMQConsumerSupport.ackNackWrapper(this::messageConsume,
-                LOGGER, "Error when consume calendar list notification message"));
+        consumer.close();
     }
 
     private Mono<Void> messageConsume(AcknowledgableDelivery ackDelivery) {

@@ -19,6 +19,8 @@
 package com.linagora.calendar.amqp;
 
 import static com.linagora.calendar.amqp.CalendarAmqpModule.INJECT_KEY_DAV;
+import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
+import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.io.Closeable;
 import java.nio.charset.StandardCharsets;
@@ -33,7 +35,6 @@ import jakarta.inject.Singleton;
 
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
-import org.apache.james.backends.rabbitmq.ReceiverProvider;
 import org.apache.james.lifecycle.api.Startable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,8 +46,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.fge.lambdas.Throwing;
 import com.google.inject.name.Named;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.tmail.rabbitmq.ManagedRabbitMQConsumer;
+import com.linagora.tmail.rabbitmq.QueueDeclaration;
+import com.rabbitmq.client.BuiltinExchangeType;
 
-import reactor.core.Disposable;
 import reactor.core.publisher.Mono;
 import reactor.rabbitmq.AcknowledgableDelivery;
 
@@ -60,11 +63,7 @@ public class CalendarDelegatedNotificationConsumer implements Closeable, Startab
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CalendarDelegatedNotificationConsumer.class);
 
-    private final ReceiverProvider receiverProvider;
-    private Disposable consumeDisposable;
-
-    private final ReactorRabbitMQChannelPool channelPool;
-    private final Supplier<QueueArguments.Builder> queueArgumentSupplier;
+    private final ManagedRabbitMQConsumer consumer;
     private final DelegatedCalendarNotificationHandler notificationHandler;
 
     @Inject
@@ -72,41 +71,38 @@ public class CalendarDelegatedNotificationConsumer implements Closeable, Startab
     public CalendarDelegatedNotificationConsumer(ReactorRabbitMQChannelPool channelPool,
                                                  @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier,
                                                  DelegatedCalendarNotificationHandler notificationHandler) {
-        this.receiverProvider = channelPool::createReceiver;
-        this.channelPool = channelPool;
-        this.queueArgumentSupplier = queueArgumentSupplier;
         this.notificationHandler = notificationHandler;
+        this.consumer = new ManagedRabbitMQConsumer.Factory(channelPool)
+            .create(ManagedRabbitMQConsumer.Parameters.builder()
+                .queueDeclaration(QueueDeclaration.builder()
+                    .binding(EXCHANGE, BuiltinExchangeType.FANOUT, EMPTY_ROUTING_KEY)
+                    .queue(QUEUE)
+                    .deadLetterQueue(DEAD_LETTER_QUEUE)
+                    .build())
+                .queueArguments(queueArgumentSupplier)
+                .qos(DEFAULT_CONCURRENCY)
+                .concurrency(DEFAULT_CONCURRENCY)
+                .handleDelivery(this::handleMessage)
+                .build());
     }
 
     public void init() {
-        RabbitMQConsumerSupport.declareBlocking(channelPool.getSender(),
-            QueueDeclaration.of(EXCHANGE, QUEUE, DEAD_LETTER_QUEUE),
-            queueArgumentSupplier);
-        start();
+        consumer.init();
     }
 
     public void start() {
-        this.consumeDisposable = doConsume();
+        consumer.start();
     }
 
     @Override
     @PreDestroy
     public void close() {
         LOGGER.info("Trying to stop delegated calendar notification consumer");
-        if (consumeDisposable != null && !consumeDisposable.isDisposed()) {
-            consumeDisposable.dispose();
-        }
+        consumer.close();
     }
 
     public void restart() {
-        close();
-        start();
-    }
-
-    private Disposable doConsume() {
-        return RabbitMQConsumerSupport.consume(receiverProvider, QUEUE,
-            RabbitMQConsumerSupport.ackNackWrapper(this::handleMessage,
-                LOGGER, "Error when consuming calendar delegated notification event"));
+        consumer.restart();
     }
 
     private Mono<Void> handleMessage(AcknowledgableDelivery acknowledgableDelivery) {

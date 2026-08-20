@@ -20,6 +20,7 @@ package com.linagora.calendar.amqp;
 
 import static com.linagora.calendar.amqp.CalendarAmqpModule.INJECT_KEY_DAV;
 import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
+import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.io.Closeable;
 import java.net.URI;
@@ -38,7 +39,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
-import org.apache.james.backends.rabbitmq.ReceiverProvider;
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;
 import org.apache.james.lifecycle.api.Startable;
@@ -55,13 +55,15 @@ import com.linagora.calendar.dav.dto.CalendarReportJsonResponse;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.event.EventParseUtils;
+import com.linagora.tmail.rabbitmq.ManagedRabbitMQConsumer;
+import com.linagora.tmail.rabbitmq.QueueDeclaration;
+import com.rabbitmq.client.BuiltinExchangeType;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
 import net.fortuna.ical4j.model.property.Method;
-import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.rabbitmq.AcknowledgableDelivery;
@@ -88,14 +90,11 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     private static final boolean SKIP = true;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ItipLocalDeliveryConsumer.class);
-    private final ReceiverProvider receiverProvider;
     private final Sender sender;
     private final CalDavClient calDavClient;
     private final LocalRecipientResolver localRecipientResolver;
     private final ItipEmailNotificationPublisher itipEmailNotificationPublisher;
-    private final int prefetchCount;
-    private final Supplier<QueueArguments.Builder> queueArgumentSupplier;
-    private Disposable consumeDisposable;
+    private final ManagedRabbitMQConsumer consumer;
 
     @Inject
     public ItipLocalDeliveryConsumer(ReactorRabbitMQChannelPool channelPool,
@@ -104,45 +103,43 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
                                      LocalRecipientResolver localRecipientResolver,
                                      @Named("itipEventMessagesPrefetchCount") int prefetchCount,
                                      Clock clock) {
-        this.receiverProvider = channelPool::createReceiver;
         this.sender = channelPool.getSender();
         this.calDavClient = calDavClient;
         this.localRecipientResolver = localRecipientResolver;
-        this.prefetchCount = prefetchCount;
-        this.queueArgumentSupplier = queueArgumentSupplier;
         this.itipEmailNotificationPublisher = new ItipEmailNotificationPublisher(sender,
             bytes -> new OutboundMessage(EventEmailConsumer.EXCHANGE_NAME, EMPTY_ROUTING_KEY, bytes), clock);
+
+        this.consumer = new ManagedRabbitMQConsumer.Factory(channelPool)
+            .create(ManagedRabbitMQConsumer.Parameters.builder()
+                .queueDeclaration(QueueDeclaration.builder()
+                    .binding(EXCHANGE_NAME, BuiltinExchangeType.FANOUT, EMPTY_ROUTING_KEY)
+                    .queue(QUEUE_NAME)
+                    .deadLetterQueue(DEAD_LETTER_QUEUE)
+                    .build())
+                .queueArguments(queueArgumentSupplier)
+                .qos(prefetchCount)
+                .concurrency(DEFAULT_CONCURRENCY)
+                .handleDelivery(this::consumeMessage)
+                .build());
     }
 
     public void init() {
-        start();
+        consumer.init();
     }
 
     public void start() {
-        RabbitMQConsumerSupport.declareBlocking(sender,
-            QueueDeclaration.of(EXCHANGE_NAME, QUEUE_NAME, DEAD_LETTER_QUEUE),
-            queueArgumentSupplier);
-        consumeDisposable = doConsumeMessages();
+        consumer.start();
     }
 
     public void restart() {
-        close();
-        start();
+        consumer.restart();
     }
 
     @Override
     @PreDestroy
     public void close() {
         LOGGER.info("Trying to stop iTIP local delivery consumer");
-        if (consumeDisposable != null && !consumeDisposable.isDisposed()) {
-            consumeDisposable.dispose();
-        }
-    }
-
-    private Disposable doConsumeMessages() {
-        return RabbitMQConsumerSupport.consume(receiverProvider, QUEUE_NAME, prefetchCount,
-            RabbitMQConsumerSupport.ackNackWrapper(this::consumeMessage,
-                LOGGER, "Error consuming calendar:itip:localDelivery message"));
+        consumer.close();
     }
 
     private Mono<Void> consumeMessage(AcknowledgableDelivery ackDelivery) {
