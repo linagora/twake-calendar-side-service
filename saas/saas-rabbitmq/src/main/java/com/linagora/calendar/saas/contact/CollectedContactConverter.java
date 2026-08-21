@@ -45,7 +45,7 @@ public class CollectedContactConverter {
         .config(JSContact2VCardConfig.builder().validateCard(false).build())
         .build();
 
-    private final ContactUidResolver uidResolver = new ContactUidResolver();
+    private final UidCalculator uidCalculator = new UidCalculator();
 
     public record ConvertedContact(ContactUid uid, byte[] vcard) {
     }
@@ -53,7 +53,7 @@ public class CollectedContactConverter {
     public ConvertedContact convert(ObjectNode contactData) {
         try {
             Card card = Card.toJSCard(contactData.toString());
-            ContactUid uid = uidResolver.resolve(card);
+            ContactUid uid = uidCalculator.generateNormalizedUid(card);
             card.setUid(uid.value());
             return new ConvertedContact(uid, JSCONTACT_TO_VCARD.convertToText(card).getBytes(StandardCharsets.UTF_8));
         } catch (CollectedContactConversionException e) {
@@ -66,14 +66,14 @@ public class CollectedContactConverter {
         }
     }
 
-    static final class ContactUidResolver {
+    static final class UidCalculator {
         private static final String MATRIX_SERVICE = "matrix";
         private static final String MATRIX_ID_PREFIX = "@";
         private static final char MATRIX_ID_SEPARATOR = ':';
         private static final char EMAIL_SEPARATOR = '@';
         private static final int NO_PREFERENCE = Integer.MAX_VALUE;
 
-        ContactUid resolve(Card card) {
+        ContactUid generateNormalizedUid(Card card) {
             return Optional.ofNullable(card.getUid())
                 .filter(StringUtils::isNotBlank)
                 .map(ContactUid::new)

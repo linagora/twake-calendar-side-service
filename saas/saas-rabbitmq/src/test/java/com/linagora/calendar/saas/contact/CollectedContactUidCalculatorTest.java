@@ -29,12 +29,12 @@ import com.google.common.hash.Hashing;
 
 import it.cnr.iit.jscontact.tools.dto.Card;
 
-class CollectedContactUidResolverTest {
-    private final CollectedContactConverter.ContactUidResolver testee = new CollectedContactConverter.ContactUidResolver();
+class CollectedContactUidCalculatorTest {
+    private final CollectedContactConverter.UidCalculator testee = new CollectedContactConverter.UidCalculator();
 
     @Test
     void shouldKeepExistingUid() throws Exception {
-        assertThat(testee.resolve(Card.toJSCard("""
+        assertThat(testee.generateNormalizedUid(Card.toJSCard("""
             {
               "@type": "Card",
               "version": "2.0",
@@ -47,7 +47,7 @@ class CollectedContactUidResolverTest {
 
     @Test
     void shouldKeepExistingUidWhenEmailIsAvailable() throws Exception {
-        assertThat(testee.resolve(Card.toJSCard("""
+        assertThat(testee.generateNormalizedUid(Card.toJSCard("""
             {
               "@type": "Card",
               "version": "2.0",
@@ -66,7 +66,7 @@ class CollectedContactUidResolverTest {
 
     @Test
     void shouldGenerateUidFromPreferredEmail() throws Exception {
-        assertThat(testee.resolve(Card.toJSCard("""
+        assertThat(testee.generateNormalizedUid(Card.toJSCard("""
             {
               "@type": "Card",
               "version": "2.0",
@@ -90,7 +90,7 @@ class CollectedContactUidResolverTest {
 
     @Test
     void shouldGenerateUidFromAlphabeticallyFirstEmailWhenPreferenceIsMissing() throws Exception {
-        assertThat(testee.resolve(Card.toJSCard("""
+        assertThat(testee.generateNormalizedUid(Card.toJSCard("""
             {
               "@type": "Card",
               "version": "2.0",
@@ -112,7 +112,7 @@ class CollectedContactUidResolverTest {
 
     @Test
     void shouldGenerateUidFromMatrixIdWhenEmailIsMissing() throws Exception {
-        assertThat(testee.resolve(Card.toJSCard("""
+        assertThat(testee.generateNormalizedUid(Card.toJSCard("""
             {
               "@type": "Card",
               "version": "2.0",
@@ -130,8 +130,41 @@ class CollectedContactUidResolverTest {
     }
 
     @Test
+    void shouldGenerateSameUidForEmailAndEquivalentMatrixId() throws Exception {
+        String emailUid = testee.generateNormalizedUid(Card.toJSCard("""
+            {
+              "@type": "Card",
+              "version": "2.0",
+              "emails": {
+                "main": {
+                  "@type": "EmailAddress",
+                  "address": "btellier@linagora.com"
+                }
+              }
+            }
+            """)).value();
+        String matrixIdUid = testee.generateNormalizedUid(Card.toJSCard("""
+            {
+              "@type": "Card",
+              "version": "2.0",
+              "onlineServices": {
+                "matrix": {
+                  "@type": "OnlineService",
+                  "service": "matrix",
+                  "user": "@btellier:linagora.com"
+                }
+              }
+            }
+            """)).value();
+
+        assertThat(matrixIdUid)
+            .as("Uses the same UID for an email address and its equivalent Matrix ID")
+            .isEqualTo(emailUid);
+    }
+
+    @Test
     void shouldGenerateUidFromPreferredMatrixId() throws Exception {
-        assertThat(testee.resolve(Card.toJSCard("""
+        assertThat(testee.generateNormalizedUid(Card.toJSCard("""
             {
               "@type": "Card",
               "version": "2.0",
@@ -157,7 +190,7 @@ class CollectedContactUidResolverTest {
 
     @Test
     void shouldGenerateUidFromAlphabeticallyFirstMatrixIdWhenPreferenceIsMissing() throws Exception {
-        assertThat(testee.resolve(Card.toJSCard("""
+        assertThat(testee.generateNormalizedUid(Card.toJSCard("""
             {
               "@type": "Card",
               "version": "2.0",
@@ -181,7 +214,7 @@ class CollectedContactUidResolverTest {
 
     @Test
     void shouldGenerateUidFromEmailWhenMatrixIdAndPhoneAreAlsoAvailable() throws Exception {
-        assertThat(testee.resolve(Card.toJSCard("""
+        assertThat(testee.generateNormalizedUid(Card.toJSCard("""
             {
               "@type": "Card",
               "version": "2.0",
@@ -212,7 +245,7 @@ class CollectedContactUidResolverTest {
 
     @Test
     void shouldGenerateUidFromMatrixIdWhenPhoneIsAlsoAvailable() throws Exception {
-        assertThat(testee.resolve(Card.toJSCard("""
+        assertThat(testee.generateNormalizedUid(Card.toJSCard("""
             {
               "@type": "Card",
               "version": "2.0",
@@ -237,7 +270,7 @@ class CollectedContactUidResolverTest {
 
     @Test
     void shouldGenerateUidFromPhoneWhenEmailAndMatrixIdAreMissing() throws Exception {
-        assertThat(testee.resolve(Card.toJSCard("""
+        assertThat(testee.generateNormalizedUid(Card.toJSCard("""
             {
               "@type": "Card",
               "version": "2.0",
@@ -255,7 +288,7 @@ class CollectedContactUidResolverTest {
 
     @Test
     void shouldGenerateUidFromPreferredPhoneNumber() throws Exception {
-        assertThat(testee.resolve(Card.toJSCard("""
+        assertThat(testee.generateNormalizedUid(Card.toJSCard("""
             {
               "@type": "Card",
               "version": "2.0",
@@ -279,7 +312,7 @@ class CollectedContactUidResolverTest {
 
     @Test
     void shouldGenerateUidFromAlphabeticallyFirstPhoneNumberWhenPreferenceIsMissing() throws Exception {
-        assertThat(testee.resolve(Card.toJSCard("""
+        assertThat(testee.generateNormalizedUid(Card.toJSCard("""
             {
               "@type": "Card",
               "version": "2.0",
@@ -308,7 +341,7 @@ class CollectedContactUidResolverTest {
             }
             """);
 
-        assertThatThrownBy(() -> testee.resolve(card))
+        assertThatThrownBy(() -> testee.generateNormalizedUid(card))
             .as("Fails when no UID source is available")
             .isInstanceOf(CollectedContactConversionException.class)
             .hasMessage("Cannot generate contact UID: missing email, Matrix ID and phone number");
