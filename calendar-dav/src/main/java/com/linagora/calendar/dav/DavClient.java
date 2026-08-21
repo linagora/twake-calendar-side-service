@@ -38,21 +38,27 @@ import reactor.netty.http.client.HttpClient;
 public abstract class DavClient {
     protected static final Duration DEFAULT_RESPONSE_TIMEOUT = Duration.ofSeconds(10);
     protected static final String TWAKE_CALENDAR_TOKEN_HEADER_NAME = "TwakeCalendarToken";
+    private static final String USER_AGENT = "twake-calendar-side-service " + HttpClient.USER_AGENT;
 
     protected final HttpClient client;
     protected final DavConfiguration config;
     protected final TechnicalTokenService technicalTokenService;
 
     protected DavClient(DavConfiguration config, TechnicalTokenService technicalTokenService) throws SSLException {
+        this(config, technicalTokenService, USER_AGENT);
+    }
+
+    protected DavClient(DavConfiguration config, TechnicalTokenService technicalTokenService, String userAgent) throws SSLException {
         this.config = config;
-        this.client = createHttpClient(config.trustAllSslCerts().orElse(false));
+        this.client = createHttpClient(config.trustAllSslCerts().orElse(false), userAgent);
         this.technicalTokenService = technicalTokenService;
     }
 
-    protected HttpClient createHttpClient(boolean trustAllSslCerts) throws SSLException {
+    protected HttpClient createHttpClient(boolean trustAllSslCerts, String userAgent) throws SSLException {
         HttpClient client = HttpClient.create()
             .baseUrl(config.baseUrl().toString())
-            .responseTimeout(config.responseTimeout().orElse(DEFAULT_RESPONSE_TIMEOUT));
+            .responseTimeout(config.responseTimeout().orElse(DEFAULT_RESPONSE_TIMEOUT))
+            .headers(headers -> headers.set(HttpHeaderNames.USER_AGENT, userAgent));
         if (trustAllSslCerts) {
             SslContext sslContext = SslContextBuilder.forClient().trustManager(InsecureTrustManagerFactory.INSTANCE).build();
             return client.secure(sslContextSpec -> sslContextSpec.sslContext(sslContext));
