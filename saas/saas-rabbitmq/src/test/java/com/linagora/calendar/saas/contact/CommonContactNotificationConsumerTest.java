@@ -163,7 +163,7 @@ class CommonContactNotificationConsumerTest {
         // Given a user and an empty personal address book
         // When the user creates a contact through Sabre DAV
         String uid = UUID.randomUUID().toString();
-        cardDavClient.createContact(user.username(), new AddressBookURL(user.id(), ADDRESS_BOOK), uid,
+        cardDavClient.upsertContact(user.username(), new AddressBookURL(user.id(), ADDRESS_BOOK), uid,
             """
                 BEGIN:VCARD
                 VERSION:4.0
@@ -216,7 +216,7 @@ class CommonContactNotificationConsumerTest {
     void shouldPublishUpdatedContact() {
         // Given an existing contact, and its initial ADD event already consumed from the exchange
         String uid = UUID.randomUUID().toString();
-        cardDavClient.createContact(user.username(), new AddressBookURL(user.id(), ADDRESS_BOOK), uid,
+        cardDavClient.upsertContact(user.username(), new AddressBookURL(user.id(), ADDRESS_BOOK), uid,
             """
                 BEGIN:VCARD
                 VERSION:4.0
@@ -231,7 +231,7 @@ class CommonContactNotificationConsumerTest {
             .hasSize(1));
 
         // When the user updates that contact through Sabre DAV
-        cardDavClient.createContact(user.username(), new AddressBookURL(user.id(), ADDRESS_BOOK), uid, """
+        cardDavClient.upsertContact(user.username(), new AddressBookURL(user.id(), ADDRESS_BOOK), uid, """
             BEGIN:VCARD
             VERSION:4.0
             UID:{uid}
@@ -273,7 +273,7 @@ class CommonContactNotificationConsumerTest {
     void shouldPublishDeletedContact() {
         // Given an existing contact, and its initial ADD event already consumed from the exchange
         String uid = UUID.randomUUID().toString();
-        cardDavClient.createContact(user.username(), new AddressBookURL(user.id(), ADDRESS_BOOK), uid, """
+        cardDavClient.upsertContact(user.username(), new AddressBookURL(user.id(), ADDRESS_BOOK), uid, """
             BEGIN:VCARD
             VERSION:4.0
             UID:{uid}
@@ -324,7 +324,7 @@ class CommonContactNotificationConsumerTest {
         String uid = UUID.randomUUID().toString();
         cardDavClient.updateAddressBookShares(user.username(), new AddressBookURL(user.id(), ADDRESS_BOOK),
             List.of(new CardDavClient.AddressBookSharee("mailto:" + delegate.username().asString(), 3))).block();
-        cardDavClient.createContact(user.username(), new AddressBookURL(user.id(), ADDRESS_BOOK), uid, """
+        cardDavClient.upsertContact(user.username(), new AddressBookURL(user.id(), ADDRESS_BOOK), uid, """
             BEGIN:VCARD
             VERSION:4.0
             UID:{uid}
@@ -340,7 +340,7 @@ class CommonContactNotificationConsumerTest {
             .hasSize(1));
 
         // When the delegate updates the owner's contact through Sabre DAV
-        cardDavClient.createContact(delegate.username(), new AddressBookURL(user.id(), ADDRESS_BOOK), uid, """
+        cardDavClient.upsertContact(delegate.username(), new AddressBookURL(user.id(), ADDRESS_BOOK), uid, """
             BEGIN:VCARD
             VERSION:4.0
             UID:{uid}
@@ -440,7 +440,7 @@ class CommonContactNotificationConsumerTest {
 
         // When Bob directly creates a contact in that domain address book
         String uid = UUID.randomUUID().toString();
-        cardDavClient.createContact(user.username(), new AddressBookURL(domain.id(), DOMAIN_ADDRESS_BOOK), uid, """
+        cardDavClient.upsertContact(user.username(), new AddressBookURL(domain.id(), DOMAIN_ADDRESS_BOOK), uid, """
             BEGIN:VCARD
             VERSION:4.0
             UID:{uid}

@@ -93,9 +93,18 @@ standard RabbitMQ connection (`uri`, ...); set `twp.rabbitmq.uri` only when Twak
 
 ### Common Contacts synchronization (`common.contacts.enabled=true`)
 
+When enabled, the service publishes Common Contacts events and consumes collected contacts from the Twake Workplace broker.
+
+#### Outbound Common Contacts events
+
 | Configuration entry | Explanation | Example |
 |---------------------|-------------|---------|
 | common.contacts.exchange | Optional. Defaults to `twake:contacts:common`. Exchange used to publish Common Contacts events. | common.contacts.exchange=twake:contacts:common |
+
+#### Inbound collected contacts
+
+The consumer is bound to the `twake:contacts:collected` fanout exchange with an empty routing key. It consumes from
+`tcalendar:contacts:collected`; failed messages are sent to `tcalendar:contacts:collected-dead-letter`.
 
 ### SaaS subscription (`saas.subscription.enabled=true`)
 

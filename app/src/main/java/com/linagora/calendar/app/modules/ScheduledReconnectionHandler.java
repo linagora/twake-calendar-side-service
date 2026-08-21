@@ -218,13 +218,20 @@ public class ScheduledReconnectionHandler implements Startable {
                                         RabbitMQConfiguration configuration,
                                         SimpleConnectionPool connectionPool,
                                         ScheduledReconnectionHandler.ScheduledReconnectionHandlerConfiguration config) {
+        this(reconnectionHandlers, configuration, connectionPool, config, CalendarQueueUtil.getAllQueueNames());
+    }
+
+    public ScheduledReconnectionHandler(Set<SimpleConnectionPool.ReconnectionHandler> reconnectionHandlers,
+                                        RabbitMQConfiguration configuration,
+                                        SimpleConnectionPool connectionPool,
+                                        ScheduledReconnectionHandler.ScheduledReconnectionHandlerConfiguration config,
+                                        List<String> queuesToMonitor) {
         this.reconnectionHandlers = reconnectionHandlers;
         this.mqManagementAPI = RabbitMQManagementAPI.from(configuration);
         this.configuration = configuration;
         this.connectionPool = connectionPool;
         this.config = config;
-
-        this.queuesToMonitor = ImmutableList.copyOf(CalendarQueueUtil.getAllQueueNames());
+        this.queuesToMonitor = ImmutableList.copyOf(queuesToMonitor);
     }
 
     @VisibleForTesting
