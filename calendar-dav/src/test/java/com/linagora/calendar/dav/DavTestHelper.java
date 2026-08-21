@@ -52,6 +52,17 @@ import reactor.util.retry.Retry;
 public class DavTestHelper extends DavClient {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final String DOMAIN_ADDRESS_BOOK_ID = "dab";
+    private static final byte[] CREATE_DOMAIN_ADDRESS_BOOK_PAYLOAD = """
+        {
+            "id": "%s",
+            "dav:name": "Domain address book",
+            "carddav:description": "Domain address book",
+            "dav:acl": [ "{DAV:}read" ],
+            "type": "group",
+            "state": "enabled"
+        }
+        """.formatted(DOMAIN_ADDRESS_BOOK_ID).getBytes(StandardCharsets.UTF_8);
 
     public record CounterRequest(String calendarData,
                                  String sender,
@@ -201,6 +212,26 @@ public class DavTestHelper extends DavClient {
                         %s
                         """.formatted(response.status().code(), homeBaseId.value(), username, responseBody))));
             });
+    }
+
+    public Mono<Void> createDomainAddressBook(OpenPaaSId domainId) {
+        return httpClientWithTechnicalToken(domainId)
+            .flatMap(httpClient -> httpClient.headers(headers ->
+                    headers.add(HttpHeaderNames.CONTENT_TYPE, "application/json;charset=UTF-8")
+                        .add(HttpHeaderNames.ACCEPT, "application/json"))
+                .post()
+                .uri("/addressbooks/%s.json".formatted(domainId.value()))
+                .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(CREATE_DOMAIN_ADDRESS_BOOK_PAYLOAD)))
+                .responseSingle((response, responseContent) -> {
+                    if (response.status().code() == HttpStatus.SC_CREATED) {
+                        return Mono.empty();
+                    }
+                    return responseContent.asString(StandardCharsets.UTF_8)
+                        .filter(body -> !body.contains("The resource you tried to create already exists"))
+                        .switchIfEmpty(Mono.empty())
+                        .flatMap(body -> Mono.error(new DavClientException("Failed to create domain address book for domain %s: %s"
+                            .formatted(domainId.value(), body))));
+                }));
     }
 
     public Optional<String> findFirstEventId(OpenPaaSUser openPaaSUser) {

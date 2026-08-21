@@ -71,6 +71,7 @@ import com.linagora.calendar.app.modules.OpenSearchClientModule;
 import com.linagora.calendar.app.modules.TwakeCalendarRabbitMQModule;
 import com.linagora.calendar.dav.DavModule;
 import com.linagora.calendar.restapi.RestApiModule;
+import com.linagora.calendar.saas.contact.CommonContactPublisherModule;
 import com.linagora.calendar.smtp.SmtpModule;
 import com.linagora.calendar.storage.CaffeineOIDCTokenCache;
 import com.linagora.calendar.storage.FileUploadConfigurationModule;
@@ -143,6 +144,7 @@ public class TwakeCalendarMain {
                 chooseUsersModule(configuration.userChoice()),
                 chooseCacheAndPubSub(configuration.redisEnabled()),
                 chooseTWPCalendarSetting(configuration.twpSettingEnabled()),
+                chooseCommonContacts(configuration.commonContactsEnabled()),
                 chooseSaaSSubscription(configuration.saasSubscriptionEnabled()),
                 new FileUploadConfigurationModule(),
                 new RestApiModule(),
@@ -241,6 +243,13 @@ public class TwakeCalendarMain {
         }
 
         return ReadOnlyPropertyProviderModule.EMPTY;
+    }
+
+    public static Module chooseCommonContacts(boolean enabled) {
+        if (enabled) {
+            return new CommonContactPublisherModule();
+        }
+        return Modules.EMPTY_MODULE;
     }
 
     public static Module chooseSaaSSubscription(boolean enabled) {

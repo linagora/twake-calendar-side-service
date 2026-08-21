@@ -61,14 +61,15 @@ Here is the detail of the configuration entries:
 | basic.auth.enabled | Optional. Defaults to false (basic auth disabled). Alows regular user to use bsic auth mecanism. While implemented by OpenPaaS it shall not be needed by the SPAs.                                                                                                                          | basic.auth.enabled=true |
 | default.calendar.public.visibility | Optional. Defaults to private. One of private, read. If it is set to read, default calendars will be set publicly visible upon creation.                                                                                                                                                                                     | default.calendar.public.visibility=read |
 | twp.settings.enabled | Optional. Defaults to `false`. Enables synchronization of user settings from Twake Workplace. When enabled, some settings become read-only via REST APIs. The related broker properties are described in [Twake Workplace RabbitMQ properties](#twake-workplace-rabbitmq-properties). | twp.settings.enabled=true |
+| common.contacts.enabled | Optional. Defaults to `false`. Enables Common Contacts synchronization through the Twake Workplace RabbitMQ broker. Requires `twp.settings.enabled=true` for the shared Twake Workplace RabbitMQ infrastructure. | common.contacts.enabled=true |
 | saas.subscription.enabled | Optional. Defaults to `false`. Enables the SaaS subscription consumers that listen to the Twake Workplace RabbitMQ broker for domain and user subscription messages, and automatically provision domains and register users with their calendar features. Requires `twp.settings.enabled=true` (startup fails otherwise). The related broker properties are described in [Twake Workplace RabbitMQ properties](#twake-workplace-rabbitmq-properties). | saas.subscription.enabled=true |
 
 Please find hereby a [working example](../../app/src/main/conf/configuration.properties).
 
 ## Twake Workplace RabbitMQ properties
 
-The TWP settings synchronization (`twp.settings.enabled`) and the SaaS subscription consumers (`saas.subscription.enabled`)
-consume messages from the Twake Workplace RabbitMQ broker. These integrations read the following additional properties from
+The TWP settings synchronization (`twp.settings.enabled`), Common Contacts synchronization (`common.contacts.enabled`) and the SaaS subscription consumers (`saas.subscription.enabled`)
+connect to the Twake Workplace RabbitMQ broker. These integrations read the following additional properties from
 [rabbitmq.properties](https://james.staged.apache.org/james-project/3.9.0/servers/distributed/configure/rabbitmq.html),
 in addition to the standard `uri`, `management.uri`, ... entries. All of them are optional and fall back to the defaults below.
 
@@ -89,6 +90,12 @@ standard RabbitMQ connection (`uri`, ...); set `twp.rabbitmq.uri` only when Twak
 |---------------------|-------------|---------|
 | twp.settings.exchange | Optional. Defaults to `settings`. Exchange the user settings updates are consumed from. | twp.settings.exchange=settings |
 | twp.settings.routingKey | Optional. Defaults to `user.settings.updated`. Routing key bound for user settings updates. | twp.settings.routingKey=user.settings.updated |
+
+### Common Contacts synchronization (`common.contacts.enabled=true`)
+
+| Configuration entry | Explanation | Example |
+|---------------------|-------------|---------|
+| common.contacts.exchange | Optional. Defaults to `twake:contacts:common`. Exchange used to publish Common Contacts events. | common.contacts.exchange=twake:contacts:common |
 
 ### SaaS subscription (`saas.subscription.enabled=true`)
 
