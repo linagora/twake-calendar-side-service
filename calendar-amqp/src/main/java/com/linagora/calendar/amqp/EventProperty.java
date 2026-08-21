@@ -68,6 +68,7 @@ public class EventProperty {
     public static final String DURATION_PROPERTY = "duration";
     public static final String VIDEOCONFERENCE = "x-openpaas-videoconference";
     public static final String BOOKING_LINK = "x-openpaas-booking-link";
+    public static final String DELEGATE_HOSTS = "x-twake-delegate-hosts";
 
     protected final String name;
     protected final JsonNode attributes;
@@ -79,6 +80,14 @@ public class EventProperty {
         this.attributes = attributes;
         this.valueType = valueType;
         this.value = value;
+    }
+
+    public String name() {
+        return name;
+    }
+
+    public String value() {
+        return value;
     }
 
     public static class AttendeeProperty extends EventProperty {
