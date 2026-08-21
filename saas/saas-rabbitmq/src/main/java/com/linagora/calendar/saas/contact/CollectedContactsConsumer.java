@@ -78,8 +78,8 @@ public class CollectedContactsConsumer implements Closeable, Startable {
                 .queueArguments(() -> twpCommonRabbitMQConfiguration.quorumQueuesBypass()
                     ? QueueArguments.builder()
                     : rabbitMQConfiguration.workQueueArgumentsBuilder())
+                .singleActiveConsumer()
                 .qos(DEFAULT_CONCURRENCY)
-                .concurrency(DEFAULT_CONCURRENCY)
                 .handleDelivery(this::handleDelivery)
                 .build());
     }
