@@ -39,19 +39,21 @@ import io.netty.handler.codec.http.HttpStatusClass;
 import reactor.core.publisher.Mono;
 import reactor.netty.ByteBufFlux;
 import reactor.netty.NettyOutbound;
+import reactor.netty.http.client.HttpClient;
 import reactor.netty.http.client.HttpClientResponse;
 import reactor.netty.http.server.HttpServerRequest;
 import reactor.netty.http.server.HttpServerResponse;
 
 public class DavProxy extends DavClient {
     public static final Logger LOGGER = LoggerFactory.getLogger(DavProxy.class);
+    private static final String USER_AGENT = "twake-calendar-dav-proxy " + HttpClient.USER_AGENT;
     private final Authenticator authenticator;
     private final MetricFactory metricFactory;
 
     @Inject
     public DavProxy(Authenticator authenticator, DavConfiguration davConfiguration,
                     MetricFactory metricFactory, TechnicalTokenService technicalTokenService) throws SSLException {
-        super(davConfiguration, technicalTokenService);
+        super(davConfiguration, technicalTokenService, USER_AGENT);
 
         this.authenticator = authenticator;
         this.metricFactory = metricFactory;
