@@ -187,7 +187,7 @@ public class CardDavClient extends DavClient {
                 headers.add(HttpHeaderNames.CONTENT_TYPE, HttpHeaderValues.APPLICATION_JSON)
                     .add(HttpHeaderNames.ACCEPT, HttpHeaderValues.APPLICATION_JSON))
             .post()
-            .uri("/addressbooks/%s.json".formatted(domainId.value()))
+            .uri("/addressbooks/%s".formatted(domainId.value()))
             .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(CREATE_DOMAIN_MEMBERS_ADDRESS_BOOK_PAYLOAD)))
             .responseSingle((response, byteBufMono) -> {
                 if (response.status().code() == 201) {
@@ -269,7 +269,7 @@ public class CardDavClient extends DavClient {
     }
 
     public Flux<AddressBook> listUserAddressBookIds(Username username, OpenPaaSId userId) {
-        String uri = String.format("/addressbooks/%s.json?contactsCount=true&inviteStatus=2&personal=true&shared=true&subscribed=true",
+        String uri = String.format("/addressbooks/%s?contactsCount=true&inviteStatus=2&personal=true&shared=true&subscribed=true",
             userId.value());
         return httpClientWithImpersonation(username).headers(headers -> headers
                 .add(HttpHeaderNames.ACCEPT, "application/json"))
@@ -354,7 +354,7 @@ public class CardDavClient extends DavClient {
     }
 
     public Mono<byte[]> listUserAddressBooksAsBytes(Username username, OpenPaaSId userId) {
-        String uri = "/addressbooks/%s.json?contactsCount=true&inviteStatus=2&personal=true&shared=true&subscribed=true"
+        String uri = "/addressbooks/%s?contactsCount=true&inviteStatus=2&personal=true&shared=true&subscribed=true"
             .formatted(userId.value());
         return httpClientWithImpersonation(username)
             .headers(headers -> headers.add(HttpHeaderNames.ACCEPT, "application/json"))
@@ -373,7 +373,7 @@ public class CardDavClient extends DavClient {
     }
 
     public Mono<Boolean> addressBookExists(Username username, OpenPaaSId userId, String addressBookId) {
-        String uri = new AddressBookURL(userId, addressBookId).asUri().toASCIIString() + ".json";
+        String uri = new AddressBookURL(userId, addressBookId).asUri().toASCIIString();
         return httpClientWithImpersonation(username)
             .headers(headers -> headers.add(HttpHeaderNames.ACCEPT, "application/json"))
             .get()
@@ -405,7 +405,7 @@ public class CardDavClient extends DavClient {
                 .add(HttpHeaderNames.CONTENT_TYPE, "application/json")
                 .add(HttpHeaderNames.ACCEPT, "application/json"))
             .post()
-            .uri("/addressbooks/%s.json".formatted(userId.value()))
+            .uri("/addressbooks/%s".formatted(userId.value()))
             .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(payload)))
             .responseSingle((response, buf) -> {
                 if (response.status().code() == HttpStatus.SC_CREATED) {
@@ -420,7 +420,7 @@ public class CardDavClient extends DavClient {
     }
 
     public Mono<Void> updateAddressBookPublicRight(Username username, AddressBookURL addressBookURL, boolean publish) {
-        String uri = addressBookURL.asUri().toASCIIString() + ".json";
+        String uri = addressBookURL.asUri().toASCIIString();
         byte[] payload = publish
             ? "{\"dav:publish-addressbook\":{\"privilege\":\"{DAV:}read\"}}".getBytes(StandardCharsets.UTF_8)
             : "{\"dav:unpublish-addressbook\":true}".getBytes(StandardCharsets.UTF_8);
@@ -444,7 +444,7 @@ public class CardDavClient extends DavClient {
 
     public Mono<Void> updateAddressBookShares(Username username, AddressBookURL addressBookURL,
                                               List<AddressBookSharee> sharees) {
-        String uri = addressBookURL.asUri().toASCIIString() + ".json";
+        String uri = addressBookURL.asUri().toASCIIString();
         byte[] payload;
         try {
             ObjectNode body = OBJECT_MAPPER.createObjectNode()
@@ -487,7 +487,7 @@ public class CardDavClient extends DavClient {
                 .add(HttpHeaderNames.CONTENT_TYPE, "application/json")
                 .add(HttpHeaderNames.ACCEPT, "application/json"))
             .post()
-            .uri("/addressbooks/%s.json".formatted(userId.value()))
+            .uri("/addressbooks/%s".formatted(userId.value()))
             .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(payload)))
             .responseSingle((response, buf) -> {
                 if (response.status().code() == HttpStatus.SC_CREATED) {
