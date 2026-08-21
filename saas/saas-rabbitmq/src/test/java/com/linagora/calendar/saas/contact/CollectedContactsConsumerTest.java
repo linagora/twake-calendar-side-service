@@ -333,6 +333,112 @@ class CollectedContactsConsumerTest {
     }
 
     @Test
+    void shouldMergeEmailAndMatrixIdWhenTheyGenerateTheSameUid() throws Exception {
+        // Given a collected contact identified by its email
+        String emailMessage = """
+            {
+              "userEmail": "{userEmail}",
+              "collectedContacts": [{
+                "@type": "Card",
+                "version": "2.0",
+                "name": { "@type": "Name", "full": "Bob" },
+                "emails": {
+                  "email": { "@type": "EmailAddress", "address": "bob@domain.tld" }
+                }
+              }]
+            }
+            """.replace("{userEmail}", user.username().asString());
+        channel.basicPublish(CollectedContactsConsumer.EXCHANGE, "", null, emailMessage.getBytes(StandardCharsets.UTF_8));
+
+        AddressBookURL addressBook = new AddressBookURL(user.id(), COLLECTED_ADDRESS_BOOK);
+        AWAIT_AT_MOST.untilAsserted(() -> assertThat(cardDavClient.exportContact(user.username(), addressBook).blockOptional())
+            .hasValueSatisfying(contacts -> assertThat(new String(contacts, StandardCharsets.UTF_8))
+                .contains("EMAIL;PROP-ID=email:bob@domain.tld")));
+
+        // When a Matrix ID-only message resolves to the same UID
+        String matrixIdMessage = """
+            {
+              "userEmail": "{userEmail}",
+              "collectedContacts": [{
+                "@type": "Card",
+                "version": "2.0",
+                "onlineServices": {
+                  "matrix": { "@type": "OnlineService", "service": "matrix", "user": "@bob:domain.tld" }
+                }
+              }]
+            }
+            """.replace("{userEmail}", user.username().asString());
+        channel.basicPublish(CollectedContactsConsumer.EXCHANGE, "", null, matrixIdMessage.getBytes(StandardCharsets.UTF_8));
+
+        // Then both identities are kept on the same collected contact
+        String expectedVCard = """
+            BEGIN:VCARD
+            VERSION:4.0
+            PRODID:ez-vcard 0.12.1
+            UID:{uid}
+            FN:Bob
+            EMAIL;PROP-ID=email:bob@domain.tld
+            SOCIALPROFILE;SERVICE-TYPE=matrix;PROP-ID=matrix;VALUE=text:@bob:domain.tld
+            END:VCARD
+            """.replace("{uid}", sha1("bob@domain.tld"));
+        AWAIT_AT_MOST.untilAsserted(() -> assertThat(cardDavClient.exportContact(user.username(), addressBook).blockOptional())
+            .hasValueSatisfying(contacts -> assertThat(new String(contacts, StandardCharsets.UTF_8))
+                .isEqualToIgnoringWhitespace(expectedVCard)));
+    }
+
+    @Test
+    void shouldReplaceExistingContactWhenTwoMessagesHaveTheSameEmail() throws Exception {
+        // Given a collected contact with two email addresses
+        String initialMessage = """
+            {
+              "userEmail": "{userEmail}",
+              "collectedContacts": [{
+                "@type": "Card",
+                "version": "2.0",
+                "name": { "@type": "Name", "full": "Initial name" },
+                "emails": {
+                  "common": { "@type": "EmailAddress", "address": "abc@example.com" },
+                  "old": { "@type": "EmailAddress", "address": "xyz@example.com" }
+                }
+              }]
+            }
+            """.replace("{userEmail}", user.username().asString());
+        channel.basicPublish(CollectedContactsConsumer.EXCHANGE, "", null, initialMessage.getBytes(StandardCharsets.UTF_8));
+
+        AddressBookURL addressBook = new AddressBookURL(user.id(), COLLECTED_ADDRESS_BOOK);
+        AWAIT_AT_MOST.untilAsserted(() -> assertThat(cardDavClient.exportContact(user.username(), addressBook).blockOptional())
+            .hasValueSatisfying(contacts -> assertThat(new String(contacts, StandardCharsets.UTF_8))
+                .contains("EMAIL;PROP-ID=old:xyz@example.com")));
+
+        // When a later message has the same UID-generating email but different contact data
+        String updatedMessage = """
+            {
+              "userEmail": "{userEmail}",
+              "collectedContacts": [{
+                "@type": "Card",
+                "version": "2.0",
+                "name": { "@type": "Name", "full": "Updated name" },
+                "emails": {
+                  "common": { "@type": "EmailAddress", "address": "abc@example.com" },
+                  "new": { "@type": "EmailAddress", "address": "klm@example.com" }
+                }
+              }]
+            }
+            """.replace("{userEmail}", user.username().asString());
+        channel.basicPublish(CollectedContactsConsumer.EXCHANGE, "", null, updatedMessage.getBytes(StandardCharsets.UTF_8));
+
+        // Then the existing contact is replaced rather than merging both email lists
+        AWAIT_AT_MOST.untilAsserted(() -> assertThat(cardDavClient.exportContact(user.username(), addressBook).blockOptional())
+            .hasValueSatisfying(contacts -> assertThat(new String(contacts, StandardCharsets.UTF_8)
+                .replace("\r\n", "\n"))
+                .containsOnlyOnce("BEGIN:VCARD")
+                .contains("FN:Updated name",
+                    "EMAIL;PROP-ID=common:abc@example.com",
+                    "EMAIL;PROP-ID=new:klm@example.com")
+                .doesNotContain("Initial name", "xyz@example.com")));
+    }
+
+    @Test
     void shouldUpdateExistingContactWithoutUidWhenEmailIsUnchanged() throws Exception {
         // Given a collected contact without UID, whose UID is generated from its email
         String initialMessage = """

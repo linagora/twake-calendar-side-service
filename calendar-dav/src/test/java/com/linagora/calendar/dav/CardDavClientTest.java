@@ -114,6 +114,33 @@ public class CardDavClientTest {
     }
 
     @Test
+    void retrieveContactShouldReturnExistingContact() {
+        ContactUid contactUid = new ContactUid(UUID.randomUUID().toString());
+        String vcard = """
+            BEGIN:VCARD
+            VERSION:4.0
+            UID:{uid}
+            FN:John Doe
+            EMAIL:john.doe@example.com
+            END:VCARD
+            """.replace("{uid}", contactUid.value());
+        AddressBookURL addressBookURL = new AddressBookURL(user.id(), "collected");
+        testee.upsertContact(user.username(), addressBookURL, contactUid.value(), vcard.getBytes(StandardCharsets.UTF_8)).block();
+
+        assertThat(testee.retrieveContact(user.username(), addressBookURL, contactUid).blockOptional())
+            .hasValueSatisfying(actual -> assertThat(new String(actual, StandardCharsets.UTF_8))
+                .contains("UID:" + contactUid.value(), "EMAIL:john.doe@example.com"));
+    }
+
+    @Test
+    void retrieveContactShouldReturnEmptyWhenContactDoesNotExist() {
+        AddressBookURL addressBookURL = new AddressBookURL(user.id(), "collected");
+
+        assertThat(testee.retrieveContact(user.username(), addressBookURL, new ContactUid(UUID.randomUUID().toString())).blockOptional())
+            .isEmpty();
+    }
+
+    @Test
     void exportContactShouldReturnMultipleContacts() {
         String addressBook = "collected";
         String vcardUid = UUID.randomUUID().toString();

@@ -136,6 +136,26 @@ public class CardDavClient extends DavClient {
             .responseSingle((response, byteBufMono) -> handleContactUpsertResponse(response, byteBufMono, addressBookURL, vcardUid));
     }
 
+    public Mono<byte[]> retrieveContact(Username username, AddressBookURL addressBookURL, ContactUid contactUid) {
+        return httpClientWithImpersonation(username)
+            .get()
+            .uri(addressBookURL.vcardUri(contactUid.value()).toASCIIString())
+            .responseSingle((response, byteBufMono) -> {
+                if (response.status().code() == HttpStatus.SC_OK) {
+                    return byteBufMono.asByteArray();
+                }
+                if (response.status().code() == HttpStatus.SC_NOT_FOUND) {
+                    return Mono.empty();
+                }
+                return responseBodyAsString(byteBufMono)
+                    .flatMap(responseBody ->
+                        Mono.error(new DavClientException("""
+                                Unexpected status code: %d when retrieving contact %s
+                                %s
+                                """.formatted(response.status().code(), addressBookURL.vcardUri(contactUid.value()).toASCIIString(), responseBody))));
+            });
+    }
+
     public Mono<byte[]> exportContact(Username username, AddressBookURL addressBookURL) {
         HttpClient authenticatedClient = httpClientWithImpersonation(username);
         return exportContactAsVcard(authenticatedClient, addressBookURL);

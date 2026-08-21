@@ -34,7 +34,9 @@ import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.core.Username;
 import org.apache.james.lifecycle.api.Startable;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.linagora.calendar.dav.CardDavClient;
+import com.linagora.calendar.dav.ContactUid;
 import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.tmail.rabbitmq.ManagedRabbitMQConsumer;
@@ -108,9 +110,28 @@ public class CollectedContactsConsumer implements Closeable, Startable {
             .flatMap(user -> {
                 AddressBookURL addressBook = new AddressBookURL(user.id(), COLLECTED_ADDRESS_BOOK);
                 return Flux.fromIterable(collectedContacts.collectedContacts())
-                    .map(contactConverter::convert)
-                    .concatMap(contact -> cardDavClient.upsertContact(user.username(), addressBook, contact.uid().value(), contact.vcard()))
+                    .concatMap(contactData -> handleContact(user.username(), addressBook, contactData))
                     .then();
             });
+    }
+
+    private Mono<Void> handleContact(Username username, AddressBookURL addressBook, ObjectNode contactData) {
+        ContactUid uid = contactConverter.generateNormalizedUid(contactData);
+        return cardDavClient.retrieveContact(username, addressBook, uid)
+            .flatMap(existingVCard -> updateExistingContact(username, addressBook, existingVCard, contactData))
+            .switchIfEmpty(Mono.defer(() -> createNewContact(username, addressBook, contactData).thenReturn(true)))
+            .then();
+    }
+
+    private Mono<Boolean> updateExistingContact(Username username, AddressBookURL addressBook, byte[] existingVCard, ObjectNode contactData) {
+        return Mono.justOrEmpty(contactConverter.convertForUpdate(existingVCard, contactData))
+            .flatMap(contact -> cardDavClient.upsertContact(username, addressBook, contact.uid().value(), contact.vcard()))
+            .thenReturn(true);
+    }
+
+    private Mono<Boolean> createNewContact(Username username, AddressBookURL addressBook, ObjectNode contactData) {
+        CollectedContactConverter.ConvertedContact contact = contactConverter.convert(contactData);
+        return cardDavClient.upsertContact(username, addressBook, contact.uid().value(), contact.vcard())
+            .thenReturn(true);
     }
 }
