@@ -42,6 +42,7 @@ import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CardDavClient;
+import com.linagora.calendar.dav.ContactUid;
 import com.linagora.calendar.smtp.template.TemplateType;
 import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.CalendarURL;
@@ -171,18 +172,18 @@ public class ImportProcessor {
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMapMany(Flux::fromIterable)
                 .flatMap(vcard -> {
-                    String vcardUid = UUID.randomUUID().toString();
-                    vcard.setUid(new Uid(vcardUid));
+                    ContactUid contactUid = new ContactUid(UUID.randomUUID().toString());
+                    vcard.setUid(new Uid(contactUid.value()));
 
                     String vcardString = Ezvcard.write(vcard)
                         .prodId(false)
                         .go();
 
                     return cardDavClient.createContact(username, new AddressBookURL(importCommand.baseId(), importCommand.resourceId()),
-                            vcardUid, vcardString.getBytes(StandardCharsets.UTF_8))
+                            contactUid, vcardString.getBytes(StandardCharsets.UTF_8))
                         .thenReturn(ImportResult.succeed())
                         .onErrorResume(error -> {
-                            LOGGER.error("Error importing contact with UID {}: {}", vcardUid, error.getMessage());
+                            LOGGER.error("Error importing contact with UID {}: {}", contactUid.value(), error.getMessage());
                             return Mono.just(ImportResult.failed(failedItemFromVCard(vcard)));
                         });
                 }, DEFAULT_CONCURRENCY)

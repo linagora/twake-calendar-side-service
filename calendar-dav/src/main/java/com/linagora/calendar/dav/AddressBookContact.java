@@ -194,14 +194,14 @@ public record AddressBookContact(Optional<String> uid,
             .build();
     }
 
-    public String vcardUid() {
-        return computeUid(this.uid, this.mail)
-            .orElse(UUID.randomUUID().toString());
+    public ContactUid vcardUid() {
+        return new ContactUid(computeUid(this.uid, this.mail)
+            .orElse(UUID.randomUUID().toString()));
     }
 
     public VCard toVcard() {
         VCard vcard = new VCard();
-        vcard.setUid(new Uid(vcardUid()));
+        vcard.setUid(new Uid(vcardUid().value()));
 
         this.displayName()
             .map(StringUtils::trimToNull)

@@ -72,8 +72,8 @@ public class DavContactDeletionTaskStep implements DeleteUserDataTaskStep {
         return cardDavClient.exportContact(username, addressBookURL)
             .flatMapMany(bytes -> Mono.fromCallable(() -> Ezvcard.parse(new String(bytes, java.nio.charset.StandardCharsets.UTF_8)).all())
                 .flatMapMany(Flux::fromIterable)
-                .map(vcard -> vcard.getUid().getValue())
-                .flatMap(uid -> cardDavClient.deleteContact(username, addressBookURL, uid), DEFAULT_CONCURRENCY))
+                .map(vcard -> new ContactUid(vcard.getUid().getValue()))
+                .flatMap(contactUid -> cardDavClient.deleteContact(username, addressBookURL, contactUid), DEFAULT_CONCURRENCY))
             .then();
     }
 }

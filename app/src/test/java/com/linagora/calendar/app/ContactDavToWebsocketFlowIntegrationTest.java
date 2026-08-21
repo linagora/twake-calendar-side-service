@@ -47,6 +47,7 @@ import com.google.inject.Provides;
 import com.google.inject.Singleton;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.CardDavClient;
+import com.linagora.calendar.dav.ContactUid;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
@@ -132,7 +133,7 @@ class ContactDavToWebsocketFlowIntegrationTest {
         registerAddressBook(messages, addressBookUri);
 
         // WHEN: Bob creates a contact
-        cardDavClient.createContact(bob.username(), addressBookURL, vcardUid, buildVCard(vcardUid, "John Doe")).block();
+        cardDavClient.createContact(bob.username(), addressBookURL, new ContactUid(vcardUid), buildVCard(vcardUid, "John Doe")).block();
 
         // THEN: Bob receives the current address book sync token over WebSocket
         SyncToken createdToken = cardDavClient.retrieveSyncToken(bob.username(), addressBookURL).block();
@@ -147,12 +148,12 @@ class ContactDavToWebsocketFlowIntegrationTest {
         String vcardUid = UUID.randomUUID().toString();
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         registerAddressBook(messages, addressBookUri);
-        cardDavClient.createContact(bob.username(), addressBookURL, vcardUid, buildVCard(vcardUid, "John Doe")).block();
+        cardDavClient.createContact(bob.username(), addressBookURL, new ContactUid(vcardUid), buildVCard(vcardUid, "John Doe")).block();
         SyncToken initialToken = cardDavClient.retrieveSyncToken(bob.username(), addressBookURL).block();
         assertAddressBookSyncToken(messages, addressBookUri, initialToken);
 
         // WHEN: Bob updates the contact
-        cardDavClient.createContact(bob.username(), addressBookURL, vcardUid, buildVCard(vcardUid, "Jane Doe")).block();
+        cardDavClient.createContact(bob.username(), addressBookURL, new ContactUid(vcardUid), buildVCard(vcardUid, "Jane Doe")).block();
 
         // THEN: Bob receives a new address book sync token over WebSocket
         SyncToken updatedToken = cardDavClient.retrieveSyncToken(bob.username(), addressBookURL).block();
@@ -168,12 +169,12 @@ class ContactDavToWebsocketFlowIntegrationTest {
         String vcardUid = UUID.randomUUID().toString();
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         registerAddressBook(messages, addressBookUri);
-        cardDavClient.createContact(bob.username(), addressBookURL, vcardUid, buildVCard(vcardUid, "John Doe")).block();
+        cardDavClient.createContact(bob.username(), addressBookURL, new ContactUid(vcardUid), buildVCard(vcardUid, "John Doe")).block();
         SyncToken initialToken = cardDavClient.retrieveSyncToken(bob.username(), addressBookURL).block();
         assertAddressBookSyncToken(messages, addressBookUri, initialToken);
 
         // WHEN: Bob deletes the contact
-        cardDavClient.deleteContact(bob.username(), addressBookURL, vcardUid).block();
+        cardDavClient.deleteContact(bob.username(), addressBookURL, new ContactUid(vcardUid)).block();
 
         // THEN: Bob receives another new address book sync token over WebSocket
         SyncToken deletedToken = cardDavClient.retrieveSyncToken(bob.username(), addressBookURL).block();
@@ -192,7 +193,7 @@ class ContactDavToWebsocketFlowIntegrationTest {
         registerAddressBook(messages, addressBookUri);
 
         // WHEN: Bob creates a contact and receives a new sync token over WebSocket
-        cardDavClient.createContact(bob.username(), addressBookURL, vcardUid, buildVCard(vcardUid, "John Doe")).block();
+        cardDavClient.createContact(bob.username(), addressBookURL, new ContactUid(vcardUid), buildVCard(vcardUid, "John Doe")).block();
         SyncToken createdToken = awaitAddressBookSyncToken(messages, addressBookUri);
         String reportResponse = davTestHelper.fetchContactsBySyncToken(bob, addressBookURL, SABRE_SYNC_TOKEN_PREFIX + initialToken.value()).block();
 
@@ -209,11 +210,11 @@ class ContactDavToWebsocketFlowIntegrationTest {
         String vcardUid = UUID.randomUUID().toString();
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         registerAddressBook(messages, addressBookUri);
-        cardDavClient.createContact(bob.username(), addressBookURL, vcardUid, buildVCard(vcardUid, "John Doe")).block();
+        cardDavClient.createContact(bob.username(), addressBookURL, new ContactUid(vcardUid), buildVCard(vcardUid, "John Doe")).block();
         SyncToken initialToken = awaitAddressBookSyncToken(messages, addressBookUri);
 
         // WHEN: Bob updates the contact and reports changes from the previous token
-        cardDavClient.createContact(bob.username(), addressBookURL, vcardUid, buildVCard(vcardUid, "Jane Doe")).block();
+        cardDavClient.createContact(bob.username(), addressBookURL, new ContactUid(vcardUid), buildVCard(vcardUid, "Jane Doe")).block();
         SyncToken updatedToken = awaitAddressBookSyncToken(messages, addressBookUri);
         String reportResponse = davTestHelper.fetchContactsBySyncToken(
             bob, addressBookURL, SABRE_SYNC_TOKEN_PREFIX + initialToken.value()).block();
@@ -231,11 +232,11 @@ class ContactDavToWebsocketFlowIntegrationTest {
         String vcardUid = UUID.randomUUID().toString();
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         registerAddressBook(messages, addressBookUri);
-        cardDavClient.createContact(bob.username(), addressBookURL, vcardUid, buildVCard(vcardUid, "John Doe")).block();
+        cardDavClient.createContact(bob.username(), addressBookURL, new ContactUid(vcardUid), buildVCard(vcardUid, "John Doe")).block();
         SyncToken initialToken = awaitAddressBookSyncToken(messages, addressBookUri);
 
         // WHEN: Bob deletes the contact and reports changes from the previous token
-        cardDavClient.deleteContact(bob.username(), addressBookURL, vcardUid).block();
+        cardDavClient.deleteContact(bob.username(), addressBookURL, new ContactUid(vcardUid)).block();
         SyncToken deletedToken = awaitAddressBookSyncToken(messages, addressBookUri);
         String reportResponse = davTestHelper.fetchContactsBySyncToken(
             bob, addressBookURL, SABRE_SYNC_TOKEN_PREFIX + initialToken.value()).block();
