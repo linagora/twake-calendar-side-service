@@ -130,7 +130,7 @@ class CollectedContactUidCalculatorTest {
     }
 
     @Test
-    void shouldGenerateSameUidForEmailAndEquivalentMatrixId() throws Exception {
+    void shouldGenerateSameUidForEmailAndEquivalentMatrixIdRegardlessOfCase() throws Exception {
         String emailUid = testee.generateNormalizedUid(Card.toJSCard("""
             {
               "@type": "Card",
@@ -138,7 +138,7 @@ class CollectedContactUidCalculatorTest {
               "emails": {
                 "main": {
                   "@type": "EmailAddress",
-                  "address": "btellier@linagora.com"
+                  "address": "Alice.Example@Domain.test"
                 }
               }
             }
@@ -151,15 +151,62 @@ class CollectedContactUidCalculatorTest {
                 "matrix": {
                   "@type": "OnlineService",
                   "service": "matrix",
-                  "user": "@btellier:linagora.com"
+                  "user": "@alice.example:DOMAIN.test"
                 }
               }
             }
             """)).value();
 
         assertThat(matrixIdUid)
-            .as("Uses the same UID for an email address and its equivalent Matrix ID")
-            .isEqualTo(emailUid);
+            .as("Uses the same UID for an email address and its equivalent Matrix ID regardless of case")
+            .isEqualTo(emailUid)
+            .isEqualTo(sha1("alice.example@domain.test"));
+    }
+
+    @Test
+    void shouldGenerateSameUidForEquivalentEmailAndMatrixIdRegardlessOfCase() throws Exception {
+        String uppercaseEmailUid = testee.generateNormalizedUid(Card.toJSCard("""
+            {
+              "@type": "Card",
+              "version": "2.0",
+              "emails": {
+                "main": {
+                  "@type": "EmailAddress",
+                  "address": "Alice.Example@Domain.test"
+                }
+              }
+            }
+            """)).value();
+        String matrixIdUid = testee.generateNormalizedUid(Card.toJSCard("""
+            {
+              "@type": "Card",
+              "version": "2.0",
+              "onlineServices": {
+                "matrix": {
+                  "@type": "OnlineService",
+                  "service": "matrix",
+                  "user": "@alice.example:domain.test"
+                }
+              }
+            }
+            """)).value();
+        String lowercaseEmailUid = testee.generateNormalizedUid(Card.toJSCard("""
+            {
+              "@type": "Card",
+              "version": "2.0",
+              "emails": {
+                "main": {
+                  "@type": "EmailAddress",
+                  "address": "alice.example@domain.test"
+                }
+              }
+            }
+            """)).value();
+
+        assertThat(uppercaseEmailUid)
+            .as("Uses the same UID for equivalent email addresses and Matrix IDs regardless of case")
+            .isEqualTo(matrixIdUid)
+            .isEqualTo(lowercaseEmailUid);
     }
 
     @Test

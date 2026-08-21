@@ -21,6 +21,7 @@ package com.linagora.calendar.saas.contact;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Comparator;
+import java.util.Locale;
 import java.util.Optional;
 
 import org.apache.commons.lang3.StringUtils;
@@ -84,6 +85,7 @@ public class CollectedContactConverter {
             return emailAddress(card)
                 .or(() -> matrixId(card))
                 .or(() -> phoneNumber(card))
+                .map(value -> value.toLowerCase(Locale.US))
                 .map(this::sha1)
                 .map(ContactUid::new)
                 .orElseThrow(() -> new CollectedContactConversionException("Cannot generate contact UID: missing email, Matrix ID and phone number"));
