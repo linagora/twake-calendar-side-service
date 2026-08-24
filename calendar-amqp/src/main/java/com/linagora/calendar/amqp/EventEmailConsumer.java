@@ -19,7 +19,7 @@
 package com.linagora.calendar.amqp;
 
 import static com.linagora.calendar.amqp.CalendarAmqpModule.INJECT_KEY_DAV;
-import static com.linagora.calendar.amqp.model.CalendarEventBookingConfirmedNotificationEmail.X_PUBLICLY_CREATOR_HEADER;
+import static com.linagora.calendar.amqp.model.CalendarEventBookingNotificationEmail.X_PUBLICLY_CREATOR_HEADER;
 import static com.linagora.calendar.amqp.model.CalendarEventNotificationEmail.GET_FIRST_VEVENT_FUNCTION;
 import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
 import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
@@ -47,6 +47,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.inject.name.Named;
 import com.linagora.calendar.amqp.model.CalendarEventBookingConfirmedNotificationEmail;
+import com.linagora.calendar.amqp.model.CalendarEventBookingDeclinedNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventCancelNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventCounterNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventInviteNotificationEmail;
@@ -60,6 +61,7 @@ import com.rabbitmq.client.BuiltinExchangeType;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.component.VEvent;
+import net.fortuna.ical4j.model.parameter.PartStat;
 import net.fortuna.ical4j.model.property.Method;
 import reactor.core.publisher.Mono;
 import reactor.rabbitmq.AcknowledgableDelivery;
@@ -145,6 +147,10 @@ public class EventEmailConsumer implements Closeable, Startable {
                 if (publicAgendaEvent(calendarEventMessage.event())) {
                     LOGGER.info("Received public agenda calendar event message with method REQUEST and eventPath {}",
                         calendarEventMessage.eventPath());
+                    if (organizerDeclined(calendarEventMessage.event())) {
+                        yield eventMailHandler.handleBookingDeclinedEvent(CalendarEventBookingDeclinedNotificationEmail.from(calendarEventMessage))
+                            .doOnSuccess(any -> publicAgendaSentMetric.increment());
+                    }
                     yield eventMailHandler.handlePublicAgendaEvent(CalendarEventBookingConfirmedNotificationEmail.from(calendarEventMessage))
                         .doOnSuccess(any -> publicAgendaSentMetric.increment());
                 }
@@ -201,6 +207,14 @@ public class EventEmailConsumer implements Closeable, Startable {
             .filter(value -> cancelledBy
                 .filter(cancelledByValue -> Strings.CI.equals(cancelledByValue, value))
                 .isPresent())
+            .isPresent();
+    }
+
+    private boolean organizerDeclined(Calendar calendar) {
+        VEvent event = GET_FIRST_VEVENT_FUNCTION.apply(calendar);
+        return EventParseUtils.getOrganizer(event)
+            .flatMap(organizer -> EventParseUtils.findAttendeePartStat(event, organizer.email()))
+            .filter(PartStat.DECLINED::equals)
             .isPresent();
     }
 

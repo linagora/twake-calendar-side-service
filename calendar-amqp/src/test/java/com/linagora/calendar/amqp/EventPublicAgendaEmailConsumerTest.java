@@ -300,6 +300,87 @@ public class EventPublicAgendaEmailConsumerTest {
     }
 
     @Test
+    void shouldSendEmailWhenOrganizerPartStatUpdatedFromNeedsActionToDeclinedOnPublicAgenda() {
+        // Given: a public agenda event waiting for organizer confirmation.
+        String eventUid = UUID.randomUUID().toString();
+        String initialCalendarData = generatePublicAgendaCalendar(eventUid, organizer.username().asString(),
+            attendee.username().asString(), PartStat.NEEDS_ACTION, INITIAL_SEQUENCE);
+        davTestHelper.upsertCalendar(organizer, initialCalendarData, eventUid);
+        calmlyAwaitDuringNoEmail
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).isEmpty());
+
+        // When: organizer declines the event.
+        mockSmtpExtension.clear();
+        String updatedCalendarData = generatePublicAgendaCalendar(eventUid, organizer.username().asString(),
+            attendee.username().asString(), PartStat.DECLINED, UPDATED_SEQUENCE);
+        davTestHelper.upsertCalendar(organizer, updatedCalendarData, eventUid);
+
+        // Then: the booker learns the proposal was turned down, and is not told it was accepted.
+        awaitAtMostForEmailDelivery
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
+        String message = smtpMailsResponse.getString("[0].message");
+
+        assertSoftly(softly -> {
+            softly.assertThat(message)
+                .containsIgnoringNewLines("Subject: Van Tung TRAN has declined your event proposal: Publicly created meeting")
+                .contains("Content-Type: text/html; charset=UTF-8")
+                .doesNotContain("text/calendar")
+                .doesNotContain("application/ics");
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo(organizer.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(attendee.username().asString());
+
+            softly.assertThat(extractDecodedPart(message, "text/html; charset=UTF-8"))
+                .contains("Van Tung TRAN")
+                .contains("has declined your event proposal")
+                .contains("(Proposer)")
+                .doesNotContain("has accepted");
+        });
+    }
+
+    @Test
+    void shouldSendLocalizedBookingDeclinedEmailAccordingToRecipientLanguage() {
+        when(settingsResolver.resolveOrDefault(any(Username.class), any(Username.class)))
+            .thenReturn(Mono.just(new SettingsBasedResolver.ResolvedSettings(
+                Map.of(
+                    LANGUAGE_IDENTIFIER, Locale.FRENCH,
+                    TIMEZONE_IDENTIFIER, ZoneId.of("Europe/Paris")))));
+
+        String eventUid = UUID.randomUUID().toString();
+        davTestHelper.upsertCalendar(organizer, generatePublicAgendaCalendar(eventUid, organizer.username().asString(),
+            attendee.username().asString(), PartStat.NEEDS_ACTION, INITIAL_SEQUENCE), eventUid);
+        calmlyAwaitDuringNoEmail
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).isEmpty());
+
+        mockSmtpExtension.clear();
+        davTestHelper.upsertCalendar(organizer, generatePublicAgendaCalendar(eventUid, organizer.username().asString(),
+            attendee.username().asString(), PartStat.DECLINED, UPDATED_SEQUENCE), eventUid);
+
+        awaitAtMostForEmailDelivery
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
+        String message = smtpMailsResponse.getString("[0].message");
+
+        assertSoftly(softly -> {
+            softly.assertThat(message)
+                .contains("Content-Type: text/html; charset=UTF-8")
+                .contains("Content-Language: fr")
+                .doesNotContain("text/calendar")
+                .doesNotContain("application/ics");
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo(organizer.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(attendee.username().asString());
+
+            assertThat(extractDecodedPart(message, "text/html; charset=UTF-8"))
+                .contains("a refus&eacute; la proposition d'&eacute;v&eacute;nement de vous")
+                .contains("Heure")
+                .contains("(Organisateur)")
+                .contains("(Proposant)");
+        });
+    }
+
+    @Test
     void shouldSendCancelEmailToBookerWhenOrganizerDeletesAcceptedPublicAgendaEvent() {
         // Given: an accepted public agenda event already confirmed to the booker.
         String eventUid = UUID.randomUUID().toString();
