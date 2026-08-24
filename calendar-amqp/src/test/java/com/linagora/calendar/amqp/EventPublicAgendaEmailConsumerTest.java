@@ -315,7 +315,7 @@ public class EventPublicAgendaEmailConsumerTest {
             attendee.username().asString(), PartStat.DECLINED, UPDATED_SEQUENCE);
         davTestHelper.upsertCalendar(organizer, updatedCalendarData, eventUid);
 
-        // Then: the booker learns the proposal was turned down, and is not told it was accepted.
+        // Then: the booker learns the proposal was turned down.
         awaitAtMostForEmailDelivery
             .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
 
@@ -395,6 +395,39 @@ public class EventPublicAgendaEmailConsumerTest {
         davTestHelper.deleteCalendar(organizer, eventUid);
 
         // Then: the booker receives a cancel email
+        awaitAtMostForEmailDelivery
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
+        String message = smtpMailsResponse.getString("[0].message");
+
+        assertSoftly(softly -> {
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo(organizer.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(attendee.username().asString());
+            softly.assertThat(message)
+                .contains("Subject: Event Publicly created meeting from")
+                .contains("canceled")
+                .contains("Content-Type: text/html; charset=UTF-8");
+            softly.assertThat(getHtml(message))
+                .contains("has canceled an event")
+                .contains("Van Tung TRAN")
+                .contains("Bob");
+        });
+    }
+
+    @Test
+    void shouldSendCancelEmailToBookerWhenOrganizerDeletesUnacceptedPublicAgendaEvent() {
+        // Given: a booking proposal the organizer has not answered yet.
+        String eventUid = UUID.randomUUID().toString();
+        davTestHelper.upsertCalendar(organizer, generatePublicAgendaCalendar(eventUid, organizer.username().asString(),
+            attendee.username().asString(), PartStat.NEEDS_ACTION, INITIAL_SEQUENCE), eventUid);
+        calmlyAwaitDuringNoEmail
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).isEmpty());
+
+        // When: organizer deletes the event instead of answering the proposal.
+        davTestHelper.deleteCalendar(organizer, eventUid);
+
+        // Then: the booker is told the event has been cancelled.
         awaitAtMostForEmailDelivery
             .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
 
