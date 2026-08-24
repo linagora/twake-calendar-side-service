@@ -41,13 +41,10 @@ import com.linagora.calendar.storage.event.EventParseUtils;
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.component.VEvent;
-import net.fortuna.ical4j.model.property.Method;
 
 public record CalendarEventNotificationEmail(MailAddress senderEmail,
                                              MailAddress recipientEmail,
-                                             Method method,
                                              Calendar event,
-                                             String calendarURI,
                                              String eventPath) {
 
     public static final Function<Calendar, VEvent> GET_FIRST_VEVENT_FUNCTION =
@@ -59,9 +56,7 @@ public record CalendarEventNotificationEmail(MailAddress senderEmail,
         return new CalendarEventNotificationEmail(
             dto.senderEmail(),
             dto.recipientEmail(),
-            dto.method(),
             dto.event(),
-            dto.calendarURI(),
             dto.eventPath()
         );
     }

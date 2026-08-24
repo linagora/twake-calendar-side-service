@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.amqp;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.linagora.calendar.api.CalendarUtil;
@@ -29,7 +30,8 @@ import net.fortuna.ical4j.model.property.immutable.ImmutableMethod;
 
 class CalendarEventNotificationEmailDeserializeTest {
 
-    static final ObjectMapper mapper = new ObjectMapper().registerModule(new Jdk8Module());
+    static final ObjectMapper mapper = new ObjectMapper().registerModule(new Jdk8Module())
+        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     @Test
     void shouldDeserializeFromJsonWhenInvite() throws Exception {
@@ -65,7 +67,6 @@ class CalendarEventNotificationEmailDeserializeTest {
             softly.assertThat(calendarEvent.recipientEmail().asString()).isEqualTo("btellier@linagora.com");
             softly.assertThat(calendarEvent.method()).isEqualTo(ImmutableMethod.REQUEST);
             softly.assertThat(calendarEvent.event()).isEqualTo(CalendarUtil.parseIcs(eventIcs));
-            softly.assertThat(calendarEvent.calendarURI()).isEqualTo("67e26ebbecd9f300255a9f80");
             softly.assertThat(calendarEvent.eventPath()).isEqualTo("/calendars/5f50a663bdaffe002629099c/5f50a663bdaffe002629099c/sabredav-71741739-8806-4a9e-98b0-cc386d248832.ics");
             softly.assertThat(calendarEvent.isNewEvent().get()).isTrue();
         });
@@ -146,7 +147,6 @@ class CalendarEventNotificationEmailDeserializeTest {
             softly.assertThat(calendarEvent.recipientEmail().asString()).isEqualTo("btellier@linagora.com");
             softly.assertThat(calendarEvent.method()).isEqualTo(ImmutableMethod.REQUEST);
             softly.assertThat(calendarEvent.event()).isEqualTo(CalendarUtil.parseIcs(eventIcs));
-            softly.assertThat(calendarEvent.calendarURI()).isEqualTo("67e26ebbecd9f300255a9f80");
             softly.assertThat(calendarEvent.eventPath()).isEqualTo("/calendars/5f50a663bdaffe002629099c/5f50a663bdaffe002629099c/sabredav-71741739-8806-4a9e-98b0-cc386d248832.ics");
             softly.assertThat(calendarEvent.changes().get().summary()).isPresent();
             softly.assertThat(calendarEvent.changes().get().summary().get().previous()).isEqualTo("Old summary");
@@ -211,7 +211,6 @@ class CalendarEventNotificationEmailDeserializeTest {
             softly.assertThat(calendarEvent.recipientEmail().asString()).isEqualTo("btellier@linagora.com");
             softly.assertThat(calendarEvent.method()).isEqualTo(ImmutableMethod.CANCEL);
             softly.assertThat(calendarEvent.event()).isEqualTo(CalendarUtil.parseIcs(eventIcs));
-            softly.assertThat(calendarEvent.calendarURI()).isEqualTo("67e26ebbecd9f300255a9f80");
             softly.assertThat(calendarEvent.eventPath()).isEqualTo("/calendars/5f50a663bdaffe002629099c/5f50a663bdaffe002629099c/sabredav-71741739-8806-4a9e-98b0-cc386d248832.ics");
         });
     }
@@ -262,7 +261,6 @@ class CalendarEventNotificationEmailDeserializeTest {
             softly.assertThat(calendarEvent.recipientEmail().asString()).isEqualTo("user1@open-paas.org");
             softly.assertThat(calendarEvent.method()).isEqualTo(ImmutableMethod.REPLY);
             softly.assertThat(calendarEvent.event()).isEqualTo(CalendarUtil.parseIcs(eventIcs));
-            softly.assertThat(calendarEvent.calendarURI()).isEqualTo("6853ca6c1cbe800055fd838b");
             softly.assertThat(calendarEvent.eventPath()).isEqualTo("/calendars/6853ca6c1cbe800055fd838a/6853ca6c1cbe800055fd838a/a92de371-8529-45f8-948a-70ddf27bbc09.ics");
         });
     }
@@ -342,7 +340,6 @@ class CalendarEventNotificationEmailDeserializeTest {
             softly.assertThat(calendarEvent.method()).isEqualTo(ImmutableMethod.COUNTER);
             softly.assertThat(calendarEvent.event()).isEqualTo(CalendarUtil.parseIcs(eventIcs));
             softly.assertThat(calendarEvent.oldEvent().get()).isEqualTo(CalendarUtil.parseIcs(oldEventIcs));
-            softly.assertThat(calendarEvent.calendarURI()).isEqualTo("6853ca6c1cbe800055fd838b");
             softly.assertThat(calendarEvent.eventPath()).isEqualTo("/calendars/6853ca6c1cbe800055fd838a/6853ca6c1cbe800055fd838a/a92de371-8529-45f8-948a-70ddf27bbc09.ics");
         });
     }
