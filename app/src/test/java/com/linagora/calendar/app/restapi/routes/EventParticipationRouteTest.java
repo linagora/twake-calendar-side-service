@@ -60,7 +60,6 @@ import org.apache.http.HttpStatus;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.james.core.Domain;
-import org.apache.james.core.MailAddress;
 import org.apache.james.utils.GuiceProbe;
 import org.apache.james.utils.WebAdminGuiceProbe;
 import org.awaitility.Awaitility;
@@ -97,7 +96,6 @@ import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.smtp.MailSenderConfiguration;
 import com.linagora.calendar.smtp.MockSmtpServerExtension;
 import com.linagora.calendar.storage.CalendarURL;
-import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.model.TeamCalendarId;
 
@@ -343,7 +341,6 @@ class EventParticipationRouteTest {
 
     @Test
     void teamCalendarEventParticipationShouldSucceedForExternalAttendee(TwakeCalendarGuiceServer server) throws Exception {
-        OpenPaaSId domainId = server.getProbe(CalendarDataProbe.class).domainId(DOMAIN);
         TeamCalendarId teamCalendarId = createTeamCalendar(server, "engineering", "Engineering Team");
         grantTeamMember(server, teamCalendarId, organizer, "dav:read-write");
         CalendarURL delegatedCalendar = awaitAtMost.until(() ->
@@ -361,18 +358,27 @@ class EventParticipationRouteTest {
         davTestHelper.upsertCalendar(organizer.username(), delegatedEventHref,
             generateCalendarData(eventUid, organizer.username().asString(), externalAttendee)).block();
 
-        Participation participation = Throwing.supplier(() -> new Participation(
-            organizer.username().asMailAddress(),
-            new MailAddress(externalAttendee),
-            eventUid,
-            teamCalendarId.value(),
-            ParticipantAction.ACCEPTED)).get();
-        URL participationTokenUrl = getParticipationTokenUrl(participation, server);
+        AtomicReference<String> actionLink = new AtomicReference<>();
+        CALMLY_AWAIT
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> {
+                JsonPath smtpMailsResponse = given(mockSMTPRequestSpecification())
+                    .get("/smtpMails")
+                    .jsonPath();
+                assertThat(smtpMailsResponse.getList("")).hasSize(1);
+                assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(externalAttendee);
+                List<String> actionLinks = extractActionLinks(getHtml(smtpMailsResponse.getString("[0].message")));
+                assertThat(actionLinks).hasSize(3);
+                actionLink.set(actionLinks.getFirst());
+            });
 
-        String actualResponse = RestAssured
-            .given()
+        String participationLink = actionLink.get()
+            .replace("https://excal.linagora.com/excal/?jwt=",
+                "http://localhost:" + restApiPort + "/calendar/api/calendars/event/participation?jwt=");
+
+        String actualResponse = given()
             .when()
-            .get(participationTokenUrl)
+            .get(participationLink)
             .then()
             .statusCode(200)
             .contentType(JSON)
