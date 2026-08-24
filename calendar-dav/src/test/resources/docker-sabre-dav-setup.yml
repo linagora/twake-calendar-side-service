@@ -65,6 +65,7 @@ services:
       - SABRE_ADMIN_LOGIN=admin
       - SABRE_ADMIN_PASSWORD=secret123
       - SABRE_IMPERSONATION_ENABLED=true
+      - CALDAV_ORGANIZER_VALIDATION=true
     networks:
       - tcalendar
     depends_on:

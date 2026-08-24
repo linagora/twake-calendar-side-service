@@ -340,7 +340,8 @@ class EventParticipationRouteTest {
     }
 
     @Test
-    void teamCalendarEventParticipationShouldSucceedForExternalAttendee(TwakeCalendarGuiceServer server) throws Exception {
+    void teamCalendarEventParticipationShouldSucceedForExternalAttendee(TwakeCalendarGuiceServer server) {
+        // Given an external attendee receives an action link for an event created in a Team Calendar
         TeamCalendarId teamCalendarId = createTeamCalendar(server, "engineering", "Engineering Team");
         grantTeamMember(server, teamCalendarId, organizer, "dav:read-write");
         CalendarURL delegatedCalendar = awaitAtMost.until(() ->
@@ -376,6 +377,7 @@ class EventParticipationRouteTest {
             .replace("https://excal.linagora.com/excal/?jwt=",
                 "http://localhost:" + restApiPort + "/calendar/api/calendars/event/participation?jwt=");
 
+        // When the attendee follows the action link
         String actualResponse = given()
             .when()
             .get(participationLink)
@@ -385,6 +387,7 @@ class EventParticipationRouteTest {
             .extract()
             .body().asString();
 
+        // Then the participation endpoint returns the event and updates the Team Calendar event status
         assertThatJson(actualResponse)
             .isEqualTo("""
                 {
@@ -403,33 +406,74 @@ class EventParticipationRouteTest {
         assertThat(updated.calendarData().toString()).contains("PARTSTAT=ACCEPTED");
     }
 
-    private boolean isTeamCalendar(Map.Entry<CalendarURL, JsonNode> entry, TeamCalendarId teamCalendarId) {
-        String id = teamCalendarId.value();
-        if (entry.getKey().base().value().equals(id) || entry.getKey().calendarId().value().equals(id)) {
-            return true;
-        }
-        JsonNode source = entry.getValue().path("calendarserver:source");
-        return source.path("id").asText().equals(id)
-            || source.path("calendarHomeId").asText().equals(id)
-            || isTeamCalendarHref(source.path("_links").path("self").path("href").asText(null), id)
-            || isTeamCalendarHref(source.path("href").asText(null), id)
-            || isTeamCalendarHref(entry.getValue().path("calendarserver:delegatedsource").asText(null), id);
+    @Test
+    void teamCalendarEventParticipationShouldSucceedForInternalAttendee(TwakeCalendarGuiceServer server) throws Exception {
+        // Given an internal attendee receives an action link for an event created in a Team Calendar
+        TeamCalendarId teamCalendarId = createTeamCalendar(server, "engineering-internal", "Engineering Team");
+        grantTeamMember(server, teamCalendarId, organizer, "dav:read-write");
+        CalendarURL delegatedCalendar = awaitAtMost.until(() ->
+                calDavClient.findUserCalendarList(organizer)
+                    .map(list -> list.calendars().entrySet().stream()
+                        .filter(entry -> isTeamCalendar(entry, teamCalendarId))
+                        .map(Map.Entry::getKey)
+                        .findFirst())
+                    .block(),
+            Optional::isPresent).get();
+
+        String eventUid = UUID.randomUUID().toString();
+        URI delegatedEventHref = URI.create(delegatedCalendar.asUri().toASCIIString() + "/" + eventUid + ".ics");
+        davTestHelper.upsertCalendar(organizer.username(), delegatedEventHref,
+            generateCalendarData(eventUid, organizer.username().asString(), attendee.username().asString())).block();
+
+        AtomicReference<String> actionLink = new AtomicReference<>();
+        CALMLY_AWAIT
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> {
+                JsonPath smtpMailsResponse = given(mockSMTPRequestSpecification())
+                    .get("/smtpMails")
+                    .jsonPath();
+                assertThat(smtpMailsResponse.getList("")).hasSize(1);
+                assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(attendee.username().asString());
+                List<String> actionLinks = extractActionLinks(getHtml(smtpMailsResponse.getString("[0].message")));
+                assertThat(actionLinks).hasSize(3);
+                actionLink.set(actionLinks.getFirst());
+            });
+
+        String participationLink = actionLink.get()
+            .replace("https://excal.linagora.com/excal/?jwt=",
+                "http://localhost:" + restApiPort + "/calendar/api/calendars/event/participation?jwt=");
+
+        // When the attendee follows the action link
+        String actualResponse = given()
+            .when()
+            .get(participationLink)
+            .then()
+            .statusCode(200)
+            .contentType(JSON)
+            .extract()
+            .body().asString();
+
+        // Then the participation endpoint returns the event and updates the internal attendee's calendar copy
+        assertThatJson(actualResponse)
+            .isEqualTo("""
+                {
+                  "eventJSON": "${json-unit.ignore}",
+                  "attendeeEmail": "%s",
+                  "locale": "en",
+                  "links": {
+                    "yes": "${json-unit.ignore}",
+                    "no": "${json-unit.ignore}",
+                    "maybe": "${json-unit.ignore}"
+                  }
+                }
+                """.formatted(attendee.username().asString()));
+
+        assertThat(getCalendarEventReportResponse(eventUid)).contains("\"partstat\" : \"ACCEPTED\"");
     }
 
-    private boolean isTeamCalendarHref(String href, String teamCalendarId) {
-        if (href == null || href.isBlank()) {
-            return false;
-        }
-        try {
-            String path = URI.create(href).getPath();
-            if (path.endsWith(".json")) {
-                path = path.substring(0, path.length() - ".json".length());
-            }
-            return java.util.Arrays.stream(path.split("/"))
-                .anyMatch(teamCalendarId::equals);
-        } catch (Exception e) {
-            return false;
-        }
+    private boolean isTeamCalendar(Map.Entry<CalendarURL, JsonNode> entry, TeamCalendarId teamCalendarId) {
+        String teamCalendarPrincipal = "principals/team-calendars/" + teamCalendarId.value();
+        return entry.getValue().findValuesAsText("principal").contains(teamCalendarPrincipal);
     }
 
     private TeamCalendarId createTeamCalendar(TwakeCalendarGuiceServer server, String name, String displayName) {
