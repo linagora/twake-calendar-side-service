@@ -31,7 +31,6 @@ import com.linagora.calendar.amqp.model.CalendarEventNotificationEmail;
 import com.linagora.calendar.api.CalendarUtil;
 
 import net.fortuna.ical4j.model.Calendar;
-import net.fortuna.ical4j.model.property.Method;
 
 class OrganizerAbsentActionLinksTest {
 
@@ -55,9 +54,7 @@ class OrganizerAbsentActionLinksTest {
         return new CalendarEventNotificationEmail(
             new MailAddress("sender@domain.tld"),
             new MailAddress("bob@domain.tld"),
-            new Method(Method.VALUE_REQUEST),
             calendar,
-            "/calendars/uri",
             "/calendars/base/event.ics");
     }
 

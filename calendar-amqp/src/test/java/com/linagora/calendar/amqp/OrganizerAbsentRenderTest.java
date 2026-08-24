@@ -49,7 +49,6 @@ import com.linagora.calendar.smtp.template.content.model.EventInCalendarLinkFact
 import com.linagora.calendar.smtp.template.content.model.PersonModel;
 
 import net.fortuna.ical4j.model.Calendar;
-import net.fortuna.ical4j.model.property.Method;
 
 /**
  * Strong functional guarantee that the notification e-mail templates are still rendered
@@ -87,9 +86,7 @@ class OrganizerAbsentRenderTest {
         return new CalendarEventNotificationEmail(
             new MailAddress("sender@domain.tld"),
             new MailAddress("bob@domain.tld"),
-            new Method(Method.VALUE_REQUEST),
             calendar,
-            "/calendars/uri",
             "/calendars/base/event.ics");
     }
 
@@ -227,9 +224,7 @@ class OrganizerAbsentRenderTest {
         CalendarEventNotificationEmail base = new CalendarEventNotificationEmail(
             new MailAddress("sender@domain.tld"),
             new MailAddress("bob@domain.tld"),
-            new Method(Method.VALUE_REQUEST),
             calendar,
-            "/calendars/uri",
             "/calendars/base/event.ics");
         CalendarEventBookingConfirmedNotificationEmail email = new CalendarEventBookingConfirmedNotificationEmail(base);
 
