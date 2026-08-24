@@ -59,7 +59,10 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpStatus;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.utils.URLEncodedUtils;
+import org.apache.james.core.Domain;
+import org.apache.james.core.MailAddress;
 import org.apache.james.utils.GuiceProbe;
+import org.apache.james.utils.WebAdminGuiceProbe;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionFactory;
 import org.junit.jupiter.api.AfterAll;
@@ -72,6 +75,7 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import com.github.fge.lambdas.Throwing;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.multibindings.Multibinder;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.api.Participation;
@@ -83,14 +87,19 @@ import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.DavCalendarObject;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
+import com.linagora.calendar.dav.SabreDavProvisioningService;
 import com.linagora.calendar.dav.dto.CalendarReportJsonResponse;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.smtp.MailSenderConfiguration;
 import com.linagora.calendar.smtp.MockSmtpServerExtension;
+import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
+import com.linagora.calendar.storage.model.TeamCalendarId;
 
 import io.restassured.RestAssured;
 import io.restassured.authentication.PreemptiveBasicAuthScheme;
@@ -165,6 +174,8 @@ class EventParticipationRouteTest {
     static void afterAll() {
         RestAssured.reset();
     }
+
+    private static final Domain DOMAIN = Domain.of(SabreDavProvisioningService.DOMAIN);
 
     private OpenPaaSUser attendee;
     private OpenPaaSUser organizer;
@@ -328,6 +339,144 @@ class EventParticipationRouteTest {
                   }
                 }
                 """.formatted(externalUser));
+    }
+
+    @Test
+    void teamCalendarEventParticipationShouldSucceedForExternalAttendee(TwakeCalendarGuiceServer server) throws Exception {
+        OpenPaaSId domainId = server.getProbe(CalendarDataProbe.class).domainId(DOMAIN);
+        TeamCalendarId teamCalendarId = createTeamCalendar(server, "engineering", "Engineering Team");
+        grantTeamMember(server, teamCalendarId, organizer, "dav:read-write");
+        CalendarURL delegatedCalendar = awaitAtMost.until(() ->
+                calDavClient.findUserCalendarList(organizer)
+                    .map(list -> list.calendars().entrySet().stream()
+                        .filter(entry -> isTeamCalendar(entry, teamCalendarId))
+                        .map(Map.Entry::getKey)
+                        .findFirst())
+                    .block(),
+            Optional::isPresent).get();
+
+        String eventUid = UUID.randomUUID().toString();
+        URI delegatedEventHref = URI.create(delegatedCalendar.asUri().toASCIIString() + "/" + eventUid + ".ics");
+        String externalAttendee = "externaluser@gmail.com";
+        davTestHelper.upsertCalendar(organizer.username(), delegatedEventHref,
+            generateCalendarData(eventUid, organizer.username().asString(), externalAttendee)).block();
+
+        Participation participation = Throwing.supplier(() -> new Participation(
+            organizer.username().asMailAddress(),
+            new MailAddress(externalAttendee),
+            eventUid,
+            teamCalendarId.value(),
+            ParticipantAction.ACCEPTED)).get();
+        URL participationTokenUrl = getParticipationTokenUrl(participation, server);
+
+        String actualResponse = RestAssured
+            .given()
+            .when()
+            .get(participationTokenUrl)
+            .then()
+            .statusCode(200)
+            .contentType(JSON)
+            .extract()
+            .body().asString();
+
+        assertThatJson(actualResponse)
+            .isEqualTo("""
+                {
+                  "eventJSON": "${json-unit.ignore}",
+                  "attendeeEmail": "%s",
+                  "locale": "en",
+                  "links": {
+                    "yes": "${json-unit.ignore}",
+                    "no": "${json-unit.ignore}",
+                    "maybe": "${json-unit.ignore}"
+                  }
+                }
+                """.formatted(externalAttendee));
+
+        DavCalendarObject updated = calDavClient.fetchCalendarEvent(organizer.username(), delegatedEventHref).block();
+        assertThat(updated.calendarData().toString()).contains("PARTSTAT=ACCEPTED");
+    }
+
+    private boolean isTeamCalendar(Map.Entry<CalendarURL, JsonNode> entry, TeamCalendarId teamCalendarId) {
+        String id = teamCalendarId.value();
+        if (entry.getKey().base().value().equals(id) || entry.getKey().calendarId().value().equals(id)) {
+            return true;
+        }
+        JsonNode source = entry.getValue().path("calendarserver:source");
+        return source.path("id").asText().equals(id)
+            || source.path("calendarHomeId").asText().equals(id)
+            || isTeamCalendarHref(source.path("_links").path("self").path("href").asText(null), id)
+            || isTeamCalendarHref(source.path("href").asText(null), id)
+            || isTeamCalendarHref(entry.getValue().path("calendarserver:delegatedsource").asText(null), id);
+    }
+
+    private boolean isTeamCalendarHref(String href, String teamCalendarId) {
+        if (href == null || href.isBlank()) {
+            return false;
+        }
+        try {
+            String path = URI.create(href).getPath();
+            if (path.endsWith(".json")) {
+                path = path.substring(0, path.length() - ".json".length());
+            }
+            return java.util.Arrays.stream(path.split("/"))
+                .anyMatch(teamCalendarId::equals);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private TeamCalendarId createTeamCalendar(TwakeCalendarGuiceServer server, String name, String displayName) {
+        String payload = """
+            {
+              "name": "{name}",
+              "displayName": "{displayName}"
+            }
+            """.replace("{name}", name)
+            .replace("{displayName}", displayName);
+
+        return new TeamCalendarId(given(webAdminSpecification(server))
+            .body(payload)
+        .when()
+            .post("/domains/{domain}/team-calendars", DOMAIN.asString())
+        .then()
+            .statusCode(201)
+            .extract()
+            .path("id"));
+    }
+
+    private void grantTeamMember(TwakeCalendarGuiceServer server, TeamCalendarId teamCalendarId,
+                                 OpenPaaSUser member, String davRight) {
+        String payload = """
+            {
+              "share": {
+                "set": [
+                  {
+                    "dav:href": "mailto:{member}",
+                    "{davRight}": true
+                  }
+                ],
+                "remove": []
+              }
+            }
+            """.replace("{member}", member.username().asString())
+            .replace("{davRight}", davRight);
+
+        given(webAdminSpecification(server))
+            .body(payload)
+        .when()
+            .post("/domains/{domain}/team-calendars/{teamCalendarId}/members/invitee",
+                DOMAIN.asString(), teamCalendarId.value())
+        .then()
+            .statusCode(204);
+    }
+
+    private RequestSpecification webAdminSpecification(TwakeCalendarGuiceServer server) {
+        return new RequestSpecBuilder()
+            .setContentType(JSON)
+            .setAccept(JSON)
+            .setPort(server.getProbe(WebAdminGuiceProbe.class).getWebAdminPort().getValue())
+            .build();
     }
 
     private String getHtml(String message) {
