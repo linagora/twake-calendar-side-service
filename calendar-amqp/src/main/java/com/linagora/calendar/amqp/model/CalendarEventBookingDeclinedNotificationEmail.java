@@ -32,22 +32,26 @@ import com.linagora.calendar.smtp.template.SubjectRenderer;
 import com.linagora.calendar.smtp.template.content.model.PersonModel;
 import com.linagora.calendar.storage.event.EventParseUtils;
 
-public record CalendarEventBookingConfirmedNotificationEmail(CalendarEventNotificationEmail base) implements CalendarEventBookingNotificationEmail {
+/**
+ * Negative counterpart of {@link CalendarEventBookingConfirmedNotificationEmail}: the owner of the public agenda
+ * turned the booking down, which is the answer the booker has been waiting for since the proposal email.
+ */
+public record CalendarEventBookingDeclinedNotificationEmail(CalendarEventNotificationEmail base) implements CalendarEventBookingNotificationEmail {
 
-    public static CalendarEventBookingConfirmedNotificationEmail from(CalendarEventNotificationEmailDTO dto) {
-        return new CalendarEventBookingConfirmedNotificationEmail(CalendarEventNotificationEmail.from(dto));
+    public static CalendarEventBookingDeclinedNotificationEmail from(CalendarEventNotificationEmailDTO dto) {
+        return new CalendarEventBookingDeclinedNotificationEmail(CalendarEventNotificationEmail.from(dto));
     }
 
     public Map<String, Object> toPugModel(Locale locale, ZoneId zoneToDisplay, I18NTranslator translator, MailAddress recipientEmail) throws Exception {
         MailAddress proposerEmail = proposerEmail();
         String proposerDisplayName = proposerDisplayName(proposerEmail, recipientEmail, translator);
-        String bookingConfirmedMessage = SubjectRenderer.of(translator.get("booking_confirmed_message"))
+        String bookingDeclinedMessage = SubjectRenderer.of(translator.get("booking_declined_message"))
             .render(Map.of("subject.proposal_owner", proposerDisplayName));
 
         return ImmutableMap.of(
             "content", ImmutableMap.of(
                 "event", base.toPugModel(locale, zoneToDisplay),
-                "bookingConfirmedMessage", bookingConfirmedMessage,
+                "bookingDeclinedMessage", bookingDeclinedMessage,
                 "proposerEmail", proposerEmail.asString()),
             "subject.summary", EventParseUtils.getSummary(base.getFirstVEvent()).orElse(StringUtils.EMPTY),
             "subject.organizer", PersonModel.from(EventParseUtils.getOrganizer(base.getFirstVEvent())).displayName(),

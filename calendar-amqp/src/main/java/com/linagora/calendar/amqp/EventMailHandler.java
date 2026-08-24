@@ -21,7 +21,7 @@ package com.linagora.calendar.amqp;
 import static com.linagora.calendar.amqp.EventEmailConsumer.X_PUBLICLY_CANCELLED_BY_HEADER;
 import static com.linagora.calendar.amqp.EventEmailConsumer.X_PUBLICLY_CREATED_HEADER;
 import static com.linagora.calendar.amqp.EventFieldConverter.extractCalendarURL;
-import static com.linagora.calendar.amqp.model.CalendarEventBookingConfirmedNotificationEmail.X_PUBLICLY_CREATOR_HEADER;
+import static com.linagora.calendar.amqp.model.CalendarEventBookingNotificationEmail.X_PUBLICLY_CREATOR_HEADER;
 import static com.linagora.calendar.amqp.model.CalendarEventCancelNotificationEmail.DISPLAY_FORWARD_WARNING;
 import static com.linagora.calendar.smtp.template.MimeAttachment.ATTACHMENT_DISPOSITION_TYPE;
 
@@ -51,6 +51,7 @@ import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.amqp.model.CalendarEventBookingConfirmedNotificationEmail;
+import com.linagora.calendar.amqp.model.CalendarEventBookingDeclinedNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventCancelNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventCounterNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventInviteNotificationEmail;
@@ -93,7 +94,8 @@ public class EventMailHandler {
         REPLY("event-reply"),
         CANCEL("event-cancel"),
         COUNTER("event-counter"),
-        BOOKING_CONFIRMED("event-booking-confirmed");
+        BOOKING_CONFIRMED("event-booking-confirmed"),
+        BOOKING_DECLINED("event-booking-declined");
 
         private final TemplateType templateType;
 
@@ -406,6 +408,37 @@ public class EventMailHandler {
         }
     }
 
+    class BookingDeclinedEventMessageGenerator implements EventMessageGenerator {
+        private final CalendarEventBookingDeclinedNotificationEmail event;
+        private final Username recipientUser;
+
+        public BookingDeclinedEventMessageGenerator(CalendarEventBookingDeclinedNotificationEmail event,
+                                                    Username recipientUser) {
+            this.event = event;
+            this.recipientUser = recipientUser;
+        }
+
+        @Override
+        public Mono<Message> generate(ResolvedSettings resolvedSettings) {
+            return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(resolvedSettings.locale()), EventType.BOOKING_DECLINED.asTemplateType()))
+                .subscribeOn(Schedulers.boundedElastic())
+                .flatMap(messageGenerator -> generateBookingDeclinedMessage(resolvedSettings, messageGenerator))
+                .onErrorResume(error -> Mono.error(new EventMailHandlerException("Error occurred when generate booking declined event message", error)));
+        }
+
+        private Mono<Message> generateBookingDeclinedMessage(ResolvedSettings resolvedSettings, MessageGenerator messageGenerator) {
+            MailAddress fromAddress = event.base().senderEmail();
+
+            return Mono.fromCallable(() -> toBookingDeclinedPugModel(resolvedSettings, messageGenerator))
+                .flatMap(scopedVariable -> messageGenerator.generate(recipientUser, fromAddress, scopedVariable, List.of()));
+        }
+
+        private Map<String, Object> toBookingDeclinedPugModel(ResolvedSettings resolvedSettings, MessageGenerator messageGenerator) throws Exception {
+            return event.toPugModel(resolvedSettings.locale(), resolvedSettings.zoneId(),
+                messageGenerator.getI18nTranslator(), recipientUser.asMailAddress());
+        }
+    }
+
     public Mono<Void> handInviteEvent(CalendarEventInviteNotificationEmail event) {
         MailAddress recipientEmail = event.base().recipientEmail();
         Username recipientUser = Username.fromMailAddress(recipientEmail);
@@ -460,6 +493,12 @@ public class EventMailHandler {
         MailAddress recipientEmail = event.base().recipientEmail();
         Username recipientUser = Username.fromMailAddress(recipientEmail);
         return handleEvent(new PublicAgendaEventMessageGenerator(event, recipientUser), recipientUser, event.base().senderEmail(), event.base().eventPath(), event.base().getFirstVEvent().getUid().map(Uid::getValue).orElse(""));
+    }
+
+    public Mono<Void> handleBookingDeclinedEvent(CalendarEventBookingDeclinedNotificationEmail event) {
+        MailAddress recipientEmail = event.base().recipientEmail();
+        Username recipientUser = Username.fromMailAddress(recipientEmail);
+        return handleEvent(new BookingDeclinedEventMessageGenerator(event, recipientUser), recipientUser, event.base().senderEmail(), event.base().eventPath(), event.base().getFirstVEvent().getUid().map(Uid::getValue).orElse(""));
     }
 
     private Mono<Void> handleEvent(EventMessageGenerator eventMessageGenerator, Username recipientUser, MailAddress senderEmail, String eventPath, String eventUid) {
