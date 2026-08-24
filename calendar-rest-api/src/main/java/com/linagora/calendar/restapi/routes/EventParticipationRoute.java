@@ -153,10 +153,11 @@ public class EventParticipationRoute extends PublicRoute {
                                                                        AttendeePartStatusUpdatePatch patch,
                                                                        Username requestUser,
                                                                        Username organizerUsername) {
-        return teamCalendarRepository.retrieve(TeamCalendarId.from(calendarId))
-            .flatMap(teamCalendar -> openPaaSUserDAO.retrieve(organizerUsername)
-                .flatMap(organizer -> calDavEventRepository.updatePartStatForTeamCalendar(organizer, calendarId, eventUid, patch)))
-            .switchIfEmpty(Mono.defer(() -> calDavEventRepository.updatePartStat(requestUser, calendarId, eventUid, patch)));
+        return calDavEventRepository.updatePartStat(requestUser, calendarId, eventUid, patch)
+            .onErrorResume(error -> teamCalendarRepository.retrieve(TeamCalendarId.from(calendarId))
+                .flatMap(teamCalendar -> openPaaSUserDAO.retrieve(organizerUsername)
+                    .flatMap(organizer -> calDavEventRepository.updatePartStatForTeamCalendar(organizer, calendarId, eventUid, patch)))
+                .switchIfEmpty(Mono.defer(() -> calDavEventRepository.updatePartStat(requestUser, calendarId, eventUid, patch))));
     }
 
     private Username resolveRequestUser(Username attendee, Username organizer, boolean isAttendeeInternalUser) {

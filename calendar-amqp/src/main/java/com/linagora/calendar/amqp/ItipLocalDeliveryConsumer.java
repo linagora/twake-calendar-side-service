@@ -46,11 +46,13 @@ import org.apache.james.util.ReactorUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.github.fge.lambdas.Throwing;
 import com.google.inject.name.Named;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalDavClient.ItipRequest;
+import com.linagora.calendar.dav.dto.CalendarListResponse;
 import com.linagora.calendar.dav.dto.CalendarReportJsonResponse;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -303,7 +305,65 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
                                        Optional<OpenPaaSId> localRecipientId) {
         return Mono.justOrEmpty(localRecipientId)
             .flatMap(recipientId -> retrieveRecipientEventHref(recipientUsername, recipientId, localDelivery.uid()))
-            .switchIfEmpty(Mono.just(defaultEventPath(localDelivery.calendarId(), localDelivery.uid())));
+            .switchIfEmpty(Mono.defer(() -> resolveTeamCalendarEventPath(localDelivery)
+                .switchIfEmpty(Mono.just(defaultEventPath(localDelivery.calendarId(), localDelivery.uid())))));
+    }
+
+    /**
+     * Resolves the canonical event path of an event stored in a team calendar, for recipients (e.g.
+     * external attendees) that are not locally known and therefore cannot resolve the event href
+     * themselves. esn-sabre reports the delegated (shadow) calendar id as {@code calendarId} for
+     * such events; the participation flow needs the source team-calendar id instead, so the
+     * delegated calendar's {@code calendarserver:source} is resolved through the sender.
+     */
+    private Mono<URI> resolveTeamCalendarEventPath(ItipLocalDeliveryDTO localDelivery) {
+        Username senderUsername = Username.of(localDelivery.strippedSender());
+        return localRecipientResolver.resolve(senderUsername)
+            .flatMap(resolved -> Mono.justOrEmpty(resolved.map(LocalRecipientResolver.ResolvedRecipient::id)))
+            .flatMap(senderId -> calDavClient.findUserCalendars(senderUsername, senderId, CalDavClient.DEFAULT_FIND_USER_CALENDARS_PARAMS))
+            .map(CalendarListResponse::calendars)
+            .flatMap(calendars -> Mono.justOrEmpty(calendars.entrySet().stream()
+                .filter(entry -> entry.getKey().calendarId().value().equals(localDelivery.calendarId())
+                    || entry.getKey().base().value().equals(localDelivery.calendarId()))
+                .map(entry -> sourceCalendarId(entry.getValue()))
+                .filter(StringUtils::isNotBlank)
+                .findFirst()))
+            .map(sourceCalendarId -> URI.create(String.format("%s/%s/%s/%s.ics",
+                CalendarURL.CALENDAR_URL_PATH_PREFIX, sourceCalendarId, sourceCalendarId, localDelivery.uid())))
+            .onErrorResume(e -> {
+                LOGGER.debug("Could not resolve team calendar event path for uid {}", localDelivery.uid(), e);
+                return Mono.empty();
+            });
+    }
+
+    /**
+     * Extracts the source team-calendar id referenced by a delegated (shadow) calendar. esn-sabre
+     * exposes the source collection through {@code calendarserver:delegatedsource} (or
+     * {@code calendarserver:source}'s self href); the first path segment after {@code calendars}
+     * is the source calendar home id.
+     */
+    private String sourceCalendarId(JsonNode calendarNode) {
+        String href = calendarNode.path("calendarserver:delegatedsource").asText(null);
+        if (StringUtils.isBlank(href)) {
+            JsonNode source = calendarNode.path("calendarserver:source");
+            href = source.path("href").asText(null);
+            if (StringUtils.isBlank(href)) {
+                href = source.path("_links").path("self").path("href").asText(null);
+            }
+        }
+        if (StringUtils.isBlank(href)) {
+            return null;
+        }
+        String path = URI.create(href).getPath();
+        if (path.endsWith(".json")) {
+            path = path.substring(0, path.length() - ".json".length());
+        }
+        for (String part : path.split("/")) {
+            if (StringUtils.isNotBlank(part) && !CalendarURL.CALENDAR_SEGMENT.equals(part)) {
+                return part;
+            }
+        }
+        return null;
     }
 
     private URI defaultEventPath(String calendarId, String uid) {
