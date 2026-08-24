@@ -43,17 +43,14 @@ import com.linagora.calendar.api.ParticipationTokenSigner;
 import com.linagora.calendar.dav.CalDavEventRepository;
 import com.linagora.calendar.dav.CalendarEventNotFoundException;
 import com.linagora.calendar.dav.CalendarEventUpdatePatch.AttendeePartStatusUpdatePatch;
-import com.linagora.calendar.dav.dto.CalendarReportJsonResponse;
 import com.linagora.calendar.dav.dto.VCalendarDto;
 import com.linagora.calendar.restapi.ErrorResponse;
 import com.linagora.calendar.restapi.ErrorType;
 import com.linagora.calendar.restapi.routes.response.EventParticipationResponse;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
-import com.linagora.calendar.storage.TeamCalendarRepository;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.eventsearch.EventUid;
-import com.linagora.calendar.storage.model.TeamCalendarId;
 
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -72,7 +69,6 @@ public class EventParticipationRoute extends PublicRoute {
     private final SettingsBasedResolver settingsResolver;
     private final EventParticipationActionLinkFactory actionLinkFactory;
     private final OpenPaaSUserDAO openPaaSUserDAO;
-    private final TeamCalendarRepository teamCalendarRepository;
 
     @Inject
     public EventParticipationRoute(MetricFactory metricFactory,
@@ -80,8 +76,7 @@ public class EventParticipationRoute extends PublicRoute {
                                    CalDavEventRepository calDavEventRepository,
                                    @Named("language") SettingsBasedResolver settingsResolver,
                                    EventParticipationActionLinkFactory actionLinkFactory,
-                                   OpenPaaSUserDAO openPaaSUserDAO,
-                                   TeamCalendarRepository teamCalendarRepository) {
+                                   OpenPaaSUserDAO openPaaSUserDAO) {
         super(metricFactory);
         this.participationTokenSigner = participationTokenSigner;
         this.calDavEventRepository = calDavEventRepository;
@@ -89,7 +84,6 @@ public class EventParticipationRoute extends PublicRoute {
 
         this.actionLinkFactory = actionLinkFactory;
         this.openPaaSUserDAO = openPaaSUserDAO;
-        this.teamCalendarRepository = teamCalendarRepository;
     }
 
     protected Endpoint endpoint() {
@@ -142,22 +136,10 @@ public class EventParticipationRoute extends PublicRoute {
             .hasElement()
             .flatMap(isAttendeeInternalUser -> {
                 Username requestUser = resolveRequestUser(attendeeUsername, organizerUsername, isAttendeeInternalUser);
-                return updatePartStatForCalendar(calendarId, eventUid, patch, requestUser, organizerUsername)
+                return calDavEventRepository.updatePartStat(requestUser, calendarId, eventUid, patch)
                     .map(VCalendarDto::from)
                     .map(dto -> Pair.of(dto, isAttendeeInternalUser));
             });
-    }
-
-    private Mono<CalendarReportJsonResponse> updatePartStatForCalendar(OpenPaaSId calendarId,
-                                                                       EventUid eventUid,
-                                                                       AttendeePartStatusUpdatePatch patch,
-                                                                       Username requestUser,
-                                                                       Username organizerUsername) {
-        return calDavEventRepository.updatePartStat(requestUser, calendarId, eventUid, patch)
-            .onErrorResume(error -> teamCalendarRepository.retrieve(TeamCalendarId.from(calendarId))
-                .flatMap(teamCalendar -> openPaaSUserDAO.retrieve(organizerUsername)
-                    .flatMap(organizer -> calDavEventRepository.updatePartStatForTeamCalendar(organizer, calendarId, eventUid, patch)))
-                .switchIfEmpty(Mono.defer(() -> calDavEventRepository.updatePartStat(requestUser, calendarId, eventUid, patch))));
     }
 
     private Username resolveRequestUser(Username attendee, Username organizer, boolean isAttendeeInternalUser) {
