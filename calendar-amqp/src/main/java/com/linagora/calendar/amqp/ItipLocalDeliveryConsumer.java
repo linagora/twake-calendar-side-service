@@ -88,6 +88,7 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     public static final String QUEUE_NAME = "tcalendar:itip:localDelivery";
     public static final String DEAD_LETTER_QUEUE = "tcalendar:itip:localDelivery:dead-letter";
     private static final boolean SKIP = true;
+    private static final String X_OPENPAAS_TEAM_CALENDAR_ID = "X-OPENPAAS-TEAM-CALENDAR-ID";
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ItipLocalDeliveryConsumer.class);
     private final ManagedRabbitMQConsumer consumer;
@@ -186,7 +187,7 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
                     Optional<OpenPaaSId> localRecipientId = resolved.map(LocalRecipientResolver.ResolvedRecipient::id);
                     boolean isResource = resolved.map(recipient -> recipient instanceof LocalRecipientResolver.ResolvedRecipient.LocalResource).orElse(false);
                     return sendItipIfNecessary(localDelivery, recipientUsername, localRecipientId, calendar)
-                        .then(isResource ? Mono.empty() : publishEmailNotification(localDelivery, recipientUsername, localRecipientId, oldEventCalendar));
+                        .then(isResource ? Mono.empty() : publishEmailNotification(localDelivery, recipientUsername, localRecipientId, calendar, oldEventCalendar));
                 }));
     }
 
@@ -291,8 +292,9 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     private Mono<Void> publishEmailNotification(ItipLocalDeliveryDTO localDelivery,
                                                 Username recipientUsername,
                                                 Optional<OpenPaaSId> localRecipientId,
+                                                Calendar calendar,
                                                 Optional<Calendar> oldEventCalendar) {
-        return resolveEventPath(localDelivery, recipientUsername, localRecipientId)
+        return resolveEventPath(localDelivery, recipientUsername, localRecipientId, calendar)
             .flatMap(eventPath -> itipEmailNotificationPublisher.send(localDelivery, eventPath, oldEventCalendar))
             .then(ReactorUtils.logAsMono(() ->
                 LOGGER.debug("Published email notifications for uid {} to {}", localDelivery.uid(), localDelivery.strippedRecipient())));
@@ -300,10 +302,15 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
 
     private Mono<URI> resolveEventPath(ItipLocalDeliveryDTO localDelivery,
                                        Username recipientUsername,
-                                       Optional<OpenPaaSId> localRecipientId) {
+                                       Optional<OpenPaaSId> localRecipientId,
+                                       Calendar calendar) {
         return Mono.justOrEmpty(localRecipientId)
             .flatMap(recipientId -> retrieveRecipientEventHref(recipientUsername, recipientId, localDelivery.uid()))
-            .switchIfEmpty(Mono.just(defaultEventPath(localDelivery.calendarId(), localDelivery.uid())));
+            .switchIfEmpty(Mono.defer(() -> {
+                String eventPathCalendarId = EventParseUtils.getPropertyValueIgnoreCase(EventParseUtils.getFirstEvent(calendar), X_OPENPAAS_TEAM_CALENDAR_ID)
+                    .orElse(localDelivery.calendarId());
+                return Mono.just(defaultEventPath(eventPathCalendarId, localDelivery.uid()));
+            }));
     }
 
     private URI defaultEventPath(String calendarId, String uid) {
