@@ -82,7 +82,7 @@ public class DavContactDeletionTaskStepTest {
             END:VCARD
             """.formatted(vcardUid);
         AddressBookURL addressBookURL = new AddressBookURL(openPaaSUser.id(), addressBookId);
-        cardDavClient.createContact(openPaaSUser.username(), addressBookURL, vcardUid, vcard.getBytes(StandardCharsets.UTF_8)).block();
+        cardDavClient.upsertContact(openPaaSUser.username(), addressBookURL, vcardUid, vcard.getBytes(StandardCharsets.UTF_8)).block();
         testee.deleteUserData(openPaaSUser.username()).block();
 
         assertThat(cardDavClient.exportContact(openPaaSUser.username(), addressBookURL).block())
@@ -113,7 +113,7 @@ public class DavContactDeletionTaskStepTest {
             END:VCARD
             """.formatted(vcardUid);
         AddressBookURL addressBookURL = new AddressBookURL(openPaaSUser.id(), addressBookId);
-        cardDavClient.createContact(openPaaSUser.username(), addressBookURL, vcardUid, vcard.getBytes(StandardCharsets.UTF_8)).block();
+        cardDavClient.upsertContact(openPaaSUser.username(), addressBookURL, vcardUid, vcard.getBytes(StandardCharsets.UTF_8)).block();
         testee.deleteUserData(openPaaSUser2.username()).block();
         String actual = new String(cardDavClient.exportContact(openPaaSUser.username(), addressBookURL).block(), StandardCharsets.UTF_8);
 

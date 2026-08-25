@@ -64,6 +64,7 @@ import com.google.inject.name.Names;
 import com.google.inject.util.Modules;
 import com.linagora.calendar.amqp.CalendarAmqpModule;
 import com.linagora.calendar.app.modules.AlarmEventModule;
+import com.linagora.calendar.app.modules.CommonContactsModule;
 import com.linagora.calendar.app.modules.DeleteUserDataRoutesModule;
 import com.linagora.calendar.app.modules.MemoryAutoCompleteModule;
 import com.linagora.calendar.app.modules.MemoryUserModule;
@@ -71,7 +72,6 @@ import com.linagora.calendar.app.modules.OpenSearchClientModule;
 import com.linagora.calendar.app.modules.TwakeCalendarRabbitMQModule;
 import com.linagora.calendar.dav.DavModule;
 import com.linagora.calendar.restapi.RestApiModule;
-import com.linagora.calendar.saas.contact.CommonContactPublisherModule;
 import com.linagora.calendar.smtp.SmtpModule;
 import com.linagora.calendar.storage.CaffeineOIDCTokenCache;
 import com.linagora.calendar.storage.FileUploadConfigurationModule;
@@ -247,7 +247,7 @@ public class TwakeCalendarMain {
 
     public static Module chooseCommonContacts(boolean enabled) {
         if (enabled) {
-            return new CommonContactPublisherModule();
+            return new CommonContactsModule();
         }
         return Modules.EMPTY_MODULE;
     }
