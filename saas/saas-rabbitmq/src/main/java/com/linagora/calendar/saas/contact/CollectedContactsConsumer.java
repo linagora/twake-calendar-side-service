@@ -118,20 +118,19 @@ public class CollectedContactsConsumer implements Closeable, Startable {
     private Mono<Void> handleContact(Username username, AddressBookURL addressBook, ObjectNode contactData) {
         ContactUid uid = contactConverter.generateNormalizedUid(contactData);
         return cardDavClient.retrieveContact(username, addressBook, uid)
-            .flatMap(existingVCard -> updateExistingContact(username, addressBook, existingVCard, contactData))
-            .switchIfEmpty(Mono.defer(() -> createNewContact(username, addressBook, contactData).thenReturn(true)))
-            .then();
+            .singleOptional()
+            .flatMap(existingVCard -> existingVCard
+                .map(vCard -> updateExistingContact(username, addressBook, vCard, contactData))
+                .orElseGet(() -> createNewContact(username, addressBook, contactData)));
     }
 
-    private Mono<Boolean> updateExistingContact(Username username, AddressBookURL addressBook, byte[] existingVCard, ObjectNode contactData) {
+    private Mono<Void> updateExistingContact(Username username, AddressBookURL addressBook, byte[] existingVCard, ObjectNode contactData) {
         return Mono.justOrEmpty(contactConverter.convertForUpdate(existingVCard, contactData))
-            .flatMap(contact -> cardDavClient.upsertContact(username, addressBook, contact.uid().value(), contact.vcard()))
-            .thenReturn(true);
+            .flatMap(contact -> cardDavClient.upsertContact(username, addressBook, contact.uid().value(), contact.vcard()));
     }
 
-    private Mono<Boolean> createNewContact(Username username, AddressBookURL addressBook, ObjectNode contactData) {
+    private Mono<Void> createNewContact(Username username, AddressBookURL addressBook, ObjectNode contactData) {
         CollectedContactConverter.ConvertedContact contact = contactConverter.convert(contactData);
-        return cardDavClient.upsertContact(username, addressBook, contact.uid().value(), contact.vcard())
-            .thenReturn(true);
+        return cardDavClient.upsertContact(username, addressBook, contact.uid().value(), contact.vcard());
     }
 }
