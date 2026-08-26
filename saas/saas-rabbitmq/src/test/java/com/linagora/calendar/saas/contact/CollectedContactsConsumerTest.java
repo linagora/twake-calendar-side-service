@@ -115,7 +115,7 @@ class CollectedContactsConsumerTest {
         OpenPaaSUserDAO userDAO = new MongoDBOpenPaaSUserDAO(sabreDavExtension.dockerSabreDavSetup().getMongoDB(), domainDAO);
         testee = new CollectedContactsConsumer(channelPool, rabbitMQConfiguration,
             new TWPCommonRabbitMQConfiguration(Optional.empty(), Optional.empty(), true),
-            userDAO, cardDavClient, new CollectedContactConverter());
+            userDAO, cardDavClient, new CollectedContactUpdateCalculator());
         testee.init();
         channel.queuePurge(CollectedContactsConsumer.QUEUE);
         channel.queuePurge(CollectedContactsConsumer.DEAD_LETTER_QUEUE);
@@ -150,11 +150,10 @@ class CollectedContactsConsumerTest {
         // Then the contact is stored in that user's Collected address book
         AddressBookURL addressBook = new AddressBookURL(user.id(), COLLECTED_ADDRESS_BOOK);
         AWAIT_AT_MOST.untilAsserted(() -> assertThat(cardDavClient.exportContact(user.username(), addressBook).blockOptional())
-            .hasValueSatisfying(contacts -> assertThat(new String(contacts, StandardCharsets.UTF_8).replace("\r\n", "\n"))
-                .isEqualTo("""
+            .hasValueSatisfying(contacts -> assertThat(contacts).asString(StandardCharsets.UTF_8)
+                .isEqualToNormalizingNewlines("""
                     BEGIN:VCARD
                     VERSION:4.0
-                    PRODID:ez-vcard 0.12.1
                     UID:stable-uid
                     FN:Collected contact
                     EMAIL;PROP-ID=main:contact@example.com
@@ -197,18 +196,16 @@ class CollectedContactsConsumerTest {
         // Then all contacts are stored in that user's Collected address book
         AddressBookURL addressBook = new AddressBookURL(user.id(), COLLECTED_ADDRESS_BOOK);
         AWAIT_AT_MOST.untilAsserted(() -> assertThat(cardDavClient.exportContact(user.username(), addressBook).blockOptional())
-            .hasValueSatisfying(contacts -> assertThat(new String(contacts, StandardCharsets.UTF_8).replace("\r\n", "\n"))
-                .isEqualTo("""
+            .hasValueSatisfying(contacts -> assertThat(contacts).asString(StandardCharsets.UTF_8)
+                .isEqualToNormalizingNewlines("""
                     BEGIN:VCARD
                     VERSION:4.0
-                    PRODID:ez-vcard 0.12.1
                     UID:alice-uid
                     FN:Alice
                     EMAIL;PROP-ID=main:alice@example.com
                     END:VCARD
                     BEGIN:VCARD
                     VERSION:4.0
-                    PRODID:ez-vcard 0.12.1
                     UID:bob-uid
                     FN:Bob
                     EMAIL;PROP-ID=main:bob@example.com
@@ -252,11 +249,10 @@ class CollectedContactsConsumerTest {
         // Then every communication method is persisted in the vCard
         AddressBookURL addressBook = new AddressBookURL(user.id(), COLLECTED_ADDRESS_BOOK);
         AWAIT_AT_MOST.untilAsserted(() -> assertThat(cardDavClient.exportContact(user.username(), addressBook).blockOptional())
-            .hasValueSatisfying(contacts -> assertThat(new String(contacts, StandardCharsets.UTF_8).replace("\r\n", "\n"))
-                .isEqualTo("""
+            .hasValueSatisfying(contacts -> assertThat(contacts).asString(StandardCharsets.UTF_8)
+                .isEqualToNormalizingNewlines("""
                     BEGIN:VCARD
                     VERSION:4.0
-                    PRODID:ez-vcard 0.12.1
                     UID:complex-uid
                     FN:Complex contact
                     TEL;PROP-ID=mobile:+33612345678
@@ -290,11 +286,10 @@ class CollectedContactsConsumerTest {
 
         AddressBookURL addressBook = new AddressBookURL(user.id(), COLLECTED_ADDRESS_BOOK);
         AWAIT_AT_MOST.untilAsserted(() -> assertThat(cardDavClient.exportContact(user.username(), addressBook).blockOptional())
-            .hasValueSatisfying(contacts -> assertThat(new String(contacts, StandardCharsets.UTF_8).replace("\r\n", "\n"))
-                .isEqualTo("""
+            .hasValueSatisfying(contacts -> assertThat(contacts).asString(StandardCharsets.UTF_8)
+                .isEqualToNormalizingNewlines("""
                     BEGIN:VCARD
                     VERSION:4.0
-                    PRODID:ez-vcard 0.12.1
                     UID:stable-uid
                     FN:Initial name
                     EMAIL;PROP-ID=main:contact@example.com
@@ -320,11 +315,10 @@ class CollectedContactsConsumerTest {
 
         // Then the existing vCard is updated rather than duplicated
         AWAIT_AT_MOST.untilAsserted(() -> assertThat(cardDavClient.exportContact(user.username(), addressBook).blockOptional())
-            .hasValueSatisfying(contacts -> assertThat(new String(contacts, StandardCharsets.UTF_8).replace("\r\n", "\n"))
-                .isEqualTo("""
+            .hasValueSatisfying(contacts -> assertThat(contacts).asString(StandardCharsets.UTF_8)
+                .isEqualToNormalizingNewlines("""
                     BEGIN:VCARD
                     VERSION:4.0
-                    PRODID:ez-vcard 0.12.1
                     UID:stable-uid
                     FN:Updated name
                     EMAIL;PROP-ID=main:contact@example.com
@@ -352,7 +346,7 @@ class CollectedContactsConsumerTest {
 
         AddressBookURL addressBook = new AddressBookURL(user.id(), COLLECTED_ADDRESS_BOOK);
         AWAIT_AT_MOST.untilAsserted(() -> assertThat(cardDavClient.exportContact(user.username(), addressBook).blockOptional())
-            .hasValueSatisfying(contacts -> assertThat(new String(contacts, StandardCharsets.UTF_8))
+            .hasValueSatisfying(contacts -> assertThat(contacts).asString(StandardCharsets.UTF_8)
                 .contains("EMAIL;PROP-ID=email:bob@domain.tld")));
 
         // When a Matrix ID-only message resolves to the same UID
@@ -374,7 +368,6 @@ class CollectedContactsConsumerTest {
         String expectedVCard = """
             BEGIN:VCARD
             VERSION:4.0
-            PRODID:ez-vcard 0.12.1
             UID:{uid}
             FN:Bob
             EMAIL;PROP-ID=email:bob@domain.tld
@@ -382,7 +375,7 @@ class CollectedContactsConsumerTest {
             END:VCARD
             """.replace("{uid}", sha1("bob@domain.tld"));
         AWAIT_AT_MOST.untilAsserted(() -> assertThat(cardDavClient.exportContact(user.username(), addressBook).blockOptional())
-            .hasValueSatisfying(contacts -> assertThat(new String(contacts, StandardCharsets.UTF_8))
+            .hasValueSatisfying(contacts -> assertThat(contacts).asString(StandardCharsets.UTF_8)
                 .isEqualToIgnoringWhitespace(expectedVCard)));
     }
 
@@ -407,7 +400,7 @@ class CollectedContactsConsumerTest {
 
         AddressBookURL addressBook = new AddressBookURL(user.id(), COLLECTED_ADDRESS_BOOK);
         AWAIT_AT_MOST.untilAsserted(() -> assertThat(cardDavClient.exportContact(user.username(), addressBook).blockOptional())
-            .hasValueSatisfying(contacts -> assertThat(new String(contacts, StandardCharsets.UTF_8))
+            .hasValueSatisfying(contacts -> assertThat(contacts).asString(StandardCharsets.UTF_8)
                 .contains("EMAIL;PROP-ID=old:xyz@example.com")));
 
         // When a later message has the same UID-generating email but different contact data
@@ -429,8 +422,7 @@ class CollectedContactsConsumerTest {
 
         // Then the existing contact is replaced rather than merging both email lists
         AWAIT_AT_MOST.untilAsserted(() -> assertThat(cardDavClient.exportContact(user.username(), addressBook).blockOptional())
-            .hasValueSatisfying(contacts -> assertThat(new String(contacts, StandardCharsets.UTF_8)
-                .replace("\r\n", "\n"))
+            .hasValueSatisfying(contacts -> assertThat(contacts).asString(StandardCharsets.UTF_8)
                 .containsOnlyOnce("BEGIN:VCARD")
                 .contains("FN:Updated name",
                     "EMAIL;PROP-ID=common:abc@example.com",
@@ -459,11 +451,10 @@ class CollectedContactsConsumerTest {
         String generatedUid = sha1("stable@example.com");
         AddressBookURL addressBook = new AddressBookURL(user.id(), COLLECTED_ADDRESS_BOOK);
         AWAIT_AT_MOST.untilAsserted(() -> assertThat(cardDavClient.exportContact(user.username(), addressBook).blockOptional())
-            .hasValueSatisfying(contacts -> assertThat(new String(contacts, StandardCharsets.UTF_8).replace("\r\n", "\n"))
-                .isEqualTo("""
+            .hasValueSatisfying(contacts -> assertThat(contacts).asString(StandardCharsets.UTF_8)
+                .isEqualToNormalizingNewlines("""
                     BEGIN:VCARD
                     VERSION:4.0
-                    PRODID:ez-vcard 0.12.1
                     UID:{uid}
                     FN:Initial name
                     EMAIL;PROP-ID=main:stable@example.com
@@ -488,11 +479,10 @@ class CollectedContactsConsumerTest {
 
         // Then the same generated UID targets and updates the existing vCard
         AWAIT_AT_MOST.untilAsserted(() -> assertThat(cardDavClient.exportContact(user.username(), addressBook).blockOptional())
-            .hasValueSatisfying(contacts -> assertThat(new String(contacts, StandardCharsets.UTF_8).replace("\r\n", "\n"))
-                .isEqualTo("""
+            .hasValueSatisfying(contacts -> assertThat(contacts).asString(StandardCharsets.UTF_8)
+                .isEqualToNormalizingNewlines("""
                     BEGIN:VCARD
                     VERSION:4.0
-                    PRODID:ez-vcard 0.12.1
                     UID:{uid}
                     FN:Updated name
                     EMAIL;PROP-ID=main:stable@example.com
@@ -562,11 +552,10 @@ class CollectedContactsConsumerTest {
         // Then the consumer is still running and stores the contact
         AddressBookURL addressBook = new AddressBookURL(user.id(), COLLECTED_ADDRESS_BOOK);
         AWAIT_AT_MOST.untilAsserted(() -> assertThat(cardDavClient.exportContact(user.username(), addressBook).blockOptional())
-            .hasValueSatisfying(contacts -> assertThat(new String(contacts, StandardCharsets.UTF_8).replace("\r\n", "\n"))
-                .isEqualTo("""
+            .hasValueSatisfying(contacts -> assertThat(contacts).asString(StandardCharsets.UTF_8)
+                .isEqualToNormalizingNewlines("""
                     BEGIN:VCARD
                     VERSION:4.0
-                    PRODID:ez-vcard 0.12.1
                     UID:stable-uid
                     FN:Contact after failure
                     EMAIL;PROP-ID=main:contact@example.com
