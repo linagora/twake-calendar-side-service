@@ -39,7 +39,7 @@ import com.google.inject.Singleton;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.linagora.calendar.amqp.ConsumerReconnectionHandler;
 import com.linagora.calendar.app.modules.ScheduledReconnectionHandler.ScheduledReconnectionHandlerConfiguration;
-import com.linagora.calendar.saas.contact.CollectedContactConverter;
+import com.linagora.calendar.saas.contact.CollectedContactUpdateCalculator;
 import com.linagora.calendar.saas.contact.CollectedContactsConsumer;
 import com.linagora.calendar.saas.contact.CommonContactEventConverter;
 import com.linagora.calendar.saas.contact.CommonContactNotificationConsumer;
@@ -52,7 +52,7 @@ public class CommonContactsModule extends AbstractModule {
         bind(CommonContactEventConverter.class).in(Singleton.class);
         bind(CommonContactPublisher.class).in(Singleton.class);
         bind(CommonContactNotificationConsumer.class).in(Singleton.class);
-        bind(CollectedContactConverter.class).in(Singleton.class);
+        bind(CollectedContactUpdateCalculator.class).in(Singleton.class);
         bind(CollectedContactsConsumer.class).in(Singleton.class);
     }
 

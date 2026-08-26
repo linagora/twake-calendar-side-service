@@ -36,7 +36,6 @@ import org.apache.james.lifecycle.api.Startable;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.linagora.calendar.dav.CardDavClient;
-import com.linagora.calendar.dav.ContactUid;
 import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.tmail.rabbitmq.ManagedRabbitMQConsumer;
@@ -58,7 +57,7 @@ public class CollectedContactsConsumer implements Closeable, Startable {
     private final ManagedRabbitMQConsumer consumer;
     private final OpenPaaSUserDAO userDAO;
     private final CardDavClient cardDavClient;
-    private final CollectedContactConverter contactConverter;
+    private final CollectedContactUpdateCalculator contactUpdateCalculator;
 
     @Inject
     public CollectedContactsConsumer(@Named(TWP_INJECTION_KEY) ReactorRabbitMQChannelPool channelPool,
@@ -66,10 +65,10 @@ public class CollectedContactsConsumer implements Closeable, Startable {
                                      TWPCommonRabbitMQConfiguration twpCommonRabbitMQConfiguration,
                                      OpenPaaSUserDAO userDAO,
                                      CardDavClient cardDavClient,
-                                     CollectedContactConverter contactConverter) {
+                                     CollectedContactUpdateCalculator contactUpdateCalculator) {
         this.userDAO = userDAO;
         this.cardDavClient = cardDavClient;
-        this.contactConverter = contactConverter;
+        this.contactUpdateCalculator = contactUpdateCalculator;
         consumer = new ManagedRabbitMQConsumer.Factory(channelPool)
             .create(ManagedRabbitMQConsumer.Parameters.builder()
                 .queueDeclaration(QueueDeclaration.builder()
@@ -116,21 +115,22 @@ public class CollectedContactsConsumer implements Closeable, Startable {
     }
 
     private Mono<Void> handleContact(Username username, AddressBookURL addressBook, ObjectNode contactData) {
-        ContactUid uid = contactConverter.generateNormalizedUid(contactData);
-        return cardDavClient.retrieveContact(username, addressBook, uid)
-            .singleOptional()
-            .flatMap(existingVCard -> existingVCard
-                .map(vCard -> updateExistingContact(username, addressBook, vCard, contactData))
-                .orElseGet(() -> createNewContact(username, addressBook, contactData)));
+        return Mono.fromCallable(() -> CollectedContact.parse(contactData))
+            .flatMap(incomingContact -> cardDavClient.retrieveContact(username, addressBook, incomingContact.uid())
+                .singleOptional()
+                .flatMap(maybeExistingVCard -> maybeExistingVCard
+                    .map(CollectedContact::parse)
+                    .map(existingContact -> updateExistingContact(username, addressBook, existingContact, incomingContact))
+                    .orElseGet(() -> createNewContact(username, addressBook, incomingContact))));
     }
 
-    private Mono<Void> updateExistingContact(Username username, AddressBookURL addressBook, byte[] existingVCard, ObjectNode contactData) {
-        return Mono.justOrEmpty(contactConverter.convertForUpdate(existingVCard, contactData))
-            .flatMap(contact -> cardDavClient.upsertContact(username, addressBook, contact.uid().value(), contact.vcard()));
+    private Mono<Void> updateExistingContact(Username username, AddressBookURL addressBook, CollectedContact existingContact, CollectedContact incomingContact) {
+        return Mono.fromCallable(() -> contactUpdateCalculator.calculate(existingContact, incomingContact))
+            .flatMap(Mono::justOrEmpty)
+            .flatMap(vCard -> cardDavClient.upsertContact(username, addressBook, incomingContact.uid().value(), vCard));
     }
 
-    private Mono<Void> createNewContact(Username username, AddressBookURL addressBook, ObjectNode contactData) {
-        CollectedContactConverter.ConvertedContact contact = contactConverter.convert(contactData);
-        return cardDavClient.upsertContact(username, addressBook, contact.uid().value(), contact.vcard());
+    private Mono<Void> createNewContact(Username username, AddressBookURL addressBook, CollectedContact incomingContact) {
+        return cardDavClient.upsertContact(username, addressBook, incomingContact.uid().value(), incomingContact.toVCardAsBytes());
     }
 }

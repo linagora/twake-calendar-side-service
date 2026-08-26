@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.saas.contact;
 
+import static com.linagora.calendar.saas.contact.CollectedContact.CollectedContactException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -27,27 +28,25 @@ import org.junit.jupiter.api.Test;
 
 import com.google.common.hash.Hashing;
 
-import it.cnr.iit.jscontact.tools.dto.Card;
-
 class CollectedContactUidCalculatorTest {
-    private final CollectedContactConverter.UidCalculator testee = new CollectedContactConverter.UidCalculator();
-
     @Test
-    void shouldKeepExistingUid() throws Exception {
-        assertThat(testee.generateNormalizedUid(Card.toJSCard("""
+    void shouldKeepExistingUid() {
+        CollectedContact testee = collectedContact("""
             {
               "@type": "Card",
               "version": "2.0",
               "uid": "contact-uid"
             }
-            """)).value())
+            """);
+
+        assertThat(testee.uid().value())
             .as("Keeps an explicit UID")
             .isEqualTo("contact-uid");
     }
 
     @Test
-    void shouldKeepExistingUidWhenEmailIsAvailable() throws Exception {
-        assertThat(testee.generateNormalizedUid(Card.toJSCard("""
+    void shouldKeepExistingUidWhenEmailIsAvailable() {
+        CollectedContact testee = collectedContact("""
             {
               "@type": "Card",
               "version": "2.0",
@@ -59,14 +58,16 @@ class CollectedContactUidCalculatorTest {
                 }
               }
             }
-            """)).value())
+            """);
+
+        assertThat(testee.uid().value())
             .as("Keeps an explicit UID instead of generating one from email")
             .isEqualTo("contact-uid");
     }
 
     @Test
-    void shouldGenerateUidFromPreferredEmail() throws Exception {
-        assertThat(testee.generateNormalizedUid(Card.toJSCard("""
+    void shouldGenerateUidFromPreferredEmail() {
+        CollectedContact testee = collectedContact("""
             {
               "@type": "Card",
               "version": "2.0",
@@ -83,14 +84,16 @@ class CollectedContactUidCalculatorTest {
                 }
               }
             }
-            """)).value())
+            """);
+
+        assertThat(testee.uid().value())
             .as("Uses the email with the lowest pref value")
             .isEqualTo(sha1("bob@example.com"));
     }
 
     @Test
-    void shouldGenerateUidFromAlphabeticallyFirstEmailWhenPreferenceIsMissing() throws Exception {
-        assertThat(testee.generateNormalizedUid(Card.toJSCard("""
+    void shouldGenerateUidFromAlphabeticallyFirstEmailWhenPreferenceIsMissing() {
+        CollectedContact testee = collectedContact("""
             {
               "@type": "Card",
               "version": "2.0",
@@ -105,14 +108,16 @@ class CollectedContactUidCalculatorTest {
                 }
               }
             }
-            """)).value())
+            """);
+
+        assertThat(testee.uid().value())
             .as("Uses the alphabetically first email when no preference is set")
             .isEqualTo(sha1("alpha@example.com"));
     }
 
     @Test
-    void shouldGenerateUidFromMatrixIdWhenEmailIsMissing() throws Exception {
-        assertThat(testee.generateNormalizedUid(Card.toJSCard("""
+    void shouldGenerateUidFromMatrixIdWhenEmailIsMissing() {
+        CollectedContact testee = collectedContact("""
             {
               "@type": "Card",
               "version": "2.0",
@@ -124,14 +129,16 @@ class CollectedContactUidCalculatorTest {
                 }
               }
             }
-            """)).value())
+            """);
+
+        assertThat(testee.uid().value())
             .as("Normalizes the Matrix ID as an email address before hashing it")
             .isEqualTo(sha1("bob@example.com"));
     }
 
     @Test
-    void shouldGenerateSameUidForEmailAndEquivalentMatrixIdRegardlessOfCase() throws Exception {
-        String emailUid = testee.generateNormalizedUid(Card.toJSCard("""
+    void shouldGenerateSameUidForEmailAndEquivalentMatrixIdRegardlessOfCase() {
+        CollectedContact emailContact = collectedContact("""
             {
               "@type": "Card",
               "version": "2.0",
@@ -142,8 +149,8 @@ class CollectedContactUidCalculatorTest {
                 }
               }
             }
-            """)).value();
-        String matrixIdUid = testee.generateNormalizedUid(Card.toJSCard("""
+            """);
+        CollectedContact matrixContact = collectedContact("""
             {
               "@type": "Card",
               "version": "2.0",
@@ -155,17 +162,17 @@ class CollectedContactUidCalculatorTest {
                 }
               }
             }
-            """)).value();
+            """);
 
-        assertThat(matrixIdUid)
+        assertThat(matrixContact.uid().value())
             .as("Uses the same UID for an email address and its equivalent Matrix ID regardless of case")
-            .isEqualTo(emailUid)
+            .isEqualTo(emailContact.uid().value())
             .isEqualTo(sha1("alice.example@domain.test"));
     }
 
     @Test
-    void shouldGenerateSameUidForEquivalentEmailAndMatrixIdRegardlessOfCase() throws Exception {
-        String uppercaseEmailUid = testee.generateNormalizedUid(Card.toJSCard("""
+    void shouldGenerateSameUidForEquivalentEmailAndMatrixIdRegardlessOfCase() {
+        CollectedContact uppercaseEmailContact = collectedContact("""
             {
               "@type": "Card",
               "version": "2.0",
@@ -176,8 +183,8 @@ class CollectedContactUidCalculatorTest {
                 }
               }
             }
-            """)).value();
-        String matrixIdUid = testee.generateNormalizedUid(Card.toJSCard("""
+            """);
+        CollectedContact matrixContact = collectedContact("""
             {
               "@type": "Card",
               "version": "2.0",
@@ -189,8 +196,8 @@ class CollectedContactUidCalculatorTest {
                 }
               }
             }
-            """)).value();
-        String lowercaseEmailUid = testee.generateNormalizedUid(Card.toJSCard("""
+            """);
+        CollectedContact lowercaseEmailContact = collectedContact("""
             {
               "@type": "Card",
               "version": "2.0",
@@ -201,17 +208,17 @@ class CollectedContactUidCalculatorTest {
                 }
               }
             }
-            """)).value();
+            """);
 
-        assertThat(uppercaseEmailUid)
+        assertThat(uppercaseEmailContact.uid().value())
             .as("Uses the same UID for equivalent email addresses and Matrix IDs regardless of case")
-            .isEqualTo(matrixIdUid)
-            .isEqualTo(lowercaseEmailUid);
+            .isEqualTo(matrixContact.uid().value())
+            .isEqualTo(lowercaseEmailContact.uid().value());
     }
 
     @Test
-    void shouldGenerateUidFromPreferredMatrixId() throws Exception {
-        assertThat(testee.generateNormalizedUid(Card.toJSCard("""
+    void shouldGenerateUidFromPreferredMatrixId() {
+        CollectedContact testee = collectedContact("""
             {
               "@type": "Card",
               "version": "2.0",
@@ -230,14 +237,16 @@ class CollectedContactUidCalculatorTest {
                 }
               }
             }
-            """)).value())
+            """);
+
+        assertThat(testee.uid().value())
             .as("Uses the Matrix ID with the lowest pref value")
             .isEqualTo(sha1("first@example.com"));
     }
 
     @Test
-    void shouldGenerateUidFromAlphabeticallyFirstMatrixIdWhenPreferenceIsMissing() throws Exception {
-        assertThat(testee.generateNormalizedUid(Card.toJSCard("""
+    void shouldGenerateUidFromAlphabeticallyFirstMatrixIdWhenPreferenceIsMissing() {
+        CollectedContact testee = collectedContact("""
             {
               "@type": "Card",
               "version": "2.0",
@@ -254,14 +263,16 @@ class CollectedContactUidCalculatorTest {
                 }
               }
             }
-            """)).value())
+            """);
+
+        assertThat(testee.uid().value())
             .as("Uses the alphabetically first Matrix ID when no preference is set")
             .isEqualTo(sha1("alpha@example.com"));
     }
 
     @Test
-    void shouldGenerateUidFromEmailWhenMatrixIdAndPhoneAreAlsoAvailable() throws Exception {
-        assertThat(testee.generateNormalizedUid(Card.toJSCard("""
+    void shouldGenerateUidFromEmailWhenMatrixIdAndPhoneAreAlsoAvailable() {
+        CollectedContact testee = collectedContact("""
             {
               "@type": "Card",
               "version": "2.0",
@@ -285,14 +296,16 @@ class CollectedContactUidCalculatorTest {
                 }
               }
             }
-            """)).value())
+            """);
+
+        assertThat(testee.uid().value())
             .as("Uses email before Matrix ID and phone number")
             .isEqualTo(sha1("bob@example.com"));
     }
 
     @Test
-    void shouldGenerateUidFromMatrixIdWhenPhoneIsAlsoAvailable() throws Exception {
-        assertThat(testee.generateNormalizedUid(Card.toJSCard("""
+    void shouldGenerateUidFromMatrixIdWhenPhoneIsAlsoAvailable() {
+        CollectedContact testee = collectedContact("""
             {
               "@type": "Card",
               "version": "2.0",
@@ -310,14 +323,16 @@ class CollectedContactUidCalculatorTest {
                 }
               }
             }
-            """)).value())
+            """);
+
+        assertThat(testee.uid().value())
             .as("Uses Matrix ID before phone number")
             .isEqualTo(sha1("bob@matrix.example.com"));
     }
 
     @Test
-    void shouldGenerateUidFromPhoneWhenEmailAndMatrixIdAreMissing() throws Exception {
-        assertThat(testee.generateNormalizedUid(Card.toJSCard("""
+    void shouldGenerateUidFromPhoneWhenEmailAndMatrixIdAreMissing() {
+        CollectedContact testee = collectedContact("""
             {
               "@type": "Card",
               "version": "2.0",
@@ -328,14 +343,16 @@ class CollectedContactUidCalculatorTest {
                 }
               }
             }
-            """)).value())
+            """);
+
+        assertThat(testee.uid().value())
             .as("Falls back to the phone number when email and Matrix ID are missing")
             .isEqualTo(sha1("+33123456789"));
     }
 
     @Test
-    void shouldGenerateUidFromPreferredPhoneNumber() throws Exception {
-        assertThat(testee.generateNormalizedUid(Card.toJSCard("""
+    void shouldGenerateUidFromPreferredPhoneNumber() {
+        CollectedContact testee = collectedContact("""
             {
               "@type": "Card",
               "version": "2.0",
@@ -352,14 +369,16 @@ class CollectedContactUidCalculatorTest {
                 }
               }
             }
-            """)).value())
+            """);
+
+        assertThat(testee.uid().value())
             .as("Uses the phone number with the lowest pref value")
             .isEqualTo(sha1("+33123456789"));
     }
 
     @Test
-    void shouldGenerateUidFromAlphabeticallyFirstPhoneNumberWhenPreferenceIsMissing() throws Exception {
-        assertThat(testee.generateNormalizedUid(Card.toJSCard("""
+    void shouldGenerateUidFromAlphabeticallyFirstPhoneNumberWhenPreferenceIsMissing() {
+        CollectedContact testee = collectedContact("""
             {
               "@type": "Card",
               "version": "2.0",
@@ -374,24 +393,38 @@ class CollectedContactUidCalculatorTest {
                 }
               }
             }
-            """)).value())
+            """);
+
+        assertThat(testee.uid().value())
             .as("Uses the alphabetically first phone number when no preference is set")
             .isEqualTo(sha1("+33123456789"));
     }
 
     @Test
-    void shouldThrowWhenUidCannotBeGenerated() throws Exception {
-        Card card = Card.toJSCard("""
+    void shouldThrowWhenUidCannotBeGenerated() {
+        assertThatThrownBy(() -> collectedContact("""
             {
               "@type": "Card",
               "version": "2.0"
             }
-            """);
-
-        assertThatThrownBy(() -> testee.generateNormalizedUid(card))
+            """))
             .as("Fails when no UID source is available")
-            .isInstanceOf(CollectedContactConversionException.class)
+            .isInstanceOf(CollectedContactException.class)
             .hasMessage("Cannot generate contact UID: missing email, Matrix ID and phone number");
+    }
+
+    private static CollectedContact collectedContact(String contactJson) {
+        byte[] inboundMessage = """
+            {
+              "userEmail": "test@example.com",
+              "collectedContacts": [{contact}]
+            }
+            """
+            .replace("{contact}", contactJson)
+            .getBytes(StandardCharsets.UTF_8);
+        return CollectedContact.parse(CollectedContactsDTO.deserialize(inboundMessage)
+            .collectedContacts()
+            .getFirst());
     }
 
     @SuppressWarnings("deprecation")
