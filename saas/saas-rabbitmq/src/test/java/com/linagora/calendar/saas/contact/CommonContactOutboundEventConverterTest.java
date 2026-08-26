@@ -28,6 +28,7 @@ import org.apache.james.core.Username;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.Action;
 import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.Audience.Domain;
 import com.linagora.calendar.storage.MemoryOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.MemoryOpenPaaSUserDAO;
@@ -52,7 +53,7 @@ class CommonContactOutboundEventConverterTest {
     void shouldConvertContactData() throws Exception {
         OpenPaaSUser owner = userDAO.add(Username.of("owner@linagora.com")).block();
 
-        CommonContactOutboundEvent event = testee.convert(CommonContactNotificationConsumer.Queue.CREATE,
+        CommonContactOutboundEvent event = testee.convert(Action.ADD,
             new SabreContactNotificationDTO(CONTACT_PATH, "principals/users/" + owner.id().value(), """
                 BEGIN:VCARD
                 VERSION:4.0
@@ -85,7 +86,7 @@ class CommonContactOutboundEventConverterTest {
     void shouldResolveUserAudienceFromOwner() {
         OpenPaaSUser owner = userDAO.add(Username.of("owner@linagora.com")).block();
 
-        CommonContactOutboundEvent event = testee.convert(CommonContactNotificationConsumer.Queue.CREATE,
+        CommonContactOutboundEvent event = testee.convert(Action.ADD,
             new SabreContactNotificationDTO(CONTACT_PATH, "principals/users/" + owner.id().value(), """
                 BEGIN:VCARD
                 VERSION:4.0
@@ -101,7 +102,7 @@ class CommonContactOutboundEventConverterTest {
     void shouldResolveDomainAudienceFromDomainOwner() {
         OpenPaaSDomain domain = domainDAO.add(org.apache.james.core.Domain.of("linagora.com")).block();
 
-        CommonContactOutboundEvent event = testee.convert(CommonContactNotificationConsumer.Queue.CREATE,
+        CommonContactOutboundEvent event = testee.convert(Action.ADD,
             new SabreContactNotificationDTO(CONTACT_PATH, "principals/domains/" + domain.id().value(), """
                 BEGIN:VCARD
                 VERSION:4.0
@@ -117,7 +118,7 @@ class CommonContactOutboundEventConverterTest {
     void shouldThrowWhenContactDataHasNoUid() {
         OpenPaaSUser owner = userDAO.add(Username.of("owner@linagora.com")).block();
 
-        assertThatThrownBy(() -> testee.convert(CommonContactNotificationConsumer.Queue.UPDATE,
+        assertThatThrownBy(() -> testee.convert(Action.UPDATE,
             new SabreContactNotificationDTO(CONTACT_PATH, "principals/users/" + owner.id().value(), """
                 BEGIN:VCARD
                 VERSION:4.0
@@ -129,7 +130,7 @@ class CommonContactOutboundEventConverterTest {
 
     @Test
     void shouldThrowWhenUserOwnerCannotBeResolved() {
-        assertThatThrownBy(() -> testee.convert(CommonContactNotificationConsumer.Queue.CREATE,
+        assertThatThrownBy(() -> testee.convert(Action.ADD,
             new SabreContactNotificationDTO(CONTACT_PATH, "principals/users/unknown", """
                 BEGIN:VCARD
                 VERSION:4.0
@@ -144,7 +145,7 @@ class CommonContactOutboundEventConverterTest {
     void shouldThrowWhenVCardCannotBeConverted() {
         OpenPaaSUser owner = userDAO.add(Username.of("owner@linagora.com")).block();
 
-        assertThatThrownBy(() -> testee.convert(CommonContactNotificationConsumer.Queue.CREATE,
+        assertThatThrownBy(() -> testee.convert(Action.ADD,
             new SabreContactNotificationDTO(CONTACT_PATH, "principals/users/" + owner.id().value(), "not-a-vcard")).block())
             .isInstanceOf(CommonContactEventConversionException.class);
     }

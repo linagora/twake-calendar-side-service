@@ -70,7 +70,7 @@ import reactor.core.publisher.Mono;
 class CommonContactNotificationConsumerTest {
     private static final String COMMON_CONTACT_EXCHANGE = "twake:contacts:common";
     private static final String CONTACT_CREATED_EXCHANGE = "sabre:contact:created";
-    private static final String CONTACT_CREATED_DEAD_LETTER_QUEUE = "tcalendar:common-contact:created-dead-letter";
+    private static final String COMMON_CONTACT_DEAD_LETTER_QUEUE = "tcalendar:common-contact:dead-letter";
     private static final String ADDRESS_BOOK = "collected";
     private static final String DOMAIN_ADDRESS_BOOK = "dab";
     private static final ConditionFactory AWAIT_AT_MOST = Awaitility.with()
@@ -487,7 +487,7 @@ class CommonContactNotificationConsumerTest {
 
         // Then the source message is dead-lettered instead of being acknowledged
         AWAIT_AT_MOST.untilAsserted(() -> {
-            GetResponse deadLetter = channel.basicGet(CONTACT_CREATED_DEAD_LETTER_QUEUE, true);
+            GetResponse deadLetter = channel.basicGet(COMMON_CONTACT_DEAD_LETTER_QUEUE, true);
             assertThat(deadLetter).isNotNull();
             assertThat(new String(deadLetter.getBody(), StandardCharsets.UTF_8)).isEqualTo(notification);
         });
@@ -517,7 +517,7 @@ class CommonContactNotificationConsumerTest {
                 && event.at("/uid").asText().equals(uid))
             .isEmpty());
         AWAIT_AT_MOST.untilAsserted(() -> {
-            GetResponse deadLetter = channel.basicGet(CONTACT_CREATED_DEAD_LETTER_QUEUE, true);
+            GetResponse deadLetter = channel.basicGet(COMMON_CONTACT_DEAD_LETTER_QUEUE, true);
             assertThat(deadLetter).isNotNull();
             assertThat(new String(deadLetter.getBody(), StandardCharsets.UTF_8)).isEqualTo(notification);
         });
@@ -551,7 +551,7 @@ class CommonContactNotificationConsumerTest {
 
         // Then it dead-letters the source notification for later investigation
         AWAIT_AT_MOST.untilAsserted(() -> {
-            GetResponse deadLetter = channel.basicGet(CONTACT_CREATED_DEAD_LETTER_QUEUE, true);
+            GetResponse deadLetter = channel.basicGet(COMMON_CONTACT_DEAD_LETTER_QUEUE, true);
             assertThat(deadLetter).isNotNull();
             assertThat(new String(deadLetter.getBody(), StandardCharsets.UTF_8)).isEqualTo(notification);
         });
