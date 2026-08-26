@@ -33,6 +33,10 @@
     <dependencies>
         <dependency>
             <groupId>${project.groupId}</groupId>
+            <artifactId>calendar-amqp</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>${project.groupId}</groupId>
             <artifactId>calendar-api</artifactId>
         </dependency>
         <dependency>

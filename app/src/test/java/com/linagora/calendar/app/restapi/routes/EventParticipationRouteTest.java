@@ -31,6 +31,7 @@ import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.awaitility.Durations.ONE_HUNDRED_MILLISECONDS;
 import static org.hamcrest.Matchers.notNullValue;
 
+import java.io.ByteArrayInputStream;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLEncoder;
@@ -51,6 +52,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
@@ -60,6 +62,7 @@ import org.apache.http.HttpStatus;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.james.core.Domain;
+import org.apache.james.mime4j.message.DefaultMessageBuilder;
 import org.apache.james.utils.GuiceProbe;
 import org.apache.james.utils.WebAdminGuiceProbe;
 import org.awaitility.Awaitility;
@@ -340,6 +343,172 @@ class EventParticipationRouteTest {
     }
 
     @Test
+    void shouldSendReplyEmailToOrganizerWhenExternalAttendeeAnswers() {
+        // Given an external attendee receives an action link for an event of the organizer
+        String externalUser = "externaluser@gmail.com";
+        String eventUid = UUID.randomUUID().toString();
+        davTestHelper.upsertCalendar(
+            organizer,
+            generateCalendarData(eventUid, organizer.username().asString(), externalUser),
+            eventUid);
+
+        AtomicReference<String> acceptLink = new AtomicReference<>();
+        CALMLY_AWAIT
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> {
+                JsonPath smtpMailsResponse = smtpMails();
+                assertThat(smtpMailsResponse.getList("")).hasSize(1);
+                assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(externalUser);
+                List<String> actionLinks = extractActionLinks(getHtml(smtpMailsResponse.getString("[0].message")));
+                assertThat(actionLinks).hasSize(3);
+                acceptLink.set(actionLinks.getFirst());
+            });
+
+        // When the external attendee accepts the invitation
+        given()
+        .when()
+            .get(asLocalParticipationLink(acceptLink.get()))
+        .then()
+            .statusCode(200);
+
+        // Then the organizer is notified of the answer by an iTIP REPLY email
+        CALMLY_AWAIT
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> assertThat(smtpMails().getList("")).hasSize(2));
+
+        JsonPath smtpMailsResponse = smtpMails();
+        assertSoftly(Throwing.consumer(softly -> {
+            softly.assertThat(smtpMailsResponse.getString("[1].from")).isEqualTo(externalUser);
+            softly.assertThat(smtpMailsResponse.getString("[1].recipients[0].address")).isEqualTo(organizer.username().asString());
+
+            String message = smtpMailsResponse.getString("[1].message");
+            softly.assertThat(extractSubject(message))
+                .isEqualTo("Accepted: Twake Calendar - Sprint planning #04 (Benoît TELLIER)");
+            softly.assertThat(message).contains("Auto-Submitted: auto-generated");
+            softly.assertThat(extractReplyCalendarAttachment(message))
+                .contains("METHOD:REPLY")
+                .contains("PARTSTAT=ACCEPTED")
+                .contains("mailto:" + externalUser);
+        }));
+    }
+
+    @Test
+    void replyEmailShouldOnlyCarryTheAnsweringAttendee() {
+        String externalUser = "externaluser@gmail.com";
+        String otherAttendee = "otherattendee@gmail.com";
+        String eventUid = UUID.randomUUID().toString();
+        davTestHelper.upsertCalendar(
+            organizer,
+            generateCalendarData(eventUid, organizer.username().asString(), externalUser, otherAttendee),
+            eventUid);
+
+        AtomicReference<String> acceptLink = new AtomicReference<>();
+        CALMLY_AWAIT
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> {
+                JsonPath smtpMailsResponse = smtpMails();
+                assertThat(smtpMailsResponse.getList("")).hasSize(2);
+                List<String> actionLinks = extractActionLinks(getHtml(inviteMailOf(smtpMailsResponse, externalUser)));
+                assertThat(actionLinks).hasSize(3);
+                acceptLink.set(actionLinks.getFirst());
+            });
+
+        given()
+        .when()
+            .get(asLocalParticipationLink(acceptLink.get()))
+        .then()
+            .statusCode(200);
+
+        CALMLY_AWAIT
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> assertThat(smtpMails().getList("")).hasSize(3));
+
+        String message = smtpMails().getString("[2].message");
+        assertThat(extractReplyCalendarAttachment(message))
+            .contains("mailto:" + externalUser)
+            .doesNotContain(otherAttendee);
+    }
+
+    @Test
+    void shouldSendReplyEmailToOrganizerWhenInternalAttendeeAnswers() {
+        // Given an internal attendee receives an action link for an event of the organizer
+        String eventUid = UUID.randomUUID().toString();
+        davTestHelper.upsertCalendar(
+            organizer,
+            generateCalendarData(eventUid, organizer.username().asString(), attendee.username().asString()),
+            eventUid);
+
+        AtomicReference<String> acceptLink = new AtomicReference<>();
+        CALMLY_AWAIT
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> {
+                JsonPath smtpMailsResponse = smtpMails();
+                assertThat(smtpMailsResponse.getList("")).hasSize(1);
+                assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(attendee.username().asString());
+                List<String> actionLinks = extractActionLinks(getHtml(smtpMailsResponse.getString("[0].message")));
+                assertThat(actionLinks).hasSize(3);
+                acceptLink.set(actionLinks.getFirst());
+            });
+
+        // When the internal attendee accepts the invitation
+        given()
+        .when()
+            .get(asLocalParticipationLink(acceptLink.get()))
+        .then()
+            .statusCode(200);
+
+        // Then the organizer is notified of the answer by a single iTIP REPLY email, scheduled by the DAV server
+        // upon the update of the attendee copy of the event. This route must not emit one of its own.
+        CALMLY_AWAIT
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> assertThat(smtpMails().getList("")).hasSize(2));
+
+        JsonPath smtpMailsResponse = smtpMails();
+        assertSoftly(Throwing.consumer(softly -> {
+            softly.assertThat(smtpMailsResponse.getString("[1].from")).isEqualTo(attendee.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[1].recipients[0].address")).isEqualTo(organizer.username().asString());
+            softly.assertThat(extractSubject(smtpMailsResponse.getString("[1].message")))
+                .isEqualTo("Accepted: Twake Calendar - Sprint planning #04 (Benoît TELLIER)");
+            softly.assertThat(extractReplyCalendarAttachment(smtpMailsResponse.getString("[1].message")))
+                .contains("METHOD:REPLY")
+                .contains("PARTSTAT=ACCEPTED");
+        }));
+
+        assertThat(smtpMails().getList("")).hasSize(2);
+    }
+
+    @Test
+    void internalAttendeeAnswerShouldNotSendDuplicatedReplyEmailToOrganizer() {
+        String eventUid = UUID.randomUUID().toString();
+        davTestHelper.upsertCalendar(
+            organizer,
+            generateCalendarData(eventUid, organizer.username().asString(), attendee.username().asString()),
+            eventUid);
+
+        AtomicReference<String> acceptLink = new AtomicReference<>();
+        CALMLY_AWAIT
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> {
+                JsonPath smtpMailsResponse = smtpMails();
+                assertThat(smtpMailsResponse.getList("")).hasSize(1);
+                acceptLink.set(extractActionLinks(getHtml(smtpMailsResponse.getString("[0].message"))).getFirst());
+            });
+
+        given()
+        .when()
+            .get(asLocalParticipationLink(acceptLink.get()))
+        .then()
+            .statusCode(200);
+
+        CALMLY_AWAIT
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> assertThat(replyMailsTo(organizer.username().asString())).hasSize(1));
+
+        awaitAtMost.pollDelay(Duration.ofSeconds(3))
+            .untilAsserted(() -> assertThat(replyMailsTo(organizer.username().asString())).hasSize(1));
+    }
+
+    @Test
     void teamCalendarEventParticipationShouldSucceedForExternalAttendee(TwakeCalendarGuiceServer server) {
         // Given an external attendee receives an action link for an event created in a Team Calendar
         TeamCalendarId teamCalendarId = createTeamCalendar(server, "engineering", "Engineering Team");
@@ -469,6 +638,51 @@ class EventParticipationRouteTest {
                 """.formatted(attendee.username().asString()));
 
         assertThat(getCalendarEventReportResponse(eventUid)).contains("\"partstat\" : \"ACCEPTED\"");
+    }
+
+    private List<String> replyMailsTo(String recipient) {
+        JsonPath smtpMailsResponse = smtpMails();
+        return IntStream.range(0, smtpMailsResponse.getList("").size())
+            .filter(i -> recipient.equals(smtpMailsResponse.getString("[" + i + "].recipients[0].address")))
+            .mapToObj(i -> smtpMailsResponse.getString("[" + i + "].message"))
+            .filter(message -> message.contains("method=REPLY"))
+            .toList();
+    }
+
+    private JsonPath smtpMails() {
+        return given(mockSMTPRequestSpecification())
+            .get("/smtpMails")
+            .jsonPath();
+    }
+
+    private String inviteMailOf(JsonPath smtpMailsResponse, String recipient) {
+        return IntStream.range(0, smtpMailsResponse.getList("").size())
+            .filter(i -> recipient.equals(smtpMailsResponse.getString("[" + i + "].recipients[0].address")))
+            .mapToObj(i -> smtpMailsResponse.getString("[" + i + "].message"))
+            .findFirst()
+            .orElseThrow(() -> new IllegalStateException("No mail sent to " + recipient));
+    }
+
+    private String asLocalParticipationLink(String actionLink) {
+        return actionLink.replace("https://excal.linagora.com/excal/?jwt=",
+            "http://localhost:" + restApiPort + "/calendar/api/calendars/event/participation?jwt=");
+    }
+
+    private String extractSubject(String rawMime) throws Exception {
+        try (ByteArrayInputStream inputStream = new ByteArrayInputStream(rawMime.getBytes(StandardCharsets.UTF_8))) {
+            return new DefaultMessageBuilder().parseMessage(inputStream).getSubject();
+        }
+    }
+
+    private String extractReplyCalendarAttachment(String rawMime) {
+        Pattern calendarPattern = Pattern.compile(
+            "Content-Transfer-Encoding: base64\r?\nContent-Type: text/calendar; charset=UTF-8; method=REPLY\r?\n\r?\n([A-Za-z0-9+/=\r\n]+)",
+            Pattern.DOTALL);
+        Matcher matcher = calendarPattern.matcher(rawMime);
+        assertThat(matcher.find())
+            .withFailMessage("No text/calendar REPLY part found in the mail")
+            .isTrue();
+        return new String(Base64.getDecoder().decode(matcher.group(1).replaceAll("\\s+", "")), StandardCharsets.UTF_8);
     }
 
     private boolean isTeamCalendar(Map.Entry<CalendarURL, JsonNode> entry, TeamCalendarId teamCalendarId) {
@@ -903,6 +1117,12 @@ class EventParticipationRouteTest {
         String token = participationTokenProbe.signAsJwt(participation);
 
         return getParticipationTokenUrl(token);
+    }
+
+    private String generateCalendarData(String eventUid, String organizerEmail, String attendeeEmail, String otherAttendeeEmail) {
+        return generateCalendarData(eventUid, organizerEmail, attendeeEmail)
+            .replace("END:VEVENT",
+                "ATTENDEE;PARTSTAT=NEEDS-ACTION;CN=Other attendee:mailto:" + otherAttendeeEmail + "\r\nEND:VEVENT");
     }
 
     private String generateCalendarData(String eventUid, String organizerEmail, String attendeeEmail) {

@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.smtp.template.content.model;
 
+import static com.linagora.calendar.storage.event.EventParseUtils.DuplicateAttendeePolicy.KEEP_FIRST;
+
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.List;
@@ -31,10 +33,32 @@ import org.apache.commons.lang3.StringUtils;
 
 import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.smtp.i18n.I18NTranslator;
+import com.linagora.calendar.storage.event.EventFields;
+import com.linagora.calendar.storage.event.EventParseUtils;
 
+import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
 
 public class ReplyContentModelBuilder {
+
+    /**
+     * Builds the reply content model out of the calendar event the given attendee replied to.
+     */
+    public static LocaleStep from(VEvent vEvent, EventFields.Person attendee) {
+        PartStat attendeePartStat = attendee.partStat()
+            .orElseThrow(() -> new IllegalStateException("Attendee partStat is missing"));
+
+        return builder()
+            .eventSummary(EventParseUtils.getSummary(vEvent).orElse(StringUtils.EMPTY))
+            .eventAllDay(EventParseUtils.isAllDay(vEvent))
+            .eventStart(EventParseUtils.getStartTime(vEvent))
+            .eventEnd(EventParseUtils.getEndTime(vEvent))
+            .eventLocation(EventParseUtils.getLocation(vEvent))
+            .eventAttendee(PersonModel.from(attendee), attendeePartStat)
+            .eventOrganizer(PersonModel.from(EventParseUtils.getOrganizer(vEvent)))
+            .eventResources(PersonModel.fromList(EventParseUtils.getResources(vEvent, KEEP_FIRST)))
+            .eventDescription(EventParseUtils.getDescription(vEvent));
+    }
 
     public static EventSummaryStep builder() {
         return eventSummary -> eventAllDay -> eventStart -> eventEnd ->
