@@ -69,6 +69,7 @@ public class EventParticipationRoute extends PublicRoute {
     private final SettingsBasedResolver settingsResolver;
     private final EventParticipationActionLinkFactory actionLinkFactory;
     private final OpenPaaSUserDAO openPaaSUserDAO;
+    private final EventParticipationReplyNotifier replyNotifier;
 
     @Inject
     public EventParticipationRoute(MetricFactory metricFactory,
@@ -76,7 +77,8 @@ public class EventParticipationRoute extends PublicRoute {
                                    CalDavEventRepository calDavEventRepository,
                                    @Named("language") SettingsBasedResolver settingsResolver,
                                    EventParticipationActionLinkFactory actionLinkFactory,
-                                   OpenPaaSUserDAO openPaaSUserDAO) {
+                                   OpenPaaSUserDAO openPaaSUserDAO,
+                                   EventParticipationReplyNotifier replyNotifier) {
         super(metricFactory);
         this.participationTokenSigner = participationTokenSigner;
         this.calDavEventRepository = calDavEventRepository;
@@ -84,6 +86,7 @@ public class EventParticipationRoute extends PublicRoute {
 
         this.actionLinkFactory = actionLinkFactory;
         this.openPaaSUserDAO = openPaaSUserDAO;
+        this.replyNotifier = replyNotifier;
     }
 
     protected Endpoint endpoint() {
@@ -137,8 +140,25 @@ public class EventParticipationRoute extends PublicRoute {
             .flatMap(isAttendeeInternalUser -> {
                 Username requestUser = resolveRequestUser(attendeeUsername, organizerUsername, isAttendeeInternalUser);
                 return calDavEventRepository.updatePartStat(requestUser, calendarId, eventUid, patch)
+                    .flatMap(partStatUpdate -> notifyOrganizer(participationRequest, partStatUpdate)
+                        .thenReturn(partStatUpdate.report()))
                     .map(VCalendarDto::from)
                     .map(dto -> Pair.of(dto, isAttendeeInternalUser));
+            });
+    }
+
+    /**
+     * Notifies the organizer of the answer of the attendee by an iTIP REPLY email.
+     */
+    private Mono<Void> notifyOrganizer(Participation participationRequest,
+                                       CalDavEventRepository.PartStatUpdate partStatUpdate) {
+        return Mono.justOrEmpty(partStatUpdate.updatedCalendar())
+            .flatMap(updatedCalendar -> replyNotifier.notifyOrganizer(updatedCalendar,
+                participationRequest.attendee(), participationRequest.organizer()))
+            .onErrorResume(error -> {
+                LOGGER.error("Could not notify organizer {} of the participation change of {}",
+                    participationRequest.organizer().asString(), participationRequest.attendee().asString(), error);
+                return Mono.empty();
             });
     }
 
