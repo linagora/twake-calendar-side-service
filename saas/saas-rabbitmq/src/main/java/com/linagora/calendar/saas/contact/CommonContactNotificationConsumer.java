@@ -23,9 +23,9 @@ import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
 import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.io.Closeable;
-import java.util.Arrays;
-import java.util.List;
+import java.util.Optional;
 import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 import jakarta.annotation.PreDestroy;
 import jakarta.inject.Inject;
@@ -44,29 +44,30 @@ import reactor.core.publisher.Mono;
 import reactor.rabbitmq.AcknowledgableDelivery;
 
 public class CommonContactNotificationConsumer implements Closeable, Startable {
-    public enum Queue {
-        CREATE("sabre:contact:created", "tcalendar:common-contact:created", "tcalendar:common-contact:created-dead-letter", Action.ADD),
-        UPDATE("sabre:contact:updated", "tcalendar:common-contact:updated", "tcalendar:common-contact:updated-dead-letter", Action.UPDATE),
-        DELETE("sabre:contact:deleted", "tcalendar:common-contact:deleted", "tcalendar:common-contact:deleted-dead-letter", Action.DELETE);
+    private enum ContactNotificationExchange {
+        CREATE("sabre:contact:created", Action.ADD),
+        UPDATE("sabre:contact:updated", Action.UPDATE),
+        DELETE("sabre:contact:deleted", Action.DELETE);
 
         private final String exchange;
-        private final String queue;
-        private final String deadLetter;
         private final Action action;
 
-        Queue(String exchange, String queue, String deadLetter, Action action) {
+        ContactNotificationExchange(String exchange, Action action) {
             this.exchange = exchange;
-            this.queue = queue;
-            this.deadLetter = deadLetter;
             this.action = action;
         }
 
-        public Action action() {
-            return action;
+        static Optional<ContactNotificationExchange> from(String exchange) {
+            return Stream.of(values())
+                .filter(contactExchange -> contactExchange.exchange.equals(exchange))
+                .findFirst();
         }
     }
 
-    private final List<ManagedRabbitMQConsumer> consumers;
+    private static final String QUEUE = "tcalendar:common-contact";
+    private static final String DEAD_LETTER_QUEUE = "tcalendar:common-contact:dead-letter";
+
+    private final ManagedRabbitMQConsumer consumer;
     private final CommonContactPublisher publisher;
     private final CommonContactEventConverter converter;
 
@@ -77,39 +78,41 @@ public class CommonContactNotificationConsumer implements Closeable, Startable {
                                              CommonContactEventConverter converter) {
         this.publisher = publisher;
         this.converter = converter;
-        ManagedRabbitMQConsumer.Factory factory = new ManagedRabbitMQConsumer.Factory(channelPool);
-        consumers = Arrays.stream(Queue.values())
-            .map(queue -> factory.create(ManagedRabbitMQConsumer.Parameters.builder()
-                .queueDeclaration(QueueDeclaration.builder()
-                    .binding(queue.exchange, BuiltinExchangeType.FANOUT, EMPTY_ROUTING_KEY)
-                    .queue(queue.queue)
-                    .deadLetterQueue(queue.deadLetter)
-                    .build())
+        QueueDeclaration.Builder queueDeclaration = QueueDeclaration.builder()
+            .queue(QUEUE)
+            .deadLetterQueue(DEAD_LETTER_QUEUE);
+        Stream.of(ContactNotificationExchange.values())
+            .forEach(exchange -> queueDeclaration.binding(exchange.exchange, BuiltinExchangeType.FANOUT, EMPTY_ROUTING_KEY));
+        consumer = new ManagedRabbitMQConsumer.Factory(channelPool)
+            .create(ManagedRabbitMQConsumer.Parameters.builder()
+                .queueDeclaration(queueDeclaration.build())
                 .queueArguments(queueArgumentSupplier)
                 .qos(DEFAULT_CONCURRENCY)
                 .concurrency(DEFAULT_CONCURRENCY)
-                .handleDelivery(delivery -> handleDelivery(queue, delivery))
-                .build()))
-            .toList();
+                .handleDelivery(this::handleDelivery)
+                .build());
     }
 
     public void init() {
-        consumers.forEach(ManagedRabbitMQConsumer::init);
+        consumer.init();
     }
 
     public void restart() {
-        consumers.forEach(ManagedRabbitMQConsumer::restart);
+        consumer.restart();
     }
 
     @Override
     @PreDestroy
     public void close() {
-        consumers.forEach(ManagedRabbitMQConsumer::close);
+        consumer.close();
     }
 
-    private Mono<Void> handleDelivery(Queue queue, AcknowledgableDelivery delivery) {
+    private Mono<Void> handleDelivery(AcknowledgableDelivery delivery) {
+        Action action = ContactNotificationExchange.from(delivery.getEnvelope().getExchange())
+            .orElseThrow(() -> new IllegalArgumentException("Unsupported contact notification exchange: " + delivery.getEnvelope().getExchange()))
+            .action;
         return Mono.fromCallable(() -> SabreContactNotificationDTO.deserialize(delivery.getBody()))
-            .flatMap(notificationDTO -> converter.convert(queue, notificationDTO))
+            .flatMap(notificationDTO -> converter.convert(action, notificationDTO))
             .flatMap(publisher::publish);
     }
 

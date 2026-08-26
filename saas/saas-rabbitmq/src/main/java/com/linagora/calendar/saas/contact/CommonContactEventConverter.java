@@ -53,10 +53,10 @@ public class CommonContactEventConverter {
         audienceResolver = new AudienceResolver(userDAO, domainDAO);
     }
 
-    public Mono<CommonContactOutboundEvent> convert(CommonContactNotificationConsumer.Queue queue, SabreContactNotificationDTO notification) {
+    public Mono<CommonContactOutboundEvent> convert(Action action, SabreContactNotificationDTO notification) {
         return audienceResolver.resolve(notification)
             .defaultIfEmpty(new Audience.Unknown())
-            .flatMap(audience -> Mono.fromCallable(() -> convertContact(queue.action(), notification, audience)));
+            .flatMap(audience -> Mono.fromCallable(() -> convertContact(action, notification, audience)));
     }
 
     private CommonContactOutboundEvent convertContact(Action action, SabreContactNotificationDTO notification, Audience audience) {
