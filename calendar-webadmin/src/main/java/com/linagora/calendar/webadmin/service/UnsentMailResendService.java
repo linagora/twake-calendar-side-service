@@ -101,8 +101,7 @@ public class UnsentMailResendService {
 
     private Mono<Task.Result> resend(UnsentMail unsentMail, Context context) {
         return Mono.fromCallable(() -> MimeMessageSerializer.toMail(unsentMail))
-            .flatMap(mail -> mailSenderFactory.createWithoutRetention()
-                .flatMap(mailSender -> mailSender.send(mail)))
+            .flatMap(mailSenderFactory::sendWithoutRetention)
             .then(repository.delete(unsentMail.id()))
             .then(Mono.fromCallable(() -> {
                 context.incrementSent();

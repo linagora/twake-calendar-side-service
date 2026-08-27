@@ -231,7 +231,7 @@ class MailSenderTest {
     }
 
     @Test
-    void shouldNotThrowWhenSendMultipleMailsButOneFails() throws Exception {
+    void shouldThrowAndReportTheFailedMailWhenSendMultipleMailsButOneFails() throws Exception {
         String rawMessage1 = "From: sender1@localhost\nTo: recipient1@localhost\nSubject: Test1\n\nHello 1!";
         String rawMessage2 = "From: sender2@localhost\nTo: recipient2@localhost\nSubject: Test2\n\nHello 2!";
         Message message1 = new DefaultMessageBuilder().parseMessage(new ByteArrayInputStream(rawMessage1.getBytes(StandardCharsets.UTF_8)));
@@ -245,8 +245,12 @@ class MailSenderTest {
             """;
         RestAssured.given().body(behaviorJson).contentType("application/json").put("/smtpBehaviors");
 
-        // Should not throw, only one mail fails
-        mailSender.send(java.util.List.of(mail1, mail2)).block();
+        assertThatThrownBy(() -> mailSender.send(java.util.List.of(mail1, mail2)).block())
+            .isInstanceOf(PartialMailDeliveryException.class)
+            .satisfies(exception -> assertThat(((PartialMailDeliveryException) exception).failures())
+                .extracting(failure -> failure.mail().recipients())
+                .containsExactly(mail2.recipients()));
+
         JsonPath response = RestAssured.get("/smtpMails").jsonPath();
 
         assertSoftly(Throwing.consumer(softly -> {
@@ -275,8 +279,9 @@ class MailSenderTest {
         RestAssured.given().body(behaviorJson).contentType("application/json").put("/smtpBehaviors");
 
         assertThatThrownBy(() -> mailSender.send(ImmutableList.of(mail1, mail2)).block())
-            .isInstanceOf(SmtpSendingFailedException.class)
-            .hasMessageContaining("All 'rcpt to' commands failed");
+            .isInstanceOf(PartialMailDeliveryException.class)
+            .hasRootCauseInstanceOf(SmtpSendingFailedException.class)
+            .hasStackTraceContaining("All 'rcpt to' commands failed");
     }
 
     @Test
