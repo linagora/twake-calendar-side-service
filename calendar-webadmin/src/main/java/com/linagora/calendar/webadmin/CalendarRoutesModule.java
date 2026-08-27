@@ -40,6 +40,7 @@ import com.linagora.calendar.webadmin.task.AlarmScheduleTaskAdditionalInformatio
 import com.linagora.calendar.webadmin.task.BookingLinkEventDeletionTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.CalendarArchivalTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.CalendarEventsReindexTaskAdditionalInformationDTO;
+import com.linagora.calendar.webadmin.task.UnsentMailResendTaskAdditionalInformationDTO;
 
 public class CalendarRoutesModule extends AbstractModule {
     public static final String USER_CALENDAR_TASKS_KEY = "USER_CALENDAR";
@@ -60,6 +61,7 @@ public class CalendarRoutesModule extends AbstractModule {
         routesMultibinder.addBinding().to(UserCalendarRoutes.class);
         routesMultibinder.addBinding().to(UserAddressBookRoutes.class);
         routesMultibinder.addBinding().to(BookingLinkUserRoutes.class);
+        routesMultibinder.addBinding().to(UnsentMailRoutes.class);
 
         bind(MemoryTaskManager.class).in(Scopes.SINGLETON);
         bind(TaskManager.class).to(MemoryTaskManager.class);
@@ -108,5 +110,11 @@ public class CalendarRoutesModule extends AbstractModule {
     @ProvidesIntoSet
     public AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO> bookingLinkEventDeletionTaskAdditionalInformation() {
         return BookingLinkEventDeletionTaskAdditionalInformationDTO.module();
+    }
+
+    @Named(DTOModuleInjections.WEBADMIN_DTO)
+    @ProvidesIntoSet
+    public AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO> unsentMailResendTaskAdditionalInformation() {
+        return UnsentMailResendTaskAdditionalInformationDTO.module();
     }
 }
