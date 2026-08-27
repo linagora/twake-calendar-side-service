@@ -41,6 +41,8 @@ import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
 import com.linagora.calendar.storage.eventsearch.MemoryCalendarSearchService;
 import com.linagora.calendar.storage.secretlink.MemorySecretLinkStore;
 import com.linagora.calendar.storage.secretlink.SecretLinkStore;
+import com.linagora.calendar.storage.unsent.MemoryUnsentMailRepository;
+import com.linagora.calendar.storage.unsent.UnsentMailRepository;
 import com.linagora.tmail.james.jmap.ticket.MemoryTicketStore;
 import com.linagora.tmail.james.jmap.ticket.TicketStore;
 
@@ -88,6 +90,9 @@ public class MemoryStorageModule extends AbstractModule {
 
         bind(MemoryDomainSettingsDAO.class).in(Scopes.SINGLETON);
         bind(DomainSettingsDAO.class).to(MemoryDomainSettingsDAO.class);
+
+        bind(MemoryUnsentMailRepository.class).in(Scopes.SINGLETON);
+        bind(UnsentMailRepository.class).to(MemoryUnsentMailRepository.class);
     }
 
     @Provides
