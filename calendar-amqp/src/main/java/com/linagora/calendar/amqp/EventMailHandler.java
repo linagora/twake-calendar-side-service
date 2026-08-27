@@ -504,9 +504,8 @@ public class EventMailHandler {
     private Mono<Void> handleEvent(EventMessageGenerator eventMessageGenerator, Username recipientUser, MailAddress senderEmail, String eventPath, String eventUid) {
         return settingsResolver.resolveOrDefault(recipientUser, Username.fromMailAddress(senderEmail))
             .flatMap(eventMessageGenerator::generate)
-            .flatMap(mailMessage -> mailSenderFactory.create()
-                .flatMap(mailSender -> mailSender.send(new Mail(MaybeSender.of(senderEmail),
-                    ImmutableList.of(Throwing.supplier(recipientUser::asMailAddress).get()), mailMessage)))
+            .flatMap(mailMessage -> mailSenderFactory.send(new Mail(MaybeSender.of(senderEmail),
+                ImmutableList.of(Throwing.supplier(recipientUser::asMailAddress).get()), mailMessage))
                 .doOnSuccess(any -> AuditTrail.entry()
                     .action("IMIP")
                     .action(eventMessageGenerator.getClass().getName())

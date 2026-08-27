@@ -96,8 +96,7 @@ public class BookingLinkRequestAcknowledgementNotifier {
 
     private Mono<Void> sendAcknowledgementMail(ResolvedSettings settings, BookingCreated bookingCreated, MailAddress recipient) {
         return generateMail(settings, bookingCreated, recipient)
-            .flatMap(mail -> mailSenderFactory.create()
-                .flatMap(mailSender -> mailSender.send(mail)))
+            .flatMap(mailSenderFactory::send)
             .subscribeOn(mailScheduler);
     }
 

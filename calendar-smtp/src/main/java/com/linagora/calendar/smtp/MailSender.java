@@ -55,18 +55,19 @@ public interface MailSender {
     interface Factory {
         Mono<MailSender> create();
 
+        Mono<Void> send(Mail mail);
+
         class Default implements Factory {
             private static final String DEFAULT_PROTOCOL = "TLS";
             private static final String UTF_8_ENCODING = "UTF-8";
-            private static final int MAX_SMTP_CONNECT_RETRIES = 3;
-            private static final Duration SMTP_CONNECT_RETRY_BACKOFF = Duration.ofMillis(100);
-
-            private static final Retry RETRY_CONNECT =
-                Retry.backoff(MAX_SMTP_CONNECT_RETRIES, SMTP_CONNECT_RETRY_BACKOFF)
+            static final String SMTP_SEND_MAX_RETRIES_PROPERTY = "twake.calendar.smtp.max-retries";
+            private static final int MAX_SMTP_SEND_RETRIES = maxSmtpSendRetries();
+            private static final Duration SMTP_SEND_RETRY_BACKOFF = Duration.ofMillis(100);
+            private static final Retry RETRY_SEND =
+                Retry.backoff(MAX_SMTP_SEND_RETRIES, SMTP_SEND_RETRY_BACKOFF)
                     .maxBackoff(Duration.ofSeconds(5))
-                    .filter(IOException.class::isInstance)
-                    .doBeforeRetry(retrySignal -> LOGGER.warn("Retrying SMTP connection after transient failure (attempt {}/{})",
-                        retrySignal.totalRetries() + 1, MAX_SMTP_CONNECT_RETRIES, retrySignal.failure()))
+                    .doBeforeRetry(retrySignal -> LOGGER.warn("Retrying SMTP mail send after failure (attempt {}/{})",
+                        retrySignal.totalRetries() + 1, MAX_SMTP_SEND_RETRIES, retrySignal.failure()))
                     .onRetryExhaustedThrow((spec, signal) -> signal.failure());
             public static final X509TrustManager TRUST_ALL = new X509TrustManager() {
                 public X509Certificate[] getAcceptedIssuers() {
@@ -121,8 +122,18 @@ public interface MailSender {
                     }));
                     return new MailSender.Default(authClient, configuration, eventEmailFilter);
                 })
-                .subscribeOn(Schedulers.boundedElastic())
-                .retryWhen(RETRY_CONNECT);
+                .subscribeOn(Schedulers.boundedElastic());
+            }
+
+            @Override
+            public Mono<Void> send(Mail mail) {
+                return Mono.defer(() -> create()
+                        .flatMap(mailSender -> mailSender.send(mail)))
+                    .retryWhen(RETRY_SEND);
+            }
+
+            static int maxSmtpSendRetries() {
+                return Integer.getInteger(SMTP_SEND_MAX_RETRIES_PROPERTY, 3);
             }
         }
     }

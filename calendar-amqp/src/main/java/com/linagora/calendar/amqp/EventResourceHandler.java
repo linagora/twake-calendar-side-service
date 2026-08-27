@@ -228,9 +228,7 @@ public class EventResourceHandler {
                                    MessageGenerator messageGenerator,
                                    Map<String, Object> model) {
         return messageGenerator.generate(recipientUser, senderAddress, model, List.of())
-            .flatMap(message -> mailSenderFactory.create()
-                .flatMap(Throwing.function(mailSender ->
-                    mailSender.send(new Mail(maybeSender, List.of(recipient), message)))));
+            .flatMap(message -> mailSenderFactory.send(new Mail(maybeSender, List.of(recipient), message)));
     }
 
     private Mono<SettingsBasedResolver.ResolvedSettings> getUserSettings(Username user) {

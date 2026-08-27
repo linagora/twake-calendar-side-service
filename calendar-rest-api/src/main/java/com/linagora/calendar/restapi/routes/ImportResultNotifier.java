@@ -119,7 +119,7 @@ public interface ImportResultNotifier {
 
         private Mono<Void> sendReportMail(ImportProcessor.ImportType importType, Language language, ImportProcessor.ImportResult importResult, Username receiver) {
             return mailReportRender.generateMail(importType, language, importResult, receiver)
-                .flatMap(mail -> mailSenderFactory.create().flatMap(mailSender -> mailSender.send(mail)))
+                .flatMap(mailSenderFactory::send)
                 .subscribeOn(mailScheduler);
         }
     }

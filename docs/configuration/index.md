@@ -27,3 +27,11 @@ Twake Workplace integration properties are read from this file, see [Twake Workp
  - [opensearch.properties](opensearch.md) enable setting up the OpenSearch service.
  - [webadmn.properties](https://james.staged.apache.org/james-project/3.9.0/servers/distributed/configure/webadmin.html)
 inherited of Apache James.
+
+## JVM system properties
+
+Add these properties to `jvm.properties` or pass them with the JVM `-D` option. Restart the service after changing them.
+
+| Property | Description | Default |
+| --- | --- | --- |
+| `twake.calendar.smtp.max-retries` | Maximum number of retries for a complete SMTP create-and-send attempt. Set to `0` to disable retries. | `3` |

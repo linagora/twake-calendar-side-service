@@ -173,8 +173,7 @@ public class AlarmTriggerService {
                 return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(locale), TEMPLATE_TYPE))
                     .subscribeOn(Schedulers.boundedElastic())
                     .flatMap(messageGenerator -> messageGenerator.generate(recipientUser, senderAddress, model, List.of()))
-                    .flatMap(message -> mailSenderFactory.create()
-                        .flatMap(mailSender -> mailSender.send(new Mail(maybeSender, List.of(alarmEvent.recipient()), message))));
+                    .flatMap(message -> mailSenderFactory.send(new Mail(maybeSender, List.of(alarmEvent.recipient()), message)));
             });
     }
 
