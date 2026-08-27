@@ -93,7 +93,7 @@ public class PublicAgendaProposalNotifier {
                         bookingCreated.eventIcsResult().eventIdAsString(),
                         bookingCreated.bookingLink().calendarUrl().base().value())
                     .flatMap(actionLinks -> generateMail(settings, bookingCreated, actionLinks))
-                    .flatMap(mail -> mailSenderFactory.create().flatMap(mailSender -> mailSender.send(mail)))))
+                    .flatMap(mailSenderFactory::send)))
             .subscribeOn(Schedulers.boundedElastic())
             .then();
     }

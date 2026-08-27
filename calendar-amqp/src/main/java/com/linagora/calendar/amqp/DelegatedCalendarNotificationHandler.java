@@ -151,8 +151,7 @@ public class DelegatedCalendarNotificationHandler {
 
         return settingsResolver.resolveOrDefault(recipientUser)
             .flatMap(resolvedSettings -> generateMessage(notificationData, resolvedSettings))
-            .flatMap(mailMessage -> mailSenderFactory.create()
-                .flatMap(mailSender -> mailSender.send(new Mail(maybeSender, ImmutableList.of(Throwing.supplier(recipientUser::asMailAddress).get()), mailMessage)))
+            .flatMap(mailMessage -> mailSenderFactory.send(new Mail(maybeSender, ImmutableList.of(Throwing.supplier(recipientUser::asMailAddress).get()), mailMessage))
                 .onErrorMap(error -> new CalendarDelegatedNotificationHandlerException("Failed to send delegated calendar notification email", error)))
             .doOnSuccess(any -> LOGGER.debug("Consumed delegated calendar notification for user {} on calendar {}", notificationData.delegatedUser().username(), notificationData.originalCalendarURL()));
     }

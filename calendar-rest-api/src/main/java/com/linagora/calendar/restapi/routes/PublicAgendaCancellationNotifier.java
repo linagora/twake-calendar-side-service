@@ -104,8 +104,7 @@ public class PublicAgendaCancellationNotifier {
         LOGGER.debug("Preparing public agenda cancellation email to {} for event '{}'",
             recipient.asString(), cancelled.summary());
         return generateMail(settings, cancelled, recipient)
-            .flatMap(mail -> mailSenderFactory.create()
-                .flatMap(mailSender -> mailSender.send(mail)));
+            .flatMap(mailSenderFactory::send);
     }
 
     private Mono<Mail> generateMail(ResolvedSettings settings, BookedEventCancelled cancelled, MailAddress recipient) {

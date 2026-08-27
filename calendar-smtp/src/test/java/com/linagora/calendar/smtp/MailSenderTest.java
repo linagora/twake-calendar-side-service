@@ -323,7 +323,7 @@ class MailSenderTest {
     }
 
     @Test
-    void shouldRetryAndSucceedAfterTransientConnectionFailure() throws Exception {
+    void shouldRetryWholeMailSendAfterTransientFailure() throws Exception {
         ServerSocket serverSocket = new ServerSocket();
         serverSocket.bind(new InetSocketAddress("localhost", 0));
         int port = serverSocket.getLocalPort();
@@ -335,23 +335,33 @@ class MailSenderTest {
                 for (int i = 0; i < 5; i++) {
                     Socket socket = serverSocket.accept();
                     socket.setSoTimeout(5000);
+                    OutputStream os = socket.getOutputStream();
+                    os.write("220 mock.smtp.server ESMTP\r\n".getBytes(StandardCharsets.UTF_8));
+                    os.flush();
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                    String line = reader.readLine();
                     if (connectionCount.incrementAndGet() == 1) {
                         socket.close();
                     } else {
-                        OutputStream os = socket.getOutputStream();
-                        os.write("220 mock.smtp.server ESMTP\r\n".getBytes(StandardCharsets.UTF_8));
-                        os.flush();
-                        BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-                        String line;
-                        while ((line = reader.readLine()) != null) {
+                        while (line != null) {
                             if (line.startsWith("HELO") || line.startsWith("EHLO")) {
                                 os.write("250 mock.smtp.server\r\n".getBytes(StandardCharsets.UTF_8));
+                                os.flush();
+                            } else if (line.startsWith("MAIL FROM") || line.startsWith("RCPT TO")) {
+                                os.write("250 OK\r\n".getBytes(StandardCharsets.UTF_8));
+                                os.flush();
+                            } else if (line.equals("DATA")) {
+                                os.write("354 Send message content\r\n".getBytes(StandardCharsets.UTF_8));
+                                os.flush();
+                            } else if (line.equals(".")) {
+                                os.write("250 Message accepted\r\n".getBytes(StandardCharsets.UTF_8));
                                 os.flush();
                             } else if (line.startsWith("QUIT")) {
                                 os.write("221 Bye\r\n".getBytes(StandardCharsets.UTF_8));
                                 os.flush();
                                 break;
                             }
+                            line = reader.readLine();
                         }
                         socket.close();
                     }
@@ -369,13 +379,32 @@ class MailSenderTest {
             false, false, false
         );
 
-        MailSender retryMailSender = new MailSender.Factory.Default(config, eventEmailFilter)
-            .create().block(Duration.ofSeconds(10));
+        String rawMessage = "From: sender@localhost\nTo: recipient@localhost\nSubject: Test\n\nHello World!";
+        Message message = new DefaultMessageBuilder().parseMessage(new ByteArrayInputStream(rawMessage.getBytes(StandardCharsets.UTF_8)));
+        Mail mail = new Mail(MaybeSender.of(new MailAddress("sender@localhost")), List.of(new MailAddress("recipient@localhost")), message);
 
-        assertThat(retryMailSender).isNotNull();
+        new MailSender.Factory.Default(config, eventEmailFilter)
+            .send(mail).block(Duration.ofSeconds(10));
+
         assertThat(connectionCount.get()).isGreaterThanOrEqualTo(2);
 
         serverSocket.close();
         serverThread.join(5000);
+    }
+
+    @Test
+    void shouldReadSmtpSendMaxRetriesFromSystemProperty() {
+        String originalValue = System.getProperty(MailSender.Factory.Default.SMTP_SEND_MAX_RETRIES_PROPERTY);
+        try {
+            System.setProperty(MailSender.Factory.Default.SMTP_SEND_MAX_RETRIES_PROPERTY, "0");
+
+            assertThat(MailSender.Factory.Default.maxSmtpSendRetries()).isZero();
+        } finally {
+            if (originalValue == null) {
+                System.clearProperty(MailSender.Factory.Default.SMTP_SEND_MAX_RETRIES_PROPERTY);
+            } else {
+                System.setProperty(MailSender.Factory.Default.SMTP_SEND_MAX_RETRIES_PROPERTY, originalValue);
+            }
+        }
     }
 }
