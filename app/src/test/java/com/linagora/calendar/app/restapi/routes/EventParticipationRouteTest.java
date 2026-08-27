@@ -457,25 +457,55 @@ class EventParticipationRouteTest {
         .then()
             .statusCode(200);
 
-        // Then the organizer is notified of the answer by an iTIP REPLY email.
-        // Two of them actually: the DAV server schedules one upon the update of the attendee copy of the event,
-        // and this route emits one of its own.
+        // Then the organizer is notified of the answer by a single iTIP REPLY email, scheduled by the DAV server
+        // upon the update of the attendee copy of the event. This route must not emit one of its own.
         CALMLY_AWAIT
             .atMost(Duration.ofSeconds(10))
-            .untilAsserted(() -> assertThat(smtpMails().getList("")).hasSize(3));
+            .untilAsserted(() -> assertThat(smtpMails().getList("")).hasSize(2));
 
         JsonPath smtpMailsResponse = smtpMails();
         assertSoftly(Throwing.consumer(softly -> {
-            for (int i : List.of(1, 2)) {
-                softly.assertThat(smtpMailsResponse.getString("[" + i + "].from")).isEqualTo(attendee.username().asString());
-                softly.assertThat(smtpMailsResponse.getString("[" + i + "].recipients[0].address")).isEqualTo(organizer.username().asString());
-                softly.assertThat(extractSubject(smtpMailsResponse.getString("[" + i + "].message")))
-                    .isEqualTo("Accepted: Twake Calendar - Sprint planning #04 (Benoît TELLIER)");
-                softly.assertThat(extractReplyCalendarAttachment(smtpMailsResponse.getString("[" + i + "].message")))
-                    .contains("METHOD:REPLY")
-                    .contains("PARTSTAT=ACCEPTED");
-            }
+            softly.assertThat(smtpMailsResponse.getString("[1].from")).isEqualTo(attendee.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[1].recipients[0].address")).isEqualTo(organizer.username().asString());
+            softly.assertThat(extractSubject(smtpMailsResponse.getString("[1].message")))
+                .isEqualTo("Accepted: Twake Calendar - Sprint planning #04 (Benoît TELLIER)");
+            softly.assertThat(extractReplyCalendarAttachment(smtpMailsResponse.getString("[1].message")))
+                .contains("METHOD:REPLY")
+                .contains("PARTSTAT=ACCEPTED");
         }));
+
+        assertThat(smtpMails().getList("")).hasSize(2);
+    }
+
+    @Test
+    void internalAttendeeAnswerShouldNotSendDuplicatedReplyEmailToOrganizer() {
+        String eventUid = UUID.randomUUID().toString();
+        davTestHelper.upsertCalendar(
+            organizer,
+            generateCalendarData(eventUid, organizer.username().asString(), attendee.username().asString()),
+            eventUid);
+
+        AtomicReference<String> acceptLink = new AtomicReference<>();
+        CALMLY_AWAIT
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> {
+                JsonPath smtpMailsResponse = smtpMails();
+                assertThat(smtpMailsResponse.getList("")).hasSize(1);
+                acceptLink.set(extractActionLinks(getHtml(smtpMailsResponse.getString("[0].message"))).getFirst());
+            });
+
+        given()
+        .when()
+            .get(asLocalParticipationLink(acceptLink.get()))
+        .then()
+            .statusCode(200);
+
+        CALMLY_AWAIT
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> assertThat(replyMailsTo(organizer.username().asString())).hasSize(1));
+
+        awaitAtMost.pollDelay(Duration.ofSeconds(3))
+            .untilAsserted(() -> assertThat(replyMailsTo(organizer.username().asString())).hasSize(1));
     }
 
     @Test
@@ -608,6 +638,15 @@ class EventParticipationRouteTest {
                 """.formatted(attendee.username().asString()));
 
         assertThat(getCalendarEventReportResponse(eventUid)).contains("\"partstat\" : \"ACCEPTED\"");
+    }
+
+    private List<String> replyMailsTo(String recipient) {
+        JsonPath smtpMailsResponse = smtpMails();
+        return IntStream.range(0, smtpMailsResponse.getList("").size())
+            .filter(i -> recipient.equals(smtpMailsResponse.getString("[" + i + "].recipients[0].address")))
+            .mapToObj(i -> smtpMailsResponse.getString("[" + i + "].message"))
+            .filter(message -> message.contains("method=REPLY"))
+            .toList();
     }
 
     private JsonPath smtpMails() {

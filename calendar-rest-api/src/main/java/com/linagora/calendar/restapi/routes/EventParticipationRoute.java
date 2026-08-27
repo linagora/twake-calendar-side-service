@@ -141,7 +141,7 @@ public class EventParticipationRoute extends PublicRoute {
             .flatMap(isAttendeeInternalUser -> {
                 Username requestUser = resolveRequestUser(attendeeUsername, organizerUsername, isAttendeeInternalUser);
                 return calDavEventRepository.updatePartStat(requestUser, calendarId, eventUid, patch)
-                    .flatMap(partStatUpdate -> notifyOrganizer(participationRequest, partStatUpdate)
+                    .flatMap(partStatUpdate -> notifyOrganizer(participationRequest, partStatUpdate, isAttendeeInternalUser)
                         .thenReturn(partStatUpdate.report()))
                     .map(VCalendarDto::from)
                     .map(dto -> Pair.of(dto, isAttendeeInternalUser));
@@ -150,9 +150,17 @@ public class EventParticipationRoute extends PublicRoute {
 
     /**
      * Notifies the organizer of the answer of the attendee by an iTIP REPLY email.
+     *
+     * Only external attendees need it: answering on behalf of an internal attendee updates their own copy of the
+     * event, upon which the DAV server already schedules an iTIP REPLY of its own.
      */
     private Mono<Void> notifyOrganizer(Participation participationRequest,
-                                       CalDavEventRepository.PartStatUpdate partStatUpdate) {
+                                       CalDavEventRepository.PartStatUpdate partStatUpdate,
+                                       boolean isAttendeeInternalUser) {
+        if (isAttendeeInternalUser) {
+            return Mono.empty();
+        }
+
         return Mono.justOrEmpty(partStatUpdate.updatedCalendar())
             .flatMap(updatedCalendar -> notificationPublisher.publishReply(updatedCalendar,
                 participationRequest.attendee(), participationRequest.organizer(),
