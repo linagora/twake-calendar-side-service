@@ -20,14 +20,20 @@ package com.linagora.calendar.saas.contact;
 
 import java.io.FileNotFoundException;
 
+import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.james.utils.PropertiesProvider;
 
-public record CommonContactPublisherConfiguration(String exchange) {
-    public static final String EXCHANGE_PROPERTY = "common.contacts.exchange";
+public record CommonContactsConfiguration(String outboundExchange,
+                                          String collectedContactsExchange) {
+    public static final String DEFAULT_OUTBOUND_EXCHANGE = "twake:contacts:common";
+    public static final String DEFAULT_COLLECTED_CONTACTS_EXCHANGE = "twake:contacts:collected";
+    public static final String OUTBOUND_EXCHANGE_PROPERTY = "common.contacts.exchange";
+    public static final String COLLECTED_CONTACTS_EXCHANGE_PROPERTY = "common.contacts.collected.exchange";
 
-    public static CommonContactPublisherConfiguration from(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
-        return new CommonContactPublisherConfiguration(propertiesProvider.getConfiguration("rabbitmq")
-            .getString(EXCHANGE_PROPERTY, CommonContactPublisher.DEFAULT_EXCHANGE));
+    public static CommonContactsConfiguration from(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
+        Configuration configuration = propertiesProvider.getConfiguration("rabbitmq");
+        return new CommonContactsConfiguration(configuration.getString(OUTBOUND_EXCHANGE_PROPERTY, DEFAULT_OUTBOUND_EXCHANGE),
+            configuration.getString(COLLECTED_CONTACTS_EXCHANGE_PROPERTY, DEFAULT_COLLECTED_CONTACTS_EXCHANGE));
     }
 }

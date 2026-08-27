@@ -65,7 +65,7 @@ Sample payload:
 ### Source: collected contacts
 
 - Broker: Twake Workplace RabbitMQ connection (`twp.rabbitmq.uri`, or `uri` when not configured).
-- Source exchange: `twake:contacts:collected`.
+- Source exchange: the `common.contacts.collected.exchange` property; defaults to `twake:contacts:collected`.
 - Queue: `tcalendar:contacts:collected`.
 - Dead-letter queue: `tcalendar:contacts:collected-dead-letter`.
 - Consumer: single active consumer.

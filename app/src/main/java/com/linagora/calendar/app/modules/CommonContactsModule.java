@@ -44,7 +44,7 @@ import com.linagora.calendar.saas.contact.CollectedContactsConsumer;
 import com.linagora.calendar.saas.contact.CommonContactEventConverter;
 import com.linagora.calendar.saas.contact.CommonContactNotificationConsumer;
 import com.linagora.calendar.saas.contact.CommonContactPublisher;
-import com.linagora.calendar.saas.contact.CommonContactPublisherConfiguration;
+import com.linagora.calendar.saas.contact.CommonContactsConfiguration;
 
 public class CommonContactsModule extends AbstractModule {
     @Override
@@ -58,8 +58,8 @@ public class CommonContactsModule extends AbstractModule {
 
     @Provides
     @Singleton
-    CommonContactPublisherConfiguration configuration(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
-        return CommonContactPublisherConfiguration.from(propertiesProvider);
+    CommonContactsConfiguration configuration(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
+        return CommonContactsConfiguration.from(propertiesProvider);
     }
 
     @ProvidesIntoSet

@@ -48,7 +48,6 @@ import reactor.core.publisher.Mono;
 import reactor.rabbitmq.AcknowledgableDelivery;
 
 public class CollectedContactsConsumer implements Closeable, Startable {
-    public static final String EXCHANGE = "twake:contacts:collected";
     public static final String QUEUE = "tcalendar:contacts:collected";
     public static final String DEAD_LETTER_QUEUE = "tcalendar:contacts:collected-dead-letter";
 
@@ -63,6 +62,7 @@ public class CollectedContactsConsumer implements Closeable, Startable {
     public CollectedContactsConsumer(@Named(TWP_INJECTION_KEY) ReactorRabbitMQChannelPool channelPool,
                                      @Named(TWP_INJECTION_KEY) RabbitMQConfiguration rabbitMQConfiguration,
                                      TWPCommonRabbitMQConfiguration twpCommonRabbitMQConfiguration,
+                                     CommonContactsConfiguration configuration,
                                      OpenPaaSUserDAO userDAO,
                                      CardDavClient cardDavClient,
                                      CollectedContactUpdateCalculator contactUpdateCalculator) {
@@ -72,7 +72,7 @@ public class CollectedContactsConsumer implements Closeable, Startable {
         consumer = new ManagedRabbitMQConsumer.Factory(channelPool)
             .create(ManagedRabbitMQConsumer.Parameters.builder()
                 .queueDeclaration(QueueDeclaration.builder()
-                    .binding(EXCHANGE, BuiltinExchangeType.FANOUT, EMPTY_ROUTING_KEY)
+                    .binding(configuration.collectedContactsExchange(), BuiltinExchangeType.FANOUT, EMPTY_ROUTING_KEY)
                     .queue(QUEUE)
                     .deadLetterQueue(DEAD_LETTER_QUEUE)
                     .build())

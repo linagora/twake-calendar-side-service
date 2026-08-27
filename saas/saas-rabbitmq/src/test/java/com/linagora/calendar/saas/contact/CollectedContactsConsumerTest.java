@@ -25,6 +25,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
@@ -77,6 +78,8 @@ class CollectedContactsConsumerTest {
     private CollectedContactsConsumer testee;
     private CardDavClient cardDavClient;
     private OpenPaaSUser user;
+    private RabbitMQConfiguration rabbitMQConfiguration;
+    private OpenPaaSUserDAO userDAO;
 
     @BeforeAll
     static void setUpRabbitMQ() throws Exception {
@@ -108,14 +111,12 @@ class CollectedContactsConsumerTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        RabbitMQConfiguration rabbitMQConfiguration = sabreDavExtension.dockerSabreDavSetup().rabbitMQConfiguration();
+        rabbitMQConfiguration = sabreDavExtension.dockerSabreDavSetup().rabbitMQConfiguration();
         cardDavClient = new CardDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         user = sabreDavExtension.newTestUser();
         MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(sabreDavExtension.dockerSabreDavSetup().getMongoDB());
-        OpenPaaSUserDAO userDAO = new MongoDBOpenPaaSUserDAO(sabreDavExtension.dockerSabreDavSetup().getMongoDB(), domainDAO);
-        testee = new CollectedContactsConsumer(channelPool, rabbitMQConfiguration,
-            new TWPCommonRabbitMQConfiguration(Optional.empty(), Optional.empty(), true),
-            userDAO, cardDavClient, new CollectedContactUpdateCalculator());
+        userDAO = new MongoDBOpenPaaSUserDAO(sabreDavExtension.dockerSabreDavSetup().getMongoDB(), domainDAO);
+        testee = newConsumer(CommonContactsConfiguration.DEFAULT_COLLECTED_CONTACTS_EXCHANGE);
         testee.init();
         channel.queuePurge(CollectedContactsConsumer.QUEUE);
         channel.queuePurge(CollectedContactsConsumer.DEAD_LETTER_QUEUE);
@@ -124,6 +125,40 @@ class CollectedContactsConsumerTest {
     @AfterEach
     void tearDown() {
         testee.close();
+    }
+
+    @Test
+    void shouldConsumeFromConfiguredExchange() throws Exception {
+        String exchange = "twake:contacts:collected:test:" + UUID.randomUUID();
+        testee.close();
+        testee = newConsumer(exchange);
+        testee.init();
+
+        String message = """
+            {
+              "userEmail": "{userEmail}",
+              "collectedContacts": [{
+                "@type": "Card",
+                "version": "2.0",
+                "uid": "configured-exchange-uid",
+                "name": { "@type": "Name", "full": "Configured exchange contact" }
+              }]
+            }
+            """.replace("{userEmail}", user.username().asString());
+
+        channel.basicPublish(exchange, "", null, message.getBytes(StandardCharsets.UTF_8));
+
+        AddressBookURL addressBook = new AddressBookURL(user.id(), COLLECTED_ADDRESS_BOOK);
+        AWAIT_AT_MOST.untilAsserted(() -> assertThat(cardDavClient.exportContact(user.username(), addressBook).blockOptional())
+            .hasValueSatisfying(contacts -> assertThat(contacts).asString(StandardCharsets.UTF_8)
+                .contains("UID:configured-exchange-uid")));
+    }
+
+    private CollectedContactsConsumer newConsumer(String exchange) {
+        return new CollectedContactsConsumer(channelPool, rabbitMQConfiguration,
+            new TWPCommonRabbitMQConfiguration(Optional.empty(), Optional.empty(), true),
+            new CommonContactsConfiguration(CommonContactsConfiguration.DEFAULT_OUTBOUND_EXCHANGE, exchange),
+            userDAO, cardDavClient, new CollectedContactUpdateCalculator());
     }
 
     @Test
@@ -145,7 +180,7 @@ class CollectedContactsConsumerTest {
             """.replace("{userEmail}", user.username().asString());
 
         // When an external application publishes it to the collected contacts exchange
-        channel.basicPublish(CollectedContactsConsumer.EXCHANGE, "", null, message.getBytes(StandardCharsets.UTF_8));
+        channel.basicPublish(CommonContactsConfiguration.DEFAULT_COLLECTED_CONTACTS_EXCHANGE, "", null, message.getBytes(StandardCharsets.UTF_8));
 
         // Then the contact is stored in that user's Collected address book
         AddressBookURL addressBook = new AddressBookURL(user.id(), COLLECTED_ADDRESS_BOOK);
@@ -191,7 +226,7 @@ class CollectedContactsConsumerTest {
             """.replace("{userEmail}", user.username().asString());
 
         // When an external application publishes it to the collected contacts exchange
-        channel.basicPublish(CollectedContactsConsumer.EXCHANGE, "", null, message.getBytes(StandardCharsets.UTF_8));
+        channel.basicPublish(CommonContactsConfiguration.DEFAULT_COLLECTED_CONTACTS_EXCHANGE, "", null, message.getBytes(StandardCharsets.UTF_8));
 
         // Then all contacts are stored in that user's Collected address book
         AddressBookURL addressBook = new AddressBookURL(user.id(), COLLECTED_ADDRESS_BOOK);
@@ -244,7 +279,7 @@ class CollectedContactsConsumerTest {
             """.replace("{userEmail}", user.username().asString());
 
         // When the contact is collected
-        channel.basicPublish(CollectedContactsConsumer.EXCHANGE, "", null, message.getBytes(StandardCharsets.UTF_8));
+        channel.basicPublish(CommonContactsConfiguration.DEFAULT_COLLECTED_CONTACTS_EXCHANGE, "", null, message.getBytes(StandardCharsets.UTF_8));
 
         // Then every communication method is persisted in the vCard
         AddressBookURL addressBook = new AddressBookURL(user.id(), COLLECTED_ADDRESS_BOOK);
@@ -282,7 +317,7 @@ class CollectedContactsConsumerTest {
               }]
             }
             """.replace("{userEmail}", user.username().asString());
-        channel.basicPublish(CollectedContactsConsumer.EXCHANGE, "", null, initialMessage.getBytes(StandardCharsets.UTF_8));
+        channel.basicPublish(CommonContactsConfiguration.DEFAULT_COLLECTED_CONTACTS_EXCHANGE, "", null, initialMessage.getBytes(StandardCharsets.UTF_8));
 
         AddressBookURL addressBook = new AddressBookURL(user.id(), COLLECTED_ADDRESS_BOOK);
         AWAIT_AT_MOST.untilAsserted(() -> assertThat(cardDavClient.exportContact(user.username(), addressBook).blockOptional())
@@ -311,7 +346,7 @@ class CollectedContactsConsumerTest {
               }]
             }
             """.replace("{userEmail}", user.username().asString());
-        channel.basicPublish(CollectedContactsConsumer.EXCHANGE, "", null, updatedMessage.getBytes(StandardCharsets.UTF_8));
+        channel.basicPublish(CommonContactsConfiguration.DEFAULT_COLLECTED_CONTACTS_EXCHANGE, "", null, updatedMessage.getBytes(StandardCharsets.UTF_8));
 
         // Then the existing vCard is updated rather than duplicated
         AWAIT_AT_MOST.untilAsserted(() -> assertThat(cardDavClient.exportContact(user.username(), addressBook).blockOptional())
@@ -342,7 +377,7 @@ class CollectedContactsConsumerTest {
               }]
             }
             """.replace("{userEmail}", user.username().asString());
-        channel.basicPublish(CollectedContactsConsumer.EXCHANGE, "", null, emailMessage.getBytes(StandardCharsets.UTF_8));
+        channel.basicPublish(CommonContactsConfiguration.DEFAULT_COLLECTED_CONTACTS_EXCHANGE, "", null, emailMessage.getBytes(StandardCharsets.UTF_8));
 
         AddressBookURL addressBook = new AddressBookURL(user.id(), COLLECTED_ADDRESS_BOOK);
         AWAIT_AT_MOST.untilAsserted(() -> assertThat(cardDavClient.exportContact(user.username(), addressBook).blockOptional())
@@ -362,7 +397,7 @@ class CollectedContactsConsumerTest {
               }]
             }
             """.replace("{userEmail}", user.username().asString());
-        channel.basicPublish(CollectedContactsConsumer.EXCHANGE, "", null, matrixIdMessage.getBytes(StandardCharsets.UTF_8));
+        channel.basicPublish(CommonContactsConfiguration.DEFAULT_COLLECTED_CONTACTS_EXCHANGE, "", null, matrixIdMessage.getBytes(StandardCharsets.UTF_8));
 
         // Then both identities are kept on the same collected contact
         String expectedVCard = """
@@ -396,7 +431,7 @@ class CollectedContactsConsumerTest {
               }]
             }
             """.replace("{userEmail}", user.username().asString());
-        channel.basicPublish(CollectedContactsConsumer.EXCHANGE, "", null, initialMessage.getBytes(StandardCharsets.UTF_8));
+        channel.basicPublish(CommonContactsConfiguration.DEFAULT_COLLECTED_CONTACTS_EXCHANGE, "", null, initialMessage.getBytes(StandardCharsets.UTF_8));
 
         AddressBookURL addressBook = new AddressBookURL(user.id(), COLLECTED_ADDRESS_BOOK);
         AWAIT_AT_MOST.untilAsserted(() -> assertThat(cardDavClient.exportContact(user.username(), addressBook).blockOptional())
@@ -418,7 +453,7 @@ class CollectedContactsConsumerTest {
               }]
             }
             """.replace("{userEmail}", user.username().asString());
-        channel.basicPublish(CollectedContactsConsumer.EXCHANGE, "", null, updatedMessage.getBytes(StandardCharsets.UTF_8));
+        channel.basicPublish(CommonContactsConfiguration.DEFAULT_COLLECTED_CONTACTS_EXCHANGE, "", null, updatedMessage.getBytes(StandardCharsets.UTF_8));
 
         // Then the existing contact is replaced rather than merging both email lists
         AWAIT_AT_MOST.untilAsserted(() -> assertThat(cardDavClient.exportContact(user.username(), addressBook).blockOptional())
@@ -446,7 +481,7 @@ class CollectedContactsConsumerTest {
               }]
             }
             """.replace("{userEmail}", user.username().asString());
-        channel.basicPublish(CollectedContactsConsumer.EXCHANGE, "", null, initialMessage.getBytes(StandardCharsets.UTF_8));
+        channel.basicPublish(CommonContactsConfiguration.DEFAULT_COLLECTED_CONTACTS_EXCHANGE, "", null, initialMessage.getBytes(StandardCharsets.UTF_8));
 
         String generatedUid = sha1("stable@example.com");
         AddressBookURL addressBook = new AddressBookURL(user.id(), COLLECTED_ADDRESS_BOOK);
@@ -475,7 +510,7 @@ class CollectedContactsConsumerTest {
               }]
             }
             """.replace("{userEmail}", user.username().asString());
-        channel.basicPublish(CollectedContactsConsumer.EXCHANGE, "", null, updatedMessage.getBytes(StandardCharsets.UTF_8));
+        channel.basicPublish(CommonContactsConfiguration.DEFAULT_COLLECTED_CONTACTS_EXCHANGE, "", null, updatedMessage.getBytes(StandardCharsets.UTF_8));
 
         // Then the same generated UID targets and updates the existing vCard
         AWAIT_AT_MOST.untilAsserted(() -> assertThat(cardDavClient.exportContact(user.username(), addressBook).blockOptional())
@@ -512,7 +547,7 @@ class CollectedContactsConsumerTest {
     void shouldDeadLetterMalformedMessage() throws Exception {
         byte[] malformedMessage = "not-json".getBytes(StandardCharsets.UTF_8);
 
-        channel.basicPublish(CollectedContactsConsumer.EXCHANGE, "", null, malformedMessage);
+        channel.basicPublish(CommonContactsConfiguration.DEFAULT_COLLECTED_CONTACTS_EXCHANGE, "", null, malformedMessage);
 
         AWAIT_AT_MOST.untilAsserted(() -> {
             GetResponse deadLetter = channel.basicGet(CollectedContactsConsumer.DEAD_LETTER_QUEUE, true);
@@ -525,7 +560,7 @@ class CollectedContactsConsumerTest {
     void shouldContinueConsumingAfterMessageFailure() throws Exception {
         // Given a malformed message that fails and is moved to the dead-letter queue
         byte[] malformedMessage = "not-json".getBytes(StandardCharsets.UTF_8);
-        channel.basicPublish(CollectedContactsConsumer.EXCHANGE, "", null, malformedMessage);
+        channel.basicPublish(CommonContactsConfiguration.DEFAULT_COLLECTED_CONTACTS_EXCHANGE, "", null, malformedMessage);
         AWAIT_AT_MOST.untilAsserted(() -> {
             GetResponse deadLetter = channel.basicGet(CollectedContactsConsumer.DEAD_LETTER_QUEUE, true);
             assertThat(deadLetter).isNotNull();
@@ -547,7 +582,7 @@ class CollectedContactsConsumerTest {
               }]
             }
             """.replace("{userEmail}", user.username().asString());
-        channel.basicPublish(CollectedContactsConsumer.EXCHANGE, "", null, validMessage.getBytes(StandardCharsets.UTF_8));
+        channel.basicPublish(CommonContactsConfiguration.DEFAULT_COLLECTED_CONTACTS_EXCHANGE, "", null, validMessage.getBytes(StandardCharsets.UTF_8));
 
         // Then the consumer is still running and stores the contact
         AddressBookURL addressBook = new AddressBookURL(user.id(), COLLECTED_ADDRESS_BOOK);

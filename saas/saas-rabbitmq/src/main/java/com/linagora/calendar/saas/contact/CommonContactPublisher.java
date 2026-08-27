@@ -37,8 +37,6 @@ import reactor.rabbitmq.OutboundMessage;
 import reactor.rabbitmq.Sender;
 
 public class CommonContactPublisher implements Startable {
-    public static final String DEFAULT_EXCHANGE = "twake:contacts:common";
-
     private static final AMQP.BasicProperties PERSISTENT_JSON = new AMQP.BasicProperties.Builder()
         .deliveryMode(2)
         .contentType("application/json")
@@ -49,9 +47,9 @@ public class CommonContactPublisher implements Startable {
 
     @Inject
     public CommonContactPublisher(@Named(TWP_INJECTION_KEY) ReactorRabbitMQChannelPool channelPool,
-                                  CommonContactPublisherConfiguration configuration) {
+                                  CommonContactsConfiguration configuration) {
         this.sender = channelPool.getSender();
-        this.exchange = configuration.exchange();
+        this.exchange = configuration.outboundExchange();
     }
 
     public void init() {
