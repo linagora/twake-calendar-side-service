@@ -40,10 +40,6 @@ import reactor.core.publisher.Mono;
 import reactor.rabbitmq.OutboundMessage;
 import reactor.rabbitmq.Sender;
 
-/**
- * Publishes iTIP notification emails onto {@link EventEmailConsumer#EXCHANGE_NAME}, so that mail rendering and
- * sending is carried out by the regular notification email stack rather than being re-implemented by callers.
- */
 @Singleton
 public class EventEmailNotificationPublisher {
 
@@ -63,14 +59,6 @@ public class EventEmailNotificationPublisher {
         this.sender = channelPool.getSender();
     }
 
-    /**
-     * Notifies the organizer that an attendee answered the invitation.
-     *
-     * @param updatedCalendar the event as stored after the participation update
-     * @param attendee        the attendee whose participation status changed
-     * @param organizer       the organizer to be notified
-     * @param eventPath       the DAV path of the event, used for audit purposes
-     */
     public Mono<Void> publishReply(Calendar updatedCalendar, MailAddress attendee, MailAddress organizer, String eventPath) {
         return Mono.fromCallable(() -> OBJECT_MAPPER.writeValueAsBytes(new NotificationEmailDTO(
                 attendee.asString(),
@@ -82,9 +70,6 @@ public class EventEmailNotificationPublisher {
             .then();
     }
 
-    /**
-     * An iTIP REPLY carries the sole attendee it originates from.
-     */
     private Calendar replyCalendar(Calendar updatedCalendar, MailAddress attendee) {
         VEvent replyEvent = EventParseUtils.getFirstEvent(updatedCalendar).copy();
         replyEvent.getAttendees().stream()
