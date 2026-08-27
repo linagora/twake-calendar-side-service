@@ -20,6 +20,8 @@ package com.linagora.calendar.amqp;
 
 import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
 
+import java.time.Clock;
+
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
@@ -53,19 +55,23 @@ public class EventEmailNotificationPublisher {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final Sender sender;
+    private final Clock clock;
 
     @Inject
-    public EventEmailNotificationPublisher(ReactorRabbitMQChannelPool channelPool) {
+    public EventEmailNotificationPublisher(ReactorRabbitMQChannelPool channelPool, Clock clock) {
         this.sender = channelPool.getSender();
+        this.clock = clock;
     }
 
     public Mono<Void> publishReply(Calendar updatedCalendar, MailAddress attendee, MailAddress organizer, String eventPath) {
-        return Mono.fromCallable(() -> OBJECT_MAPPER.writeValueAsBytes(new NotificationEmailDTO(
+        return Mono.fromCallable(() -> replyCalendar(updatedCalendar, attendee))
+            .filter(replyCalendar -> !CalendarEventUtils.vEventExpired(EventParseUtils.getFirstEvent(replyCalendar), clock))
+            .flatMap(replyCalendar -> Mono.fromCallable(() -> OBJECT_MAPPER.writeValueAsBytes(new NotificationEmailDTO(
                 attendee.asString(),
                 organizer.asString(),
                 ImmutableMethod.REPLY.getValue(),
-                replyCalendar(updatedCalendar, attendee).toString(),
-                eventPath)))
+                replyCalendar.toString(),
+                eventPath))))
             .flatMap(payload -> sender.send(Mono.just(new OutboundMessage(EventEmailConsumer.EXCHANGE_NAME, EMPTY_ROUTING_KEY, payload))))
             .then();
     }
