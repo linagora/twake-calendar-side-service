@@ -1615,3 +1615,129 @@ POST /users/james@linagora.com?action=deleteData&fromStep=CalendarSearchDeletion
 ```
 
 This will skip `DavCalendarDeletionTaskStep` and `DavContactDeletionTaskStep`, starting directly from `CalendarSearchDeletionTaskStep`.
+
+## Unsent mails routes
+
+The mails the side service fails to deliver over SMTP - the SMTP server being unreachable, a recipient being
+rejected... - are retained in storage, along with the failed sending trials, and can be inspected and re-emitted
+through the following routes.
+
+A retained mail is kept until it is deleted or successfully resent. Mails bigger than 1MB are not retained -
+calendar related mails are vowed to be small.
+
+### Listing unsent mails
+
+```
+GET /unsentMails
+GET /unsentMails?sender=btellier@linagora.com
+GET /unsentMails?recipient=btellier@linagora.com
+GET /unsentMails?limit=100
+```
+
+Returns the ids of the retained mails, oldest first:
+
+```json
+[
+  {"id": "b1b1ec9c-8d47-4a1e-9c5e-2f2d0d16d0f6"},
+  {"id": "8e4b1ec2-4a76-4a2e-9b64-8f5e0f2a2c31"}
+]
+```
+
+**Query parameters**:
+- `sender` (optional): only the mails whose SMTP `MAIL FROM` matches this address
+- `recipient` (optional): only the mails having this address amongst their SMTP `RCPT TO`
+- `limit` (optional): caps the number of returned ids. Must be strictly positive.
+
+**Status codes**:
+- `200`: success
+- `400`: invalid mail address or limit
+
+### Getting an unsent mail
+
+```
+GET /unsentMails/b1b1ec9c-8d47-4a1e-9c5e-2f2d0d16d0f6
+```
+
+Returns the envelope, the MIME message and the failed sending trials:
+
+```json
+{
+  "id": "b1b1ec9c-8d47-4a1e-9c5e-2f2d0d16d0f6",
+  "mailFrom": "btellier@linagora.com",
+  "rcptTo": ["btellier@linagora.com"],
+  "body": "From: btellier@linagora.com\r\nTo: ...",
+  "createdAt": "2026-08-27T10:00:00Z",
+  "sendingTrials": [
+    {
+      "date": "2026-08-27T10:00:00Z",
+      "errorMessage": "Connection refused"
+    }
+  ]
+}
+```
+
+`mailFrom` is `null` for a null reverse-path. Only the 10 most recent sending trials are retained.
+
+**Status codes**:
+- `200`: success
+- `404`: no such unsent mail
+
+### Deleting unsent mails
+
+```
+DELETE /unsentMails/b1b1ec9c-8d47-4a1e-9c5e-2f2d0d16d0f6
+DELETE /unsentMails
+```
+
+Deletes a single unsent mail, respectively all of them.
+
+**Status codes**:
+- `204`: the mails had been deleted
+
+### Resending unsent mails
+
+```
+POST /unsentMails?action=resend
+POST /unsentMails?action=resend&limit=5
+POST /unsentMails?action=resend&sender=btellier@linagora.com
+POST /unsentMails/b1b1ec9c-8d47-4a1e-9c5e-2f2d0d16d0f6?action=resend
+```
+
+Schedules a task re-emitting the matching mails, respectively that single mail. The very MIME message that had
+been submitted is pushed anew: no template is rendered again. A mail successfully sent is dropped from the
+storage, a mail failing anew has an extra sending trial recorded and is retained.
+
+The same `sender`, `recipient` and `limit` query parameters as the listing route select the mails to resend.
+
+Returns a task ID for async tracking:
+
+```json
+{
+  "taskId": "464269f0-9314-11ef-a339-d76792bfb514"
+}
+```
+
+**Status codes**:
+- `201`: Task successfully submitted
+- `400`: Invalid action or parameter
+
+The task **succeeds only if every selected mail could be sent**: it completes as `failed` as soon as one mail
+could not be re-emitted, which makes it fit for a periodic CRON.
+
+#### Task details
+
+```json
+{
+  "type": "resend-unsent-mails",
+  "additionalInformation": {
+    "type": "resend-unsent-mails",
+    "timestamp": "2026-08-27T10:05:00Z",
+    "sentCount": 12,
+    "failedCount": 0,
+    "unsentMailId": null,
+    "sender": null,
+    "recipient": null,
+    "limit": 5
+  }
+}
+```

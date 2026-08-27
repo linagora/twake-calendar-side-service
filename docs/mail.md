@@ -24,3 +24,12 @@ The table below summarizes every case where a mail is sent and to whom.
 | A booking link reservation is created (ICS proposal) | The booking link owner | `event-propose` |
 | A booking link owner confirms a reservation | The booker | `event-booking-confirmed` |
 | A booking link reservation is cancelled (ICS cancellation) | The booking link owner | `event-cancel` |
+
+## Unsent mails
+
+Should the SMTP delivery of one of those mails fail, the mail is retained - envelope, MIME message and failed
+sending trials - so that an administrator can inspect it and schedule its re-emission through the
+[unsent mails webadmin routes](apis/webadmin.md#unsent-mails-routes). A resend pushes the very MIME message that
+had been submitted: no template is rendered anew.
+
+A retained mail is kept until it is deleted or successfully resent.
