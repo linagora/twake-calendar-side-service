@@ -62,6 +62,7 @@ import org.apache.http.HttpStatus;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.james.core.Domain;
+import org.apache.james.core.MailAddress;
 import org.apache.james.mime4j.message.DefaultMessageBuilder;
 import org.apache.james.utils.GuiceProbe;
 import org.apache.james.utils.WebAdminGuiceProbe;
@@ -390,6 +391,32 @@ class EventParticipationRouteTest {
                 .contains("PARTSTAT=ACCEPTED")
                 .contains("mailto:" + externalUser);
         }));
+    }
+
+    @Test
+    void externalAttendeeAnswerShouldNotSendReplyEmailForExpiredEvent(TwakeCalendarGuiceServer server) {
+        String externalUser = "externaluser@gmail.com";
+        String eventUid = UUID.randomUUID().toString();
+        davTestHelper.upsertCalendar(
+            organizer,
+            generateExpiredCalendarData(eventUid, organizer.username().asString(), externalUser),
+            eventUid);
+
+        Participation participation = Throwing.supplier(() -> new Participation(
+            organizer.username().asMailAddress(),
+            new MailAddress(externalUser),
+            eventUid,
+            organizer.id().value(),
+            ParticipantAction.ACCEPTED)).get();
+
+        given()
+        .when()
+            .get(getParticipationTokenUrl(participation, server))
+        .then()
+            .statusCode(200);
+
+        awaitAtMost.during(Duration.ofSeconds(3))
+            .untilAsserted(() -> assertThat(replyMailsTo(organizer.username().asString())).isEmpty());
     }
 
     @Test
@@ -1126,9 +1153,17 @@ class EventParticipationRouteTest {
     }
 
     private String generateCalendarData(String eventUid, String organizerEmail, String attendeeEmail) {
+        return generateCalendarData(eventUid, organizerEmail, attendeeEmail, LocalDateTime.now().plusDays(3));
+    }
+
+    private String generateExpiredCalendarData(String eventUid, String organizerEmail, String attendeeEmail) {
+        return generateCalendarData(eventUid, organizerEmail, attendeeEmail, LocalDateTime.now().minusDays(3));
+    }
+
+    private String generateCalendarData(String eventUid, String organizerEmail, String attendeeEmail, LocalDateTime start) {
         DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss");
-        String startDateTime = LocalDateTime.now().plusDays(3).format(dateTimeFormatter);
-        String endDateTime = LocalDateTime.now().plusDays(3).plusHours(1).format(dateTimeFormatter);
+        String startDateTime = start.format(dateTimeFormatter);
+        String endDateTime = start.plusHours(1).format(dateTimeFormatter);
 
         String calendarAsString =  """
             BEGIN:VCALENDAR
