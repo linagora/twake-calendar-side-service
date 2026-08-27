@@ -36,6 +36,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.github.fge.lambdas.Throwing;
+import com.linagora.calendar.amqp.EventEmailNotificationPublisher;
 import com.linagora.calendar.api.EventParticipationActionLinkFactory;
 import com.linagora.calendar.api.EventParticipationActionLinkFactory.ActionLinks;
 import com.linagora.calendar.api.Participation;
@@ -69,7 +70,7 @@ public class EventParticipationRoute extends PublicRoute {
     private final SettingsBasedResolver settingsResolver;
     private final EventParticipationActionLinkFactory actionLinkFactory;
     private final OpenPaaSUserDAO openPaaSUserDAO;
-    private final EventParticipationReplyNotifier replyNotifier;
+    private final EventEmailNotificationPublisher notificationPublisher;
 
     @Inject
     public EventParticipationRoute(MetricFactory metricFactory,
@@ -78,7 +79,7 @@ public class EventParticipationRoute extends PublicRoute {
                                    @Named("language") SettingsBasedResolver settingsResolver,
                                    EventParticipationActionLinkFactory actionLinkFactory,
                                    OpenPaaSUserDAO openPaaSUserDAO,
-                                   EventParticipationReplyNotifier replyNotifier) {
+                                   EventEmailNotificationPublisher notificationPublisher) {
         super(metricFactory);
         this.participationTokenSigner = participationTokenSigner;
         this.calDavEventRepository = calDavEventRepository;
@@ -86,7 +87,7 @@ public class EventParticipationRoute extends PublicRoute {
 
         this.actionLinkFactory = actionLinkFactory;
         this.openPaaSUserDAO = openPaaSUserDAO;
-        this.replyNotifier = replyNotifier;
+        this.notificationPublisher = notificationPublisher;
     }
 
     protected Endpoint endpoint() {
@@ -153,8 +154,9 @@ public class EventParticipationRoute extends PublicRoute {
     private Mono<Void> notifyOrganizer(Participation participationRequest,
                                        CalDavEventRepository.PartStatUpdate partStatUpdate) {
         return Mono.justOrEmpty(partStatUpdate.updatedCalendar())
-            .flatMap(updatedCalendar -> replyNotifier.notifyOrganizer(updatedCalendar,
-                participationRequest.attendee(), participationRequest.organizer()))
+            .flatMap(updatedCalendar -> notificationPublisher.publishReply(updatedCalendar,
+                participationRequest.attendee(), participationRequest.organizer(),
+                partStatUpdate.report().calendarHref().getPath()))
             .onErrorResume(error -> {
                 LOGGER.error("Could not notify organizer {} of the participation change of {}",
                     participationRequest.organizer().asString(), participationRequest.attendee().asString(), error);

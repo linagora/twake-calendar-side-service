@@ -13,7 +13,7 @@ All exchanges are **FANOUT** and durable. All queues have an associated dead-let
 | Consumer class | What it does | Publisher | Listens to exchange(s) | Queue(s) | Dead-letter queue(s) | Produces to |
 |---|---|---|---|---|---|---|
 | `ItipLocalDeliveryConsumer` | Implements ADR-0001 fan-out then process for local delivery. Phase 1 splits N recipients into N single-recipient messages on the same exchange. Phase 2 calls `POST /itip` and publishes email notification payload. | esn-sabre DAV server (via `AMQPSchedulePlugin`) | `calendar:itip:localDelivery` | `tcalendar:itip:localDelivery` | `tcalendar:itip:localDelivery:dead-letter` | `calendar:event:notificationEmail:send` via `ItipEmailNotificationPublisher` |
-| `EventEmailConsumer` | Sends notification emails based on payload emitted by `ItipLocalDeliveryConsumer`. | `ItipEmailNotificationPublisher` (inside side service) | `calendar:event:notificationEmail:send` | `tcalendar:event:notificationEmail:send` | `tcalendar:event:notificationEmail:send:dead-letter` | - |
+| `EventEmailConsumer` | Sends notification emails based on payload emitted by `ItipLocalDeliveryConsumer`. | `ItipEmailNotificationPublisher` and `EventEmailNotificationPublisher` (inside side service) | `calendar:event:notificationEmail:send` | `tcalendar:event:notificationEmail:send` | `tcalendar:event:notificationEmail:send:dead-letter` | - |
 
 ---
 
