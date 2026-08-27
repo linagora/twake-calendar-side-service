@@ -136,7 +136,7 @@ class CommonContactNotificationConsumerTest {
         MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDatabase);
         OpenPaaSUserDAO userDAO = new MongoDBOpenPaaSUserDAO(mongoDatabase, domainDAO);
         CommonContactPublisher publisher = new CommonContactPublisher(channelPool,
-            new CommonContactPublisherConfiguration(COMMON_CONTACT_EXCHANGE));
+            new CommonContactsConfiguration(COMMON_CONTACT_EXCHANGE, CommonContactsConfiguration.DEFAULT_COLLECTED_CONTACTS_EXCHANGE));
         publisher.init();
         converter = new CommonContactEventConverter(userDAO, domainDAO);
         consumer = new CommonContactNotificationConsumer(channelPool, QueueArguments.Builder::new, publisher, converter);
@@ -527,7 +527,7 @@ class CommonContactNotificationConsumerTest {
     void shouldDeadLetterContactNotificationWhenCommonContactPublisherFails() throws IOException {
         // Given the Common Contacts publisher cannot publish the normalized event
         CommonContactPublisher failingPublisher = new CommonContactPublisher(channelPool,
-            new CommonContactPublisherConfiguration(COMMON_CONTACT_EXCHANGE)) {
+            new CommonContactsConfiguration(COMMON_CONTACT_EXCHANGE, CommonContactsConfiguration.DEFAULT_COLLECTED_CONTACTS_EXCHANGE)) {
             @Override
             public Mono<Void> publish(CommonContactOutboundEvent event) {
                 return Mono.error(new RuntimeException("Publication failure"));
