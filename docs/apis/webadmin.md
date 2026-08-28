@@ -13,7 +13,7 @@ This includes:
  - [Webamin tasks routes](https://james.staged.apache.org/james-project/3.9.0/servers/distributed/operate/webadmin.html#_task_management) 
     backed by an InMemory, node local, task manager.
  - [Healthchecks routes](https://james.staged.apache.org/james-project/3.9.0/servers/distributed/operate/webadmin.html#_healthcheck) 
-    The following healthchecks are implemented: `Guice application lifecycle`, `LDAP User Server`, `RabbitMQ backend`, `OpenSearch Backend`, `Redis backend`
+    The following healthchecks are implemented: `Guice application lifecycle`, `LDAP User Server`, `RabbitMQ backend`, `OpenSearch Backend`, `Redis backend`, `MongoDB`, `UnsentMails`
 
 It embeds a [Prometheus compatible](https://prometheus.io/) metric endpoint available via `GET /metrics`.
 
@@ -1624,6 +1624,17 @@ through the following routes.
 
 A retained mail is kept until it is deleted or successfully resent. Mails bigger than 1MB are not retained -
 calendar related mails are vowed to be small.
+
+The `UnsentMails` healthcheck reports `degraded` as long as mails await a resend, and tells how many:
+
+```json
+{
+  "componentName": "UnsentMails",
+  "escapedComponentName": "UnsentMails",
+  "status": "degraded",
+  "cause": "3 mail(s) could not be delivered. Resend them with POST /unsentMails?action=resend"
+}
+```
 
 ### Listing unsent mails
 

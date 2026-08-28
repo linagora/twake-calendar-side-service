@@ -51,6 +51,7 @@ import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.booking.EventBusBookingLinkDAO;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
 import com.linagora.calendar.storage.secretlink.SecretLinkStore;
+import com.linagora.calendar.storage.unsent.UnsentMailHealthCheck;
 import com.linagora.calendar.storage.unsent.UnsentMailRepository;
 import com.linagora.tmail.james.jmap.ticket.TicketStore;
 import com.mongodb.reactivestreams.client.MongoDatabase;
@@ -98,9 +99,9 @@ public class MongoDBStorageModule extends AbstractModule {
         bind(MongoDBUnsentMailRepository.class).in(Scopes.SINGLETON);
         bind(UnsentMailRepository.class).to(MongoDBUnsentMailRepository.class);
 
-        Multibinder.newSetBinder(binder(), HealthCheck.class)
-            .addBinding()
-            .to(MongoDBHealthCheck.class);
+        Multibinder<HealthCheck> healthCheckMultibinder = Multibinder.newSetBinder(binder(), HealthCheck.class);
+        healthCheckMultibinder.addBinding().to(MongoDBHealthCheck.class);
+        healthCheckMultibinder.addBinding().to(UnsentMailHealthCheck.class);
     }
 
     @Provides

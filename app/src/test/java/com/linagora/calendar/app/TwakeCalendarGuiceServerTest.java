@@ -164,6 +164,11 @@ class TwakeCalendarGuiceServerTest  {
                 "escapedComponentName" : "RabbitMQ%20backend",
                 "status" : "healthy",
                 "cause" : null
+              }, {
+                "componentName" : "UnsentMails",
+                "escapedComponentName" : "UnsentMails",
+                "status" : "healthy",
+                "cause" : null
               } ]
             }
             """);

@@ -212,6 +212,12 @@ public class UnsentMailIntegrationTest {
             .body("sendingTrials[0].errorMessage", containsString("All 'rcpt to' commands failed"));
 
         assertThat(deliveredMails().getList("")).isEmpty();
+
+        when()
+            .get("/healthcheck/checks/UnsentMails")
+        .then()
+            .body("status", is("degraded"))
+            .body("cause", containsString("1 mail(s) could not be delivered"));
     }
 
     @Test
