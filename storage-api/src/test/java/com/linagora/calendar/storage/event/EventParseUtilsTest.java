@@ -388,6 +388,56 @@ class EventParseUtilsTest {
     }
 
     @Nested
+    class GetDescription {
+        private static final String FOOTER = EventParseUtils.EVENT_FOOTER_SEPARATOR;
+
+        private VEvent parse(String description) {
+            String ics = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:event-1
+                DTSTART:20250901T140000Z
+                DTEND:20250901T150000Z
+                SUMMARY:OpenBao Training
+                DESCRIPTION:%s
+                END:VEVENT
+                END:VCALENDAR
+                """.formatted(description);
+            return (VEvent) CalendarUtil.parseIcs(ics).getComponent(Component.VEVENT).get();
+        }
+
+        @Test
+        void shouldReturnDescriptionWhenNoFooter() {
+            assertThat(EventParseUtils.getDescription(parse("Team sync")))
+                .contains("Team sync");
+        }
+
+        @Test
+        void shouldStripVisioFooterBlockFromDescription() {
+            String description = "Project notes\\n\\n" + FOOTER + "\\nParticiper via Visio : https://meet.linagora.com/apw-gxwg-naw\\n\\nVeuillez ne pas modifier cette section.\\n" + FOOTER;
+            assertThat(EventParseUtils.getDescription(parse(description)).get())
+                .contains("Project notes")
+                .doesNotContain(FOOTER)
+                .doesNotContain("Participer via Visio")
+                .doesNotContain("Veuillez ne pas modifier");
+        }
+
+        @Test
+        void shouldReturnEmptyWhenDescriptionIsOnlyFooter() {
+            String description = FOOTER + "\\nJoin Visio : https://meet.linagora.com/apw-gxwg-naw\\n\\nPlease do not edit this section.\\n" + FOOTER;
+            assertThat(EventParseUtils.getDescription(parse(description)))
+                .isEmpty();
+        }
+
+        @Test
+        void shouldNotStripLegacyVisioLine() {
+            assertThat(EventParseUtils.getDescription(parse("Discuss project updates.\\nVisio: https://meet.example.com/abc")).get())
+                .contains("Visio: https://meet.example.com/abc");
+        }
+    }
+
+    @Nested
     class CreateInstanceVEvent {
 
         // shared ICS: weekly on Friday, TZID=UTC
