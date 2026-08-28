@@ -43,6 +43,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import jakarta.mail.internet.AddressException;
@@ -97,6 +98,13 @@ public class EventParseUtils {
         .toFormatter();
 
     public static final ZoneId ZONE_ID_DEFAULT = ZoneId.of("UTC");
+
+    // ponytail: mirrors twake-calendar-frontend EventDescriptionBuilder.EVENT_FOOTER_SEPARATOR.
+    // Keep in sync with the frontend constant; the visio link is rendered separately via X-OPENPAAS-VIDEOCONFERENCE.
+    public static final String EVENT_FOOTER_SEPARATOR =
+        "-::~:~::~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~::~:~::-";
+    private static final Pattern EVENT_FOOTER_PATTERN = Pattern.compile(
+        "\\n*" + Pattern.quote(EVENT_FOOTER_SEPARATOR) + "[\\s\\S]*?" + Pattern.quote(EVENT_FOOTER_SEPARATOR) + "\\n*");
 
     private static final DateTimeFormatter FLEXIBLE_DATE_TIME_FORMATTER =
         new DateTimeFormatterBuilder()
@@ -258,7 +266,16 @@ public class EventParseUtils {
 
     public static Optional<String> getDescription(VEvent vEvent) {
         return Optional.ofNullable(vEvent.getDescription())
-            .map(Description::getValue);
+            .map(Description::getValue)
+            .map(EventParseUtils::stripEventFooter);
+    }
+
+    private static String stripEventFooter(String description) {
+        if (!description.contains(EVENT_FOOTER_SEPARATOR)) {
+            return description;
+        }
+        String trimmed = EVENT_FOOTER_PATTERN.matcher(description).replaceAll("\n").trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     public static Optional<String> getPropertyValueIgnoreCase(VEvent vEvent, String property) {
