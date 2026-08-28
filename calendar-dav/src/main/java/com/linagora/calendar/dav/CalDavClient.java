@@ -53,6 +53,8 @@ import com.linagora.calendar.dav.dto.CalendarDetailsResponse;
 import com.linagora.calendar.dav.dto.CalendarListResponse;
 import com.linagora.calendar.dav.dto.CalendarReportJsonResponse;
 import com.linagora.calendar.dav.dto.CalendarReportXmlResponse;
+import com.linagora.calendar.dav.dto.FreeBusyBulkResponse;
+import com.linagora.calendar.dav.dto.FreeBusyBulkResponse.BusyInterval;
 import com.linagora.calendar.dav.model.CalendarQuery;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -141,6 +143,17 @@ public class CalDavClient extends DavClient {
     private static final AsciiString HEADER_DEPTH = AsciiString.cached("Depth");
     private static final DateTimeFormatter CALDAV_UTC_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
         .withZone(ZoneOffset.UTC);
+    private static final String FREE_BUSY_BULK_PATH = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/freebusy";
+
+    /**
+     * 'uids' names the events to leave out of the answer. It is sent empty rather than omitted: the calendar
+     * server only rebuilds a proper JSON array of busy periods when that filter is present.
+     */
+    private record FreeBusyBulkRequest(@JsonProperty("start") String start,
+                                       @JsonProperty("end") String end,
+                                       @JsonProperty("users") List<String> users,
+                                       @JsonProperty("uids") List<String> uids) {
+    }
 
     public CalDavClient(DavConfiguration config, TechnicalTokenService technicalTokenService) throws SSLException {
         super(config, technicalTokenService);
@@ -932,46 +945,44 @@ public class CalDavClient extends DavClient {
                 }));
     }
 
-    public Flux<FreeBusyQueryResponseObject.BusyInterval> findBusyIntervals(Username username, CalendarURL calendarURL, Instant from, Instant to) {
-        Preconditions.checkArgument(username != null, "username must not be null");
-        Preconditions.checkArgument(calendarURL != null, "calendarURL must not be null");
+    /**
+     * Busy time ranges of a user, across every calendar of theirs the requester may read the free/busy of.
+     * A single request covers them all: the RFC 4791 free-busy-query REPORT would need one request per
+     * calendar, sabre implementing it on a calendar collection only.
+     */
+    public Flux<BusyInterval> findBusyIntervals(Username requester, OpenPaaSId userId, Instant from, Instant to) {
+        Preconditions.checkArgument(requester != null, "requester must not be null");
+        Preconditions.checkArgument(userId != null, "userId must not be null");
         Preconditions.checkArgument(from != null, "from must not be null");
         Preconditions.checkArgument(to != null, "to must not be null");
         Preconditions.checkArgument(from.isBefore(to), "from must be before to");
 
-        return freeBusyQuery(username, calendarURL, from, to)
-            .flatMapIterable(FreeBusyQueryResponseObject::busyIntervals);
+        return freeBusyBulkQuery(requester, userId, from, to)
+            .flatMapIterable(FreeBusyBulkResponse::busyIntervals);
     }
 
-    private Mono<FreeBusyQueryResponseObject> freeBusyQuery(Username username, CalendarURL calendarURL, Instant from, Instant to) {
-        String requestBody = """
-            <C:free-busy-query xmlns:C="urn:ietf:params:xml:ns:caldav">
-              <C:time-range start="%s" end="%s"/>
-            </C:free-busy-query>
-            """.formatted(CALDAV_UTC_FORMAT.format(from), CALDAV_UTC_FORMAT.format(to));
+    private Mono<FreeBusyBulkResponse> freeBusyBulkQuery(Username requester, OpenPaaSId userId, Instant from, Instant to) {
+        FreeBusyBulkRequest request = new FreeBusyBulkRequest(CALDAV_UTC_FORMAT.format(from), CALDAV_UTC_FORMAT.format(to),
+            List.of(userId.value()), List.of());
 
-        return httpClientWithImpersonation(username)
-            .headers(headers -> {
-                headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_XML);
-                headers.add(HttpHeaderNames.ACCEPT, "text/calendar");
-                headers.add(HEADER_DEPTH, "1");
-            })
-            .request(REPORT_METHOD)
-            .uri(calendarURL.asUri().toASCIIString())
-            .send(ByteBufMono.fromString(Mono.just(requestBody)))
+        return httpClientWithImpersonation(requester)
+            .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_JSON)
+                .add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_JSON))
+            .request(HttpMethod.POST)
+            .uri(FREE_BUSY_BULK_PATH)
+            .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(OBJECT_MAPPER.writeValueAsBytes(request))))
             .responseSingle((response, body) -> {
                 int statusCode = response.status().code();
 
                 if (statusCode == HttpStatus.SC_OK) {
-                    return body.asByteArray().map(FreeBusyQueryResponseObject::new);
+                    return body.asByteArray().map(FreeBusyBulkResponse::parse);
                 }
 
-                return body.asString(StandardCharsets.UTF_8)
-                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                return responseBodyAsString(body)
                     .flatMap(errorBody -> Mono.error(new DavClientException("""
-                        Unexpected status code: %d when executing RFC 4791 free-busy-query REPORT on '%s'
+                        Unexpected status code: %d when querying free/busy of user '%s'
                         %s
-                        """.formatted(statusCode, calendarURL.asUri().toASCIIString(), errorBody))));
+                        """.formatted(statusCode, userId.value(), errorBody))));
             });
     }
 

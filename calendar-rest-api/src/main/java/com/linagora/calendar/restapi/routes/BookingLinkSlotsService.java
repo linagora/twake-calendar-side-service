@@ -39,8 +39,10 @@ import com.linagora.calendar.api.booking.AvailableSlotsCalculator.ComputeSlotsRe
 import com.linagora.calendar.api.booking.AvailableSlotsCalculator.UnavailableTimeRanges;
 import com.linagora.calendar.api.booking.AvailableSlotsCalculator.UnavailableTimeRanges.TimeRange;
 import com.linagora.calendar.dav.CalDavClient;
-import com.linagora.calendar.dav.FreeBusyQueryResponseObject.BusyInterval;
+import com.linagora.calendar.dav.CalendarSearchSourceResolver;
+import com.linagora.calendar.dav.dto.FreeBusyBulkResponse.BusyInterval;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.booking.BookingLink;
@@ -66,29 +68,32 @@ public class BookingLinkSlotsService {
     private final CalDavClient calDavClient;
     private final BookingLinkResourceResolver resourceResolver;
     private final BookingLinkExtraAttendeeResolver extraAttendeeResolver;
+    private final CalendarSearchSourceResolver calendarSourceResolver;
     private final AvailableSlotsCalculator availableSlotsCalculator;
 
     @Inject
     public BookingLinkSlotsService(Clock clock, BookingLinkDAO bookingLinkDAO, OpenPaaSUserDAO openPaaSUserDAO,
                                    CalDavClient calDavClient, BookingLinkResourceResolver resourceResolver,
-                                   BookingLinkExtraAttendeeResolver extraAttendeeResolver) {
+                                   BookingLinkExtraAttendeeResolver extraAttendeeResolver,
+                                   CalendarSearchSourceResolver calendarSourceResolver) {
         this.clock = clock;
         this.bookingLinkDAO = bookingLinkDAO;
         this.openPaaSUserDAO = openPaaSUserDAO;
         this.calDavClient = calDavClient;
         this.resourceResolver = resourceResolver;
         this.extraAttendeeResolver = extraAttendeeResolver;
+        this.calendarSourceResolver = calendarSourceResolver;
         this.availableSlotsCalculator = new AvailableSlotsCalculator.Default();
     }
 
     public Mono<SlotsResult> computeSlots(BookingLinkPublicId publicId, Instant from, Instant to) {
         return getBookingLink(publicId)
-            .flatMap(bookingLink -> Mono.zip(
-                    retrieveOwner(bookingLink),
-                    computeSlots(bookingLink, from, to),
-                    resolveResources(bookingLink),
-                    resolveExtraAttendees(bookingLink))
-                .map(tuple -> new SlotsResult(bookingLink, tuple.getT1(), tuple.getT2(), tuple.getT3(), tuple.getT4())));
+            .flatMap(bookingLink -> retrieveOwner(bookingLink)
+                .flatMap(owner -> Mono.zip(
+                        computeSlots(bookingLink, owner, from, to),
+                        resolveResources(bookingLink),
+                        resolveExtraAttendees(bookingLink))
+                    .map(tuple -> new SlotsResult(bookingLink, owner, tuple.getT1(), tuple.getT2(), tuple.getT3()))));
     }
 
     private Mono<List<Resource>> resolveResources(BookingLink bookingLink) {
@@ -102,7 +107,12 @@ public class BookingLinkSlotsService {
     }
 
     Mono<Set<AvailabilitySlot>> computeSlots(BookingLink bookingLink, Instant from, Instant to) {
-        return retrieveUnavailableTimeRanges(bookingLink, from, to)
+        return retrieveOwner(bookingLink)
+            .flatMap(owner -> computeSlots(bookingLink, owner, from, to));
+    }
+
+    private Mono<Set<AvailabilitySlot>> computeSlots(BookingLink bookingLink, OpenPaaSUser owner, Instant from, Instant to) {
+        return retrieveUnavailableTimeRanges(bookingLink, owner, from, to)
             .map(unavailableTimeRanges -> toComputeSlotsRequest(bookingLink, from, to, unavailableTimeRanges))
             .map(availableSlotsCalculator::computeSlots)
             .map(this::filterOutPastSlots);
@@ -128,28 +138,53 @@ public class BookingLinkSlotsService {
         return new ComputeSlotsRequest(bookingLink.duration(), from, to, availabilityRules, unavailableTimeRanges);
     }
 
-    private Mono<UnavailableTimeRanges> retrieveUnavailableTimeRanges(BookingLink bookingLink, Instant from, Instant to) {
-        return Flux.concat(
-                calDavClient.findBusyIntervals(bookingLink.username(), bookingLink.calendarUrl(), from, to),
-                extraAttendeesBusyIntervals(bookingLink, from, to))
+    /**
+     * Availability is that of the calendar home the booking link writes into, not of a single calendar:
+     * querying only the target calendar would ignore the events living in the other calendars of that home.
+     * That home is the owner's for a personal booking link, and the team calendar for a link pointing at one,
+     * whose availability is the team's rather than its author's.
+     */
+    private Mono<UnavailableTimeRanges> retrieveUnavailableTimeRanges(BookingLink bookingLink, OpenPaaSUser owner, Instant from, Instant to) {
+        return availabilityHome(bookingLink, owner)
+            .flatMapMany(availabilityHome -> Flux.concat(
+                calDavClient.findBusyIntervals(bookingLink.username(), availabilityHome, from, to),
+                extraAttendeesBusyIntervals(bookingLink, from, to)))
             .map(busyInterval -> new TimeRange(busyInterval.start(), busyInterval.end()))
             .collectList()
             .map(UnavailableTimeRanges::new);
     }
 
     /**
-     * Extra attendees availability is seen from the organizer point of view: the free-busy query runs as the
+     * The calendar home whose free/busy makes the booking link busy. A calendar the owner writes into is not
+     * always theirs: a team calendar, or a calendar delegated to them, appears in their home as an instance of
+     * a calendar living in somebody else's home. What such a booking link must offer is the availability of
+     * that source home - the team's rather than the team member's.
+     */
+    private Mono<OpenPaaSId> availabilityHome(BookingLink bookingLink, OpenPaaSUser owner) {
+        CalendarURL calendarUrl = bookingLink.calendarUrl();
+
+        return calendarSourceResolver.resolve(owner, List.of(calendarUrl))
+            .map(sourceByCalendarUrl -> sourceByCalendarUrl.getOrDefault(calendarUrl, calendarUrl).base())
+            .onErrorResume(error -> {
+                LOGGER.warn("Booking link {} could not resolve the source of calendar {}: falling back to that calendar home",
+                    bookingLink.publicId().value(), calendarUrl.asUri(), error);
+                return Mono.just(calendarUrl.base());
+            });
+    }
+
+    /**
+     * Extra attendees availability is seen from the organizer point of view: the free/busy query runs as the
      * booking link owner, so the calendar server decides what the owner may see of each attendee calendar.
-     * A calendar that cannot be read must not break the whole booking link: such an attendee is treated as free.
-     * Busy intervals are collected per attendee so that a failure mid-answer discards that attendee's partial
-     * view rather than mixing it in.
+     * An attendee whose calendars cannot be read at all must not break the whole booking link: they are
+     * treated as free. Busy intervals are collected per attendee so that a failure mid-answer discards that
+     * attendee's partial view rather than mixing it in.
      */
     private Flux<BusyInterval> extraAttendeesBusyIntervals(BookingLink bookingLink, Instant from, Instant to) {
         return Flux.fromIterable(bookingLink.extraAttendees().participants())
-            .concatMap(extraAttendee -> calDavClient.findBusyIntervals(bookingLink.username(), CalendarURL.from(extraAttendee), from, to)
+            .concatMap(extraAttendee -> calDavClient.findBusyIntervals(bookingLink.username(), extraAttendee, from, to)
                 .collectList()
                 .onErrorResume(error -> {
-                    LOGGER.warn("Booking link {} could not read the calendar of extra attendee {} as {}: treating them as free",
+                    LOGGER.warn("Booking link {} could not read the calendars of extra attendee {} as {}: treating them as free",
                         bookingLink.publicId().value(), extraAttendee.value(), bookingLink.username().asString(), error);
                     return Mono.just(List.of());
                 })
