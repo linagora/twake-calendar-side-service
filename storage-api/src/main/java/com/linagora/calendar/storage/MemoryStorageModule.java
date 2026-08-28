@@ -21,6 +21,7 @@ package com.linagora.calendar.storage;
 import java.io.FileNotFoundException;
 
 import org.apache.james.core.Domain;
+import org.apache.james.core.healthcheck.HealthCheck;
 import org.apache.james.domainlist.api.DomainList;
 import org.apache.james.events.EventBus;
 import org.apache.james.utils.InitializationOperation;
@@ -32,6 +33,7 @@ import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.Scopes;
 import com.google.inject.Singleton;
+import com.google.inject.multibindings.Multibinder;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.booking.EventBusBookingLinkDAO;
@@ -42,6 +44,7 @@ import com.linagora.calendar.storage.eventsearch.MemoryCalendarSearchService;
 import com.linagora.calendar.storage.secretlink.MemorySecretLinkStore;
 import com.linagora.calendar.storage.secretlink.SecretLinkStore;
 import com.linagora.calendar.storage.unsent.MemoryUnsentMailRepository;
+import com.linagora.calendar.storage.unsent.UnsentMailHealthCheck;
 import com.linagora.calendar.storage.unsent.UnsentMailRepository;
 import com.linagora.tmail.james.jmap.ticket.MemoryTicketStore;
 import com.linagora.tmail.james.jmap.ticket.TicketStore;
@@ -93,6 +96,10 @@ public class MemoryStorageModule extends AbstractModule {
 
         bind(MemoryUnsentMailRepository.class).in(Scopes.SINGLETON);
         bind(UnsentMailRepository.class).to(MemoryUnsentMailRepository.class);
+
+        Multibinder.newSetBinder(binder(), HealthCheck.class)
+            .addBinding()
+            .to(UnsentMailHealthCheck.class);
     }
 
     @Provides
