@@ -26,6 +26,7 @@ import static io.restassured.http.ContentType.JSON;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.ZonedDateTime;
@@ -51,6 +52,7 @@ import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
+import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
@@ -112,6 +114,7 @@ class BookingLinkSlotsRouteTest {
 
     private OpenPaaSUser openPaaSUser;
     private DavTestHelper davTestHelper;
+    private CalDavClient calDavClient;
 
     @BeforeEach
     void setUp(TwakeCalendarGuiceServer server) throws Exception {
@@ -130,6 +133,7 @@ class BookingLinkSlotsRouteTest {
             .build();
 
         davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
+        calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
     }
 
     @Test
@@ -571,6 +575,114 @@ class BookingLinkSlotsRouteTest {
                   { "start": "2036-01-26T09:00:00Z" },
                   { "start": "2036-01-26T10:00:00Z" },
                   { "start": "2036-01-26T10:30:00Z" },
+                  { "start": "2036-01-26T11:30:00Z" }
+                ]
+                """);
+    }
+
+    @Test
+    void shouldExcludeBusyIntervalsLivingInAnotherCalendarOfTheOwner(TwakeCalendarGuiceServer server) {
+        // Given: a booking link writing into the owner's main calendar, the owner also owning a 'Perso' calendar.
+        BookingLinkInsertRequest insertRequest = BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(DURATION_30_MINUTES).availabilityRules(AVAILABILITY_RULE).build();
+        BookingLink inserted = server.getProbe(BookingLinkProbe.class).insert(openPaaSUser.username(), insertRequest);
+
+        String persoCalendarId = "perso-" + UUID.randomUUID();
+        calDavClient.createNewCalendar(openPaaSUser.username(), openPaaSUser.id(),
+            new CalDavClient.NewCalendar(persoCalendarId, "Perso", "#00AACC", "Personal calendar")).block();
+
+        // Given busy interval [10:00, 10:30) stored in the 'Perso' calendar, not in the booking link one.
+        String uid = UUID.randomUUID().toString();
+        davTestHelper.upsertCalendar(openPaaSUser.username(),
+            URI.create("/calendars/" + openPaaSUser.id().value() + "/" + persoCalendarId + "/" + uid + ".ics"),
+            """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Twake//BookingSlotsTest//EN
+                BEGIN:VEVENT
+                UID:%s
+                DTSTAMP:20360101T000000Z
+                DTSTART:20360126T100000Z
+                DTEND:20360126T103000Z
+                SUMMARY:busy-in-perso-calendar
+                TRANSP:OPAQUE
+                END:VEVENT
+                END:VCALENDAR
+                """.formatted(uid)).block();
+
+        // When: requesting available slots for that date range via the booking slots endpoint.
+        String response = given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .queryParam("from", FROM_20360126)
+            .queryParam("to", TO_20360127)
+        .when()
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(JSON)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response)
+            .describedAs("should exclude slots that overlap busy intervals of any calendar of the owner")
+            .inPath("$.slots")
+            .isEqualTo("""
+                [
+                  { "start": "2036-01-26T09:00:00Z" },
+                  { "start": "2036-01-26T09:30:00Z" },
+                  { "start": "2036-01-26T10:30:00Z" },
+                  { "start": "2036-01-26T11:00:00Z" },
+                  { "start": "2036-01-26T11:30:00Z" }
+                ]
+                """);
+    }
+
+    @Test
+    void shouldExcludeBusyIntervalsOfRecurringEvent(TwakeCalendarGuiceServer server) {
+        // Given: a weekly meeting whose occurrence of the queried day sits at [10:00, 10:30).
+        BookingLinkInsertRequest insertRequest = BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(DURATION_30_MINUTES).availabilityRules(AVAILABILITY_RULE).build();
+        BookingLink inserted = server.getProbe(BookingLinkProbe.class).insert(openPaaSUser.username(), insertRequest);
+
+        String uid = UUID.randomUUID().toString();
+        davTestHelper.upsertCalendar(openPaaSUser, """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Twake//BookingSlotsTest//EN
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20360101T000000Z
+            DTSTART:20360105T100000Z
+            DTEND:20360105T103000Z
+            RRULE:FREQ=WEEKLY
+            SUMMARY:weekly-meeting
+            TRANSP:OPAQUE
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uid), uid);
+
+        // When: requesting available slots for that date range via the booking slots endpoint.
+        String response = given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .queryParam("from", FROM_20360126)
+            .queryParam("to", TO_20360127)
+        .when()
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(JSON)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response)
+            .describedAs("should exclude the slot taken by the occurrence falling in the requested range")
+            .inPath("$.slots")
+            .isEqualTo("""
+                [
+                  { "start": "2036-01-26T09:00:00Z" },
+                  { "start": "2036-01-26T09:30:00Z" },
+                  { "start": "2036-01-26T10:30:00Z" },
+                  { "start": "2036-01-26T11:00:00Z" },
                   { "start": "2036-01-26T11:30:00Z" }
                 ]
                 """);
