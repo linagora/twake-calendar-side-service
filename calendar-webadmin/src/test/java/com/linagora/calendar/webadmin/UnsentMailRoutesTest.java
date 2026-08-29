@@ -27,7 +27,6 @@ import static org.hamcrest.Matchers.is;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -90,11 +89,6 @@ class UnsentMailRoutesTest {
             }
             sent.add(mail);
             return Mono.empty();
-        }
-
-        @Override
-        public Mono<Void> send(Collection<Mail> mails) {
-            return Mono.when(mails.stream().map(this::send).toList());
         }
     }
 

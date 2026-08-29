@@ -24,7 +24,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.cert.X509Certificate;
 import java.time.Clock;
 import java.time.Duration;
-import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -41,12 +40,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.github.fge.lambdas.Throwing;
-import com.google.common.collect.ImmutableList;
 import com.linagora.calendar.storage.unsent.UnsentMailRepository;
 import com.linagora.calendar.storage.unsent.UnsentMailRepository.SendingTrial;
 import com.linagora.calendar.storage.unsent.UnsentMailRepository.UnsentMail;
 
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 import reactor.util.retry.Retry;
@@ -56,14 +53,10 @@ public interface MailSender {
 
     Mono<Void> send(Mail mail);
 
-    Mono<Void> send(Collection<Mail> mails);
-
     interface Factory {
         Mono<MailSender> create();
 
         Mono<Void> send(Mail mail);
-
-        Mono<Void> send(Collection<Mail> mails);
 
         // Resending an already retained mail relies on it: a failed resend appends a trial rather than storing a duplicate.
         default Mono<Void> sendWithoutRetention(Mail mail) {
@@ -155,7 +148,7 @@ public interface MailSender {
             @Override
             public Mono<Void> send(Mail mail) {
                 return sendWithoutRetention(mail)
-                    .onErrorResume(error -> retain(ImmutableList.of(new PartialMailDeliveryException.Failure(mail, asException(error))))
+                    .onErrorResume(error -> retain(mail, asException(error))
                         .then(Mono.error(error)));
             }
 
@@ -166,53 +159,32 @@ public interface MailSender {
                     .retryWhen(RETRY_SEND);
             }
 
-            @Override
-            public Mono<Void> send(Collection<Mail> mails) {
-                // No whole-send retry here: it would deliver anew the mails that did go through.
-                return Mono.defer(() -> create()
-                        .flatMap(mailSender -> mailSender.send(mails)))
-                    .onErrorResume(error -> retain(failures(mails, error))
-                        .then(Mono.error(error)));
-            }
-
             static int maxSmtpSendRetries() {
                 return Integer.getInteger(SMTP_SEND_MAX_RETRIES_PROPERTY, 3);
             }
 
-            private List<PartialMailDeliveryException.Failure> failures(Collection<Mail> mails, Throwable error) {
-                if (error instanceof PartialMailDeliveryException partialFailure) {
-                    return partialFailure.failures();
-                }
-                // Failed prior to any delivery attempt - eg. the SMTP server could not be reached: no mail was sent.
-                return mails.stream()
-                    .map(mail -> new PartialMailDeliveryException.Failure(mail, asException(error)))
-                    .collect(ImmutableList.toImmutableList());
-            }
-
-            private Mono<Void> retain(List<PartialMailDeliveryException.Failure> failures) {
-                return unsentMailRepository.map(repository -> Flux.fromIterable(failures)
-                        .concatMap(failure -> retain(repository, failure))
-                        .then())
+            private Mono<Void> retain(Mail mail, Exception error) {
+                return unsentMailRepository.map(repository -> retain(repository, mail, error))
                     .orElse(Mono.empty());
             }
 
-            private Mono<Void> retain(UnsentMailRepository repository, PartialMailDeliveryException.Failure failure) {
-                return Mono.fromCallable(() -> MimeMessageSerializer.asBytes(failure.mail().message()))
+            private Mono<Void> retain(UnsentMailRepository repository, Mail mail, Exception error) {
+                return Mono.fromCallable(() -> MimeMessageSerializer.asBytes(mail.message()))
                     .flatMap(mimeMessage -> {
                         if (mimeMessage.length > UnsentMail.MAX_SIZE_IN_BYTES) {
                             LOGGER.warn("Not retaining an unsent mail to {}: its size ({} bytes) exceeds {} bytes",
-                                failure.mail().recipients(), mimeMessage.length, UnsentMail.MAX_SIZE_IN_BYTES);
+                                mail.recipients(), mimeMessage.length, UnsentMail.MAX_SIZE_IN_BYTES);
                             return Mono.empty();
                         }
-                        return repository.store(failure.mail().sender().asOptional(),
-                                List.copyOf(failure.mail().recipients()),
+                        return repository.store(mail.sender().asOptional(),
+                                List.copyOf(mail.recipients()),
                                 mimeMessage,
-                                SendingTrial.from(clock.instant(), failure.error()))
-                            .doOnSuccess(id -> LOGGER.info("Retained unsent mail {} for recipients {}", id, failure.mail().recipients()))
+                                SendingTrial.from(clock.instant(), error))
+                            .doOnSuccess(id -> LOGGER.info("Retained unsent mail {} for recipients {}", id, mail.recipients()))
                             .then();
                     })
-                    .onErrorResume(error -> {
-                        LOGGER.error("Failed retaining an unsent mail for recipients {}", failure.mail().recipients(), error);
+                    .onErrorResume(retentionError -> {
+                        LOGGER.error("Failed retaining an unsent mail for recipients {}", mail.recipients(), retentionError);
                         return Mono.empty();
                     });
             }
@@ -244,31 +216,6 @@ public interface MailSender {
                     eventEmailFilter.filterRecipients(mail).ifPresent(Throwing.consumer(this::sendMailTransaction));
                 } finally {
                     disconnect();
-                }
-            })).subscribeOn(Schedulers.boundedElastic());
-        }
-
-        @Override
-        public Mono<Void> send(Collection<Mail> mails) {
-            return Mono.<Void>fromRunnable(Throwing.runnable(() -> {
-                ImmutableList.Builder<PartialMailDeliveryException.Failure> failureBuilder = new ImmutableList.Builder<>();
-                mails.forEach(mail -> eventEmailFilter.filterRecipients(mail).ifPresent(Throwing.consumer(updatedMail -> {
-                    try {
-                        sendMailTransaction(updatedMail);
-                    } catch (Exception e) {
-                        LOGGER.warn("Sending email failed", e);
-                        failureBuilder.add(new PartialMailDeliveryException.Failure(updatedMail, e));
-                    }
-                    boolean reset = client.reset();
-                    if (!reset) {
-                        throw new SmtpSendingFailedException("Failure to reset SMTP client: " + client.getReplyString());
-                    }
-                })));
-                disconnect();
-
-                List<PartialMailDeliveryException.Failure> failures = failureBuilder.build();
-                if (!failures.isEmpty()) {
-                    throw new PartialMailDeliveryException(failures);
                 }
             })).subscribeOn(Schedulers.boundedElastic());
         }
