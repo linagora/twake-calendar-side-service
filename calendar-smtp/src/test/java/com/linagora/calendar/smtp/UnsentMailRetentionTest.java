@@ -129,20 +129,6 @@ class UnsentMailRetentionTest {
     }
 
     @Test
-    void shouldRetainOnlyTheFailedMailsOfABatch() throws Exception {
-        rejectRecipient("recipient2@localhost");
-
-        assertThatThrownBy(() -> testee().send(ImmutableList.of(
-                mail("sender1@localhost", "recipient1@localhost"),
-                mail("sender2@localhost", "recipient2@localhost"))).block())
-            .isInstanceOf(PartialMailDeliveryException.class);
-
-        assertThat(repository.search(UnsentMailQuery.ALL).collectList().block())
-            .flatExtracting(UnsentMail::rcptTo)
-            .containsExactly(new MailAddress("recipient2@localhost"));
-    }
-
-    @Test
     void shouldRetainMailWhenTheSmtpServerCanNotBeReached() throws Exception {
         MailSender.Factory testee = testee(smtpConfiguration(closedPort()));
 

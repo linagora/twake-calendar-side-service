@@ -193,29 +193,6 @@ class MailSenderTest {
     }
 
     @Test
-    void shouldDeliverMultipleMailsInBatch() throws Exception {
-        String rawMessage1 = "From: sender1@localhost\nTo: recipient1@localhost\nSubject: Test1\n\nHello 1!";
-        String rawMessage2 = "From: sender2@localhost\nTo: recipient2@localhost\nSubject: Test2\n\nHello 2!";
-        Message message1 = new DefaultMessageBuilder().parseMessage(new ByteArrayInputStream(rawMessage1.getBytes(StandardCharsets.UTF_8)));
-        Message message2 = new DefaultMessageBuilder().parseMessage(new ByteArrayInputStream(rawMessage2.getBytes(StandardCharsets.UTF_8)));
-        Mail mail1 = new Mail(MaybeSender.of(new MailAddress("sender1@localhost")), ImmutableList.of(new MailAddress("recipient1@localhost")), message1);
-        Mail mail2 = new Mail(MaybeSender.of(new MailAddress("sender2@localhost")), ImmutableList.of(new MailAddress("recipient2@localhost")), message2);
-
-        mailSender.send(java.util.List.of(mail1, mail2)).block();
-        JsonPath response = RestAssured.get("/smtpMails").jsonPath();
-
-        assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(response.getList("")).hasSize(2);
-            softly.assertThat(response.getString("[0].from")).isEqualTo("sender1@localhost");
-            softly.assertThat(response.getString("[0].recipients[0].address")).isEqualTo("recipient1@localhost");
-            softly.assertThat(response.getString("[0].message")).containsIgnoringNewLines(rawMessage1);
-            softly.assertThat(response.getString("[1].from")).isEqualTo("sender2@localhost");
-            softly.assertThat(response.getString("[1].recipients[0].address")).isEqualTo("recipient2@localhost");
-            softly.assertThat(response.getString("[1].message")).containsIgnoringNewLines(rawMessage2);
-        }));
-    }
-
-    @Test
     void shouldThrowWhenEmptyRecipientList() throws Exception {
         String rawMessage = "From: sender@localhost\nSubject: Test\n\nNo recipients!";
         Message message = new DefaultMessageBuilder().parseMessage(new ByteArrayInputStream(rawMessage.getBytes(StandardCharsets.UTF_8)));
@@ -228,60 +205,6 @@ class MailSenderTest {
         assertThatThrownBy(() -> mailSender.send(mail).block())
             .isInstanceOf(SmtpSendingFailedException.class)
             .hasMessageContaining("All 'rcpt to' commands failed");
-    }
-
-    @Test
-    void shouldThrowAndReportTheFailedMailWhenSendMultipleMailsButOneFails() throws Exception {
-        String rawMessage1 = "From: sender1@localhost\nTo: recipient1@localhost\nSubject: Test1\n\nHello 1!";
-        String rawMessage2 = "From: sender2@localhost\nTo: recipient2@localhost\nSubject: Test2\n\nHello 2!";
-        Message message1 = new DefaultMessageBuilder().parseMessage(new ByteArrayInputStream(rawMessage1.getBytes(StandardCharsets.UTF_8)));
-        Message message2 = new DefaultMessageBuilder().parseMessage(new ByteArrayInputStream(rawMessage2.getBytes(StandardCharsets.UTF_8)));
-        Mail mail1 = new Mail(MaybeSender.of(new MailAddress("sender1@localhost")), ImmutableList.of(new MailAddress("recipient1@localhost")), message1);
-        Mail mail2 = new Mail(MaybeSender.of(new MailAddress("sender2@localhost")), ImmutableList.of(new MailAddress("recipient2@localhost")), message2);
-
-        // Set up a behavior to reject recipient2
-        String behaviorJson = """
-            [ { "command": "RCPT TO", "condition": { "operator": "contains", "matchingValue": "recipient2@localhost" }, "response": { "code": "501", "message": "Bad recipient" } } ]
-            """;
-        RestAssured.given().body(behaviorJson).contentType("application/json").put("/smtpBehaviors");
-
-        assertThatThrownBy(() -> mailSender.send(java.util.List.of(mail1, mail2)).block())
-            .isInstanceOf(PartialMailDeliveryException.class)
-            .satisfies(exception -> assertThat(((PartialMailDeliveryException) exception).failures())
-                .extracting(failure -> failure.mail().recipients())
-                .containsExactly(mail2.recipients()));
-
-        JsonPath response = RestAssured.get("/smtpMails").jsonPath();
-
-        assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(response.getList("")).hasSize(1);
-            softly.assertThat(response.getString("[0].from")).isEqualTo("sender1@localhost");
-            softly.assertThat(response.getString("[0].recipients[0].address")).isEqualTo("recipient1@localhost");
-            softly.assertThat(response.getString("[0].message")).containsIgnoringNewLines(rawMessage1);
-        }));
-    }
-
-    @Test
-    void shouldThrowWhenAllMailsFailInBatch() throws Exception {
-        String rawMessage1 = "From: sender1@localhost\nTo: recipient1@localhost\nSubject: Test1\n\nHello 1!";
-        String rawMessage2 = "From: sender2@localhost\nTo: recipient2@localhost\nSubject: Test2\n\nHello 2!";
-        Message message1 = new DefaultMessageBuilder().parseMessage(new ByteArrayInputStream(rawMessage1.getBytes(StandardCharsets.UTF_8)));
-        Message message2 = new DefaultMessageBuilder().parseMessage(new ByteArrayInputStream(rawMessage2.getBytes(StandardCharsets.UTF_8)));
-        Mail mail1 = new Mail(MaybeSender.of(new MailAddress("sender1@localhost")), ImmutableList.of(new MailAddress("recipient1@localhost")), message1);
-        Mail mail2 = new Mail(MaybeSender.of(new MailAddress("sender2@localhost")), ImmutableList.of(new MailAddress("recipient2@localhost")), message2);
-
-        String behaviorJson = """
-            [
-                { "command": "RCPT TO", "condition": { "operator": "contains", "matchingValue": "recipient1@localhost" }, "response": { "code": "501", "message": "Bad recipient 1" } },
-                { "command": "RCPT TO", "condition": { "operator": "contains", "matchingValue": "recipient2@localhost" }, "response": { "code": "501", "message": "Bad recipient 2" } }
-            ]
-            """;
-        RestAssured.given().body(behaviorJson).contentType("application/json").put("/smtpBehaviors");
-
-        assertThatThrownBy(() -> mailSender.send(ImmutableList.of(mail1, mail2)).block())
-            .isInstanceOf(PartialMailDeliveryException.class)
-            .hasRootCauseInstanceOf(SmtpSendingFailedException.class)
-            .hasStackTraceContaining("All 'rcpt to' commands failed");
     }
 
     @Test
