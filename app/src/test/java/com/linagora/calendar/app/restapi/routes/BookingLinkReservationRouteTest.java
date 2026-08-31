@@ -339,7 +339,12 @@ class BookingLinkReservationRouteTest {
                 .startsWith("https://jitsi.linagora.com/")
                 .matches("https://jitsi\\.linagora\\.com/[a-z]{3}-[a-z]{4}-[a-z]{3}");
             softly.assertThat(getPropertyValue.apply(Property.DESCRIPTION))
-                .isEqualTo("Please call via Zoom.\nVisio: " + getPropertyValue.apply("X-OPENPAAS-VIDEOCONFERENCE"));
+                .isEqualTo("Please call via Zoom.\n\n" + EventParseUtils.EVENT_FOOTER_SEPARATOR
+                    + "\nVisio: " + getPropertyValue.apply("X-OPENPAAS-VIDEOCONFERENCE")
+                    + "\n\nPlease do not edit this section.\n" + EventParseUtils.EVENT_FOOTER_SEPARATOR);
+            softly.assertThat(EventParseUtils.getDescription(event))
+                .describedAs("the visio section is wrapped in the footer markers the frontend hides")
+                .contains("Please call via Zoom.");
             softly.assertThat(getPropertyValue.apply("X-PUBLICLY-CREATED"))
                 .isEqualTo("TRUE");
             softly.assertThat(getPropertyValue.apply("X-PUBLICLY-CREATOR"))

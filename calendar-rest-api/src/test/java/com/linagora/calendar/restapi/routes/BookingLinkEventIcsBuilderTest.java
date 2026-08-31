@@ -43,7 +43,10 @@ import com.linagora.calendar.storage.booking.BookingLinkAlarmAction;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 import com.linagora.calendar.storage.booking.EventTransparency;
 import com.linagora.calendar.storage.booking.EventVisibility;
+import com.linagora.calendar.storage.event.EventParseUtils;
 
+import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.property.Uid;
 import net.fortuna.ical4j.util.UidGenerator;
 
@@ -54,6 +57,10 @@ public class BookingLinkEventIcsBuilderTest {
     private static final UidGenerator FIXED_UID_GENERATOR = () -> new Uid("event-123");
     private static final BookingAttendee OWNER = BookingAttendee.from("Alice Owner", "owner@example.com");
     private static final BookingLinkPublicId BOOKING_LINK_PUBLIC_ID = new BookingLinkPublicId(UUID.fromString("a1b2c3d4-e5f6-4a5b-8c7d-0e1f2a3b4c5d"));
+    private static final String FOOTER_SEPARATOR = EventParseUtils.EVENT_FOOTER_SEPARATOR;
+    /** As written in the ICS: the DESCRIPTION value carries escaped newlines. */
+    private static final String VISIO_FOOTER = FOOTER_SEPARATOR + "\\nVisio: " + VISIO_URL
+        + "\\n\\nPlease do not edit this section.\\n" + FOOTER_SEPARATOR;
 
     @Test
     void buildShouldIncludeRequiredPublicBookingProperties() {
@@ -88,14 +95,14 @@ public class BookingLinkEventIcsBuilderTest {
             ATTENDEE;RSVP=TRUE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=Alice Owner:mailto:owner@example.com
             ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED;CN=BOB:mailto:creator@example.com
             ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED;CN=Nguyen Van A:mailto:vana@example.com
-            DESCRIPTION:Please call via Zoom.\\nVisio: https://jitsi.example.com
+            DESCRIPTION:Please call via Zoom.\\n\\n%s
             X-PUBLICLY-CREATED;VALUE=BOOLEAN:TRUE
             X-PUBLICLY-CREATOR:creator@example.com
             X-OPENPAAS-BOOKING-LINK:a1b2c3d4-e5f6-4a5b-8c7d-0e1f2a3b4c5d
             X-OPENPAAS-VIDEOCONFERENCE;VALUE=URI:https://jitsi.example.com
             END:VEVENT
             END:VCALENDAR
-            """;
+            """.formatted(VISIO_FOOTER);
 
         assertThat(result.eventIdAsString())
             .isEqualTo("event-123");
@@ -164,9 +171,30 @@ public class BookingLinkEventIcsBuilderTest {
         String ics = new String(testee.build(request, OWNER, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID).icsBytes(), StandardCharsets.UTF_8);
 
         assertThat(ics)
-            .contains("DESCRIPTION:Visio: https://jitsi.example.com");
+            .contains("DESCRIPTION:" + VISIO_FOOTER);
         assertThat(ics)
             .contains("X-OPENPAAS-VIDEOCONFERENCE;VALUE=URI:https://jitsi.example.com");
+    }
+
+    @Test
+    void visioSectionShouldBeHiddenWhenReadingBackTheDescription() {
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+
+        BookingRequest request = new BookingRequest(
+            Instant.parse("2036-01-26T09:30:00Z"),
+            BookingAttendee.from("BOB", "creator@example.com"),
+            List.of(),
+            "eventTitle",
+            true,
+            "Please call via Zoom.");
+
+        VEvent event = (VEvent) testee.build(request, OWNER, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID)
+            .calendar()
+            .getComponent(Component.VEVENT)
+            .get();
+
+        assertThat(EventParseUtils.getDescription(event))
+            .contains("Please call via Zoom.");
     }
 
     @Test

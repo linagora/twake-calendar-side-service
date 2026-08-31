@@ -42,6 +42,7 @@ import com.linagora.calendar.storage.booking.BookingLinkAlarm;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
 import com.linagora.calendar.storage.booking.EventTransparency;
 import com.linagora.calendar.storage.booking.EventVisibility;
+import com.linagora.calendar.storage.event.EventParseUtils;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.ParameterList;
@@ -80,6 +81,7 @@ public class BookingLinkEventIcsBuilder {
     private static final String X_OPENPAAS_BOOKING_LINK = "X-OPENPAAS-BOOKING-LINK";
     private static final String X_OPENPAAS_VIDEOCONFERENCE = "X-OPENPAAS-VIDEOCONFERENCE";
     private static final String VISIO_DESCRIPTION_PREFIX = "Visio: ";
+    private static final String VISIO_DESCRIPTION_NOTICE = "Please do not edit this section.";
     private static final XProperty X_PROPERTY_PUBLIC = new XProperty("X-PUBLICLY-CREATED", "TRUE").add(Value.BOOLEAN);
     private static final String MAIL_TO_PREFIX = "mailto:";
 
@@ -250,12 +252,20 @@ public class BookingLinkEventIcsBuilder {
     }
 
     private Optional<String> buildDescription(String notes, Optional<URL> maybeMeetingLink) {
-        return Optional.ofNullable(StringUtils.trimToNull(Joiner.on('\n')
+        return Optional.ofNullable(StringUtils.trimToNull(Joiner.on("\n\n")
             .skipNulls()
             .join(StringUtils.trimToNull(notes), maybeMeetingLink
-                .map(URL::toString)
-                .map(VISIO_DESCRIPTION_PREFIX::concat)
+                .map(BookingLinkEventIcsBuilder::visioSection)
                 .orElse(null))));
+    }
+
+    /**
+     * The visio link is wrapped in the footer markers the frontend uses to hide generated content from the
+     * description editor: without them the raw 'Visio: ...' line stays visible and editable.
+     */
+    private static String visioSection(URL meetingLink) {
+        return EventParseUtils.wrapInEventFooter(
+            VISIO_DESCRIPTION_PREFIX + meetingLink + "\n\n" + VISIO_DESCRIPTION_NOTICE);
     }
 
     /**
