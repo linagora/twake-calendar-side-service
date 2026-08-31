@@ -431,6 +431,15 @@ class EventParseUtilsTest {
         }
 
         @Test
+        void shouldStripBlockBuiltByWrapInEventFooter() {
+            String description = "Project notes\n\n"
+                + EventParseUtils.wrapInEventFooter("Visio: https://meet.example.com/abc\n\nPlease do not edit this section.");
+
+            assertThat(EventParseUtils.getDescription(parse(description.replace("\n", "\\n"))))
+                .contains("Project notes");
+        }
+
+        @Test
         void shouldNotStripLegacyVisioLine() {
             assertThat(EventParseUtils.getDescription(parse("Discuss project updates.\\nVisio: https://meet.example.com/abc")).get())
                 .contains("Visio: https://meet.example.com/abc");

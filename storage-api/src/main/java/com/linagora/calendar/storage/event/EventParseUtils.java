@@ -270,6 +270,14 @@ public class EventParseUtils {
             .map(EventParseUtils::stripEventFooter);
     }
 
+    /**
+     * Wraps generated content (visio link, attachments) in the markers the frontend relies on to hide that section
+     * from the description editor. {@link #getDescription} strips such blocks back out.
+     */
+    public static String wrapInEventFooter(String content) {
+        return EVENT_FOOTER_SEPARATOR + "\n" + content + "\n" + EVENT_FOOTER_SEPARATOR;
+    }
+
     private static String stripEventFooter(String description) {
         if (!description.contains(EVENT_FOOTER_SEPARATOR)) {
             return description;
