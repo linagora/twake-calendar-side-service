@@ -140,7 +140,8 @@ public class EventMailHandler {
         Mono<Message> generate(ResolvedSettings resolvedSettings);
 
         static List<MimeAttachment> createAttachments(Calendar calendar, Method method) {
-            byte[] calendarAsBytes = CalendarUtil.withMethod(calendar, method).toString().getBytes(StandardCharsets.UTF_8);
+            Calendar itipCalendar = EventParseUtils.withoutEventFooter(CalendarUtil.withMethod(calendar, method));
+            byte[] calendarAsBytes = itipCalendar.toString().getBytes(StandardCharsets.UTF_8);
             return List.of(
                 MimeAttachment.builder()
                     .contentType(ContentType.of("text/calendar; charset=UTF-8; method=" + method.getValue()))

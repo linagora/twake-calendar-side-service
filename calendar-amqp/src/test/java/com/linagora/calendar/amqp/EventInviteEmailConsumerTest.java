@@ -37,6 +37,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.ZoneId;
 import java.util.Base64;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -45,6 +46,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
@@ -55,7 +57,10 @@ import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
 import org.apache.james.metrics.api.NoopGaugeRegistry;
 import org.apache.james.metrics.tests.RecordingMetricFactory;
+import org.apache.james.mime4j.dom.Entity;
 import org.apache.james.mime4j.dom.Message;
+import org.apache.james.mime4j.dom.Multipart;
+import org.apache.james.mime4j.dom.SingleBody;
 import org.apache.james.mime4j.dom.address.Mailbox;
 import org.apache.james.server.core.filesystem.FileSystemImpl;
 import org.apache.james.user.api.UsersRepository;
@@ -73,6 +78,7 @@ import org.awaitility.core.ConditionFactory;
 
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.smtp.EventEmailFilter;
+import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.api.EventParticipationActionLinkFactory;
 import com.linagora.calendar.api.Participation;
 import com.linagora.calendar.api.ParticipationTokenSigner;
@@ -88,6 +94,7 @@ import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.ResourceDAO;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
+import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
@@ -96,6 +103,8 @@ import com.mongodb.reactivestreams.client.MongoDatabase;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.path.json.JsonPath;
 import io.restassured.specification.RequestSpecification;
+import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
 import reactor.core.publisher.Mono;
 
@@ -402,6 +411,74 @@ public class EventInviteEmailConsumerTest {
                 .contains("Van Tung TRAN")
                 .contains(attendee.username().asString());
         }));
+    }
+
+    @Test
+    void shouldStripVisioFooterFromHtmlBodyAndIcsAttachments() {
+        String eventUid = UUID.randomUUID().toString();
+        String visioUrl = "https://meet.linagora.com/apw-gxwg-naw";
+        String footer = EventParseUtils.EVENT_FOOTER_SEPARATOR;
+        String initialCalendarData = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
+            CALSCALE:GREGORIAN
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:30250411T022032Z
+            SEQUENCE:1
+            DTSTART:30250411T030000Z
+            DTEND:30250411T040000Z
+            SUMMARY:OpenBao Training
+            X-OPENPAAS-VIDEOCONFERENCE:%s
+            DESCRIPTION:Hello everyone.\\n\\n%s\\nParticiper via Visio : %s\\n\\nVeuillez ne pas modifier cette section.\\n%s
+            ORGANIZER;CN=Van Tung TRAN:mailto:%s
+            ATTENDEE;PARTSTAT=NEEDS-ACTION;CN=Benoît TELLIER:mailto:%s
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(eventUid, visioUrl, footer, visioUrl, footer,
+            organizer.username().asString(),
+            attendee.username().asString());
+        davTestHelper.upsertCalendar(organizer, initialCalendarData, eventUid);
+
+        awaitAtMost.atMost(Duration.ofSeconds(20))
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
+
+        assertSoftly(Throwing.consumer(softly -> {
+            softly.assertThat(getHtml(smtpMailsResponse))
+                .contains("Hello everyone.")
+                .contains(visioUrl)
+                .doesNotContain(footer)
+                .doesNotContain("Veuillez ne pas modifier cette section.");
+
+            List<VEvent> attachedEvents = attachedCalendarEvents(TestFixture.toMessage(smtpMailsResponse.getString("[0].message")));
+            softly.assertThat(attachedEvents)
+                .describedAs("both the text/calendar part and the meeting.ics attachment")
+                .hasSize(2)
+                .allSatisfy(vEvent -> {
+                    assertThat(vEvent.getDescription().getValue()).isEqualTo("Hello everyone.");
+                    assertThat(EventParseUtils.getPropertyValueIgnoreCase(vEvent, "X-OPENPAAS-VIDEOCONFERENCE")).contains(visioUrl);
+                });
+        }));
+    }
+
+    private static List<VEvent> attachedCalendarEvents(Message message) {
+        return leafParts(message)
+            .filter(part -> part.getMimeType().equals("text/calendar") || part.getMimeType().equals("application/ics"))
+            .map(part -> (SingleBody) part.getBody())
+            .map(Throwing.function(body -> body.getInputStream().readAllBytes()))
+            .map(CalendarUtil::parseIcs)
+            .map(calendar -> (VEvent) calendar.getComponent(Component.VEVENT).get())
+            .toList();
+    }
+
+    private static Stream<Entity> leafParts(Entity entity) {
+        if (entity.getBody() instanceof Multipart multipart) {
+            return multipart.getBodyParts().stream().flatMap(EventInviteEmailConsumerTest::leafParts);
+        }
+        return Stream.of(entity);
     }
 
     private String getHtml(JsonPath smtpMailsResponse) {

@@ -278,6 +278,33 @@ public class EventParseUtils {
         return EVENT_FOOTER_SEPARATOR + "\n" + content + "\n" + EVENT_FOOTER_SEPARATOR;
     }
 
+    /**
+     * Returns a copy of the calendar whose VEVENT descriptions no longer carry the footer block. Mail clients render
+     * the DESCRIPTION of a {@code text/calendar} part verbatim, so the raw markers would otherwise leak to recipients.
+     * The visio link itself is still conveyed by the X-OPENPAAS-VIDEOCONFERENCE property.
+     */
+    public static Calendar withoutEventFooter(Calendar calendar) {
+        Calendar copy = calendar.copy();
+        copy.getComponents(Component.VEVENT).stream()
+            .map(VEvent.class::cast)
+            .forEach(EventParseUtils::stripEventFooter);
+        return copy;
+    }
+
+    private static void stripEventFooter(VEvent vEvent) {
+        Optional.ofNullable(vEvent.getDescription())
+            .map(Description::getValue)
+            .filter(description -> description.contains(EVENT_FOOTER_SEPARATOR))
+            .ifPresent(description -> replaceDescription(vEvent, stripEventFooter(description)));
+    }
+
+    private static void replaceDescription(VEvent vEvent, String description) {
+        vEvent.removeAll(Property.DESCRIPTION);
+        Optional.ofNullable(description)
+            .map(Description::new)
+            .ifPresent(vEvent::add);
+    }
+
     private static String stripEventFooter(String description) {
         if (!description.contains(EVENT_FOOTER_SEPARATOR)) {
             return description;

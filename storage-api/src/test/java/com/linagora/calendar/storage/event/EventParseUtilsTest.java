@@ -447,6 +447,86 @@ class EventParseUtilsTest {
     }
 
     @Nested
+    class WithoutEventFooter {
+        private static final String FOOTER = EventParseUtils.EVENT_FOOTER_SEPARATOR;
+        private static final String VISIO_URL = "https://meet.linagora.com/apw-gxwg-naw";
+        private static final String VISIO_BLOCK = FOOTER + "\\nParticiper via Visio : " + VISIO_URL
+            + "\\n\\nVeuillez ne pas modifier cette section.\\n" + FOOTER;
+
+        private Calendar parse(String description) {
+            return CalendarUtil.parseIcs("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:event-1
+                DTSTART:20250901T140000Z
+                DTEND:20250901T150000Z
+                SUMMARY:OpenBao Training
+                X-OPENPAAS-VIDEOCONFERENCE:%s
+                DESCRIPTION:%s
+                END:VEVENT
+                END:VCALENDAR
+                """.formatted(VISIO_URL, description));
+        }
+
+        private VEvent firstVEvent(Calendar calendar) {
+            return (VEvent) calendar.getComponent(Component.VEVENT).get();
+        }
+
+        @Test
+        void shouldStripFooterBlockFromDescription() {
+            Calendar result = EventParseUtils.withoutEventFooter(parse("Project notes\\n\\n" + VISIO_BLOCK));
+
+            assertThat(firstVEvent(result).getDescription().getValue())
+                .isEqualTo("Project notes");
+        }
+
+        @Test
+        void shouldDropDescriptionWhenOnlyFooter() {
+            Calendar result = EventParseUtils.withoutEventFooter(parse(VISIO_BLOCK));
+
+            assertThat(firstVEvent(result).getDescription())
+                .isNull();
+        }
+
+        @Test
+        void shouldKeepVideoConferenceProperty() {
+            Calendar result = EventParseUtils.withoutEventFooter(parse(VISIO_BLOCK));
+
+            assertThat(EventParseUtils.getPropertyValueIgnoreCase(firstVEvent(result), "X-OPENPAAS-VIDEOCONFERENCE"))
+                .contains(VISIO_URL);
+        }
+
+        @Test
+        void shouldLeaveDescriptionWithoutFooterUntouched() {
+            Calendar result = EventParseUtils.withoutEventFooter(parse("Team sync"));
+
+            assertThat(firstVEvent(result).getDescription().getValue())
+                .isEqualTo("Team sync");
+        }
+
+        @Test
+        void shouldNotMutateTheOriginalCalendar() {
+            Calendar original = parse("Project notes\\n\\n" + VISIO_BLOCK);
+
+            EventParseUtils.withoutEventFooter(original);
+
+            assertThat(firstVEvent(original).getDescription().getValue())
+                .contains(FOOTER);
+        }
+
+        @Test
+        void serializedCalendarShouldNotCarryTheFooter() {
+            Calendar result = EventParseUtils.withoutEventFooter(parse("Project notes\\n\\n" + VISIO_BLOCK));
+
+            Calendar reparsed = CalendarUtil.parseIcs(result.toString());
+
+            assertThat(firstVEvent(reparsed).getDescription().getValue())
+                .isEqualTo("Project notes");
+        }
+    }
+
+    @Nested
     class CreateInstanceVEvent {
 
         // shared ICS: weekly on Friday, TZID=UTC
