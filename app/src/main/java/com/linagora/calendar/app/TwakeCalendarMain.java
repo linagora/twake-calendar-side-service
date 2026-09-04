@@ -63,6 +63,7 @@ import com.google.inject.multibindings.Multibinder;
 import com.google.inject.name.Names;
 import com.google.inject.util.Modules;
 import com.linagora.calendar.amqp.CalendarAmqpModule;
+import com.linagora.calendar.amqp.meet.MeetIntegrationModule;
 import com.linagora.calendar.app.modules.AlarmEventModule;
 import com.linagora.calendar.app.modules.CommonContactsModule;
 import com.linagora.calendar.app.modules.DeleteUserDataRoutesModule;
@@ -151,6 +152,7 @@ public class TwakeCalendarMain {
                 new TaskManagerModule(),
                 new DavModule(),
                 new CalendarAmqpModule(),
+                new MeetIntegrationModule(),
                 new TwakeCalendarRabbitMQModule(),
                 new TechnicalUserTokenModule(),
                 new AlarmEventModule(),
