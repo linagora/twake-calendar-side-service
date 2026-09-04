@@ -635,7 +635,7 @@ public class CalDavClientTest {
                   "vcalendar",
                   [
                     ["version", {}, "text", "2.0"],
-                    ["prodid", {}, "text", "-//Sabre//Sabre VObject 4.5.7//EN"]
+                    ["prodid", {}, "text", "-//Sabre//Sabre VObject 5.0.0//EN"]
                   ],
                   [
                     [
@@ -1091,7 +1091,7 @@ public class CalDavClientTest {
                     .isEqualToNormalizingNewlines("""
                         BEGIN:VCALENDAR
                         VERSION:2.0
-                        PRODID:-//Sabre//Sabre VObject 4.5.7//EN
+                        PRODID:-//Sabre//Sabre VObject 5.0.0//EN
                         BEGIN:VEVENT
                         UID:%s
                         DTSTAMP:20250101T100000Z
