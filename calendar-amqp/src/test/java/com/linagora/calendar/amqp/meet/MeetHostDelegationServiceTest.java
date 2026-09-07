@@ -32,6 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Optional;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -67,7 +68,8 @@ public class MeetHostDelegationServiceTest {
             "test-client-secret",
             URI.create("http://localhost:" + wireMockServer.port()),
             false,
-            Duration.ofSeconds(5));
+            Duration.ofSeconds(5),
+            Optional.empty());
         service = new MeetHostDelegationService(configuration,
             new MeetApplicationCredentialsTokenProvider(configuration),
             new MeetApplicationClient(configuration));
