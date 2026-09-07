@@ -58,8 +58,10 @@ public class MeetApplicationClient {
     private static final String GRANT_ACCESS_URL_TEMPLATE = "/external-api/v1.0/rooms/%s/grant-access/";
 
     private final HttpClient client;
+    private final MeetConfiguration config;
 
     public MeetApplicationClient(MeetConfiguration config) throws SSLException {
+        this.config = config;
         this.client = config.enabled() ? httpClientFor(config) : null;
     }
 
@@ -108,6 +110,35 @@ public class MeetApplicationClient {
 
     /** One page of the rooms listing: the matching room id if any, and the next page path. */
     private record RoomPage(Optional<String> roomId, Optional<String> nextPage) {
+    }
+
+    /**
+     * Ask Meet to create a room owned by the token's scoped user, and return
+     * its public URL.
+     *
+     * <p><strong>The caller does not choose the room code.</strong> Meet's
+     * external API marks {@code name} and {@code slug} read-only and its
+     * serializer does {@code validated_data["name"] = utils.generate_room_slug()},
+     * so the code is Meet's to mint. That is the whole point: a code invented
+     * anywhere else names a room that does not exist.
+     *
+     * <p>{@code perform_create} grants the scoped user {@code OWNER}, so the
+     * organiser gets host controls — lobby admission, recording — which a
+     * pre-minted link never gave them.
+     */
+    public Mono<String> createRoom(String bearerToken) {
+        ObjectNode body = MAPPER.createObjectNode();
+        config.roomAccessLevel().ifPresent(level -> body.put("access_level", level));
+        byte[] payload = serialize(body);
+
+        return client.headers(h -> {
+                h.set(HttpHeaderNames.AUTHORIZATION, "Bearer " + bearerToken);
+                h.set(HttpHeaderNames.CONTENT_TYPE, HttpHeaderValues.APPLICATION_JSON);
+            })
+            .post()
+            .uri(ROOMS_PATH)
+            .send(Mono.just(Unpooled.wrappedBuffer(payload)))
+            .responseSingle(handleErrors("Failed to create room", this::extractRoomUrl));
     }
 
     /**
@@ -205,6 +236,27 @@ public class MeetApplicationClient {
             return MAPPER.writeValueAsBytes(body);
         } catch (Exception e) {
             throw new IllegalStateException("Unable to serialise Meet request body", e);
+        }
+    }
+
+    /**
+     * Meet composes {@code url} from its own {@code APPLICATION_BASE_URL}. When
+     * that setting is empty the field is simply absent — and this service has
+     * no way to guess the public host, so it says which knob to turn rather
+     * than returning a half-built link.
+     */
+    private Mono<String> extractRoomUrl(String bodyString) {
+        try {
+            JsonNode node = MAPPER.readTree(bodyString);
+            JsonNode urlNode = node.get("url");
+            if (urlNode == null || !urlNode.isTextual()) {
+                return Mono.error(new MeetApiException(
+                    "Meet room response carries no url — is APPLICATION_BASE_URL set on Meet? " + bodyString));
+            }
+            LOGGER.info("Created Meet room {}", urlNode.asText());
+            return Mono.just(urlNode.asText());
+        } catch (Exception e) {
+            return Mono.error(new MeetApiException("Failed to parse Meet room creation response: " + bodyString, e));
         }
     }
 
