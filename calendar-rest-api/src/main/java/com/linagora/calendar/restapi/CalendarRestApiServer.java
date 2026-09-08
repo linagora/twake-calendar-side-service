@@ -22,6 +22,7 @@ import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
 import static io.netty.handler.codec.http.HttpResponseStatus.FORBIDDEN;
 import static io.netty.handler.codec.http.HttpResponseStatus.INTERNAL_SERVER_ERROR;
 import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
+import static io.netty.handler.codec.http.HttpResponseStatus.SERVICE_UNAVAILABLE;
 import static io.netty.handler.codec.http.HttpResponseStatus.UNAUTHORIZED;
 import static reactor.netty.Metrics.HTTP_CLIENT_PREFIX;
 import static reactor.netty.Metrics.URI;
@@ -96,6 +97,10 @@ public class CalendarRestApiServer implements Startable  {
                     }
                     if (e instanceof NotFoundException) {
                         return response.status(NOT_FOUND).send();
+                    }
+                    if (e instanceof DavServiceUnavailableException) {
+                        LOGGER.error("DAV upstream unavailable for {} {}", request.method(), request.uri(), e);
+                        return response.status(SERVICE_UNAVAILABLE).send();
                     }
 
                     LOGGER.error("Unexpected error", e);
