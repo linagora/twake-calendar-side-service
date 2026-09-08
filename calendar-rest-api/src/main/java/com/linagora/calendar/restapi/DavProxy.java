@@ -79,7 +79,8 @@ public class DavProxy extends DavClient {
                                 .uri(request.uri().substring(4)) // remove /dav
                                 .send((req, out) -> out.sendByteArray(Mono.just(payload)))
                                 .response((res, in) -> handleSabreResponse(response, request, res, in))))
-                        .then()));
+                        .then()
+                        .onErrorMap(DavServiceUnavailableException::new)));
     }
 
     private static NettyOutbound handleSabreResponse(HttpServerResponse response, HttpServerRequest req, HttpClientResponse res, ByteBufFlux in) {
