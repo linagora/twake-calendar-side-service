@@ -57,7 +57,8 @@ public class BookingLinkEventIcsBuilderTest {
     private static final UidGenerator FIXED_UID_GENERATOR = () -> new Uid("event-123");
     private static final BookingAttendee OWNER = BookingAttendee.from("Alice Owner", "owner@example.com");
     private static final BookingLinkPublicId BOOKING_LINK_PUBLIC_ID = new BookingLinkPublicId(UUID.fromString("a1b2c3d4-e5f6-4a5b-8c7d-0e1f2a3b4c5d"));
-    private static final String FOOTER_SEPARATOR = EventParseUtils.EVENT_FOOTER_SEPARATOR;
+    private static final String FOOTER_SEPARATOR = Boolean.getBoolean("event.footer.new.separator.enabled")
+        ? EventParseUtils.EVENT_FOOTER_SEPARATOR : EventParseUtils.LEGACY_EVENT_FOOTER_SEPARATOR;
     /** As written in the ICS: the DESCRIPTION value carries escaped newlines. */
     private static final String VISIO_FOOTER = FOOTER_SEPARATOR + "\\nVisio: " + VISIO_URL
         + "\\n\\nPlease do not edit this section.\\n" + FOOTER_SEPARATOR;
@@ -175,7 +176,8 @@ public class BookingLinkEventIcsBuilderTest {
         assertThat(ics)
             .contains("X-OPENPAAS-VIDEOCONFERENCE;VALUE=URI:https://jitsi.example.com");
         assertThat(ics)
-            .doesNotContain(EventParseUtils.LEGACY_EVENT_FOOTER_SEPARATOR);
+            .doesNotContain(Boolean.getBoolean("event.footer.new.separator.enabled")
+                ? EventParseUtils.LEGACY_EVENT_FOOTER_SEPARATOR : EventParseUtils.EVENT_FOOTER_SEPARATOR);
     }
 
     @Test

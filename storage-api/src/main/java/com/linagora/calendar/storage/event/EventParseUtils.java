@@ -275,7 +275,10 @@ public class EventParseUtils {
      * from the description editor. {@link #getDescription} strips such blocks back out.
      */
     public static String wrapInEventFooter(String content) {
-        return EVENT_FOOTER_SEPARATOR + "\n" + content + "\n" + EVENT_FOOTER_SEPARATOR;
+        // Temporary rollout flag until all frontends support the new separator.
+        String separator = Boolean.parseBoolean(System.getProperty("event.footer.new.separator.enabled", "false"))
+            ? EVENT_FOOTER_SEPARATOR : LEGACY_EVENT_FOOTER_SEPARATOR;
+        return separator + "\n" + content + "\n" + separator;
     }
 
     private static String stripEventFooter(String description) {
