@@ -99,12 +99,12 @@ public class EventParseUtils {
 
     public static final ZoneId ZONE_ID_DEFAULT = ZoneId.of("UTC");
 
-    // ponytail: mirrors twake-calendar-frontend EventDescriptionBuilder.EVENT_FOOTER_SEPARATOR.
-    // Keep in sync with the frontend constant; the visio link is rendered separately via X-OPENPAAS-VIDEOCONFERENCE.
-    public static final String EVENT_FOOTER_SEPARATOR =
+    public static final String LEGACY_EVENT_FOOTER_SEPARATOR =
         "-::~:~::~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~::~:~::-";
-    private static final Pattern EVENT_FOOTER_PATTERN = Pattern.compile(
-        "\\n*" + Pattern.quote(EVENT_FOOTER_SEPARATOR) + "[\\s\\S]*?" + Pattern.quote(EVENT_FOOTER_SEPARATOR) + "\\n*");
+    public static final String EVENT_FOOTER_SEPARATOR = "-_-_-_-_-_-_-_-";
+    private static final List<Pattern> EVENT_FOOTER_PATTERNS = List.of(
+        eventFooterPattern(EVENT_FOOTER_SEPARATOR),
+        eventFooterPattern(LEGACY_EVENT_FOOTER_SEPARATOR));
 
     private static final DateTimeFormatter FLEXIBLE_DATE_TIME_FORMATTER =
         new DateTimeFormatterBuilder()
@@ -279,11 +279,20 @@ public class EventParseUtils {
     }
 
     private static String stripEventFooter(String description) {
-        if (!description.contains(EVENT_FOOTER_SEPARATOR)) {
+        if (!description.contains(EVENT_FOOTER_SEPARATOR)
+            && !description.contains(LEGACY_EVENT_FOOTER_SEPARATOR)) {
             return description;
         }
-        String trimmed = EVENT_FOOTER_PATTERN.matcher(description).replaceAll("\n").trim();
+        String withoutFooters = description;
+        for (Pattern footerPattern : EVENT_FOOTER_PATTERNS) {
+            withoutFooters = footerPattern.matcher(withoutFooters).replaceAll("\n");
+        }
+        String trimmed = withoutFooters.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private static Pattern eventFooterPattern(String separator) {
+        return Pattern.compile("\\n*" + Pattern.quote(separator) + "[\\s\\S]*?" + Pattern.quote(separator) + "\\n*");
     }
 
     public static Optional<String> getPropertyValueIgnoreCase(VEvent vEvent, String property) {
