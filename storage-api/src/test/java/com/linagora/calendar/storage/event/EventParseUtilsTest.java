@@ -390,6 +390,7 @@ class EventParseUtilsTest {
     @Nested
     class GetDescription {
         private static final String FOOTER = EventParseUtils.EVENT_FOOTER_SEPARATOR;
+        private static final String LEGACY_FOOTER = EventParseUtils.LEGACY_EVENT_FOOTER_SEPARATOR;
 
         private VEvent parse(String description) {
             String ics = """
@@ -421,6 +422,14 @@ class EventParseUtilsTest {
                 .doesNotContain(FOOTER)
                 .doesNotContain("Participer via Visio")
                 .doesNotContain("Veuillez ne pas modifier");
+        }
+
+        @Test
+        void shouldStripLegacyVisioFooterBlockFromDescription() {
+            String description = "Project notes\\n\\n" + LEGACY_FOOTER + "\\nVisio: https://meet.linagora.com/legacy-room\\n\\nPlease do not edit this section.\\n" + LEGACY_FOOTER;
+
+            assertThat(EventParseUtils.getDescription(parse(description)).get())
+                .isEqualTo("Project notes");
         }
 
         @Test

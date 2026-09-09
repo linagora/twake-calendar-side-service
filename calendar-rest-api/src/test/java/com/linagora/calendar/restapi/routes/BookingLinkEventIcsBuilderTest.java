@@ -174,6 +174,8 @@ public class BookingLinkEventIcsBuilderTest {
             .contains("DESCRIPTION:" + VISIO_FOOTER);
         assertThat(ics)
             .contains("X-OPENPAAS-VIDEOCONFERENCE;VALUE=URI:https://jitsi.example.com");
+        assertThat(ics)
+            .doesNotContain(EventParseUtils.LEGACY_EVENT_FOOTER_SEPARATOR);
     }
 
     @Test
