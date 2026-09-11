@@ -65,6 +65,7 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.CalendarSearchSourceResolver;
 import com.linagora.calendar.dav.DavConfiguration;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.rabbitmq.client.BuiltinExchangeType;
@@ -181,6 +182,7 @@ public class ItipLocalDeliveryConsumerTest {
             channelPool,
             QueueArguments.Builder::new,
             calDavClient,
+            new CalendarSearchSourceResolver(calDavClient),
             localRecipientResolver,
             DEFAULT_ITIP_EVENT_MESSAGES_PREFETCH_COUNT,
             Clock.fixed(Instant.parse("2026-01-01T00:00:00Z"), ZoneOffset.UTC));
