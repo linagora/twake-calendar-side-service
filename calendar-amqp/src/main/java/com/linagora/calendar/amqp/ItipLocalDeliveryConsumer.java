@@ -51,9 +51,11 @@ import com.google.inject.name.Named;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalDavClient.ItipRequest;
+import com.linagora.calendar.dav.CalendarSearchSourceResolver;
 import com.linagora.calendar.dav.dto.CalendarReportJsonResponse;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.tmail.rabbitmq.ManagedRabbitMQConsumer;
 import com.linagora.tmail.rabbitmq.QueueDeclaration;
@@ -88,12 +90,12 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     public static final String QUEUE_NAME = "tcalendar:itip:localDelivery";
     public static final String DEAD_LETTER_QUEUE = "tcalendar:itip:localDelivery:dead-letter";
     private static final boolean SKIP = true;
-    private static final String X_OPENPAAS_TEAM_CALENDAR_ID = "X-OPENPAAS-TEAM-CALENDAR-ID";
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ItipLocalDeliveryConsumer.class);
     private final ManagedRabbitMQConsumer consumer;
     private final Sender sender;
     private final CalDavClient calDavClient;
+    private final CalendarSearchSourceResolver calendarSearchSourceResolver;
     private final LocalRecipientResolver localRecipientResolver;
     private final ItipEmailNotificationPublisher itipEmailNotificationPublisher;
 
@@ -101,11 +103,13 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     public ItipLocalDeliveryConsumer(ReactorRabbitMQChannelPool channelPool,
                                      @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier,
                                      CalDavClient calDavClient,
+                                     CalendarSearchSourceResolver calendarSearchSourceResolver,
                                      LocalRecipientResolver localRecipientResolver,
                                      @Named("itipEventMessagesPrefetchCount") int prefetchCount,
                                      Clock clock) {
         this.sender = channelPool.getSender();
         this.calDavClient = calDavClient;
+        this.calendarSearchSourceResolver = calendarSearchSourceResolver;
         this.localRecipientResolver = localRecipientResolver;
         this.itipEmailNotificationPublisher = new ItipEmailNotificationPublisher(sender,
             bytes -> new OutboundMessage(EventEmailConsumer.EXCHANGE_NAME, EMPTY_ROUTING_KEY, bytes), clock);
@@ -187,7 +191,7 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
                     Optional<OpenPaaSId> localRecipientId = resolved.map(LocalRecipientResolver.ResolvedRecipient::id);
                     boolean isResource = resolved.map(recipient -> recipient instanceof LocalRecipientResolver.ResolvedRecipient.LocalResource).orElse(false);
                     return sendItipIfNecessary(localDelivery, recipientUsername, localRecipientId, calendar)
-                        .then(isResource ? Mono.empty() : publishEmailNotification(localDelivery, recipientUsername, localRecipientId, calendar, oldEventCalendar));
+                        .then(isResource ? Mono.empty() : publishEmailNotification(localDelivery, recipientUsername, localRecipientId, oldEventCalendar));
                 }));
     }
 
@@ -292,9 +296,8 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     private Mono<Void> publishEmailNotification(ItipLocalDeliveryDTO localDelivery,
                                                 Username recipientUsername,
                                                 Optional<OpenPaaSId> localRecipientId,
-                                                Calendar calendar,
                                                 Optional<Calendar> oldEventCalendar) {
-        return resolveEventPath(localDelivery, recipientUsername, localRecipientId, calendar)
+        return resolveEventPath(localDelivery, recipientUsername, localRecipientId)
             .flatMap(eventPath -> itipEmailNotificationPublisher.send(localDelivery, eventPath, oldEventCalendar))
             .then(ReactorUtils.logAsMono(() ->
                 LOGGER.debug("Published email notifications for uid {} to {}", localDelivery.uid(), localDelivery.strippedRecipient())));
@@ -302,15 +305,34 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
 
     private Mono<URI> resolveEventPath(ItipLocalDeliveryDTO localDelivery,
                                        Username recipientUsername,
-                                       Optional<OpenPaaSId> localRecipientId,
-                                       Calendar calendar) {
+                                       Optional<OpenPaaSId> localRecipientId) {
         return Mono.justOrEmpty(localRecipientId)
             .flatMap(recipientId -> retrieveRecipientEventHref(recipientUsername, recipientId, localDelivery.uid()))
-            .switchIfEmpty(Mono.defer(() -> {
-                String eventPathCalendarId = EventParseUtils.getPropertyValueIgnoreCase(EventParseUtils.getFirstEvent(calendar), X_OPENPAAS_TEAM_CALENDAR_ID)
-                    .orElse(localDelivery.calendarId());
-                return Mono.just(defaultEventPath(eventPathCalendarId, localDelivery.uid()));
-            }));
+            .switchIfEmpty(Mono.defer(() -> retrieveDelegatedSourceEventHref(localDelivery)))
+            .switchIfEmpty(Mono.fromSupplier(() -> defaultEventPath(localDelivery.calendarId(), localDelivery.uid())));
+    }
+
+    private Mono<URI> retrieveDelegatedSourceEventHref(ItipLocalDeliveryDTO localDelivery) {
+        return Mono.fromCallable(() -> Username.of(localDelivery.strippedSender()))
+            .flatMap(sender -> resolveDelegatedSourceEventHref(sender, localDelivery))
+            .onErrorResume(e -> {
+                LOGGER.debug("Could not resolve delegated source event href for uid {} and sender {}",
+                    localDelivery.uid(), localDelivery.strippedSender(), e);
+                return Mono.empty();
+            });
+    }
+
+    private Mono<URI> resolveDelegatedSourceEventHref(Username sender, ItipLocalDeliveryDTO localDelivery) {
+        return localRecipientResolver.resolve(sender)
+            .flatMap(Mono::justOrEmpty)
+            .flatMap(resolvedSender -> {
+                CalendarURL senderCalendar = new CalendarURL(resolvedSender.id(), new OpenPaaSId(localDelivery.calendarId()));
+                OpenPaaSUser senderUser = new OpenPaaSUser(sender, resolvedSender.id(), StringUtils.EMPTY, StringUtils.EMPTY);
+                return calendarSearchSourceResolver.resolve(senderUser, List.of(senderCalendar))
+                    .flatMap(calendars -> Mono.justOrEmpty(calendars.get(senderCalendar)))
+                    .filter(source -> !source.equals(senderCalendar))
+                    .map(source -> URI.create(source.asUri().toASCIIString() + "/" + localDelivery.uid() + ".ics"));
+            });
     }
 
     private URI defaultEventPath(String calendarId, String uid) {
