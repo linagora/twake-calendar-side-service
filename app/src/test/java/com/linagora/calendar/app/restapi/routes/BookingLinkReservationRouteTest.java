@@ -385,7 +385,8 @@ class BookingLinkReservationRouteTest {
             softly.assertThat(smtpMailsResponse.getString("[%d].recipients[0].address".formatted(organizerMailIndex)))
                 .isEqualTo(openPaaSUser.username().asString());
             softly.assertThat(smtpMailsResponse.getString("[%d].message".formatted(organizerMailIndex)))
-                .contains("Subject: New event proposition from BOB: 30-min intro call");
+                .contains("Subject: New event proposition from BOB: 30-min intro call")
+                .contains("Reply-To: creator@example.com");
         });
     }
 
