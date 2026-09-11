@@ -275,6 +275,42 @@ Both endpoints will return a webadmin task with the following additional informa
 
 Where `domain` is set for the single-domain endpoint and `ignoredDomains` is set for the all-domains endpoint.
 
+## Common contacts routes
+
+Only enabled when common contacts are enabled (`common.contacts.enabled=true`).
+
+### Republish all contacts
+
+```
+POST /contacts?action=republish&contactsPerSecond=100
+```
+
+Iterates all registered users and all domains, exports their CardDav address books, and republishes every contact
+as an `ADD` JSContact event on the `twake:contacts:common` exchange. Address books shared with, or delegated to, a user
+are listed under that user as mirrors of the owner's address book (`openpaas:source`): they are skipped, so each contact
+is published once, with its owner as audience.
+
+The query parameter `contactsPerSecond` controls the publishing rate. Defaults to 100.
+
+Status codes:
+- `201`: Task successfully submitted
+- `400`: Invalid `action` or `contactsPerSecond` parameter
+
+This endpoint returns a webadmin task with the following additional information:
+
+```
+"additionalInformation": {
+    "type": "republish-common-contacts",
+    "timestamp": "${json-unit.any-string}",
+    "processedContactCount": 12,
+    "failedContactCount": 0,
+    "failedAddressBookCount": 0,
+    "failedUserCount": 0,
+    "failedDomainCount": 0,
+    "contactsPerSecond": 100
+}
+```
+
 ## Calendar events
 
 ### Calendar event reindexing

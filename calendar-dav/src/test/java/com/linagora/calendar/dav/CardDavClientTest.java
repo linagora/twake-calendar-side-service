@@ -29,6 +29,7 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThatCode;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -649,6 +650,79 @@ public class CardDavClientTest {
         assertThat(addressBooks)
             .containsExactlyInAnyOrder(new CardDavClient.AddressBook("collected", CardDavClient.AddressBookType.SYSTEM),
                 new CardDavClient.AddressBook("contacts", CardDavClient.AddressBookType.SYSTEM));
+    }
+
+    @Test
+    void listUserAddressBookUrlsShouldReturnAddressBooksOfTheUser() {
+        String addressBookId = "testbook";
+        testee.createUserAddressBook(user.username(), user.id(), addressBookId, "Test Address Book").block();
+
+        assertThat(testee.listUserAddressBookUrls(user.username(), user.id(), CardDavClient.MirrorAddressBooks.EXCLUDE).collectList().block())
+            .contains(new AddressBookURL(user.id(), addressBookId),
+                new AddressBookURL(user.id(), "collected"),
+                new AddressBookURL(user.id(), "contacts"));
+    }
+
+    @Test
+    void listUserAddressBookUrlsShouldNotReturnMirrorAddressBooksWhenExcludeMirrors() {
+        OpenPaaSUser delegate = sabreDavExtension.newTestUser();
+        testee.updateAddressBookShares(user.username(), new AddressBookURL(user.id(), "collected"),
+            List.of(new CardDavClient.AddressBookSharee("mailto:" + delegate.username().asString(), 3))).block();
+
+        assertThat(testee.listUserAddressBookUrls(delegate.username(), delegate.id(), CardDavClient.MirrorAddressBooks.EXCLUDE)
+            .collectList().block())
+            .containsExactlyInAnyOrder(new AddressBookURL(delegate.id(), "collected"),
+                new AddressBookURL(delegate.id(), "contacts"));
+    }
+
+    @Test
+    void listUserAddressBookUrlsShouldReturnMirrorAddressBooksWhenIncludeMirrors() {
+        OpenPaaSUser delegate = sabreDavExtension.newTestUser();
+        testee.updateAddressBookShares(user.username(), new AddressBookURL(user.id(), "collected"),
+            List.of(new CardDavClient.AddressBookSharee("mailto:" + delegate.username().asString(), 3))).block();
+
+        assertThat(testee.listUserAddressBookUrls(delegate.username(), delegate.id(), CardDavClient.MirrorAddressBooks.INCLUDE)
+            .collectList().block())
+            .hasSize(3)
+            .contains(new AddressBookURL(delegate.id(), "collected"),
+                new AddressBookURL(delegate.id(), "contacts"));
+    }
+
+    @Test
+    void listDomainAddressBookUrlsShouldReturnDomainMembersAddressBook() {
+        OpenPaaSDomain domain = createNewDomainMemberAddressBook();
+
+        assertThat(testee.listDomainAddressBookUrls(domain.id(), CardDavClient.MirrorAddressBooks.EXCLUDE).collectList().block())
+            .contains(new AddressBookURL(domain.id(), "domain-members"));
+    }
+
+    @Test
+    void listDomainAddressBookUrlsShouldReturnDomainAddressBook() {
+        OpenPaaSDomain domain = mongoDBOpenPaaSDomainDAO.add(Domain.of("new-domain" + UUID.randomUUID() + ".tld")).block();
+        davTestHelper.createDomainAddressBook(domain.id()).block();
+
+        assertThat(testee.listDomainAddressBookUrls(domain.id(), CardDavClient.MirrorAddressBooks.EXCLUDE).collectList().block())
+            .contains(new AddressBookURL(domain.id(), "dab"));
+    }
+
+    @Test
+    void exportDomainAddressBookShouldReturnContactsOfTheAddressBook() {
+        OpenPaaSDomain domain = createNewDomainMemberAddressBook();
+        String vcardUid = UUID.randomUUID().toString();
+        String vcard = """
+            BEGIN:VCARD
+            VERSION:3.0
+            UID:%s
+            FN:John Doe
+            EMAIL;TYPE=Work:john.doe@example.com
+            END:VCARD
+            """.formatted(vcardUid);
+        testee.upsertContactDomainMembers(domain.id(), vcardUid, vcard.getBytes(StandardCharsets.UTF_8)).block();
+
+        String actual = new String(testee.exportDomainAddressBook(domain.id(),
+            new AddressBookURL(domain.id(), "domain-members")).block(), StandardCharsets.UTF_8);
+
+        assertThat(actual).contains("UID:" + vcardUid);
     }
 
     @Test

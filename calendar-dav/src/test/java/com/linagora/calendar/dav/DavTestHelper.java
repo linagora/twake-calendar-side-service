@@ -234,6 +234,26 @@ public class DavTestHelper extends DavClient {
                 }));
     }
 
+    public Mono<Void> upsertDomainContact(OpenPaaSId domainId, AddressBookURL addressBookURL, String vcardUid, String vcardData) {
+        return httpClientWithTechnicalToken(domainId)
+            .flatMap(client -> client.headers(headers ->
+                    headers.add(HttpHeaderNames.CONTENT_TYPE, "application/vcard"))
+                .request(HttpMethod.PUT)
+                .uri(addressBookURL.vcardUri(vcardUid).toASCIIString())
+                .send(Mono.just(Unpooled.wrappedBuffer(vcardData.getBytes(StandardCharsets.UTF_8))))
+                .responseSingle((response, responseContent) -> {
+                    if (response.status().code() == HttpStatus.SC_CREATED || response.status().code() == HttpStatus.SC_NO_CONTENT) {
+                        return Mono.empty();
+                    }
+                    return responseContent.asString(StandardCharsets.UTF_8)
+                        .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                        .flatMap(responseBody -> Mono.error(new DavClientException("""
+                            Unexpected status code: %d when create/update contact '%s'
+                            %s
+                            """.formatted(response.status().code(), addressBookURL.vcardUri(vcardUid).toASCIIString(), responseBody))));
+                }));
+    }
+
     public Optional<String> findFirstEventId(OpenPaaSUser openPaaSUser) {
         return calDavClient.findUserCalendars(openPaaSUser.username(), openPaaSUser.id())
             .flatMap(calendarURL -> calDavClient.findUserCalendarEventIds(openPaaSUser.username(), calendarURL))

@@ -90,6 +90,7 @@ import com.linagora.calendar.storage.redis.RedisCommonModule;
 import com.linagora.calendar.storage.redis.RedisEventBusModule;
 import com.linagora.calendar.storage.redis.RedisOIDCModule;
 import com.linagora.calendar.webadmin.CalendarRoutesModule;
+import com.linagora.calendar.webadmin.CommonContactRepublishRouteModule;
 import com.linagora.calendar.webadmin.DomainMembersSyncRouteModule;
 import com.linagora.calendar.webadmin.DomainTasksModule;
 import com.linagora.calendar.webadmin.LdapUsersImportRouteModule;
@@ -247,7 +248,7 @@ public class TwakeCalendarMain {
 
     public static Module chooseCommonContacts(boolean enabled) {
         if (enabled) {
-            return new CommonContactsModule();
+            return Modules.combine(new CommonContactsModule(), new CommonContactRepublishRouteModule());
         }
         return Modules.EMPTY_MODULE;
     }
