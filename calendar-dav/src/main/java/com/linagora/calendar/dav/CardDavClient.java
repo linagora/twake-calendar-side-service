@@ -43,6 +43,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Streams;
+import com.linagora.calendar.dav.dto.AddressBookReportXmlResponse;
 import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.TechnicalTokenService;
@@ -50,6 +51,8 @@ import com.linagora.calendar.storage.TechnicalTokenService;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
+import io.netty.handler.codec.http.HttpMethod;
+import io.netty.util.AsciiString;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.netty.ByteBufMono;
@@ -86,6 +89,15 @@ public class CardDavClient extends DavClient {
     public record AddressBook(String value, AddressBookType type) {
     }
 
+    /**
+     * An address book shared with, or delegated to, a user is listed under that user as a mirror of the
+     * address book of its owner: the mirror carries an `openpaas:source` pointing to the owner's address book,
+     * which holds the contacts.
+     */
+    public enum MirrorAddressBooks {
+        INCLUDE, EXCLUDE
+    }
+
     public record NewAddressBook(String id, String name, String description) {
     }
 
@@ -100,6 +112,19 @@ public class CardDavClient extends DavClient {
     public static final String LIMIT_PARAM = "limit";
 
     private static final String SYNC_TOKEN_PROPERTY = "dav:syncToken";
+    private static final String ADDRESS_BOOK_SOURCE_PROPERTY = "openpaas:source";
+    private static final String CONTENT_TYPE_XML = "application/xml";
+    private static final HttpMethod REPORT_METHOD = HttpMethod.valueOf("REPORT");
+    private static final AsciiString HEADER_DEPTH = AsciiString.cached("Depth");
+    private static final byte[] ADDRESS_BOOK_QUERY_REPORT = """
+        <?xml version="1.0" encoding="utf-8" ?>
+        <card:addressbook-query xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">
+          <d:prop>
+            <d:getetag/>
+            <card:address-data/>
+          </d:prop>
+        </card:addressbook-query>
+        """.getBytes(StandardCharsets.UTF_8);
     private static final Logger LOGGER = LoggerFactory.getLogger(CardDavClient.class);
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -154,6 +179,39 @@ public class CardDavClient extends DavClient {
                                 %s
                                 """.formatted(response.status().code(), addressBookURL.vcardUri(contactUid.value()).toASCIIString(), responseBody))));
             });
+    }
+
+    public Mono<AddressBookReportXmlResponse> reportUserAddressBookContacts(Username username, AddressBookURL addressBookURL) {
+        return reportAddressBookContacts(Mono.just(httpClientWithImpersonation(username)), addressBookURL);
+    }
+
+    public Mono<AddressBookReportXmlResponse> reportDomainAddressBookContacts(OpenPaaSId domainId, AddressBookURL addressBookURL) {
+        return reportAddressBookContacts(httpClientWithTechnicalToken(domainId), addressBookURL);
+    }
+
+    private Mono<AddressBookReportXmlResponse> reportAddressBookContacts(Mono<HttpClient> authenticatedClient, AddressBookURL addressBookURL) {
+        String uri = addressBookURL.asUri().toASCIIString();
+        return authenticatedClient.flatMap(client -> client.headers(headers -> headers
+                .add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_XML)
+                .add(HEADER_DEPTH, "1"))
+            .request(REPORT_METHOD)
+            .uri(uri)
+            .send(Mono.just(Unpooled.wrappedBuffer(ADDRESS_BOOK_QUERY_REPORT)))
+            .responseSingle((response, byteBufMono) -> {
+                if (response.status().code() == HttpStatus.SC_MULTI_STATUS) {
+                    return byteBufMono.asByteArray().map(AddressBookReportXmlResponse::new);
+                }
+                return responseBodyAsString(byteBufMono)
+                    .flatMap(responseBody -> Mono.error(new DavClientException("""
+                        Unexpected status code: %d when executing RFC 6352 addressbook-query REPORT on '%s'
+                        %s
+                        """.formatted(response.status().code(), uri, responseBody))));
+            }));
+    }
+
+    private Mono<byte[]> exportDomainAddressBook(OpenPaaSId domainId, AddressBookURL addressBookURL) {
+        return httpClientWithTechnicalToken(domainId)
+            .flatMap(authenticatedClient -> exportContactAsVcard(authenticatedClient, addressBookURL));
     }
 
     public Mono<byte[]> exportContact(Username username, AddressBookURL addressBookURL) {
@@ -286,9 +344,7 @@ public class CardDavClient extends DavClient {
     }
 
     private Mono<byte[]> tryListContactDomainMembers(OpenPaaSId domainId) {
-        AddressBookURL url = new AddressBookURL(domainId, DOMAIN_MEMBERS_ADDRESS_BOOK_ID);
-        return httpClientWithTechnicalToken(domainId)
-            .flatMap(authenticatedClient -> exportContactAsVcard(authenticatedClient, url));
+        return exportDomainAddressBook(domainId, new AddressBookURL(domainId, DOMAIN_MEMBERS_ADDRESS_BOOK_ID));
     }
 
     public Flux<AddressBook> listUserAddressBookIds(Username username, OpenPaaSId userId) {
@@ -326,6 +382,54 @@ public class CardDavClient extends DavClient {
         } catch (JsonProcessingException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public Flux<AddressBookURL> listUserAddressBookUrls(Username username, OpenPaaSId userId, MirrorAddressBooks mirrorAddressBooks) {
+        return listAddressBookUrls(Mono.just(httpClientWithImpersonation(username)), userId, mirrorAddressBooks);
+    }
+
+    public Flux<AddressBookURL> listDomainAddressBookUrls(OpenPaaSId domainId, MirrorAddressBooks mirrorAddressBooks) {
+        return listAddressBookUrls(httpClientWithTechnicalToken(domainId), domainId, mirrorAddressBooks);
+    }
+
+    private Flux<AddressBookURL> listAddressBookUrls(Mono<HttpClient> authenticatedClient, OpenPaaSId baseId, MirrorAddressBooks mirrorAddressBooks) {
+        String uri = String.format("/addressbooks/%s.json?contactsCount=true&inviteStatus=2&personal=true&shared=true&subscribed=true",
+            baseId.value());
+        return authenticatedClient.flatMap(client -> client.headers(headers -> headers
+                .add(HttpHeaderNames.ACCEPT, "application/json"))
+            .get()
+            .uri(uri)
+            .responseSingle((response, buf) -> {
+                if (response.status().code() == HttpStatus.SC_OK) {
+                    return buf.asString(StandardCharsets.UTF_8).map(json -> extractAddressBookUrls(json, mirrorAddressBooks))
+                        .onErrorResume(e -> Mono.error(new DavClientException(
+                            "Failed to parse address book list JSON for %s".formatted(baseId.value()), e)));
+                }
+                return buf.asString(StandardCharsets.UTF_8)
+                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .flatMap(errorBody -> Mono.error(new DavClientException(
+                        "Unexpected status code %d when listing address books for %s\n%s"
+                            .formatted(response.status().code(), baseId.value(), errorBody))));
+            })).flatMapMany(Flux::fromIterable);
+    }
+
+    private List<AddressBookURL> extractAddressBookUrls(String json, MirrorAddressBooks mirrorAddressBooks) {
+        try {
+            JsonNode node = JsonMapper.builder().build().readTree(json);
+            ArrayNode books = (ArrayNode) node.path("_embedded").path("dav:addressbook");
+            return Streams.stream(books.elements())
+                .filter(jsonNode -> mirrorAddressBooks == MirrorAddressBooks.INCLUDE || !isMirror(jsonNode))
+                .map(jsonNode -> jsonNode.path("_links").path("self").path("href").asText())
+                .map(href -> AddressBookURL.parse(StringUtils.removeEnd(href, ".json")))
+                .toList();
+        } catch (JsonProcessingException e) {
+            throw new DavClientException("Unable to parse address book list", e);
+        }
+    }
+
+    private boolean isMirror(JsonNode addressBook) {
+        JsonNode source = addressBook.path(ADDRESS_BOOK_SOURCE_PROPERTY);
+        return !source.isMissingNode() && !source.isNull();
     }
 
     private String extractAddressBookId(String href) {

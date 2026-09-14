@@ -59,16 +59,19 @@ public class CommonContactEventConverter {
             .flatMap(audience -> Mono.fromCallable(() -> convertContact(action, notification, audience)));
     }
 
-    private CommonContactOutboundEvent convertContact(Action action, SabreContactNotificationDTO notification, Audience audience) {
+    public CommonContactOutboundEvent convert(Action action, Audience audience, String path, String cardData) {
         try {
-            URI path = URI.create(notification.path());
-            ConvertedContact convertedContact = convertVCard(notification.carddata());
-            return new CommonContactOutboundEvent(audience, action, path, convertedContact.uid(), convertedContact.payload());
+            ConvertedContact convertedContact = convertVCard(cardData);
+            return new CommonContactOutboundEvent(audience, action, URI.create(path), convertedContact.uid(), convertedContact.payload());
         } catch (CommonContactEventConversionException e) {
             throw e;
         } catch (Exception e) {
-            throw new CommonContactEventConversionException("Unable to convert Sabre contact notification", e);
+            throw new CommonContactEventConversionException("Unable to convert contact at path " + path, e);
         }
+    }
+
+    private CommonContactOutboundEvent convertContact(Action action, SabreContactNotificationDTO notification, Audience audience) {
+        return convert(action, audience, notification.path(), notification.carddata());
     }
 
     private ConvertedContact convertVCard(String cardData) {
