@@ -43,6 +43,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Streams;
+import com.linagora.calendar.dav.dto.AddressBookReportXmlResponse;
 import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.TechnicalTokenService;
@@ -50,6 +51,8 @@ import com.linagora.calendar.storage.TechnicalTokenService;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
+import io.netty.handler.codec.http.HttpMethod;
+import io.netty.util.AsciiString;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.netty.ByteBufMono;
@@ -110,6 +113,18 @@ public class CardDavClient extends DavClient {
 
     private static final String SYNC_TOKEN_PROPERTY = "dav:syncToken";
     private static final String ADDRESS_BOOK_SOURCE_PROPERTY = "openpaas:source";
+    private static final String CONTENT_TYPE_XML = "application/xml";
+    private static final HttpMethod REPORT_METHOD = HttpMethod.valueOf("REPORT");
+    private static final AsciiString HEADER_DEPTH = AsciiString.cached("Depth");
+    private static final byte[] ADDRESS_BOOK_QUERY_REPORT = """
+        <?xml version="1.0" encoding="utf-8" ?>
+        <card:addressbook-query xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">
+          <d:prop>
+            <d:getetag/>
+            <card:address-data/>
+          </d:prop>
+        </card:addressbook-query>
+        """.getBytes(StandardCharsets.UTF_8);
     private static final Logger LOGGER = LoggerFactory.getLogger(CardDavClient.class);
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -166,7 +181,35 @@ public class CardDavClient extends DavClient {
             });
     }
 
-    public Mono<byte[]> exportDomainAddressBook(OpenPaaSId domainId, AddressBookURL addressBookURL) {
+    public Mono<AddressBookReportXmlResponse> reportUserAddressBookContacts(Username username, AddressBookURL addressBookURL) {
+        return reportAddressBookContacts(Mono.just(httpClientWithImpersonation(username)), addressBookURL);
+    }
+
+    public Mono<AddressBookReportXmlResponse> reportDomainAddressBookContacts(OpenPaaSId domainId, AddressBookURL addressBookURL) {
+        return reportAddressBookContacts(httpClientWithTechnicalToken(domainId), addressBookURL);
+    }
+
+    private Mono<AddressBookReportXmlResponse> reportAddressBookContacts(Mono<HttpClient> authenticatedClient, AddressBookURL addressBookURL) {
+        String uri = addressBookURL.asUri().toASCIIString();
+        return authenticatedClient.flatMap(client -> client.headers(headers -> headers
+                .add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_XML)
+                .add(HEADER_DEPTH, "1"))
+            .request(REPORT_METHOD)
+            .uri(uri)
+            .send(Mono.just(Unpooled.wrappedBuffer(ADDRESS_BOOK_QUERY_REPORT)))
+            .responseSingle((response, byteBufMono) -> {
+                if (response.status().code() == HttpStatus.SC_MULTI_STATUS) {
+                    return byteBufMono.asByteArray().map(AddressBookReportXmlResponse::new);
+                }
+                return responseBodyAsString(byteBufMono)
+                    .flatMap(responseBody -> Mono.error(new DavClientException("""
+                        Unexpected status code: %d when executing RFC 6352 addressbook-query REPORT on '%s'
+                        %s
+                        """.formatted(response.status().code(), uri, responseBody))));
+            }));
+    }
+
+    private Mono<byte[]> exportDomainAddressBook(OpenPaaSId domainId, AddressBookURL addressBookURL) {
         return httpClientWithTechnicalToken(domainId)
             .flatMap(authenticatedClient -> exportContactAsVcard(authenticatedClient, addressBookURL));
     }

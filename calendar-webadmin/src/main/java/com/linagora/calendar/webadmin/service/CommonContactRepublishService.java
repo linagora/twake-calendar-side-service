@@ -18,11 +18,11 @@
 
 package com.linagora.calendar.webadmin.service;
 
+
 import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
-import java.nio.charset.StandardCharsets;
+import java.net.URI;
 import java.time.Duration;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
 import jakarta.inject.Inject;
@@ -36,6 +36,7 @@ import org.slf4j.LoggerFactory;
 import com.google.common.base.MoreObjects;
 import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.dav.CardDavClient.MirrorAddressBooks;
+import com.linagora.calendar.dav.dto.AddressBookReportXmlResponse;
 import com.linagora.calendar.saas.contact.CommonContactEventConverter;
 import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.Action;
 import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.Audience;
@@ -47,9 +48,6 @@ import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.webadmin.task.CommonContactRepublishTask;
 
-import ezvcard.Ezvcard;
-import ezvcard.VCard;
-import ezvcard.VCardVersion;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -169,6 +167,7 @@ public class CommonContactRepublishService {
 
     private Mono<Task.Result> republish(Context context, ContactToRepublish contact) {
         return Mono.fromCallable(() -> converter.convert(Action.ADD, contact.audience(), contact.path(), contact.cardData()))
+            .subscribeOn(Schedulers.boundedElastic())
             .flatMap(publisher::publish)
             .then(Mono.fromCallable(() -> {
                 context.incrementProcessedContact();
@@ -183,13 +182,14 @@ public class CommonContactRepublishService {
 
     private Flux<ContactToRepublish> userContacts(Context context) {
         return userDAO.list()
-            .concatMap(user -> userContacts(context, user));
+            .flatMap(user -> userContacts(context, user), DEFAULT_CONCURRENCY);
     }
 
     private Flux<ContactToRepublish> userContacts(Context context, OpenPaaSUser user) {
         return cardDavClient.listUserAddressBookUrls(user.username(), user.id(), MirrorAddressBooks.EXCLUDE)
-            .concatMap(addressBookURL -> cardDavClient.exportContact(user.username(), addressBookURL)
-                .flatMapMany(payload -> contacts(context, new Audience.User(user.username()), addressBookURL, payload)))
+            .flatMap(addressBookURL -> cardDavClient.reportUserAddressBookContacts(user.username(), addressBookURL)
+                    .flatMapMany(payload -> contacts(context, new Audience.User(user.username()), addressBookURL, payload)),
+                DEFAULT_CONCURRENCY)
             .onErrorResume(e -> {
                 LOGGER.error("Error while doing task {} for user {}", TASK_NAME, user.username().asString(), e);
                 context.incrementFailedUser();
@@ -199,13 +199,14 @@ public class CommonContactRepublishService {
 
     private Flux<ContactToRepublish> domainContacts(Context context) {
         return domainDAO.list()
-            .concatMap(domain -> domainContacts(context, domain));
+            .flatMap(domain -> domainContacts(context, domain), DEFAULT_CONCURRENCY);
     }
 
     private Flux<ContactToRepublish> domainContacts(Context context, OpenPaaSDomain domain) {
         return cardDavClient.listDomainAddressBookUrls(domain.id(), MirrorAddressBooks.EXCLUDE)
-            .concatMap(addressBookURL -> cardDavClient.exportDomainAddressBook(domain.id(), addressBookURL)
-                .flatMapMany(payload -> contacts(context, new Audience.Domain(domain.domain()), addressBookURL, payload)))
+            .flatMap(addressBookURL -> cardDavClient.reportDomainAddressBookContacts(domain.id(), addressBookURL)
+                    .flatMapMany(response -> contacts(context, new Audience.Domain(domain.domain()), addressBookURL, response)),
+                DEFAULT_CONCURRENCY)
             .onErrorResume(e -> {
                 LOGGER.error("Error while doing task {} for domain {}", TASK_NAME, domain.domain().asString(), e);
                 context.incrementFailedDomain();
@@ -213,11 +214,12 @@ public class CommonContactRepublishService {
             });
     }
 
-    private Flux<ContactToRepublish> contacts(Context context, Audience audience, AddressBookURL addressBookURL, byte[] payload) {
-        return Mono.fromCallable(() -> Ezvcard.parse(new String(payload, StandardCharsets.UTF_8)).all())
+    private Flux<ContactToRepublish> contacts(Context context, Audience audience, AddressBookURL addressBookURL,
+                                              AddressBookReportXmlResponse response) {
+        return Mono.fromCallable(response::extractContactObjects)
             .subscribeOn(Schedulers.boundedElastic())
             .flatMapMany(Flux::fromIterable)
-            .flatMap(vcard -> contact(context, audience, addressBookURL, vcard), DEFAULT_CONCURRENCY)
+            .map(contactObject -> new ContactToRepublish(audience, contactPath(contactObject.href()), contactObject.cardData()))
             .onErrorResume(e -> {
                 LOGGER.error("Error while doing task {} for address book {}", TASK_NAME, addressBookURL.asUri().toASCIIString(), e);
                 context.incrementFailedAddressBook();
@@ -225,29 +227,7 @@ public class CommonContactRepublishService {
             });
     }
 
-    private Mono<ContactToRepublish> contact(Context context, Audience audience, AddressBookURL addressBookURL, VCard vcard) {
-        return Mono.justOrEmpty(contactUid(vcard))
-            .map(uid -> new ContactToRepublish(audience, contactPath(addressBookURL, uid), asCardData(vcard)))
-            .switchIfEmpty(Mono.fromRunnable(() -> {
-                LOGGER.warn("Task {} skips a contact without UID in address book {}", TASK_NAME, addressBookURL.asUri().toASCIIString());
-                context.incrementFailedContact();
-            }));
-    }
-
-    private Optional<String> contactUid(VCard vcard) {
-        return Optional.ofNullable(vcard.getUid())
-            .map(ezvcard.property.Uid::getValue)
-            .filter(StringUtils::isNotBlank);
-    }
-
-    private String contactPath(AddressBookURL addressBookURL, String contactUid) {
-        return StringUtils.removeStart(addressBookURL.vcardUri(contactUid).toASCIIString(), "/");
-    }
-
-    private String asCardData(VCard vcard) {
-        return Ezvcard.write(vcard)
-            .version(Optional.ofNullable(vcard.getVersion()).orElse(VCardVersion.V4_0))
-            .prodId(false)
-            .go();
+    private String contactPath(URI href) {
+        return StringUtils.removeStart(href.toASCIIString(), "/");
     }
 }

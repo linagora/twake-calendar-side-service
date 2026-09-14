@@ -706,8 +706,8 @@ public class CardDavClientTest {
     }
 
     @Test
-    void exportDomainAddressBookShouldReturnContactsOfTheAddressBook() {
-        OpenPaaSDomain domain = createNewDomainMemberAddressBook();
+    void reportUserAddressBookContactsShouldReturnContactPathAndCardData() {
+        String contactFileName = "abcdef";
         String vcardUid = UUID.randomUUID().toString();
         String vcard = """
             BEGIN:VCARD
@@ -717,12 +717,39 @@ public class CardDavClientTest {
             EMAIL;TYPE=Work:john.doe@example.com
             END:VCARD
             """.formatted(vcardUid);
+        AddressBookURL addressBookURL = new AddressBookURL(user.id(), "collected");
+        testee.upsertContact(user.username(), addressBookURL, contactFileName, vcard.getBytes(StandardCharsets.UTF_8)).block();
+
+        assertThat(testee.reportUserAddressBookContacts(user.username(), addressBookURL).block().extractContactObjects())
+            .singleElement()
+            .satisfies(contact -> {
+                assertThat(contact.href().toASCIIString())
+                    .isEqualTo("/addressbooks/%s/collected/%s.vcf".formatted(user.id().value(), contactFileName));
+                assertThat(contact.cardData()).contains("UID:" + vcardUid);
+            });
+    }
+
+    @Test
+    void reportDomainAddressBookContactsShouldReturnContactPathAndCardData() {
+        OpenPaaSDomain domain = createNewDomainMemberAddressBook();
+        String vcardUid = UUID.randomUUID().toString();
+        String vcard = """
+            BEGIN:VCARD
+            VERSION:3.0
+            UID:%s
+            FN:Domain Member
+            END:VCARD
+            """.formatted(vcardUid);
         testee.upsertContactDomainMembers(domain.id(), vcardUid, vcard.getBytes(StandardCharsets.UTF_8)).block();
 
-        String actual = new String(testee.exportDomainAddressBook(domain.id(),
-            new AddressBookURL(domain.id(), "domain-members")).block(), StandardCharsets.UTF_8);
-
-        assertThat(actual).contains("UID:" + vcardUid);
+        assertThat(testee.reportDomainAddressBookContacts(domain.id(), new AddressBookURL(domain.id(), "domain-members"))
+            .block().extractContactObjects())
+            .singleElement()
+            .satisfies(contact -> {
+                assertThat(contact.href().toASCIIString())
+                    .isEqualTo("/addressbooks/%s/domain-members/%s.vcf".formatted(domain.id().value(), vcardUid));
+                assertThat(contact.cardData()).contains("UID:" + vcardUid);
+            });
     }
 
     @Test

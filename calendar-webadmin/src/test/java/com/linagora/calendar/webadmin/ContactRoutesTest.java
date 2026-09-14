@@ -142,12 +142,13 @@ public class ContactRoutesTest {
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
+                    "prodId": "${json-unit.ignore}",
                     "uid": "%s",
                     "name": { "@type": "Name", "full": "John Doe" },
                     "emails": {
                       "EMAIL-1": { "@type": "EmailAddress", "address": "%s@example.com", "contexts": { "work": true } }
                     },
-                    "vCardProps": [["version", {}, "text", "4.0"]]
+                    "vCardProps": [["version", {}, "text", "3.0"]]
                   }
                 }""".formatted(user.username().asString(), user.id().value(), COLLECTED_ADDRESS_BOOK, uid, uid, uid, uid));
     }
@@ -173,12 +174,13 @@ public class ContactRoutesTest {
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
+                    "prodId": "${json-unit.ignore}",
                     "uid": "%s",
                     "name": { "@type": "Name", "full": "John Doe" },
                     "emails": {
                       "EMAIL-1": { "@type": "EmailAddress", "address": "%s@example.com", "contexts": { "work": true } }
                     },
-                    "vCardProps": [["version", {}, "text", "4.0"]]
+                    "vCardProps": [["version", {}, "text", "3.0"]]
                   }
                 }""".formatted(user.username().asString(), user.id().value(), COLLECTED_ADDRESS_BOOK, uid, uid, uid, uid));
 
@@ -192,12 +194,13 @@ public class ContactRoutesTest {
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
+                    "prodId": "${json-unit.ignore}",
                     "uid": "%s",
                     "name": { "@type": "Name", "full": "John Doe 2" },
                     "emails": {
                       "EMAIL-1": { "@type": "EmailAddress", "address": "%s@example.com", "contexts": { "work": true } }
                     },
-                    "vCardProps": [["version", {}, "text", "4.0"]]
+                    "vCardProps": [["version", {}, "text", "3.0"]]
                   }
                 }""".formatted(user.username().asString(), user.id().value(), COLLECTED_ADDRESS_BOOK, uid2, uid2, uid2, uid2));
     }
@@ -221,12 +224,13 @@ public class ContactRoutesTest {
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
+                    "prodId": "${json-unit.ignore}",
                     "uid": "%s",
                     "name": { "@type": "Name", "full": "Jane Doe" },
                     "emails": {
                       "EMAIL-1": { "@type": "EmailAddress", "address": "%s@example.com", "contexts": { "work": true } }
                     },
-                    "vCardProps": [["version", {}, "text", "4.0"]]
+                    "vCardProps": [["version", {}, "text", "3.0"]]
                   }
                 }""".formatted(user.username().asString(), user.id().value(), addressBookId, uid, uid, uid, uid));
     }
@@ -267,12 +271,13 @@ public class ContactRoutesTest {
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
+                    "prodId": "${json-unit.ignore}",
                     "uid": "%s",
                     "name": { "@type": "Name", "full": "Domain Member" },
                     "emails": {
                       "EMAIL-1": { "@type": "EmailAddress", "address": "%s@example.com", "contexts": { "work": true } }
                     },
-                    "vCardProps": [["version", {}, "text", "4.0"]]
+                    "vCardProps": [["version", {}, "text", "3.0"]]
                   }
                 }""".formatted(domain.domain().asString(), domain.id().value(), DOMAIN_MEMBERS_ADDRESS_BOOK, uid, uid, uid, uid));
     }
@@ -297,12 +302,13 @@ public class ContactRoutesTest {
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
+                    "prodId": "${json-unit.ignore}",
                     "uid": "%s",
                     "name": { "@type": "Name", "full": "Domain Contact" },
                     "emails": {
                       "EMAIL-1": { "@type": "EmailAddress", "address": "%s@example.com", "contexts": { "work": true } }
                     },
-                    "vCardProps": [["version", {}, "text", "4.0"]]
+                    "vCardProps": [["version", {}, "text", "3.0"]]
                   }
                 }""".formatted(domain.domain().asString(), domain.id().value(), DOMAIN_ADDRESS_BOOK, uid, uid, uid, uid));
     }
