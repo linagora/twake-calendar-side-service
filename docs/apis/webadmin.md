@@ -287,16 +287,43 @@ POST /contacts?action=republish&contactsPerSecond=100
 
 Iterates all registered users and all domains, lists the contacts of their CardDav address books through an
 `addressbook-query` REPORT, and republishes every contact as an `ADD` JSContact event on the `twake:contacts:common`
-exchange. Address books shared with, or delegated to, a user are listed under that user as mirrors of the 
-owner's address book (`openpaas:source`): they are skipped, so each contact is published once, with its owner as audience.
+exchange.
+
+Address books shared with, or delegated to, a user are listed under that user as mirrors of the owner's address book
+(`openpaas:source`): they are skipped, so each contact is published once, with its owner as audience.
 
 The query parameter `contactsPerSecond` controls the publishing rate. Defaults to 100.
 
-Status codes:
-- `201`: Task successfully submitted
-- `400`: Invalid `action` or `contactsPerSecond` parameter
+### Republish the contacts of a user
 
-This endpoint returns a webadmin task with the following additional information:
+```
+POST /users/btellier@linagora.com/contacts?action=republish&contactsPerSecond=100
+```
+
+Republishes the contacts of the address books owned by that user.
+
+### Republish the contacts of a domain
+
+```
+POST /domains/linagora.com/contacts?action=republish&contactsPerSecond=100
+POST /domains/linagora.com/contacts?action=republish&scope=domain
+```
+
+Republishes the contacts of the address books owned by the users of that domain, as well as the contacts of the
+address books owned by the domain itself.
+
+Optional query parameter:
+- `scope` : `domain`. Restricts the republication to the address books owned by the domain
+
+### Status codes
+
+- `201`: Task successfully submitted
+- `400`: Invalid `action`, `scope` or `contactsPerSecond` parameter
+- `404`: The specified user or domain does not exist
+
+### Task additional information
+
+All endpoints return a webadmin task with the following additional information:
 
 ```
 "additionalInformation": {
@@ -310,6 +337,9 @@ This endpoint returns a webadmin task with the following additional information:
     "contactsPerSecond": 100
 }
 ```
+
+`username` is added for the user endpoint, `domain` for the domain endpoint, and `scope` echoes the `scope` query
+parameter. Those fields are omitted when they do not apply.
 
 ## Calendar events
 

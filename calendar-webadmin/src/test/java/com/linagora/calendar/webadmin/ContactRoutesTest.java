@@ -28,12 +28,14 @@ import static org.mockito.Mockito.when;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import javax.net.ssl.SSLException;
 
 import org.apache.james.core.Domain;
+import org.apache.james.core.Username;
 import org.apache.james.json.DTOConverter;
 import org.apache.james.server.task.json.dto.AdditionalInformationDTO;
 import org.apache.james.server.task.json.dto.AdditionalInformationDTOModule;
@@ -84,6 +86,7 @@ public class ContactRoutesTest {
     private CardDavClient cardDavClient;
     private DavTestHelper davTestHelper;
     private MongoDBOpenPaaSDomainDAO domainDAO;
+    private OpenPaaSUserDAO userDAO;
     private OpenPaaSUser user;
     private List<CommonContactOutboundEvent> publishedEvents;
 
@@ -91,7 +94,7 @@ public class ContactRoutesTest {
     void setUp() throws SSLException {
         MongoDatabase mongoDB = sabreDavExtension.dockerSabreDavSetup().getMongoDB();
         domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
-        OpenPaaSUserDAO userDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
+        userDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
         cardDavClient = new CardDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
 
@@ -110,7 +113,7 @@ public class ContactRoutesTest {
         TaskManager taskManager = new MemoryTaskManager(new Hostname("foo"));
         webAdminServer = WebAdminUtils.createWebAdminServer(
                 new ContactRoutes(new JsonTransformer(), taskManager,
-                    new ContactRoutes.CommonContactRepublishRequestToTask(republishService)),
+                    new ContactRoutes.CommonContactRepublishRequestToTask(republishService, userDAO, domainDAO)),
                 new TasksRoutes(taskManager, new JsonTransformer(),
                     new DTOConverter<>(ImmutableSet.<AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO>>builder()
                         .add(CommonContactRepublishTaskAdditionalInformationDTO.module())
@@ -342,6 +345,246 @@ public class ContactRoutesTest {
     }
 
     @Test
+    void republishForAUserShouldPublishContactsOfThatUser() {
+        String uid = UUID.randomUUID().toString();
+        upsertUserContact(COLLECTED_ADDRESS_BOOK, uid, "John Doe");
+
+        awaitRepublishTask(userPath(user), Map.of());
+
+        assertThatJson(publishedEvent(uid))
+            .isEqualTo("""
+                {
+                  "audience": { "user": "%s" },
+                  "action": "ADD",
+                  "path": "addressbooks/%s/%s/%s.vcf",
+                  "uid": "%s",
+                  "payload": {
+                    "@type": "Card",
+                    "version": "2.0",
+                    "prodId": "${json-unit.ignore}",
+                    "uid": "%s",
+                    "name": { "@type": "Name", "full": "John Doe" },
+                    "emails": {
+                      "EMAIL-1": { "@type": "EmailAddress", "address": "%s@example.com", "contexts": { "work": true } }
+                    },
+                    "vCardProps": [["version", {}, "text", "3.0"]]
+                  }
+                }""".formatted(user.username().asString(), user.id().value(), COLLECTED_ADDRESS_BOOK, uid, uid, uid, uid));
+    }
+
+    @Test
+    void republishForAUserShouldNotPublishContactsOfOtherUsers() {
+        OpenPaaSUser otherUser = sabreDavExtension.newTestUser();
+        String otherUid = UUID.randomUUID().toString();
+        upsertUserContact(otherUser, COLLECTED_ADDRESS_BOOK, otherUid, "Other user contact");
+
+        awaitRepublishTask(userPath(user), Map.of());
+
+        assertThat(publishedEvents)
+            .noneSatisfy(event -> assertThat(event.uid().value()).isEqualTo(otherUid));
+    }
+
+    @Test
+    void republishForAUserShouldReportTheUserInAdditionalInformation() {
+        String taskResponse = awaitRepublishTask(userPath(user), Map.of());
+
+        assertThatJson(taskResponse)
+            .inPath("additionalInformation")
+            .isEqualTo("""
+                {
+                    "type": "republish-common-contacts",
+                    "timestamp": "${json-unit.any-string}",
+                    "username": "%s",
+                    "processedContactCount": 0,
+                    "failedContactCount": 0,
+                    "failedAddressBookCount": 0,
+                    "failedUserCount": 0,
+                    "failedDomainCount": 0,
+                    "contactsPerSecond": 100
+                }""".formatted(user.username().asString()));
+    }
+
+    @Test
+    void republishForAUserShouldReturnNotFoundWhenUnknownUser() {
+        given()
+            .queryParam("action", "republish")
+            .post("/users/unknown@unknown.tld/contacts")
+        .then()
+            .statusCode(404);
+    }
+
+    @Test
+    void republishForADomainShouldPublishContactsOfUsersOfThatDomain() {
+        OpenPaaSDomain domain = newDomain();
+        OpenPaaSUser domainUser = newUserInDomain(domain);
+        String uid = UUID.randomUUID().toString();
+        upsertUserContact(domainUser, COLLECTED_ADDRESS_BOOK, uid, "Domain user contact");
+
+        awaitRepublishTask(domainPath(domain), Map.of());
+
+        assertThatJson(publishedEvent(uid))
+            .isEqualTo("""
+                {
+                  "audience": { "user": "%s" },
+                  "action": "ADD",
+                  "path": "addressbooks/%s/%s/%s.vcf",
+                  "uid": "%s",
+                  "payload": {
+                    "@type": "Card",
+                    "version": "2.0",
+                    "prodId": "${json-unit.ignore}",
+                    "uid": "%s",
+                    "name": { "@type": "Name", "full": "Domain user contact" },
+                    "emails": {
+                      "EMAIL-1": { "@type": "EmailAddress", "address": "%s@example.com", "contexts": { "work": true } }
+                    },
+                    "vCardProps": [["version", {}, "text", "3.0"]]
+                  }
+                }""".formatted(domainUser.username().asString(), domainUser.id().value(), COLLECTED_ADDRESS_BOOK, uid, uid, uid, uid));
+    }
+
+    @Test
+    void republishForADomainShouldPublishContactsOfTheDomainAddressBooks() {
+        OpenPaaSDomain domain = newDomain();
+        cardDavClient.createDomainMembersAddressBook(domain.id()).block();
+        String uid = UUID.randomUUID().toString();
+        cardDavClient.upsertContactDomainMembers(domain.id(), uid, vcard(uid, "Domain Member").getBytes(StandardCharsets.UTF_8)).block();
+
+        awaitRepublishTask(domainPath(domain), Map.of());
+
+        assertThatJson(publishedEvent(uid))
+            .isEqualTo("""
+                {
+                  "audience": { "domain": "%s" },
+                  "action": "ADD",
+                  "path": "addressbooks/%s/%s/%s.vcf",
+                  "uid": "%s",
+                  "payload": {
+                    "@type": "Card",
+                    "version": "2.0",
+                    "prodId": "${json-unit.ignore}",
+                    "uid": "%s",
+                    "name": { "@type": "Name", "full": "Domain Member" },
+                    "emails": {
+                      "EMAIL-1": { "@type": "EmailAddress", "address": "%s@example.com", "contexts": { "work": true } }
+                    },
+                    "vCardProps": [["version", {}, "text", "3.0"]]
+                  }
+                }""".formatted(domain.domain().asString(), domain.id().value(), DOMAIN_MEMBERS_ADDRESS_BOOK, uid, uid, uid, uid));
+    }
+
+    @Test
+    void republishForADomainShouldNotPublishContactsOfOtherDomains() {
+        OpenPaaSDomain domain = newDomain();
+        OpenPaaSDomain otherDomain = newDomain();
+        OpenPaaSUser otherDomainUser = newUserInDomain(otherDomain);
+        String otherUid = UUID.randomUUID().toString();
+        upsertUserContact(otherDomainUser, COLLECTED_ADDRESS_BOOK, otherUid, "Other domain contact");
+
+        awaitRepublishTask(domainPath(domain), Map.of());
+
+        assertThat(publishedEvents)
+            .noneSatisfy(event -> assertThat(event.uid().value()).isEqualTo(otherUid));
+    }
+
+    @Test
+    void republishForADomainWithDomainScopeShouldPublishContactsOfTheDomainAddressBooks() {
+        OpenPaaSDomain domain = newDomain();
+        cardDavClient.createDomainMembersAddressBook(domain.id()).block();
+        String uid = UUID.randomUUID().toString();
+        cardDavClient.upsertContactDomainMembers(domain.id(), uid, vcard(uid, "Domain Member").getBytes(StandardCharsets.UTF_8)).block();
+
+        awaitRepublishTask(domainPath(domain), Map.of("scope", "domain"));
+
+        assertThatJson(publishedEvent(uid))
+            .isEqualTo("""
+                {
+                  "audience": { "domain": "%s" },
+                  "action": "ADD",
+                  "path": "addressbooks/%s/%s/%s.vcf",
+                  "uid": "%s",
+                  "payload": {
+                    "@type": "Card",
+                    "version": "2.0",
+                    "prodId": "${json-unit.ignore}",
+                    "uid": "%s",
+                    "name": { "@type": "Name", "full": "Domain Member" },
+                    "emails": {
+                      "EMAIL-1": { "@type": "EmailAddress", "address": "%s@example.com", "contexts": { "work": true } }
+                    },
+                    "vCardProps": [["version", {}, "text", "3.0"]]
+                  }
+                }""".formatted(domain.domain().asString(), domain.id().value(), DOMAIN_MEMBERS_ADDRESS_BOOK, uid, uid, uid, uid));
+    }
+
+    @Test
+    void republishForADomainWithDomainScopeShouldNotPublishContactsOfTheUsersOfThatDomain() {
+        OpenPaaSDomain domain = newDomain();
+        OpenPaaSUser domainUser = newUserInDomain(domain);
+        String uid = UUID.randomUUID().toString();
+        upsertUserContact(domainUser, COLLECTED_ADDRESS_BOOK, uid, "Domain user contact");
+
+        awaitRepublishTask(domainPath(domain), Map.of("scope", "domain"));
+
+        assertThat(publishedEvents)
+            .noneSatisfy(event -> assertThat(event.uid().value()).isEqualTo(uid));
+    }
+
+    @Test
+    void republishForADomainShouldReportTheDomainInAdditionalInformation() {
+        OpenPaaSDomain domain = newDomain();
+
+        String taskResponse = awaitRepublishTask(domainPath(domain), Map.of("scope", "domain"));
+
+        assertThatJson(taskResponse)
+            .inPath("additionalInformation")
+            .isEqualTo("""
+                {
+                    "type": "republish-common-contacts",
+                    "timestamp": "${json-unit.any-string}",
+                    "domain": "%s",
+                    "scope": "domain",
+                    "processedContactCount": 0,
+                    "failedContactCount": 0,
+                    "failedAddressBookCount": 0,
+                    "failedUserCount": 0,
+                    "failedDomainCount": 0,
+                    "contactsPerSecond": 100
+                }""".formatted(domain.domain().asString()));
+    }
+
+    @Test
+    void republishForADomainShouldReturnNotFoundWhenUnknownDomain() {
+        given()
+            .queryParam("action", "republish")
+            .post("/domains/unknown.tld/contacts")
+        .then()
+            .statusCode(404);
+    }
+
+    @Test
+    void republishForADomainShouldRejectUnsupportedScope() {
+        OpenPaaSDomain domain = newDomain();
+
+        given()
+            .queryParam("action", "republish")
+            .queryParam("scope", "unsupported")
+            .post(domainPath(domain))
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
+    void republishShouldRejectScopeParameter() {
+        given()
+            .queryParam("action", "republish")
+            .queryParam("scope", "domain")
+            .post(ContactRoutes.BASE_PATH)
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
     void republishShouldRejectUnknownAction() {
         given()
             .queryParam("action", "unknown")
@@ -361,16 +604,53 @@ public class ContactRoutesTest {
     }
 
     private void upsertUserContact(String addressBookId, String uid, String fullName) {
-        cardDavClient.upsertContact(user.username(), new AddressBookURL(user.id(), addressBookId), uid,
+        upsertUserContact(user, addressBookId, uid, fullName);
+    }
+
+    private void upsertUserContact(OpenPaaSUser contactOwner, String addressBookId, String uid, String fullName) {
+        cardDavClient.upsertContact(contactOwner.username(), new AddressBookURL(contactOwner.id(), addressBookId), uid,
             vcard(uid, fullName).getBytes(StandardCharsets.UTF_8)).block();
     }
 
+    private String userPath(OpenPaaSUser openPaaSUser) {
+        return "/users/" + openPaaSUser.username().asString() + "/contacts";
+    }
+
+    private String domainPath(OpenPaaSDomain openPaaSDomain) {
+        return "/domains/" + openPaaSDomain.domain().asString() + "/contacts";
+    }
+
+    private OpenPaaSDomain newDomain() {
+        return domainDAO.add(Domain.of("new-domain" + UUID.randomUUID() + ".tld")).block();
+    }
+
+    private OpenPaaSUser newUserInDomain(OpenPaaSDomain domain) {
+        return sabreDavExtension.dockerSabreDavSetup().getOpenPaaSProvisioningService()
+            .createUser(Username.fromLocalPartWithDomain("user_" + UUID.randomUUID(), domain.domain()))
+            .block();
+    }
+
+    private String awaitRepublishTask(String path, Map<String, String> queryParams) {
+        String taskId = given()
+            .queryParam("action", "republish")
+            .queryParams(queryParams)
+            .post(path)
+        .then()
+            .statusCode(201)
+            .extract()
+            .jsonPath()
+            .get("taskId");
+        return awaitTask(taskId);
+    }
+
     private String publishedEvent(String uid) {
-        return publishedEvents.stream()
+        List<CommonContactOutboundEvent> events = publishedEvents.stream()
             .filter(event -> event.uid().value().equals(uid))
-            .findFirst()
-            .map(Throwing.function(event -> new String(event.serialize(), StandardCharsets.UTF_8)))
-            .orElseThrow();
+            .toList();
+
+        assertThat(events).as("published events of contact %s", uid).hasSize(1);
+
+        return Throwing.supplier(() -> new String(events.getFirst().serialize(), StandardCharsets.UTF_8)).get();
     }
 
     private String vcard(String uid, String fullName) {
