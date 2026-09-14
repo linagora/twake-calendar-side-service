@@ -285,10 +285,10 @@ Only enabled when common contacts are enabled (`common.contacts.enabled=true`).
 POST /contacts?action=republish&contactsPerSecond=100
 ```
 
-Iterates all registered users and all domains, exports their CardDav address books, and republishes every contact
-as an `ADD` JSContact event on the `twake:contacts:common` exchange. Address books shared with, or delegated to, a user
-are listed under that user as mirrors of the owner's address book (`openpaas:source`): they are skipped, so each contact
-is published once, with its owner as audience.
+Iterates all registered users and all domains, lists the contacts of their CardDav address books through an
+`addressbook-query` REPORT, and republishes every contact as an `ADD` JSContact event on the `twake:contacts:common`
+exchange. Address books shared with, or delegated to, a user are listed under that user as mirrors of the 
+owner's address book (`openpaas:source`): they are skipped, so each contact is published once, with its owner as audience.
 
 The query parameter `contactsPerSecond` controls the publishing rate. Defaults to 100.
 

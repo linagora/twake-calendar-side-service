@@ -56,42 +56,48 @@ public record AddressBookReportXmlResponse(byte[] xml) {
         XMLStreamReader reader = null;
         try {
             reader = XML_INPUT_FACTORY.createXMLStreamReader(new ByteArrayInputStream(xml));
-            List<ContactObject> items = new ArrayList<>();
-
-            URI currentHref = null;
-            String currentCardData = null;
-
-            while (reader.hasNext()) {
-                int event = reader.next();
-
-                if (event == XMLStreamConstants.START_ELEMENT) {
-                    QName name = reader.getName();
-
-                    if (isDavHref(name)) {
-                        currentHref = URI.create(reader.getElementText());
-                    } else if (isAddressData(name)) {
-                        currentCardData = reader.getElementText();
-                    }
-                }
-
-                if (currentHref != null && currentCardData != null) {
-                    items.add(new ContactObject(currentHref, currentCardData));
-                    currentHref = null;
-                    currentCardData = null;
-                }
-            }
-
-            return items;
+            return readContactObjects(reader);
         } catch (Exception e) {
             throw new IllegalStateException("Failed to parse CardDAV multistatus XML", e);
         } finally {
-            if (reader != null) {
-                try {
-                    reader.close();
-                } catch (XMLStreamException xmlStreamException) {
-                    throw new IllegalStateException("Failed to parse CardDAV multistatus XML", xmlStreamException);
+            close(reader);
+        }
+    }
+
+    private List<ContactObject> readContactObjects(XMLStreamReader reader) throws XMLStreamException {
+        List<ContactObject> items = new ArrayList<>();
+        URI currentHref = null;
+        String currentCardData = null;
+
+        while (reader.hasNext()) {
+            if (reader.next() == XMLStreamConstants.START_ELEMENT) {
+                QName name = reader.getName();
+
+                if (isDavHref(name)) {
+                    currentHref = URI.create(reader.getElementText());
+                } else if (isAddressData(name)) {
+                    currentCardData = reader.getElementText();
                 }
             }
+
+            if (currentHref != null && currentCardData != null) {
+                items.add(new ContactObject(currentHref, currentCardData));
+                currentHref = null;
+                currentCardData = null;
+            }
+        }
+
+        return items;
+    }
+
+    private static void close(XMLStreamReader reader) {
+        if (reader == null) {
+            return;
+        }
+        try {
+            reader.close();
+        } catch (XMLStreamException xmlStreamException) {
+            throw new IllegalStateException("Failed to close the CardDAV multistatus XML reader", xmlStreamException);
         }
     }
 
