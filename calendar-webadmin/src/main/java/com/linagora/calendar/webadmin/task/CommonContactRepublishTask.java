@@ -21,21 +21,66 @@ package com.linagora.calendar.webadmin.task;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.apache.james.task.Task;
 import org.apache.james.task.TaskExecutionDetails;
 import org.apache.james.task.TaskType;
 
 import com.google.common.base.Preconditions;
+import com.linagora.calendar.storage.OpenPaaSDomain;
+import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.webadmin.service.CommonContactRepublishService;
 
 public class CommonContactRepublishTask implements Task {
-    public record Details(Instant instant, long processedContactCount, long failedContactCount,
+    public record Details(Instant instant, Optional<String> username, Optional<String> domain, Optional<String> scope,
+                          long processedContactCount, long failedContactCount,
                           long failedAddressBookCount, long failedUserCount, long failedDomainCount,
                           int contactsPerSecond) implements TaskExecutionDetails.AdditionalInformation {
         @Override
         public Instant timestamp() {
             return instant;
+        }
+    }
+
+    public sealed interface Scope {
+        enum Selection {
+            USERS(Optional.of("user")),
+            DOMAIN_ADDRESS_BOOKS(Optional.of("domain")),
+            BOTH(Optional.empty());
+
+            public static Selection from(String queryParameter) {
+                return Stream.of(values())
+                    .filter(selection -> selection.queryParameter.filter(queryParameter::equals).isPresent())
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("Unsupported contact selection: " + queryParameter));
+            }
+
+            public static String supportedQueryParameters() {
+                return Stream.of(values())
+                    .flatMap(selection -> selection.queryParameter.stream())
+                    .collect(Collectors.joining(", "));
+            }
+
+            private final Optional<String> queryParameter;
+
+            Selection(Optional<String> queryParameter) {
+                this.queryParameter = queryParameter;
+            }
+
+            public Optional<String> asQueryParameter() {
+                return queryParameter;
+            }
+        }
+
+        record All(Selection selection) implements Scope {
+        }
+
+        record ForUser(OpenPaaSUser user) implements Scope {
+        }
+
+        record ForDomain(OpenPaaSDomain domain, Selection selection) implements Scope {
         }
     }
 
@@ -55,17 +100,19 @@ public class CommonContactRepublishTask implements Task {
 
     private final CommonContactRepublishService republishService;
     private final RunningOptions runningOptions;
+    private final Scope scope;
     private final CommonContactRepublishService.Context context;
 
-    public CommonContactRepublishTask(CommonContactRepublishService republishService, RunningOptions runningOptions) {
+    public CommonContactRepublishTask(CommonContactRepublishService republishService, RunningOptions runningOptions, Scope scope) {
         this.republishService = republishService;
         this.runningOptions = runningOptions;
+        this.scope = scope;
         this.context = new CommonContactRepublishService.Context();
     }
 
     @Override
     public Result run() {
-        return republishService.republish(context, runningOptions).block();
+        return republishService.republish(context, runningOptions, scope).block();
     }
 
     @Override
@@ -77,11 +124,36 @@ public class CommonContactRepublishTask implements Task {
     public Optional<TaskExecutionDetails.AdditionalInformation> details() {
         CommonContactRepublishService.Context.Snapshot snapshot = context.snapshot();
         return Optional.of(new Details(Clock.systemUTC().instant(),
+            scopedUsername(),
+            scopedDomain(),
+            scopeParameter(),
             snapshot.processedContactCount(),
             snapshot.failedContactCount(),
             snapshot.failedAddressBookCount(),
             snapshot.failedUserCount(),
             snapshot.failedDomainCount(),
             runningOptions.contactsPerSecond()));
+    }
+
+    private Optional<String> scopeParameter() {
+        return switch (scope) {
+            case Scope.All all -> all.selection().asQueryParameter();
+            case Scope.ForDomain forDomain -> forDomain.selection().asQueryParameter();
+            case Scope.ForUser ignored -> Optional.empty();
+        };
+    }
+
+    private Optional<String> scopedUsername() {
+        return switch (scope) {
+            case Scope.ForUser forUser -> Optional.of(forUser.user().username().asString());
+            default -> Optional.empty();
+        };
+    }
+
+    private Optional<String> scopedDomain() {
+        return switch (scope) {
+            case Scope.ForDomain forDomain -> Optional.of(forDomain.domain().domain().asString());
+            default -> Optional.empty();
+        };
     }
 }

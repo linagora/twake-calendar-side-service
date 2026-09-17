@@ -283,20 +283,54 @@ Only enabled when common contacts are enabled (`common.contacts.enabled=true`).
 
 ```
 POST /contacts?action=republish&contactsPerSecond=100
+POST /contacts?action=republish&scope=domain
+POST /contacts?action=republish&scope=user
 ```
 
 Iterates all registered users and all domains, lists the contacts of their CardDav address books through an
 `addressbook-query` REPORT, and republishes every contact as an `ADD` JSContact event on the `twake:contacts:common`
-exchange. Address books shared with, or delegated to, a user are listed under that user as mirrors of the 
-owner's address book (`openpaas:source`): they are skipped, so each contact is published once, with its owner as audience.
+exchange.
 
-The query parameter `contactsPerSecond` controls the publishing rate. Defaults to 100.
+Address books shared with, or delegated to, a user are listed under that user as mirrors of the owner's address book
+(`openpaas:source`): they are skipped, so each contact is published once, with its owner as audience.
 
-Status codes:
+Optional query parameter:
+- `contactsPerSecond` controls the publishing rate. Defaults to 100.
+- `scope` : `domain`, `user`. `domain` restricts the republication to the address books owned by the domains, `user` to
+the address books owned by the users
+
+### Republish the contacts of a user
+
+```
+POST /users/btellier@linagora.com/contacts?action=republish&contactsPerSecond=100
+```
+
+Republishes the contacts of the address books owned by that user.
+
+### Republish the contacts of a domain
+
+```
+POST /domains/linagora.com/contacts?action=republish&contactsPerSecond=100
+POST /domains/linagora.com/contacts?action=republish&scope=domain
+POST /domains/linagora.com/contacts?action=republish&scope=user
+```
+
+Republishes the contacts of the address books owned by the users of that domain, as well as the contacts of the
+address books owned by the domain itself.
+
+Optional query parameter:
+- `scope` : `domain`, `user`. `domain` restricts the republication to the address books owned by the domain, `user` to
+the address books owned by the users of that domain
+
+### Status codes
+
 - `201`: Task successfully submitted
-- `400`: Invalid `action` or `contactsPerSecond` parameter
+- `400`: Invalid `action`, `scope` or `contactsPerSecond` parameter
+- `404`: The specified user or domain does not exist
 
-This endpoint returns a webadmin task with the following additional information:
+### Task additional information
+
+All endpoints return a webadmin task with the following additional information:
 
 ```
 "additionalInformation": {
@@ -310,6 +344,9 @@ This endpoint returns a webadmin task with the following additional information:
     "contactsPerSecond": 100
 }
 ```
+
+`username` is added for the user endpoint, `domain` for the domain endpoint, and `scope` echoes the `scope` query
+parameter. Those fields are omitted when they do not apply.
 
 ## Calendar events
 

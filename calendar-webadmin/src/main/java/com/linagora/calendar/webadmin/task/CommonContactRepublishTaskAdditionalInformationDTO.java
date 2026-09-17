@@ -25,8 +25,14 @@ import org.apache.james.json.DTOModule;
 import org.apache.james.server.task.json.dto.AdditionalInformationDTO;
 import org.apache.james.server.task.json.dto.AdditionalInformationDTOModule;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
+@JsonInclude(JsonInclude.Include.NON_ABSENT)
 public record CommonContactRepublishTaskAdditionalInformationDTO(String type,
                                                                  Instant timestamp,
+                                                                 Optional<String> username,
+                                                                 Optional<String> domain,
+                                                                 Optional<String> scope,
                                                                  long processedContactCount,
                                                                  long failedContactCount,
                                                                  long failedAddressBookCount,
@@ -56,6 +62,9 @@ public record CommonContactRepublishTaskAdditionalInformationDTO(String type,
         return new CommonContactRepublishTaskAdditionalInformationDTO(
             type,
             details.instant(),
+            details.username(),
+            details.domain(),
+            details.scope(),
             details.processedContactCount(),
             details.failedContactCount(),
             details.failedAddressBookCount(),
@@ -67,6 +76,9 @@ public record CommonContactRepublishTaskAdditionalInformationDTO(String type,
     private CommonContactRepublishTask.Details toDomainObject() {
         return new CommonContactRepublishTask.Details(
             timestamp,
+            username,
+            domain,
+            scope,
             processedContactCount,
             failedContactCount,
             failedAddressBookCount,

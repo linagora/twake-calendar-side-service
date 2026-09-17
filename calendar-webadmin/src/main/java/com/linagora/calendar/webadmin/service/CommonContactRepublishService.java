@@ -47,6 +47,7 @@ import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.webadmin.task.CommonContactRepublishTask;
+import com.linagora.calendar.webadmin.task.CommonContactRepublishTask.Scope;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -144,8 +145,8 @@ public class CommonContactRepublishService {
         this.publisher = publisher;
     }
 
-    public Mono<Task.Result> republish(Context context, CommonContactRepublishTask.RunningOptions runningOptions) {
-        return Flux.concat(userContacts(context), domainContacts(context))
+    public Mono<Task.Result> republish(Context context, CommonContactRepublishTask.RunningOptions runningOptions, Scope scope) {
+        return contacts(context, scope)
             .transform(ReactorUtils.<ContactToRepublish, Task.Result>throttle()
                 .elements(runningOptions.contactsPerSecond())
                 .per(Duration.ofSeconds(1))
@@ -180,8 +181,30 @@ public class CommonContactRepublishService {
             });
     }
 
-    private Flux<ContactToRepublish> userContacts(Context context) {
+    private Flux<ContactToRepublish> contacts(Context context, Scope scope) {
+        return switch (scope) {
+            case Scope.All all -> switch (all.selection()) {
+                case USERS -> allUserContacts(context);
+                case DOMAIN_ADDRESS_BOOKS -> allDomainContacts(context);
+                case BOTH -> Flux.concat(allUserContacts(context), allDomainContacts(context));
+            };
+            case Scope.ForUser forUser -> userContacts(context, forUser.user());
+            case Scope.ForDomain forDomain -> switch (forDomain.selection()) {
+                case USERS -> usersOfDomainContacts(context, forDomain.domain());
+                case DOMAIN_ADDRESS_BOOKS -> domainContacts(context, forDomain.domain());
+                case BOTH -> Flux.concat(usersOfDomainContacts(context, forDomain.domain()),
+                    domainContacts(context, forDomain.domain()));
+            };
+        };
+    }
+
+    private Flux<ContactToRepublish> allUserContacts(Context context) {
         return userDAO.list()
+            .flatMap(user -> userContacts(context, user), DEFAULT_CONCURRENCY);
+    }
+
+    private Flux<ContactToRepublish> usersOfDomainContacts(Context context, OpenPaaSDomain domain) {
+        return userDAO.listByDomain(domain.domain())
             .flatMap(user -> userContacts(context, user), DEFAULT_CONCURRENCY);
     }
 
@@ -197,7 +220,7 @@ public class CommonContactRepublishService {
             });
     }
 
-    private Flux<ContactToRepublish> domainContacts(Context context) {
+    private Flux<ContactToRepublish> allDomainContacts(Context context) {
         return domainDAO.list()
             .flatMap(domain -> domainContacts(context, domain), DEFAULT_CONCURRENCY);
     }
