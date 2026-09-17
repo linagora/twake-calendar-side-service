@@ -21,6 +21,8 @@ package com.linagora.calendar.webadmin.task;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.apache.james.task.Task;
 import org.apache.james.task.TaskExecutionDetails;
@@ -43,16 +45,42 @@ public class CommonContactRepublishTask implements Task {
     }
 
     public sealed interface Scope {
-        record All() implements Scope {
+        enum Selection {
+            USERS(Optional.of("user")),
+            DOMAIN_ADDRESS_BOOKS(Optional.of("domain")),
+            BOTH(Optional.empty());
+
+            public static Selection from(String queryParameter) {
+                return Stream.of(values())
+                    .filter(selection -> selection.queryParameter.filter(queryParameter::equals).isPresent())
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("Unsupported contact selection: " + queryParameter));
+            }
+
+            public static String supportedQueryParameters() {
+                return Stream.of(values())
+                    .flatMap(selection -> selection.queryParameter.stream())
+                    .collect(Collectors.joining(", "));
+            }
+
+            private final Optional<String> queryParameter;
+
+            Selection(Optional<String> queryParameter) {
+                this.queryParameter = queryParameter;
+            }
+
+            public Optional<String> asQueryParameter() {
+                return queryParameter;
+            }
         }
 
-        record SingleUser(OpenPaaSUser user) implements Scope {
+        record All(Selection selection) implements Scope {
         }
 
-        record WholeDomain(OpenPaaSDomain domain) implements Scope {
+        record ForUser(OpenPaaSUser user) implements Scope {
         }
 
-        record DomainAddressBooks(OpenPaaSDomain domain) implements Scope {
+        record ForDomain(OpenPaaSDomain domain, Selection selection) implements Scope {
         }
     }
 
@@ -69,7 +97,6 @@ public class CommonContactRepublishTask implements Task {
     }
 
     public static final TaskType REPUBLISH_COMMON_CONTACTS = TaskType.of("republish-common-contacts");
-    public static final String DOMAIN_SCOPE = "domain";
 
     private final CommonContactRepublishService republishService;
     private final RunningOptions runningOptions;
@@ -110,22 +137,22 @@ public class CommonContactRepublishTask implements Task {
 
     private Optional<String> scopeParameter() {
         return switch (scope) {
-            case Scope.DomainAddressBooks ignored -> Optional.of(DOMAIN_SCOPE);
-            default -> Optional.empty();
+            case Scope.All all -> all.selection().asQueryParameter();
+            case Scope.ForDomain forDomain -> forDomain.selection().asQueryParameter();
+            case Scope.ForUser ignored -> Optional.empty();
         };
     }
 
     private Optional<String> scopedUsername() {
         return switch (scope) {
-            case Scope.SingleUser singleUser -> Optional.of(singleUser.user().username().asString());
+            case Scope.ForUser forUser -> Optional.of(forUser.user().username().asString());
             default -> Optional.empty();
         };
     }
 
     private Optional<String> scopedDomain() {
         return switch (scope) {
-            case Scope.WholeDomain wholeDomain -> Optional.of(wholeDomain.domain().domain().asString());
-            case Scope.DomainAddressBooks domainAddressBooks -> Optional.of(domainAddressBooks.domain().domain().asString());
+            case Scope.ForDomain forDomain -> Optional.of(forDomain.domain().domain().asString());
             default -> Optional.empty();
         };
     }

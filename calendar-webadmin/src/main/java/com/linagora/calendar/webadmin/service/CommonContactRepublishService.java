@@ -183,11 +183,18 @@ public class CommonContactRepublishService {
 
     private Flux<ContactToRepublish> contacts(Context context, Scope scope) {
         return switch (scope) {
-            case Scope.All ignored -> Flux.concat(allUserContacts(context), allDomainContacts(context));
-            case Scope.SingleUser singleUser -> userContacts(context, singleUser.user());
-            case Scope.WholeDomain wholeDomain -> Flux.concat(usersOfDomainContacts(context, wholeDomain.domain()),
-                domainContacts(context, wholeDomain.domain()));
-            case Scope.DomainAddressBooks domainAddressBooks -> domainContacts(context, domainAddressBooks.domain());
+            case Scope.All all -> switch (all.selection()) {
+                case USERS -> allUserContacts(context);
+                case DOMAIN_ADDRESS_BOOKS -> allDomainContacts(context);
+                case BOTH -> Flux.concat(allUserContacts(context), allDomainContacts(context));
+            };
+            case Scope.ForUser forUser -> userContacts(context, forUser.user());
+            case Scope.ForDomain forDomain -> switch (forDomain.selection()) {
+                case USERS -> usersOfDomainContacts(context, forDomain.domain());
+                case DOMAIN_ADDRESS_BOOKS -> domainContacts(context, forDomain.domain());
+                case BOTH -> Flux.concat(usersOfDomainContacts(context, forDomain.domain()),
+                    domainContacts(context, forDomain.domain()));
+            };
         };
     }
 

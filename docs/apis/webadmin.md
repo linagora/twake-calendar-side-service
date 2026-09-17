@@ -283,6 +283,8 @@ Only enabled when common contacts are enabled (`common.contacts.enabled=true`).
 
 ```
 POST /contacts?action=republish&contactsPerSecond=100
+POST /contacts?action=republish&scope=domain
+POST /contacts?action=republish&scope=user
 ```
 
 Iterates all registered users and all domains, lists the contacts of their CardDav address books through an
@@ -292,7 +294,10 @@ exchange.
 Address books shared with, or delegated to, a user are listed under that user as mirrors of the owner's address book
 (`openpaas:source`): they are skipped, so each contact is published once, with its owner as audience.
 
-The query parameter `contactsPerSecond` controls the publishing rate. Defaults to 100.
+Optional query parameter:
+- `contactsPerSecond` controls the publishing rate. Defaults to 100.
+- `scope` : `domain`, `user`. `domain` restricts the republication to the address books owned by the domains, `user` to
+the address books owned by the users
 
 ### Republish the contacts of a user
 
@@ -307,13 +312,15 @@ Republishes the contacts of the address books owned by that user.
 ```
 POST /domains/linagora.com/contacts?action=republish&contactsPerSecond=100
 POST /domains/linagora.com/contacts?action=republish&scope=domain
+POST /domains/linagora.com/contacts?action=republish&scope=user
 ```
 
 Republishes the contacts of the address books owned by the users of that domain, as well as the contacts of the
 address books owned by the domain itself.
 
 Optional query parameter:
-- `scope` : `domain`. Restricts the republication to the address books owned by the domain
+- `scope` : `domain`, `user`. `domain` restricts the republication to the address books owned by the domain, `user` to
+the address books owned by the users of that domain
 
 ### Status codes
 

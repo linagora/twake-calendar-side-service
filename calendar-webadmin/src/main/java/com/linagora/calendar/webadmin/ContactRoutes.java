@@ -18,7 +18,6 @@
 
 package com.linagora.calendar.webadmin;
 
-import static com.linagora.calendar.webadmin.task.CommonContactRepublishTask.DOMAIN_SCOPE;
 import static com.linagora.calendar.webadmin.task.CommonContactRepublishTask.RunningOptions.DEFAULT_CONTACTS_PER_SECOND;
 import static org.apache.james.webadmin.Constants.SEPARATOR;
 
@@ -44,6 +43,7 @@ import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.webadmin.service.CommonContactRepublishService;
 import com.linagora.calendar.webadmin.task.CommonContactRepublishTask;
 import com.linagora.calendar.webadmin.task.CommonContactRepublishTask.Scope;
+import com.linagora.calendar.webadmin.task.CommonContactRepublishTask.Scope.Selection;
 
 import spark.Request;
 import spark.Route;
@@ -74,21 +74,43 @@ public class ContactRoutes implements Routes {
         }
 
         private static Scope extractScope(Request request, OpenPaaSUserDAO userDAO, OpenPaaSDomainDAO domainDAO) {
+            Optional<Selection> selection = extractSelection(request);
             return extractPathParameter(request, USERNAME_PARAMETER)
-                .map(username -> userScope(request, userDAO, username))
+                .map(username -> userScope(selection, userDAO, username))
                 .or(() -> extractPathParameter(request, DOMAIN_PARAMETER)
-                    .map(domain -> domainScope(request, domainDAO, domain)))
-                .orElseGet(() -> {
-                    rejectScopeParameter(request);
-                    return new Scope.All();
+                    .map(domain -> domainScope(selection, domainDAO, domain)))
+                .orElseGet(() -> new Scope.All(selection.orElse(Selection.BOTH)));
+        }
+
+        private static Optional<Selection> extractSelection(Request request) {
+            return extractQueryParameter(request, SCOPE_PARAMETER)
+                .map(value -> {
+                    try {
+                        return Selection.from(value);
+                    } catch (IllegalArgumentException e) {
+                        throw ErrorResponder.builder()
+                            .statusCode(HttpStatus.BAD_REQUEST_400)
+                            .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                            .message("Invalid '%s' parameter: %s. Supported values: %s"
+                                .formatted(SCOPE_PARAMETER, value, Selection.supportedQueryParameters()))
+                            .cause(e)
+                            .haltError();
+                    }
                 });
         }
 
-        private static Scope userScope(Request request, OpenPaaSUserDAO userDAO, String username) {
-            rejectScopeParameter(request);
+        private static Scope userScope(Optional<Selection> selection, OpenPaaSUserDAO userDAO, String username) {
+            selection.ifPresent(ignored -> {
+                throw ErrorResponder.builder()
+                    .statusCode(HttpStatus.BAD_REQUEST_400)
+                    .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                    .message("'%s' parameter is not supported by the user endpoint".formatted(SCOPE_PARAMETER))
+                    .haltError();
+            });
+
             return userDAO.retrieve(Username.of(username))
                 .blockOptional()
-                .map(Scope.SingleUser::new)
+                .<Scope>map(Scope.ForUser::new)
                 .orElseThrow(() -> ErrorResponder.builder()
                     .statusCode(HttpStatus.NOT_FOUND_404)
                     .type(ErrorResponder.ErrorType.NOT_FOUND)
@@ -96,37 +118,15 @@ public class ContactRoutes implements Routes {
                     .haltError());
         }
 
-        private static Scope domainScope(Request request, OpenPaaSDomainDAO domainDAO, String domain) {
-            Optional<String> scope = extractQueryParameter(request, SCOPE_PARAMETER);
-            scope.filter(value -> !DOMAIN_SCOPE.equals(value))
-                .ifPresent(value -> {
-                    throw ErrorResponder.builder()
-                        .statusCode(HttpStatus.BAD_REQUEST_400)
-                        .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                        .message("Invalid '%s' parameter: %s. Supported value: %s".formatted(SCOPE_PARAMETER, value, DOMAIN_SCOPE))
-                        .haltError();
-                });
-
+        private static Scope domainScope(Optional<Selection> selection, OpenPaaSDomainDAO domainDAO, String domain) {
             return domainDAO.retrieve(Domain.of(domain))
                 .blockOptional()
-                .map(openPaaSDomain -> scope.<Scope>map(ignored -> new Scope.DomainAddressBooks(openPaaSDomain))
-                    .orElseGet(() -> new Scope.WholeDomain(openPaaSDomain)))
+                .<Scope>map(openPaaSDomain -> new Scope.ForDomain(openPaaSDomain, selection.orElse(Selection.BOTH)))
                 .orElseThrow(() -> ErrorResponder.builder()
                     .statusCode(HttpStatus.NOT_FOUND_404)
                     .type(ErrorResponder.ErrorType.NOT_FOUND)
                     .message("domain not found: " + domain)
                     .haltError());
-        }
-
-        private static void rejectScopeParameter(Request request) {
-            extractQueryParameter(request, SCOPE_PARAMETER)
-                .ifPresent(value -> {
-                    throw ErrorResponder.builder()
-                        .statusCode(HttpStatus.BAD_REQUEST_400)
-                        .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                        .message("'%s' parameter is only supported by the domain endpoint".formatted(SCOPE_PARAMETER))
-                        .haltError();
-                });
         }
     }
 
