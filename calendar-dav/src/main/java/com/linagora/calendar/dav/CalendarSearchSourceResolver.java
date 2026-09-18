@@ -18,23 +18,17 @@
 
 package com.linagora.calendar.dav;
 
-import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import jakarta.inject.Inject;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
-
-import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.dav.dto.CalendarListResponse;
+import com.linagora.calendar.dav.dto.CalendarMirrorSource;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -43,23 +37,6 @@ import it.unimi.dsi.fastutil.Pair;
 import reactor.core.publisher.Mono;
 
 public class CalendarSearchSourceResolver {
-    private static final String JSON_EXTENSION = ".json";
-
-    private static final Function<JsonNode, Optional<CalendarURL>> SUBSCRIBED_CALENDAR_SOURCE_URL = metadata ->
-        Optional.ofNullable(metadata.path("calendarserver:source")
-                .path("_links")
-                .path("self")
-                .path("href").asText(null))
-            .filter(StringUtils::isNotBlank)
-            .map(URI::create)
-            .map(CalendarSearchSourceResolver::toCalendarURL);
-
-    private static final Function<JsonNode, Optional<CalendarURL>> DELEGATED_CALENDAR_SOURCE_URL = metadata ->
-        Optional.ofNullable(metadata.path("calendarserver:delegatedsource").asText(null))
-            .filter(StringUtils::isNotBlank)
-            .map(URI::create)
-            .map(CalendarSearchSourceResolver::toCalendarURL);
-
     private final CalDavClient calDavClient;
 
     @Inject
@@ -78,8 +55,8 @@ public class CalendarSearchSourceResolver {
             return Mono.just(Map.of(requestedCalendars.getFirst(), requestedCalendars.getFirst()));
         }
         return calDavClient.findUserCalendarList(requester)
-            .map(this::extractCalendarListEntries)
-            .map(calendarListEntries -> resolveSearchSourceCalendarURLs(requestedCalendars, calendarListEntries));
+            .map(CalendarSearchSourceResolver::searchSourceByCalendarListURL)
+            .map(searchSources -> resolveSearchSourceCalendarURLs(requestedCalendars, searchSources));
     }
 
     private boolean isSingleRequesterDefaultCalendar(OpenPaaSId requesterId, List<CalendarURL> requestedCalendars) {
@@ -88,12 +65,7 @@ public class CalendarSearchSourceResolver {
     }
 
     private Map<CalendarURL, CalendarURL> resolveSearchSourceCalendarURLs(List<CalendarURL> requestedCalendars,
-                                                                          List<CalendarListEntry> calendarListEntries) {
-
-        Map<CalendarURL, CalendarURL> searchSourceByCalendarListURL = calendarListEntries.stream()
-            .collect(Collectors.toMap(CalendarListEntry::calendarListURL, CalendarListEntry::searchSourceCalendarURL,
-                (first, _) -> first, LinkedHashMap::new));
-
+                                                                          Map<CalendarURL, CalendarURL> searchSourceByCalendarListURL) {
         Set<CalendarURL> allowedSearchSourceCalendarURLs = Set.copyOf(searchSourceByCalendarListURL.values());
 
         return requestedCalendars.stream()
@@ -102,28 +74,14 @@ public class CalendarSearchSourceResolver {
             .collect(Collectors.toMap(Pair::left, Pair::right, (firstSearchSource, _) -> firstSearchSource));
     }
 
-    private List<CalendarListEntry> extractCalendarListEntries(CalendarListResponse calendarListResponse) {
+    private static Map<CalendarURL, CalendarURL> searchSourceByCalendarListURL(CalendarListResponse calendarListResponse) {
         return calendarListResponse.calendars()
             .entrySet()
             .stream()
-            .map(calendarListEntry -> new CalendarListEntry(
-                calendarListEntry.getKey(),
-                SUBSCRIBED_CALENDAR_SOURCE_URL.apply(calendarListEntry.getValue()),
-                DELEGATED_CALENDAR_SOURCE_URL.apply(calendarListEntry.getValue())))
-            .toList();
-    }
-
-    private static CalendarURL toCalendarURL(URI sourceHref) {
-        return CalendarURL.parse(Strings.CS.removeEnd(sourceHref.getPath(), JSON_EXTENSION));
-    }
-
-    private record CalendarListEntry(CalendarURL calendarListURL,
-                                     Optional<CalendarURL> subscribedSourceCalendarURL,
-                                     Optional<CalendarURL> delegatedSourceCalendarURL) {
-        private CalendarURL searchSourceCalendarURL() {
-            return subscribedSourceCalendarURL
-                .or(() -> delegatedSourceCalendarURL)
-                .orElse(calendarListURL);
-        }
+            .collect(Collectors.toMap(Map.Entry::getKey,
+                entry -> CalendarMirrorSource.parse(entry.getValue())
+                    .sourceCalendarURL()
+                    .orElseGet(entry::getKey),
+                (first, _) -> first, LinkedHashMap::new));
     }
 }
