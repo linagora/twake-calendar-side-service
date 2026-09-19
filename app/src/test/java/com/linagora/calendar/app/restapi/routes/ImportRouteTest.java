@@ -30,11 +30,14 @@ import static org.hamcrest.Matchers.notNullValue;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import javax.mail.internet.MimeUtility;
 
@@ -513,6 +516,85 @@ public class ImportRouteTest {
                     .anySatisfy(component -> assertThat(((CalendarComponent) component).getProperty(Property.UID).get().getValue()).isEqualTo(uid1))
                     .anySatisfy(component -> assertThat(((CalendarComponent) component).getProperty(Property.UID).get().getValue()).isEqualTo(uid2));
             });
+    }
+
+    @Test
+    void importingTheSameFileTwiceShouldSucceed(TwakeCalendarGuiceServer server) {
+        String uid = UUID.randomUUID().toString();
+        byte[] ics = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250102T120000Z
+            DTEND:20250102T130000Z
+            SUMMARY:Test Event
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uid).getBytes(StandardCharsets.UTF_8);
+
+        CalendarURL calendarURL = new CalendarURL(openPaaSUser.id(), openPaaSUser.id());
+        String target = "/calendars/%s/%s.json".formatted(openPaaSUser.id().value(), openPaaSUser.id().value());
+
+        // To trigger calendar directory activation
+        server.getProbe(CalendarDataProbe.class).exportCalendarFromCalDav(calendarURL, MailboxSessionUtil.create(openPaaSUser.username()));
+
+        importIcs(server, ics, target);
+        awaitMails(1);
+
+        importIcs(server, ics, target);
+        JsonPath smtpMailsResponse = awaitMails(2);
+
+        String secondReport = getHtml(smtpMailsResponse.getString("[1].message"));
+        assertSoftly(softly -> {
+            softly.assertThat(secondReport).contains("1 Event(s) imported successfully");
+            softly.assertThat(secondReport).contains("0 Event(s) not imported");
+        });
+
+        Calendar actual = CalendarUtil.parseIcs(server.getProbe(CalendarDataProbe.class)
+            .exportCalendarFromCalDav(calendarURL, MailboxSessionUtil.create(openPaaSUser.username())));
+        assertThat(actual.getComponents(Component.VEVENT))
+            .map(component -> ((CalendarComponent) component).getProperty(Property.UID).get().getValue())
+            .containsExactly(uid);
+    }
+
+    private void importIcs(TwakeCalendarGuiceServer server, byte[] ics, String target) {
+        OpenPaaSId fileId = server.getProbe(CalendarDataProbe.class).saveUploadedFile(openPaaSUser.username(),
+            new Upload("abc.ics", UploadedMimeType.TEXT_CALENDAR, Instant.now(), (long) ics.length, ics));
+
+        given()
+            .body("""
+                {
+                    "fileId": "%s",
+                    "target": "%s"
+                }
+                """.formatted(fileId.value(), target))
+        .when()
+            .post("/api/import")
+        .then()
+            .statusCode(HttpStatus.SC_ACCEPTED);
+    }
+
+    private JsonPath awaitMails(int count) {
+        Supplier<JsonPath> smtpMailsResponseSupplier = () -> given(mockSMTPRequestSpecification())
+            .get("/smtpMails")
+            .jsonPath();
+
+        CALMLY_AWAIT
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(count));
+
+        return smtpMailsResponseSupplier.get();
+    }
+
+    private String getHtml(String message) {
+        Pattern htmlPattern = Pattern.compile(
+            "Content-Type: text/html; charset=UTF-8\\r?\\n(?:[^\\r\\n]+\\r?\\n)*\\r?\\n([A-Za-z0-9+/=\\r\\n]+)",
+            Pattern.DOTALL);
+        Matcher matcher = htmlPattern.matcher(message);
+        assertThat(matcher.find()).isTrue();
+        String base64Html = matcher.group(1).replaceAll("\\s+", "");
+        return new String(Base64.getDecoder().decode(base64Html), StandardCharsets.UTF_8);
     }
 
     @Test

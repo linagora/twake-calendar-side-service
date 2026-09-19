@@ -22,6 +22,7 @@ import static com.linagora.calendar.dav.CalDavClient.CalDavExportException;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.net.URI;
@@ -240,6 +241,37 @@ public class CalDavClientTest {
 
         assertThat(withoutAlarmUid.apply((VEvent) exportedCalendar.getComponent(Component.VEVENT).get()))
             .isEqualTo(withoutAlarmUid.apply(expected));
+    }
+
+    @Test
+    void importCalendarShouldUpdateExistingEvent() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL calendarURL = CalendarURL.from(user.id());
+
+        String uid = UUID.randomUUID().toString();
+        String icsTemplate = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250102T120000Z
+            DTEND:20250102T130000Z
+            SUMMARY:%s
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        // To trigger calendar directory activation
+        testee.export(calendarURL, MailboxSessionUtil.create(user.username())).block();
+
+        testee.importCalendar(calendarURL, uid, user.username(), icsTemplate.formatted(uid, "Initial summary").getBytes(StandardCharsets.UTF_8)).block();
+
+        assertThatCode(() -> testee.importCalendar(calendarURL, uid, user.username(), icsTemplate.formatted(uid, "Updated summary").getBytes(StandardCharsets.UTF_8)).block())
+            .doesNotThrowAnyException();
+
+        DavCalendarObject calendarObject = testee.fetchCalendarEvent(user.username(), URI.create(calendarURL.asUri() + "/" + uid + ".ics")).block();
+        VEvent vEvent = (VEvent) calendarObject.calendarData().getComponent(Component.VEVENT).get();
+        assertThat(vEvent.getSummary().getValue()).isEqualTo("Updated summary");
     }
 
     @Test
