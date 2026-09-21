@@ -34,12 +34,22 @@ import java.util.stream.IntStream;
 
 import javax.net.ssl.SSLException;
 
+import org.apache.james.json.DTOConverter;
+import org.apache.james.server.task.json.dto.AdditionalInformationDTO;
+import org.apache.james.server.task.json.dto.AdditionalInformationDTOModule;
+import org.apache.james.task.Hostname;
+import org.apache.james.task.MemoryTaskManager;
+import org.apache.james.task.TaskExecutionDetails;
+import org.apache.james.task.TaskManager;
 import org.apache.james.webadmin.WebAdminServer;
+import org.apache.james.webadmin.routes.TasksRoutes;
+import org.apache.james.webadmin.utils.JsonTransformer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
@@ -50,6 +60,8 @@ import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
+import com.linagora.calendar.webadmin.service.CalendarImportService;
+import com.linagora.calendar.webadmin.task.CalendarImportTaskAdditionalInformationDTO;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
 import io.restassured.RestAssured;
@@ -79,7 +91,13 @@ public class UserCalendarRoutesTest {
         user = sabreDavExtension.newTestUser();
         otherUser = sabreDavExtension.newTestUser();
 
-        webAdminServer = WebAdminUtils.createWebAdminServer(new UserCalendarRoutes(userDAO, calDavClient))
+        TaskManager taskManager = new MemoryTaskManager(new Hostname("foo"));
+        webAdminServer = WebAdminUtils.createWebAdminServer(
+                new UserCalendarRoutes(userDAO, calDavClient, new CalendarImportService(calDavClient), taskManager),
+                new TasksRoutes(taskManager, new JsonTransformer(),
+                    new DTOConverter<>(ImmutableSet.<AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO>>builder()
+                        .add(CalendarImportTaskAdditionalInformationDTO.module())
+                        .build())))
             .start();
 
         RestAssured.requestSpecification = WebAdminUtils.buildRequestSpecification(webAdminServer)
@@ -605,6 +623,239 @@ public class UserCalendarRoutesTest {
     }
 
     @Test
+    void importShouldAddEventsToTheCalendar() {
+        String calendarId = createCalendar(user, "Calendar to fill");
+
+        awaitTask(importCalendar(user, calendarId, icsOf(
+            event("imported-1", "First imported event"),
+            event("imported-2", "Second imported event"))));
+
+        assertThat(exportCalendar(user, calendarId))
+            .contains("UID:imported-1")
+            .contains("SUMMARY:First imported event")
+            .contains("UID:imported-2")
+            .contains("SUMMARY:Second imported event");
+    }
+
+    @Test
+    void importShouldReturnCompletedTaskDetails() {
+        String calendarId = createCalendar(user, "Calendar to fill");
+
+        String taskId = importCalendar(user, calendarId, icsOf(
+            event("imported-1", "First imported event"),
+            event("imported-2", "Second imported event")));
+
+        given()
+        .when()
+            .get(TasksRoutes.BASE + "/" + taskId + "/await")
+        .then()
+            .statusCode(200)
+            .body("status", is("completed"))
+            .body("type", is("calendar-import"))
+            .body("additionalInformation.username", is(user.username().asString()))
+            .body("additionalInformation.calendarId", is(calendarId))
+            .body("additionalInformation.totalEventCount", is(2))
+            .body("additionalInformation.importedEventCount", is(2))
+            .body("additionalInformation.failedEventCount", is(0));
+    }
+
+    @Test
+    void importShouldGroupRecurrenceOverridesWithinASingleEvent() {
+        String calendarId = createCalendar(user, "Recurring calendar");
+
+        awaitTask(importCalendar(user, calendarId, """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Linagora//Twake Calendar//EN
+            BEGIN:VEVENT
+            UID:recurring-event
+            DTSTAMP:20260601T080000Z
+            DTSTART:20260601T100000Z
+            DTEND:20260601T110000Z
+            RRULE:FREQ=DAILY;COUNT=3
+            SUMMARY:Daily stand up
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:recurring-event
+            RECURRENCE-ID:20260602T100000Z
+            DTSTAMP:20260601T080000Z
+            DTSTART:20260602T140000Z
+            DTEND:20260602T150000Z
+            SUMMARY:Moved stand up
+            END:VEVENT
+            END:VCALENDAR
+            """));
+
+        given()
+        .when()
+            .get("/users/{username}/calendars/{calendarId}/eventCount", user.username().asString(), calendarId)
+        .then()
+            .statusCode(200)
+            .body("count", is(1));
+
+        assertThat(exportCalendar(user, calendarId))
+            .contains("SUMMARY:Daily stand up")
+            .contains("SUMMARY:Moved stand up");
+    }
+
+    @Test
+    void importShouldKeepTimeZonesOfTheImportedEvents() {
+        String calendarId = createCalendar(user, "Time zoned calendar");
+
+        awaitTask(importCalendar(user, calendarId, """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Linagora//Twake Calendar//EN
+            BEGIN:VTIMEZONE
+            TZID:Europe/Paris
+            BEGIN:STANDARD
+            DTSTART:19710101T030000
+            TZOFFSETFROM:+0200
+            TZOFFSETTO:+0100
+            TZNAME:CET
+            RRULE:FREQ=YEARLY;BYDAY=-1SU;BYMONTH=10
+            END:STANDARD
+            BEGIN:DAYLIGHT
+            DTSTART:19710101T020000
+            TZOFFSETFROM:+0100
+            TZOFFSETTO:+0200
+            TZNAME:CEST
+            RRULE:FREQ=YEARLY;BYDAY=-1SU;BYMONTH=3
+            END:DAYLIGHT
+            END:VTIMEZONE
+            BEGIN:VEVENT
+            UID:time-zoned-event
+            DTSTAMP:20260601T080000Z
+            DTSTART;TZID=Europe/Paris:20260601T100000
+            DTEND;TZID=Europe/Paris:20260601T110000
+            SUMMARY:Lunch in Paris
+            END:VEVENT
+            END:VCALENDAR
+            """));
+
+        assertThat(exportCalendar(user, calendarId))
+            .contains("TZID:Europe/Paris")
+            .contains("DTSTART;TZID=Europe/Paris:20260601T100000");
+    }
+
+    @Test
+    void importShouldUpdateAlreadyExistingEvents() {
+        String calendarId = createCalendar(user, "Calendar to update");
+        awaitTask(importCalendar(user, calendarId, icsOf(event("imported-1", "Initial summary"))));
+
+        awaitTask(importCalendar(user, calendarId, icsOf(event("imported-1", "Updated summary"))));
+
+        given()
+        .when()
+            .get("/users/{username}/calendars/{calendarId}/eventCount", user.username().asString(), calendarId)
+        .then()
+            .statusCode(200)
+            .body("count", is(1));
+
+        assertThat(exportCalendar(user, calendarId))
+            .contains("SUMMARY:Updated summary")
+            .doesNotContain("SUMMARY:Initial summary");
+    }
+
+    @Test
+    void importShouldSupportTheOutputOfExport() {
+        String sourceCalendarId = createCalendar(user, "Source calendar");
+        importEvent(user, sourceCalendarId, "event-to-move", "Moved event");
+        String targetCalendarId = createCalendar(user, "Target calendar");
+
+        awaitTask(importCalendar(user, targetCalendarId, exportCalendar(user, sourceCalendarId)));
+
+        assertThat(exportCalendar(user, targetCalendarId))
+            .contains("UID:event-to-move")
+            .contains("SUMMARY:Moved event");
+    }
+
+    @Test
+    void importShouldReturn400WhenBodyIsNotAValidIcs() {
+        String calendarId = createCalendar(user, "Calendar to fill");
+
+        given()
+            .queryParam("action", "import")
+            .body("not an ICS")
+        .when()
+            .post("/users/{username}/calendars/{calendarId}", user.username().asString(), calendarId)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"));
+    }
+
+    @Test
+    void importShouldReturn400WhenEventHasNoUid() {
+        String calendarId = createCalendar(user, "Calendar to fill");
+
+        given()
+            .queryParam("action", "import")
+            .body("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Linagora//Twake Calendar//EN
+                BEGIN:VEVENT
+                DTSTAMP:20260601T080000Z
+                DTSTART:20260601T100000Z
+                DTEND:20260601T110000Z
+                SUMMARY:No UID
+                END:VEVENT
+                END:VCALENDAR
+                """)
+        .when()
+            .post("/users/{username}/calendars/{calendarId}", user.username().asString(), calendarId)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"));
+    }
+
+    @Test
+    void importShouldReturn400WhenNoEventToImport() {
+        String calendarId = createCalendar(user, "Calendar to fill");
+
+        given()
+            .queryParam("action", "import")
+            .body("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Linagora//Twake Calendar//EN
+                END:VCALENDAR
+                """)
+        .when()
+            .post("/users/{username}/calendars/{calendarId}", user.username().asString(), calendarId)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"))
+            .body("message", containsString("no event to import"));
+    }
+
+    @Test
+    void importShouldReturn404WhenCalendarDoesNotExist() {
+        given()
+            .queryParam("action", "import")
+            .body(icsOf(event("imported-1", "First imported event")))
+        .when()
+            .post("/users/{username}/calendars/{calendarId}", user.username().asString(), UUID.randomUUID().toString())
+        .then()
+            .statusCode(404)
+            .body("type", is("notFound"))
+            .body("message", is("Calendar does not exist"));
+    }
+
+    @Test
+    void importShouldReturn404WhenUserDoesNotExist() {
+        given()
+            .queryParam("action", "import")
+            .body(icsOf(event("imported-1", "First imported event")))
+        .when()
+            .post("/users/ghost@linagora.com/calendars/{calendarId}", UUID.randomUUID().toString())
+        .then()
+            .statusCode(404)
+            .body("type", is("notFound"))
+            .body("message", is("User does not exist"));
+    }
+
+    @Test
     void eventCountShouldReturnZeroWhenCalendarHasNoEvent() {
         String calendarId = createCalendar(user, "Empty calendar");
 
@@ -676,6 +927,49 @@ public class UserCalendarRoutesTest {
             .statusCode(200)
             .extract()
             .asString();
+    }
+
+    private String importCalendar(OpenPaaSUser targetUser, String calendarId, String ics) {
+        return given()
+            .queryParam("action", "import")
+            .body(ics)
+        .when()
+            .post("/users/{username}/calendars/{calendarId}", targetUser.username().asString(), calendarId)
+        .then()
+            .statusCode(201)
+            .extract()
+            .jsonPath()
+            .getString("taskId");
+    }
+
+    private void awaitTask(String taskId) {
+        given()
+        .when()
+            .get(TasksRoutes.BASE + "/" + taskId + "/await")
+        .then()
+            .statusCode(200)
+            .body("status", is("completed"));
+    }
+
+    private String icsOf(String... vEvents) {
+        return """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Linagora//Twake Calendar//EN
+            %sEND:VCALENDAR
+            """.formatted(String.join("", vEvents));
+    }
+
+    private String event(String eventUid, String summary) {
+        return """
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20260601T080000Z
+            DTSTART:20260601T100000Z
+            DTEND:20260601T110000Z
+            SUMMARY:%s
+            END:VEVENT
+            """.formatted(eventUid, summary);
     }
 
     private void importEvent(OpenPaaSUser owner, String calendarId, String eventUid, String summary) {

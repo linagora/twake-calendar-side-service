@@ -23,7 +23,9 @@ import org.apache.james.webadmin.Routes;
 
 import com.google.inject.AbstractModule;
 import com.google.inject.multibindings.Multibinder;
+import com.linagora.calendar.webadmin.task.AddressBookImportTask;
 import com.linagora.calendar.webadmin.task.CalendarArchivalTask;
+import com.linagora.calendar.webadmin.task.CalendarImportTask;
 import com.linagora.calendar.webadmin.task.ClearDavDomainMembersTask;
 import com.linagora.calendar.webadmin.task.LdapToDavDomainMembersSyncTask;
 
@@ -59,6 +61,22 @@ public class DomainTasksModule extends AbstractModule {
                 .map(info -> (ClearDavDomainMembersTask.Details) info)
                 .flatMap(ClearDavDomainMembersTask.Details::domain)
                 .map(domainString -> domainString.equals(domain.asString()))
+                .orElse(false));
+
+        predicates.addBinding().toInstance(
+            (domain, details) -> details.getAdditionalInformation()
+                .filter(info -> info instanceof CalendarImportTask.Details)
+                .map(info -> (CalendarImportTask.Details) info)
+                .flatMap(info -> Username.of(info.username()).getDomainPart())
+                .map(domain::equals)
+                .orElse(false));
+
+        predicates.addBinding().toInstance(
+            (domain, details) -> details.getAdditionalInformation()
+                .filter(info -> info instanceof AddressBookImportTask.Details)
+                .map(info -> (AddressBookImportTask.Details) info)
+                .flatMap(info -> Username.of(info.username()).getDomainPart())
+                .map(domain::equals)
                 .orElse(false));
     }
 }

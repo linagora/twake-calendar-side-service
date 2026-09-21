@@ -1226,7 +1226,62 @@ Exporting a subscription to a public calendar returns the content of the source 
 
 **Status codes**:
 - `200`: the ICS content of the calendar
-- `400`: the `action` query parameter is missing or is not `export`
+- `400`: the `action` query parameter is missing or is neither `export` nor `import`
+- `404`: the user or the calendar does not exist
+
+### Importing events into a calendar
+
+```
+POST /users/{usernameToBeUsed}/calendars/{calendarId}?action=import
+```
+
+The request body is an ICS document, typically the one returned by the export route:
+
+```
+POST /users/btellier@linagora.com/calendars/0c5413b9-2ca3-4669-ae44-0d8083344ca8?action=import
+
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Linagora//Twake Calendar//EN
+BEGIN:VEVENT
+UID:0f5f3f2e-4a1e-4c4e-9e9a-9d7f1b3c2a11
+DTSTAMP:20260601T080000Z
+DTSTART:20260601T100000Z
+DTEND:20260601T110000Z
+SUMMARY:Sprint review
+END:VEVENT
+END:VCALENDAR
+```
+
+The VEVENTs are grouped by UID - a master event and its recurrence overrides thus yield a single event -
+and each resulting event is created in the calendar, alongside the time zones it relies on. Events already
+present in the calendar are overwritten.
+
+This triggers a task, and returns its identifier:
+
+```json
+{"taskId": "6d3bb34e-9dfc-4ecc-a5d0-05a6f2a0e6d6"}
+```
+
+The task details are available on `GET /tasks/{taskId}`:
+
+```json
+{
+  "type": "calendar-import",
+  "additionalInformation": {
+    "username": "btellier@linagora.com",
+    "calendarId": "0c5413b9-2ca3-4669-ae44-0d8083344ca8",
+    "totalEventCount": 12,
+    "importedEventCount": 12,
+    "failedEventCount": 0,
+    "timestamp": "2026-06-01T08:00:00Z"
+  }
+}
+```
+
+**Status codes**:
+- `201`: the import task was created
+- `400`: the body is not a valid ICS document, or holds no event to import
 - `404`: the user or the calendar does not exist
 
 ### Updating details of a calendar
@@ -1430,7 +1485,56 @@ The response body is empty when the address book holds no contact.
 
 **Status codes**:
 - `200`: the content of the address book is returned
-- `400`: the `action` query parameter is missing or unsupported. Only `export` is supported.
+- `400`: the `action` query parameter is missing or unsupported. Only `export` and `import` are supported.
+- `404`: the user or the address book does not exist
+
+### Importing contacts into an address book
+
+```
+POST /users/{username}/addressbooks/{addressBookId}?action=import
+```
+
+The request body holds the vCards to import, typically the ones returned by the export route:
+
+```
+POST /users/btellier@linagora.com/addressbooks/0e26ee47-cc4b-4aaa-8447-12588fdb11f1?action=import
+
+BEGIN:VCARD
+VERSION:4.0
+UID:3f1a1c8e-1c1a-4a0e-9a5f-0b5f4a2b1c0d
+FN:John Doe
+EMAIL:john.doe@linagora.com
+END:VCARD
+```
+
+Contacts are stored under their UID - a random one is generated for those carrying none - hence re-importing
+an exported address book updates its contacts rather than duplicating them.
+
+This triggers a task, and returns its identifier:
+
+```json
+{"taskId": "6d3bb34e-9dfc-4ecc-a5d0-05a6f2a0e6d6"}
+```
+
+The task details are available on `GET /tasks/{taskId}`:
+
+```json
+{
+  "type": "addressbook-import",
+  "additionalInformation": {
+    "username": "btellier@linagora.com",
+    "addressBookId": "0e26ee47-cc4b-4aaa-8447-12588fdb11f1",
+    "totalContactCount": 12,
+    "importedContactCount": 12,
+    "failedContactCount": 0,
+    "timestamp": "2026-06-01T08:00:00Z"
+  }
+}
+```
+
+**Status codes**:
+- `201`: the import task was created
+- `400`: the body holds no contact to import
 - `404`: the user or the address book does not exist
 
 ### Changing the public visibility of an address book
@@ -1695,6 +1799,8 @@ The following task types are domain-scoped:
 | Task type | Domain resolution |
 |-----------|-------------------|
 | `calendar-archival` (single-user) | domain extracted from `targetUser` |
+| `calendar-import` | domain extracted from `username` |
+| `addressbook-import` | domain extracted from `username` |
 | `DeleteUserDataTask` | domain extracted from `username` |
 | `sync-domain-members-contacts-ldap-to-dav` (single-domain) | `domain` field in additional information |
 | `clear-domain-members-contacts-dav` (single-domain) | `domain` field in additional information |

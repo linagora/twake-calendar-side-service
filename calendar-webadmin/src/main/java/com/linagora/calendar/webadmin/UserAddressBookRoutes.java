@@ -31,9 +31,13 @@ import jakarta.inject.Inject;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.james.core.Username;
+import org.apache.james.task.TaskId;
+import org.apache.james.task.TaskManager;
 import org.apache.james.webadmin.Constants;
 import org.apache.james.webadmin.Routes;
+import org.apache.james.webadmin.routes.TasksRoutes;
 import org.apache.james.webadmin.utils.ErrorResponder;
+import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpStatus;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -46,6 +50,9 @@ import com.linagora.calendar.dav.DavClientException;
 import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.webadmin.service.AddressBookImportService;
+import com.linagora.calendar.webadmin.service.AddressBookImportService.ContactToImport;
+import com.linagora.calendar.webadmin.task.AddressBookImportTask;
 
 import spark.HaltException;
 import spark.Request;
@@ -70,10 +77,12 @@ public class UserAddressBookRoutes implements Routes {
 
     private static final String ACTION_PARAMETER = "action";
     private static final String EXPORT_ACTION = "export";
+    private static final String IMPORT_ACTION = "import";
     private static final String VCARD_CONTENT_TYPE = "text/vcard; charset=utf-8";
     private static final byte[] NO_CONTACT = new byte[0];
 
     private static final String FIELD_ID = "id";
+    private static final String FIELD_TASK_ID = "taskId";
     private static final String FIELD_COUNT = "count";
     private static final String FIELD_NAME = "dav:name";
     private static final String FIELD_DESCRIPTION = "carddav:description";
@@ -91,11 +100,16 @@ public class UserAddressBookRoutes implements Routes {
 
     private final OpenPaaSUserDAO userDAO;
     private final CardDavClient cardDavClient;
+    private final AddressBookImportService addressBookImportService;
+    private final TaskManager taskManager;
 
     @Inject
-    public UserAddressBookRoutes(OpenPaaSUserDAO userDAO, CardDavClient cardDavClient) {
+    public UserAddressBookRoutes(OpenPaaSUserDAO userDAO, CardDavClient cardDavClient,
+                                 AddressBookImportService addressBookImportService, TaskManager taskManager) {
         this.userDAO = userDAO;
         this.cardDavClient = cardDavClient;
+        this.addressBookImportService = addressBookImportService;
+        this.taskManager = taskManager;
     }
 
     @Override
@@ -109,7 +123,7 @@ public class UserAddressBookRoutes implements Routes {
         service.get(CONTACT_COUNT_PATH, this::countContacts);
         service.post(ADDRESSBOOKS_PATH, this::createAddressBook);
         service.delete(ADDRESSBOOK_PATH, this::deleteAddressBook);
-        service.post(ADDRESSBOOK_PATH, this::exportAddressBook);
+        service.post(ADDRESSBOOK_PATH, this::exportOrImportAddressBook);
         service.post(PUBLIC_RIGHT_PATH, this::updatePublicRight);
         service.post(INVITEE_PATH, this::updateInvitees);
     }
@@ -185,8 +199,22 @@ public class UserAddressBookRoutes implements Routes {
         return Constants.EMPTY_BODY;
     }
 
+    private String exportOrImportAddressBook(Request request, Response response) {
+        String action = StringUtils.trimToEmpty(request.queryParams(ACTION_PARAMETER));
+
+        return switch (action) {
+            case EXPORT_ACTION -> exportAddressBook(request, response);
+            case IMPORT_ACTION -> importAddressBook(request, response);
+            default -> throw ErrorResponder.builder()
+                .statusCode(HttpStatus.BAD_REQUEST_400)
+                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                .message("Invalid '%s' query parameter: '%s'. Supported values are: '%s', '%s'"
+                    .formatted(ACTION_PARAMETER, action, EXPORT_ACTION, IMPORT_ACTION))
+                .haltError();
+        };
+    }
+
     private String exportAddressBook(Request request, Response response) {
-        requireExportAction(request);
         OpenPaaSUser user = retrieveUser(request);
         AddressBookURL addressBookURL = retrieveExistingAddressBook(request, user);
 
@@ -199,15 +227,36 @@ public class UserAddressBookRoutes implements Routes {
         return new String(vcard, StandardCharsets.UTF_8);
     }
 
-    private void requireExportAction(Request request) {
-        String action = request.queryParams(ACTION_PARAMETER);
-        if (!EXPORT_ACTION.equals(action)) {
+    private String importAddressBook(Request request, Response response) {
+        OpenPaaSUser user = retrieveUser(request);
+        AddressBookURL addressBookURL = retrieveExistingAddressBook(request, user);
+        List<ContactToImport> contacts = parseContacts(request);
+
+        TaskId taskId = taskManager.submit(new AddressBookImportTask(addressBookImportService, user.username(), addressBookURL, contacts));
+
+        response.status(HttpStatus.CREATED_201);
+        response.header(HttpHeader.LOCATION.asString(), TasksRoutes.BASE + SEPARATOR + taskId.asString());
+        response.type(Constants.JSON_CONTENT_TYPE);
+        return OBJECT_MAPPER.createObjectNode()
+            .put(FIELD_TASK_ID, taskId.asString())
+            .toString();
+    }
+
+    private List<ContactToImport> parseContacts(Request request) {
+        List<ContactToImport> contacts;
+        try {
+            contacts = ContactToImport.parse(request.bodyAsBytes());
+        } catch (Exception e) {
+            throw invalidBody(e);
+        }
+        if (contacts.isEmpty()) {
             throw ErrorResponder.builder()
                 .statusCode(HttpStatus.BAD_REQUEST_400)
                 .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                .message("Invalid '%s' query parameter: '%s'. Supported values are: '%s'".formatted(ACTION_PARAMETER, action, EXPORT_ACTION))
+                .message("Invalid request body: no contact to import")
                 .haltError();
         }
+        return contacts;
     }
 
     private String updatePublicRight(Request request, Response response) {

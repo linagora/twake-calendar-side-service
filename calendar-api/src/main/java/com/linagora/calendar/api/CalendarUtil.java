@@ -31,6 +31,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.DateTimeException;
 import java.time.ZoneId;
+import java.util.List;
 
 import net.fortuna.ical4j.data.CalendarBuilder;
 import net.fortuna.ical4j.data.CalendarParserFactory;
@@ -110,12 +111,21 @@ public class CalendarUtil {
     }
 
     public static Calendar withSingleVEvent(Calendar template, VEvent vevent) {
+        return withVEvents(template, List.of(vevent));
+    }
+
+    /**
+     * Returns a copy of the given calendar whose VEVENTs are replaced by the supplied ones.
+     *
+     * <p>Calendar level properties and time zones of the template are kept, as VEVENTs reference them.
+     */
+    public static Calendar withVEvents(Calendar template, List<VEvent> vEvents) {
         Calendar copiedCalendar = template.copy();
         copiedCalendar.getComponents(Component.VEVENT).stream()
             .map(VEvent.class::cast)
             .toList()
             .forEach(copiedCalendar::remove);
-        copiedCalendar.add(vevent.copy());
+        vEvents.forEach(vEvent -> copiedCalendar.add(vEvent.copy()));
         return copiedCalendar;
     }
 }
