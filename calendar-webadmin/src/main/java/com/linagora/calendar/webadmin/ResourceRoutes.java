@@ -44,6 +44,7 @@ import com.linagora.calendar.dav.DavRight;
 import com.linagora.calendar.dav.ResourceAdministratorNotFoundException;
 import com.linagora.calendar.dav.ResourceService;
 import com.linagora.calendar.dav.ResourceService.ResourceAdministrator;
+import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -54,6 +55,8 @@ import com.linagora.calendar.storage.ResourceNotFoundException;
 import com.linagora.calendar.storage.ResourceUpdateRequest;
 import com.linagora.calendar.storage.model.Resource;
 import com.linagora.calendar.storage.model.ResourceId;
+import com.linagora.calendar.webadmin.DomainCalendarContentHandler.DomainCalendar;
+import com.linagora.calendar.webadmin.task.DomainCalendarImportTask.CalendarType;
 
 import reactor.core.publisher.Mono;
 import spark.HaltException;
@@ -68,6 +71,7 @@ public class ResourceRoutes implements Routes {
     private static final String DOMAIN_PARAM = ":domain";
     public static final String RESOURCES_PATH = DOMAINS + "/" + DOMAIN_PARAM + "/resources";
     private static final String RESOURCE_PATH = RESOURCES_PATH + "/:id";
+    private static final String EVENT_COUNT_PATH = RESOURCE_PATH + "/eventCount";
 
     public record AdministratorDTO(@JsonProperty(value = "email", required = true) String email,
                                    @JsonProperty("davRight") String davRight) {
@@ -128,16 +132,19 @@ public class ResourceRoutes implements Routes {
     private final JsonExtractor<ResourceCreationDTO> creationDTOJsonExtractor;
     private final JsonExtractor<ResourceUpdateDTO> updateDTOJsonExtractor;
     private final ResourceService resourceService;
+    private final DomainCalendarContentHandler contentHandler;
 
     @Inject
     public ResourceRoutes(OpenPaaSDomainDAO domainDAO,
                           OpenPaaSUserDAO userDAO,
                           JsonTransformer jsonTransformer,
-                          ResourceService resourceService) {
+                          ResourceService resourceService,
+                          DomainCalendarContentHandler contentHandler) {
         this.domainDAO = domainDAO;
         this.userDAO = userDAO;
         this.jsonTransformer = jsonTransformer;
         this.resourceService = resourceService;
+        this.contentHandler = contentHandler;
         creationDTOJsonExtractor = new JsonExtractor<>(ResourceCreationDTO.class);
         updateDTOJsonExtractor = new JsonExtractor<>(ResourceUpdateDTO.class);
     }
@@ -149,6 +156,23 @@ public class ResourceRoutes implements Routes {
         service.delete(RESOURCE_PATH, this::deleteResource);
         service.patch(RESOURCE_PATH, this::updateResource);
         service.post(RESOURCES_PATH, this::createResource, jsonTransformer);
+        service.get(EVENT_COUNT_PATH, (req, res) -> contentHandler.countEvents(res, resourceCalendar(req, !ONLY_ACTIVE)));
+        service.post(RESOURCE_PATH, (req, res) -> contentHandler.exportOrImport(req, res, onlyActive -> resourceCalendar(req, onlyActive)));
+    }
+
+    /**
+     * Resources flagged as deleted keep their calendar: their content stays readable, but may no longer be
+     * written to.
+     */
+    private DomainCalendar resourceCalendar(Request req, boolean onlyActive) {
+        OpenPaaSDomain domain = asDomainObject(req);
+        ResourceId resourceId = new ResourceId(req.params("id"));
+
+        return resourceService.retrieve(resourceId, domain.id(), onlyActive)
+            .blockOptional()
+            .map(resource -> new DomainCalendar(domain.domain(), domain.id(), CalendarType.RESOURCE,
+                CalendarURL.from(resource.id().asOpenPaaSId())))
+            .orElseThrow(() -> resourceNotFound(resourceId));
     }
 
     private List<ResourceDTO> listResources(Request req) {

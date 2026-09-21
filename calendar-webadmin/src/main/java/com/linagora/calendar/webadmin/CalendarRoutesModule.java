@@ -59,7 +59,6 @@ public class CalendarRoutesModule extends AbstractModule {
         routesMultibinder.addBinding().to(ResourceRoutes.class);
         routesMultibinder.addBinding().to(TeamCalendarRoutes.class);
         routesMultibinder.addBinding().to(TeamCalendarMemberRoutes.class);
-        routesMultibinder.addBinding().to(DomainCalendarContentRoutes.class);
         routesMultibinder.addBinding().to(DomainAdminRoutes.class);
         routesMultibinder.addBinding().to(DomainRegisteredUsersRoutes.class);
         routesMultibinder.addBinding().to(DomainSettingsRoutes.class);

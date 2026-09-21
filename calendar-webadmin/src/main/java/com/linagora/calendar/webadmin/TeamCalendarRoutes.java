@@ -39,10 +39,13 @@ import org.eclipse.jetty.http.HttpStatus;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Preconditions;
+import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.TeamCalendarNotFoundException;
 import com.linagora.calendar.storage.exception.DomainNotFoundException;
 import com.linagora.calendar.storage.model.TeamCalendar;
 import com.linagora.calendar.storage.model.TeamCalendarId;
+import com.linagora.calendar.webadmin.DomainCalendarContentHandler.DomainCalendar;
+import com.linagora.calendar.webadmin.task.DomainCalendarImportTask.CalendarType;
 
 import reactor.core.publisher.Mono;
 import spark.Request;
@@ -57,6 +60,7 @@ public class TeamCalendarRoutes implements Routes {
     private static final String TEAM_CALENDARS = "team-calendars";
     private static final String TEAM_CALENDARS_PATH = BASE_PATH + SEPARATOR + DOMAIN_PARAM + SEPARATOR + TEAM_CALENDARS;
     private static final String TEAM_CALENDAR_PATH = TEAM_CALENDARS_PATH + SEPARATOR + TEAM_CALENDAR_ID_PARAM;
+    private static final String EVENT_COUNT_PATH = TEAM_CALENDAR_PATH + SEPARATOR + "eventCount";
 
     public record TeamCalendarResponse(String id,
                                        String domainId,
@@ -91,14 +95,17 @@ public class TeamCalendarRoutes implements Routes {
     }
 
     private final TeamCalendarService teamCalendarService;
+    private final DomainCalendarContentHandler contentHandler;
     private final JsonTransformer jsonTransformer;
     private final JsonExtractor<TeamCalendarCreationRequest> creationRequestJsonExtractor;
     private final JsonExtractor<TeamCalendarUpdateRequest> updateRequestJsonExtractor;
 
     @Inject
     public TeamCalendarRoutes(TeamCalendarService teamCalendarService,
+                              DomainCalendarContentHandler contentHandler,
                               JsonTransformer jsonTransformer) {
         this.teamCalendarService = teamCalendarService;
+        this.contentHandler = contentHandler;
         this.jsonTransformer = jsonTransformer;
         this.creationRequestJsonExtractor = new JsonExtractor<>(TeamCalendarCreationRequest.class);
         this.updateRequestJsonExtractor = new JsonExtractor<>(TeamCalendarUpdateRequest.class);
@@ -116,6 +123,18 @@ public class TeamCalendarRoutes implements Routes {
         service.get(TEAM_CALENDAR_PATH, this::getById, jsonTransformer);
         service.patch(TEAM_CALENDAR_PATH, this::updateDisplayName, jsonTransformer);
         service.delete(TEAM_CALENDAR_PATH, this::delete);
+        service.get(EVENT_COUNT_PATH, (request, response) -> contentHandler.countEvents(response, teamCalendarContent(request)));
+        service.post(TEAM_CALENDAR_PATH, (request, response) -> contentHandler.exportOrImport(request, response, _ -> teamCalendarContent(request)));
+    }
+
+    /** Team calendars know no deleted state: they are readable and writable as long as they exist. */
+    private DomainCalendar teamCalendarContent(Request request) {
+        Domain domain = parseDomain(request);
+        TeamCalendarId id = parseTeamCalendarId(request);
+
+        TeamCalendar teamCalendar = mapErrors(() -> teamCalendarService.retrieve(domain, id));
+        return new DomainCalendar(domain, teamCalendar.domain().id(), CalendarType.TEAM_CALENDAR,
+            CalendarURL.from(teamCalendar.id().asOpenPaaSId()));
     }
 
     private TeamCalendarResponse createTeamCalendar(Request request, Response response) throws JsonExtractException {

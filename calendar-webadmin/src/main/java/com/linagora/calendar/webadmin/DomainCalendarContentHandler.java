@@ -35,7 +35,6 @@ import org.apache.james.core.Domain;
 import org.apache.james.task.TaskId;
 import org.apache.james.task.TaskManager;
 import org.apache.james.webadmin.Constants;
-import org.apache.james.webadmin.Routes;
 import org.apache.james.webadmin.routes.TasksRoutes;
 import org.apache.james.webadmin.utils.ErrorResponder;
 import org.eclipse.jetty.http.HttpHeader;
@@ -44,43 +43,38 @@ import org.eclipse.jetty.http.HttpStatus;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavClientException;
-import com.linagora.calendar.dav.ResourceService;
 import com.linagora.calendar.dav.importer.EventToImport;
 import com.linagora.calendar.storage.CalendarURL;
-import com.linagora.calendar.storage.OpenPaaSDomain;
-import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
-import com.linagora.calendar.storage.TeamCalendarNotFoundException;
-import com.linagora.calendar.storage.exception.DomainNotFoundException;
-import com.linagora.calendar.storage.model.ResourceId;
-import com.linagora.calendar.storage.model.TeamCalendar;
-import com.linagora.calendar.storage.model.TeamCalendarId;
 import com.linagora.calendar.webadmin.service.CalendarImportService;
 import com.linagora.calendar.webadmin.task.DomainCalendarImportTask;
 import com.linagora.calendar.webadmin.task.DomainCalendarImportTask.CalendarType;
 
 import reactor.core.publisher.Mono;
-import spark.HaltException;
 import spark.Request;
 import spark.Response;
-import spark.Service;
 
 /**
- * Counting, exporting and importing the events of the calendars a domain owns: team calendars and resources.
+ * Counting, exporting and importing the events of a calendar a domain owns: a team calendar or a resource.
  *
  * <p>Both are plain DAV calendars, reached with the technical token of their domain. Only the way their
- * identifier is resolved differs, hence a single set of handlers serving the two URL families.
+ * identifier is resolved differs, hence these handlers shared by {@link TeamCalendarRoutes} and
+ * {@link ResourceRoutes}.
  */
-public class DomainCalendarContentRoutes implements Routes {
+public class DomainCalendarContentHandler {
 
-    public static final String BASE_PATH = "domains";
+    /** A calendar a domain owns, resolved from the request path. */
+    public record DomainCalendar(Domain domain, OpenPaaSId domainId, CalendarType calendarType, CalendarURL calendarURL) {
+    }
 
-    private static final String DOMAIN_PARAM = ":domain";
-    private static final String CALENDAR_ID_PARAM = ":calendarId";
-    private static final String DOMAIN_PATH = BASE_PATH + SEPARATOR + DOMAIN_PARAM;
-    private static final String TEAM_CALENDAR_PATH = DOMAIN_PATH + SEPARATOR + "team-calendars" + SEPARATOR + CALENDAR_ID_PARAM;
-    private static final String RESOURCE_PATH = DOMAIN_PATH + SEPARATOR + "resources" + SEPARATOR + CALENDAR_ID_PARAM;
-    private static final String EVENT_COUNT_SUFFIX = SEPARATOR + "eventCount";
+    /**
+     * Resolves the calendar a request targets. {@code onlyActive} rejects the calendars that may be read but
+     * no longer written to - resources flagged as deleted - and is thus only set for imports.
+     */
+    @FunctionalInterface
+    public interface CalendarResolver {
+        DomainCalendar resolve(boolean onlyActive);
+    }
 
     private static final String ACTION_QUERY_PARAM = "action";
     private static final String EXPORT_ACTION = "export";
@@ -93,52 +87,19 @@ public class DomainCalendarContentRoutes implements Routes {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
-    /** A calendar a domain owns, resolved from the request path. */
-    private record DomainCalendar(Domain domain, OpenPaaSId domainId, CalendarType calendarType, CalendarURL calendarURL) {
-    }
-
-    /**
-     * Resolves the calendar a request targets. {@code onlyActive} rejects the calendars that may be read but
-     * no longer written to - resources flagged as deleted - and is thus only set for imports.
-     */
-    @FunctionalInterface
-    private interface CalendarResolver {
-        DomainCalendar resolve(Request request, boolean onlyActive);
-    }
-
-    private final OpenPaaSDomainDAO domainDAO;
-    private final TeamCalendarService teamCalendarService;
-    private final ResourceService resourceService;
     private final CalDavClient calDavClient;
     private final CalendarImportService calendarImportService;
     private final TaskManager taskManager;
 
     @Inject
-    public DomainCalendarContentRoutes(OpenPaaSDomainDAO domainDAO, TeamCalendarService teamCalendarService,
-                                       ResourceService resourceService, CalDavClient calDavClient,
-                                       CalendarImportService calendarImportService, TaskManager taskManager) {
-        this.domainDAO = domainDAO;
-        this.teamCalendarService = teamCalendarService;
-        this.resourceService = resourceService;
+    public DomainCalendarContentHandler(CalDavClient calDavClient, CalendarImportService calendarImportService,
+                                        TaskManager taskManager) {
         this.calDavClient = calDavClient;
         this.calendarImportService = calendarImportService;
         this.taskManager = taskManager;
     }
 
-    @Override
-    public String getBasePath() {
-        return BASE_PATH;
-    }
-
-    @Override
-    public void define(Service service) {
-        service.get(TEAM_CALENDAR_PATH + EVENT_COUNT_SUFFIX, (request, response) -> countEvents(response, teamCalendar(request, !ONLY_ACTIVE)));
-        service.post(TEAM_CALENDAR_PATH, (request, response) -> exportOrImport(request, response, this::teamCalendar));
-        service.get(RESOURCE_PATH + EVENT_COUNT_SUFFIX, (request, response) -> countEvents(response, resourceCalendar(request, !ONLY_ACTIVE)));
-        service.post(RESOURCE_PATH, (request, response) -> exportOrImport(request, response, this::resourceCalendar));
-    }
-
-    private String countEvents(Response response, DomainCalendar calendar) {
+    public String countEvents(Response response, DomainCalendar calendar) {
         long count = wrapDavErrors(() -> calDavClient.findUserCalendarEventIds(calendar.domainId(), calendar.calendarURL())
             .count()
             .block());
@@ -150,12 +111,12 @@ public class DomainCalendarContentRoutes implements Routes {
             .toString();
     }
 
-    private String exportOrImport(Request request, Response response, CalendarResolver calendarResolver) {
+    public String exportOrImport(Request request, Response response, CalendarResolver calendarResolver) {
         String action = StringUtils.trimToEmpty(request.queryParams(ACTION_QUERY_PARAM)).toLowerCase(Locale.US);
 
         return switch (action) {
-            case EXPORT_ACTION -> exportCalendar(response, calendarResolver.resolve(request, !ONLY_ACTIVE));
-            case IMPORT_ACTION -> importCalendar(request, response, calendarResolver.resolve(request, ONLY_ACTIVE));
+            case EXPORT_ACTION -> exportCalendar(response, calendarResolver.resolve(!ONLY_ACTIVE));
+            case IMPORT_ACTION -> importCalendar(request, response, calendarResolver.resolve(ONLY_ACTIVE));
             default -> throw ErrorResponder.builder()
                 .statusCode(HttpStatus.BAD_REQUEST_400)
                 .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
@@ -213,60 +174,6 @@ public class DomainCalendarContentRoutes implements Routes {
                 .haltError();
         }
         return events;
-    }
-
-    /** Team calendars know no deleted state: they are readable and writable as long as they exist. */
-    private DomainCalendar teamCalendar(Request request, boolean onlyActive) {
-        Domain domain = parseDomain(request);
-        TeamCalendarId teamCalendarId = new TeamCalendarId(request.params(CALENDAR_ID_PARAM));
-
-        TeamCalendar teamCalendar = teamCalendarService.retrieve(domain, teamCalendarId)
-            .onErrorMap(DomainNotFoundException.class, e -> notFound(e.getMessage()))
-            .onErrorMap(TeamCalendarNotFoundException.class, e -> notFound("Team calendar does not exist"))
-            .block();
-
-        return new DomainCalendar(domain, teamCalendar.domain().id(), CalendarType.TEAM_CALENDAR,
-            CalendarURL.from(teamCalendar.id().asOpenPaaSId()));
-    }
-
-    /**
-     * Resources flagged as deleted keep their calendar: their content stays readable, but may no longer be
-     * written to.
-     */
-    private DomainCalendar resourceCalendar(Request request, boolean onlyActive) {
-        Domain domain = parseDomain(request);
-        OpenPaaSDomain openPaaSDomain = domainDAO.retrieve(domain)
-            .blockOptional()
-            .orElseThrow(() -> notFound("Domain not found: %s".formatted(domain.asString())));
-        ResourceId resourceId = new ResourceId(request.params(CALENDAR_ID_PARAM));
-
-        return resourceService.retrieve(resourceId, openPaaSDomain.id(), onlyActive)
-            .blockOptional()
-            .map(resource -> new DomainCalendar(domain, openPaaSDomain.id(), CalendarType.RESOURCE,
-                CalendarURL.from(resource.id().asOpenPaaSId())))
-            .orElseThrow(() -> notFound("Resource does not exist"));
-    }
-
-    private Domain parseDomain(Request request) {
-        String domainName = request.params(DOMAIN_PARAM);
-        try {
-            return Domain.of(domainName);
-        } catch (IllegalArgumentException e) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.BAD_REQUEST_400)
-                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                .message("Invalid domain: %s", domainName)
-                .cause(e)
-                .haltError();
-        }
-    }
-
-    private HaltException notFound(String message) {
-        return ErrorResponder.builder()
-            .statusCode(HttpStatus.NOT_FOUND_404)
-            .type(ErrorResponder.ErrorType.NOT_FOUND)
-            .message(message)
-            .haltError();
     }
 
     private <T> T wrapDavErrors(Supplier<T> supplier) {
