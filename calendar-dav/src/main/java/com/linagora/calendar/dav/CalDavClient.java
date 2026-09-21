@@ -287,6 +287,12 @@ public class CalDavClient extends DavClient {
         return fetchCalendarDetails(httpClientWithTechnicalToken(domainId), calendarURL, queryParams);
     }
 
+    public Mono<CalendarDetailsResponse> fetchCalendarDetails(Username username,
+                                                              CalendarURL calendarURL,
+                                                              Map<String, String> queryParams) {
+        return fetchCalendarDetails(Mono.just(httpClientWithImpersonation(username)), calendarURL, queryParams);
+    }
+
     public Flux<String> findUserCalendarEventIds(Username username, CalendarURL calendarURL) {
         return findUserCalendarEventIds(Mono.just(httpClientWithImpersonation(username)), calendarURL);
     }
