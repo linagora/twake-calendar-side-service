@@ -51,12 +51,12 @@ import com.linagora.calendar.dav.CalendarNotFoundException;
 import com.linagora.calendar.dav.CalendarSharingUpdate;
 import com.linagora.calendar.dav.DavClientException;
 import com.linagora.calendar.dav.dto.CalendarMirrorSource;
+import com.linagora.calendar.dav.importer.EventToImport;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.webadmin.service.CalendarImportService;
-import com.linagora.calendar.webadmin.service.CalendarImportService.EventToImport;
 import com.linagora.calendar.webadmin.task.CalendarImportTask;
 
 import reactor.core.publisher.Mono;

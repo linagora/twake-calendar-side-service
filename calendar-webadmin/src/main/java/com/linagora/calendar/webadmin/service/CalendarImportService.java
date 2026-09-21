@@ -19,7 +19,6 @@
 
 package com.linagora.calendar.webadmin.service;
 
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -31,37 +30,19 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.MoreObjects;
-import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.importer.EventToImport;
 import com.linagora.calendar.storage.CalendarURL;
-import com.linagora.calendar.storage.event.EventParseUtils;
 
-import net.fortuna.ical4j.model.Calendar;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 /**
  * Imports the events of an ICS document into a calendar of the DAV server.
+ *
+ * <p>The events are parsed by {@link EventToImport}, shared with the end user import API.
  */
 public class CalendarImportService {
-
-    /**
-     * A single calendar object, as stored on the DAV server: the VEVENTs sharing a given UID - a master event
-     * and its recurrence overrides - alongside the calendar level properties and time zones they rely on.
-     */
-    public record EventToImport(String resourceName, byte[] ics) {
-
-        public static List<EventToImport> parse(byte[] icsPayload) {
-            Calendar calendar = CalendarUtil.parseIcs(icsPayload);
-
-            return EventParseUtils.groupByUid(calendar)
-                .entrySet()
-                .stream()
-                .map(entry -> new EventToImport(DavResourceName.fromUid(entry.getKey()),
-                    CalendarUtil.withVEvents(calendar, entry.getValue()).toString().getBytes(StandardCharsets.UTF_8)))
-                .toList();
-        }
-    }
 
     public static class Context {
         public record Snapshot(long importedCount, long failedCount) {
@@ -105,7 +86,7 @@ public class CalendarImportService {
             .thenReturn(Task.Result.COMPLETED)
             .onErrorResume(error -> {
                 LOGGER.warn("Importing event {} into calendar {} of user {} failed",
-                    event.resourceName(), calendarURL.asUri().toASCIIString(), username.asString(), error);
+                    event.uid(), calendarURL.asUri().toASCIIString(), username.asString(), error);
                 context.failedCount.incrementAndGet();
                 return Mono.just(Task.Result.PARTIAL);
             });

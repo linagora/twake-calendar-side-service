@@ -14,6 +14,10 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
  - ISSUE-1074 Webadmin: `POST /users/{usernameToBeUsed}/calendars/{calendarId}?action=import` and `POST /users/{username}/addressbooks/{addressBookId}?action=import` plan a task importing the supplied ICS / vCards into the calendar / address book
  - ISSUE-958 Booking links: optional `extraAttendees` field, to hand over a single link for a meeting involving several people. Offered slots intersect the availability of the extra attendees, as seen by the booking link owner, and booked events invite them.
 
+### Fixes
+
+ - ISSUE-1074 `POST /api/import` now shares its parsing with the webadmin import: imported events keep the calendar level properties and time zones they rely on, and re-importing the same vCard file updates the contacts rather than duplicating them.
+
 ## [2.1.0] - 2026-05-07
 
 ### New Features

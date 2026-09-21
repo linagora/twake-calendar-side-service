@@ -29,9 +29,9 @@ import org.apache.james.task.Task;
 import org.apache.james.task.TaskExecutionDetails;
 import org.apache.james.task.TaskType;
 
+import com.linagora.calendar.dav.importer.EventToImport;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.webadmin.service.CalendarImportService;
-import com.linagora.calendar.webadmin.service.CalendarImportService.EventToImport;
 
 public class CalendarImportTask implements Task {
 

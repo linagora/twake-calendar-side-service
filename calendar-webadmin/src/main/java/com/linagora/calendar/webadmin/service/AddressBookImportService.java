@@ -19,9 +19,7 @@
 
 package com.linagora.calendar.webadmin.service;
 
-import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
 import jakarta.inject.Inject;
@@ -33,45 +31,18 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.base.MoreObjects;
 import com.linagora.calendar.dav.CardDavClient;
+import com.linagora.calendar.dav.importer.ContactToImport;
 import com.linagora.calendar.storage.AddressBookURL;
 
-import ezvcard.Ezvcard;
-import ezvcard.VCard;
-import ezvcard.property.Uid;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 /**
  * Imports the contacts of a vCard document into an address book of the DAV server.
+ *
+ * <p>The contacts are parsed by {@link ContactToImport}, shared with the end user import API.
  */
 public class AddressBookImportService {
-
-    /**
-     * A single contact, as stored on the DAV server. Its UID is rewritten to the resource name it is stored
-     * under, so that re-importing an exported address book updates the contacts rather than duplicating them.
-     */
-    public record ContactToImport(String resourceName, byte[] vcard) {
-
-        public static List<ContactToImport> parse(byte[] vcardPayload) {
-            return Ezvcard.parse(new String(vcardPayload, StandardCharsets.UTF_8))
-                .all()
-                .stream()
-                .map(ContactToImport::of)
-                .toList();
-        }
-
-        private static ContactToImport of(VCard vcard) {
-            String resourceName = DavResourceName.fromUid(Optional.ofNullable(vcard.getUid())
-                .map(Uid::getValue)
-                .orElse(null));
-            vcard.setUid(new Uid(resourceName));
-
-            return new ContactToImport(resourceName, Ezvcard.write(vcard)
-                .prodId(false)
-                .go()
-                .getBytes(StandardCharsets.UTF_8));
-        }
-    }
 
     public static class Context {
         public record Snapshot(long importedCount, long failedCount) {
@@ -110,7 +81,7 @@ public class AddressBookImportService {
 
     private Mono<Task.Result> importContact(Username username, AddressBookURL addressBookURL,
                                             ContactToImport contact, Context context) {
-        return cardDavClient.upsertContact(username, addressBookURL, contact.resourceName(), contact.vcard())
+        return cardDavClient.upsertContact(username, addressBookURL, contact.resourceName(), contact.payload())
             .doOnSuccess(any -> context.importedCount.incrementAndGet())
             .thenReturn(Task.Result.COMPLETED)
             .onErrorResume(error -> {

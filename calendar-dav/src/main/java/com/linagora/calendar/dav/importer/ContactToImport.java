@@ -16,30 +16,39 @@
  *  more details.                                                   *
  ********************************************************************/
 
+package com.linagora.calendar.dav.importer;
 
-package com.linagora.calendar.webadmin.service;
-
+import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
-import java.util.regex.Pattern;
 
-import org.apache.commons.lang3.StringUtils;
+import ezvcard.Ezvcard;
+import ezvcard.VCard;
+import ezvcard.property.Uid;
 
 /**
- * Imported items are stored on the DAV server under a resource name derived from their UID. Exotic UIDs
- * would yield an invalid - possibly escaping - path, thus a random name is used instead for those.
+ * A single contact, as stored on the DAV server. Its UID is rewritten to the resource name it is stored
+ * under, so that re-importing an exported address book updates the contacts rather than duplicating them.
  */
-final class DavResourceName {
+public record ContactToImport(String resourceName, VCard vcard, byte[] payload) {
 
-    private static final Pattern SAFE_RESOURCE_NAME = Pattern.compile("[\\w.~:@%+-]{1,200}");
-
-    static String fromUid(String uid) {
-        return Optional.ofNullable(uid)
-            .map(StringUtils::trimToNull)
-            .filter(value -> SAFE_RESOURCE_NAME.matcher(value).matches())
-            .orElseGet(() -> UUID.randomUUID().toString());
+    public static List<ContactToImport> parse(byte[] vcardPayload) {
+        return Ezvcard.parse(new String(vcardPayload, StandardCharsets.UTF_8))
+            .all()
+            .stream()
+            .map(ContactToImport::of)
+            .toList();
     }
 
-    private DavResourceName() {
+    private static ContactToImport of(VCard vcard) {
+        String resourceName = DavResourceName.fromUid(Optional.ofNullable(vcard.getUid())
+            .map(Uid::getValue)
+            .orElse(null));
+        vcard.setUid(new Uid(resourceName));
+
+        return new ContactToImport(resourceName, vcard, Ezvcard.write(vcard)
+            .prodId(false)
+            .go()
+            .getBytes(StandardCharsets.UTF_8));
     }
 }

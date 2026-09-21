@@ -29,9 +29,9 @@ import org.apache.james.task.Task;
 import org.apache.james.task.TaskExecutionDetails;
 import org.apache.james.task.TaskType;
 
+import com.linagora.calendar.dav.importer.ContactToImport;
 import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.webadmin.service.AddressBookImportService;
-import com.linagora.calendar.webadmin.service.AddressBookImportService.ContactToImport;
 
 public class AddressBookImportTask implements Task {
 

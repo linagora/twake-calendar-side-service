@@ -48,11 +48,11 @@ import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.dav.DavClientException;
+import com.linagora.calendar.dav.importer.ContactToImport;
 import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.webadmin.service.AddressBookImportService;
-import com.linagora.calendar.webadmin.service.AddressBookImportService.ContactToImport;
 import com.linagora.calendar.webadmin.task.AddressBookImportTask;
 
 import spark.HaltException;
