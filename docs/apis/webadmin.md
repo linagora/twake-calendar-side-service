@@ -1122,6 +1122,29 @@ accepted delegations and public subscriptions, with their rights (`acl` and `inv
 **Status codes**:
 - `200`: the calendar list is returned
 
+### Counting the events of a calendar
+
+```
+GET /users/{usernameToBeUsed}/calendars/{calendarId}/eventCount
+```
+
+Example:
+
+```
+GET /users/btellier@linagora.com/calendars/0c5413b9-2ca3-4669-ae44-0d8083344ca8/eventCount
+```
+
+Returns the number of calendar objects (`.ics` files) stored in this calendar. A recurring event
+counts as a single event. If several calendar objects share the same UID, each of them is counted.
+
+```json
+{"count": 805}
+```
+
+**Status codes**:
+- `200`: the event count is returned
+- `404`: the user or the calendar does not exist
+
 ### Creating a calendar
 
 ```
