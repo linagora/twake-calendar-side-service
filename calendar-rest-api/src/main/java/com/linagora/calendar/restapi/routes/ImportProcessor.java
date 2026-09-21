@@ -21,12 +21,10 @@ package com.linagora.calendar.restapi.routes;
 import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 
 import jakarta.inject.Inject;
 
@@ -39,22 +37,19 @@ import org.slf4j.LoggerFactory;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CardDavClient;
+import com.linagora.calendar.dav.importer.ContactToImport;
+import com.linagora.calendar.dav.importer.EventToImport;
 import com.linagora.calendar.smtp.template.TemplateType;
 import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
-import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.model.ImportId;
 import com.linagora.calendar.storage.model.UploadedFile;
 
-import ezvcard.Ezvcard;
 import ezvcard.VCard;
 import ezvcard.property.SimpleProperty;
-import ezvcard.property.Uid;
-import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.component.VEvent;
 import reactor.core.publisher.Flux;
@@ -124,34 +119,25 @@ public class ImportProcessor {
         public Mono<ImportResult> handle(ImportCommand importCommand, Username username) {
             CalendarURL calendarURL = new CalendarURL(importCommand.baseId(), new OpenPaaSId(importCommand.resourceId()));
 
-            return Mono.fromCallable(() -> CalendarUtil.parseIcs(importCommand.uploadData()))
+            return Mono.fromCallable(() -> EventToImport.parse(importCommand.uploadData()))
                 .subscribeOn(Schedulers.boundedElastic())
-                .flatMapMany(calendar -> Mono.fromCallable(() -> EventParseUtils.groupByUid(calendar))
-                    .flatMapMany(map -> Flux.fromIterable(map.entrySet()))
-                    .flatMap(entry -> {
-                        String eventId = entry.getKey();
-                        List<VEvent> vEvents = entry.getValue();
-
-                        Calendar combinedCalendar = new Calendar();
-                        vEvents.forEach(combinedCalendar::add);
-
-                        byte[] bytes = combinedCalendar.toString().getBytes(StandardCharsets.UTF_8);
-
-                        return calDavClient.importCalendar(calendarURL, eventId, username, bytes)
-                            .thenReturn(ImportResult.succeed())
-                            .onErrorResume(error -> {
-                                LOGGER.error("Error importing event with UID {}: {}", eventId, error.getMessage());
-                                return Mono.just(ImportResult.failed(failedItemFromVEvent(vEvents.getFirst(), eventId)));
-                            });
-                    }, DEFAULT_CONCURRENCY))
+                .flatMapMany(Flux::fromIterable)
+                .flatMap(event -> calDavClient.importCalendar(calendarURL, event.resourceName(), username, event.ics())
+                    .thenReturn(ImportResult.succeed())
+                    .onErrorResume(error -> {
+                        LOGGER.error("Error importing event with UID {}: {}", event.uid(), error.getMessage());
+                        return Mono.just(ImportResult.failed(failedItemFromEvent(event)));
+                    }), DEFAULT_CONCURRENCY)
                 .reduce(ImportResult::reduce)
                 .defaultIfEmpty(new ImportResult(0, ImmutableList.of()));
         }
 
-        private ImportResult.FailedItem failedItemFromVEvent(VEvent vEvent, String eventUid) {
+        private ImportResult.FailedItem failedItemFromEvent(EventToImport event) {
+            VEvent vEvent = event.vEvents().getFirst();
+
             return new ImportResult.FailedItem(
                 ImmutableMap.of(
-                    "uid", eventUid,
+                    "uid", event.uid(),
                     "summary", Optional.ofNullable(vEvent.getSummary()).map(Property::getValue).orElse(StringUtils.EMPTY),
                     "start", Optional.ofNullable(vEvent.getDateTimeStart()).map(Property::toString).orElse(StringUtils.EMPTY),
                     "end", Optional.ofNullable(vEvent.getEndDate()).map(Object::toString).orElse(StringUtils.EMPTY)));
@@ -167,25 +153,17 @@ public class ImportProcessor {
 
         @Override
         public Mono<ImportResult> handle(ImportCommand importCommand, Username username) {
-            return Mono.fromCallable(() -> Ezvcard.parse(new String(importCommand.uploadData(), StandardCharsets.UTF_8)).all())
+            AddressBookURL addressBookURL = new AddressBookURL(importCommand.baseId(), importCommand.resourceId());
+
+            return Mono.fromCallable(() -> ContactToImport.parse(importCommand.uploadData()))
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMapMany(Flux::fromIterable)
-                .flatMap(vcard -> {
-                    String vcardUid = UUID.randomUUID().toString();
-                    vcard.setUid(new Uid(vcardUid));
-
-                    String vcardString = Ezvcard.write(vcard)
-                        .prodId(false)
-                        .go();
-
-                    return cardDavClient.upsertContact(username, new AddressBookURL(importCommand.baseId(), importCommand.resourceId()),
-                            vcardUid, vcardString.getBytes(StandardCharsets.UTF_8))
-                        .thenReturn(ImportResult.succeed())
-                        .onErrorResume(error -> {
-                            LOGGER.error("Error importing contact with UID {}: {}", vcardUid, error.getMessage());
-                            return Mono.just(ImportResult.failed(failedItemFromVCard(vcard)));
-                        });
-                }, DEFAULT_CONCURRENCY)
+                .flatMap(contact -> cardDavClient.upsertContact(username, addressBookURL, contact.resourceName(), contact.payload())
+                    .thenReturn(ImportResult.succeed())
+                    .onErrorResume(error -> {
+                        LOGGER.error("Error importing contact with UID {}: {}", contact.resourceName(), error.getMessage());
+                        return Mono.just(ImportResult.failed(failedItemFromVCard(contact.vcard())));
+                    }), DEFAULT_CONCURRENCY)
                 .reduce(ImportResult::reduce)
                 .defaultIfEmpty(new ImportResult(0, ImmutableList.of()));
         }

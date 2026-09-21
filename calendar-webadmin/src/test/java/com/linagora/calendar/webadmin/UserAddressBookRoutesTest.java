@@ -21,6 +21,7 @@ package com.linagora.calendar.webadmin;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.emptyString;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
@@ -33,7 +34,16 @@ import java.util.stream.Stream;
 
 import javax.net.ssl.SSLException;
 
+import org.apache.james.json.DTOConverter;
+import org.apache.james.server.task.json.dto.AdditionalInformationDTO;
+import org.apache.james.server.task.json.dto.AdditionalInformationDTOModule;
+import org.apache.james.task.Hostname;
+import org.apache.james.task.MemoryTaskManager;
+import org.apache.james.task.TaskExecutionDetails;
+import org.apache.james.task.TaskManager;
 import org.apache.james.webadmin.WebAdminServer;
+import org.apache.james.webadmin.routes.TasksRoutes;
+import org.apache.james.webadmin.utils.JsonTransformer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -43,6 +53,7 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.AddressBookURL;
@@ -50,6 +61,8 @@ import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
+import com.linagora.calendar.webadmin.service.AddressBookImportService;
+import com.linagora.calendar.webadmin.task.AddressBookImportTaskAdditionalInformationDTO;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
 import io.restassured.RestAssured;
@@ -77,7 +90,13 @@ public class UserAddressBookRoutesTest {
         user = sabreDavExtension.newTestUser();
         otherUser = sabreDavExtension.newTestUser();
 
-        webAdminServer = WebAdminUtils.createWebAdminServer(new UserAddressBookRoutes(userDAO, cardDavClient))
+        TaskManager taskManager = new MemoryTaskManager(new Hostname("foo"));
+        webAdminServer = WebAdminUtils.createWebAdminServer(
+                new UserAddressBookRoutes(userDAO, cardDavClient, new AddressBookImportService(cardDavClient), taskManager),
+                new TasksRoutes(taskManager, new JsonTransformer(),
+                    new DTOConverter<>(ImmutableSet.<AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO>>builder()
+                        .add(AddressBookImportTaskAdditionalInformationDTO.module())
+                        .build())))
             .start();
 
         RestAssured.requestSpecification = WebAdminUtils.buildRequestSpecification(webAdminServer)
@@ -279,8 +298,152 @@ public class UserAddressBookRoutesTest {
             .body("message", is("User does not exist"));
     }
 
+    @Test
+    void importShouldAddContactsToTheAddressBook() {
+        String addressBookId = createAddressBook(user, "Address book to fill");
+
+        awaitTask(importAddressBook(user, addressBookId,
+            vcard("imported-1", "John Doe", "john.doe@linagora.com")
+                + vcard("imported-2", "Jane Doe", "jane.doe@linagora.com")));
+
+        assertThat(exportAddressBook(user, addressBookId))
+            .contains("EMAIL:john.doe@linagora.com", "EMAIL:jane.doe@linagora.com");
+    }
+
+    @Test
+    void importShouldReturnCompletedTaskDetails() {
+        String addressBookId = createAddressBook(user, "Address book to fill");
+
+        String taskId = importAddressBook(user, addressBookId,
+            vcard("imported-1", "John Doe", "john.doe@linagora.com")
+                + vcard("imported-2", "Jane Doe", "jane.doe@linagora.com"));
+
+        given()
+        .when()
+            .get(TasksRoutes.BASE + "/" + taskId + "/await")
+        .then()
+            .statusCode(200)
+            .body("status", is("completed"))
+            .body("type", is("addressbook-import"))
+            .body("additionalInformation.username", is(user.username().asString()))
+            .body("additionalInformation.addressBookId", is(addressBookId))
+            .body("additionalInformation.totalContactCount", is(2))
+            .body("additionalInformation.importedContactCount", is(2))
+            .body("additionalInformation.failedContactCount", is(0));
+    }
+
+    @Test
+    void importShouldUpdateAlreadyExistingContacts() {
+        String addressBookId = createAddressBook(user, "Address book to update");
+        awaitTask(importAddressBook(user, addressBookId, vcard("imported-1", "John Doe", "john.doe@linagora.com")));
+
+        awaitTask(importAddressBook(user, addressBookId, vcard("imported-1", "John Doe", "john.doe@twake.app")));
+
+        given()
+        .when()
+            .get("/users/{username}/addressbooks/{addressBookId}/contactCount", user.username().asString(), addressBookId)
+        .then()
+            .statusCode(200)
+            .body("count", is(1));
+
+        assertThat(exportAddressBook(user, addressBookId))
+            .contains("EMAIL:john.doe@twake.app")
+            .doesNotContain("EMAIL:john.doe@linagora.com");
+    }
+
+    @Test
+    void importShouldSupportTheOutputOfExport() {
+        String sourceAddressBookId = createAddressBook(user, "Source address book");
+        upsertContact(user, sourceAddressBookId, "John Doe", "john.doe@linagora.com");
+        String targetAddressBookId = createAddressBook(user, "Target address book");
+
+        awaitTask(importAddressBook(user, targetAddressBookId, exportAddressBook(user, sourceAddressBookId)));
+
+        assertThat(exportAddressBook(user, targetAddressBookId))
+            .contains("EMAIL:john.doe@linagora.com");
+    }
+
+    @Test
+    void importShouldReturn400WhenNoContactToImport() {
+        String addressBookId = createAddressBook(user, "Address book to fill");
+
+        given()
+            .queryParam("action", "import")
+            .body("not a vCard")
+        .when()
+            .post("/users/{username}/addressbooks/{addressBookId}", user.username().asString(), addressBookId)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"))
+            .body("message", containsString("no contact to import"));
+    }
+
+    @Test
+    void importShouldReturn404WhenAddressBookDoesNotExist() {
+        given()
+            .queryParam("action", "import")
+            .body(vcard("imported-1", "John Doe", "john.doe@linagora.com"))
+        .when()
+            .post("/users/{username}/addressbooks/{addressBookId}", user.username().asString(), UUID.randomUUID().toString())
+        .then()
+            .statusCode(404)
+            .body("type", is("notFound"))
+            .body("message", is("Address book does not exist"));
+    }
+
+    @Test
+    void importShouldReturn404WhenUserDoesNotExist() {
+        given()
+            .queryParam("action", "import")
+            .body(vcard("imported-1", "John Doe", "john.doe@linagora.com"))
+        .when()
+            .post("/users/ghost@linagora.com/addressbooks/contacts")
+        .then()
+            .statusCode(404)
+            .body("type", is("notFound"))
+            .body("message", is("User does not exist"));
+    }
+
     @ParameterizedTest
-    @ValueSource(strings = {"", "import", "EXPORT"})
+    @ValueSource(strings = {"EXPORT", "Export", "eXpOrT"})
+    void exportShouldBeCaseInsensitive(String action) {
+        String addressBookId = createAddressBook(user, "To be exported");
+        upsertContact(user, addressBookId, "John Doe", "john.doe@linagora.com");
+
+        String vcard = given()
+        .when()
+            .queryParam("action", action)
+            .post("/users/{username}/addressbooks/{addressBookId}", user.username().asString(), addressBookId)
+        .then()
+            .statusCode(200)
+            .extract()
+            .asString();
+
+        assertThat(vcard).contains("EMAIL:john.doe@linagora.com");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"IMPORT", "Import", "iMpOrT"})
+    void importShouldBeCaseInsensitive(String action) {
+        String addressBookId = createAddressBook(user, "Address book to fill");
+
+        String taskId = given()
+            .queryParam("action", action)
+            .body(vcard("imported-1", "John Doe", "john.doe@linagora.com"))
+        .when()
+            .post("/users/{username}/addressbooks/{addressBookId}", user.username().asString(), addressBookId)
+        .then()
+            .statusCode(201)
+            .extract()
+            .jsonPath()
+            .getString("taskId");
+        awaitTask(taskId);
+
+        assertThat(exportAddressBook(user, addressBookId)).contains("EMAIL:john.doe@linagora.com");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "unsupported"})
     void postShouldReturn400WhenActionIsNotSupported(String action) {
         String addressBookId = createAddressBook(user, "Address book");
 
@@ -457,6 +620,50 @@ public class UserAddressBookRoutesTest {
             .statusCode(404)
             .body("type", is("notFound"))
             .body("message", is("User does not exist"));
+    }
+
+    private String importAddressBook(OpenPaaSUser targetUser, String addressBookId, String vcards) {
+        return given()
+            .queryParam("action", "import")
+            .body(vcards)
+        .when()
+            .post("/users/{username}/addressbooks/{addressBookId}", targetUser.username().asString(), addressBookId)
+        .then()
+            .statusCode(201)
+            .extract()
+            .jsonPath()
+            .getString("taskId");
+    }
+
+    private String exportAddressBook(OpenPaaSUser targetUser, String addressBookId) {
+        return given()
+            .queryParam("action", "export")
+        .when()
+            .post("/users/{username}/addressbooks/{addressBookId}", targetUser.username().asString(), addressBookId)
+        .then()
+            .statusCode(200)
+            .extract()
+            .asString();
+    }
+
+    private void awaitTask(String taskId) {
+        given()
+        .when()
+            .get(TasksRoutes.BASE + "/" + taskId + "/await")
+        .then()
+            .statusCode(200)
+            .body("status", is("completed"));
+    }
+
+    private String vcard(String uid, String fullName, String email) {
+        return """
+            BEGIN:VCARD
+            VERSION:4.0
+            UID:%s
+            FN:%s
+            EMAIL:%s
+            END:VCARD
+            """.formatted(uid, fullName, email);
     }
 
     private void createContact(String addressBookId, String fullName) {
