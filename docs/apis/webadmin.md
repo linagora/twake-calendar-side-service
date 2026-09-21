@@ -1458,6 +1458,24 @@ DELETE /users/btellier@linagora.com/addressbooks/0e26ee47-cc4b-4aaa-8447-12588fd
 - `400`: attempting to delete a system address book (e.g. `contacts`)
 - `404`: the user or the address book does not exist
 
+### Updating details of an address book
+
+```
+PATCH /users/{username}/addressbooks/{addressBookId}
+{
+  "dav:name": "My Contacts",
+  "carddav:description": "Personal contacts"
+}
+```
+
+Proxies a `PROPPATCH` on the address book. All fields are optional but at least one must be present.
+Unknown fields are rejected. Omitted fields are left unchanged.
+
+**Status codes**:
+- `204`: the address book was updated
+- `400`: empty body, unknown field, or attempting to update a system address book (e.g. `contacts`)
+- `404`: the user or the address book does not exist
+
 ### Exporting the content of an address book
 
 ```

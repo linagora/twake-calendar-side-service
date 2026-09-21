@@ -24,6 +24,7 @@ import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.json;
 import static net.javacrumbs.jsonunit.core.Option.IGNORING_ARRAY_ORDER;
+import static net.javacrumbs.jsonunit.core.Option.IGNORING_EXTRA_FIELDS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatCode;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
@@ -818,6 +819,49 @@ public class CardDavClientTest {
     }
 
     @Test
+    void updateAddressBookPropertiesShouldUpdateProvidedProperties() {
+        String addressBookId = "toupdate";
+        testee.createUserAddressBook(user.username(), user.id(),
+            new CardDavClient.NewAddressBook(addressBookId, "Original name", "Original description")).block();
+
+        testee.updateAddressBookProperties(user.username(), new AddressBookURL(user.id(), addressBookId),
+            new CardDavClient.AddressBookPropertiesUpdate(Optional.of("Updated name"), Optional.of("Updated description"))).block();
+
+        assertThatJson(listAddressBooks())
+            .withOptions(IGNORING_ARRAY_ORDER, IGNORING_EXTRA_FIELDS)
+            .inPath("_embedded.dav:addressbook")
+            .isArray()
+            .contains(json("""
+                {"dav:name": "Updated name", "carddav:description": "Updated description"}
+                """));
+    }
+
+    @Test
+    void updateAddressBookPropertiesShouldNotAlterAbsentProperties() {
+        String addressBookId = "toupdate";
+        testee.createUserAddressBook(user.username(), user.id(),
+            new CardDavClient.NewAddressBook(addressBookId, "Original name", "Original description")).block();
+
+        testee.updateAddressBookProperties(user.username(), new AddressBookURL(user.id(), addressBookId),
+            new CardDavClient.AddressBookPropertiesUpdate(Optional.of("Updated name"), Optional.empty())).block();
+
+        assertThatJson(listAddressBooks())
+            .withOptions(IGNORING_ARRAY_ORDER, IGNORING_EXTRA_FIELDS)
+            .inPath("_embedded.dav:addressbook")
+            .isArray()
+            .contains(json("""
+                {"dav:name": "Updated name", "carddav:description": "Original description"}
+                """));
+    }
+
+    @Test
+    void updateAddressBookPropertiesShouldThrowWhenSystemAddressBook() {
+        assertThatThrownBy(() -> testee.updateAddressBookProperties(user.username(), new AddressBookURL(user.id(), "contacts"),
+            new CardDavClient.AddressBookPropertiesUpdate(Optional.of("Updated name"), Optional.empty())).block())
+            .isInstanceOf(SystemAddressBookException.class);
+    }
+
+    @Test
     void deleteContactShouldRemoveSpecifiedContactWhenExists() {
         String addressBook = "collected";
         String vcardUid = UUID.randomUUID().toString();
@@ -987,6 +1031,10 @@ public class CardDavClientTest {
             .blockOptional()
             .map(bytes -> new String(bytes, StandardCharsets.UTF_8))
             .orElse("");
+    }
+
+    private String listAddressBooks() {
+        return new String(testee.listUserAddressBooksAsBytes(user.username(), user.id()).block(), StandardCharsets.UTF_8);
     }
 
     private static MongoDBOpenPaaSDomainDAO mongoDBOpenPaaSDomainDAO() {

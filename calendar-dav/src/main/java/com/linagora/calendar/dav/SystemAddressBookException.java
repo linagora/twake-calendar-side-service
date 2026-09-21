@@ -22,6 +22,6 @@ import com.linagora.calendar.storage.AddressBookURL;
 
 public class SystemAddressBookException extends DavClientException {
     public SystemAddressBookException(AddressBookURL addressBookURL) {
-        super("Cannot delete system address book: " + addressBookURL.asUri().toASCIIString());
+        super("Cannot modify system address book: " + addressBookURL.asUri().toASCIIString());
     }
 }
