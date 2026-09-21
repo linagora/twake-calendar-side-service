@@ -48,6 +48,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.dav.CalDavClient;
@@ -583,6 +585,44 @@ public class UserCalendarRoutesTest {
         .then()
             .statusCode(400)
             .body("type", is("InvalidArgument"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"EXPORT", "Export", "eXpOrT"})
+    void exportShouldBeCaseInsensitive(String action) {
+        String calendarId = createCalendar(user, "Calendar to export");
+        importEvent(user, calendarId, "event-to-export", "Exported event");
+
+        String ics = given()
+            .queryParam("action", action)
+        .when()
+            .post("/users/{username}/calendars/{calendarId}", user.username().asString(), calendarId)
+        .then()
+            .statusCode(200)
+            .extract()
+            .asString();
+
+        assertThat(ics).contains("UID:event-to-export");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"IMPORT", "Import", "iMpOrT"})
+    void importShouldBeCaseInsensitive(String action) {
+        String calendarId = createCalendar(user, "Calendar to fill");
+
+        String taskId = given()
+            .queryParam("action", action)
+            .body(icsOf(event("imported-event", "Imported event")))
+        .when()
+            .post("/users/{username}/calendars/{calendarId}", user.username().asString(), calendarId)
+        .then()
+            .statusCode(201)
+            .extract()
+            .jsonPath()
+            .getString("taskId");
+        awaitTask(taskId);
+
+        assertThat(exportCalendar(user, calendarId)).contains("UID:imported-event");
     }
 
     @Test

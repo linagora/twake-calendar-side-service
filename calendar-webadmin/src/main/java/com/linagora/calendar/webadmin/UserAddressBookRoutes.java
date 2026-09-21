@@ -22,6 +22,7 @@ import static org.apache.james.webadmin.Constants.SEPARATOR;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -202,7 +203,7 @@ public class UserAddressBookRoutes implements Routes {
     private String exportOrImportAddressBook(Request request, Response response) {
         String action = StringUtils.trimToEmpty(request.queryParams(ACTION_PARAMETER));
 
-        return switch (action) {
+        return switch (action.toLowerCase(Locale.US)) {
             case EXPORT_ACTION -> exportAddressBook(request, response);
             case IMPORT_ACTION -> importAddressBook(request, response);
             default -> throw ErrorResponder.builder()

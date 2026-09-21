@@ -22,6 +22,7 @@ import static org.apache.james.webadmin.Constants.SEPARATOR;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -187,7 +188,7 @@ public class UserCalendarRoutes implements Routes {
     private String exportOrImportCalendar(Request request, Response response) {
         String action = StringUtils.trimToEmpty(request.queryParams(ACTION_QUERY_PARAM));
 
-        return switch (action) {
+        return switch (action.toLowerCase(Locale.US)) {
             case EXPORT_ACTION -> exportCalendar(request, response);
             case IMPORT_ACTION -> importCalendar(request, response);
             default -> throw ErrorResponder.builder()

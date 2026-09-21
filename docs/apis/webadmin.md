@@ -1226,7 +1226,7 @@ Exporting a subscription to a public calendar returns the content of the source 
 
 **Status codes**:
 - `200`: the ICS content of the calendar
-- `400`: the `action` query parameter is missing or is neither `export` nor `import`
+- `400`: the `action` query parameter is missing or is neither `export` nor `import` (the value is case-insensitive)
 - `404`: the user or the calendar does not exist
 
 ### Importing events into a calendar
@@ -1485,7 +1485,7 @@ The response body is empty when the address book holds no contact.
 
 **Status codes**:
 - `200`: the content of the address book is returned
-- `400`: the `action` query parameter is missing or unsupported. Only `export` and `import` are supported.
+- `400`: the `action` query parameter is missing or unsupported. Only `export` and `import` are supported, case-insensitively.
 - `404`: the user or the address book does not exist
 
 ### Importing contacts into an address book

@@ -405,7 +405,45 @@ public class UserAddressBookRoutesTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"", "unsupported", "EXPORT", "IMPORT"})
+    @ValueSource(strings = {"EXPORT", "Export", "eXpOrT"})
+    void exportShouldBeCaseInsensitive(String action) {
+        String addressBookId = createAddressBook(user, "To be exported");
+        upsertContact(user, addressBookId, "John Doe", "john.doe@linagora.com");
+
+        String vcard = given()
+        .when()
+            .queryParam("action", action)
+            .post("/users/{username}/addressbooks/{addressBookId}", user.username().asString(), addressBookId)
+        .then()
+            .statusCode(200)
+            .extract()
+            .asString();
+
+        assertThat(vcard).contains("EMAIL:john.doe@linagora.com");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"IMPORT", "Import", "iMpOrT"})
+    void importShouldBeCaseInsensitive(String action) {
+        String addressBookId = createAddressBook(user, "Address book to fill");
+
+        String taskId = given()
+            .queryParam("action", action)
+            .body(vcard("imported-1", "John Doe", "john.doe@linagora.com"))
+        .when()
+            .post("/users/{username}/addressbooks/{addressBookId}", user.username().asString(), addressBookId)
+        .then()
+            .statusCode(201)
+            .extract()
+            .jsonPath()
+            .getString("taskId");
+        awaitTask(taskId);
+
+        assertThat(exportAddressBook(user, addressBookId)).contains("EMAIL:john.doe@linagora.com");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "unsupported"})
     void postShouldReturn400WhenActionIsNotSupported(String action) {
         String addressBookId = createAddressBook(user, "Address book");
 
