@@ -21,10 +21,12 @@ package com.linagora.calendar.webadmin;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.emptyString;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
 
@@ -478,6 +480,157 @@ public class UserCalendarRoutesTest {
         .then()
             .statusCode(404)
             .body("type", is("notFound"));
+    }
+
+    @Test
+    void exportShouldReturnTheEventsOfTheCalendar() {
+        String calendarId = createCalendar(user, "Calendar to export");
+        importEvent(user, calendarId, "event-to-export", "Exported event");
+
+        String ics = exportCalendar(user, calendarId);
+
+        assertThat(ics)
+            .contains("BEGIN:VCALENDAR")
+            .contains("UID:event-to-export")
+            .contains("SUMMARY:Exported event")
+            .contains("END:VCALENDAR");
+    }
+
+    @Test
+    void exportShouldReturnAnEmptyCalendarWhenNoEvent() {
+        String calendarId = createCalendar(user, "Empty calendar");
+
+        assertThat(exportCalendar(user, calendarId))
+            .contains("BEGIN:VCALENDAR")
+            .doesNotContain("BEGIN:VEVENT");
+    }
+
+    @Test
+    void exportShouldReturnIcsContentType() {
+        String calendarId = createCalendar(user, "Calendar to export");
+
+        given()
+            .queryParam("action", "export")
+        .when()
+            .post("/users/{username}/calendars/{calendarId}", user.username().asString(), calendarId)
+        .then()
+            .statusCode(200)
+            .header("Content-Type", containsString("text/calendar"))
+            .header("Content-Disposition", is("attachment; filename=calendar.ics"));
+    }
+
+    @Test
+    void exportShouldReturnSourceEventsWhenSubscribedCalendar() {
+        String sourceCalendarId = createCalendar(user, "Public calendar");
+        importEvent(user, sourceCalendarId, "public-event", "Public event");
+        davTestHelper.updateCalendarAcl(user,
+            new CalendarURL(user.id(), new OpenPaaSId(sourceCalendarId)).asUri(),
+            "{DAV:}read");
+
+        String subscriptionId = UUID.randomUUID().toString();
+        davTestHelper.subscribeToSharedCalendar(otherUser, SubscribedCalendarRequest.builder()
+            .id(subscriptionId)
+            .sourceUserId(user.id().value())
+            .sourceCalendarId(sourceCalendarId)
+            .name("My subscription")
+            .color("#00FF00")
+            .readOnly(true)
+            .build());
+
+        assertThat(exportCalendar(otherUser, subscriptionId))
+            .contains("SUMMARY:Public event");
+    }
+
+    @Test
+    void exportShouldReturnSourceEventsWhenDelegatedCalendar() {
+        String sourceCalendarId = createCalendar(user, "Delegated calendar");
+        importEvent(user, sourceCalendarId, "delegated-event", "Delegated event");
+        davTestHelper.grantDelegation(user, new CalendarURL(user.id(), new OpenPaaSId(sourceCalendarId)), otherUser, "dav:read");
+
+        String delegatedCopyId = extractCalendarId(findOtherCalendarHref(listCalendarHrefs(otherUser), otherUser));
+
+        assertThat(exportCalendar(otherUser, delegatedCopyId))
+            .contains("SUMMARY:Delegated event");
+    }
+
+    @Test
+    void exportShouldReturn400WhenActionIsMissing() {
+        String calendarId = createCalendar(user, "Calendar");
+
+        given()
+        .when()
+            .post("/users/{username}/calendars/{calendarId}", user.username().asString(), calendarId)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"));
+    }
+
+    @Test
+    void exportShouldReturn400WhenActionIsNotSupported() {
+        String calendarId = createCalendar(user, "Calendar");
+
+        given()
+            .queryParam("action", "unsupported")
+        .when()
+            .post("/users/{username}/calendars/{calendarId}", user.username().asString(), calendarId)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"));
+    }
+
+    @Test
+    void exportShouldReturn404WhenUserDoesNotExist() {
+        given()
+            .queryParam("action", "export")
+        .when()
+            .post("/users/ghost@linagora.com/calendars/{calendarId}", UUID.randomUUID().toString())
+        .then()
+            .statusCode(404)
+            .body("type", is("notFound"))
+            .body("message", is("User does not exist"));
+    }
+
+    @Test
+    void exportShouldReturn404WhenCalendarDoesNotExist() {
+        given()
+            .queryParam("action", "export")
+        .when()
+            .post("/users/{username}/calendars/{calendarId}", user.username().asString(), UUID.randomUUID().toString())
+        .then()
+            .statusCode(404)
+            .body("type", is("notFound"))
+            .body("message", is("Calendar does not exist"));
+    }
+
+    private String exportCalendar(OpenPaaSUser targetUser, String calendarId) {
+        return given()
+        .when()
+            .queryParam("action", "export")
+            .post("/users/{username}/calendars/{calendarId}", targetUser.username().asString(), calendarId)
+        .then()
+            .statusCode(200)
+            .extract()
+            .asString();
+    }
+
+    private void importEvent(OpenPaaSUser owner, String calendarId, String eventUid, String summary) {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Linagora//Twake Calendar//EN
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20260601T080000Z
+            DTSTART:20260601T100000Z
+            DTEND:20260601T110000Z
+            SUMMARY:%s
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(eventUid, summary);
+
+        calDavClient.importCalendar(new CalendarURL(owner.id(), new OpenPaaSId(calendarId)),
+                eventUid, owner.username(), ics.getBytes(StandardCharsets.UTF_8))
+            .block();
     }
 
     private String createCalendar(OpenPaaSUser owner, String name) {

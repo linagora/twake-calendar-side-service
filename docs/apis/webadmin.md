@@ -1171,6 +1171,41 @@ deleting them removes the delegated copy / the subscription of this user, not th
 - `204`: the calendar was deleted
 - `404`: the user or the calendar does not exist
 
+### Exporting the content of a calendar
+
+```
+POST /users/{usernameToBeUsed}/calendars/{calendarId}?action=export
+```
+
+Example:
+
+```
+POST /users/btellier@linagora.com/calendars/0c5413b9-2ca3-4669-ae44-0d8083344ca8?action=export
+```
+
+Returns a `text/calendar` ICS document holding all the events of the calendar:
+
+```
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Sabre//Sabre VObject 4.5.6//EN
+CALSCALE:GREGORIAN
+BEGIN:VEVENT
+UID:0f5f3f2e-4a1e-4c4e-9e9a-9d7f1b3c2a11
+DTSTART:20260601T100000Z
+DTEND:20260601T110000Z
+SUMMARY:Sprint review
+END:VEVENT
+END:VCALENDAR
+```
+
+Exporting a subscription to a public calendar returns the content of the source calendar.
+
+**Status codes**:
+- `200`: the ICS content of the calendar
+- `400`: the `action` query parameter is missing or is not `export`
+- `404`: the user or the calendar does not exist
+
 ### Updating details of a calendar
 
 ```
