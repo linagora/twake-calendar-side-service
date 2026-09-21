@@ -202,6 +202,110 @@ public class UserAddressBookRoutesTest {
     }
 
     @Test
+    void exportShouldReturnContactsOfTheAddressBook() {
+        String addressBookId = createAddressBook(user, "To be exported");
+        upsertContact(user, addressBookId, "John Doe", "john.doe@linagora.com");
+        upsertContact(user, addressBookId, "Jane Doe", "jane.doe@linagora.com");
+
+        String vcard = given()
+        .when()
+            .queryParam("action", "export")
+            .post("/users/{username}/addressbooks/{addressBookId}", user.username().asString(), addressBookId)
+        .then()
+            .statusCode(200)
+            .header("Content-Type", "text/vcard; charset=utf-8")
+            .extract()
+            .asString();
+
+        assertThat(vcard).contains("EMAIL:john.doe@linagora.com", "EMAIL:jane.doe@linagora.com");
+    }
+
+    @Test
+    void exportShouldReturnEmptyResultWhenAddressBookHasNoContact() {
+        String addressBookId = createAddressBook(user, "Empty address book");
+
+        String vcard = given()
+        .when()
+            .queryParam("action", "export")
+            .post("/users/{username}/addressbooks/{addressBookId}", user.username().asString(), addressBookId)
+        .then()
+            .statusCode(200)
+            .extract()
+            .asString();
+
+        assertThat(vcard).isEmpty();
+    }
+
+    @Test
+    void exportShouldNotReturnContactsOfOtherAddressBooks() {
+        String addressBookId = createAddressBook(user, "Exported address book");
+        String otherAddressBookId = createAddressBook(user, "Other address book");
+        upsertContact(user, addressBookId, "John Doe", "john.doe@linagora.com");
+        upsertContact(user, otherAddressBookId, "Jane Doe", "jane.doe@linagora.com");
+
+        String vcard = given()
+        .when()
+            .queryParam("action", "export")
+            .post("/users/{username}/addressbooks/{addressBookId}", user.username().asString(), addressBookId)
+        .then()
+            .statusCode(200)
+            .extract()
+            .asString();
+
+        assertThat(vcard).doesNotContain("jane.doe@linagora.com");
+    }
+
+    @Test
+    void exportShouldReturn404WhenAddressBookDoesNotExist() {
+        given()
+        .when()
+            .queryParam("action", "export")
+            .post("/users/{username}/addressbooks/{addressBookId}", user.username().asString(), UUID.randomUUID().toString())
+        .then()
+            .statusCode(404)
+            .body("type", is("notFound"))
+            .body("message", is("Address book does not exist"));
+    }
+
+    @Test
+    void exportShouldReturn404WhenUserDoesNotExist() {
+        given()
+        .when()
+            .queryParam("action", "export")
+            .post("/users/ghost@linagora.com/addressbooks/contacts")
+        .then()
+            .statusCode(404)
+            .body("type", is("notFound"))
+            .body("message", is("User does not exist"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "import", "EXPORT"})
+    void postShouldReturn400WhenActionIsNotSupported(String action) {
+        String addressBookId = createAddressBook(user, "Address book");
+
+        given()
+        .when()
+            .queryParam("action", action)
+            .post("/users/{username}/addressbooks/{addressBookId}", user.username().asString(), addressBookId)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"));
+    }
+
+    @Test
+    void postShouldReturn400WhenActionIsMissing() {
+        String addressBookId = createAddressBook(user, "Address book");
+
+        given()
+        .when()
+            .post("/users/{username}/addressbooks/{addressBookId}", user.username().asString(), addressBookId)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"));
+    }
+
+    @Test
     void publicRightShouldPublishAddressBook() {
         String addressBookId = createAddressBook(user, "Soon to be public");
 
@@ -380,6 +484,21 @@ public class UserAddressBookRoutesTest {
             .extract()
             .jsonPath()
             .getString("id");
+    }
+
+    private void upsertContact(OpenPaaSUser owner, String addressBookId, String fullName, String email) {
+        String contactUid = UUID.randomUUID().toString();
+        String vcard = """
+            BEGIN:VCARD
+            VERSION:4.0
+            UID:%s
+            FN:%s
+            EMAIL:%s
+            END:VCARD
+            """.formatted(contactUid, fullName, email);
+
+        cardDavClient.upsertContact(owner.username(), new AddressBookURL(owner.id(), addressBookId), contactUid,
+            vcard.getBytes(StandardCharsets.UTF_8)).block();
     }
 
     private List<String> listAddressBookHrefs(OpenPaaSUser targetUser) {

@@ -1380,6 +1380,36 @@ DELETE /users/btellier@linagora.com/addressbooks/0e26ee47-cc4b-4aaa-8447-12588fd
 - `400`: attempting to delete a system address book (e.g. `contacts`)
 - `404`: the user or the address book does not exist
 
+### Exporting the content of an address book
+
+```
+POST /users/{username}/addressbooks/{addressBookId}?action=export
+```
+
+Example:
+
+```
+POST /users/btellier@linagora.com/addressbooks/0e26ee47-cc4b-4aaa-8447-12588fdb11f1?action=export
+```
+
+Returns, as `text/vcard`, the vCards of all the contacts of the address book:
+
+```
+BEGIN:VCARD
+VERSION:4.0
+UID:3f1a1c8e-1c1a-4a0e-9a5f-0b5f4a2b1c0d
+FN:John Doe
+EMAIL:john.doe@linagora.com
+END:VCARD
+```
+
+The response body is empty when the address book holds no contact.
+
+**Status codes**:
+- `200`: the content of the address book is returned
+- `400`: the `action` query parameter is missing or unsupported. Only `export` is supported.
+- `404`: the user or the address book does not exist
+
 ### Changing the public visibility of an address book
 
 ```
