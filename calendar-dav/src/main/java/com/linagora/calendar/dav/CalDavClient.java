@@ -146,6 +146,19 @@ public class CalDavClient extends DavClient {
     private static final String FREE_BUSY_BULK_PATH = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/freebusy";
 
     /**
+     * Only the {@code DAV:href} of each calendar object is needed to derive its event id. Asking for the single
+     * cheapest property keeps the multistatus answer small, where an implicit {@code DAV:allprop} would make the
+     * calendar server compute and serialize every property of every event.
+     */
+    private static final String EVENT_IDS_PROPFIND_BODY = """
+        <?xml version="1.0" encoding="utf-8" ?>
+        <d:propfind xmlns:d="DAV:">
+          <d:prop>
+            <d:resourcetype/>
+          </d:prop>
+        </d:propfind>""";
+
+    /**
      * 'uids' names the events to leave out of the answer. It is sent empty rather than omitted: the calendar
      * server only rebuilds a proper JSON array of busy periods when that filter is present.
      */
@@ -299,9 +312,11 @@ public class CalDavClient extends DavClient {
 
     public Flux<String> findUserCalendarEventIds(Mono<HttpClient> httpClientPublisher, CalendarURL calendarURL) {
         return httpClientPublisher.flatMapMany(client ->
-            client.headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, "application/xml"))
+            client.headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_XML)
+                    .add(HEADER_DEPTH, "1"))
                 .request(HttpMethod.valueOf("PROPFIND"))
                 .uri(calendarURL.asUri().toString())
+                .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(EVENT_IDS_PROPFIND_BODY.getBytes(StandardCharsets.UTF_8))))
                 .responseSingle((response, responseContent) -> {
                     if (response.status().code() == 207) {
                         return responseContent.asByteArray();
