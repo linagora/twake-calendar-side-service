@@ -67,6 +67,11 @@ public class UserAddressBookRoutes implements Routes {
     private static final String PUBLIC_RIGHT_PATH = ADDRESSBOOK_PATH + SEPARATOR + "publicRight";
     private static final String INVITEE_PATH = ADDRESSBOOK_PATH + SEPARATOR + "invitee";
 
+    private static final String ACTION_PARAMETER = "action";
+    private static final String EXPORT_ACTION = "export";
+    private static final String VCARD_CONTENT_TYPE = "text/vcard; charset=utf-8";
+    private static final byte[] NO_CONTACT = new byte[0];
+
     private static final String FIELD_ID = "id";
     private static final String FIELD_NAME = "dav:name";
     private static final String FIELD_DESCRIPTION = "carddav:description";
@@ -101,6 +106,7 @@ public class UserAddressBookRoutes implements Routes {
         service.get(ADDRESSBOOKS_PATH, this::listAddressBooks);
         service.post(ADDRESSBOOKS_PATH, this::createAddressBook);
         service.delete(ADDRESSBOOK_PATH, this::deleteAddressBook);
+        service.post(ADDRESSBOOK_PATH, this::exportAddressBook);
         service.post(PUBLIC_RIGHT_PATH, this::updatePublicRight);
         service.post(INVITEE_PATH, this::updateInvitees);
     }
@@ -163,6 +169,31 @@ public class UserAddressBookRoutes implements Routes {
 
         response.status(HttpStatus.NO_CONTENT_204);
         return Constants.EMPTY_BODY;
+    }
+
+    private String exportAddressBook(Request request, Response response) {
+        requireExportAction(request);
+        OpenPaaSUser user = retrieveUser(request);
+        AddressBookURL addressBookURL = retrieveExistingAddressBook(request, user);
+
+        byte[] vcard = wrapDavErrors(() -> cardDavClient.exportContact(user.username(), addressBookURL)
+            .blockOptional()
+            .orElse(NO_CONTACT));
+
+        response.status(HttpStatus.OK_200);
+        response.type(VCARD_CONTENT_TYPE);
+        return new String(vcard, StandardCharsets.UTF_8);
+    }
+
+    private void requireExportAction(Request request) {
+        String action = request.queryParams(ACTION_PARAMETER);
+        if (!EXPORT_ACTION.equals(action)) {
+            throw ErrorResponder.builder()
+                .statusCode(HttpStatus.BAD_REQUEST_400)
+                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                .message("Invalid '%s' query parameter: '%s'. Supported values are: '%s'".formatted(ACTION_PARAMETER, action, EXPORT_ACTION))
+                .haltError();
+        }
     }
 
     private String updatePublicRight(Request request, Response response) {
