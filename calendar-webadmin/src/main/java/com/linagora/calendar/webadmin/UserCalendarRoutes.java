@@ -33,6 +33,7 @@ import org.apache.james.core.Username;
 import org.apache.james.webadmin.Constants;
 import org.apache.james.webadmin.Routes;
 import org.apache.james.webadmin.utils.ErrorResponder;
+import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpStatus;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -41,13 +42,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.CalendarNotFoundException;
 import com.linagora.calendar.dav.CalendarSharingUpdate;
 import com.linagora.calendar.dav.DavClientException;
+import com.linagora.calendar.dav.dto.CalendarMirrorSource;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 
+import reactor.core.publisher.Mono;
 import spark.HaltException;
 import spark.Request;
 import spark.Response;
@@ -67,6 +71,11 @@ public class UserCalendarRoutes implements Routes {
     private static final String CALENDAR_PATH = CALENDARS_PATH + SEPARATOR + CALENDAR_ID_PARAM;
     private static final String PUBLIC_RIGHT_PATH = CALENDAR_PATH + SEPARATOR + "publicRight";
     private static final String INVITEE_PATH = CALENDAR_PATH + SEPARATOR + "invitee";
+
+    private static final String ACTION_QUERY_PARAM = "action";
+    private static final String EXPORT_ACTION = "export";
+    private static final String ICS_CONTENT_TYPE = "text/calendar; charset=utf-8";
+    private static final String ICS_CONTENT_DISPOSITION = "attachment; filename=calendar.ics";
 
     private static final String FIELD_ID = "id";
     private static final String FIELD_NAME = "dav:name";
@@ -107,6 +116,7 @@ public class UserCalendarRoutes implements Routes {
     public void define(Service service) {
         service.get(CALENDARS_PATH, this::listCalendars);
         service.post(CALENDARS_PATH, this::createCalendar);
+        service.post(CALENDAR_PATH, this::exportCalendar);
         service.delete(CALENDAR_PATH, this::deleteCalendar);
         service.patch(CALENDAR_PATH, this::updateCalendarProperties);
         service.post(PUBLIC_RIGHT_PATH, this::updatePublicRight);
@@ -140,6 +150,21 @@ public class UserCalendarRoutes implements Routes {
         return OBJECT_MAPPER.createObjectNode()
             .put(FIELD_ID, calendarId)
             .toString();
+    }
+
+    private String exportCalendar(Request request, Response response) {
+        requireExportAction(request);
+        OpenPaaSUser user = retrieveUser(request);
+        CalendarURL calendarURL = retrieveExportableCalendar(request, user);
+
+        byte[] ics = wrapDavErrors(() -> calDavClient.export(calendarURL, user.username())
+            .switchIfEmpty(Mono.error(() -> new DavClientException("The DAV server does not support exporting calendar " + calendarURL.serialize())))
+            .block());
+
+        response.status(HttpStatus.OK_200);
+        response.type(ICS_CONTENT_TYPE);
+        response.header(HttpHeader.CONTENT_DISPOSITION.asString(), ICS_CONTENT_DISPOSITION);
+        return new String(ics, StandardCharsets.UTF_8);
     }
 
     private String deleteCalendar(Request request, Response response) {
@@ -207,18 +232,50 @@ public class UserCalendarRoutes implements Routes {
     }
 
     private CalendarURL retrieveExistingCalendar(Request request, OpenPaaSUser user) {
-        String calendarId = request.params(CALENDAR_ID_PARAM);
-        CalendarURL calendarURL = new CalendarURL(user.id(), new OpenPaaSId(calendarId));
+        CalendarURL calendarURL = requestedCalendar(request, user);
 
         boolean exists = wrapDavErrors(() -> calDavClient.calendarExists(user.username(), calendarURL).block());
         if (!exists) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.NOT_FOUND_404)
-                .type(ErrorResponder.ErrorType.NOT_FOUND)
-                .message("Calendar does not exist")
-                .haltError();
+            throw calendarNotFound();
         }
         return calendarURL;
+    }
+
+    /**
+     * A subscription to a public calendar holds no event of its own: the source calendar needs to be exported
+     * instead. Delegated calendars, on the other hand, are exported through the path of the delegate, the only
+     * one they are granted to read.
+     */
+    private CalendarURL retrieveExportableCalendar(Request request, OpenPaaSUser user) {
+        CalendarURL calendarURL = requestedCalendar(request, user);
+
+        return wrapDavErrors(() -> calDavClient.fetchCalendarMetadata(user.username(), calendarURL)
+            .map(metadata -> CalendarMirrorSource.parse(metadata).subscribedSource().orElse(calendarURL))
+            .onErrorMap(CalendarNotFoundException.class, e -> calendarNotFound())
+            .block());
+    }
+
+    private CalendarURL requestedCalendar(Request request, OpenPaaSUser user) {
+        return new CalendarURL(user.id(), new OpenPaaSId(request.params(CALENDAR_ID_PARAM)));
+    }
+
+    private HaltException calendarNotFound() {
+        return ErrorResponder.builder()
+            .statusCode(HttpStatus.NOT_FOUND_404)
+            .type(ErrorResponder.ErrorType.NOT_FOUND)
+            .message("Calendar does not exist")
+            .haltError();
+    }
+
+    private void requireExportAction(Request request) {
+        String action = StringUtils.trimToEmpty(request.queryParams(ACTION_QUERY_PARAM));
+        if (!EXPORT_ACTION.equals(action)) {
+            throw ErrorResponder.builder()
+                .statusCode(HttpStatus.BAD_REQUEST_400)
+                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                .message("Invalid '%s' query parameter: '%s'. Supported values are: '%s'".formatted(ACTION_QUERY_PARAM, action, EXPORT_ACTION))
+                .haltError();
+        }
     }
 
     private CalDavClient.PublicRight parsePublicRight(Request request) {
