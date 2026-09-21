@@ -64,6 +64,32 @@ public record AddressBookReportXmlResponse(byte[] xml) {
         }
     }
 
+    /**
+     * Counts the contacts of the multistatus response: unlike {@link #extractContactObjects()} it does not
+     * require the contact data to be part of the response.
+     */
+    public long countContacts() {
+        XMLStreamReader reader = null;
+        try {
+            reader = XML_INPUT_FACTORY.createXMLStreamReader(new ByteArrayInputStream(xml));
+            return countContacts(reader);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to parse CardDAV multistatus XML", e);
+        } finally {
+            close(reader);
+        }
+    }
+
+    private long countContacts(XMLStreamReader reader) throws XMLStreamException {
+        long count = 0;
+        while (reader.hasNext()) {
+            if (reader.next() == XMLStreamConstants.START_ELEMENT && isDavHref(reader.getName())) {
+                count++;
+            }
+        }
+        return count;
+    }
+
     private List<ContactObject> readContactObjects(XMLStreamReader reader) throws XMLStreamException {
         List<ContactObject> items = new ArrayList<>();
         URI currentHref = null;

@@ -25,8 +25,10 @@ import static org.hamcrest.Matchers.emptyString;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import javax.net.ssl.SSLException;
@@ -304,6 +306,66 @@ public class UserAddressBookRoutesTest {
         .then()
             .statusCode(400)
             .body("type", is("InvalidArgument"));
+    }
+
+    @Test
+    void contactCountShouldReturnZeroWhenAddressBookIsEmpty() {
+        String addressBookId = createAddressBook(user, "Empty address book");
+
+        given()
+        .when()
+            .get("/users/{username}/addressbooks/{addressBookId}/contactCount", user.username().asString(), addressBookId)
+        .then()
+            .statusCode(200)
+            .body("count", is(0));
+    }
+
+    @Test
+    void contactCountShouldReturnContactCount() {
+        String addressBookId = createAddressBook(user, "Filled address book");
+        IntStream.range(0, 3).forEach(i -> createContact(addressBookId, "John Doe " + i));
+
+        given()
+        .when()
+            .get("/users/{username}/addressbooks/{addressBookId}/contactCount", user.username().asString(), addressBookId)
+        .then()
+            .statusCode(200)
+            .body("count", is(3));
+    }
+
+    @Test
+    void contactCountShouldReturn404WhenAddressBookDoesNotExist() {
+        given()
+        .when()
+            .get("/users/{username}/addressbooks/{addressBookId}/contactCount", user.username().asString(), UUID.randomUUID().toString())
+        .then()
+            .statusCode(404)
+            .body("type", is("notFound"))
+            .body("message", is("Address book does not exist"));
+    }
+
+    @Test
+    void contactCountShouldReturn404WhenUserDoesNotExist() {
+        given()
+        .when()
+            .get("/users/ghost@linagora.com/addressbooks/contacts/contactCount")
+        .then()
+            .statusCode(404)
+            .body("type", is("notFound"))
+            .body("message", is("User does not exist"));
+    }
+
+    private void createContact(String addressBookId, String fullName) {
+        String vcardUid = UUID.randomUUID().toString();
+        String vcard = """
+            BEGIN:VCARD
+            VERSION:3.0
+            UID:%s
+            FN:%s
+            END:VCARD
+            """.formatted(vcardUid, fullName);
+        cardDavClient.upsertContact(user.username(), new AddressBookURL(user.id(), addressBookId), vcardUid,
+            vcard.getBytes(StandardCharsets.UTF_8)).block();
     }
 
     private String createAddressBook(OpenPaaSUser owner, String name) {

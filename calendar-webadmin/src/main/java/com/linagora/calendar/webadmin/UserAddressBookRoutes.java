@@ -66,8 +66,10 @@ public class UserAddressBookRoutes implements Routes {
     private static final String ADDRESSBOOK_PATH = ADDRESSBOOKS_PATH + SEPARATOR + ADDRESSBOOK_ID_PARAM;
     private static final String PUBLIC_RIGHT_PATH = ADDRESSBOOK_PATH + SEPARATOR + "publicRight";
     private static final String INVITEE_PATH = ADDRESSBOOK_PATH + SEPARATOR + "invitee";
+    private static final String CONTACT_COUNT_PATH = ADDRESSBOOK_PATH + SEPARATOR + "contactCount";
 
     private static final String FIELD_ID = "id";
+    private static final String FIELD_COUNT = "count";
     private static final String FIELD_NAME = "dav:name";
     private static final String FIELD_DESCRIPTION = "carddav:description";
     private static final String FIELD_PUBLIC_RIGHT = "public_right";
@@ -99,6 +101,7 @@ public class UserAddressBookRoutes implements Routes {
     @Override
     public void define(Service service) {
         service.get(ADDRESSBOOKS_PATH, this::listAddressBooks);
+        service.get(CONTACT_COUNT_PATH, this::countContacts);
         service.post(ADDRESSBOOKS_PATH, this::createAddressBook);
         service.delete(ADDRESSBOOK_PATH, this::deleteAddressBook);
         service.post(PUBLIC_RIGHT_PATH, this::updatePublicRight);
@@ -115,6 +118,21 @@ public class UserAddressBookRoutes implements Routes {
         response.status(HttpStatus.OK_200);
         response.type(Constants.JSON_CONTENT_TYPE);
         return new String(sabreResponse, StandardCharsets.UTF_8);
+    }
+
+    private String countContacts(Request request, Response response) {
+        OpenPaaSUser user = retrieveUser(request);
+        String addressBookId = request.params(ADDRESSBOOK_ID_PARAM);
+
+        long count = wrapDavErrors(() -> cardDavClient.countContacts(user.username(), user.id(), addressBookId)
+            .blockOptional()
+            .orElseThrow(UserAddressBookRoutes::addressBookNotFound));
+
+        response.status(HttpStatus.OK_200);
+        response.type(Constants.JSON_CONTENT_TYPE);
+        return OBJECT_MAPPER.createObjectNode()
+            .put(FIELD_COUNT, count)
+            .toString();
     }
 
     private String createAddressBook(Request request, Response response) {
@@ -144,11 +162,7 @@ public class UserAddressBookRoutes implements Routes {
                 .filter(book -> book.value().equals(addressBookId))
                 .next()
                 .blockOptional()
-                .orElseThrow(() -> ErrorResponder.builder()
-                    .statusCode(HttpStatus.NOT_FOUND_404)
-                    .type(ErrorResponder.ErrorType.NOT_FOUND)
-                    .message("Address book does not exist")
-                    .haltError()));
+                .orElseThrow(UserAddressBookRoutes::addressBookNotFound));
 
         if (addressBook.type() == CardDavClient.AddressBookType.SYSTEM) {
             throw ErrorResponder.builder()
@@ -212,13 +226,17 @@ public class UserAddressBookRoutes implements Routes {
         String addressBookId = request.params(ADDRESSBOOK_ID_PARAM);
         boolean exists = wrapDavErrors(() -> cardDavClient.addressBookExists(user.username(), user.id(), addressBookId).block());
         if (!exists) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.NOT_FOUND_404)
-                .type(ErrorResponder.ErrorType.NOT_FOUND)
-                .message("Address book does not exist")
-                .haltError();
+            throw addressBookNotFound();
         }
         return new AddressBookURL(user.id(), addressBookId);
+    }
+
+    private static HaltException addressBookNotFound() {
+        return ErrorResponder.builder()
+            .statusCode(HttpStatus.NOT_FOUND_404)
+            .type(ErrorResponder.ErrorType.NOT_FOUND)
+            .message("Address book does not exist")
+            .haltError();
     }
 
     private boolean parsePublicRight(Request request) {
