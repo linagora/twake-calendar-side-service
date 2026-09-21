@@ -31,7 +31,6 @@ import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
-import org.apache.james.core.Domain;
 import org.apache.james.task.TaskId;
 import org.apache.james.task.TaskManager;
 import org.apache.james.webadmin.Constants;
@@ -44,11 +43,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavClientException;
 import com.linagora.calendar.dav.importer.EventToImport;
-import com.linagora.calendar.storage.CalendarURL;
-import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.webadmin.service.CalendarImportService;
+import com.linagora.calendar.webadmin.service.DomainCalendar;
 import com.linagora.calendar.webadmin.task.DomainCalendarImportTask;
-import com.linagora.calendar.webadmin.task.DomainCalendarImportTask.CalendarType;
 
 import reactor.core.publisher.Mono;
 import spark.Request;
@@ -62,10 +59,6 @@ import spark.Response;
  * {@link ResourceRoutes}.
  */
 public class DomainCalendarContentHandler {
-
-    /** A calendar a domain owns, resolved from the request path. */
-    public record DomainCalendar(Domain domain, OpenPaaSId domainId, CalendarType calendarType, CalendarURL calendarURL) {
-    }
 
     /**
      * Resolves the calendar a request targets. {@code onlyActive} rejects the calendars that may be read but
@@ -141,8 +134,7 @@ public class DomainCalendarContentHandler {
     private String importCalendar(Request request, Response response, DomainCalendar calendar) {
         List<EventToImport> events = parseEvents(request);
 
-        TaskId taskId = taskManager.submit(new DomainCalendarImportTask(calendarImportService, calendar.domain(),
-            calendar.domainId(), calendar.calendarType(), calendar.calendarURL(), events));
+        TaskId taskId = taskManager.submit(new DomainCalendarImportTask(calendarImportService, calendar, events));
 
         response.status(HttpStatus.CREATED_201);
         response.header(HttpHeader.LOCATION.asString(), TasksRoutes.BASE + SEPARATOR + taskId.asString());

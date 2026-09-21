@@ -55,8 +55,8 @@ import com.linagora.calendar.storage.ResourceNotFoundException;
 import com.linagora.calendar.storage.ResourceUpdateRequest;
 import com.linagora.calendar.storage.model.Resource;
 import com.linagora.calendar.storage.model.ResourceId;
-import com.linagora.calendar.webadmin.DomainCalendarContentHandler.DomainCalendar;
-import com.linagora.calendar.webadmin.task.DomainCalendarImportTask.CalendarType;
+import com.linagora.calendar.webadmin.service.DomainCalendar;
+import com.linagora.calendar.webadmin.service.DomainCalendar.CalendarType;
 
 import reactor.core.publisher.Mono;
 import spark.HaltException;

@@ -44,8 +44,8 @@ import com.linagora.calendar.storage.TeamCalendarNotFoundException;
 import com.linagora.calendar.storage.exception.DomainNotFoundException;
 import com.linagora.calendar.storage.model.TeamCalendar;
 import com.linagora.calendar.storage.model.TeamCalendarId;
-import com.linagora.calendar.webadmin.DomainCalendarContentHandler.DomainCalendar;
-import com.linagora.calendar.webadmin.task.DomainCalendarImportTask.CalendarType;
+import com.linagora.calendar.webadmin.service.DomainCalendar;
+import com.linagora.calendar.webadmin.service.DomainCalendar.CalendarType;
 
 import reactor.core.publisher.Mono;
 import spark.Request;
