@@ -1312,6 +1312,30 @@ Returns the DAV server response verbatim, including the default `contacts` addre
 **Status codes**:
 - `200`: the address book list is returned
 
+### Counting the contacts of an address book
+
+```
+GET /users/{username}/addressbooks/{addressBookId}/contactCount
+```
+
+Example:
+
+```
+GET /users/btellier@linagora.com/addressbooks/contacts/contactCount
+```
+
+Returns the number of contacts of the address book:
+
+```json
+{"count": 805}
+```
+
+Address books shared with, or subscribed by, the user are supported: the contacts of the source address book are counted.
+
+**Status codes**:
+- `200`: the contact count is returned
+- `404`: the user or the address book does not exist
+
 ### Creating an address book
 
 ```

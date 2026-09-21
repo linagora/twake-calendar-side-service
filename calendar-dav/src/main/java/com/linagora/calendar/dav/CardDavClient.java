@@ -111,6 +111,8 @@ public class CardDavClient extends DavClient {
 
     public static final String LIMIT_PARAM = "limit";
 
+    private static final String ADDRESS_BOOK_LIST_URI_TEMPLATE = "/addressbooks/%s.json?contactsCount=true&inviteStatus=2&personal=true&shared=true&subscribed=true";
+    private static final String NUMBER_OF_CONTACTS_PROPERTY = "numberOfContacts";
     private static final String SYNC_TOKEN_PROPERTY = "dav:syncToken";
     private static final String ADDRESS_BOOK_SOURCE_PROPERTY = "openpaas:source";
     private static final String CONTENT_TYPE_XML = "application/xml";
@@ -122,6 +124,14 @@ public class CardDavClient extends DavClient {
           <d:prop>
             <d:getetag/>
             <card:address-data/>
+          </d:prop>
+        </card:addressbook-query>
+        """.getBytes(StandardCharsets.UTF_8);
+    private static final byte[] ADDRESS_BOOK_ETAG_REPORT = """
+        <?xml version="1.0" encoding="utf-8" ?>
+        <card:addressbook-query xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">
+          <d:prop>
+            <d:getetag/>
           </d:prop>
         </card:addressbook-query>
         """.getBytes(StandardCharsets.UTF_8);
@@ -190,13 +200,17 @@ public class CardDavClient extends DavClient {
     }
 
     private Mono<AddressBookReportXmlResponse> reportAddressBookContacts(Mono<HttpClient> authenticatedClient, AddressBookURL addressBookURL) {
+        return reportAddressBookContacts(authenticatedClient, addressBookURL, ADDRESS_BOOK_QUERY_REPORT);
+    }
+
+    private Mono<AddressBookReportXmlResponse> reportAddressBookContacts(Mono<HttpClient> authenticatedClient, AddressBookURL addressBookURL, byte[] reportPayload) {
         String uri = addressBookURL.asUri().toASCIIString();
         return authenticatedClient.flatMap(client -> client.headers(headers -> headers
                 .add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_XML)
                 .add(HEADER_DEPTH, "1"))
             .request(REPORT_METHOD)
             .uri(uri)
-            .send(Mono.just(Unpooled.wrappedBuffer(ADDRESS_BOOK_QUERY_REPORT)))
+            .send(Mono.just(Unpooled.wrappedBuffer(reportPayload)))
             .responseSingle((response, byteBufMono) -> {
                 if (response.status().code() == HttpStatus.SC_MULTI_STATUS) {
                     return byteBufMono.asByteArray().map(AddressBookReportXmlResponse::new);
@@ -348,8 +362,7 @@ public class CardDavClient extends DavClient {
     }
 
     public Flux<AddressBook> listUserAddressBookIds(Username username, OpenPaaSId userId) {
-        String uri = String.format("/addressbooks/%s.json?contactsCount=true&inviteStatus=2&personal=true&shared=true&subscribed=true",
-            userId.value());
+        String uri = ADDRESS_BOOK_LIST_URI_TEMPLATE.formatted(userId.value());
         return httpClientWithImpersonation(username).headers(headers -> headers
                 .add(HttpHeaderNames.ACCEPT, "application/json"))
             .get()
@@ -369,18 +382,22 @@ public class CardDavClient extends DavClient {
     }
 
     private List<AddressBook> extractAddressBookIdsWithType(String json) {
+        return extractAddressBooks(json).stream()
+            .map(jsonNode -> {
+                String href = jsonNode.path("_links").path("self").path("href").asText();
+                String type = jsonNode.path("type").asText();
+                return new AddressBook(extractAddressBookId(href), AddressBookType.from(type));
+            })
+            .toList();
+    }
+
+    private List<JsonNode> extractAddressBooks(String json) {
         try {
             JsonNode node = JsonMapper.builder().build().readTree(json);
             ArrayNode books = (ArrayNode) node.path("_embedded").path("dav:addressbook");
-            return Streams.stream(books.elements())
-                .map(jsonNode -> {
-                    String href = jsonNode.path("_links").path("self").path("href").asText();
-                    String type = jsonNode.path("type").asText();
-                    return new AddressBook(extractAddressBookId(href), AddressBookType.from(type));
-                })
-                .toList();
+            return Streams.stream(books.elements()).toList();
         } catch (JsonProcessingException e) {
-            throw new RuntimeException(e);
+            throw new DavClientException("Unable to parse address book list", e);
         }
     }
 
@@ -393,8 +410,7 @@ public class CardDavClient extends DavClient {
     }
 
     private Flux<AddressBookURL> listAddressBookUrls(Mono<HttpClient> authenticatedClient, OpenPaaSId baseId, MirrorAddressBooks mirrorAddressBooks) {
-        String uri = String.format("/addressbooks/%s.json?contactsCount=true&inviteStatus=2&personal=true&shared=true&subscribed=true",
-            baseId.value());
+        String uri = ADDRESS_BOOK_LIST_URI_TEMPLATE.formatted(baseId.value());
         return authenticatedClient.flatMap(client -> client.headers(headers -> headers
                 .add(HttpHeaderNames.ACCEPT, "application/json"))
             .get()
@@ -414,17 +430,11 @@ public class CardDavClient extends DavClient {
     }
 
     private List<AddressBookURL> extractAddressBookUrls(String json, MirrorAddressBooks mirrorAddressBooks) {
-        try {
-            JsonNode node = JsonMapper.builder().build().readTree(json);
-            ArrayNode books = (ArrayNode) node.path("_embedded").path("dav:addressbook");
-            return Streams.stream(books.elements())
-                .filter(jsonNode -> mirrorAddressBooks == MirrorAddressBooks.INCLUDE || !isMirror(jsonNode))
-                .map(jsonNode -> jsonNode.path("_links").path("self").path("href").asText())
-                .map(href -> AddressBookURL.parse(StringUtils.removeEnd(href, ".json")))
-                .toList();
-        } catch (JsonProcessingException e) {
-            throw new DavClientException("Unable to parse address book list", e);
-        }
+        return extractAddressBooks(json).stream()
+            .filter(jsonNode -> mirrorAddressBooks == MirrorAddressBooks.INCLUDE || !isMirror(jsonNode))
+            .map(jsonNode -> jsonNode.path("_links").path("self").path("href").asText())
+            .map(href -> AddressBookURL.parse(StringUtils.removeEnd(href, ".json")))
+            .toList();
     }
 
     private boolean isMirror(JsonNode addressBook) {
@@ -481,8 +491,7 @@ public class CardDavClient extends DavClient {
     }
 
     public Mono<byte[]> listUserAddressBooksAsBytes(Username username, OpenPaaSId userId) {
-        String uri = "/addressbooks/%s.json?contactsCount=true&inviteStatus=2&personal=true&shared=true&subscribed=true"
-            .formatted(userId.value());
+        String uri = ADDRESS_BOOK_LIST_URI_TEMPLATE.formatted(userId.value());
         return httpClientWithImpersonation(username)
             .headers(headers -> headers.add(HttpHeaderNames.ACCEPT, "application/json"))
             .get()
@@ -514,6 +523,32 @@ public class CardDavClient extends DavClient {
                         "Unexpected status code: %d when checking existence of address book %s/%s\n%s"
                             .formatted(response.status().code(), userId.value(), addressBookId, errorBody))));
             });
+    }
+
+    /**
+     * Counts the contacts of an address book. Empty when the address book does not exist.
+     */
+    public Mono<Long> countContacts(Username username, OpenPaaSId userId, String addressBookId) {
+        return retrieveAddressBookMetadata(username, userId, addressBookId)
+            .flatMap(addressBook -> Optional.of(addressBook.path(NUMBER_OF_CONTACTS_PROPERTY))
+                .filter(JsonNode::isNumber)
+                .map(JsonNode::asLong)
+                .map(Mono::just)
+                // Mirrors of shared and subscribed address books carry no contact count: count them explicitly.
+                .orElseGet(() -> countContactsViaReport(username, new AddressBookURL(userId, addressBookId))));
+    }
+
+    private Mono<JsonNode> retrieveAddressBookMetadata(Username username, OpenPaaSId userId, String addressBookId) {
+        String href = "/addressbooks/%s/%s.json".formatted(userId.value(), addressBookId);
+        return listUserAddressBooksAsBytes(username, userId)
+            .flatMapIterable(json -> extractAddressBooks(new String(json, StandardCharsets.UTF_8)))
+            .filter(addressBook -> href.equals(addressBook.path("_links").path("self").path("href").asText()))
+            .next();
+    }
+
+    private Mono<Long> countContactsViaReport(Username username, AddressBookURL addressBookURL) {
+        return reportAddressBookContacts(Mono.just(httpClientWithImpersonation(username)), addressBookURL, ADDRESS_BOOK_ETAG_REPORT)
+            .map(AddressBookReportXmlResponse::countContacts);
     }
 
     public Mono<Void> createUserAddressBook(Username username, OpenPaaSId userId, NewAddressBook newAddressBook) {

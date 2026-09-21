@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.IntStream;
 
 import javax.net.ssl.SSLException;
 
@@ -214,6 +215,52 @@ public class CardDavClientTest {
 
         assertThat(initialToken.value()).isNotBlank();
         assertThat(updatedToken).isNotEqualTo(initialToken);
+    }
+
+    @Test
+    void countContactsShouldReturnZeroWhenAddressBookIsEmpty() {
+        assertThat(testee.countContacts(user.username(), user.id(), "contacts").block())
+            .isEqualTo(0L);
+    }
+
+    @Test
+    void countContactsShouldReturnContactCount() {
+        AddressBookURL addressBookURL = new AddressBookURL(user.id(), "contacts");
+        IntStream.range(0, 3).forEach(i -> upsertContact(user, addressBookURL, "John Doe " + i));
+
+        assertThat(testee.countContacts(user.username(), user.id(), "contacts").block())
+            .isEqualTo(3L);
+    }
+
+    @Test
+    void countContactsShouldNotCountContactsOfOtherAddressBooks() {
+        upsertContact(user, new AddressBookURL(user.id(), "contacts"), "John Doe");
+
+        assertThat(testee.countContacts(user.username(), user.id(), "collected").block())
+            .isEqualTo(0L);
+    }
+
+    @Test
+    void countContactsShouldReturnEmptyWhenAddressBookDoesNotExist() {
+        assertThat(testee.countContacts(user.username(), user.id(), UUID.randomUUID().toString()).blockOptional())
+            .isEmpty();
+    }
+
+    @Test
+    void countContactsShouldSupportDelegatedAddressBooks() {
+        OpenPaaSUser sharee = sabreDavExtension.newTestUser();
+        AddressBookURL addressBookURL = new AddressBookURL(user.id(), "contacts");
+        IntStream.range(0, 2).forEach(i -> upsertContact(user, addressBookURL, "John Doe " + i));
+        testee.updateAddressBookShares(user.username(), addressBookURL,
+            List.of(new CardDavClient.AddressBookSharee("mailto:" + sharee.username().asString(), DavRight.READ.access()))).block();
+
+        String mirrorId = testee.listUserAddressBookIds(sharee.username(), sharee.id())
+            .map(CardDavClient.AddressBook::value)
+            .filter(addressBookId -> !List.of("contacts", "collected").contains(addressBookId))
+            .blockFirst();
+
+        assertThat(testee.countContacts(sharee.username(), sharee.id(), mirrorId).block())
+            .isEqualTo(2L);
     }
 
     @Test
@@ -915,6 +962,18 @@ public class CardDavClientTest {
             testee.exportAddressBook(unauthorizedUser.username(), ownerAddressBookUrl, Map.of()).block())
             .isInstanceOf(CardDavClient.CardDavExportException.class)
             .hasMessageContaining("User did not have the required privileges");
+    }
+
+    private void upsertContact(OpenPaaSUser owner, AddressBookURL addressBookURL, String fullName) {
+        String vcardUid = UUID.randomUUID().toString();
+        String vcard = """
+            BEGIN:VCARD
+            VERSION:3.0
+            UID:%s
+            FN:%s
+            END:VCARD
+            """.formatted(vcardUid, fullName);
+        testee.upsertContact(owner.username(), addressBookURL, vcardUid, vcard.getBytes(StandardCharsets.UTF_8)).block();
     }
 
     private OpenPaaSDomain createNewDomainMemberAddressBook() {
