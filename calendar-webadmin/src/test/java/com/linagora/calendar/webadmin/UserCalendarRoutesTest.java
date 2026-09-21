@@ -26,9 +26,11 @@ import static org.hamcrest.Matchers.emptyString;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.IntStream;
 
 import javax.net.ssl.SSLException;
 
@@ -602,6 +604,69 @@ public class UserCalendarRoutesTest {
             .body("message", is("Calendar does not exist"));
     }
 
+    @Test
+    void eventCountShouldReturnZeroWhenCalendarHasNoEvent() {
+        String calendarId = createCalendar(user, "Empty calendar");
+
+        given()
+        .when()
+            .get("/users/{username}/calendars/{calendarId}/eventCount", user.username().asString(), calendarId)
+        .then()
+            .statusCode(200)
+            .body("count", is(0));
+    }
+
+    @Test
+    void eventCountShouldReturnEventCountOfTheCalendar() {
+        String calendarId = createCalendar(user, "Busy calendar");
+        IntStream.range(0, 3)
+            .forEach(index -> createEvent(user, calendarId, "event-" + index));
+
+        given()
+        .when()
+            .get("/users/{username}/calendars/{calendarId}/eventCount", user.username().asString(), calendarId)
+        .then()
+            .statusCode(200)
+            .body("count", is(3));
+    }
+
+    @Test
+    void eventCountShouldNotCountEventsOfOtherCalendars() {
+        String calendarId = createCalendar(user, "Counted calendar");
+        String otherCalendarId = createCalendar(user, "Other calendar");
+        createEvent(user, calendarId, "counted-event");
+        createEvent(user, otherCalendarId, "ignored-event");
+
+        given()
+        .when()
+            .get("/users/{username}/calendars/{calendarId}/eventCount", user.username().asString(), calendarId)
+        .then()
+            .statusCode(200)
+            .body("count", is(1));
+    }
+
+    @Test
+    void eventCountShouldReturn404WhenCalendarDoesNotExist() {
+        given()
+        .when()
+            .get("/users/{username}/calendars/{calendarId}/eventCount", user.username().asString(), UUID.randomUUID().toString())
+        .then()
+            .statusCode(404)
+            .body("type", is("notFound"))
+            .body("message", is("Calendar does not exist"));
+    }
+
+    @Test
+    void eventCountShouldReturn404WhenUserDoesNotExist() {
+        given()
+        .when()
+            .get("/users/ghost@linagora.com/calendars/{calendarId}/eventCount", UUID.randomUUID().toString())
+        .then()
+            .statusCode(404)
+            .body("type", is("notFound"))
+            .body("message", is("User does not exist"));
+    }
+
     private String exportCalendar(OpenPaaSUser targetUser, String calendarId) {
         return given()
         .when()
@@ -630,6 +695,25 @@ public class UserCalendarRoutesTest {
 
         calDavClient.importCalendar(new CalendarURL(owner.id(), new OpenPaaSId(calendarId)),
                 eventUid, owner.username(), ics.getBytes(StandardCharsets.UTF_8))
+            .block();
+    }
+
+    private void createEvent(OpenPaaSUser owner, String calendarId, String eventUid) {
+        davTestHelper.upsertCalendar(owner.username(),
+            URI.create("/calendars/%s/%s/%s.ics".formatted(owner.id().value(), calendarId, eventUid)),
+            """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Linagora//Twake Calendar//EN
+                BEGIN:VEVENT
+                UID:%s
+                DTSTAMP:20260101T000000Z
+                DTSTART:20260101T100000Z
+                DTEND:20260101T110000Z
+                SUMMARY:%s
+                END:VEVENT
+                END:VCALENDAR
+                """.formatted(eventUid, eventUid))
             .block();
     }
 

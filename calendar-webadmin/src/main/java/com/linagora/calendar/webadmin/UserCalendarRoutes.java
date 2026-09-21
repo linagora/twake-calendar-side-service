@@ -71,6 +71,7 @@ public class UserCalendarRoutes implements Routes {
     private static final String CALENDAR_PATH = CALENDARS_PATH + SEPARATOR + CALENDAR_ID_PARAM;
     private static final String PUBLIC_RIGHT_PATH = CALENDAR_PATH + SEPARATOR + "publicRight";
     private static final String INVITEE_PATH = CALENDAR_PATH + SEPARATOR + "invitee";
+    private static final String EVENT_COUNT_PATH = CALENDAR_PATH + SEPARATOR + "eventCount";
 
     private static final String ACTION_QUERY_PARAM = "action";
     private static final String EXPORT_ACTION = "export";
@@ -78,6 +79,7 @@ public class UserCalendarRoutes implements Routes {
     private static final String ICS_CONTENT_DISPOSITION = "attachment; filename=calendar.ics";
 
     private static final String FIELD_ID = "id";
+    private static final String FIELD_COUNT = "count";
     private static final String FIELD_NAME = "dav:name";
     private static final String FIELD_COLOR = "apple:color";
     private static final String FIELD_DESCRIPTION = "caldav:description";
@@ -115,6 +117,7 @@ public class UserCalendarRoutes implements Routes {
     @Override
     public void define(Service service) {
         service.get(CALENDARS_PATH, this::listCalendars);
+        service.get(EVENT_COUNT_PATH, this::countCalendarEvents);
         service.post(CALENDARS_PATH, this::createCalendar);
         service.post(CALENDAR_PATH, this::exportCalendar);
         service.delete(CALENDAR_PATH, this::deleteCalendar);
@@ -133,6 +136,21 @@ public class UserCalendarRoutes implements Routes {
         response.status(HttpStatus.OK_200);
         response.type(Constants.JSON_CONTENT_TYPE);
         return new String(sabreResponse, StandardCharsets.UTF_8);
+    }
+
+    private String countCalendarEvents(Request request, Response response) {
+        OpenPaaSUser user = retrieveUser(request);
+        CalendarURL calendarURL = retrieveExistingCalendar(request, user);
+
+        long count = wrapDavErrors(() -> calDavClient.findUserCalendarEventIds(user.username(), calendarURL)
+            .count()
+            .block());
+
+        response.status(HttpStatus.OK_200);
+        response.type(Constants.JSON_CONTENT_TYPE);
+        return OBJECT_MAPPER.createObjectNode()
+            .put(FIELD_COUNT, count)
+            .toString();
     }
 
     private String createCalendar(Request request, Response response) {
