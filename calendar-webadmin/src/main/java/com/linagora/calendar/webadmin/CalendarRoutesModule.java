@@ -42,6 +42,7 @@ import com.linagora.calendar.webadmin.task.BookingLinkEventDeletionTaskAdditiona
 import com.linagora.calendar.webadmin.task.CalendarArchivalTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.CalendarEventsReindexTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.CalendarImportTaskAdditionalInformationDTO;
+import com.linagora.calendar.webadmin.task.UnsentMailDeletionTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.UnsentMailResendTaskAdditionalInformationDTO;
 
 public class CalendarRoutesModule extends AbstractModule {
@@ -118,6 +119,12 @@ public class CalendarRoutesModule extends AbstractModule {
     @ProvidesIntoSet
     public AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO> unsentMailResendTaskAdditionalInformation() {
         return UnsentMailResendTaskAdditionalInformationDTO.module();
+    }
+
+    @Named(DTOModuleInjections.WEBADMIN_DTO)
+    @ProvidesIntoSet
+    public AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO> unsentMailDeletionTaskAdditionalInformation() {
+        return UnsentMailDeletionTaskAdditionalInformationDTO.module();
     }
 
     @Named(DTOModuleInjections.WEBADMIN_DTO)

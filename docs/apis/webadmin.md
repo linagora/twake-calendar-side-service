@@ -1923,7 +1923,7 @@ The `UnsentMails` healthcheck reports `degraded` as long as mails await a resend
   "componentName": "UnsentMails",
   "escapedComponentName": "UnsentMails",
   "status": "degraded",
-  "cause": "3 mail(s) could not be delivered. Resend them with POST /unsentMails?action=resend"
+  "cause": "3 mail(s) could not be delivered. Resend them with POST /unsentMails?action=resend or discard them with POST /unsentMails?action=delete"
 }
 ```
 
@@ -1995,6 +1995,51 @@ Deletes a single unsent mail, respectively all of them.
 
 **Status codes**:
 - `204`: the mails had been deleted
+
+### Deleting unsent mails as a task
+
+```
+POST /unsentMails?action=delete
+POST /unsentMails?action=delete&limit=5
+POST /unsentMails?action=delete&sender=btellier@linagora.com
+POST /unsentMails?action=delete&recipient=btellier@linagora.com
+```
+
+Schedules a task dropping the matching mails from the storage. Contrary to `DELETE /unsentMails`, which is
+synchronous and unconditional, this allows discarding a selection of mails and tracking the progress - which is
+handy when a lot of mails had been retained.
+
+The same `sender`, `recipient` and `limit` query parameters as the listing route select the mails to delete. The
+mails are **not** sent: use `action=resend` for that.
+
+Returns a task ID for async tracking:
+
+```json
+{
+  "taskId": "464269f0-9314-11ef-a339-d76792bfb514"
+}
+```
+
+**Status codes**:
+- `201`: Task successfully submitted
+- `400`: Invalid action or parameter
+
+#### Task details
+
+```json
+{
+  "type": "delete-unsent-mails",
+  "additionalInformation": {
+    "type": "delete-unsent-mails",
+    "timestamp": "2026-08-27T10:05:00Z",
+    "deletedCount": 12,
+    "failedCount": 0,
+    "sender": null,
+    "recipient": null,
+    "limit": 5
+  }
+}
+```
 
 ### Resending unsent mails
 

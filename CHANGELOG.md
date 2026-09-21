@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
  - ISSUE-875 Booking links: admin task to delete all events created by a booking link (with an optional `since` filter), convenient for mass clean up e.g. after a link compromission
  - ISSUE-1068 Webadmin: `POST /users/{usernameToBeUsed}/calendars/{calendarId}?action=export` returns the ICS content of a calendar
  - ISSUE-1074 Webadmin: `POST /users/{usernameToBeUsed}/calendars/{calendarId}?action=import` and `POST /users/{username}/addressbooks/{addressBookId}?action=import` plan a task importing the supplied ICS / vCards into the calendar / address book
+ - ISSUE-1080 Webadmin: `POST /unsentMails?action=delete` plans a task deleting the unsent mails matching the `sender`, `recipient` and `limit` filters, sparing admins from deleting them one by one
  - ISSUE-958 Booking links: optional `extraAttendees` field, to hand over a single link for a meeting involving several people. Offered slots intersect the availability of the extra attendees, as seen by the booking link owner, and booked events invite them.
 
 ### Fixes

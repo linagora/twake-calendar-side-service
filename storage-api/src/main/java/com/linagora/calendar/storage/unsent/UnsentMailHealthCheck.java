@@ -54,7 +54,8 @@ public class UnsentMailHealthCheck implements HealthCheck {
                     return Result.healthy(COMPONENT_NAME);
                 }
                 return Result.degraded(COMPONENT_NAME,
-                    count + " mail(s) could not be delivered. Resend them with POST /unsentMails?action=resend");
+                    count + " mail(s) could not be delivered. Resend them with POST /unsentMails?action=resend"
+                        + " or discard them with POST /unsentMails?action=delete");
             })
             .onErrorResume(e -> Mono.just(Result.unhealthy(COMPONENT_NAME, "Failed counting the unsent mails", e)));
     }

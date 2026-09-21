@@ -74,7 +74,8 @@ class UnsentMailHealthCheckTest {
         Result result = check();
 
         assertThat(result.isDegraded()).isTrue();
-        assertThat(result.getCause()).contains("2 mail(s) could not be delivered. Resend them with POST /unsentMails?action=resend");
+        assertThat(result.getCause()).contains("2 mail(s) could not be delivered. Resend them with POST /unsentMails?action=resend"
+            + " or discard them with POST /unsentMails?action=delete");
     }
 
     @Test

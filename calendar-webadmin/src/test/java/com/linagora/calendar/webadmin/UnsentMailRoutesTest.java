@@ -58,7 +58,9 @@ import com.linagora.calendar.storage.unsent.MemoryUnsentMailRepository;
 import com.linagora.calendar.storage.unsent.UnsentMailRepository.SendingTrial;
 import com.linagora.calendar.storage.unsent.UnsentMailRepository.UnsentMailId;
 import com.linagora.calendar.storage.unsent.UnsentMailRepository.UnsentMailQuery;
+import com.linagora.calendar.webadmin.service.UnsentMailDeletionService;
 import com.linagora.calendar.webadmin.service.UnsentMailResendService;
+import com.linagora.calendar.webadmin.task.UnsentMailDeletionTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.UnsentMailResendTaskAdditionalInformationDTO;
 
 import io.restassured.RestAssured;
@@ -107,13 +109,15 @@ class UnsentMailRoutesTest {
         repository = new MemoryUnsentMailRepository(clock);
         mailSender = new RecordingMailSender();
         UnsentMailResendService resendService = new UnsentMailResendService(repository, mailSender, clock);
+        UnsentMailDeletionService deletionService = new UnsentMailDeletionService(repository);
 
         TaskManager taskManager = new MemoryTaskManager(new Hostname("foo"));
         webAdminServer = WebAdminUtils.createWebAdminServer(
-                new UnsentMailRoutes(repository, resendService, taskManager, new JsonTransformer()),
+                new UnsentMailRoutes(repository, resendService, deletionService, taskManager, new JsonTransformer()),
                 new TasksRoutes(taskManager, new JsonTransformer(),
                     new DTOConverter<>(ImmutableSet.<AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO>>builder()
                         .add(UnsentMailResendTaskAdditionalInformationDTO.module())
+                        .add(UnsentMailDeletionTaskAdditionalInformationDTO.module())
                         .build())))
             .start();
 
@@ -380,6 +384,137 @@ class UnsentMailRoutesTest {
             .statusCode(200)
             .body("status", is("failed"))
             .body("additionalInformation.failedCount", is(1));
+    }
+
+    @Test
+    void deleteTaskShouldRemoveEveryUnsentMail() throws Exception {
+        store("sender@linagora.com", "recipient@linagora.com");
+        store("other@linagora.com", "recipient@linagora.com");
+
+        String taskId = given()
+            .queryParam("action", "delete")
+        .when()
+            .post("/unsentMails")
+            .jsonPath()
+            .get("taskId");
+
+        given()
+            .basePath(TasksRoutes.BASE)
+        .when()
+            .get(taskId + "/await")
+        .then()
+            .statusCode(200)
+            .body("status", is("completed"))
+            .body("type", is("delete-unsent-mails"))
+            .body("additionalInformation.deletedCount", is(2))
+            .body("additionalInformation.failedCount", is(0));
+
+        assertThat(repository.list(UnsentMailQuery.ALL).collectList().block()).isEmpty();
+    }
+
+    @Test
+    void deleteTaskShouldNotSendTheMails() throws Exception {
+        store("sender@linagora.com", "recipient@linagora.com");
+
+        String taskId = given()
+            .queryParam("action", "delete")
+        .when()
+            .post("/unsentMails")
+            .jsonPath()
+            .get("taskId");
+
+        given()
+            .basePath(TasksRoutes.BASE)
+        .when()
+            .get(taskId + "/await")
+        .then()
+            .statusCode(200)
+            .body("status", is("completed"));
+
+        assertThat(mailSender.sent).isEmpty();
+    }
+
+    @Test
+    void deleteTaskShouldApplySenderFilter() throws Exception {
+        UnsentMailId retained = store("other@linagora.com", "recipient@linagora.com");
+        store("sender@linagora.com", "recipient@linagora.com");
+
+        String taskId = given()
+            .queryParam("action", "delete")
+            .queryParam("sender", "sender@linagora.com")
+        .when()
+            .post("/unsentMails")
+            .jsonPath()
+            .get("taskId");
+
+        given()
+            .basePath(TasksRoutes.BASE)
+        .when()
+            .get(taskId + "/await")
+        .then()
+            .statusCode(200)
+            .body("status", is("completed"))
+            .body("additionalInformation.deletedCount", is(1))
+            .body("additionalInformation.sender", is("sender@linagora.com"));
+
+        assertThat(repository.list(UnsentMailQuery.ALL).collectList().block()).containsExactly(retained);
+    }
+
+    @Test
+    void deleteTaskShouldApplyLimit() throws Exception {
+        store("sender@linagora.com", "recipient@linagora.com");
+        clock.setInstant(NOW.plusSeconds(3600));
+        UnsentMailId retained = store("sender@linagora.com", "recipient@linagora.com");
+
+        String taskId = given()
+            .queryParam("action", "delete")
+            .queryParam("limit", 1)
+        .when()
+            .post("/unsentMails")
+            .jsonPath()
+            .get("taskId");
+
+        given()
+            .basePath(TasksRoutes.BASE)
+        .when()
+            .get(taskId + "/await")
+        .then()
+            .statusCode(200)
+            .body("status", is("completed"))
+            .body("additionalInformation.deletedCount", is(1))
+            .body("additionalInformation.limit", is(1));
+
+        assertThat(repository.list(UnsentMailQuery.ALL).collectList().block()).containsExactly(retained);
+    }
+
+    @Test
+    void deleteTaskShouldSucceedWhenNoUnsentMail() {
+        String taskId = given()
+            .queryParam("action", "delete")
+        .when()
+            .post("/unsentMails")
+            .jsonPath()
+            .get("taskId");
+
+        given()
+            .basePath(TasksRoutes.BASE)
+        .when()
+            .get(taskId + "/await")
+        .then()
+            .statusCode(200)
+            .body("status", is("completed"))
+            .body("additionalInformation.deletedCount", is(0));
+    }
+
+    @Test
+    void deleteTaskShouldRejectInvalidSender() {
+        given()
+            .queryParam("action", "delete")
+            .queryParam("sender", "invalid")
+        .when()
+            .post("/unsentMails")
+        .then()
+            .statusCode(400);
     }
 
     @Test
