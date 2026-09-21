@@ -21,6 +21,7 @@ package com.linagora.calendar.webadmin.service;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
 
 import jakarta.inject.Inject;
 
@@ -33,6 +34,7 @@ import com.google.common.base.MoreObjects;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.importer.EventToImport;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.OpenPaaSId;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -74,21 +76,31 @@ public class CalendarImportService {
 
     public Mono<Task.Result> importEvents(Username username, CalendarURL calendarURL,
                                           List<EventToImport> events, Context context) {
-        return Flux.fromIterable(events)
-            .concatMap(event -> importEvent(username, calendarURL, event, context))
-            .reduce(Task.Result.COMPLETED, Task::combine);
+        return importEvents(calendarURL, username.asString(), events, context,
+            event -> calDavClient.importCalendar(calendarURL, event.resourceName(), username, event.ics()));
     }
 
-    private Mono<Task.Result> importEvent(Username username, CalendarURL calendarURL,
-                                          EventToImport event, Context context) {
-        return calDavClient.importCalendar(calendarURL, event.resourceName(), username, event.ics())
-            .doOnSuccess(any -> context.importedCount.incrementAndGet())
-            .thenReturn(Task.Result.COMPLETED)
-            .onErrorResume(error -> {
-                LOGGER.warn("Importing event {} into calendar {} of user {} failed",
-                    event.uid(), calendarURL.asUri().toASCIIString(), username.asString(), error);
-                context.failedCount.incrementAndGet();
-                return Mono.just(Task.Result.PARTIAL);
-            });
+    /**
+     * Imports into a domain scoped calendar - a team calendar or a resource calendar - which no user owns.
+     */
+    public Mono<Task.Result> importEvents(OpenPaaSId domainId, CalendarURL calendarURL,
+                                          List<EventToImport> events, Context context) {
+        return importEvents(calendarURL, domainId.value(), events, context,
+            event -> calDavClient.importCalendar(domainId, calendarURL, event.resourceName(), event.ics()));
+    }
+
+    private Mono<Task.Result> importEvents(CalendarURL calendarURL, String requester, List<EventToImport> events,
+                                           Context context, Function<EventToImport, Mono<Void>> importer) {
+        return Flux.fromIterable(events)
+            .concatMap(event -> importer.apply(event)
+                .doOnSuccess(any -> context.importedCount.incrementAndGet())
+                .thenReturn(Task.Result.COMPLETED)
+                .onErrorResume(error -> {
+                    LOGGER.warn("Importing event {} into calendar {} on behalf of {} failed",
+                        event.uid(), calendarURL.asUri().toASCIIString(), requester, error);
+                    context.failedCount.incrementAndGet();
+                    return Mono.just(Task.Result.PARTIAL);
+                }))
+            .reduce(Task.Result.COMPLETED, Task::combine);
     }
 }

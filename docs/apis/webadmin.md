@@ -646,6 +646,80 @@ Status codes: 204 if updated, 400 if invalid (e.g. administrator not found), 404
 
 Both rights can update event participation; only `dav:administration` can manage the resource ACL.
 
+### Counting the events of a resource
+
+```
+GET /domains/linagora.com/resources/RESOURCE_ID/eventCount
+```
+
+Returns the number of calendar objects (`.ics` files) booked on this resource. A recurring event counts
+as a single event.
+
+```json
+{"count": 805}
+```
+
+**Status codes**:
+- `200`: the event count is returned
+- `400`: the domain name is invalid
+- `404`: the domain or the resource does not exist
+
+### Exporting the content of a resource calendar
+
+```
+POST /domains/linagora.com/resources/RESOURCE_ID?action=export
+```
+
+Returns a `text/calendar` ICS document holding all the events booked on this resource, in the format
+described in [Exporting the content of a calendar](#exporting-the-content-of-a-calendar).
+
+**Status codes**:
+- `200`: the ICS content of the resource calendar
+- `400`: the `action` query parameter is missing or is neither `export` nor `import` (the value is case-insensitive)
+- `404`: the domain or the resource does not exist
+
+### Importing events into a resource calendar
+
+```
+POST /domains/linagora.com/resources/RESOURCE_ID?action=import
+```
+
+The request body is an ICS document, typically the one returned by the export route. The VEVENTs are
+grouped by UID - a master event and its recurrence overrides thus yield a single event - and each
+resulting event is created in the resource calendar, alongside the time zones it relies on. Events
+already present in the calendar are overwritten.
+
+This triggers a task, and returns its identifier:
+
+```json
+{"taskId": "6d3bb34e-9dfc-4ecc-a5d0-05a6f2a0e6d6"}
+```
+
+The task details are available on `GET /tasks/{taskId}`:
+
+```json
+{
+  "type": "domain-calendar-import",
+  "additionalInformation": {
+    "domain": "linagora.com",
+    "calendarType": "resource",
+    "calendarId": "64f1c2b8e4b0a1d2c3f4e5a6",
+    "totalEventCount": 12,
+    "importedEventCount": 12,
+    "failedEventCount": 0,
+    "timestamp": "2026-06-01T08:00:00Z"
+  }
+}
+```
+
+**Status codes**:
+- `201`: the import task was created
+- `400`: the body is not a valid ICS document, or holds no event to import
+- `404`: the domain or the resource does not exist, or the resource is marked as deleted
+
+Resources marked as deleted keep their calendar: their content stays readable through the counting and
+export routes, but may no longer be written to.
+
 ## Team calendar routes
 
 Team calendar routes manage team calendar metadata.
@@ -753,6 +827,77 @@ Status codes:
 - `204` on success
 - `400` when the domain name is invalid
 - `404` when the domain does not exist
+
+### Counting the events of a team calendar
+
+```
+GET /domains/linagora.com/team-calendars/64f1c2.../eventCount
+```
+
+Returns the number of calendar objects (`.ics` files) stored in this team calendar. A recurring event
+counts as a single event.
+
+```json
+{"count": 805}
+```
+
+**Status codes**:
+- `200`: the event count is returned
+- `400`: the domain name is invalid
+- `404`: the domain or the team calendar does not exist
+
+### Exporting the content of a team calendar
+
+```
+POST /domains/linagora.com/team-calendars/64f1c2...?action=export
+```
+
+Returns a `text/calendar` ICS document holding all the events of the team calendar, in the format
+described in [Exporting the content of a calendar](#exporting-the-content-of-a-calendar).
+
+**Status codes**:
+- `200`: the ICS content of the team calendar
+- `400`: the `action` query parameter is missing or is neither `export` nor `import` (the value is case-insensitive)
+- `404`: the domain or the team calendar does not exist
+
+### Importing events into a team calendar
+
+```
+POST /domains/linagora.com/team-calendars/64f1c2...?action=import
+```
+
+The request body is an ICS document, typically the one returned by the export route. The VEVENTs are
+grouped by UID - a master event and its recurrence overrides thus yield a single event - and each
+resulting event is created in the team calendar, alongside the time zones it relies on. Events already
+present in the calendar are overwritten.
+
+This triggers a task, and returns its identifier:
+
+```json
+{"taskId": "6d3bb34e-9dfc-4ecc-a5d0-05a6f2a0e6d6"}
+```
+
+The task details are available on `GET /tasks/{taskId}`:
+
+```json
+{
+  "type": "domain-calendar-import",
+  "additionalInformation": {
+    "domain": "linagora.com",
+    "calendarType": "team-calendar",
+    "calendarId": "64f1c2b8e4b0a1d2c3f4e5a6",
+    "totalEventCount": 12,
+    "importedEventCount": 12,
+    "failedEventCount": 0,
+    "timestamp": "2026-06-01T08:00:00Z"
+  }
+}
+```
+
+**Status codes**:
+- `201`: the import task was created
+- `400`: the body is not a valid ICS document, or holds no event to import
+- `404`: the domain or the team calendar does not exist
 
 ### Listing team calendar members
 
@@ -1801,6 +1946,7 @@ The following task types are domain-scoped:
 | `calendar-archival` (single-user) | domain extracted from `targetUser` |
 | `calendar-import` | domain extracted from `username` |
 | `addressbook-import` | domain extracted from `username` |
+| `domain-calendar-import` | `domain` field in additional information |
 | `DeleteUserDataTask` | domain extracted from `username` |
 | `sync-domain-members-contacts-ldap-to-dav` (single-domain) | `domain` field in additional information |
 | `clear-domain-members-contacts-dav` (single-domain) | `domain` field in additional information |

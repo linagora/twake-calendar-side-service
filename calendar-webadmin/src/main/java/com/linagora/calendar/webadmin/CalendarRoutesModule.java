@@ -42,6 +42,7 @@ import com.linagora.calendar.webadmin.task.BookingLinkEventDeletionTaskAdditiona
 import com.linagora.calendar.webadmin.task.CalendarArchivalTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.CalendarEventsReindexTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.CalendarImportTaskAdditionalInformationDTO;
+import com.linagora.calendar.webadmin.task.DomainCalendarImportTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.UnsentMailDeletionTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.UnsentMailResendTaskAdditionalInformationDTO;
 
@@ -58,6 +59,7 @@ public class CalendarRoutesModule extends AbstractModule {
         routesMultibinder.addBinding().to(ResourceRoutes.class);
         routesMultibinder.addBinding().to(TeamCalendarRoutes.class);
         routesMultibinder.addBinding().to(TeamCalendarMemberRoutes.class);
+        routesMultibinder.addBinding().to(DomainCalendarContentRoutes.class);
         routesMultibinder.addBinding().to(DomainAdminRoutes.class);
         routesMultibinder.addBinding().to(DomainRegisteredUsersRoutes.class);
         routesMultibinder.addBinding().to(DomainSettingsRoutes.class);
@@ -137,5 +139,11 @@ public class CalendarRoutesModule extends AbstractModule {
     @ProvidesIntoSet
     public AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO> addressBookImportTaskAdditionalInformation() {
         return AddressBookImportTaskAdditionalInformationDTO.module();
+    }
+
+    @Named(DTOModuleInjections.WEBADMIN_DTO)
+    @ProvidesIntoSet
+    public AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO> domainCalendarImportTaskAdditionalInformation() {
+        return DomainCalendarImportTaskAdditionalInformationDTO.module();
     }
 }
