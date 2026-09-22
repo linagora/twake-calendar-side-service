@@ -233,8 +233,9 @@ public class CalDavClient extends DavClient {
             .send(Mono.just(Unpooled.wrappedBuffer(calendarData)))
             .responseSingle((response, responseContent) -> {
                 switch (response.status().code()) {
-                    case 201:
-                        return ReactorUtils.logAsMono(() -> LOGGER.info("Calendar object '{}' created successfully.", uri));
+                    // Sabre returns 201 for a new event and 204 when the import updates an existing event.
+                    case HttpStatus.SC_CREATED, HttpStatus.SC_NO_CONTENT:
+                        return ReactorUtils.logAsMono(() -> LOGGER.info("Calendar object '{}' imported successfully.", uri));
                     default:
                         return responseContent.asString(StandardCharsets.UTF_8)
                             .switchIfEmpty(Mono.just(StringUtils.EMPTY))
