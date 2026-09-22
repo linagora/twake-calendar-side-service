@@ -136,6 +136,16 @@ public class SettingsBasedResolverTest {
     }
 
     @Test
+    void timezoneReaderShouldIgnoreAutoDetect() {
+        JsonNode autoDetected = JsonNodeFactory.instance.objectNode()
+            .put("timeZone", "Asia/Ho_Chi_Minh")
+            .put("autoDetect", true);
+
+        Optional<ZoneId> result = SettingsBasedResolver.TimeZoneSettingReader.INSTANCE.parse(autoDetected);
+        assertThat(result).contains(ZoneId.of("Asia/Ho_Chi_Minh"));
+    }
+
+    @Test
     void twoUsersShouldFallbackToSecondUserSettingsWhenFirstUserErrors() {
         Username externalUser = Username.of("external@remote.com");
         Username senderUser = Username.of("sender@local.com");

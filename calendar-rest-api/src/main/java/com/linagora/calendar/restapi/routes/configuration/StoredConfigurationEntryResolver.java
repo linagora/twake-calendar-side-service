@@ -56,11 +56,18 @@ public class StoredConfigurationEntryResolver implements ConfigurationEntryResol
         return configuration -> TextNode.valueOf(configuration.getDefaultLanguage());
     }
 
+    /**
+     * A user who never configured his time zone lets his client auto-detect it, hence
+     * {@code autoDetect: true} alongside the deployment wide default time zone: the server
+     * always needs a concrete zone to render emails, while clients get told that the user
+     * did not pin it. Absent {@code autoDetect} is to be read as {@code true} as well.
+     */
     private static Function<RestApiConfiguration, JsonNode> defaultTimezone() {
         return configuration -> {
             ObjectNode objectNode = OBJECT_MAPPER.createObjectNode();
             objectNode.put("timeZone", TextNode.valueOf(configuration.getDefaultTimezone()));
             objectNode.put("use24hourFormat", configuration.isDefaultUse24hFormat());
+            objectNode.put("autoDetect", true);
             return objectNode;
         };
     }

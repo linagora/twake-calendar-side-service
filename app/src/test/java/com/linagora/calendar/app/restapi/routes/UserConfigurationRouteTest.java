@@ -830,6 +830,177 @@ class UserConfigurationRouteTest {
     }
 
     @Test
+    void postShouldReturnAutoDetectTrueWhenDatetimeNotConfigured() {
+        String body = given()
+            .body("""
+                [ {
+                  "name" : "core",
+                  "keys" : [ "datetime" ]
+                } ]""")
+        .when()
+            .post("/api/configurations")
+        .then()
+            .statusCode(200)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(body).isEqualTo("""
+            [
+                {
+                    "name": "core",
+                    "configurations": [
+                        {
+                            "name": "datetime",
+                            "value": {
+                                "timeZone": "Europe/Paris",
+                                "use24hourFormat": true,
+                                "autoDetect": true
+                            }
+                        }
+                    ]
+                }
+            ]""");
+    }
+
+    @Test
+    void putShouldPreserveAutoDetect() {
+        given()
+            .body("""
+                [
+                  {
+                    "name": "core",
+                    "configurations": [
+                      {
+                        "name": "datetime",
+                        "value": {
+                          "timeZone": "Asia/Ho_Chi_Minh",
+                          "use24hourFormat": true,
+                          "autoDetect": false
+                        }
+                      }
+                    ]
+                  }
+                ]
+                """)
+        .when()
+            .put("/api/configurations?scope=user")
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        String body = given()
+            .body("""
+                [ {
+                  "name" : "core",
+                  "keys" : [ "datetime" ]
+                } ]""")
+        .when()
+            .post("/api/configurations")
+        .then()
+            .statusCode(200)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(body).isEqualTo("""
+            [
+                {
+                    "name": "core",
+                    "configurations": [
+                        {
+                            "name": "datetime",
+                            "value": {
+                                "timeZone": "Asia/Ho_Chi_Minh",
+                                "use24hourFormat": true,
+                                "autoDetect": false
+                            }
+                        }
+                    ]
+                }
+            ]""");
+    }
+
+    @Test
+    void patchShouldPreserveAutoDetect() {
+        given()
+            .body("""
+                [
+                  {
+                    "name": "core",
+                    "configurations": [
+                      {
+                        "name": "datetime",
+                        "value": {
+                          "timeZone": "Asia/Ho_Chi_Minh",
+                          "use24hourFormat": true,
+                          "autoDetect": false
+                        }
+                      }
+                    ]
+                  }
+                ]
+                """)
+        .when()
+            .put("/api/configurations?scope=user")
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        given()
+            .body("""
+                [
+                  {
+                    "name": "core",
+                    "configurations": [
+                      {
+                        "name": "datetime",
+                        "value": {
+                          "timeZone": "Europe/Paris",
+                          "use24hourFormat": true,
+                          "autoDetect": true
+                        }
+                      }
+                    ]
+                  }
+                ]
+                """)
+        .when()
+            .patch("/api/configurations?scope=user")
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        String body = given()
+            .body("""
+                [ {
+                  "name" : "core",
+                  "keys" : [ "datetime" ]
+                } ]""")
+        .when()
+            .post("/api/configurations")
+        .then()
+            .statusCode(200)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(body).isEqualTo("""
+            [
+                {
+                    "name": "core",
+                    "configurations": [
+                        {
+                            "name": "datetime",
+                            "value": {
+                                "timeZone": "Europe/Paris",
+                                "use24hourFormat": true,
+                                "autoDetect": true
+                            }
+                        }
+                    ]
+                }
+            ]""");
+    }
+
+    @Test
     void patchShouldReturn400WhenInvalidRequestBody() {
         given()
             .body("invalid json")

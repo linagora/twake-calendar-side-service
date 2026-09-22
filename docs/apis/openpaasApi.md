@@ -128,7 +128,8 @@ Will return user details and configuration:
                 "name": "datetime",
                 "value": {
 "timeZone": "Europe/Paris",
-"use24hourFormat": true
+"use24hourFormat": true,
+"autoDetect": true
                 }
             },
             {
@@ -326,7 +327,17 @@ Supported configuration keys:
  - `core`
    - `davserver`: advertise to the OpenPaaS SPA dav server location. Server from configuration.
    - `language`: stored in user settings, eg `en`
-   - `datetime`: stored in user settings, eg `{"timeZone":"Europe/Paris","use24hourFormat":true}`
+   - `datetime`: stored in user settings, eg `{"timeZone":"Europe/Paris","use24hourFormat":true,"autoDetect":false}`
+
+     `timeZone` is always populated: when the user never configured it, the deployment wide `default.timezone` is
+     advertised, along with `autoDetect: true`. The server needs a concrete time zone in order to render emails.
+
+     `autoDetect` tells whether the user pinned that time zone (`false`) or lets his client detect it (`true`). It
+     defaults to `true` when absent. A client detecting the time zone is expected to keep pushing the detected value
+     along with `autoDetect: true`, so that server side rendering follows the user around.
+
+     Note that writes replace the whole `datetime` object: a client updating it needs to resend all its fields,
+     otherwise the omitted ones fall back to their defaults.
    - `businessHours`: stored in user settings, eg `[{"start":"8:0","end":"19:0","daysOfWeek":[1,2,3,4,5]}]`
  - `linagora.esn.contact`
    - `features`: advertised from configuration `{"isVirtualFollowingAddressbookEnabled":false,"isSharingAddressbookEnabled":true,"isVirtualUserAddressbookEnabled":false,"isDomainMembersAddressbookEnabled":true}`
