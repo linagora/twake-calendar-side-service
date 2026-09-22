@@ -18,6 +18,9 @@
 
 package com.linagora.calendar.amqp.meet;
 
+import java.net.MalformedURLException;
+import java.net.URI;
+import java.net.URL;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -70,7 +73,7 @@ public class MeetApplicationClient {
     }
 
     /** A room as Meet's external API describes it. */
-    public record Room(RoomId id, RoomSlug slug, String url) {
+    public record Room(RoomId id, RoomSlug slug, URL url) {
     }
 
     /** A Meet response this service could not use, carrying the status so callers can branch on it. */
@@ -177,20 +180,16 @@ public class MeetApplicationClient {
                     if (status < 200 || status >= 300) {
                         return Mono.error(new MeetApiException(status, action + ": HTTP " + status + " — " + abbreviate(bodyString)));
                     }
-                    return parse(bodyString, action);
+                    if (bodyString.isEmpty()) {
+                        return Mono.just(MAPPER.createObjectNode());
+                    }
+                    try {
+                        return Mono.just(MAPPER.readTree(bodyString));
+                    } catch (Exception e) {
+                        return Mono.error(new MeetApiException(action + ": unparseable Meet response — " + abbreviate(bodyString), e));
+                    }
                 });
             }));
-    }
-
-    private Mono<JsonNode> parse(String bodyString, String action) {
-        if (bodyString.isEmpty()) {
-            return Mono.just(MAPPER.createObjectNode());
-        }
-        try {
-            return Mono.just(MAPPER.readTree(bodyString));
-        } catch (Exception e) {
-            return Mono.error(new MeetApiException(action + ": unparseable Meet response — " + abbreviate(bodyString), e));
-        }
     }
 
     private Mono<Room> toRoom(JsonNode node) {
@@ -202,9 +201,9 @@ public class MeetApplicationClient {
         try {
             return Mono.just(new Room(new RoomId(UUID.fromString(node.path("id").asText(""))),
                 new RoomSlug(node.path("slug").asText("")),
-                urlNode.asText()));
-        } catch (IllegalArgumentException e) {
-            return Mono.error(new MeetApiException("Meet room response carries no usable id: " + abbreviate(node.toString()), e));
+                URI.create(urlNode.asText()).toURL()));
+        } catch (IllegalArgumentException | MalformedURLException e) {
+            return Mono.error(new MeetApiException("Unusable Meet room response: " + abbreviate(node.toString()), e));
         }
     }
 

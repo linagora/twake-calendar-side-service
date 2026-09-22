@@ -31,7 +31,6 @@ import java.util.stream.Stream;
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
-import org.apache.james.util.FunctionalUtils;
 
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
@@ -73,6 +72,7 @@ import net.fortuna.ical4j.model.property.XProperty;
 import net.fortuna.ical4j.util.RandomUidGenerator;
 import net.fortuna.ical4j.util.UidGenerator;
 import net.fortuna.ical4j.validate.ValidationResult;
+import reactor.core.publisher.Mono;
 
 public class BookingLinkEventIcsBuilder {
 
@@ -86,17 +86,17 @@ public class BookingLinkEventIcsBuilder {
     private static final String MAIL_TO_PREFIX = "mailto:";
 
     private final Clock clock;
-    private final MeetingConferenceLinkResolver meetingLinkResolver;
+    private final MeetingConferenceLinkGenerator meetingLinkGenerator;
     private final UidGenerator uidGenerator;
 
     @Inject
-    public BookingLinkEventIcsBuilder(Clock clock, MeetingConferenceLinkResolver meetingLinkResolver) {
-        this(clock, meetingLinkResolver, new RandomUidGenerator());
+    public BookingLinkEventIcsBuilder(Clock clock, MeetingConferenceLinkGenerator meetingLinkGenerator) {
+        this(clock, meetingLinkGenerator, new RandomUidGenerator());
     }
 
-    BookingLinkEventIcsBuilder(Clock clock, MeetingConferenceLinkResolver meetingLinkResolver, UidGenerator uidGenerator) {
+    BookingLinkEventIcsBuilder(Clock clock, MeetingConferenceLinkGenerator meetingLinkGenerator, UidGenerator uidGenerator) {
         this.clock = clock;
-        this.meetingLinkResolver = meetingLinkResolver;
+        this.meetingLinkGenerator = meetingLinkGenerator;
         this.uidGenerator = uidGenerator;
     }
 
@@ -114,42 +114,45 @@ public class BookingLinkEventIcsBuilder {
         }
     }
 
-    public BuildResult build(BookingRequest request, BookingAttendee organizer, Duration eventDuration, BookingLinkPublicId bookingLinkPublicId) {
+    public Mono<BuildResult> build(BookingRequest request, BookingAttendee organizer, Duration eventDuration, BookingLinkPublicId bookingLinkPublicId) {
         return build(request, organizer, eventDuration, bookingLinkPublicId, false);
     }
 
-    public BuildResult build(BookingRequest request, BookingAttendee organizer, Duration eventDuration, BookingLinkPublicId bookingLinkPublicId, boolean autoAccept) {
+    public Mono<BuildResult> build(BookingRequest request, BookingAttendee organizer, Duration eventDuration, BookingLinkPublicId bookingLinkPublicId, boolean autoAccept) {
         return build(request, organizer, List.of(), eventDuration, bookingLinkPublicId, autoAccept);
     }
 
-    public BuildResult build(BookingRequest request,
-                             BookingAttendee organizer,
-                             List<BookingAttendee> extraAttendees,
-                             Duration eventDuration,
-                             BookingLinkPublicId bookingLinkPublicId,
-                             boolean autoAccept) {
+    public Mono<BuildResult> build(BookingRequest request,
+                                   BookingAttendee organizer,
+                                   List<BookingAttendee> extraAttendees,
+                                   Duration eventDuration,
+                                   BookingLinkPublicId bookingLinkPublicId,
+                                   boolean autoAccept) {
         return build(request, organizer, extraAttendees, eventDuration, bookingLinkPublicId, autoAccept, BookingEventOptions.none());
     }
 
-    public BuildResult build(BookingRequest request,
-                             BookingAttendee organizer,
-                             List<BookingAttendee> extraAttendees,
-                             Duration eventDuration,
-                             BookingLinkPublicId bookingLinkPublicId,
-                             boolean autoAccept,
-                             BookingEventOptions options) {
+    public Mono<BuildResult> build(BookingRequest request,
+                                   BookingAttendee organizer,
+                                   List<BookingAttendee> extraAttendees,
+                                   Duration eventDuration,
+                                   BookingLinkPublicId bookingLinkPublicId,
+                                   boolean autoAccept,
+                                   BookingEventOptions options) {
         Uid eventUid = uidGenerator.generateUid();
-        Optional<URL> maybeMeetingLink = Optional.of(request.visioLink())
-            .filter(FunctionalUtils.identityPredicate())
-            .map(yes -> meetingLinkResolver.resolve());
 
-        Calendar calendar = new Calendar()
-            .withDefaults()
-            .withProdId(PROD_ID)
-            .withComponent(buildEvent(request, organizer, extraAttendees, eventUid, eventDuration, maybeMeetingLink, bookingLinkPublicId, autoAccept, options))
-            .getFluentTarget();
+        return meetingLink(request, organizer)
+            .map(maybeMeetingLink -> new BuildResult(eventUid, new Calendar()
+                .withDefaults()
+                .withProdId(PROD_ID)
+                .withComponent(buildEvent(request, organizer, extraAttendees, eventUid, eventDuration, maybeMeetingLink, bookingLinkPublicId, autoAccept, options))
+                .getFluentTarget(), maybeMeetingLink));
+    }
 
-        return new BuildResult(eventUid, calendar, maybeMeetingLink);
+    private Mono<Optional<URL>> meetingLink(BookingRequest request, BookingAttendee organizer) {
+        if (!request.visioLink()) {
+            return Mono.just(Optional.empty());
+        }
+        return meetingLinkGenerator.generate(organizer.email()).map(Optional::of);
     }
 
     private VEvent buildEvent(BookingRequest request,

@@ -57,6 +57,7 @@ import com.google.inject.Provides;
 import com.google.inject.Scopes;
 import com.google.inject.Singleton;
 import com.google.inject.multibindings.Multibinder;
+import com.google.inject.multibindings.OptionalBinder;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.linagora.calendar.api.BookedEventTokenSigner;
 import com.linagora.calendar.api.JwtSigner;
@@ -99,6 +100,7 @@ import com.linagora.calendar.restapi.routes.ImportRoute;
 import com.linagora.calendar.restapi.routes.JwtRoutes;
 import com.linagora.calendar.restapi.routes.LegacyRoutes;
 import com.linagora.calendar.restapi.routes.LogoRoute;
+import com.linagora.calendar.restapi.routes.MeetingConferenceLinkGenerator;
 import com.linagora.calendar.restapi.routes.PeopleSearchRoute;
 import com.linagora.calendar.restapi.routes.ProfileAvatarRoute;
 import com.linagora.calendar.restapi.routes.ProfileUpdateRoute;
@@ -156,6 +158,9 @@ public class RestApiModule extends AbstractModule {
         install(LegacyRoutes.MODULE);
         Multibinder.newSetBinder(binder(), GuiceProbe.class).addBinding().to(RestApiServerProbe.class);
         bind(CalendarRestApiServer.class).in(Scopes.SINGLETON);
+
+        OptionalBinder.newOptionalBinder(binder(), MeetingConferenceLinkGenerator.class)
+            .setDefault().to(MeetingConferenceLinkGenerator.Visio.class);
 
         Multibinder<JMAPRoutes> routes = Multibinder.newSetBinder(binder(), JMAPRoutes.class);
         routes.addBinding().to(AvatarRoute.class);

@@ -54,6 +54,17 @@ so an external guest is told the room does not exist instead of landing in a wai
 it on the room has no owner, so there is no host to admit them from one either
 ([`retrieve`][internal-viewsets]).
 
+### Booking links
+
+A booking link creates the event with nobody around to call that route: the booker is an anonymous
+visitor and the organizer is not in the request at all. So the room is created where the ICS is built,
+before the property quotes it.
+
+Both paths go through `MeetingConferenceLinkGenerator`, bound to the implementation that creates a
+Meet room where Meet is configured and to the one that invents a code where it is not. The room is
+created in the organizer's name — the booking link's owner, not the booker — so the organizer ends up
+its `OWNER`.
+
 ### Slug collisions
 
 Meet draws the code itself out of a 26^10 space and [`Room.slug`][models] is unique, so a collision is

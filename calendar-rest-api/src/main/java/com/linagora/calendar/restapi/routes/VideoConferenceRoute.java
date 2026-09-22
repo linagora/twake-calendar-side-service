@@ -71,7 +71,7 @@ public class VideoConferenceRoute extends CalendarRoute {
         return Mono.fromCallable(organizer::asMailAddress)
             .flatMap(meetClient::fetchToken)
             .flatMap(meetClient::createRoom)
-            .map(MeetApplicationClient.Room::url)
+            .map(room -> room.url().toString())
             .flatMap(url -> response.status(HttpResponseStatus.CREATED)
                 .headers(JSON_HEADER)
                 .sendByteArray(Mono.fromCallable(() -> OBJECT_MAPPER_DEFAULT.writeValueAsBytes(Map.of(URL_FIELD, url))))

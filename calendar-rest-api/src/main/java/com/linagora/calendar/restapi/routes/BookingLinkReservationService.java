@@ -36,7 +36,6 @@ import com.linagora.calendar.api.booking.AvailableSlotsCalculator.AvailabilitySl
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalDavClient.CalendarAccess;
 import com.linagora.calendar.restapi.ForbiddenException;
-import com.linagora.calendar.restapi.RestApiConfiguration;
 import com.linagora.calendar.restapi.routes.BookingLinkEventIcsBuilder.BookingEventOptions;
 import com.linagora.calendar.restapi.routes.BookingLinkEventIcsBuilder.BuildResult;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingRequest.BookingAttendee;
@@ -62,7 +61,7 @@ public class BookingLinkReservationService {
     @Inject
     public BookingLinkReservationService(Clock clock,
                                          BookingLinkSlotsService bookingLinkSlotsService,
-                                         RestApiConfiguration restApiConfiguration,
+                                         MeetingConferenceLinkGenerator meetingLinkGenerator,
                                          CalDavClient calDavClient,
                                          OpenPaaSUserDAO openPaaSUserDAO,
                                          PublicAgendaProposalNotifier publicAgendaProposalNotifier,
@@ -76,8 +75,7 @@ public class BookingLinkReservationService {
         this.resourceResolver = resourceResolver;
         this.publicAgendaProposalNotifier = publicAgendaProposalNotifier;
         this.bookingLinkRequestAcknowledgementNotifier = bookingLinkRequestAcknowledgementNotifier;
-        this.bookingLinkEventIcsBuilder = new BookingLinkEventIcsBuilder(clock, new MeetingConferenceLinkResolver.Visio(restApiConfiguration));
-
+        this.bookingLinkEventIcsBuilder = new BookingLinkEventIcsBuilder(clock, meetingLinkGenerator);
     }
 
     public Mono<BookedEvent> book(BookingLinkPublicId publicId, BookingRequest request) {
@@ -115,20 +113,21 @@ public class BookingLinkReservationService {
                 OpenPaaSUser organizer = tuple.getT1();
                 BookingEventOptions options = new BookingEventOptions(bookingLink.location(),
                     bookingLink.visibility(), bookingLink.transparency(), tuple.getT3(), bookingLink.alarm());
-                BuildResult eventIcsResult = bookingLinkEventIcsBuilder.build(request,
-                    BookingAttendee.from(organizer.fullName(), organizer.username().asString()), tuple.getT2(),
-                    bookingLink.duration(), bookingLink.publicId(), bookingLink.autoAccept(), options);
+                return bookingLinkEventIcsBuilder.build(request,
+                        BookingAttendee.from(organizer.fullName(), organizer.username().asString()), tuple.getT2(),
+                        bookingLink.duration(), bookingLink.publicId(), bookingLink.autoAccept(), options)
+                    .flatMap(eventIcsResult -> {
+                        BookedEvent bookedEvent = new BookedEvent(
+                            bookingLink.publicId().value(),
+                            bookingLink.calendarUrl().calendarId().value(),
+                            bookingLink.calendarUrl().base().value(),
+                            eventIcsResult.eventIdAsString());
 
-                BookedEvent bookedEvent = new BookedEvent(
-                    bookingLink.publicId().value(),
-                    bookingLink.calendarUrl().calendarId().value(),
-                    bookingLink.calendarUrl().base().value(),
-                    eventIcsResult.eventIdAsString());
-
-                return calDavClient.importCalendar(bookingLink.calendarUrl(), eventIcsResult.eventIdAsString(), bookingLink.username(), eventIcsResult.icsBytes())
-                    .onErrorMap(throwable -> BookingLinkReservationException.createEventFailed(bookingLink.publicId(), eventIcsResult.eventIdAsString(), throwable))
-                    .then(notifyBookingCreated(new BookingCreated(bookingLink, request, organizer, eventIcsResult, bookedEvent)))
-                    .thenReturn(bookedEvent);
+                        return calDavClient.importCalendar(bookingLink.calendarUrl(), eventIcsResult.eventIdAsString(), bookingLink.username(), eventIcsResult.icsBytes())
+                            .onErrorMap(throwable -> BookingLinkReservationException.createEventFailed(bookingLink.publicId(), eventIcsResult.eventIdAsString(), throwable))
+                            .then(notifyBookingCreated(new BookingCreated(bookingLink, request, organizer, eventIcsResult, bookedEvent)))
+                            .thenReturn(bookedEvent);
+                    });
             });
     }
 
