@@ -25,6 +25,7 @@ import java.util.Map;
 
 import jakarta.inject.Inject;
 
+import org.apache.james.core.Username;
 import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.http.Authenticator;
 import org.apache.james.mailbox.MailboxSession;
@@ -33,8 +34,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.linagora.calendar.amqp.meet.MeetApplicationClient;
-import com.linagora.calendar.amqp.meet.MeetConfiguration;
-import com.linagora.calendar.amqp.meet.MeetTokenProvider;
 
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -63,19 +62,13 @@ public class VideoConferenceRoute extends CalendarRoute {
     private static final Logger LOGGER = LoggerFactory.getLogger(VideoConferenceRoute.class);
     private static final String URL_FIELD = "url";
 
-    private final MeetConfiguration meetConfiguration;
-    private final MeetTokenProvider tokenProvider;
     private final MeetApplicationClient meetClient;
 
     @Inject
     public VideoConferenceRoute(Authenticator authenticator,
                                 MetricFactory metricFactory,
-                                MeetConfiguration meetConfiguration,
-                                MeetTokenProvider tokenProvider,
                                 MeetApplicationClient meetClient) {
         super(authenticator, metricFactory);
-        this.meetConfiguration = meetConfiguration;
-        this.tokenProvider = tokenProvider;
         this.meetClient = meetClient;
     }
 
@@ -86,18 +79,12 @@ public class VideoConferenceRoute extends CalendarRoute {
 
     @Override
     Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response, MailboxSession session) {
-        // Deployments without Meet credentials answer 404 rather than 500, so
-        // the caller can tell "this instance does not mint rooms" from "minting
-        // failed" — and fall back to its own link generation, which is what
-        // Meet expects when it runs with ALLOW_UNREGISTERED_ROOMS enabled.
-        if (!meetConfiguration.enabled()) {
-            return response.status(HttpResponseStatus.NOT_FOUND).send().then();
-        }
+        Username organizer = session.getUser();
 
-        String organizer = session.getUser().asString();
-
-        return tokenProvider.fetchToken(organizer)
+        return Mono.fromCallable(organizer::asMailAddress)
+            .flatMap(meetClient::fetchToken)
             .flatMap(meetClient::createRoom)
+            .map(MeetApplicationClient.Room::url)
             .flatMap(url -> response.status(HttpResponseStatus.CREATED)
                 .headers(JSON_HEADER)
                 .sendByteArray(Mono.fromCallable(() -> OBJECT_MAPPER_DEFAULT.writeValueAsBytes(Map.of(URL_FIELD, url))))

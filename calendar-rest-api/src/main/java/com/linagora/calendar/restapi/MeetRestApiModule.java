@@ -16,27 +16,19 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.amqp.meet;
+package com.linagora.calendar.restapi;
 
-import reactor.core.publisher.Mono;
+import org.apache.james.jmap.JMAPRoutes;
 
-/**
- * Source of the bearer token used to call Meet's external API on behalf
- * of a given user.
- *
- * <p>Kept as an interface so the authentication chain can evolve without
- * touching the callers: {@link MeetApplicationCredentialsTokenProvider} is
- * the current implementation — the side service holds Meet application
- * credentials and asserts the user identity by {@code scope=email}. ADR 056
- * discusses instead exchanging the user's own SSO token towards the Meet
- * audience; whichever way that discussion settles, only this implementation
- * is swapped.
- */
-public interface MeetTokenProvider {
+import com.google.inject.AbstractModule;
+import com.google.inject.multibindings.Multibinder;
+import com.linagora.calendar.restapi.routes.VideoConferenceRoute;
 
-    /**
-     * Resolve a bearer token that Meet will accept as acting on behalf of
-     * {@code userEmail}.
-     */
-    Mono<String> fetchToken(String userEmail);
+public class MeetRestApiModule extends AbstractModule {
+
+    @Override
+    protected void configure() {
+        Multibinder.newSetBinder(binder(), JMAPRoutes.class)
+            .addBinding().to(VideoConferenceRoute.class);
+    }
 }

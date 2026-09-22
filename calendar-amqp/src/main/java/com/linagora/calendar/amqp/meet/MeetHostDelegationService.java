@@ -26,6 +26,7 @@ import java.util.Optional;
 
 import jakarta.inject.Inject;
 
+import org.apache.james.core.MailAddress;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,22 +50,14 @@ public class MeetHostDelegationService {
     private static final Logger LOGGER = LoggerFactory.getLogger(MeetHostDelegationService.class);
     private static final Splitter DELEGATE_SPLITTER = Splitter.on(',').trimResults().omitEmptyStrings();
 
-    private final MeetConfiguration config;
-    private final MeetTokenProvider tokenProvider;
     private final MeetApplicationClient client;
 
     @Inject
-    public MeetHostDelegationService(MeetConfiguration config, MeetTokenProvider tokenProvider, MeetApplicationClient client) {
-        this.config = config;
-        this.tokenProvider = tokenProvider;
+    public MeetHostDelegationService(MeetApplicationClient client) {
         this.client = client;
     }
 
     public Mono<Void> onEventSaved(CalendarEventMessage eventMessage) {
-        if (!config.enabled()) {
-            return Mono.empty();
-        }
-
         return Mono.fromCallable(() -> extractDelegations(eventMessage.calendarEvent()))
             .flatMapMany(Flux::fromIterable)
             .concatMap(delegation -> grantForDelegation(delegation)
@@ -80,8 +73,8 @@ public class MeetHostDelegationService {
     }
 
     private Mono<Void> grantForDelegation(Delegation delegation) {
-        return tokenProvider.fetchToken(delegation.organizerEmail())
-            .flatMap(token -> resolveRoomId(token, delegation)
+        return client.fetchToken(delegation.organizerEmail())
+            .flatMap(token -> client.findRoomIdBySlug(token, delegation.roomSlug())
                 .flatMap(roomIdOpt -> {
                     if (roomIdOpt.isEmpty()) {
                         LOGGER.warn("Meet room not found for slug '{}' (organizer {}) — skipping delegates {}",
@@ -98,13 +91,6 @@ public class MeetHostDelegationService {
                             }))
                         .then();
                 }));
-    }
-
-    private Mono<Optional<String>> resolveRoomId(String token, Delegation delegation) {
-        if (delegation.roomSlug().isEmpty()) {
-            return Mono.just(Optional.empty());
-        }
-        return client.findRoomIdBySlug(token, delegation.roomSlug());
     }
 
     /**
@@ -134,11 +120,11 @@ public class MeetHostDelegationService {
                     .flatMap(delegatesRaw -> buildDelegation(organizerEmail, meetUrl, delegatesRaw))));
     }
 
-    private static Optional<String> organizerFrom(List<EventProperty> properties) {
+    private static Optional<MailAddress> organizerFrom(List<EventProperty> properties) {
         return properties.stream()
             .filter(EventProperty.OrganizerProperty.class::isInstance)
             .map(EventProperty.OrganizerProperty.class::cast)
-            .map(organizer -> organizer.getMailAddress().asString())
+            .map(EventProperty.OrganizerProperty::getMailAddress)
             .findFirst();
     }
 
@@ -149,7 +135,7 @@ public class MeetHostDelegationService {
             .findFirst();
     }
 
-    private static Optional<Delegation> buildDelegation(String organizerEmail, String meetUrl, String delegatesRaw) {
+    private static Optional<Delegation> buildDelegation(MailAddress organizerEmail, String meetUrl, String delegatesRaw) {
         List<String> delegates = DELEGATE_SPLITTER.splitToList(delegatesRaw);
         if (delegates.isEmpty()) {
             return Optional.empty();
@@ -158,7 +144,7 @@ public class MeetHostDelegationService {
             .map(slug -> new Delegation(organizerEmail, slug, delegates));
     }
 
-    static Optional<String> extractSlug(String meetUrl) {
+    static Optional<MeetApplicationClient.RoomSlug> extractSlug(String meetUrl) {
         try {
             URI uri = new URI(meetUrl);
             String path = uri.getRawPath();
@@ -171,13 +157,13 @@ public class MeetHostDelegationService {
             if (segments.isEmpty()) {
                 return Optional.empty();
             }
-            return Optional.of(segments.get(segments.size() - 1));
+            return Optional.of(new MeetApplicationClient.RoomSlug(segments.get(segments.size() - 1)));
         } catch (URISyntaxException e) {
             return Optional.empty();
         }
     }
 
     /** Parsed hosting delegation intent, per VEVENT. */
-    public record Delegation(String organizerEmail, String roomSlug, List<String> delegateEmails) {
+    public record Delegation(MailAddress organizerEmail, MeetApplicationClient.RoomSlug roomSlug, List<String> delegateEmails) {
     }
 }

@@ -29,9 +29,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.verify;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.Optional;
 
 import org.junit.jupiter.api.AfterEach;
@@ -57,22 +55,13 @@ public class MeetHostDelegationServiceTest {
     private MeetHostDelegationService service;
 
     @BeforeEach
-    void setUp() throws Exception {
+    void setUp() {
         wireMockServer = new WireMockServer(WireMockConfiguration.options().dynamicPort());
         wireMockServer.start();
         WireMock.configureFor("localhost", wireMockServer.port());
 
-        MeetConfiguration configuration = new MeetConfiguration(
-            true,
-            "test-client-id",
-            "test-client-secret",
-            URI.create("http://localhost:" + wireMockServer.port()),
-            false,
-            Duration.ofSeconds(5),
-            Optional.empty());
-        service = new MeetHostDelegationService(configuration,
-            new MeetApplicationCredentialsTokenProvider(configuration),
-            new MeetApplicationClient(configuration));
+        MeetConfiguration configuration = MeetApplicationClientTest.configuration(Optional.empty(), wireMockServer.port());
+        service = new MeetHostDelegationService(new MeetApplicationClient(configuration));
     }
 
     @AfterEach
@@ -147,24 +136,11 @@ public class MeetHostDelegationServiceTest {
     }
 
     @Test
-    void shouldBeNoopWhenDisabled() throws Exception {
-        MeetConfiguration disabled = MeetConfiguration.disabled();
-        MeetHostDelegationService disabledService = new MeetHostDelegationService(disabled,
-            new MeetApplicationCredentialsTokenProvider(disabled),
-            new MeetApplicationClient(disabled));
-
-        disabledService.onEventSaved(eventMessage(new EventSpec(ORGANIZER_EMAIL, meetUrl(ROOM_SLUG), DELEGATE_EMAIL)))
-            .block();
-
-        verify(0, postRequestedFor(urlEqualTo(TOKEN_PATH)));
-    }
-
-    @Test
     void extractSlugShouldReturnLastPathSegment() {
         assertThat(MeetHostDelegationService.extractSlug("https://meet.example.com/team-standup"))
-            .contains("team-standup");
+            .contains(new MeetApplicationClient.RoomSlug("team-standup"));
         assertThat(MeetHostDelegationService.extractSlug("https://meet.example.com/team-standup/"))
-            .contains("team-standup");
+            .contains(new MeetApplicationClient.RoomSlug("team-standup"));
         assertThat(MeetHostDelegationService.extractSlug("https://meet.example.com/"))
             .isEmpty();
         assertThat(MeetHostDelegationService.extractSlug("not a url"))
@@ -179,15 +155,9 @@ public class MeetHostDelegationServiceTest {
         return ROOMS_PATH + roomUuid + "/grant-access/";
     }
 
-    /**
-     * One VEVENT shape for {@link #eventMessage}: a null
-     * {@code videoconferenceUrl} or {@code delegateHosts} omits the matching
-     * ICS property — the two negative shapes the service must ignore.
-     */
     private record EventSpec(String organizerEmail, String videoconferenceUrl, String delegateHosts) {
     }
 
-    /** One grant-access call stub: status Meet answers for {@code delegateEmail} on {@code roomUuid}. */
     private record GrantStub(String roomUuid, String delegateEmail, int status) {
     }
 

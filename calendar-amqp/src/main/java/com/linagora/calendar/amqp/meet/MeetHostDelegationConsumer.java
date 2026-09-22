@@ -95,36 +95,26 @@ public class MeetHostDelegationConsumer implements Closeable, Startable {
     private final Supplier<QueueArguments.Builder> queueArgumentSupplier;
     private final Sender sender;
     private final MeetHostDelegationService meetHostDelegationService;
-    private final MeetConfiguration meetConfiguration;
     private final Map<Queue, Disposable> consumeDisposableMap;
 
     @Inject
     @Singleton
     public MeetHostDelegationConsumer(ReactorRabbitMQChannelPool channelPool,
                                       @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier,
-                                      MeetHostDelegationService meetHostDelegationService,
-                                      MeetConfiguration meetConfiguration) {
+                                      MeetHostDelegationService meetHostDelegationService) {
         this.receiverProvider = channelPool::createReceiver;
         this.queueArgumentSupplier = queueArgumentSupplier;
         this.sender = channelPool.getSender();
         this.meetHostDelegationService = meetHostDelegationService;
-        this.meetConfiguration = meetConfiguration;
         this.consumeDisposableMap = new EnumMap<>(Queue.class);
     }
 
     public void init() {
-        if (!meetConfiguration.enabled()) {
-            LOGGER.info("Meet host delegation is disabled — skipping AMQP consumer initialization");
-            return;
-        }
         Arrays.stream(Queue.values()).forEach(this::declareExchangeAndQueue);
         start();
     }
 
     public void start() {
-        if (!meetConfiguration.enabled()) {
-            return;
-        }
         Arrays.stream(Queue.values())
             .forEach(queue -> consumeDisposableMap.put(queue, doConsumeCalendarEventMessages(queue)));
     }
