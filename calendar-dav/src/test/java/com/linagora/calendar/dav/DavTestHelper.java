@@ -265,7 +265,7 @@ public class DavTestHelper extends DavClient {
     public Optional<String> findFirstEventId(ResourceId resourceId, OpenPaaSId domainId) {
         CalendarURL calendarURL = CalendarURL.from(resourceId.asOpenPaaSId());
 
-        return calDavClient.findUserCalendarEventIds(httpClientWithTechnicalToken(domainId), calendarURL)
+        return calDavClient.findCalendarEventIds(httpClientWithTechnicalToken(domainId), calendarURL)
             .retryWhen(Retry.fixedDelay(2, Duration.ofMillis(500))
                 .filter(throwable -> throwable instanceof DavClientException))
             .next()

@@ -93,7 +93,7 @@ public class DomainCalendarContentHandler {
     }
 
     public String countEvents(Response response, DomainCalendar calendar) {
-        long count = wrapDavErrors(() -> calDavClient.findUserCalendarEventIds(calendar.domainId(), calendar.calendarURL())
+        long count = wrapDavErrors(() -> calDavClient.findCalendarEventIds(calendar.domainId(), calendar.calendarURL())
             .count()
             .block());
 

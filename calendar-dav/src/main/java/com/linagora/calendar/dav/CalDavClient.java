@@ -331,18 +331,18 @@ public class CalDavClient extends DavClient {
     }
 
     public Flux<String> findUserCalendarEventIds(Username username, CalendarURL calendarURL) {
-        return findUserCalendarEventIds(Mono.just(httpClientWithImpersonation(username)), calendarURL);
+        return findCalendarEventIds(Mono.just(httpClientWithImpersonation(username)), calendarURL);
     }
 
     /**
      * Lists the event ids of a domain scoped calendar - a team calendar or a resource calendar - which no user
      * owns, relying on the technical token of its domain.
      */
-    public Flux<String> findUserCalendarEventIds(OpenPaaSId domainId, CalendarURL calendarURL) {
-        return findUserCalendarEventIds(httpClientWithTechnicalToken(domainId), calendarURL);
+    public Flux<String> findCalendarEventIds(OpenPaaSId domainId, CalendarURL calendarURL) {
+        return findCalendarEventIds(httpClientWithTechnicalToken(domainId), calendarURL);
     }
 
-    public Flux<String> findUserCalendarEventIds(Mono<HttpClient> httpClientPublisher, CalendarURL calendarURL) {
+    public Flux<String> findCalendarEventIds(Mono<HttpClient> httpClientPublisher, CalendarURL calendarURL) {
         return httpClientPublisher.flatMapMany(client ->
             client.headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_XML)
                     .add(HEADER_DEPTH, "1"))
