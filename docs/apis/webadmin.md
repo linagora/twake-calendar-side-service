@@ -2032,7 +2032,7 @@ Returns a task ID for async tracking:
   "additionalInformation": {
     "type": "delete-unsent-mails",
     "timestamp": "2026-08-27T10:05:00Z",
-    "deletedCount": 12,
+    "deletedCount": 5,
     "failedCount": 0,
     "sender": null,
     "recipient": null,
