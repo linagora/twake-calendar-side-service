@@ -45,7 +45,9 @@ import com.linagora.calendar.storage.unsent.UnsentMailRepository.SendingTrial;
 import com.linagora.calendar.storage.unsent.UnsentMailRepository.UnsentMail;
 import com.linagora.calendar.storage.unsent.UnsentMailRepository.UnsentMailId;
 import com.linagora.calendar.storage.unsent.UnsentMailRepository.UnsentMailQuery;
+import com.linagora.calendar.webadmin.service.UnsentMailDeletionService;
 import com.linagora.calendar.webadmin.service.UnsentMailResendService;
+import com.linagora.calendar.webadmin.task.UnsentMailDeletionTask;
 import com.linagora.calendar.webadmin.task.UnsentMailResendTask;
 
 import spark.Request;
@@ -56,6 +58,7 @@ import spark.Service;
 public class UnsentMailRoutes implements Routes {
     public static final String BASE_PATH = "/unsentMails";
     public static final TaskRegistrationKey RESEND = TaskRegistrationKey.of("resend");
+    public static final TaskRegistrationKey DELETE = TaskRegistrationKey.of("delete");
 
     private static final String UNSENT_MAIL_ID_PARAM = ":unsentMailId";
     private static final String UNSENT_MAIL_PATH = BASE_PATH + SEPARATOR + UNSENT_MAIL_ID_PARAM;
@@ -94,16 +97,19 @@ public class UnsentMailRoutes implements Routes {
 
     private final UnsentMailRepository repository;
     private final UnsentMailResendService resendService;
+    private final UnsentMailDeletionService deletionService;
     private final TaskManager taskManager;
     private final JsonTransformer jsonTransformer;
 
     @Inject
     public UnsentMailRoutes(UnsentMailRepository repository,
                             UnsentMailResendService resendService,
+                            UnsentMailDeletionService deletionService,
                             TaskManager taskManager,
                             JsonTransformer jsonTransformer) {
         this.repository = repository;
         this.resendService = resendService;
+        this.deletionService = deletionService;
         this.taskManager = taskManager;
         this.jsonTransformer = jsonTransformer;
     }
@@ -119,7 +125,7 @@ public class UnsentMailRoutes implements Routes {
         service.get(UNSENT_MAIL_PATH, this::get, jsonTransformer);
         service.delete(UNSENT_MAIL_PATH, this::delete);
         service.delete(BASE_PATH, this::deleteAll);
-        service.post(BASE_PATH, resendAllRoute(), jsonTransformer);
+        service.post(BASE_PATH, allMailsTaskRoute(), jsonTransformer);
         service.post(UNSENT_MAIL_PATH, resendOneRoute(), jsonTransformer);
     }
 
@@ -156,10 +162,11 @@ public class UnsentMailRoutes implements Routes {
         return Responses.returnNoContent(response);
     }
 
-    private Route resendAllRoute() {
+    private Route allMailsTaskRoute() {
         return TaskFromRequestRegistry.builder()
             .parameterName(ACTION_PARAMETER)
             .register(RESEND, request -> new UnsentMailResendTask(resendService, extractQuery(request)))
+            .register(DELETE, request -> new UnsentMailDeletionTask(deletionService, extractQuery(request)))
             .buildAsRoute(taskManager);
     }
 
