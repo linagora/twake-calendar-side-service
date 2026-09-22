@@ -35,11 +35,13 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.client.HttpClient;
+import reactor.util.retry.Retry;
 
 /**
  * Client for Meet's external API: mints application tokens, creates rooms on behalf of a user.
@@ -53,6 +55,7 @@ public class MeetApplicationClient {
     private static final String TOKEN_PATH = "/external-api/v1.0/application/token/";
     private static final String ACCESS_TOKEN_FIELD = "access_token";
     private static final int MAX_QUOTED_BODY = 256;
+    private static final int SLUG_COLLISION_RETRIES = 3;
 
     /** A bearer token scoped to one user, which Meet accepts as us acting for them. */
     public record MeetToken(String value) {
@@ -145,7 +148,17 @@ public class MeetApplicationClient {
         config.roomAccessLevel().ifPresent(level -> body.put("access_level", level));
 
         return post(ROOMS_PATH, Optional.of(token), body, "Failed to create room")
-            .flatMap(this::toRoom);
+            .flatMap(this::toRoom)
+            .retryWhen(Retry.max(SLUG_COLLISION_RETRIES)
+                .filter(MeetApplicationClient::isSlugCollision)
+                .onRetryExhaustedThrow((spec, signal) -> signal.failure()));
+    }
+
+    /** Meet drew a code it had already used: a 400 naming the slug, and the next POST draws another. */
+    private static boolean isSlugCollision(Throwable error) {
+        return error instanceof MeetApiException meetError
+            && meetError.status() == HttpResponseStatus.BAD_REQUEST.code()
+            && meetError.getMessage().contains("\"slug\"");
     }
 
     private Mono<JsonNode> post(String path, Optional<MeetToken> token, ObjectNode body, String action) {
