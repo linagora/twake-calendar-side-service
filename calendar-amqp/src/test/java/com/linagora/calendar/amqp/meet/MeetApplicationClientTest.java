@@ -42,6 +42,7 @@ import com.github.fge.lambdas.Throwing;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
+import com.github.tomakehurst.wiremock.stubbing.Scenario;
 
 class MeetApplicationClientTest {
     private static final String ROOMS_PATH = "/external-api/v1.0/rooms/";
@@ -132,6 +133,49 @@ class MeetApplicationClientTest {
 
         verify(postRequestedFor(urlEqualTo(ROOMS_PATH))
             .withRequestBody(matchingJsonPath("$.access_level", absent())));
+    }
+
+    @Test
+    void createRoomShouldRetryWhenMeetDrawsAnAlreadyTakenSlug() {
+        wireMockServer.stubFor(post(urlEqualTo(ROOMS_PATH))
+            .inScenario("slug collision")
+            .whenScenarioStateIs(Scenario.STARTED)
+            .willReturn(aResponse()
+                .withHeader("Content-Type", "application/json")
+                .withStatus(400)
+                .withBody("{\"slug\":[\"Room with this Slug already exists.\"]}"))
+            .willSetStateTo("drawn again"));
+        wireMockServer.stubFor(post(urlEqualTo(ROOMS_PATH))
+            .inScenario("slug collision")
+            .whenScenarioStateIs("drawn again")
+            .willReturn(aResponse()
+                .withHeader("Content-Type", "application/json")
+                .withStatus(201)
+                .withBody(ROOM_JSON)));
+
+        assertThat(client().createRoom(TOKEN).block().url()).isEqualTo(ROOM_URL);
+
+        verify(2, postRequestedFor(urlEqualTo(ROOMS_PATH)));
+    }
+
+    @Test
+    void createRoomShouldSurfaceMeetRefusalWhenCollisionsOutlastTheRetries() {
+        stubCreateRoom(400, "{\"slug\":[\"Room with this Slug already exists.\"]}");
+
+        assertThatThrownBy(() -> client().createRoom(TOKEN).block())
+            .isInstanceOf(MeetApplicationClient.MeetApiException.class)
+            .hasMessageContaining("Slug already exists");
+    }
+
+    @Test
+    void createRoomShouldNotRetryOtherRejections() {
+        stubCreateRoom(400, "{\"access_level\":[\"Public rooms are disabled for the external API.\"]}");
+
+        assertThatThrownBy(() -> client().createRoom(TOKEN).block())
+            .isInstanceOf(MeetApplicationClient.MeetApiException.class)
+            .hasMessageContaining("Public rooms are disabled");
+
+        verify(1, postRequestedFor(urlEqualTo(ROOMS_PATH)));
     }
 
     @Test

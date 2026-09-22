@@ -42,21 +42,8 @@ import reactor.netty.http.server.HttpServerRequest;
 import reactor.netty.http.server.HttpServerResponse;
 
 /**
- * Mint a video conference room for the authenticated user and return its URL.
- *
- * <p>The frontend used to invent the room code itself
- * ({@code generateMeetingId}, three then four then three random letters) and
- * write it straight into {@code X-OPENPAAS-VIDEOCONFERENCE}. Nothing ever told
- * Meet about it, so on any deployment that does not accept unregistered rooms
- * every generated link was dead — for every client, web included.
- *
- * <p>Asking Meet for the room fixes that at the source and buys two things a
- * pre-minted code could never give: the room exists before the invitation is
- * sent, and the organiser is its {@code OWNER}, so lobby admission, recording
- * and the rest of the host controls actually work.
- *
- * <p>The Meet application credentials stay server-side, which is why this is a
- * route here rather than a call from the browser.
+ * Mints a video conference room for the authenticated user and returns its URL.
+ * Server-side because Meet picks the room code, not the caller.
  */
 public class VideoConferenceRoute extends CalendarRoute {
     private static final Logger LOGGER = LoggerFactory.getLogger(VideoConferenceRoute.class);
