@@ -131,7 +131,11 @@ public class ContactSearchRoute extends CalendarRoute {
             }
 
             private static void validateSegment(String value) {
-                if (value == null || !VALID_PATH_SEGMENT.matcher(value).matches() || value.equals(".") || value.equals("..")) {
+                if (value == null || !VALID_PATH_SEGMENT.matcher(value).matches()) {
+                    throw new IllegalArgumentException("Address book IDs must be non-empty URI path segments");
+                }
+                // Dot segments are valid URI characters but would change path resolution.
+                if (value.equals(".") || value.equals("..")) {
                     throw new IllegalArgumentException("Address book IDs must be non-empty URI path segments");
                 }
             }

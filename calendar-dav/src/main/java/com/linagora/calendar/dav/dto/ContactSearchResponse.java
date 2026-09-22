@@ -39,20 +39,27 @@ public record ContactSearchResponse(List<JsonNode> items) {
     public static ContactSearchResponse parse(String payload) {
         try {
             JsonNode root = OBJECT_MAPPER.readTree(payload);
-            JsonNode entries = root == null ? null : root.path("_embedded").path("dav:item");
-            if (entries == null || !entries.isArray()) {
-                throw new IllegalArgumentException("Missing DAV items");
-            }
-            for (JsonNode item : entries) {
-                if (!item.isObject() || !item.path("_links").path("self").path("href").isTextual()
-                    || !item.path("etag").isTextual() || !item.path("data").isArray()) {
-                    throw new IllegalArgumentException("Invalid DAV item");
-                }
-            }
+            requireValid(root != null);
+            JsonNode entries = root.path("_embedded").path("dav:item");
+            requireValid(entries.isArray());
+            entries.forEach(ContactSearchResponse::validateItem);
             return new ContactSearchResponse(Streams.stream(entries.elements()).toList());
         } catch (Exception e) {
             // Parser exceptions can contain contact data, so do not retain their messages or causes.
             throw new InvalidContactSearchResponseException();
+        }
+    }
+
+    private static void validateItem(JsonNode item) {
+        requireValid(item.isObject());
+        requireValid(item.path("_links").path("self").path("href").isTextual());
+        requireValid(item.path("etag").isTextual());
+        requireValid(item.path("data").isArray());
+    }
+
+    private static void requireValid(boolean condition) {
+        if (!condition) {
+            throw new IllegalArgumentException("Invalid DAV contact search response");
         }
     }
 }
