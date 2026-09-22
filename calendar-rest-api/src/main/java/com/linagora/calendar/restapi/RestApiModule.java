@@ -115,7 +115,6 @@ import com.linagora.calendar.restapi.routes.UserConfigurationsRoute;
 import com.linagora.calendar.restapi.routes.UserProfileRoute;
 import com.linagora.calendar.restapi.routes.UserRoute;
 import com.linagora.calendar.restapi.routes.UsersRoute;
-import com.linagora.calendar.restapi.routes.VideoConferenceRoute;
 import com.linagora.calendar.restapi.routes.WebsocketRoute;
 import com.linagora.calendar.restapi.routes.configuration.FileConfigurationEntryResolver;
 import com.linagora.calendar.restapi.routes.configuration.OpenpaasConfigurationEntryResolver;
@@ -182,7 +181,6 @@ public class RestApiModule extends AbstractModule {
         routes.addBinding().to(ProfileUpdateRoute.class);
         routes.addBinding().to(UserRoute.class);
         routes.addBinding().to(UserProfileRoute.class);
-        routes.addBinding().to(VideoConferenceRoute.class);
         routes.addBinding().to(UsersRoute.class);
         routes.addBinding().to(UserConfigurationsRoute.class);
         routes.addBinding().to(UserConfigurationPatchRoute.class);

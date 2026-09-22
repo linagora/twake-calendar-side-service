@@ -72,6 +72,7 @@ import com.linagora.calendar.app.modules.MemoryUserModule;
 import com.linagora.calendar.app.modules.OpenSearchClientModule;
 import com.linagora.calendar.app.modules.TwakeCalendarRabbitMQModule;
 import com.linagora.calendar.dav.DavModule;
+import com.linagora.calendar.restapi.MeetRestApiModule;
 import com.linagora.calendar.restapi.RestApiModule;
 import com.linagora.calendar.smtp.SmtpModule;
 import com.linagora.calendar.storage.CaffeineOIDCTokenCache;
@@ -148,12 +149,12 @@ public class TwakeCalendarMain {
                 chooseTWPCalendarSetting(configuration.twpSettingEnabled()),
                 chooseCommonContacts(configuration.commonContactsEnabled()),
                 chooseSaaSSubscription(configuration.saasSubscriptionEnabled()),
+                chooseMeet(configuration.meetEnabled()),
                 new FileUploadConfigurationModule(),
                 new RestApiModule(),
                 new TaskManagerModule(),
                 new DavModule(),
                 new CalendarAmqpModule(),
-                new MeetIntegrationModule(),
                 new TwakeCalendarRabbitMQModule(),
                 new TechnicalUserTokenModule(),
                 new AlarmEventModule(),
@@ -251,6 +252,13 @@ public class TwakeCalendarMain {
     public static Module chooseCommonContacts(boolean enabled) {
         if (enabled) {
             return Modules.combine(new CommonContactsModule(), new CommonContactRepublishRouteModule());
+        }
+        return Modules.EMPTY_MODULE;
+    }
+
+    public static Module chooseMeet(boolean enabled) {
+        if (enabled) {
+            return Modules.combine(new MeetIntegrationModule(), new MeetRestApiModule());
         }
         return Modules.EMPTY_MODULE;
     }

@@ -33,6 +33,7 @@ import org.apache.james.server.core.filesystem.FileSystemImpl;
 import org.apache.james.utils.PropertiesProvider;
 
 import com.github.fge.lambdas.Throwing;
+import com.linagora.calendar.amqp.meet.MeetConfiguration;
 
 public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, JamesDirectoriesProvider directories,
                                          UserChoice userChoice, DbChoice dbChoice, AutoCompleteChoice autoCompleteChoice,
@@ -40,7 +41,8 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                                          boolean redisEnabled,
                                          boolean twpSettingEnabled,
                                          boolean commonContactsEnabled,
-                                         boolean saasSubscriptionEnabled) implements Configuration {
+                                         boolean saasSubscriptionEnabled,
+                                         boolean meetEnabled) implements Configuration {
 
     public static final boolean ENABLED = true;
 
@@ -54,6 +56,7 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
         private Optional<Boolean> twpSettingEnabled;
         private Optional<Boolean> commonContactsEnabled;
         private Optional<Boolean> saasSubscriptionEnabled;
+        private Optional<Boolean> meetEnabled;
         private Optional<CalendarEventSearchChoice> calendarEventSearchChoice;
 
         private Builder() {
@@ -66,6 +69,7 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
             twpSettingEnabled = Optional.empty();
             commonContactsEnabled = Optional.empty();
             saasSubscriptionEnabled = Optional.empty();
+            meetEnabled = Optional.empty();
             calendarEventSearchChoice = Optional.empty();
         }
 
@@ -111,6 +115,11 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
 
         public Builder enableSaasSubscription() {
             saasSubscriptionEnabled = Optional.of(true);
+            return this;
+        }
+
+        public Builder enableMeet() {
+            meetEnabled = Optional.of(true);
             return this;
         }
 
@@ -187,6 +196,11 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                 return configuration.getBoolean("saas.subscription.enabled", !ENABLED);
             }));
 
+            boolean meetEnabledValue = this.meetEnabled.orElseGet(Throwing.supplier(() -> {
+                var configuration = propertiesProvider.getConfiguration("configuration");
+                return configuration.getBoolean(MeetConfiguration.MEET_ENABLED_PROPERTY, !ENABLED);
+            }));
+
             if (!twpSettingEnabledValue && saasSubscriptionEnabledValue) {
                 throw new IllegalArgumentException("TWP Setting must be enabled when SaaS Subscription is enabled");
             }
@@ -214,7 +228,8 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                 redisEnabledValue,
                 twpSettingEnabledValue,
                 commonContactsEnabledValue,
-                saasSubscriptionEnabledValue);
+                saasSubscriptionEnabledValue,
+                meetEnabledValue);
         }
 
         private boolean redisConfigurationFileExists(PropertiesProvider propertiesProvider) throws ConfigurationException {

@@ -20,32 +20,25 @@ package com.linagora.calendar.amqp.meet;
 
 import java.io.FileNotFoundException;
 
-import javax.net.ssl.SSLException;
-
 import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
 import org.apache.james.utils.InitializationOperation;
 import org.apache.james.utils.InitilizationOperationBuilder;
 import org.apache.james.utils.PropertiesProvider;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.Scopes;
 import com.google.inject.Singleton;
 import com.google.inject.multibindings.ProvidesIntoSet;
+import com.linagora.calendar.amqp.ConsumerReconnectionHandler;
 
-/**
- * Meet integration foundation: configuration, application-scoped HTTP
- * client and token provider. Feature modules (host delegation, room
- * creation…) build on these bindings.
- */
 public class MeetIntegrationModule extends AbstractModule {
-    private static final Logger LOGGER = LoggerFactory.getLogger(MeetIntegrationModule.class);
 
     @Override
     protected void configure() {
+        bind(MeetApplicationClient.class).in(Scopes.SINGLETON);
+
         bind(MeetHostDelegationConsumer.class).in(Scopes.SINGLETON);
         bind(MeetHostDelegationService.class).in(Scopes.SINGLETON);
     }
@@ -56,26 +49,13 @@ public class MeetIntegrationModule extends AbstractModule {
         try {
             return MeetConfiguration.from(propertiesProvider.getConfiguration("configuration"));
         } catch (FileNotFoundException e) {
-            LOGGER.info("configuration.properties not found — Meet integration stays disabled");
-            return MeetConfiguration.disabled();
+            throw new ConfigurationException("configuration.properties is required to configure the Meet integration", e);
         }
     }
 
-    @Provides
-    @Singleton
-    public MeetApplicationClient provideMeetApplicationClient(MeetConfiguration configuration) throws SSLException {
-        return new MeetApplicationClient(configuration);
-    }
-
-    @Provides
-    @Singleton
-    public MeetTokenProvider provideMeetTokenProvider(MeetConfiguration configuration) throws SSLException {
-        return new MeetApplicationCredentialsTokenProvider(configuration);
-    }
-
     @ProvidesIntoSet
-    SimpleConnectionPool.ReconnectionHandler provideMeetReconnectionHandler(MeetHostDelegationReconnectionHandler handler) {
-        return handler;
+    SimpleConnectionPool.ReconnectionHandler provideMeetReconnectionHandler(MeetHostDelegationConsumer consumer) {
+        return new ConsumerReconnectionHandler(consumer::restart, "Error while handling reconnection for meet host delegation consumer");
     }
 
     @ProvidesIntoSet
