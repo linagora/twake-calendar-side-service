@@ -97,6 +97,27 @@ When enabled, the service publishes normalized Common Contacts events to Twake W
 and consumes collected contacts from it. See [Common Contacts](../features/common-contacts.md)
 for the AMQP topology and message formats.
 
+### Meet integration (`meet.enabled=true`)
+
+When enabled, the service creates LaSuite Meet rooms for calendar events instead of letting a
+meeting code be invented client-side. See [Meet integration](../features/meet-integration.md)
+for what Meet's external API does and does not allow.
+
+| Configuration entry | Explanation | Example |
+|---------------------|-------------|---------|
+| meet.enabled | Optional. Defaults to `false`. Installs the Meet integration. | meet.enabled=true |
+| meet.application.client_id | Compulsory when enabled. Application credentials, as registered in Meet's `Application` model. | meet.application.client_id=twake-calendar |
+| meet.application.client_secret | Compulsory when enabled. | meet.application.client_secret=secret |
+| meet.external.api.base.url | Compulsory when enabled. Base URL of the Meet backend. | meet.external.api.base.url=https://meet.example.com |
+| meet.rest.client.trust.all.ssl.certs | Optional. Defaults to `false`. Test deployments only. | meet.rest.client.trust.all.ssl.certs=true |
+| meet.rest.client.response.timeout | Optional. Defaults to `10s`. | meet.rest.client.response.timeout=10s |
+| meet.room.access_level | Optional. Defaults to Meet's own `EXTERNAL_API_DEFAULT_ACCESS_LEVEL`, which is `trusted`. One of `public`, `trusted`, `restricted`. | meet.room.access_level=public |
+
+`meet.room.access_level` deserves a deliberate decision: a `trusted` room only admits authenticated
+users of the Meet instance, so an external guest invited to a meeting cannot get in, and the organizer
+being present changes nothing. Deployments that invite guests want `public`, which Meet gates behind
+its own `EXTERNAL_API_ALLOW_PUBLIC_ACCESS`.
+
 ### SaaS subscription (`saas.subscription.enabled=true`)
 
 | Configuration entry | Explanation | Example |

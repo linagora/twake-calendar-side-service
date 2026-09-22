@@ -21,8 +21,6 @@ package com.linagora.calendar.amqp.meet;
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.absent;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
-import static com.github.tomakehurst.wiremock.client.WireMock.get;
-import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
@@ -47,11 +45,9 @@ import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 
 class MeetApplicationClientTest {
     private static final String ROOMS_PATH = "/external-api/v1.0/rooms/";
-    private static final String GRANT_ACCESS_PATH = "/external-api/v1.0/rooms/room-uuid-1/grant-access/";
     private static final MeetApplicationClient.MeetToken TOKEN = new MeetApplicationClient.MeetToken("test-app-jwt-token");
     private static final String TOKEN_PATH = "/external-api/v1.0/application/token/";
     private static final MailAddress USER_EMAIL = Throwing.supplier(() -> new MailAddress("organizer@example.com")).get();
-    private static final String ROOM_ID = "room-uuid-1";
     private static final String ROOM_URL = "https://meet.example.com/mjj-beyv-zai";
     private static final String ROOM_UUID = "550e8400-e29b-41d4-a716-446655440000";
     private static final String ROOM_JSON = "{\"id\":\"" + ROOM_UUID + "\",\"slug\":\"mjj-beyv-zai\","
@@ -93,121 +89,12 @@ class MeetApplicationClientTest {
         return configuration(roomAccessLevel, wireMockServer.port());
     }
 
-    private void stubListRooms(int status, String body) {
-        wireMockServer.stubFor(get(urlEqualTo(ROOMS_PATH))
-            .willReturn(aResponse()
-                .withHeader("Content-Type", "application/json")
-                .withStatus(status)
-                .withBody(body)));
-    }
-
     private void stubCreateRoom(int status, String body) {
         wireMockServer.stubFor(post(urlEqualTo(ROOMS_PATH))
             .willReturn(aResponse()
                 .withHeader("Content-Type", "application/json")
                 .withStatus(status)
                 .withBody(body)));
-    }
-
-    private void stubGrantAccess(int status, String body) {
-        wireMockServer.stubFor(post(urlEqualTo(GRANT_ACCESS_PATH))
-            .willReturn(aResponse()
-                .withHeader("Content-Type", "application/json")
-                .withStatus(status)
-                .withBody(body)));
-    }
-
-    @Test
-    void findRoomIdBySlugShouldReturnTheMatchingRoomId() {
-        stubListRooms(200, "{\"results\":[{\"id\":\"other-uuid\",\"slug\":\"abc-def-ghi\"},"
-            + "{\"id\":\"" + ROOM_ID + "\",\"slug\":\"mjj-beyv-zai\"}]}");
-
-        assertThat(client().findRoomIdBySlug(TOKEN, new MeetApplicationClient.RoomSlug("mjj-beyv-zai")).block()).contains(ROOM_ID);
-    }
-
-    @Test
-    void findRoomIdBySlugShouldAuthenticateWithTheBearerToken() {
-        stubListRooms(200, "[]");
-
-        client().findRoomIdBySlug(TOKEN, new MeetApplicationClient.RoomSlug("mjj-beyv-zai")).block();
-
-        verify(getRequestedFor(urlEqualTo(ROOMS_PATH))
-            .withHeader("Authorization", equalTo("Bearer " + TOKEN.value())));
-    }
-
-    @Test
-    void findRoomIdBySlugShouldAcceptABareArrayResponse() {
-        stubListRooms(200, "[{\"id\":\"" + ROOM_ID + "\",\"slug\":\"mjj-beyv-zai\"}]");
-
-        assertThat(client().findRoomIdBySlug(TOKEN, new MeetApplicationClient.RoomSlug("mjj-beyv-zai")).block()).contains(ROOM_ID);
-    }
-
-    @Test
-    void findRoomIdBySlugShouldReturnEmptyWhenNoRoomMatches() {
-        stubListRooms(200, "{\"results\":[{\"id\":\"other-uuid\",\"slug\":\"abc-def-ghi\"}]}");
-
-        assertThat(client().findRoomIdBySlug(TOKEN, new MeetApplicationClient.RoomSlug("mjj-beyv-zai")).block()).isEmpty();
-    }
-
-    @Test
-    void findRoomIdBySlugShouldFailWhenMeetRejectsTheListing() {
-        stubListRooms(401, "{\"detail\":\"invalid token\"}");
-
-        assertThatThrownBy(() -> client().findRoomIdBySlug(TOKEN, new MeetApplicationClient.RoomSlug("mjj-beyv-zai")).block())
-            .isInstanceOf(MeetApplicationClient.MeetApiException.class)
-            .hasMessageContaining("401");
-    }
-
-    @Test
-    void findRoomIdBySlugShouldFollowNextPagesUntilTheSlugMatches() {
-        String page2 = ROOMS_PATH + "?page=2";
-        stubListRooms(200, "{\"results\":[{\"id\":\"other-uuid\",\"slug\":\"abc-def-ghi\"}],"
-            + "\"next\":\"http://meet.internal:8000" + page2 + "\"}");
-        wireMockServer.stubFor(get(urlEqualTo(page2))
-            .willReturn(aResponse()
-                .withHeader("Content-Type", "application/json")
-                .withStatus(200)
-                .withBody("{\"results\":[{\"id\":\"" + ROOM_ID + "\",\"slug\":\"mjj-beyv-zai\"}],\"next\":null}")));
-
-        assertThat(client().findRoomIdBySlug(TOKEN, new MeetApplicationClient.RoomSlug("mjj-beyv-zai")).block()).contains(ROOM_ID);
-
-        verify(getRequestedFor(urlEqualTo(page2))
-            .withHeader("Authorization", equalTo("Bearer " + TOKEN.value())));
-    }
-
-    @Test
-    void findRoomIdBySlugShouldReturnEmptyWhenPagesRunOut() {
-        String page2 = ROOMS_PATH + "?page=2";
-        stubListRooms(200, "{\"results\":[{\"id\":\"other-uuid\",\"slug\":\"abc-def-ghi\"}],"
-            + "\"next\":\"http://meet.internal:8000" + page2 + "\"}");
-        wireMockServer.stubFor(get(urlEqualTo(page2))
-            .willReturn(aResponse()
-                .withHeader("Content-Type", "application/json")
-                .withStatus(200)
-                .withBody("{\"results\":[],\"next\":null}")));
-
-        assertThat(client().findRoomIdBySlug(TOKEN, new MeetApplicationClient.RoomSlug("mjj-beyv-zai")).block()).isEmpty();
-    }
-
-    @Test
-    void grantAccessShouldRequestTheAdministratorRole() {
-        stubGrantAccess(200, "{}");
-
-        client().grantAccess(TOKEN, new MeetApplicationClient.RoomAccessGrant(ROOM_ID, "delegate@example.com")).block();
-
-        verify(postRequestedFor(urlEqualTo(GRANT_ACCESS_PATH))
-            .withHeader("Authorization", equalTo("Bearer " + TOKEN.value()))
-            .withRequestBody(matchingJsonPath("$.email", equalTo("delegate@example.com")))
-            .withRequestBody(matchingJsonPath("$.role", equalTo("administrator"))));
-    }
-
-    @Test
-    void grantAccessShouldFailWhenMeetRejectsTheGrant() {
-        stubGrantAccess(404, "{\"detail\":\"room not found\"}");
-
-        assertThatThrownBy(() -> client().grantAccess(TOKEN, new MeetApplicationClient.RoomAccessGrant(ROOM_ID, "delegate@example.com")).block())
-            .isInstanceOf(MeetApplicationClient.MeetApiException.class)
-            .hasMessageContaining("404");
     }
 
     @Test
