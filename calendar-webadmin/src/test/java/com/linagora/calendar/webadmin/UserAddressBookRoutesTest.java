@@ -56,6 +56,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.dav.CardDavClient;
+import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -77,6 +78,7 @@ public class UserAddressBookRoutesTest {
     private WebAdminServer webAdminServer;
     private OpenPaaSUserDAO userDAO;
     private CardDavClient cardDavClient;
+    private DavTestHelper davTestHelper;
 
     private OpenPaaSUser user;
     private OpenPaaSUser otherUser;
@@ -87,6 +89,7 @@ public class UserAddressBookRoutesTest {
         MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
         userDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
         cardDavClient = new CardDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
+        davTestHelper = sabreDavExtension.davTestHelper();
 
         user = sabreDavExtension.newTestUser();
         otherUser = sabreDavExtension.newTestUser();
@@ -255,6 +258,66 @@ public class UserAddressBookRoutesTest {
         assertThat(retrieveAddressBook(user, addressBookId))
             .containsEntry("dav:name", "Old name")
             .containsEntry("carddav:description", "New description");
+    }
+
+    @Test
+    void updateAddressBookShouldUpdateSubscriptionWithoutUpdatingSource() {
+        // Given
+        String sourceAddressBookId = createAddressBook(user, "Source name");
+        String subscriptionId = UUID.randomUUID().toString();
+        AddressBookURL sourceAddressBookURL = new AddressBookURL(user.id(), sourceAddressBookId);
+        cardDavClient.updateAddressBookPublicRight(user.username(), sourceAddressBookURL, true).block();
+        davTestHelper.createAddressBookSubscription(otherUser, subscriptionId, "Subscription name", sourceAddressBookURL).block();
+
+        assertThat(retrieveAddressBook(otherUser, subscriptionId))
+            .containsEntry("dav:name", "Subscription name");
+
+        // When
+        given()
+            .body("""
+                {"dav:name":"Updated subscription","carddav:description":"Updated subscription description"}
+                """)
+        .when()
+            .patch("/users/{username}/addressbooks/{addressBookId}", otherUser.username().asString(), subscriptionId)
+        .then()
+            .statusCode(204);
+
+        // Then
+        assertThat(retrieveAddressBook(otherUser, subscriptionId))
+            .containsEntry("dav:name", "Updated subscription")
+            .containsEntry("carddav:description", "Updated subscription description");
+        assertThat(retrieveAddressBook(user, sourceAddressBookId))
+            .containsEntry("dav:name", "Source name");
+    }
+
+    @Test
+    void updateAddressBookShouldUpdateDelegationWithoutUpdatingSource() {
+        // Given
+        String sourceAddressBookId = createAddressBook(user, "Source name");
+        cardDavClient.updateAddressBookShares(user.username(), new AddressBookURL(user.id(), sourceAddressBookId),
+            List.of(new CardDavClient.AddressBookSharee("mailto:" + otherUser.username().asString(), 3))).block();
+        String delegatedAddressBookId = cardDavClient.listUserAddressBookIds(otherUser.username(), otherUser.id())
+            .filter(addressBook -> addressBook.type() == CardDavClient.AddressBookType.USER)
+            .single()
+            .map(CardDavClient.AddressBook::value)
+            .block();
+
+        // When
+        given()
+            .body("""
+                {"dav:name":"Updated delegation","carddav:description":"Updated delegation description"}
+                """)
+        .when()
+            .patch("/users/{username}/addressbooks/{addressBookId}", otherUser.username().asString(), delegatedAddressBookId)
+        .then()
+            .statusCode(204);
+
+        // Then
+        assertThat(retrieveAddressBook(otherUser, delegatedAddressBookId))
+            .containsEntry("dav:name", "Updated delegation")
+            .containsEntry("carddav:description", "Updated delegation description");
+        assertThat(retrieveAddressBook(user, sourceAddressBookId))
+            .containsEntry("dav:name", "Source name");
     }
 
     @ParameterizedTest

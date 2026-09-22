@@ -127,6 +127,7 @@ public class CardDavClient extends DavClient {
     private static final String SYNC_TOKEN_PROPERTY = "dav:syncToken";
     private static final String ADDRESS_BOOK_SOURCE_PROPERTY = "openpaas:source";
     private static final String ADDRESS_BOOK_TYPE_PROPERTY = "{http://open-paas.org/contacts}type";
+    private static final String ADDRESS_BOOK_SUBSCRIPTION_TYPE_PROPERTY = "{http://open-paas.org/contacts}subscription-type";
     private static final String CONTENT_TYPE_XML = "application/xml";
     private static final HttpMethod REPORT_METHOD = HttpMethod.valueOf("REPORT");
     private static final HttpMethod PROPFIND_METHOD = HttpMethod.valueOf("PROPFIND");
@@ -541,7 +542,9 @@ public class CardDavClient extends DavClient {
 
     public Mono<AddressBookType> addressBookType(Username username, AddressBookURL addressBookURL) {
         String uri = addressBookURL.asUri().toASCIIString();
-        byte[] payload = "{\"properties\":[\"%s\"]}".formatted(ADDRESS_BOOK_TYPE_PROPERTY).getBytes(StandardCharsets.UTF_8);
+        byte[] payload = "{\"properties\":[\"%s\",\"%s\"]}"
+            .formatted(ADDRESS_BOOK_TYPE_PROPERTY, ADDRESS_BOOK_SUBSCRIPTION_TYPE_PROPERTY)
+            .getBytes(StandardCharsets.UTF_8);
         return httpClientWithImpersonation(username)
             .headers(headers -> headers
                 .add(HttpHeaderNames.CONTENT_TYPE, "application/json")
@@ -553,7 +556,14 @@ public class CardDavClient extends DavClient {
                 case HttpStatus.SC_OK -> buf.asByteArray()
                     .flatMap(bytes -> Mono.fromCallable(() -> OBJECT_MAPPER.readTree(bytes))
                         .onErrorMap(JsonProcessingException.class, e -> new DavClientException("Failed to parse address book type for " + uri, e)))
-                    .map(json -> AddressBookType.from(json.path(ADDRESS_BOOK_TYPE_PROPERTY).asText()));
+                    .map(json -> {
+                        if (json.hasNonNull(ADDRESS_BOOK_TYPE_PROPERTY)) {
+                            return AddressBookType.from(json.get(ADDRESS_BOOK_TYPE_PROPERTY).asText());
+                        }
+                        return json.hasNonNull(ADDRESS_BOOK_SUBSCRIPTION_TYPE_PROPERTY)
+                            ? AddressBookType.USER
+                            : AddressBookType.SYSTEM;
+                    });
                 case HttpStatus.SC_NOT_FOUND -> Mono.empty();
                 default -> responseBodyAsString(buf)
                     .flatMap(errorBody -> Mono.error(new DavClientException(
