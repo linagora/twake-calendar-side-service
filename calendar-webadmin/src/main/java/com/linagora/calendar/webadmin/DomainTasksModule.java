@@ -27,6 +27,7 @@ import com.linagora.calendar.webadmin.task.AddressBookImportTask;
 import com.linagora.calendar.webadmin.task.CalendarArchivalTask;
 import com.linagora.calendar.webadmin.task.CalendarImportTask;
 import com.linagora.calendar.webadmin.task.ClearDavDomainMembersTask;
+import com.linagora.calendar.webadmin.task.DomainCalendarImportTask;
 import com.linagora.calendar.webadmin.task.LdapToDavDomainMembersSyncTask;
 
 public class DomainTasksModule extends AbstractModule {
@@ -77,6 +78,13 @@ public class DomainTasksModule extends AbstractModule {
                 .map(info -> (AddressBookImportTask.Details) info)
                 .flatMap(info -> Username.of(info.username()).getDomainPart())
                 .map(domain::equals)
+                .orElse(false));
+
+        predicates.addBinding().toInstance(
+            (domain, details) -> details.getAdditionalInformation()
+                .filter(info -> info instanceof DomainCalendarImportTask.Details)
+                .map(info -> (DomainCalendarImportTask.Details) info)
+                .map(info -> info.domain().equals(domain.asString()))
                 .orElse(false));
     }
 }

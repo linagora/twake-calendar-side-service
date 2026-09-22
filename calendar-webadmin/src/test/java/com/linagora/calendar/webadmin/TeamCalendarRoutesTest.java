@@ -23,31 +23,47 @@ import static io.restassured.RestAssured.given;
 import static io.restassured.RestAssured.when;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.is;
 
 import java.time.Instant;
+import java.util.UUID;
 
 import javax.net.ssl.SSLException;
 
 import org.apache.james.core.Domain;
+import org.apache.james.json.DTOConverter;
+import org.apache.james.server.task.json.dto.AdditionalInformationDTO;
+import org.apache.james.server.task.json.dto.AdditionalInformationDTOModule;
+import org.apache.james.task.Hostname;
+import org.apache.james.task.MemoryTaskManager;
+import org.apache.james.task.TaskExecutionDetails;
+import org.apache.james.task.TaskManager;
 import org.apache.james.utils.UpdatableTickingClock;
 import org.apache.james.webadmin.WebAdminServer;
-import org.apache.james.webadmin.WebAdminUtils;
+import org.apache.james.webadmin.routes.TasksRoutes;
 import org.apache.james.webadmin.utils.JsonTransformer;
 import org.bson.Document;
+import org.bson.types.ObjectId;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
+import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.SabreDavExtension;
+import com.linagora.calendar.dav.SabreDavProvisioningService;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.TeamCalendarInsertRequest;
 import com.linagora.calendar.storage.model.TeamCalendar;
 import com.linagora.calendar.storage.model.TeamCalendarId;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBTeamCalendarRepository;
+import com.linagora.calendar.webadmin.service.CalendarImportService;
+import com.linagora.calendar.webadmin.task.DomainCalendarImportTaskAdditionalInformationDTO;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
 import io.restassured.RestAssured;
@@ -56,12 +72,15 @@ import net.javacrumbs.jsonunit.core.Option;
 import reactor.core.publisher.Mono;
 
 class TeamCalendarRoutesTest {
+    private static final Domain DAV_DOMAIN = Domain.of(SabreDavProvisioningService.DOMAIN);
+
     @RegisterExtension
     static SabreDavExtension sabreDavExtension = SabreDavExtension.shared();
 
     private WebAdminServer webAdminServer;
     private MongoDBOpenPaaSDomainDAO domainDAO;
     private MongoDBTeamCalendarRepository teamCalendarRepository;
+    private TeamCalendarService teamCalendarService;
     private UpdatableTickingClock clock;
 
     @BeforeEach
@@ -73,11 +92,18 @@ class TeamCalendarRoutesTest {
         teamCalendarRepository = new MongoDBTeamCalendarRepository(mongoDB, clock);
 
         CalDavClient calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
-        TeamCalendarService teamCalendarService = new TeamCalendarService(domainDAO, teamCalendarRepository, calDavClient);
-        webAdminServer = WebAdminUtils.createWebAdminServer(new TeamCalendarRoutes(teamCalendarService, new JsonTransformer()))
+        teamCalendarService = new TeamCalendarService(domainDAO, teamCalendarRepository, calDavClient);
+        TaskManager taskManager = new MemoryTaskManager(new Hostname("foo"));
+        webAdminServer = WebAdminUtils.createWebAdminServer(
+                new TeamCalendarRoutes(teamCalendarService,
+                    new DomainCalendarContentHandler(calDavClient, new CalendarImportService(calDavClient), taskManager),
+                    new JsonTransformer()),
+                new TasksRoutes(taskManager, new JsonTransformer(),
+                    new DTOConverter<>(ImmutableSet.<AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO>>builder()
+                        .add(DomainCalendarImportTaskAdditionalInformationDTO.module())
+                        .build())))
             .start();
 
-        RestAssured.enableLoggingOfRequestAndResponseIfValidationFails();
         RestAssured.requestSpecification = WebAdminUtils.buildRequestSpecification(webAdminServer)
             .build();
     }
@@ -403,5 +429,297 @@ class TeamCalendarRoutesTest {
         .then()
             .statusCode(400)
             .contentType(ContentType.JSON);
+    }
+
+    @Test
+    void eventCountShouldReturnZeroWhenCalendarIsEmpty() {
+        String calendarId = createDavTeamCalendar();
+
+        given()
+        .when()
+            .get("/domains/{domain}/team-calendars/{calendarId}/eventCount", DAV_DOMAIN.asString(), calendarId)
+        .then()
+            .statusCode(200)
+            .body("count", is(0));
+    }
+
+    @Test
+    void eventCountShouldReturnTheNumberOfEventsOfTheCalendar() {
+        String calendarId = createDavTeamCalendar();
+        awaitTask(importCalendar(calendarId, icsOf(
+            event("counted-1", "First event"),
+            event("counted-2", "Second event"))));
+
+        given()
+        .when()
+            .get("/domains/{domain}/team-calendars/{calendarId}/eventCount", DAV_DOMAIN.asString(), calendarId)
+        .then()
+            .statusCode(200)
+            .body("count", is(2));
+    }
+
+    @Test
+    void eventCountShouldReturn404WhenCalendarDoesNotExist() {
+        given()
+        .when()
+            .get("/domains/{domain}/team-calendars/{calendarId}/eventCount", DAV_DOMAIN.asString(), unknownCalendarId())
+        .then()
+            .statusCode(404)
+            .body("type", is("notFound"));
+    }
+
+    @Test
+    void eventCountShouldReturn404WhenDomainDoesNotExist() {
+        given()
+        .when()
+            .get("/domains/unknown.tld/team-calendars/{calendarId}/eventCount", unknownCalendarId())
+        .then()
+            .statusCode(404)
+            .body("type", is("notFound"));
+    }
+
+    @Test
+    void exportShouldReturnTheEventsOfTheCalendar() {
+        String calendarId = createDavTeamCalendar();
+        awaitTask(importCalendar(calendarId, icsOf(event("exported-event", "Sprint review"))));
+
+        assertThat(exportCalendar(calendarId))
+            .contains("UID:exported-event")
+            .contains("SUMMARY:Sprint review");
+    }
+
+    @Test
+    void exportShouldReturn404WhenCalendarDoesNotExist() {
+        given()
+            .queryParam("action", "export")
+        .when()
+            .post("/domains/{domain}/team-calendars/{calendarId}", DAV_DOMAIN.asString(), unknownCalendarId())
+        .then()
+            .statusCode(404)
+            .body("type", is("notFound"));
+    }
+
+    @Test
+    void exportShouldReturn400WhenActionIsNotSupported() {
+        String calendarId = createDavTeamCalendar();
+
+        given()
+            .queryParam("action", "unsupported")
+        .when()
+            .post("/domains/{domain}/team-calendars/{calendarId}", DAV_DOMAIN.asString(), calendarId)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"EXPORT", "Export", "eXpOrT"})
+    void actionShouldBeCaseInsensitive(String action) {
+        String calendarId = createDavTeamCalendar();
+
+        given()
+            .queryParam("action", action)
+        .when()
+            .post("/domains/{domain}/team-calendars/{calendarId}", DAV_DOMAIN.asString(), calendarId)
+        .then()
+            .statusCode(200);
+    }
+
+    @Test
+    void importShouldAddEventsToTheCalendar() {
+        String calendarId = createDavTeamCalendar();
+
+        awaitTask(importCalendar(calendarId, icsOf(
+            event("imported-1", "First imported event"),
+            event("imported-2", "Second imported event"))));
+
+        assertThat(exportCalendar(calendarId))
+            .contains("UID:imported-1")
+            .contains("SUMMARY:First imported event")
+            .contains("UID:imported-2")
+            .contains("SUMMARY:Second imported event");
+    }
+
+    @Test
+    void importShouldReturnCompletedTaskDetails() {
+        String calendarId = createDavTeamCalendar();
+
+        String taskId = importCalendar(calendarId, icsOf(
+            event("imported-1", "First imported event"),
+            event("imported-2", "Second imported event")));
+
+        given()
+        .when()
+            .get(TasksRoutes.BASE + "/" + taskId + "/await")
+        .then()
+            .statusCode(200)
+            .body("status", is("completed"))
+            .body("type", is("domain-calendar-import"))
+            .body("additionalInformation.domain", is(DAV_DOMAIN.asString()))
+            .body("additionalInformation.calendarType", is("team-calendar"))
+            .body("additionalInformation.calendarId", is(calendarId))
+            .body("additionalInformation.totalEventCount", is(2))
+            .body("additionalInformation.importedEventCount", is(2))
+            .body("additionalInformation.failedEventCount", is(0));
+    }
+
+    @Test
+    void importShouldOverwriteEventsSharingTheSameUid() {
+        String calendarId = createDavTeamCalendar();
+
+        awaitTask(importCalendar(calendarId, icsOf(event("imported-1", "Initial summary"))));
+        awaitTask(importCalendar(calendarId, icsOf(event("imported-1", "Updated summary"))));
+
+        given()
+        .when()
+            .get("/domains/{domain}/team-calendars/{calendarId}/eventCount", DAV_DOMAIN.asString(), calendarId)
+        .then()
+            .statusCode(200)
+            .body("count", is(1));
+        assertThat(exportCalendar(calendarId))
+            .contains("SUMMARY:Updated summary")
+            .doesNotContain("SUMMARY:Initial summary");
+    }
+
+    @Test
+    void importShouldReturn400WhenBodyIsNotAValidIcs() {
+        String calendarId = createDavTeamCalendar();
+
+        given()
+            .queryParam("action", "import")
+            .body("not an ICS document")
+        .when()
+            .post("/domains/{domain}/team-calendars/{calendarId}", DAV_DOMAIN.asString(), calendarId)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"));
+    }
+
+    @Test
+    void importShouldReturn400WhenNoEventToImport() {
+        String calendarId = createDavTeamCalendar();
+
+        given()
+            .queryParam("action", "import")
+            .body(icsOf())
+        .when()
+            .post("/domains/{domain}/team-calendars/{calendarId}", DAV_DOMAIN.asString(), calendarId)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"))
+            .body("message", is("Invalid request body: no event to import"));
+    }
+
+    @Test
+    void importShouldReturn404WhenCalendarDoesNotExist() {
+        given()
+            .queryParam("action", "import")
+            .body(icsOf(event("imported-1", "First imported event")))
+        .when()
+            .post("/domains/{domain}/team-calendars/{calendarId}", DAV_DOMAIN.asString(), unknownCalendarId())
+        .then()
+            .statusCode(404)
+            .body("type", is("notFound"));
+    }
+
+    @Test
+    void exportedContentShouldBeImportableAsIs() {
+        String sourceCalendarId = createDavTeamCalendar();
+        String targetCalendarId = createDavTeamCalendar();
+        awaitTask(importCalendar(sourceCalendarId, icsOf(
+            event("round-trip-1", "First event"),
+            event("round-trip-2", "Second event"))));
+
+        awaitTask(importCalendar(targetCalendarId, exportCalendar(sourceCalendarId)));
+
+        assertThat(exportCalendar(targetCalendarId))
+            .contains("UID:round-trip-1")
+            .contains("UID:round-trip-2");
+    }
+
+    @Test
+    void contentRoutesShouldIgnoreTeamCalendarsOfOtherDomains() {
+        OpenPaaSDomain otherDomain = sabreDavExtension.dockerSabreDavSetup()
+            .getOpenPaaSProvisioningService()
+            .createDomainIfAbsent(Domain.of("other-" + UUID.randomUUID() + ".tld"))
+            .block();
+        String calendarId = createDavTeamCalendar();
+
+        given()
+        .when()
+            .get("/domains/{domain}/team-calendars/{calendarId}/eventCount", otherDomain.domain().asString(), calendarId)
+        .then()
+            .statusCode(404)
+            .body("message", is("Team calendar does not exist"));
+    }
+
+    private String createDavTeamCalendar() {
+        sabreDavExtension.dockerSabreDavSetup()
+            .getOpenPaaSProvisioningService()
+            .createDomainIfAbsent(DAV_DOMAIN)
+            .block();
+
+        return teamCalendarService.create(DAV_DOMAIN, "team-" + UUID.randomUUID(), "Team calendar")
+            .block()
+            .id()
+            .value();
+    }
+
+    private String unknownCalendarId() {
+        return new ObjectId().toHexString();
+    }
+
+    private String exportCalendar(String calendarId) {
+        return given()
+            .queryParam("action", "export")
+        .when()
+            .post("/domains/{domain}/team-calendars/{calendarId}", DAV_DOMAIN.asString(), calendarId)
+        .then()
+            .statusCode(200)
+            .extract()
+            .asString();
+    }
+
+    private String importCalendar(String calendarId, String ics) {
+        return given()
+            .queryParam("action", "import")
+            .body(ics)
+        .when()
+            .post("/domains/{domain}/team-calendars/{calendarId}", DAV_DOMAIN.asString(), calendarId)
+        .then()
+            .statusCode(201)
+            .extract()
+            .jsonPath()
+            .getString("taskId");
+    }
+
+    private void awaitTask(String taskId) {
+        given()
+        .when()
+            .get(TasksRoutes.BASE + "/" + taskId + "/await")
+        .then()
+            .statusCode(200)
+            .body("status", is("completed"));
+    }
+
+    private String icsOf(String... vEvents) {
+        return """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Linagora//Twake Calendar//EN
+            %sEND:VCALENDAR
+            """.formatted(String.join("", vEvents));
+    }
+
+    private String event(String eventUid, String summary) {
+        return """
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20260601T080000Z
+            DTSTART:20260601T100000Z
+            DTEND:20260601T110000Z
+            SUMMARY:%s
+            END:VEVENT
+            """.formatted(eventUid, summary);
     }
 }

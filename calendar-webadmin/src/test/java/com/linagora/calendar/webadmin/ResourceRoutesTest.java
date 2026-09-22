@@ -25,6 +25,7 @@ import static io.restassured.RestAssured.when;
 import static java.time.ZoneOffset.UTC;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
+import static org.hamcrest.Matchers.is;
 
 import java.time.Clock;
 import java.util.List;
@@ -34,8 +35,17 @@ import javax.net.ssl.SSLException;
 
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
+import org.apache.james.json.DTOConverter;
+import org.apache.james.server.task.json.dto.AdditionalInformationDTO;
+import org.apache.james.server.task.json.dto.AdditionalInformationDTOModule;
+import org.apache.james.task.Hostname;
+import org.apache.james.task.MemoryTaskManager;
+import org.apache.james.task.TaskExecutionDetails;
+import org.apache.james.task.TaskManager;
 import org.apache.james.webadmin.WebAdminServer;
+import org.apache.james.webadmin.routes.TasksRoutes;
 import org.apache.james.webadmin.utils.JsonTransformer;
+import org.bson.types.ObjectId;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,6 +54,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.ResourceService;
 import com.linagora.calendar.dav.DavRight;
@@ -53,10 +64,13 @@ import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.ResourceInsertRequest;
+import com.linagora.calendar.storage.model.Resource;
 import com.linagora.calendar.storage.model.ResourceId;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
+import com.linagora.calendar.webadmin.service.CalendarImportService;
+import com.linagora.calendar.webadmin.task.DomainCalendarImportTaskAdditionalInformationDTO;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
 import io.restassured.RestAssured;
@@ -83,9 +97,15 @@ class ResourceRoutesTest {
         CalDavClient calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         resourceService = new ResourceService(userDAO, resourceDAO, calDavClient);
 
+        TaskManager taskManager = new MemoryTaskManager(new Hostname("foo"));
         webAdminServer = WebAdminUtils.createWebAdminServer(
             new ResourceRoutes(domainDAO, userDAO,
-                new JsonTransformer(), resourceService)).start();
+                new JsonTransformer(), resourceService,
+                new DomainCalendarContentHandler(calDavClient, new CalendarImportService(calDavClient), taskManager)),
+            new TasksRoutes(taskManager, new JsonTransformer(),
+                new DTOConverter<>(ImmutableSet.<AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO>>builder()
+                    .add(DomainCalendarImportTaskAdditionalInformationDTO.module())
+                    .build()))).start();
 
         RestAssured.requestSpecification = WebAdminUtils.buildRequestSpecification(webAdminServer)
             .build();
@@ -1203,4 +1223,309 @@ class ResourceRoutesTest {
             .noneMatch(href -> href.contains("mailto:" + admin2.username().asString()));
     }
 
+    @Test
+    void eventCountShouldReturnZeroWhenCalendarIsEmpty() {
+        String resourceId = createDavResource();
+
+        given()
+        .when()
+            .get("/domains/{domain}/resources/{resourceId}/eventCount", DOMAIN, resourceId)
+        .then()
+            .statusCode(200)
+            .body("count", is(0));
+    }
+
+    @Test
+    void eventCountShouldReturnTheNumberOfEventsOfTheCalendar() {
+        String resourceId = createDavResource();
+        awaitTask(importCalendar(resourceId, icsOf(
+            event("counted-1", "First event"),
+            event("counted-2", "Second event"))));
+
+        given()
+        .when()
+            .get("/domains/{domain}/resources/{resourceId}/eventCount", DOMAIN, resourceId)
+        .then()
+            .statusCode(200)
+            .body("count", is(2));
+    }
+
+    @Test
+    void eventCountShouldReturn404WhenResourceDoesNotExist() {
+        given()
+        .when()
+            .get("/domains/{domain}/resources/{resourceId}/eventCount", DOMAIN, unknownResourceId())
+        .then()
+            .statusCode(404)
+            .body("type", is("notFound"));
+    }
+
+    @Test
+    void eventCountShouldReturn404WhenDomainDoesNotExist() {
+        given()
+        .when()
+            .get("/domains/unknown.tld/resources/{resourceId}/eventCount", unknownResourceId())
+        .then()
+            .statusCode(404)
+            .body("type", is("notFound"));
+    }
+
+    @Test
+    void exportShouldReturnTheEventsOfTheCalendar() {
+        String resourceId = createDavResource();
+        awaitTask(importCalendar(resourceId, icsOf(event("exported-event", "Sprint review"))));
+
+        assertThat(exportCalendar(resourceId))
+            .contains("UID:exported-event")
+            .contains("SUMMARY:Sprint review");
+    }
+
+    @Test
+    void exportShouldReturn404WhenResourceDoesNotExist() {
+        given()
+            .queryParam("action", "export")
+        .when()
+            .post("/domains/{domain}/resources/{resourceId}", DOMAIN, unknownResourceId())
+        .then()
+            .statusCode(404)
+            .body("type", is("notFound"));
+    }
+
+    @Test
+    void exportShouldReturn400WhenActionIsNotSupported() {
+        String resourceId = createDavResource();
+
+        given()
+            .queryParam("action", "unsupported")
+        .when()
+            .post("/domains/{domain}/resources/{resourceId}", DOMAIN, resourceId)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"));
+    }
+
+    @Test
+    void exportShouldSucceedWhenResourceIsMarkedAsDeleted() {
+        String resourceId = createDavResource();
+        awaitTask(importCalendar(resourceId, icsOf(event("kept-event", "Kept event"))));
+        deleteResource(resourceId);
+
+        assertThat(exportCalendar(resourceId))
+            .contains("UID:kept-event");
+    }
+
+    @Test
+    void importShouldAddEventsToTheCalendar() {
+        String resourceId = createDavResource();
+
+        awaitTask(importCalendar(resourceId, icsOf(
+            event("imported-1", "First imported event"),
+            event("imported-2", "Second imported event"))));
+
+        assertThat(exportCalendar(resourceId))
+            .contains("UID:imported-1")
+            .contains("SUMMARY:First imported event")
+            .contains("UID:imported-2")
+            .contains("SUMMARY:Second imported event");
+    }
+
+    @Test
+    void importShouldReturnCompletedTaskDetails() {
+        String resourceId = createDavResource();
+
+        String taskId = importCalendar(resourceId, icsOf(
+            event("imported-1", "First imported event"),
+            event("imported-2", "Second imported event")));
+
+        given()
+        .when()
+            .get(TasksRoutes.BASE + "/" + taskId + "/await")
+        .then()
+            .statusCode(200)
+            .body("status", is("completed"))
+            .body("type", is("domain-calendar-import"))
+            .body("additionalInformation.domain", is(DOMAIN))
+            .body("additionalInformation.calendarType", is("resource"))
+            .body("additionalInformation.calendarId", is(resourceId))
+            .body("additionalInformation.totalEventCount", is(2))
+            .body("additionalInformation.importedEventCount", is(2))
+            .body("additionalInformation.failedEventCount", is(0));
+    }
+
+    @Test
+    void importShouldOverwriteEventsSharingTheSameUid() {
+        String resourceId = createDavResource();
+
+        awaitTask(importCalendar(resourceId, icsOf(event("imported-1", "Initial summary"))));
+        awaitTask(importCalendar(resourceId, icsOf(event("imported-1", "Updated summary"))));
+
+        given()
+        .when()
+            .get("/domains/{domain}/resources/{resourceId}/eventCount", DOMAIN, resourceId)
+        .then()
+            .statusCode(200)
+            .body("count", is(1));
+        assertThat(exportCalendar(resourceId))
+            .contains("SUMMARY:Updated summary")
+            .doesNotContain("SUMMARY:Initial summary");
+    }
+
+    @Test
+    void importShouldReturn400WhenBodyIsNotAValidIcs() {
+        String resourceId = createDavResource();
+
+        given()
+            .queryParam("action", "import")
+            .body("not an ICS document")
+        .when()
+            .post("/domains/{domain}/resources/{resourceId}", DOMAIN, resourceId)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"));
+    }
+
+    @Test
+    void importShouldReturn400WhenNoEventToImport() {
+        String resourceId = createDavResource();
+
+        given()
+            .queryParam("action", "import")
+            .body(icsOf())
+        .when()
+            .post("/domains/{domain}/resources/{resourceId}", DOMAIN, resourceId)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"))
+            .body("message", is("Invalid request body: no event to import"));
+    }
+
+    @Test
+    void importShouldReturn404WhenResourceDoesNotExist() {
+        given()
+            .queryParam("action", "import")
+            .body(icsOf(event("imported-1", "First imported event")))
+        .when()
+            .post("/domains/{domain}/resources/{resourceId}", DOMAIN, unknownResourceId())
+        .then()
+            .statusCode(404)
+            .body("type", is("notFound"));
+    }
+
+    @Test
+    void importShouldReturn404WhenResourceIsMarkedAsDeleted() {
+        String resourceId = createDavResource();
+        deleteResource(resourceId);
+
+        given()
+            .queryParam("action", "import")
+            .body(icsOf(event("imported-1", "First imported event")))
+        .when()
+            .post("/domains/{domain}/resources/{resourceId}", DOMAIN, resourceId)
+        .then()
+            .statusCode(404)
+            .body("type", is("notFound"))
+            .body("message", is("Resource does not exist"));
+    }
+
+    @Test
+    void exportedContentShouldBeImportableAsIs() {
+        String sourceResourceId = createDavResource();
+        String targetResourceId = createDavResource();
+        awaitTask(importCalendar(sourceResourceId, icsOf(
+            event("round-trip-1", "First event"),
+            event("round-trip-2", "Second event"))));
+
+        awaitTask(importCalendar(targetResourceId, exportCalendar(sourceResourceId)));
+
+        assertThat(exportCalendar(targetResourceId))
+            .contains("UID:round-trip-1")
+            .contains("UID:round-trip-2");
+    }
+
+    @Test
+    void contentRoutesShouldIgnoreResourcesOfOtherDomains() {
+        OpenPaaSDomain otherDomain = domainDAO.add(Domain.of("other-" + UUID.randomUUID() + ".tld")).block();
+        String resourceId = createDavResource();
+
+        given()
+        .when()
+            .get("/domains/{domain}/resources/{resourceId}/eventCount", otherDomain.domain().asString(), resourceId)
+        .then()
+            .statusCode(404)
+            .body("message", is("Resource does not exist"));
+    }
+
+    private String createDavResource() {
+        OpenPaaSUser administrator = sabreDavExtension.newTestUser();
+        OpenPaaSDomain domain = domainDAO.retrieve(Domain.of(DOMAIN)).block();
+
+        return resourceService.create(
+                new ResourceInsertRequest(administrator.id(), "A meeting room", domain.id(), "laptop", "Room " + UUID.randomUUID()),
+                List.of(new ResourceAdministrator(administrator.username(), DavRight.ADMINISTRATION)))
+            .block()
+            .value();
+    }
+
+    private void deleteResource(String resourceId) {
+        Resource resource = resourceService.retrieve(new ResourceId(resourceId), ResourceService.ONLY_ACTIVE).block();
+        resourceService.delete(resource).block();
+    }
+
+    private String unknownResourceId() {
+        return new ObjectId().toHexString();
+    }
+
+    private String exportCalendar(String resourceId) {
+        return given()
+            .queryParam("action", "export")
+        .when()
+            .post("/domains/{domain}/resources/{resourceId}", DOMAIN, resourceId)
+        .then()
+            .statusCode(200)
+            .extract()
+            .asString();
+    }
+
+    private String importCalendar(String resourceId, String ics) {
+        return given()
+            .queryParam("action", "import")
+            .body(ics)
+        .when()
+            .post("/domains/{domain}/resources/{resourceId}", DOMAIN, resourceId)
+        .then()
+            .statusCode(201)
+            .extract()
+            .jsonPath()
+            .getString("taskId");
+    }
+
+    private void awaitTask(String taskId) {
+        given()
+        .when()
+            .get(TasksRoutes.BASE + "/" + taskId + "/await")
+        .then()
+            .statusCode(200)
+            .body("status", is("completed"));
+    }
+
+    private String icsOf(String... vEvents) {
+        return """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Linagora//Twake Calendar//EN
+            %sEND:VCALENDAR
+            """.formatted(String.join("", vEvents));
+    }
+
+    private String event(String eventUid, String summary) {
+        return """
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20260601T080000Z
+            DTSTART:20260601T100000Z
+            DTEND:20260601T110000Z
+            SUMMARY:%s
+            END:VEVENT
+            """.formatted(eventUid, summary);
+    }
 }

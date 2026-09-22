@@ -125,8 +125,8 @@ public class CalDavClient extends DavClient {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module());
 
     public static class CalDavExportException extends DavClientException {
-        public CalDavExportException(URI calendarUri, Username username, String davResponse) {
-            super("Failed to export calendar. URL: " + calendarUri.toASCIIString() + ", User: " + username.asString() +
+        public CalDavExportException(URI calendarUri, String requester, String davResponse) {
+            super("Failed to export calendar. URL: " + calendarUri.toASCIIString() + ", User: " + requester +
                 "\nDav Response: " + davResponse);
         }
     }
@@ -181,7 +181,19 @@ public class CalDavClient extends DavClient {
     }
 
     public Mono<byte[]> export(Username username, URI calendarURI) {
-        return httpClientWithImpersonation(username).headers(headers ->
+        return export(Mono.just(httpClientWithImpersonation(username)), calendarURI, username.asString());
+    }
+
+    /**
+     * Exports a domain scoped calendar - a team calendar or a resource calendar - which no user owns, relying
+     * on the technical token of its domain.
+     */
+    public Mono<byte[]> export(OpenPaaSId domainId, CalendarURL calendarURL) {
+        return export(httpClientWithTechnicalToken(domainId), calendarURL.asUri(), domainId.value());
+    }
+
+    private Mono<byte[]> export(Mono<HttpClient> httpClientPublisher, URI calendarURI, String requester) {
+        return httpClientPublisher.flatMap(client -> client.headers(headers ->
                 headers.add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_XML))
             .request(HttpMethod.GET)
             .uri(calendarURI.toString() + "?export")
@@ -190,19 +202,31 @@ public class CalDavClient extends DavClient {
                     return byteBufMono.asByteArray();
                 } else {
                     if (response.status().code() == HttpStatus.SC_NOT_IMPLEMENTED) {
-                        LOGGER.info("Could not export for {} calendar {}", username.asString(), calendarURI.toASCIIString());
+                        LOGGER.info("Could not export for {} calendar {}", requester, calendarURI.toASCIIString());
                         return Mono.empty();
                     }
                     return byteBufMono
                         .asString(StandardCharsets.UTF_8)
-                        .flatMap(errorBody -> Mono.error(new CalDavExportException(calendarURI, username, "Response status: " + response.status().code() + " - " + errorBody)));
+                        .flatMap(errorBody -> Mono.error(new CalDavExportException(calendarURI, requester, "Response status: " + response.status().code() + " - " + errorBody)));
                 }
-            });
+            }));
     }
 
     public Mono<Void> importCalendar(CalendarURL calendarURL, String eventId, Username username, byte[] calendarData) {
+        return importCalendar(Mono.just(httpClientWithImpersonation(username)), calendarURL, eventId, calendarData);
+    }
+
+    /**
+     * Imports into a domain scoped calendar - a team calendar or a resource calendar - which no user owns,
+     * relying on the technical token of its domain.
+     */
+    public Mono<Void> importCalendar(OpenPaaSId domainId, CalendarURL calendarURL, String eventId, byte[] calendarData) {
+        return importCalendar(httpClientWithTechnicalToken(domainId), calendarURL, eventId, calendarData);
+    }
+
+    private Mono<Void> importCalendar(Mono<HttpClient> httpClientPublisher, CalendarURL calendarURL, String eventId, byte[] calendarData) {
         String uri = calendarURL.asUri() + "/" + eventId + ICS_EXTENSION + "?import";
-        return httpClientWithImpersonation(username).headers(headers ->
+        return httpClientPublisher.flatMap(client -> client.headers(headers ->
                 headers.add(HttpHeaderNames.CONTENT_TYPE, "text/plain"))
             .request(HttpMethod.PUT)
             .uri(uri)
@@ -220,7 +244,7 @@ public class CalDavClient extends DavClient {
                                 """.formatted(response.status().code(), uri.toString(), responseBody))));
 
                 }
-            });
+            }));
     }
 
     public Flux<CalendarURL> findUserCalendars(Username user, OpenPaaSId userId) {
@@ -307,10 +331,18 @@ public class CalDavClient extends DavClient {
     }
 
     public Flux<String> findUserCalendarEventIds(Username username, CalendarURL calendarURL) {
-        return findUserCalendarEventIds(Mono.just(httpClientWithImpersonation(username)), calendarURL);
+        return findCalendarEventIds(Mono.just(httpClientWithImpersonation(username)), calendarURL);
     }
 
-    public Flux<String> findUserCalendarEventIds(Mono<HttpClient> httpClientPublisher, CalendarURL calendarURL) {
+    /**
+     * Lists the event ids of a domain scoped calendar - a team calendar or a resource calendar - which no user
+     * owns, relying on the technical token of its domain.
+     */
+    public Flux<String> findCalendarEventIds(OpenPaaSId domainId, CalendarURL calendarURL) {
+        return findCalendarEventIds(httpClientWithTechnicalToken(domainId), calendarURL);
+    }
+
+    public Flux<String> findCalendarEventIds(Mono<HttpClient> httpClientPublisher, CalendarURL calendarURL) {
         return httpClientPublisher.flatMapMany(client ->
             client.headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_XML)
                     .add(HEADER_DEPTH, "1"))
