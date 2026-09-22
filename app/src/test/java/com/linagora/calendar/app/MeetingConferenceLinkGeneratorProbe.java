@@ -16,24 +16,26 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.restapi;
+package com.linagora.calendar.app;
 
-import org.apache.james.jmap.JMAPRoutes;
+import java.net.URL;
 
-import com.google.inject.AbstractModule;
-import com.google.inject.multibindings.Multibinder;
-import com.google.inject.multibindings.OptionalBinder;
+import jakarta.inject.Inject;
+
+import org.apache.james.core.MailAddress;
+import org.apache.james.utils.GuiceProbe;
+
 import com.linagora.calendar.restapi.routes.MeetingConferenceLinkGenerator;
-import com.linagora.calendar.restapi.routes.VideoConferenceRoute;
 
-public class MeetRestApiModule extends AbstractModule {
+public class MeetingConferenceLinkGeneratorProbe implements GuiceProbe {
+    private final MeetingConferenceLinkGenerator generator;
 
-    @Override
-    protected void configure() {
-        Multibinder.newSetBinder(binder(), JMAPRoutes.class)
-            .addBinding().to(VideoConferenceRoute.class);
+    @Inject
+    public MeetingConferenceLinkGeneratorProbe(MeetingConferenceLinkGenerator generator) {
+        this.generator = generator;
+    }
 
-        OptionalBinder.newOptionalBinder(binder(), MeetingConferenceLinkGenerator.class)
-            .setBinding().to(MeetingConferenceLinkGenerator.Meet.class);
+    public URL generate(MailAddress organizer) {
+        return generator.generate(organizer).block();
     }
 }

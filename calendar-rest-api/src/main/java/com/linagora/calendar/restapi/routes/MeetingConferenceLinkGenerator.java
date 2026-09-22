@@ -30,13 +30,22 @@ import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.Strings;
+import org.apache.james.core.MailAddress;
 
+import com.linagora.calendar.amqp.meet.MeetApplicationClient;
 import com.linagora.calendar.restapi.RestApiConfiguration;
 
-public interface MeetingConferenceLinkResolver {
-    URL resolve();
+import reactor.core.publisher.Mono;
 
-    class Visio implements MeetingConferenceLinkResolver {
+/**
+ * Where the meeting link written into {@code X-OPENPAAS-VIDEOCONFERENCE} comes from — the
+ * videoconference route for clients that ask, booking links for events nobody is around to ask for.
+ */
+public interface MeetingConferenceLinkGenerator {
+    Mono<URL> generate(MailAddress organizer);
+
+    /** Invents a room code and hangs it off the configured visio base URL. The default. */
+    class Visio implements MeetingConferenceLinkGenerator {
         private static final String ROOM_CODE_SEPARATOR = "-";
         private static final int[] ROOM_CODE_SEGMENT_LENGTHS = { 3, 4, 3 };
 
@@ -54,19 +63,38 @@ public interface MeetingConferenceLinkResolver {
         }
 
         @Override
-        public URL resolve() {
-            try {
-                return URI.create(Strings.CS.appendIfMissing(configuration.getVisioURL().toString(), "/") + roomCodeSupplier.get())
-                    .toURL();
-            } catch (MalformedURLException e) {
-                throw new IllegalStateException("Invalid visio URL", e);
-            }
+        public Mono<URL> generate(MailAddress organizer) {
+            return Mono.fromCallable(() -> {
+                try {
+                    return URI.create(Strings.CS.appendIfMissing(configuration.getVisioURL().toString(), "/") + roomCodeSupplier.get())
+                        .toURL();
+                } catch (MalformedURLException e) {
+                    throw new IllegalStateException("Invalid visio URL", e);
+                }
+            });
         }
 
         private static String generateRoomCode() {
             return Arrays.stream(ROOM_CODE_SEGMENT_LENGTHS)
                 .mapToObj(length -> RandomStringUtils.secure().nextAlphabetic(length).toLowerCase(Locale.US))
                 .collect(Collectors.joining(ROOM_CODE_SEPARATOR));
+        }
+    }
+
+    /** Creates the room in the organizer's name and returns the URL Meet answers with. */
+    class Meet implements MeetingConferenceLinkGenerator {
+        private final MeetApplicationClient client;
+
+        @Inject
+        public Meet(MeetApplicationClient client) {
+            this.client = client;
+        }
+
+        @Override
+        public Mono<URL> generate(MailAddress organizer) {
+            return client.fetchToken(organizer)
+                .flatMap(client::createRoom)
+                .map(MeetApplicationClient.Room::url);
         }
     }
 }

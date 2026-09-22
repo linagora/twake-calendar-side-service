@@ -102,7 +102,7 @@ class MeetApplicationClientTest {
     void createRoomShouldReturnTheUrlMeetMinted() {
         stubCreateRoom(201, ROOM_JSON);
 
-        assertThat(client().createRoom(TOKEN).block().url()).isEqualTo(ROOM_URL);
+        assertThat(client().createRoom(TOKEN).block().url()).hasToString(ROOM_URL);
     }
 
     @Test
@@ -153,7 +153,7 @@ class MeetApplicationClientTest {
                 .withStatus(201)
                 .withBody(ROOM_JSON)));
 
-        assertThat(client().createRoom(TOKEN).block().url()).isEqualTo(ROOM_URL);
+        assertThat(client().createRoom(TOKEN).block().url()).hasToString(ROOM_URL);
 
         verify(2, postRequestedFor(urlEqualTo(ROOMS_PATH)));
     }

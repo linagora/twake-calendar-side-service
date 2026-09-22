@@ -50,6 +50,8 @@ import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.property.Uid;
 import net.fortuna.ical4j.util.UidGenerator;
 
+import reactor.core.publisher.Mono;
+
 public class BookingLinkEventIcsBuilderTest {
 
     private static final Clock FIXED_CLOCK = Clock.fixed(Instant.parse("2036-01-01T00:00:00Z"), ZoneOffset.UTC);
@@ -65,7 +67,7 @@ public class BookingLinkEventIcsBuilderTest {
 
     @Test
     void buildShouldIncludeRequiredPublicBookingProperties() {
-        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.just(VISIO_URL), FIXED_UID_GENERATOR);
 
         BookingRequest request = new BookingRequest(
             Instant.parse("2036-01-26T09:30:00Z"),
@@ -75,7 +77,7 @@ public class BookingLinkEventIcsBuilderTest {
             true,
             "Please call via Zoom.");
 
-        BuildResult result = testee.build(request, OWNER, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID);
+        BuildResult result = testee.build(request, OWNER, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID).block();
         String ics = new String(result.icsBytes(), StandardCharsets.UTF_8);
 
         String expected = """
@@ -113,7 +115,7 @@ public class BookingLinkEventIcsBuilderTest {
 
     @Test
     void buildShouldNotIncludeVisioLinkWhenVisioLinkIsFalse() {
-        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.just(VISIO_URL), FIXED_UID_GENERATOR);
 
         BookingRequest request = new BookingRequest(
             Instant.parse("2036-01-26T09:30:00Z"),
@@ -123,7 +125,7 @@ public class BookingLinkEventIcsBuilderTest {
             false,
             "");
 
-        BuildResult result = testee.build(request, OWNER, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID);
+        BuildResult result = testee.build(request, OWNER, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID).block();
         String ics = new String(result.icsBytes(), StandardCharsets.UTF_8);
 
         String expected = """
@@ -159,7 +161,7 @@ public class BookingLinkEventIcsBuilderTest {
 
     @Test
     void buildShouldAppendVisioLinkAsDescriptionWhenEnabledWithoutNotes() {
-        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.just(VISIO_URL), FIXED_UID_GENERATOR);
 
         BookingRequest request = new BookingRequest(
             Instant.parse("2036-01-26T09:30:00Z"),
@@ -169,7 +171,7 @@ public class BookingLinkEventIcsBuilderTest {
             true,
             null);
 
-        String ics = new String(testee.build(request, OWNER, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID).icsBytes(), StandardCharsets.UTF_8);
+        String ics = new String(testee.build(request, OWNER, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID).block().icsBytes(), StandardCharsets.UTF_8);
 
         assertThat(ics)
             .contains("DESCRIPTION:" + VISIO_FOOTER);
@@ -182,7 +184,7 @@ public class BookingLinkEventIcsBuilderTest {
 
     @Test
     void visioSectionShouldBeHiddenWhenReadingBackTheDescription() {
-        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.just(VISIO_URL), FIXED_UID_GENERATOR);
 
         BookingRequest request = new BookingRequest(
             Instant.parse("2036-01-26T09:30:00Z"),
@@ -192,7 +194,7 @@ public class BookingLinkEventIcsBuilderTest {
             true,
             "Please call via Zoom.");
 
-        VEvent event = (VEvent) testee.build(request, OWNER, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID)
+        VEvent event = (VEvent) testee.build(request, OWNER, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID).block()
             .calendar()
             .getComponent(Component.VEVENT)
             .get();
@@ -203,7 +205,7 @@ public class BookingLinkEventIcsBuilderTest {
 
     @Test
     void buildShouldHandleNullFields() {
-        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.just(VISIO_URL), FIXED_UID_GENERATOR);
 
         BookingRequest request = new BookingRequest(
             Instant.parse("2036-01-26T09:30:00Z"),
@@ -213,7 +215,7 @@ public class BookingLinkEventIcsBuilderTest {
             false,
             null);
 
-        BuildResult result = testee.build(request, BookingAttendee.from(null, "owner@example.com"), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID);
+        BuildResult result = testee.build(request, BookingAttendee.from(null, "owner@example.com"), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID).block();
         String ics = new String(result.icsBytes(), StandardCharsets.UTF_8);
 
         String expected = """
@@ -248,7 +250,7 @@ public class BookingLinkEventIcsBuilderTest {
 
     @Test
     void buildShouldSetOrganizerPartStatNeedsAction() {
-        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.just(VISIO_URL), FIXED_UID_GENERATOR);
 
         BookingRequest request = new BookingRequest(
             Instant.parse("2036-01-26T09:30:00Z"),
@@ -258,7 +260,7 @@ public class BookingLinkEventIcsBuilderTest {
             false,
             null);
 
-        String ics = new String(testee.build(request, OWNER, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID).icsBytes(), StandardCharsets.UTF_8);
+        String ics = new String(testee.build(request, OWNER, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID).block().icsBytes(), StandardCharsets.UTF_8);
 
         assertThat(ics)
             .contains("ORGANIZER;CN=Alice Owner:mailto:owner@example.com");
@@ -268,7 +270,7 @@ public class BookingLinkEventIcsBuilderTest {
 
     @Test
     void buildShouldReferenceTheBookingLink() {
-        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.just(VISIO_URL), FIXED_UID_GENERATOR);
 
         BookingRequest request = new BookingRequest(
             Instant.parse("2036-01-26T09:30:00Z"),
@@ -278,7 +280,7 @@ public class BookingLinkEventIcsBuilderTest {
             false,
             null);
 
-        String ics = new String(testee.build(request, OWNER, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID).icsBytes(), StandardCharsets.UTF_8);
+        String ics = new String(testee.build(request, OWNER, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID).block().icsBytes(), StandardCharsets.UTF_8);
 
         assertThat(ics)
             .contains("X-OPENPAAS-BOOKING-LINK:a1b2c3d4-e5f6-4a5b-8c7d-0e1f2a3b4c5d");
@@ -286,7 +288,7 @@ public class BookingLinkEventIcsBuilderTest {
 
     @Test
     void buildShouldSetOrganizerPartStatAcceptedWhenAutoAccept() {
-        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.just(VISIO_URL), FIXED_UID_GENERATOR);
 
         BookingRequest request = new BookingRequest(
             Instant.parse("2036-01-26T09:30:00Z"),
@@ -296,7 +298,7 @@ public class BookingLinkEventIcsBuilderTest {
             false,
             null);
 
-        String ics = new String(testee.build(request, OWNER, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, true).icsBytes(), StandardCharsets.UTF_8);
+        String ics = new String(testee.build(request, OWNER, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, true).block().icsBytes(), StandardCharsets.UTF_8);
 
         assertThat(ics)
             .contains("ORGANIZER;CN=Alice Owner:mailto:owner@example.com");
@@ -306,13 +308,13 @@ public class BookingLinkEventIcsBuilderTest {
 
     @Test
     void buildShouldAddExtraAttendeesAsNeedsActionAttendees() {
-        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.just(VISIO_URL), FIXED_UID_GENERATOR);
 
         List<BookingAttendee> extraAttendees = List.of(
             BookingAttendee.from("Presales Engineer", "presales@example.com"),
             BookingAttendee.from("Project Manager", "pm@example.com"));
 
-        String ics = new String(testee.build(bookingRequest(), OWNER, extraAttendees, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false)
+        String ics = new String(testee.build(bookingRequest(), OWNER, extraAttendees, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false).block()
             .icsBytes(), StandardCharsets.UTF_8);
 
         assertThat(ics)
@@ -322,7 +324,7 @@ public class BookingLinkEventIcsBuilderTest {
 
     @Test
     void buildShouldNotDuplicateExtraAttendeeAlreadyInvitedByTheBooker() {
-        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.just(VISIO_URL), FIXED_UID_GENERATOR);
 
         BookingRequest request = new BookingRequest(
             Instant.parse("2036-01-26T09:30:00Z"),
@@ -337,7 +339,7 @@ public class BookingLinkEventIcsBuilderTest {
             BookingAttendee.from("Presales Engineer", "presales@example.com"),
             BookingAttendee.from("BOB", "creator@example.com"));
 
-        String ics = new String(testee.build(request, OWNER, extraAttendees, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false)
+        String ics = new String(testee.build(request, OWNER, extraAttendees, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false).block()
             .icsBytes(), StandardCharsets.UTF_8);
 
         assertThat(ics.lines().filter(line -> line.startsWith("ATTENDEE")))
@@ -348,9 +350,9 @@ public class BookingLinkEventIcsBuilderTest {
 
     @Test
     void buildShouldNotAddAnyAttendeeWhenNoExtraAttendee() {
-        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.just(VISIO_URL), FIXED_UID_GENERATOR);
 
-        String ics = new String(testee.build(bookingRequest(), OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false)
+        String ics = new String(testee.build(bookingRequest(), OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false).block()
             .icsBytes(), StandardCharsets.UTF_8);
 
         assertThat(ics.lines().filter(line -> line.startsWith("ATTENDEE")))
@@ -359,9 +361,9 @@ public class BookingLinkEventIcsBuilderTest {
 
     @Test
     void icsBytesShouldNotCarryAMethodByDefault() {
-        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.just(VISIO_URL), FIXED_UID_GENERATOR);
 
-        BuildResult result = testee.build(bookingRequest(), OWNER, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID);
+        BuildResult result = testee.build(bookingRequest(), OWNER, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID).block();
 
         assertThat(new String(result.icsBytes(), StandardCharsets.UTF_8))
             .doesNotContain("METHOD:");
@@ -369,12 +371,12 @@ public class BookingLinkEventIcsBuilderTest {
 
     @Test
     void buildShouldIncludeLocationWhenPresent() {
-        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.just(VISIO_URL), FIXED_UID_GENERATOR);
 
         BookingEventOptions options = new BookingEventOptions(Optional.of("Room 3"),
             Optional.empty(), Optional.empty(), List.of(), List.of());
 
-        String ics = new String(testee.build(bookingRequest(), OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, options)
+        String ics = new String(testee.build(bookingRequest(), OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, options).block()
             .icsBytes(), StandardCharsets.UTF_8);
 
         assertThat(ics)
@@ -383,12 +385,12 @@ public class BookingLinkEventIcsBuilderTest {
 
     @Test
     void buildShouldUsePrivateClassWhenVisibilityPrivate() {
-        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.just(VISIO_URL), FIXED_UID_GENERATOR);
 
         BookingEventOptions options = new BookingEventOptions(Optional.empty(),
             Optional.of(EventVisibility.PRIVATE), Optional.empty(), List.of(), List.of());
 
-        String ics = new String(testee.build(bookingRequest(), OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, options)
+        String ics = new String(testee.build(bookingRequest(), OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, options).block()
             .icsBytes(), StandardCharsets.UTF_8);
 
         assertThat(ics)
@@ -398,12 +400,12 @@ public class BookingLinkEventIcsBuilderTest {
 
     @Test
     void buildShouldUseTransparentWhenTransparencyTransparent() {
-        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.just(VISIO_URL), FIXED_UID_GENERATOR);
 
         BookingEventOptions options = new BookingEventOptions(Optional.empty(),
             Optional.empty(), Optional.of(EventTransparency.TRANSPARENT), List.of(), List.of());
 
-        String ics = new String(testee.build(bookingRequest(), OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, options)
+        String ics = new String(testee.build(bookingRequest(), OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, options).block()
             .icsBytes(), StandardCharsets.UTF_8);
 
         assertThat(ics)
@@ -413,12 +415,12 @@ public class BookingLinkEventIcsBuilderTest {
 
     @Test
     void buildShouldAddResourcesAsResourceAttendees() {
-        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.just(VISIO_URL), FIXED_UID_GENERATOR);
 
         BookingEventOptions options = new BookingEventOptions(Optional.empty(), Optional.empty(), Optional.empty(),
             List.of(BookingAttendee.from("Projector", "projector-id@example.com")), List.of());
 
-        String ics = new String(testee.build(bookingRequest(), OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, options)
+        String ics = new String(testee.build(bookingRequest(), OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, options).block()
             .icsBytes(), StandardCharsets.UTF_8);
 
         assertThat(ics)
@@ -427,7 +429,7 @@ public class BookingLinkEventIcsBuilderTest {
 
     @Test
     void buildShouldAddEmailAlarmAddressedToEveryAttendee() {
-        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.just(VISIO_URL), FIXED_UID_GENERATOR);
 
         BookingRequest request = new BookingRequest(
             Instant.parse("2036-01-26T09:30:00Z"),
@@ -439,7 +441,7 @@ public class BookingLinkEventIcsBuilderTest {
         BookingEventOptions options = new BookingEventOptions(Optional.empty(), Optional.empty(), Optional.empty(),
             List.of(), List.of(new BookingLinkAlarm("-PT10M", BookingLinkAlarmAction.EMAIL), new BookingLinkAlarm("-P1W", BookingLinkAlarmAction.EMAIL)));
 
-        String ics = new String(testee.build(request, OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, options)
+        String ics = new String(testee.build(request, OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, options).block()
             .icsBytes(), StandardCharsets.UTF_8);
 
         assertThat(ics)
@@ -463,9 +465,9 @@ public class BookingLinkEventIcsBuilderTest {
 
     @Test
     void buildWithoutOptionsShouldDefaultToOpaquePublicWithoutAlarm() {
-        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, () -> VISIO_URL, FIXED_UID_GENERATOR);
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.just(VISIO_URL), FIXED_UID_GENERATOR);
 
-        String ics = new String(testee.build(bookingRequest(), OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, BookingEventOptions.none())
+        String ics = new String(testee.build(bookingRequest(), OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, BookingEventOptions.none()).block()
             .icsBytes(), StandardCharsets.UTF_8);
 
         assertThat(ics)
