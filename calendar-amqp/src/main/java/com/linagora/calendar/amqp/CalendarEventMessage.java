@@ -52,10 +52,6 @@ public abstract class CalendarEventMessage {
         this.isImport = isImport;
     }
 
-    public JsonNode calendarEvent() {
-        return calendarEvent;
-    }
-
     public CalendarURL extractCalendarURL() {
         return EventFieldConverter.extractCalendarURL(eventPath);
     }
