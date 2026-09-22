@@ -701,6 +701,19 @@ public class CardDavClientTest {
     }
 
     @Test
+    void addressBookTypeShouldReadOnlyRequestedAddressBook() {
+        String addressBookId = "testbook";
+        testee.createUserAddressBook(user.username(), user.id(), addressBookId, "Test Address Book").block();
+
+        assertThat(testee.addressBookType(user.username(), new AddressBookURL(user.id(), addressBookId)).block())
+            .isEqualTo(CardDavClient.AddressBookType.USER);
+        assertThat(testee.addressBookType(user.username(), new AddressBookURL(user.id(), "contacts")).block())
+            .isEqualTo(CardDavClient.AddressBookType.SYSTEM);
+        assertThat(testee.addressBookType(user.username(), new AddressBookURL(user.id(), "missing")).blockOptional())
+            .isEmpty();
+    }
+
+    @Test
     void listUserAddressBookUrlsShouldReturnAddressBooksOfTheUser() {
         String addressBookId = "testbook";
         testee.createUserAddressBook(user.username(), user.id(), addressBookId, "Test Address Book").block();

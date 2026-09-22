@@ -316,15 +316,14 @@ public class UserAddressBookRoutes implements Routes {
      */
     private AddressBookURL retrieveWritableAddressBook(Request request, OpenPaaSUser user, AddressBookOperation operation) {
         String addressBookId = request.params(ADDRESSBOOK_ID_PARAM);
+        AddressBookURL addressBookURL = new AddressBookURL(user.id(), addressBookId);
 
-        CardDavClient.AddressBook addressBook = wrapDavErrors(() ->
-            cardDavClient.listUserAddressBookIds(user.username(), user.id())
-                .filter(book -> book.value().equals(addressBookId))
-                .next()
+        CardDavClient.AddressBookType addressBookType = wrapDavErrors(() ->
+            cardDavClient.addressBookType(user.username(), addressBookURL)
                 .blockOptional()
                 .orElseThrow(UserAddressBookRoutes::addressBookNotFound));
 
-        if (addressBook.type() == CardDavClient.AddressBookType.SYSTEM) {
+        if (addressBookType == CardDavClient.AddressBookType.SYSTEM) {
             throw ErrorResponder.builder()
                 .statusCode(HttpStatus.BAD_REQUEST_400)
                 .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
@@ -332,7 +331,7 @@ public class UserAddressBookRoutes implements Routes {
                 .haltError();
         }
 
-        return new AddressBookURL(user.id(), addressBookId);
+        return addressBookURL;
     }
 
     private AddressBookURL retrieveExistingAddressBook(Request request, OpenPaaSUser user) {
