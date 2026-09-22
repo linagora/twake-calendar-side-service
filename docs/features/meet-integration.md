@@ -7,7 +7,8 @@ organizer, with the host controls that come with ownership.
 Enable the feature with `meet.enabled=true` in `configuration.properties`.
 
 See [the configuration page](../configuration/configuration.md#meet-integration-meetenabledtrue) for the
-properties this feature reads.
+properties this feature reads, and [the Meet API page](../apis/meet.md) for the endpoint it exposes and
+the Meet calls it makes.
 
 ## What Meet's external API actually offers
 
