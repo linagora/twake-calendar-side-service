@@ -28,6 +28,7 @@ import static org.hamcrest.Matchers.not;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -55,6 +56,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.dav.CardDavClient;
+import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -76,6 +78,7 @@ public class UserAddressBookRoutesTest {
     private WebAdminServer webAdminServer;
     private OpenPaaSUserDAO userDAO;
     private CardDavClient cardDavClient;
+    private DavTestHelper davTestHelper;
 
     private OpenPaaSUser user;
     private OpenPaaSUser otherUser;
@@ -86,6 +89,7 @@ public class UserAddressBookRoutesTest {
         MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
         userDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
         cardDavClient = new CardDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
+        davTestHelper = sabreDavExtension.davTestHelper();
 
         user = sabreDavExtension.newTestUser();
         otherUser = sabreDavExtension.newTestUser();
@@ -218,6 +222,139 @@ public class UserAddressBookRoutesTest {
         return Stream.of(
             Arguments.of("00000000-0000-0000-0000-000000000000", 404, "notFound", "Address book does not exist"),
             Arguments.of("contacts", 400, "InvalidArgument", "Cannot delete system address book"));
+    }
+
+    @Test
+    void updateAddressBookShouldUpdateNameAndDescription() {
+        String addressBookId = createAddressBook(user, "Old name");
+
+        given()
+            .body("""
+                {"dav:name":"New name","carddav:description":"New description"}
+                """)
+        .when()
+            .patch("/users/{username}/addressbooks/{addressBookId}", user.username().asString(), addressBookId)
+        .then()
+            .statusCode(204);
+
+        assertThat(retrieveAddressBook(user, addressBookId))
+            .containsEntry("dav:name", "New name")
+            .containsEntry("carddav:description", "New description");
+    }
+
+    @Test
+    void updateAddressBookShouldLeaveOmittedFieldsUnchanged() {
+        String addressBookId = createAddressBook(user, "Old name");
+
+        given()
+            .body("""
+                {"carddav:description":"New description"}
+                """)
+        .when()
+            .patch("/users/{username}/addressbooks/{addressBookId}", user.username().asString(), addressBookId)
+        .then()
+            .statusCode(204);
+
+        assertThat(retrieveAddressBook(user, addressBookId))
+            .containsEntry("dav:name", "Old name")
+            .containsEntry("carddav:description", "New description");
+    }
+
+    @Test
+    void updateAddressBookShouldUpdateSubscriptionWithoutUpdatingSource() {
+        // Given
+        String sourceAddressBookId = createAddressBook(user, "Source name");
+        String subscriptionId = UUID.randomUUID().toString();
+        AddressBookURL sourceAddressBookURL = new AddressBookURL(user.id(), sourceAddressBookId);
+        cardDavClient.updateAddressBookPublicRight(user.username(), sourceAddressBookURL, true).block();
+        davTestHelper.createAddressBookSubscription(otherUser, subscriptionId, "Subscription name", sourceAddressBookURL).block();
+
+        assertThat(retrieveAddressBook(otherUser, subscriptionId))
+            .containsEntry("dav:name", "Subscription name");
+
+        // When
+        given()
+            .body("""
+                {"dav:name":"Updated subscription","carddav:description":"Updated subscription description"}
+                """)
+        .when()
+            .patch("/users/{username}/addressbooks/{addressBookId}", otherUser.username().asString(), subscriptionId)
+        .then()
+            .statusCode(204);
+
+        // Then
+        assertThat(retrieveAddressBook(otherUser, subscriptionId))
+            .containsEntry("dav:name", "Updated subscription")
+            .containsEntry("carddav:description", "Updated subscription description");
+        assertThat(retrieveAddressBook(user, sourceAddressBookId))
+            .containsEntry("dav:name", "Source name");
+    }
+
+    @Test
+    void updateAddressBookShouldUpdateDelegationWithoutUpdatingSource() {
+        // Given
+        String sourceAddressBookId = createAddressBook(user, "Source name");
+        cardDavClient.updateAddressBookShares(user.username(), new AddressBookURL(user.id(), sourceAddressBookId),
+            List.of(new CardDavClient.AddressBookSharee("mailto:" + otherUser.username().asString(), 3))).block();
+        String delegatedAddressBookId = cardDavClient.listUserAddressBookIds(otherUser.username(), otherUser.id())
+            .filter(addressBook -> addressBook.type() == CardDavClient.AddressBookType.USER)
+            .single()
+            .map(CardDavClient.AddressBook::value)
+            .block();
+
+        // When
+        given()
+            .body("""
+                {"dav:name":"Updated delegation","carddav:description":"Updated delegation description"}
+                """)
+        .when()
+            .patch("/users/{username}/addressbooks/{addressBookId}", otherUser.username().asString(), delegatedAddressBookId)
+        .then()
+            .statusCode(204);
+
+        // Then
+        assertThat(retrieveAddressBook(otherUser, delegatedAddressBookId))
+            .containsEntry("dav:name", "Updated delegation")
+            .containsEntry("carddav:description", "Updated delegation description");
+        assertThat(retrieveAddressBook(user, sourceAddressBookId))
+            .containsEntry("dav:name", "Source name");
+    }
+
+    @ParameterizedTest
+    @MethodSource("updateAddressBookErrorCases")
+    void updateAddressBookShouldReturnErrorForInvalidCases(String addressBookId, String body, int statusCode, String type, String message) {
+        given()
+            .body(body)
+        .when()
+            .patch("/users/{username}/addressbooks/{addressBookId}", user.username().asString(), addressBookId)
+        .then()
+            .statusCode(statusCode)
+            .body("type", is(type))
+            .body("message", containsString(message));
+    }
+
+    static Stream<Arguments> updateAddressBookErrorCases() {
+        String validBody = "{\"dav:name\":\"New name\"}";
+        return Stream.of(
+            Arguments.of("00000000-0000-0000-0000-000000000000", validBody, 404, "notFound", "Address book does not exist"),
+            Arguments.of("contacts", validBody, 400, "InvalidArgument", "Cannot update system address book"),
+            Arguments.of("contacts", "{}", 400, "InvalidArgument", "At least one of 'dav:name', 'carddav:description' must be provided"),
+            Arguments.of("contacts", "{\"unknown\":\"value\"}", 400, "InvalidArgument", "Invalid request body"),
+            Arguments.of("contacts", "not json", 400, "InvalidArgument", "Invalid request body"));
+    }
+
+    @Test
+    void updateAddressBookShouldReturn404WhenUserDoesNotExist() {
+        given()
+            .body("""
+                {"dav:name":"New name"}
+                """)
+        .when()
+            .patch("/users/ghost@linagora.com/addressbooks/contacts")
+        .then()
+            .statusCode(404)
+            .body("type", is("notFound"))
+            .body("message", is("User does not exist"));
     }
 
     @Test
@@ -706,6 +843,20 @@ public class UserAddressBookRoutesTest {
 
         cardDavClient.upsertContact(owner.username(), new AddressBookURL(owner.id(), addressBookId), contactUid,
             vcard.getBytes(StandardCharsets.UTF_8)).block();
+    }
+
+    private Map<String, Object> retrieveAddressBook(OpenPaaSUser targetUser, String addressBookId) {
+        String body = given()
+        .when()
+            .get("/users/{username}/addressbooks", targetUser.username().asString())
+        .then()
+            .statusCode(200)
+            .extract()
+            .asString();
+
+        return JsonPath.from(body)
+            .getMap("_embedded.'dav:addressbook'.find { it._links.self.href == '/addressbooks/%s/%s.json' }"
+                .formatted(targetUser.id().value(), addressBookId));
     }
 
     private List<String> listAddressBookHrefs(OpenPaaSUser targetUser) {

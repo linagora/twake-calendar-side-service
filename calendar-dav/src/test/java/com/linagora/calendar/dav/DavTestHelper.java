@@ -234,6 +234,37 @@ public class DavTestHelper extends DavClient {
                 }));
     }
 
+    public Mono<Void> createAddressBookSubscription(OpenPaaSUser subscriber, String id, String name, AddressBookURL source) {
+        byte[] payload = """
+            {
+              "id": "{id}",
+              "dav:name": "{name}",
+              "openpaas:source": {"_links":{"self":{"href":"{source}"}}}
+            }
+            """
+            .replace("{id}", id)
+            .replace("{name}", name)
+            .replace("{source}", source.asUri().toASCIIString())
+            .getBytes(StandardCharsets.UTF_8);
+
+        return httpClientWithImpersonation(subscriber.username())
+            .headers(headers -> headers
+                .add(HttpHeaderNames.CONTENT_TYPE, "application/json")
+                .add(HttpHeaderNames.ACCEPT, "application/json"))
+            .post()
+            .uri("/addressbooks/%s.json".formatted(subscriber.id().value()))
+            .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(payload)))
+            .responseSingle((response, body) -> {
+                if (response.status().code() == HttpStatus.SC_CREATED) {
+                    return Mono.empty();
+                }
+                return body.asString(StandardCharsets.UTF_8)
+                    .flatMap(errorBody -> Mono.error(new DavClientException(
+                        "Unexpected status code %d when creating address book subscription: %s"
+                            .formatted(response.status().code(), errorBody))));
+            });
+    }
+
     public Mono<Void> upsertDomainContact(OpenPaaSId domainId, AddressBookURL addressBookURL, String vcardUid, String vcardData) {
         return httpClientWithTechnicalToken(domainId)
             .flatMap(client -> client.headers(headers ->

@@ -33,6 +33,7 @@ import org.apache.james.core.Username;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -40,6 +41,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Streams;
@@ -101,6 +103,15 @@ public class CardDavClient extends DavClient {
     public record NewAddressBook(String id, String name, String description) {
     }
 
+    @JsonInclude(JsonInclude.Include.NON_ABSENT)
+    public record AddressBookPropertiesUpdate(@JsonProperty("dav:name") Optional<String> name,
+                                              @JsonProperty("carddav:description") Optional<String> description) {
+        public AddressBookPropertiesUpdate {
+            Preconditions.checkArgument(name.isPresent() || description.isPresent(),
+                "At least one of 'dav:name', 'carddav:description' must be provided");
+        }
+    }
+
     public record AddressBookSharee(@JsonProperty("dav:href") String davHref,
                                     @JsonProperty("dav:share-access") int shareAccess) {
         public AddressBookSharee {
@@ -115,8 +126,12 @@ public class CardDavClient extends DavClient {
     private static final String NUMBER_OF_CONTACTS_PROPERTY = "numberOfContacts";
     private static final String SYNC_TOKEN_PROPERTY = "dav:syncToken";
     private static final String ADDRESS_BOOK_SOURCE_PROPERTY = "openpaas:source";
+    private static final String ADDRESS_BOOK_TYPE_PROPERTY = "{http://open-paas.org/contacts}type";
+    private static final String ADDRESS_BOOK_SUBSCRIPTION_TYPE_PROPERTY = "{http://open-paas.org/contacts}subscription-type";
     private static final String CONTENT_TYPE_XML = "application/xml";
     private static final HttpMethod REPORT_METHOD = HttpMethod.valueOf("REPORT");
+    private static final HttpMethod PROPFIND_METHOD = HttpMethod.valueOf("PROPFIND");
+    private static final HttpMethod PROPPATCH_METHOD = HttpMethod.valueOf("PROPPATCH");
     private static final AsciiString HEADER_DEPTH = AsciiString.cached("Depth");
     private static final byte[] ADDRESS_BOOK_QUERY_REPORT = """
         <?xml version="1.0" encoding="utf-8" ?>
@@ -136,7 +151,7 @@ public class CardDavClient extends DavClient {
         </card:addressbook-query>
         """.getBytes(StandardCharsets.UTF_8);
     private static final Logger LOGGER = LoggerFactory.getLogger(CardDavClient.class);
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module());
 
     private static final String CONTENT_TYPE_VCARD = "application/vcard";
     private static final String CONTENT_TYPE_VCARD_JSON = "application/vcard+json";
@@ -525,6 +540,38 @@ public class CardDavClient extends DavClient {
             });
     }
 
+    public Mono<AddressBookType> addressBookType(Username username, AddressBookURL addressBookURL) {
+        String uri = addressBookURL.asUri().toASCIIString();
+        byte[] payload = "{\"properties\":[\"%s\",\"%s\"]}"
+            .formatted(ADDRESS_BOOK_TYPE_PROPERTY, ADDRESS_BOOK_SUBSCRIPTION_TYPE_PROPERTY)
+            .getBytes(StandardCharsets.UTF_8);
+        return httpClientWithImpersonation(username)
+            .headers(headers -> headers
+                .add(HttpHeaderNames.CONTENT_TYPE, "application/json")
+                .add(HttpHeaderNames.ACCEPT, "application/json"))
+            .request(PROPFIND_METHOD)
+            .uri(uri)
+            .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(payload)))
+            .responseSingle((response, buf) -> switch (response.status().code()) {
+                case HttpStatus.SC_OK -> buf.asByteArray()
+                    .flatMap(bytes -> Mono.fromCallable(() -> OBJECT_MAPPER.readTree(bytes))
+                        .onErrorMap(JsonProcessingException.class, e -> new DavClientException("Failed to parse address book type for " + uri, e)))
+                    .map(json -> {
+                        if (json.hasNonNull(ADDRESS_BOOK_TYPE_PROPERTY)) {
+                            return AddressBookType.from(json.get(ADDRESS_BOOK_TYPE_PROPERTY).asText());
+                        }
+                        return json.hasNonNull(ADDRESS_BOOK_SUBSCRIPTION_TYPE_PROPERTY)
+                            ? AddressBookType.USER
+                            : AddressBookType.SYSTEM;
+                    });
+                case HttpStatus.SC_NOT_FOUND -> Mono.empty();
+                default -> responseBodyAsString(buf)
+                    .flatMap(errorBody -> Mono.error(new DavClientException(
+                        "Unexpected status code: %d when retrieving type of address book %s\n%s"
+                            .formatted(response.status().code(), uri, errorBody))));
+            });
+    }
+
     /**
      * Counts the contacts of an address book. Empty when the address book does not exist.
      */
@@ -578,6 +625,29 @@ public class CardDavClient extends DavClient {
                     .flatMap(errorBody -> Mono.error(new DavClientException(
                         "Unexpected status code: %d when creating address book for user %s\n%s"
                             .formatted(response.status().code(), userId.value(), errorBody))));
+            });
+    }
+
+    /**
+     * Updates address book properties ({@code dav:name}, {@code carddav:description})
+     * through a PROPPATCH on the address book JSON endpoint.
+     */
+    public Mono<Void> updateAddressBookProperties(Username username, AddressBookURL addressBookURL, AddressBookPropertiesUpdate update) {
+        String uri = addressBookURL.asUri().toASCIIString() + ".json";
+        return httpClientWithImpersonation(username)
+            .headers(headers -> headers
+                .add(HttpHeaderNames.CONTENT_TYPE, "application/json")
+                .add(HttpHeaderNames.ACCEPT, "application/json"))
+            .request(PROPPATCH_METHOD)
+            .uri(uri)
+            .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(OBJECT_MAPPER.writeValueAsBytes(update))))
+            .responseSingle((response, buf) -> switch (response.status().code()) {
+                case HttpStatus.SC_OK, HttpStatus.SC_NO_CONTENT, HttpStatus.SC_MULTI_STATUS -> Mono.empty();
+                case HttpStatus.SC_FORBIDDEN -> Mono.error(new SystemAddressBookException(addressBookURL));
+                default -> responseBodyAsString(buf)
+                    .flatMap(errorBody -> Mono.error(new DavClientException(
+                        "Unexpected status code: %d when updating properties of address book %s\n%s"
+                            .formatted(response.status().code(), uri, errorBody))));
             });
     }
 

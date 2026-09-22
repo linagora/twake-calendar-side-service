@@ -91,6 +91,17 @@ public class UserAddressBookRoutes implements Routes {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module());
 
+    private enum AddressBookOperation {
+        DELETE("delete"),
+        UPDATE("update");
+
+        private final String label;
+
+        AddressBookOperation(String label) {
+            this.label = label;
+        }
+    }
+
     public record AddressBookCreationRequest(@JsonProperty(FIELD_ID) Optional<String> id,
                                              @JsonProperty(value = FIELD_NAME, required = true) String name,
                                              @JsonProperty(FIELD_DESCRIPTION) Optional<String> description) {
@@ -124,6 +135,7 @@ public class UserAddressBookRoutes implements Routes {
         service.get(CONTACT_COUNT_PATH, this::countContacts);
         service.post(ADDRESSBOOKS_PATH, this::createAddressBook);
         service.delete(ADDRESSBOOK_PATH, this::deleteAddressBook);
+        service.patch(ADDRESSBOOK_PATH, this::updateAddressBookProperties);
         service.post(ADDRESSBOOK_PATH, this::exportOrImportAddressBook);
         service.post(PUBLIC_RIGHT_PATH, this::updatePublicRight);
         service.post(INVITEE_PATH, this::updateInvitees);
@@ -176,25 +188,20 @@ public class UserAddressBookRoutes implements Routes {
 
     private String deleteAddressBook(Request request, Response response) {
         OpenPaaSUser user = retrieveUser(request);
-        String addressBookId = request.params(ADDRESSBOOK_ID_PARAM);
+        AddressBookURL addressBookURL = retrieveWritableAddressBook(request, user, AddressBookOperation.DELETE);
 
-        CardDavClient.AddressBook addressBook = wrapDavErrors(() ->
-            cardDavClient.listUserAddressBookIds(user.username(), user.id())
-                .filter(book -> book.value().equals(addressBookId))
-                .next()
-                .blockOptional()
-                .orElseThrow(UserAddressBookRoutes::addressBookNotFound));
+        wrapDavErrors(() -> cardDavClient.deleteUserAddressBook(user.username(), addressBookURL).block());
 
-        if (addressBook.type() == CardDavClient.AddressBookType.SYSTEM) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.BAD_REQUEST_400)
-                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                .message("Cannot delete system address book")
-                .haltError();
-        }
+        response.status(HttpStatus.NO_CONTENT_204);
+        return Constants.EMPTY_BODY;
+    }
 
-        wrapDavErrors(() -> cardDavClient.deleteUserAddressBook(user.username(),
-            new AddressBookURL(user.id(), addressBookId)).block());
+    private String updateAddressBookProperties(Request request, Response response) {
+        OpenPaaSUser user = retrieveUser(request);
+        CardDavClient.AddressBookPropertiesUpdate update = parseBody(request, CardDavClient.AddressBookPropertiesUpdate.class);
+        AddressBookURL addressBookURL = retrieveWritableAddressBook(request, user, AddressBookOperation.UPDATE);
+
+        wrapDavErrors(() -> cardDavClient.updateAddressBookProperties(user.username(), addressBookURL, update).block());
 
         response.status(HttpStatus.NO_CONTENT_204);
         return Constants.EMPTY_BODY;
@@ -301,6 +308,30 @@ public class UserAddressBookRoutes implements Routes {
                 .cause(e)
                 .haltError();
         }
+    }
+
+    /**
+     * Resolves an address book of the user, rejecting system address books (e.g. {@code contacts})
+     * as those cannot be altered on the DAV server.
+     */
+    private AddressBookURL retrieveWritableAddressBook(Request request, OpenPaaSUser user, AddressBookOperation operation) {
+        String addressBookId = request.params(ADDRESSBOOK_ID_PARAM);
+        AddressBookURL addressBookURL = new AddressBookURL(user.id(), addressBookId);
+
+        CardDavClient.AddressBookType addressBookType = wrapDavErrors(() ->
+            cardDavClient.addressBookType(user.username(), addressBookURL)
+                .blockOptional()
+                .orElseThrow(UserAddressBookRoutes::addressBookNotFound));
+
+        if (addressBookType == CardDavClient.AddressBookType.SYSTEM) {
+            throw ErrorResponder.builder()
+                .statusCode(HttpStatus.BAD_REQUEST_400)
+                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                .message("Cannot %s system address book".formatted(operation.label))
+                .haltError();
+        }
+
+        return addressBookURL;
     }
 
     private AddressBookURL retrieveExistingAddressBook(Request request, OpenPaaSUser user) {
