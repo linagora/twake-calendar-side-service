@@ -56,7 +56,7 @@ public class CaffeineOIDCTokenCache implements OIDCTokenCache {
         AsyncCacheLoader<Token, TokenInfo> cacheLoader = (token, executor) -> tokenInfoResolver.apply(token)
             .map(tokenInfo -> {
                 tokenInfo.sid().ifPresentOrElse(sidValue -> sidToTokens.put(sidValue, token),
-                    () -> LOGGER.warn("Token {} of user {} does not have a sid, this will break backchannel logout. Please review OIDC configuration.", token.value(), tokenInfo.email()));
+                    () -> LOGGER.warn("OIDC token of user {} does not have a sid, this will break backchannel logout. Please review OIDC configuration.", tokenInfo.email()));
                 return tokenInfo;
             })
             .subscribeOn(Schedulers.fromExecutor(executor))
