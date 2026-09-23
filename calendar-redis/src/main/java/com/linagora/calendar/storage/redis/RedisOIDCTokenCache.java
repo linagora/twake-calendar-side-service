@@ -100,7 +100,7 @@ public class RedisOIDCTokenCache implements OIDCTokenCache {
         return Mono.fromCallable(() -> resolveTokenRedisKey(token))
             .flatMap(tokenRedisKey -> getTokenInfoFromCache(tokenRedisKey)
                 .onErrorResume(error -> {
-                    LOGGER.warn("Failed to get username from cache for token={}", token.value(), error);
+                    LOGGER.warn("Failed to get username from cache for OIDC token", error);
                     return Mono.empty();
                 })
                 .switchIfEmpty(Mono.defer(() -> resolveTokenInfoAndCache(token, tokenRedisKey))));
