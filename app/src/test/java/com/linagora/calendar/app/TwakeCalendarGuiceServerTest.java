@@ -705,7 +705,7 @@ class TwakeCalendarGuiceServerTest  {
             .asString();
 
         assertThatJson(body).isEqualTo("""
-    [{"name":"core","configurations":[{"name":"language","value":"en"},{"name":"businessHours","value":[{"start":"8:0","end":"19:0","daysOfWeek":[1,2,3,4,5]}]},{"name":"datetime","value":{"timeZone":"Europe/Paris","use24hourFormat":true}}]}]""");
+    [{"name":"core","configurations":[{"name":"language","value":"en"},{"name":"businessHours","value":[{"start":"8:0","end":"19:0","daysOfWeek":[1,2,3,4,5]}]},{"name":"datetime","value":{"timeZone":"Europe/Paris","use24hourFormat":true,"autoDetect":true}}]}]""");
     }
 
     @Test
@@ -1328,7 +1328,8 @@ class TwakeCalendarGuiceServerTest  {
                                     "name": "datetime",
                                     "value": {
                                         "timeZone": "Europe/Paris",
-                                        "use24hourFormat": true
+                                        "use24hourFormat": true,
+                                        "autoDetect": true
                                     }
                                 },
                                 {
