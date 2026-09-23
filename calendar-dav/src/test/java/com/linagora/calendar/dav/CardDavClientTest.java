@@ -44,6 +44,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import com.linagora.calendar.dav.CardDavClient.CardDavSearchException;
+import com.linagora.calendar.dav.dto.ContactSearchResponse;
 import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -1019,6 +1021,58 @@ public class CardDavClientTest {
             testee.exportAddressBook(unauthorizedUser.username(), ownerAddressBookUrl, Map.of()).block())
             .isInstanceOf(CardDavClient.CardDavExportException.class)
             .hasMessageContaining("User did not have the required privileges");
+    }
+
+    @Test
+    void searchContactsShouldFilterAndSortByUriBeforeLimiting() {
+        AddressBookURL addressBook = new AddressBookURL(user.id(), "contacts");
+        String vcard = """
+            BEGIN:VCARD
+            VERSION:3.0
+            UID:{uid}
+            FN:{name}
+            END:VCARD
+            """;
+        testee.upsertContact(user.username(), addressBook, "b", vcard.replace("{uid}", "b")
+            .replace("{name}", "Search 1061 Bob").getBytes(StandardCharsets.UTF_8)).block();
+        testee.upsertContact(user.username(), addressBook, "a", vcard.replace("{uid}", "a")
+            .replace("{name}", "Search 1061 Alice").getBytes(StandardCharsets.UTF_8)).block();
+        testee.upsertContact(user.username(), addressBook, "c", vcard.replace("{uid}", "c")
+            .replace("{name}", "Other Contact").getBytes(StandardCharsets.UTF_8)).block();
+
+        ContactSearchResponse result = testee.searchContacts(user.username(), addressBook, "Search 1061", 1).block();
+
+        assertThat(result.items()).hasSize(1);
+        assertThatJson(result.items().getFirst().toString())
+            .inPath("_links.self.href")
+            .isEqualTo("/addressbooks/" + user.id().value() + "/contacts/a.vcf");
+        assertThat(result.items().getFirst().path("etag").asText()).isNotBlank();
+        assertThat(result.items().getFirst().path("data").get(0).asText()).isEqualTo("vcard");
+    }
+
+    @Test
+    void searchContactsShouldReturnEmptyWhenNoContactMatches() {
+        AddressBookURL addressBook = new AddressBookURL(user.id(), "contacts");
+
+        assertThat(testee.searchContacts(user.username(), addressBook, "no-such-contact", 10).block().items())
+            .isEmpty();
+    }
+
+    @Test
+    void searchContactsShouldRejectUnreadableAddressBook() {
+        OpenPaaSUser otherUser = sabreDavExtension.newTestUser();
+        AddressBookURL addressBook = new AddressBookURL(user.id(), "contacts");
+
+        assertThatThrownBy(() -> testee.searchContacts(otherUser.username(), addressBook, "", 10).block())
+            .isInstanceOfSatisfying(CardDavSearchException.class, error -> assertThat(error.statusCode()).isEqualTo(403));
+    }
+
+    @Test
+    void searchContactsShouldReturnNotFoundForMissingAddressBook() {
+        AddressBookURL addressBook = new AddressBookURL(user.id(), UUID.randomUUID().toString());
+
+        assertThatThrownBy(() -> testee.searchContacts(user.username(), addressBook, "", 10).block())
+            .isInstanceOfSatisfying(CardDavSearchException.class, error -> assertThat(error.statusCode()).isEqualTo(404));
     }
 
     private void upsertContact(OpenPaaSUser owner, AddressBookURL addressBookURL, String fullName) {

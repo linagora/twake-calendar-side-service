@@ -46,6 +46,8 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Streams;
 import com.linagora.calendar.dav.dto.AddressBookReportXmlResponse;
+import com.linagora.calendar.dav.dto.ContactSearchResponse;
+import com.linagora.calendar.dav.dto.ContactSearchResponse.InvalidContactSearchResponseException;
 import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.TechnicalTokenService;
@@ -68,6 +70,19 @@ public class CardDavClient extends DavClient {
 
         public CardDavExportException(String message, int statusCode) {
             super(message);
+            this.statusCode = statusCode;
+        }
+
+        public int statusCode() {
+            return statusCode;
+        }
+    }
+
+    public static class CardDavSearchException extends DavClientException {
+        private final int statusCode;
+
+        public CardDavSearchException(String message, int statusCode, Throwable cause) {
+            super(message, cause);
             this.statusCode = statusCode;
         }
 
@@ -792,6 +807,32 @@ public class CardDavClient extends DavClient {
             .map(node -> node.path(SYNC_TOKEN_PROPERTY).asText(null))
             .filter(StringUtils::isNotEmpty)
             .map(SyncToken::new);
+    }
+
+    public Mono<ContactSearchResponse> searchContacts(Username requester, AddressBookURL addressBook, String query, int limit) {
+        String context = "Contact search failed for requester " + requester.asString() + " and address book " + addressBook.asUri();
+        return Mono.fromCallable(() -> new URIBuilder(addressBook.asUri())
+                .addParameter("search", query)
+                .addParameter("sort", "uri")
+                .addParameter("offset", "0")
+                .addParameter("limit", Integer.toString(limit))
+                .build().toASCIIString())
+            .flatMap(uri -> httpClientWithImpersonation(requester)
+                .headers(headers -> headers.set(HttpHeaderNames.ACCEPT, "application/json"))
+                .get()
+                .uri(uri)
+                .responseSingle((response, body) -> {
+                    int status = response.status().code();
+                    if (status != 200) {
+                        return body.then(Mono.error(() -> new CardDavSearchException(context, status == 403 || status == 404 ? status : 502, null)));
+                    }
+                    return body.asString(StandardCharsets.UTF_8)
+                        .defaultIfEmpty("")
+                        .flatMap(payload -> Mono.fromCallable(() -> ContactSearchResponse.parse(payload))
+                            .onErrorMap(InvalidContactSearchResponseException.class,
+                                error -> new CardDavSearchException(context + ": invalid DAV response", 502, error)));
+                }))
+            .onErrorMap(error -> !(error instanceof DavClientException), error -> new DavClientException(context, error));
     }
 
 }
