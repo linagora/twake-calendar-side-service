@@ -18,18 +18,36 @@
 
 package com.linagora.calendar.storage;
 
-import org.apache.commons.lang3.StringUtils;
+import static org.assertj.core.api.Assertions.assertThat;
+
 import org.apache.james.core.Username;
+import org.junit.jupiter.api.Test;
 
-public record OpenPaaSUser(Username username, OpenPaaSId id, String firstname, String lastname) {
+class OpenPaaSUserTest {
+    private static final Username USERNAME = Username.of("jdoe@example.com");
+    private static final OpenPaaSId ID = new OpenPaaSId("123");
 
-    public String fullName() {
-        if (StringUtils.equals(firstname, lastname) && StringUtils.isNotBlank(firstname)) {
-            return firstname;
-        }
-        String full = StringUtils.trimToEmpty(StringUtils.joinWith(" ",
-            StringUtils.defaultString(firstname),
-            StringUtils.defaultString(lastname)));
-        return StringUtils.defaultIfBlank(full, username.asString());
+    @Test
+    void fullNameShouldCombineFirstnameAndLastname() {
+        OpenPaaSUser user = new OpenPaaSUser(USERNAME, ID, "John", "DOE");
+        assertThat(user.fullName()).isEqualTo("John DOE");
+    }
+
+    @Test
+    void fullNameShouldDeduplicateEqualFirstnameAndLastname() {
+        OpenPaaSUser user = new OpenPaaSUser(USERNAME, ID, "jdoe@example.com", "jdoe@example.com");
+        assertThat(user.fullName()).isEqualTo("jdoe@example.com");
+    }
+
+    @Test
+    void fullNameShouldFallbackToUsernameWhenFirstnameAndLastnameAreBlank() {
+        OpenPaaSUser user = new OpenPaaSUser(USERNAME, ID, "", "");
+        assertThat(user.fullName()).isEqualTo("jdoe@example.com");
+    }
+
+    @Test
+    void fullNameShouldHandleSingleName() {
+        OpenPaaSUser user = new OpenPaaSUser(USERNAME, ID, "Alice", null);
+        assertThat(user.fullName()).isEqualTo("Alice");
     }
 }
