@@ -32,6 +32,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 
+import org.apache.commons.net.smtp.SMTPClient;
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.MaybeSender;
 import org.apache.james.mime4j.dom.Message;
@@ -40,13 +41,16 @@ import org.apache.james.util.Port;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.mockito.Mockito;
 
 import com.google.common.collect.ImmutableList;
+import com.linagora.calendar.smtp.SmtpSendingFailedException.UnknownUser;
 import com.linagora.calendar.storage.unsent.MemoryUnsentMailRepository;
 import com.linagora.calendar.storage.unsent.UnsentMailRepository.UnsentMail;
 import com.linagora.calendar.storage.unsent.UnsentMailRepository.UnsentMailQuery;
 
 import io.restassured.RestAssured;
+import reactor.core.publisher.Mono;
 
 class UnsentMailRetentionTest {
 
@@ -94,10 +98,14 @@ class UnsentMailRetentionTest {
     }
 
     private void rejectRecipient(String recipient) {
+        rejectRecipient(recipient, "501", "Bad recipient");
+    }
+
+    private void rejectRecipient(String recipient, String code, String message) {
         RestAssured.given()
             .body("""
-                [ { "command": "RCPT TO", "condition": { "operator": "contains", "matchingValue": "%s" }, "response": { "code": "501", "message": "Bad recipient" } } ]
-                """.formatted(recipient))
+                [ { "command": "RCPT TO", "condition": { "operator": "contains", "matchingValue": "RECIPIENT" }, "response": { "code": "CODE", "message": "MESSAGE" } } ]
+                """.replace("RECIPIENT", recipient).replace("CODE", code).replace("MESSAGE", message))
             .contentType("application/json")
             .put("/smtpBehaviors");
     }
@@ -126,6 +134,93 @@ class UnsentMailRetentionTest {
         assertThat(unsentMails.getFirst().sendingTrials().getFirst().date()).isEqualTo(NOW);
         assertThat(unsentMails.getFirst().sendingTrials().getFirst().errorMessage())
             .contains("All 'rcpt to' commands failed");
+    }
+
+    @Test
+    void shouldDiscardMailWhenAllRecipientsAreUnknown() throws Exception {
+        rejectRecipient("recipient@localhost", "550", "5.1.1 Unknown user: recipient@localhost");
+
+        testee().send(mail("sender@localhost", "recipient@localhost")).block();
+
+        assertThat(repository.list(UnsentMailQuery.ALL).collectList().block()).isEmpty();
+    }
+
+    private MailSender.Factory.Default testee(SMTPClient client) throws IOException {
+        Mockito.when(client.helo(smtpConfiguration.ehlo())).thenReturn(250);
+        Mockito.when(client.getReplyCode()).thenReturn(250, 550);
+        Mockito.when(client.getReplyString()).thenReturn("550 5.1.1 Unknown user: recipient@localhost\r\n");
+        Mockito.when(client.isConnected()).thenReturn(true);
+        return new MailSender.Factory.Default(smtpConfiguration, EventEmailFilter.acceptAll(), repository, CLOCK) {
+            @Override
+            public Mono<MailSender> create() {
+                return Mono.just(new MailSender.Default(client, smtpConfiguration, EventEmailFilter.acceptAll()));
+            }
+        };
+    }
+
+    @Test
+    void shouldNotRetryOrRetainUnknownUserWhenLogoutFails() throws Exception {
+        SMTPClient client = Mockito.mock(SMTPClient.class);
+        MailSender.Factory.Default factory = Mockito.spy(testee(client));
+        Mockito.when(client.logout()).thenThrow(new IOException("Connection closed during QUIT"));
+
+        factory.send(mail("sender@localhost", "recipient@localhost")).block();
+
+        Mockito.verify(factory).create();
+        Mockito.verify(client).disconnect();
+        assertThat(repository.list(UnsentMailQuery.ALL).collectList().block()).isEmpty();
+    }
+
+    @Test
+    void shouldPreserveUnknownUserAndSuppressCleanupFailures() throws Exception {
+        SMTPClient client = Mockito.mock(SMTPClient.class);
+        MailSender.Factory.Default factory = Mockito.spy(testee(client));
+        IOException logoutFailure = new IOException("Connection closed during QUIT");
+        IOException disconnectFailure = new IOException("Disconnect failed");
+        Mockito.when(client.logout()).thenThrow(logoutFailure);
+        Mockito.doThrow(disconnectFailure).when(client).disconnect();
+
+        assertThatThrownBy(() -> factory.sendWithoutRetention(mail("sender@localhost", "recipient@localhost")).block())
+            .isInstanceOf(UnknownUser.class)
+            .satisfies(error -> assertThat(error.getSuppressed()).contains(logoutFailure));
+
+        assertThat(logoutFailure.getSuppressed()).containsExactly(disconnectFailure);
+        Mockito.verify(factory).create();
+        Mockito.verify(client).disconnect();
+    }
+
+    @Test
+    void shouldRetainMailWhenRecipientIsRejectedForAnotherReason() throws Exception {
+        rejectRecipient("recipient@localhost", "550", "5.1.1 Mailbox unavailable");
+
+        assertThatThrownBy(() -> testee().send(mail("sender@localhost", "recipient@localhost")).block())
+            .isInstanceOf(SmtpSendingFailedException.class);
+
+        assertThat(repository.list(UnsentMailQuery.ALL).collectList().block()).hasSize(1);
+    }
+
+    @Test
+    void shouldRetainMailWhenOnlyLastRecipientIsUnknown() throws Exception {
+        RestAssured.given()
+            .body("""
+                [
+                  { "command": "RCPT TO", "condition": { "operator": "contains", "matchingValue": "first@localhost" }, "response": { "code": "451", "message": "Temporary failure" } },
+                  { "command": "RCPT TO", "condition": { "operator": "contains", "matchingValue": "last@localhost" }, "response": { "code": "550", "message": "5.1.1 Unknown user: last@localhost" } }
+                ]
+                """)
+            .contentType("application/json")
+            .put("/smtpBehaviors");
+        Message message = new DefaultMessageBuilder().parseMessage(new ByteArrayInputStream(
+            "From: sender@localhost\r\nTo: first@localhost, last@localhost\r\nSubject: Test\r\n\r\nHello!"
+                .getBytes(StandardCharsets.UTF_8)));
+        Mail mail = new Mail(MaybeSender.of(new MailAddress("sender@localhost")),
+            List.of(new MailAddress("first@localhost"), new MailAddress("last@localhost")), message);
+
+        assertThatThrownBy(() -> testee().send(mail).block())
+            .isInstanceOf(SmtpSendingFailedException.class)
+            .isNotInstanceOf(SmtpSendingFailedException.UnknownUser.class);
+
+        assertThat(repository.list(UnsentMailQuery.ALL).collectList().block()).hasSize(1);
     }
 
     @Test

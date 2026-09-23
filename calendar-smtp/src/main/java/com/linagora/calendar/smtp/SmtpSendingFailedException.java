@@ -22,4 +22,10 @@ public class SmtpSendingFailedException extends RuntimeException {
     public SmtpSendingFailedException(String message) {
         super(message);
     }
+
+    public static class UnknownUser extends SmtpSendingFailedException {
+        public UnknownUser(String message) {
+            super(message);
+        }
+    }
 }

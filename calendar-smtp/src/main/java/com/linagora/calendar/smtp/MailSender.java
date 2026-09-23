@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.smtp;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
@@ -40,6 +41,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.github.fge.lambdas.Throwing;
+import com.linagora.calendar.smtp.SmtpSendingFailedException.UnknownUser;
 import com.linagora.calendar.storage.unsent.UnsentMailRepository;
 import com.linagora.calendar.storage.unsent.UnsentMailRepository.SendingTrial;
 import com.linagora.calendar.storage.unsent.UnsentMailRepository.UnsentMail;
@@ -72,6 +74,7 @@ public interface MailSender {
             private static final Retry RETRY_SEND =
                 Retry.backoff(MAX_SMTP_SEND_RETRIES, SMTP_SEND_RETRY_BACKOFF)
                     .maxBackoff(Duration.ofSeconds(5))
+                    .filter(error -> !(error instanceof UnknownUser))
                     .doBeforeRetry(retrySignal -> LOGGER.warn("Retrying SMTP mail send after failure (attempt {}/{})",
                         retrySignal.totalRetries() + 1, MAX_SMTP_SEND_RETRIES, retrySignal.failure()))
                     .onRetryExhaustedThrow((spec, signal) -> signal.failure());
@@ -148,6 +151,10 @@ public interface MailSender {
             @Override
             public Mono<Void> send(Mail mail) {
                 return sendWithoutRetention(mail)
+                    .onErrorResume(UnknownUser.class, error -> {
+                        LOGGER.warn("Discarding mail to {}: all recipients are unknown ({})", mail.recipients(), error.getMessage());
+                        return Mono.empty();
+                    })
                     .onErrorResume(error -> retain(mail, asException(error))
                         .then(Mono.error(error)));
             }
@@ -212,18 +219,18 @@ public interface MailSender {
         @Override
         public Mono<Void> send(Mail mail) {
             return Mono.<Void>fromRunnable(Throwing.runnable(() -> {
-                try {
+                // Keep the SMTP failure primary if closing the connection also fails.
+                try (Closeable _ = this::disconnect) {
                     eventEmailFilter.filterRecipients(mail).ifPresent(Throwing.consumer(this::sendMailTransaction));
-                } finally {
-                    disconnect();
                 }
             })).subscribeOn(Schedulers.boundedElastic());
         }
 
         private void disconnect() throws IOException {
             if (client.isConnected()) {
-                client.logout();
-                client.disconnect();
+                try (Closeable _ = client::disconnect) {
+                    client.logout();
+                }
             }
         }
 
@@ -258,15 +265,22 @@ public interface MailSender {
 
         private void addRecipients(Mail mail) throws IOException {
             int successfullRecipientCount = 0;
+            boolean unknownUserRejections = !mail.recipients().isEmpty();
             for (MailAddress recipient : mail.recipients()) {
                 client.addRecipient(recipient.asString());
                 if (!SMTPReply.isPositiveCompletion(client.getReplyCode())) {
                     LOGGER.warn("'rcpr to' command failed for {}: {}", recipient.asString(), client.getReplyString());
+                    unknownUserRejections &= client.getReplyCode() == 550
+                        && client.getReplyString().matches("(?is)^550[ -]5\\.1\\.1 Unknown user(?::.*)?\\s*$");
                 } else {
                     successfullRecipientCount++;
                 }
             }
             if (successfullRecipientCount == 0) {
+                if (unknownUserRejections) {
+                    // Preserve retries if even one rejected recipient has a potentially recoverable error.
+                    throw new UnknownUser("All 'rcpt to' commands failed: 550 5.1.1 Unknown user");
+                }
                 throw new SmtpSendingFailedException("All 'rcpt to' commands failed: " + client.getReplyString());
             }
         }

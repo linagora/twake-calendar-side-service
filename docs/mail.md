@@ -33,3 +33,5 @@ sending trials - so that an administrator can inspect it and schedule its re-emi
 had been submitted: no template is rendered anew.
 
 A retained mail is kept until it is deleted or successfully resent.
+
+When every recipient is rejected with `550 5.1.1 Unknown user`, delivery is discarded without retrying or retaining the mail.
