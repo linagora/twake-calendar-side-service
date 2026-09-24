@@ -44,6 +44,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.mockito.Mockito;
 
 import com.google.common.collect.ImmutableList;
+import com.linagora.calendar.smtp.Mail.UnknownUserHandling;
 import com.linagora.calendar.smtp.SmtpSendingFailedException.UnknownUser;
 import com.linagora.calendar.storage.unsent.MemoryUnsentMailRepository;
 import com.linagora.calendar.storage.unsent.UnsentMailRepository.UnsentMail;
@@ -143,6 +144,35 @@ class UnsentMailRetentionTest {
         testee().send(mail("sender@localhost", "recipient@localhost")).block();
 
         assertThat(repository.list(UnsentMailQuery.ALL).collectList().block()).isEmpty();
+    }
+
+    @Test
+    void shouldPropagateUnknownUserWithoutRetainingMailWhenRequested() throws Exception {
+        rejectRecipient("recipient@localhost", "550", "5.1.1 Unknown user: recipient@localhost");
+        Mail ordinaryMail = mail("sender@localhost", "recipient@localhost");
+        Mail reportingMail = new Mail(ordinaryMail.sender(), ordinaryMail.recipients(),
+            ordinaryMail.message(), UnknownUserHandling.PROPAGATE);
+
+        MailSender.Factory factory = Mockito.spy(testee());
+        assertThatThrownBy(() -> factory.send(reportingMail).block())
+            .isInstanceOf(UnknownUser.class);
+
+        Mockito.verify(factory).create();
+        assertThat(repository.list(UnsentMailQuery.ALL).collectList().block()).isEmpty();
+    }
+
+    @Test
+    void shouldRetainOtherFailuresWhenUnknownUserPropagationIsRequested() throws Exception {
+        rejectRecipient("recipient@localhost");
+        Mail ordinaryMail = mail("sender@localhost", "recipient@localhost");
+        Mail reportingMail = new Mail(ordinaryMail.sender(), ordinaryMail.recipients(),
+            ordinaryMail.message(), UnknownUserHandling.PROPAGATE);
+
+        assertThatThrownBy(() -> testee().send(reportingMail).block())
+            .isInstanceOf(SmtpSendingFailedException.class)
+            .isNotInstanceOf(UnknownUser.class);
+
+        assertThat(repository.list(UnsentMailQuery.ALL).collectList().block()).hasSize(1);
     }
 
     private MailSender.Factory.Default testee(SMTPClient client) throws IOException {

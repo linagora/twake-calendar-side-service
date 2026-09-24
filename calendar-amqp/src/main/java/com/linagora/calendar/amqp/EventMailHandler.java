@@ -62,7 +62,9 @@ import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.api.EventParticipationActionLinkFactory;
 import com.linagora.calendar.api.EventParticipationActionLinkFactory.ActionLinks;
 import com.linagora.calendar.smtp.Mail;
+import com.linagora.calendar.smtp.Mail.UnknownUserHandling;
 import com.linagora.calendar.smtp.MailSender;
+import com.linagora.calendar.smtp.SmtpSendingFailedException.UnknownUser;
 import com.linagora.calendar.smtp.template.Language;
 import com.linagora.calendar.smtp.template.MessageGenerator;
 import com.linagora.calendar.smtp.template.MimeAttachment;
@@ -109,6 +111,7 @@ public class EventMailHandler {
     }
 
     private static final Logger LOGGER = LoggerFactory.getLogger(EventMailHandler.class);
+    private static final boolean INVITATION_SENT = true;
     private final MailSender.Factory mailSenderFactory;
     private final MessageGenerator.Factory messageGeneratorFactory;
     private final EventInCalendarLinkFactory eventInCalendarLinkFactory;
@@ -117,6 +120,7 @@ public class EventMailHandler {
     private final OpenPaaSDomainDAO openPaaSDomainDAO;
     private final SettingsBasedResolver settingsResolver;
     private final EventParticipationActionLinkFactory participationActionLinkFactory;
+    private final MailDeliveryFailureNotifier mailDeliveryFailureNotifier;
 
     @Inject
     public EventMailHandler(MailSender.Factory mailSenderFactory,
@@ -125,7 +129,8 @@ public class EventMailHandler {
                             UsersRepository usersRepository, ResourceDAO resourceDAO,
                             OpenPaaSDomainDAO openPaaSDomainDAO,
                             @Named("language_timezone") SettingsBasedResolver settingsResolver,
-                            EventParticipationActionLinkFactory participationActionLinkFactory) {
+                            EventParticipationActionLinkFactory participationActionLinkFactory,
+                            MailDeliveryFailureNotifier mailDeliveryFailureNotifier) {
         this.mailSenderFactory = mailSenderFactory;
         this.messageGeneratorFactory = messageGeneratorFactory;
         this.eventInCalendarLinkFactory = eventInCalendarLinkFactory;
@@ -134,6 +139,7 @@ public class EventMailHandler {
         this.openPaaSDomainDAO = openPaaSDomainDAO;
         this.settingsResolver = settingsResolver;
         this.participationActionLinkFactory = participationActionLinkFactory;
+        this.mailDeliveryFailureNotifier = mailDeliveryFailureNotifier;
     }
 
     interface EventMessageGenerator {
@@ -439,25 +445,34 @@ public class EventMailHandler {
         }
     }
 
-    public Mono<Void> handInviteEvent(CalendarEventInviteNotificationEmail event) {
+    public Mono<Boolean> handInviteEvent(CalendarEventInviteNotificationEmail event) {
         MailAddress recipientEmail = event.base().recipientEmail();
         Username recipientUser = Username.fromMailAddress(recipientEmail);
         return Mono.from(usersRepository.containsReactive(recipientUser))
-            .flatMap(isInternalUser -> handleEvent(new InviteEventMessageGenerator(event, recipientUser, isInternalUser), recipientUser, event.base().senderEmail(), event.base().eventPath(), event.base().getFirstVEvent().getUid().map(Uid::getValue).orElse("")));
+            .flatMap(isInternalUser -> sendInvitation(event, recipientUser, isInternalUser));
+    }
+
+    private Mono<Boolean> sendInvitation(CalendarEventInviteNotificationEmail event, Username recipientUser, boolean isInternalUser) {
+        InviteEventMessageGenerator generator = new InviteEventMessageGenerator(event, recipientUser, isInternalUser);
+        return prepareEventMail(generator, event.base(), UnknownUserHandling.PROPAGATE)
+            .flatMap(mail -> sendEventMail(generator, event.base(), mail)
+                .thenReturn(INVITATION_SENT)
+                .onErrorResume(UnknownUser.class, _ -> mailDeliveryFailureNotifier.notify(event, mail.message().getSubject())
+                    .thenReturn(!INVITATION_SENT)));
     }
 
     public Mono<Void> handleUpdateEvent(CalendarEventUpdateNotificationEmail event) {
         MailAddress recipientEmail = event.base().recipientEmail();
         Username recipientUser = Username.fromMailAddress(recipientEmail);
         return Mono.from(usersRepository.containsReactive(recipientUser))
-            .flatMap(isInternalUser -> handleEvent(new UpdateEventMessageGenerator(event, recipientUser, isInternalUser), recipientUser, event.base().senderEmail(), event.base().eventPath(), event.base().getFirstVEvent().getUid().map(Uid::getValue).orElse("")));
+            .flatMap(isInternalUser -> handleEvent(new UpdateEventMessageGenerator(event, recipientUser, isInternalUser), event.base()));
     }
 
     public Mono<Void> handleCancelEvent(CalendarEventCancelNotificationEmail event) {
         MailAddress recipientEmail = event.base().recipientEmail();
         Username recipientUser = Username.fromMailAddress(recipientEmail);
         return Mono.from(usersRepository.containsReactive(recipientUser))
-            .flatMap(isInternalUser -> handleEvent(new CancelEventMessageGenerator(event, recipientUser, isInternalUser), recipientUser, event.base().senderEmail(), event.base().eventPath(), event.base().getFirstVEvent().getUid().map(Uid::getValue).orElse("")));
+            .flatMap(isInternalUser -> handleEvent(new CancelEventMessageGenerator(event, recipientUser, isInternalUser), event.base()));
     }
 
     public Mono<Void> handleReplyEvent(CalendarEventReplyNotificationEmail event) {
@@ -470,7 +485,7 @@ public class EventMailHandler {
                 }
                 MailAddress recipientEmail = event.base().recipientEmail();
                 Username recipientUser = Username.fromMailAddress(recipientEmail);
-                return handleEvent(new ReplyEventMessageGenerator(event, recipientUser), recipientUser, senderEmail, event.base().eventPath(), event.base().getFirstVEvent().getUid().map(Uid::getValue).orElse(""));
+                return handleEvent(new ReplyEventMessageGenerator(event, recipientUser), event.base());
             });
     }
 
@@ -486,34 +501,46 @@ public class EventMailHandler {
     public Mono<Void> handleCounterEvent(CalendarEventCounterNotificationEmail event) {
         MailAddress recipientEmail = event.base().recipientEmail();
         Username recipientUser = Username.fromMailAddress(recipientEmail);
-        return handleEvent(new CounterEventMessageGenerator(event, recipientUser), recipientUser, event.base().senderEmail(), event.base().eventPath(), event.base().getFirstVEvent().getUid().map(Uid::getValue).orElse(""));
+        return handleEvent(new CounterEventMessageGenerator(event, recipientUser), event.base());
     }
 
     public Mono<Void> handlePublicAgendaEvent(CalendarEventBookingConfirmedNotificationEmail event) {
         MailAddress recipientEmail = event.base().recipientEmail();
         Username recipientUser = Username.fromMailAddress(recipientEmail);
-        return handleEvent(new PublicAgendaEventMessageGenerator(event, recipientUser), recipientUser, event.base().senderEmail(), event.base().eventPath(), event.base().getFirstVEvent().getUid().map(Uid::getValue).orElse(""));
+        return handleEvent(new PublicAgendaEventMessageGenerator(event, recipientUser), event.base());
     }
 
     public Mono<Void> handleBookingDeclinedEvent(CalendarEventBookingDeclinedNotificationEmail event) {
         MailAddress recipientEmail = event.base().recipientEmail();
         Username recipientUser = Username.fromMailAddress(recipientEmail);
-        return handleEvent(new BookingDeclinedEventMessageGenerator(event, recipientUser), recipientUser, event.base().senderEmail(), event.base().eventPath(), event.base().getFirstVEvent().getUid().map(Uid::getValue).orElse(""));
+        return handleEvent(new BookingDeclinedEventMessageGenerator(event, recipientUser), event.base());
     }
 
-    private Mono<Void> handleEvent(EventMessageGenerator eventMessageGenerator, Username recipientUser, MailAddress senderEmail, String eventPath, String eventUid) {
-        return settingsResolver.resolveOrDefault(recipientUser, Username.fromMailAddress(senderEmail))
-            .flatMap(eventMessageGenerator::generate)
-            .flatMap(mailMessage -> mailSenderFactory.send(new Mail(MaybeSender.of(senderEmail),
-                ImmutableList.of(Throwing.supplier(recipientUser::asMailAddress).get()), mailMessage))
-                .doOnSuccess(any -> AuditTrail.entry()
-                    .action("IMIP")
-                    .action(eventMessageGenerator.getClass().getName())
-                    .parameters(() -> ImmutableMap.of(
-                        "sender", senderEmail.asString(),
-                        "recipient", recipientUser.asString(),
-                        "eventPath", eventPath,
-                        "eventUid", eventUid))
-                    .log("IMIP mail sent")));
+    private Mono<Void> handleEvent(EventMessageGenerator generator, CalendarEventNotificationEmail event) {
+        return prepareEventMail(generator, event, UnknownUserHandling.IGNORE)
+            .flatMap(mail -> sendEventMail(generator, event, mail));
+    }
+
+    private Mono<Mail> prepareEventMail(EventMessageGenerator generator, CalendarEventNotificationEmail event,
+                                        UnknownUserHandling unknownUserHandling) {
+        Username recipientUser = Username.fromMailAddress(event.recipientEmail());
+        return settingsResolver.resolveOrDefault(recipientUser, Username.fromMailAddress(event.senderEmail()))
+            .flatMap(generator::generate)
+            .map(message -> new Mail(MaybeSender.of(event.senderEmail()),
+                ImmutableList.of(Throwing.supplier(recipientUser::asMailAddress).get()), message, unknownUserHandling));
+    }
+
+    private Mono<Void> sendEventMail(EventMessageGenerator generator, CalendarEventNotificationEmail event, Mail mail) {
+        String eventUid = event.getFirstVEvent().getUid().map(Uid::getValue).orElse("");
+        return mailSenderFactory.send(mail)
+            .doOnSuccess(_ -> AuditTrail.entry()
+                .action("IMIP")
+                .action(generator.getClass().getName())
+                .parameters(() -> ImmutableMap.of(
+                    "sender", event.senderEmail().asString(),
+                    "recipient", Username.fromMailAddress(event.recipientEmail()).asString(),
+                    "eventPath", event.eventPath(),
+                    "eventUid", eventUid))
+                .log("IMIP mail sent"));
     }
 }

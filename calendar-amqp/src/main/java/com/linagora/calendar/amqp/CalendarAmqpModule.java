@@ -51,6 +51,7 @@ public class CalendarAmqpModule extends AbstractModule {
     protected void configure() {
         bind(EventIndexerConsumer.class).in(Scopes.SINGLETON);
         bind(EventEmailConsumer.class).in(Scopes.SINGLETON);
+        bind(MailDeliveryFailureNotifier.class).in(Scopes.SINGLETON);
         bind(EventAlarmConsumer.class).in(Scopes.SINGLETON);
         bind(EventResourceConsumer.class).in(Scopes.SINGLETON);
         bind(EventCalendarConsumer.class).in(Scopes.SINGLETON);

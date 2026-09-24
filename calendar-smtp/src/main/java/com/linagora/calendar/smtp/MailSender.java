@@ -41,6 +41,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.github.fge.lambdas.Throwing;
+import com.linagora.calendar.smtp.Mail.UnknownUserHandling;
 import com.linagora.calendar.smtp.SmtpSendingFailedException.UnknownUser;
 import com.linagora.calendar.storage.unsent.UnsentMailRepository;
 import com.linagora.calendar.storage.unsent.UnsentMailRepository.SendingTrial;
@@ -151,12 +152,16 @@ public interface MailSender {
             @Override
             public Mono<Void> send(Mail mail) {
                 return sendWithoutRetention(mail)
-                    .onErrorResume(UnknownUser.class, error -> {
-                        LOGGER.warn("Discarding mail to {}: all recipients are unknown ({})", mail.recipients(), error.getMessage());
-                        return Mono.empty();
-                    })
-                    .onErrorResume(error -> retain(mail, asException(error))
-                        .then(Mono.error(error)));
+                    .onErrorResume(error -> {
+                        if (error instanceof UnknownUser) {
+                            if (mail.unknownUserHandling() == UnknownUserHandling.PROPAGATE) {
+                                return Mono.error(error);
+                            }
+                            LOGGER.warn("Discarding mail to {}: all recipients are unknown ({})", mail.recipients(), error.getMessage());
+                            return Mono.empty();
+                        }
+                        return retain(mail, asException(error)).then(Mono.error(error));
+                    });
             }
 
             @Override

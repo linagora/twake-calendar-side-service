@@ -221,7 +221,7 @@ public class EventUpdateEmailConsumerTest {
             linkFactory,
             usersRepository, resourceDAO, domainDAO,
             settingsResolver,
-            actionLinkFactory);
+            actionLinkFactory, mock(MailDeliveryFailureNotifier.class));
 
         consumer = new EventEmailConsumer(channelPool, QueueArguments.Builder::new, mailHandler,
             eventEmailFilter, new RecordingMetricFactory());
