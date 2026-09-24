@@ -53,6 +53,7 @@ import reactor.util.retry.Retry;
  */
 public class MeetApplicationClient {
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final String USER_AGENT = "twake-calendar-side-service " + HttpClient.USER_AGENT;
 
     private static final String ROOMS_PATH = "/external-api/v1.0/rooms/";
     private static final String TOKEN_PATH = "/external-api/v1.0/application/token/";
@@ -112,7 +113,10 @@ public class MeetApplicationClient {
             // 301 back to https://… when reached directly on port 8000 inside the
             // docker network. Announce https via the forwarded header — matches
             // what the nginx frontend does when routing external traffic.
-            .headers(h -> h.set("X-Forwarded-Proto", "https"));
+            .headers(h -> {
+                h.set(HttpHeaderNames.USER_AGENT, USER_AGENT);
+                h.set("X-Forwarded-Proto", "https");
+            });
         if (!config.trustAllSslCerts()) {
             return httpClient;
         }
