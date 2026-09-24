@@ -22,13 +22,16 @@ import static com.linagora.calendar.storage.configuration.ConfigurationEntryUtil
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
 
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.http.Authenticator;
 import org.apache.james.mailbox.MailboxSession;
@@ -36,12 +39,16 @@ import org.apache.james.metrics.api.MetricFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Sets;
-import com.linagora.calendar.restapi.routes.UserConfigurationsRoute.UserConfigDTO;
 import com.linagora.calendar.storage.configuration.ConfigurationEntry;
 import com.linagora.calendar.storage.configuration.ConfigurationEntryUtils;
+import com.linagora.calendar.storage.configuration.ConfigurationValueValidator;
 import com.linagora.calendar.storage.configuration.EntryIdentifier;
 import com.linagora.calendar.storage.configuration.ReadOnlyPropertyProvider;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
@@ -54,6 +61,36 @@ import reactor.netty.http.server.HttpServerResponse;
 
 public class UserConfigurationPatchRoute extends CalendarRoute {
     public static final Logger LOGGER = LoggerFactory.getLogger(UserConfigurationPatchRoute.class);
+
+    public record ConfigurationEntryDTO(@JsonProperty(value = "name", required = true) String name,
+                                        @JsonProperty(value = "value", required = true) JsonNode value) {
+
+        public ConfigurationEntryDTO {
+            Preconditions.checkArgument(StringUtils.isNotBlank(name), "Name cannot be blank");
+            ConfigurationValueValidator.validate(value);
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record UserConfigDTO(@JsonProperty(value = "name", required = true) String name,
+                                @JsonProperty(value = "configurations", required = true) List<ConfigurationEntryDTO> configurations) {
+
+        public UserConfigDTO {
+            Preconditions.checkArgument(StringUtils.isNotBlank(name), "Name cannot be blank");
+            Preconditions.checkArgument(configurations != null, "Configurations cannot be null");
+            Preconditions.checkArgument(configurations.stream().noneMatch(Objects::isNull), "Configurations cannot contain null entries");
+        }
+
+        public static List<UserConfigDTO> requireNoNullElement(List<UserConfigDTO> dtos) {
+            Preconditions.checkArgument(dtos.stream().noneMatch(Objects::isNull), "Configuration modules cannot be null");
+            return dtos;
+        }
+
+        public Stream<ConfigurationEntry> toConfigurationEntries() {
+            return configurations.stream()
+                .map(entry -> ConfigurationEntry.of(name, entry.name, entry.value));
+        }
+    }
 
     private final UserConfigurationDAO userConfigurationDAO;
     private final ObjectMapper objectMapper;
