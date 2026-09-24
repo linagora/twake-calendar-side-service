@@ -68,6 +68,7 @@ public class DavProxy extends DavClient {
                     Mono.from(metricFactory.decoratePublisherWithTimerMetric("davProxy",
                             httpClientWithImpersonation(session.getUser()).headers(proxiedHeader -> {
                                     HttpHeaders entries = request.requestHeaders();
+                                    Optional.ofNullable(entries.get("X-Forwarded-For", null)).ifPresent(value -> proxiedHeader.set("X-Forwarded-For", value));
                                     Optional.ofNullable(entries.get("Accept", null)).ifPresent(value -> proxiedHeader.add("Accept", value));
                                     Optional.ofNullable(entries.get("Destination", null)).ifPresent(value -> proxiedHeader.add("Destination", value));
                                     Optional.ofNullable(entries.get("Depth", null)).ifPresent(value -> proxiedHeader.add("Depth", value));
