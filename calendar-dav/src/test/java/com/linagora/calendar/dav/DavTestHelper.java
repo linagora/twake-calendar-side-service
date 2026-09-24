@@ -483,6 +483,28 @@ public class DavTestHelper extends DavClient {
             });
     }
 
+    /**
+     * Fetches, with the technical token of its domain, the JSON metadata of a domain scoped calendar - a team
+     * calendar or a resource calendar - including its ACL.
+     */
+    public Mono<String> getCalendarMetadata(OpenPaaSId domainId, CalendarURL calendarURL) {
+        return httpClientWithTechnicalToken(domainId)
+            .flatMap(client -> client.headers(headers -> headers.add(HttpHeaderNames.ACCEPT, "application/json"))
+                .request(HttpMethod.GET)
+                .uri(calendarURL.asUri().toASCIIString() + ".json?withRights=true")
+                .responseSingle((response, content) -> {
+                    if (response.status().code() == HttpStatus.SC_OK) {
+                        return content.asString(StandardCharsets.UTF_8);
+                    }
+                    return content.asString(StandardCharsets.UTF_8)
+                        .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                        .flatMap(responseBody -> Mono.error(new DavClientException("""
+                            Unexpected status code: %d when fetching calendar metadata '%s'
+                            %s
+                            """.formatted(response.status().code(), calendarURL.serialize(), responseBody))));
+                }));
+    }
+
     public Mono<ArrayNode> getCalendarDelegateInvites(OpenPaaSId domainId, ResourceId resourceId) {
         return httpClientWithTechnicalToken(domainId)
             .flatMap(client ->

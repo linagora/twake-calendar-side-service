@@ -609,6 +609,18 @@ public class CalDavClient extends DavClient {
     }
 
     public Mono<Void> updateCalendarAcl(Username username, CalendarURL calendarURL, PublicRight publicRight) {
+        return updateCalendarAcl(Mono.just(httpClientWithImpersonation(username)), calendarURL, publicRight);
+    }
+
+    /**
+     * Updates the public visibility of a domain scoped calendar - a team calendar or a resource calendar - which
+     * no user owns, relying on the technical token of its domain.
+     */
+    public Mono<Void> updateCalendarAcl(OpenPaaSId domainId, CalendarURL calendarURL, PublicRight publicRight) {
+        return updateCalendarAcl(httpClientWithTechnicalToken(domainId), calendarURL, publicRight);
+    }
+
+    private Mono<Void> updateCalendarAcl(Mono<HttpClient> httpClientPublisher, CalendarURL calendarURL, PublicRight publicRight) {
         String uri = calendarURL.asUri() + ".json";
         String payload = """
             {
@@ -616,7 +628,8 @@ public class CalDavClient extends DavClient {
             }
             """.formatted(publicRight.getValue());
 
-        return httpClientWithImpersonation(username).headers(headers -> headers.add(HttpHeaderNames.ACCEPT, "application/json, text/plain, */*")
+        return httpClientPublisher.flatMap(client -> client
+            .headers(headers -> headers.add(HttpHeaderNames.ACCEPT, "application/json, text/plain, */*")
                 .add(HttpHeaderNames.CONTENT_TYPE, "application/json"))
             .request(HttpMethod.valueOf("ACL"))
             .uri(uri)
@@ -627,11 +640,11 @@ public class CalDavClient extends DavClient {
                 }
                 return responseContent.asString(StandardCharsets.UTF_8)
                     .switchIfEmpty(Mono.just(StringUtils.EMPTY))
-                    .flatMap(errorBody -> Mono.error(new RuntimeException("""
+                    .flatMap(errorBody -> Mono.error(new DavClientException("""
                         Unexpected status code: %d when updating ACL for calendar '%s'
                         %s
                         """.formatted(response.status().code(), uri, errorBody))));
-            });
+            }));
     }
 
     /**

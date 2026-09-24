@@ -42,7 +42,6 @@ import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpStatus;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.common.base.Preconditions;
@@ -93,7 +92,6 @@ public class UserCalendarRoutes implements Routes {
     private static final String FIELD_NAME = "dav:name";
     private static final String FIELD_COLOR = "apple:color";
     private static final String FIELD_DESCRIPTION = "caldav:description";
-    private static final String FIELD_PUBLIC_RIGHT = "public_right";
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module());
 
@@ -269,7 +267,7 @@ public class UserCalendarRoutes implements Routes {
 
     private String updatePublicRight(Request request, Response response) {
         OpenPaaSUser user = retrieveUser(request);
-        CalDavClient.PublicRight publicRight = parsePublicRight(request);
+        CalDavClient.PublicRight publicRight = PublicRightParser.parse(request);
         CalendarURL calendarURL = retrieveExistingCalendar(request, user);
 
         wrapDavErrors(() -> calDavClient.updateCalendarAcl(user.username(), calendarURL, publicRight).block());
@@ -344,40 +342,6 @@ public class UserCalendarRoutes implements Routes {
             .type(ErrorResponder.ErrorType.NOT_FOUND)
             .message("Calendar does not exist")
             .haltError();
-    }
-
-    private CalDavClient.PublicRight parsePublicRight(Request request) {
-        JsonNode body = parseBody(request);
-        JsonNode publicRightNode = body.path(FIELD_PUBLIC_RIGHT);
-        if (!publicRightNode.isTextual()) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.BAD_REQUEST_400)
-                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                .message("Field '%s' is required".formatted(FIELD_PUBLIC_RIGHT))
-                .haltError();
-        }
-        String publicRight = publicRightNode.asText();
-        return switch (publicRight) {
-            case "" -> CalDavClient.PublicRight.HIDE_ALL_EVENT;
-            case "{DAV:}read" -> CalDavClient.PublicRight.READ;
-            default -> throw ErrorResponder.builder()
-                .statusCode(HttpStatus.BAD_REQUEST_400)
-                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                .message("Invalid '%s' value: '%s'. Supported values are: '' and '{DAV:}read'".formatted(FIELD_PUBLIC_RIGHT, publicRight))
-                .haltError();
-        };
-    }
-
-    private JsonNode parseBody(Request request) {
-        try {
-            JsonNode body = OBJECT_MAPPER.readTree(request.bodyAsBytes());
-            if (body == null || !body.isObject()) {
-                throw new IllegalArgumentException("Request body must be a JSON object");
-            }
-            return body;
-        } catch (Exception e) {
-            throw invalidBody(e);
-        }
     }
 
     private <T> T parseBody(Request request, Class<T> type) {

@@ -720,6 +720,24 @@ The task details are available on `GET /tasks/{taskId}`:
 Resources marked as deleted keep their calendar: their content stays readable through the counting and
 export routes, but may no longer be written to.
 
+### Changing the public visibility of a resource
+
+```
+POST /domains/linagora.com/resources/RESOURCE_ID/publicRight
+{
+  "public_right": "{DAV:}read"
+}
+```
+
+Supported `public_right` values, as for [user calendars](#changing-the-public-visibility-of-a-calendar):
+- `"{DAV:}read"`: anyone authenticated can read the calendar (public calendar)
+- `""`: removes public rights (private calendar)
+
+**Status codes**:
+- `204`: the public visibility was updated
+- `400`: the domain name is invalid, or the `public_right` value is missing or unsupported
+- `404`: the domain or the resource does not exist, or the resource is marked as deleted
+
 ## Team calendar routes
 
 Team calendar routes manage team calendar metadata.
@@ -897,6 +915,24 @@ The task details are available on `GET /tasks/{taskId}`:
 **Status codes**:
 - `201`: the import task was created
 - `400`: the body is not a valid ICS document, or holds no event to import
+- `404`: the domain or the team calendar does not exist
+
+### Changing the public visibility of a team calendar
+
+```
+POST /domains/linagora.com/team-calendars/64f1c2.../publicRight
+{
+  "public_right": "{DAV:}read"
+}
+```
+
+Supported `public_right` values, as for [user calendars](#changing-the-public-visibility-of-a-calendar):
+- `"{DAV:}read"`: anyone authenticated can read the calendar (public calendar)
+- `""`: removes public rights (private calendar)
+
+**Status codes**:
+- `204`: the public visibility was updated
+- `400`: the domain name is invalid, or the `public_right` value is missing or unsupported
 - `404`: the domain or the team calendar does not exist
 
 ### Listing team calendar members

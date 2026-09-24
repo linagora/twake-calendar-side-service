@@ -72,6 +72,7 @@ public class ResourceRoutes implements Routes {
     public static final String RESOURCES_PATH = DOMAINS + "/" + DOMAIN_PARAM + "/resources";
     private static final String RESOURCE_PATH = RESOURCES_PATH + "/:id";
     private static final String EVENT_COUNT_PATH = RESOURCE_PATH + "/eventCount";
+    private static final String PUBLIC_RIGHT_PATH = RESOURCE_PATH + "/publicRight";
 
     public record AdministratorDTO(@JsonProperty(value = "email", required = true) String email,
                                    @JsonProperty("davRight") String davRight) {
@@ -158,6 +159,7 @@ public class ResourceRoutes implements Routes {
         service.post(RESOURCES_PATH, this::createResource, jsonTransformer);
         service.get(EVENT_COUNT_PATH, (req, res) -> contentHandler.countEvents(res, resourceCalendar(req, !ONLY_ACTIVE)));
         service.post(RESOURCE_PATH, (req, res) -> contentHandler.exportOrImport(req, res, onlyActive -> resourceCalendar(req, onlyActive)));
+        service.post(PUBLIC_RIGHT_PATH, (req, res) -> contentHandler.updatePublicRight(req, res, resourceCalendar(req, ONLY_ACTIVE)));
     }
 
     /**
