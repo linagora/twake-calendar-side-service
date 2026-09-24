@@ -193,7 +193,10 @@ public class MeetApplicationClient {
                         return Mono.error(new MeetApiException(action + ": unparseable Meet response — " + abbreviate(bodyString), e));
                     }
                 });
-            }));
+            }))
+            // Let callers report transport failures as upstream errors too.
+            .onErrorMap(error -> !(error instanceof MeetApiException),
+                error -> new MeetApiException(action + ": request to Meet failed", error));
     }
 
     private Mono<Room> toRoom(JsonNode node) {
