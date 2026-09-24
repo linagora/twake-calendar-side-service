@@ -23,8 +23,11 @@ import static io.restassured.RestAssured.given;
 import static io.restassured.RestAssured.when;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.is;
 
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -55,11 +58,14 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.CalDavClient.CalDavExportException;
+import com.linagora.calendar.dav.DavClientException;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.dav.SabreDavProvisioningService;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.TeamCalendarInsertRequest;
 import com.linagora.calendar.storage.model.TeamCalendar;
 import com.linagora.calendar.storage.model.TeamCalendarId;
@@ -86,6 +92,7 @@ class TeamCalendarRoutesTest {
     private MongoDBTeamCalendarRepository teamCalendarRepository;
     private TeamCalendarService teamCalendarService;
     private UpdatableTickingClock clock;
+    private CalDavClient calDavClient;
 
     @BeforeEach
     void setUp() throws SSLException {
@@ -95,7 +102,7 @@ class TeamCalendarRoutesTest {
         domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
         teamCalendarRepository = new MongoDBTeamCalendarRepository(mongoDB, clock);
 
-        CalDavClient calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
+        calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         teamCalendarService = new TeamCalendarService(domainDAO, teamCalendarRepository, calDavClient);
         TaskManager taskManager = new MemoryTaskManager(new Hostname("foo"));
         webAdminServer = WebAdminUtils.createWebAdminServer(
@@ -510,6 +517,45 @@ class TeamCalendarRoutesTest {
     }
 
     @Test
+    void publicReadRightShouldLetAnyUserOfTheDomainReadEvents() {
+        String calendarId = createDavTeamCalendar();
+        upsertEvent(calendarId, "public-event", "Sprint review");
+        OpenPaaSUser randomUser = sabreDavExtension.newTestUser();
+
+        updatePublicRight(calendarId, "{DAV:}read");
+
+        assertThat(new String(calDavClient.export(teamCalendarURL(calendarId), randomUser.username()).block(), StandardCharsets.UTF_8))
+            .contains("UID:public-event")
+            .contains("SUMMARY:Sprint review");
+    }
+
+    @Test
+    void publicReadRightShouldNotLetUsersOfTheDomainWriteEvents() {
+        String calendarId = createDavTeamCalendar();
+        OpenPaaSUser randomUser = sabreDavExtension.newTestUser();
+
+        updatePublicRight(calendarId, "{DAV:}read");
+
+        assertThatThrownBy(() -> sabreDavExtension.davTestHelper()
+                .upsertCalendar(randomUser.username(), eventURI(calendarId, "intruder-event"), icsOf(event("intruder-event", "Intrusion")))
+                .block())
+            .isInstanceOf(DavClientException.class);
+    }
+
+    @Test
+    void usersOfTheDomainShouldNotReadEventsOnceHidden() {
+        String calendarId = createDavTeamCalendar();
+        upsertEvent(calendarId, "hidden-event", "Sprint review");
+        OpenPaaSUser randomUser = sabreDavExtension.newTestUser();
+        updatePublicRight(calendarId, "{DAV:}read");
+
+        updatePublicRight(calendarId, "");
+
+        assertThatThrownBy(() -> calDavClient.export(teamCalendarURL(calendarId), randomUser.username()).block())
+            .isInstanceOf(CalDavExportException.class);
+    }
+
+    @Test
     void publicRightShouldRemovePublicRights() {
         String calendarId = createDavTeamCalendar();
         updatePublicRight(calendarId, "{DAV:}read");
@@ -764,10 +810,25 @@ class TeamCalendarRoutesTest {
             .statusCode(204);
     }
 
+    private void upsertEvent(String calendarId, String eventUid, String summary) {
+        OpenPaaSDomain domain = domainDAO.retrieve(DAV_DOMAIN).block();
+        sabreDavExtension.davTestHelper()
+            .upsertCalendar(domain.id(), eventURI(calendarId, eventUid), icsOf(event(eventUid, summary)))
+            .block();
+    }
+
+    private URI eventURI(String calendarId, String eventUid) {
+        return URI.create(teamCalendarURL(calendarId).asUri() + "/" + eventUid + ".ics");
+    }
+
+    private CalendarURL teamCalendarURL(String calendarId) {
+        return CalendarURL.from(new OpenPaaSId(calendarId));
+    }
+
     private List<String> authenticatedPrincipalPrivileges(String calendarId) {
         OpenPaaSDomain domain = domainDAO.retrieve(DAV_DOMAIN).block();
         String metadata = sabreDavExtension.davTestHelper()
-            .getCalendarMetadata(domain.id(), CalendarURL.from(new OpenPaaSId(calendarId)))
+            .getCalendarMetadata(domain.id(), teamCalendarURL(calendarId))
             .block();
         return JsonPath.from(metadata)
             .getList("acl.findAll { it.principal == '{DAV:}authenticated' }.privilege");
