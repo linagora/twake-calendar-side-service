@@ -459,11 +459,6 @@ Example response:
 
 `davRight` and integer `access` are resolved from Sabre: 3 is `dav:read-write`, 5 is `dav:administration`.
 
-### GET /linagora.esn.resource/api/resources/{resourceId} (Deprecated)
-
-Deprecated in favor of `GET /api/resources/{resourceId}`. It returns the same administrator fields.
-
-
 ### GET /images/icon/{icon}.svg
 
 ```
@@ -474,10 +469,6 @@ Serves binary content corresponding to the SVG of the icon
 
 This [link](https://github.com/linagora/twake-calendar-side-service/tree/main/calendar-rest-api/src/main/resources/icons/resources) 
 references all usable icons.
-
-### GET /linagora.esn.resource/images/icon/{icon}.svg (Deprecated)
-
-Deprecated in favor of `GET /images/icon/{icon}.svg`, kept for OpenPaaS backward compatibility.
 
 ### GET /api/users/{userId}/profile/avatar
 
@@ -777,10 +768,6 @@ POST /api/import
   "target": "/addressbooks/abc/def.json"
 }
 ```
-
-### POST /linagora.esn.dav.import/api/import (Deprecated)
-
-Deprecated in favor of `POST /api/import`, kept for OpenPaaS backward compatibility.
 
 ### GET /api/domain/settings
 

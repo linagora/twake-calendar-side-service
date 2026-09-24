@@ -98,7 +98,6 @@ import com.linagora.calendar.restapi.routes.ImportResultNotifier.ImportWebSocket
 import com.linagora.calendar.restapi.routes.ImportResultNotifier.SendMailNotifier;
 import com.linagora.calendar.restapi.routes.ImportRoute;
 import com.linagora.calendar.restapi.routes.JwtRoutes;
-import com.linagora.calendar.restapi.routes.LegacyRoutes;
 import com.linagora.calendar.restapi.routes.LogoRoute;
 import com.linagora.calendar.restapi.routes.PeopleSearchRoute;
 import com.linagora.calendar.restapi.routes.ProfileAvatarRoute;
@@ -154,7 +153,6 @@ public class RestApiModule extends AbstractModule {
     protected void configure() {
         install(new AssetModule());
         install(ResourceIconLoader.MODULE);
-        install(LegacyRoutes.MODULE);
         Multibinder.newSetBinder(binder(), GuiceProbe.class).addBinding().to(RestApiServerProbe.class);
         bind(CalendarRestApiServer.class).in(Scopes.SINGLETON);
 
