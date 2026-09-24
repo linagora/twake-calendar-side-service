@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.restapi;
 
+import java.util.Set;
 import java.util.function.Consumer;
 
 import javax.net.ssl.SSLException;
@@ -33,6 +34,7 @@ import com.linagora.calendar.api.JwtSigner;
 
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaders;
+import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
@@ -43,6 +45,7 @@ import reactor.netty.http.server.HttpServerResponse;
 
 public class FallbackProxy {
     public static final Logger LOGGER = LoggerFactory.getLogger(FallbackProxy.class);
+    private static final Set<String> NON_PROXY_PATHS = Set.of("/api/videoconference");
     private final HttpClient client;
     private final Authenticator authenticator;
     private final RestApiConfiguration configuration;
@@ -67,6 +70,10 @@ public class FallbackProxy {
     }
 
     public Mono<Void> forwardRequest(HttpServerRequest request, HttpServerResponse response) {
+        // Keep disabled side-service endpoints from falling through to OpenPaaS.
+        if (NON_PROXY_PATHS.contains(new QueryStringDecoder(request.uri()).path())) {
+            return response.status(404).send();
+        }
         if (configuration.getOpenpaasBackendURL().isEmpty()) {
             LOGGER.warn("Not found {} {}", request.method(), request.uri());
             return response.status(404).send();
