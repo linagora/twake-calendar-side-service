@@ -25,10 +25,12 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
 
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.http.Authenticator;
 import org.apache.james.mailbox.MailboxSession;
@@ -36,10 +38,13 @@ import org.apache.james.metrics.api.MetricFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Sets;
-import com.linagora.calendar.restapi.routes.UserConfigurationsRoute.UserConfigDTO;
 import com.linagora.calendar.storage.configuration.ConfigurationEntry;
 import com.linagora.calendar.storage.configuration.ConfigurationEntryUtils;
 import com.linagora.calendar.storage.configuration.EntryIdentifier;
@@ -54,6 +59,29 @@ import reactor.netty.http.server.HttpServerResponse;
 
 public class UserConfigurationPatchRoute extends CalendarRoute {
     public static final Logger LOGGER = LoggerFactory.getLogger(UserConfigurationPatchRoute.class);
+
+    public record ConfigurationEntryDTO(@JsonProperty(value = "name", required = true) String name,
+                                        @JsonProperty(value = "value", required = true) JsonNode value) {
+
+        public ConfigurationEntryDTO {
+            Preconditions.checkArgument(StringUtils.isNotBlank(name), "Name cannot be blank");
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record UserConfigDTO(@JsonProperty(value = "name", required = true) String name,
+                                @JsonProperty(value = "configurations", required = true) List<ConfigurationEntryDTO> configurations) {
+
+        public UserConfigDTO {
+            Preconditions.checkArgument(StringUtils.isNotBlank(name), "Name cannot be blank");
+            Preconditions.checkArgument(configurations != null, "Configurations cannot be null");
+        }
+
+        public Stream<ConfigurationEntry> toConfigurationEntries() {
+            return configurations.stream()
+                .map(entry -> ConfigurationEntry.of(name, entry.name, entry.value));
+        }
+    }
 
     private final UserConfigurationDAO userConfigurationDAO;
     private final ObjectMapper objectMapper;
