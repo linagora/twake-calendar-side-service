@@ -24,9 +24,12 @@ import static io.restassured.RestAssured.given;
 import static io.restassured.RestAssured.when;
 import static java.time.ZoneOffset.UTC;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
 import static org.hamcrest.Matchers.is;
 
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.util.List;
 import java.util.UUID;
@@ -56,6 +59,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.CalDavClient.CalDavExportException;
+import com.linagora.calendar.dav.DavClientException;
 import com.linagora.calendar.dav.ResourceService;
 import com.linagora.calendar.dav.DavRight;
 import com.linagora.calendar.dav.ResourceService.ResourceAdministrator;
@@ -89,6 +94,7 @@ class ResourceRoutesTest {
     private MongoDBOpenPaaSDomainDAO domainDAO;
     private MongoDBResourceDAO resourceDAO;
     private ResourceService resourceService;
+    private CalDavClient calDavClient;
 
     @BeforeEach
     void setUp() throws SSLException {
@@ -96,7 +102,7 @@ class ResourceRoutesTest {
         domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
         userDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
         resourceDAO = new MongoDBResourceDAO(mongoDB, Clock.system(UTC));
-        CalDavClient calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
+        calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         resourceService = new ResourceService(userDAO, resourceDAO, calDavClient);
 
         TaskManager taskManager = new MemoryTaskManager(new Hostname("foo"));
@@ -1462,6 +1468,45 @@ class ResourceRoutesTest {
     }
 
     @Test
+    void publicReadRightShouldLetAnyUserOfTheDomainReadEvents() {
+        String resourceId = createDavResource();
+        upsertEvent(resourceId, "public-event", "Booked room");
+        OpenPaaSUser randomUser = sabreDavExtension.newTestUser();
+
+        updatePublicRight(resourceId, "{DAV:}read");
+
+        assertThat(new String(calDavClient.export(resourceCalendarURL(resourceId), randomUser.username()).block(), StandardCharsets.UTF_8))
+            .contains("UID:public-event")
+            .contains("SUMMARY:Booked room");
+    }
+
+    @Test
+    void publicReadRightShouldNotLetUsersOfTheDomainWriteEvents() {
+        String resourceId = createDavResource();
+        OpenPaaSUser randomUser = sabreDavExtension.newTestUser();
+
+        updatePublicRight(resourceId, "{DAV:}read");
+
+        assertThatThrownBy(() -> sabreDavExtension.davTestHelper()
+                .upsertCalendar(randomUser.username(), eventURI(resourceId, "intruder-event"), icsOf(event("intruder-event", "Intrusion")))
+                .block())
+            .isInstanceOf(DavClientException.class);
+    }
+
+    @Test
+    void usersOfTheDomainShouldNotReadEventsOnceHidden() {
+        String resourceId = createDavResource();
+        upsertEvent(resourceId, "hidden-event", "Booked room");
+        OpenPaaSUser randomUser = sabreDavExtension.newTestUser();
+        updatePublicRight(resourceId, "{DAV:}read");
+
+        updatePublicRight(resourceId, "");
+
+        assertThatThrownBy(() -> calDavClient.export(resourceCalendarURL(resourceId), randomUser.username()).block())
+            .isInstanceOf(CalDavExportException.class);
+    }
+
+    @Test
     void publicRightShouldRemovePublicRights() {
         String resourceId = createDavResource();
         updatePublicRight(resourceId, "{DAV:}read");
@@ -1556,10 +1601,25 @@ class ResourceRoutesTest {
             .statusCode(204);
     }
 
+    private void upsertEvent(String resourceId, String eventUid, String summary) {
+        OpenPaaSDomain domain = domainDAO.retrieve(Domain.of(DOMAIN)).block();
+        sabreDavExtension.davTestHelper()
+            .upsertCalendar(domain.id(), eventURI(resourceId, eventUid), icsOf(event(eventUid, summary)))
+            .block();
+    }
+
+    private URI eventURI(String resourceId, String eventUid) {
+        return URI.create(resourceCalendarURL(resourceId).asUri() + "/" + eventUid + ".ics");
+    }
+
+    private CalendarURL resourceCalendarURL(String resourceId) {
+        return CalendarURL.from(new ResourceId(resourceId).asOpenPaaSId());
+    }
+
     private List<String> authenticatedPrincipalPrivileges(String resourceId) {
         OpenPaaSDomain domain = domainDAO.retrieve(Domain.of(DOMAIN)).block();
         String metadata = sabreDavExtension.davTestHelper()
-            .getCalendarMetadata(domain.id(), CalendarURL.from(new ResourceId(resourceId).asOpenPaaSId()))
+            .getCalendarMetadata(domain.id(), resourceCalendarURL(resourceId))
             .block();
         return JsonPath.from(metadata)
             .getList("acl.findAll { it.principal == '{DAV:}authenticated' }.privilege");
