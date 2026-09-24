@@ -60,6 +60,7 @@ import com.linagora.calendar.dav.ResourceService;
 import com.linagora.calendar.dav.DavRight;
 import com.linagora.calendar.dav.ResourceService.ResourceAdministrator;
 import com.linagora.calendar.dav.SabreDavExtension;
+import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
@@ -75,6 +76,7 @@ import com.mongodb.reactivestreams.client.MongoDatabase;
 
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
+import io.restassured.path.json.JsonPath;
 import net.javacrumbs.jsonunit.core.Option;
 
 class ResourceRoutesTest {
@@ -1443,6 +1445,78 @@ class ResourceRoutesTest {
     }
 
     @Test
+    void publicRightShouldGrantPublicReadRight() {
+        String resourceId = createDavResource();
+
+        given()
+            .body("""
+                {"public_right":"{DAV:}read"}
+                """)
+        .when()
+            .post("/domains/{domain}/resources/{resourceId}/publicRight", DOMAIN, resourceId)
+        .then()
+            .statusCode(204);
+
+        assertThat(authenticatedPrincipalPrivileges(resourceId))
+            .contains("{DAV:}read");
+    }
+
+    @Test
+    void publicRightShouldRemovePublicRights() {
+        String resourceId = createDavResource();
+        updatePublicRight(resourceId, "{DAV:}read");
+
+        updatePublicRight(resourceId, "");
+
+        assertThat(authenticatedPrincipalPrivileges(resourceId))
+            .doesNotContain("{DAV:}read");
+    }
+
+    @Test
+    void publicRightShouldRejectUnsupportedValue() {
+        String resourceId = createDavResource();
+
+        given()
+            .body("""
+                {"public_right":"{DAV:}all"}
+                """)
+        .when()
+            .post("/domains/{domain}/resources/{resourceId}/publicRight", DOMAIN, resourceId)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"));
+    }
+
+    @Test
+    void publicRightShouldReturn404WhenResourceDoesNotExist() {
+        given()
+            .body("""
+                {"public_right":"{DAV:}read"}
+                """)
+        .when()
+            .post("/domains/{domain}/resources/{resourceId}/publicRight", DOMAIN, unknownResourceId())
+        .then()
+            .statusCode(404)
+            .body("type", is("notFound"));
+    }
+
+    @Test
+    void publicRightShouldReturn404WhenResourceIsDeleted() {
+        String resourceId = createDavResource();
+        deleteResource(resourceId);
+
+        given()
+            .body("""
+                {"public_right":"{DAV:}read"}
+                """)
+        .when()
+            .post("/domains/{domain}/resources/{resourceId}/publicRight", DOMAIN, resourceId)
+        .then()
+            .statusCode(404)
+            .body("type", is("notFound"));
+    }
+
+    @Test
     void contentRoutesShouldIgnoreResourcesOfOtherDomains() {
         OpenPaaSDomain otherDomain = domainDAO.add(Domain.of("other-" + UUID.randomUUID() + ".tld")).block();
         String resourceId = createDavResource();
@@ -1469,6 +1543,26 @@ class ResourceRoutesTest {
     private void deleteResource(String resourceId) {
         Resource resource = resourceService.retrieve(new ResourceId(resourceId), ResourceService.ONLY_ACTIVE).block();
         resourceService.delete(resource).block();
+    }
+
+    private void updatePublicRight(String resourceId, String publicRight) {
+        given()
+            .body("""
+                {"public_right":"%s"}
+                """.formatted(publicRight))
+        .when()
+            .post("/domains/{domain}/resources/{resourceId}/publicRight", DOMAIN, resourceId)
+        .then()
+            .statusCode(204);
+    }
+
+    private List<String> authenticatedPrincipalPrivileges(String resourceId) {
+        OpenPaaSDomain domain = domainDAO.retrieve(Domain.of(DOMAIN)).block();
+        String metadata = sabreDavExtension.davTestHelper()
+            .getCalendarMetadata(domain.id(), CalendarURL.from(new ResourceId(resourceId).asOpenPaaSId()))
+            .block();
+        return JsonPath.from(metadata)
+            .getList("acl.findAll { it.principal == '{DAV:}authenticated' }.privilege");
     }
 
     private String unknownResourceId() {

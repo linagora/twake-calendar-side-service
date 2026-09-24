@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
  - ISSUE-1080 Webadmin: `POST /unsentMails?action=delete` plans a task deleting the unsent mails matching the `sender`, `recipient` and `limit` filters, sparing admins from deleting them one by one
  - ISSUE-1078 Webadmin: `PATCH /users/{username}/addressbooks/{addressBookId}` updates the name and description of an address book
  - ISSUE-1076 Webadmin: count, export and import the events of the calendars a domain owns, through `GET /domains/{domain}/team-calendars/{teamCalendarId}/eventCount`, `POST /domains/{domain}/team-calendars/{teamCalendarId}?action=export|import` and their `/domains/{domain}/resources/{resourceId}` counterparts
+ - ISSUE-1098 Webadmin: `POST /domains/{domain}/team-calendars/{teamCalendarId}/publicRight` and `POST /domains/{domain}/resources/{resourceId}/publicRight` change the public visibility of team calendars and resources
  - ISSUE-958 Booking links: optional `extraAttendees` field, to hand over a single link for a meeting involving several people. Offered slots intersect the availability of the extra attendees, as seen by the booking link owner, and booked events invite them.
 
 ### Fixes

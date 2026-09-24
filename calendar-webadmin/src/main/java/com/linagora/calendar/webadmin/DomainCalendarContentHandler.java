@@ -52,7 +52,8 @@ import spark.Request;
 import spark.Response;
 
 /**
- * Counting, exporting and importing the events of a calendar a domain owns: a team calendar or a resource.
+ * Counting, exporting and importing the events of a calendar a domain owns - a team calendar or a resource -
+ * as well as changing its public visibility.
  *
  * <p>Both are plain DAV calendars, reached with the technical token of their domain. Only the way their
  * identifier is resolved differs, hence these handlers shared by {@link TeamCalendarRoutes} and
@@ -102,6 +103,15 @@ public class DomainCalendarContentHandler {
         return OBJECT_MAPPER.createObjectNode()
             .put(FIELD_COUNT, count)
             .toString();
+    }
+
+    public String updatePublicRight(Request request, Response response, DomainCalendar calendar) {
+        CalDavClient.PublicRight publicRight = PublicRightParser.parse(request);
+
+        wrapDavErrors(() -> calDavClient.updateCalendarAcl(calendar.domainId(), calendar.calendarURL(), publicRight).block());
+
+        response.status(HttpStatus.NO_CONTENT_204);
+        return Constants.EMPTY_BODY;
     }
 
     public String exportOrImport(Request request, Response response, CalendarResolver calendarResolver) {

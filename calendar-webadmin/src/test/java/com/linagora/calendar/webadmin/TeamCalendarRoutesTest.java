@@ -26,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.is;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import javax.net.ssl.SSLException;
@@ -56,7 +57,9 @@ import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.dav.SabreDavProvisioningService;
+import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSDomain;
+import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.TeamCalendarInsertRequest;
 import com.linagora.calendar.storage.model.TeamCalendar;
 import com.linagora.calendar.storage.model.TeamCalendarId;
@@ -68,6 +71,7 @@ import com.mongodb.reactivestreams.client.MongoDatabase;
 
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
+import io.restassured.path.json.JsonPath;
 import net.javacrumbs.jsonunit.core.Option;
 import reactor.core.publisher.Mono;
 
@@ -489,6 +493,90 @@ class TeamCalendarRoutesTest {
     }
 
     @Test
+    void publicRightShouldGrantPublicReadRight() {
+        String calendarId = createDavTeamCalendar();
+
+        given()
+            .body("""
+                {"public_right":"{DAV:}read"}
+                """)
+        .when()
+            .post("/domains/{domain}/team-calendars/{calendarId}/publicRight", DAV_DOMAIN.asString(), calendarId)
+        .then()
+            .statusCode(204);
+
+        assertThat(authenticatedPrincipalPrivileges(calendarId))
+            .contains("{DAV:}read");
+    }
+
+    @Test
+    void publicRightShouldRemovePublicRights() {
+        String calendarId = createDavTeamCalendar();
+        updatePublicRight(calendarId, "{DAV:}read");
+
+        updatePublicRight(calendarId, "");
+
+        assertThat(authenticatedPrincipalPrivileges(calendarId))
+            .doesNotContain("{DAV:}read");
+    }
+
+    @Test
+    void publicRightShouldRejectUnsupportedValue() {
+        String calendarId = createDavTeamCalendar();
+
+        given()
+            .body("""
+                {"public_right":"{DAV:}all"}
+                """)
+        .when()
+            .post("/domains/{domain}/team-calendars/{calendarId}/publicRight", DAV_DOMAIN.asString(), calendarId)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"));
+    }
+
+    @Test
+    void publicRightShouldRejectMissingValue() {
+        String calendarId = createDavTeamCalendar();
+
+        given()
+            .body("{}")
+        .when()
+            .post("/domains/{domain}/team-calendars/{calendarId}/publicRight", DAV_DOMAIN.asString(), calendarId)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"));
+    }
+
+    @Test
+    void publicRightShouldReturn404WhenCalendarDoesNotExist() {
+        createDavTeamCalendar();
+
+        given()
+            .body("""
+                {"public_right":"{DAV:}read"}
+                """)
+        .when()
+            .post("/domains/{domain}/team-calendars/{calendarId}/publicRight", DAV_DOMAIN.asString(), unknownCalendarId())
+        .then()
+            .statusCode(404)
+            .body("type", is("notFound"));
+    }
+
+    @Test
+    void publicRightShouldReturn404WhenDomainDoesNotExist() {
+        given()
+            .body("""
+                {"public_right":"{DAV:}read"}
+                """)
+        .when()
+            .post("/domains/unknown.tld/team-calendars/{calendarId}/publicRight", unknownCalendarId())
+        .then()
+            .statusCode(404)
+            .body("type", is("notFound"));
+    }
+
+    @Test
     void exportShouldReturn404WhenCalendarDoesNotExist() {
         given()
             .queryParam("action", "export")
@@ -663,6 +751,26 @@ class TeamCalendarRoutesTest {
             .block()
             .id()
             .value();
+    }
+
+    private void updatePublicRight(String calendarId, String publicRight) {
+        given()
+            .body("""
+                {"public_right":"%s"}
+                """.formatted(publicRight))
+        .when()
+            .post("/domains/{domain}/team-calendars/{calendarId}/publicRight", DAV_DOMAIN.asString(), calendarId)
+        .then()
+            .statusCode(204);
+    }
+
+    private List<String> authenticatedPrincipalPrivileges(String calendarId) {
+        OpenPaaSDomain domain = domainDAO.retrieve(DAV_DOMAIN).block();
+        String metadata = sabreDavExtension.davTestHelper()
+            .getCalendarMetadata(domain.id(), CalendarURL.from(new OpenPaaSId(calendarId)))
+            .block();
+        return JsonPath.from(metadata)
+            .getList("acl.findAll { it.principal == '{DAV:}authenticated' }.privilege");
     }
 
     private String unknownCalendarId() {

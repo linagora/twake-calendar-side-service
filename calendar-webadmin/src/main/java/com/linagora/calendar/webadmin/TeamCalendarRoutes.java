@@ -61,6 +61,7 @@ public class TeamCalendarRoutes implements Routes {
     private static final String TEAM_CALENDARS_PATH = BASE_PATH + SEPARATOR + DOMAIN_PARAM + SEPARATOR + TEAM_CALENDARS;
     private static final String TEAM_CALENDAR_PATH = TEAM_CALENDARS_PATH + SEPARATOR + TEAM_CALENDAR_ID_PARAM;
     private static final String EVENT_COUNT_PATH = TEAM_CALENDAR_PATH + SEPARATOR + "eventCount";
+    private static final String PUBLIC_RIGHT_PATH = TEAM_CALENDAR_PATH + SEPARATOR + "publicRight";
 
     public record TeamCalendarResponse(String id,
                                        String domainId,
@@ -125,6 +126,7 @@ public class TeamCalendarRoutes implements Routes {
         service.delete(TEAM_CALENDAR_PATH, this::delete);
         service.get(EVENT_COUNT_PATH, (request, response) -> contentHandler.countEvents(response, teamCalendarContent(request)));
         service.post(TEAM_CALENDAR_PATH, (request, response) -> contentHandler.exportOrImport(request, response, _ -> teamCalendarContent(request)));
+        service.post(PUBLIC_RIGHT_PATH, (request, response) -> contentHandler.updatePublicRight(request, response, teamCalendarContent(request)));
     }
 
     /** Team calendars know no deleted state: they are readable and writable as long as they exist. */
