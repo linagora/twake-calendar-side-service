@@ -23,7 +23,6 @@ import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
 import static io.restassured.http.ContentType.JSON;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
-import static org.apache.james.backends.rabbitmq.RabbitMQExtension.IsolationPolicy.WEAK;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.net.URI;
@@ -32,9 +31,6 @@ import java.util.Optional;
 import java.util.function.Supplier;
 
 import org.apache.http.HttpStatus;
-import org.apache.james.backends.rabbitmq.RabbitMQExtension;
-import org.apache.james.core.Domain;
-import org.apache.james.core.Username;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Order;
@@ -50,9 +46,12 @@ import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
+import com.linagora.calendar.dav.DavModuleTestHelper;
+import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiConfiguration;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.OpenPaaSUser;
 
 import io.restassured.RestAssured;
 import io.restassured.authentication.PreemptiveBasicAuthScheme;
@@ -61,10 +60,8 @@ import io.restassured.http.ContentType;
 
 class SecretLinkRouteTest {
 
-    private static final String DOMAIN = "open-paas.ltd";
     private static final String PASSWORD = "secret";
     private static final String SECRET_LINK_BASE_URL = "https://mocked.url/xyz";
-    private static final Username USERNAME = Username.fromLocalPartWithDomain("bob", DOMAIN);
 
     private static final RestApiConfiguration initialRestApiConfiguration = RestApiConfiguration.builder()
         .enableBasicAuth(Optional.of(true))
@@ -74,8 +71,7 @@ class SecretLinkRouteTest {
 
     @RegisterExtension
     @Order(1)
-    private static RabbitMQExtension rabbitMQExtension = RabbitMQExtension.singletonRabbitMQ()
-        .isolationPolicy(WEAK);
+    static SabreDavExtension sabreDavExtension = SabreDavExtension.shared();
 
     @RegisterExtension
     @Order(2)
@@ -83,8 +79,9 @@ class SecretLinkRouteTest {
         TwakeCalendarConfiguration.builder()
             .configurationFromClasspath()
             .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
-            .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY),
-        AppTestHelper.BY_PASS_MODULE.apply(rabbitMQExtension),
+            .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB),
+        AppTestHelper.OIDC_BY_PASS_MODULE,
+        DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
         binder -> {
             Mockito.doReturn(Throwing.supplier(() -> URI.create(SECRET_LINK_BASE_URL).toURL()).get())
                 .when(spyRestApiConfiguration).getSelfUrl();
@@ -100,10 +97,14 @@ class SecretLinkRouteTest {
 
     @BeforeEach
     void setUp(TwakeCalendarGuiceServer server) {
-        server.getProbe(CalendarDataProbe.class).addDomain(Domain.of(DOMAIN));
+        OpenPaaSUser user = sabreDavExtension.newTestUser();
+        CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
+        calendarDataProbe.addDomain(user.username().getDomainPart().get());
+        calendarDataProbe.addUserToRepository(user.username(), PASSWORD);
+        openPaaSId = user.id();
 
         PreemptiveBasicAuthScheme basicAuthScheme = new PreemptiveBasicAuthScheme();
-        basicAuthScheme.setUserName(USERNAME.asString());
+        basicAuthScheme.setUserName(user.username().asString());
         basicAuthScheme.setPassword(PASSWORD);
 
         RestAssured.requestSpecification = new RequestSpecBuilder()
@@ -114,9 +115,6 @@ class SecretLinkRouteTest {
             .setBasePath("")
             .setAuth(basicAuthScheme)
             .build();
-
-        openPaaSId = server.getProbe(CalendarDataProbe.class)
-            .addUser(USERNAME, PASSWORD);
     }
 
     private String getPath(String calendarId) {
@@ -139,9 +137,9 @@ class SecretLinkRouteTest {
                 { "secretLink": "${json-unit.ignore}" }""");
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"123/456", "111/111"})
-    void shouldReturnSecretLinkValueWithExpectedFormat(String pairCalendarId) {
+    @Test
+    void shouldReturnSecretLinkValueWithExpectedFormat() {
+        String pairCalendarId = openPaaSId.value() + "/" + openPaaSId.value();
         String secretLink = when()
             .get(String.format("/calendar/api/calendars/%s/secret-link", pairCalendarId))
         .then()
@@ -153,6 +151,14 @@ class SecretLinkRouteTest {
             .getString("secretLink");
 
         assertThat(secretLink).startsWith(SECRET_LINK_BASE_URL + "/api/calendars/" + pairCalendarId + "/calendar.ics?token=");
+    }
+
+    @Test
+    void shouldReturnForbiddenWhenCalendarIsNotReadable() {
+        when()
+            .get("/calendar/api/calendars/123/456/secret-link")
+        .then()
+            .statusCode(HttpStatus.SC_FORBIDDEN);
     }
 
     @Test
