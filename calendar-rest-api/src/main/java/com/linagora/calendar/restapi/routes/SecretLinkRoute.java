@@ -34,9 +34,11 @@ import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.metrics.api.MetricFactory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linagora.calendar.restapi.ForbiddenException;
 import com.linagora.calendar.restapi.RestApiConfiguration;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.secretlink.SecretLinkPermissionException;
 import com.linagora.calendar.storage.secretlink.SecretLinkStore;
 import com.linagora.calendar.storage.secretlink.SecretLinkToken;
 
@@ -83,6 +85,7 @@ public class SecretLinkRoute extends CalendarRoute {
         boolean shouldResetLink = extractShouldResetLink(request);
 
         return fetchOrGenerateSecretLink(shouldResetLink, calendarURL, session)
+            .onErrorMap(SecretLinkPermissionException.class, e -> new ForbiddenException(e.getMessage()))
             .flatMap(token -> response.status(HttpResponseStatus.OK)
                 .header("Content-Type", "application/json;charset=utf-8")
                 .sendByteArray(buildResponseBody(token, calendarURL))

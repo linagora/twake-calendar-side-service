@@ -817,6 +817,51 @@ class EventParticipationRouteTest {
     }
 
     @Test
+    void postWithoutPayloadShouldUpdatePartStatOnDavServer(TwakeCalendarGuiceServer server) throws Exception {
+        String eventUid = UUID.randomUUID().toString();
+        upsertCalendarForTest(eventUid);
+
+        Participation participation = getParticipation(eventUid, ParticipantAction.REJECTED);
+        URL participationTokenUrl = getParticipationTokenUrl(participation, server);
+
+        String actualResponse = RestAssured
+            .given()
+            .when()
+            .post(participationTokenUrl)
+            .then()
+            .statusCode(200)
+            .contentType(JSON)
+            .extract()
+            .body().asString();
+
+        assertThatJson(actualResponse)
+            .isEqualTo("""
+                {
+                  "eventJSON": "${json-unit.ignore}",
+                  "attendeeEmail": "%s",
+                  "locale": "${json-unit.ignore}",
+                  "links": {
+                    "yes": "${json-unit.ignore}",
+                    "no": "${json-unit.ignore}",
+                    "maybe": "${json-unit.ignore}"
+                  }
+                }
+                """.formatted(attendee.username().asString()));
+        assertThat(getCalendarEventReportResponse(eventUid)).contains("\"partstat\" : \"DECLINED\"");
+    }
+
+    @ParameterizedTest(name = "{index} - {0}")
+    @MethodSource("invalidJwtProvider")
+    void postShouldReturn401ForInvalidOrMissingJwt(String description, String url) {
+        RestAssured
+            .given()
+            .when()
+            .post(url.replace("{port}", restApiPort + ""))
+            .then()
+            .statusCode(401);
+    }
+
+    @Test
     void shouldReturnValidJwtLinksInResponse(TwakeCalendarGuiceServer server) {
         String eventUid = UUID.randomUUID().toString();
         upsertCalendarForTest(eventUid);

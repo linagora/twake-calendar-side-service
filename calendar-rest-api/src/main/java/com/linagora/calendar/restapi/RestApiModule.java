@@ -137,7 +137,6 @@ import com.linagora.calendar.storage.configuration.resolver.FallbackConfiguratio
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.model.Aud;
 import com.linagora.calendar.storage.secretlink.SecretLinkPermissionChecker;
-import com.linagora.calendar.storage.secretlink.SecretLinkPermissionChecker.NoopPermissionChecker;
 import com.linagora.tmail.james.jmap.ticket.TicketAuthenticationStrategy;
 import com.linagora.tmail.james.jmap.ticket.TicketManager;
 import com.linagora.tmail.james.jmap.ticket.TicketStore;
@@ -218,8 +217,7 @@ public class RestApiModule extends AbstractModule {
 
         bind(TokenInfoResolver.class).to(OidcEndpointsInfoResolver.class);
 
-        bind(NoopPermissionChecker.class).toInstance(new NoopPermissionChecker());
-        bind(SecretLinkPermissionChecker.class).to(NoopPermissionChecker.class);
+        bind(SecretLinkPermissionChecker.class).to(DavSecretLinkPermissionChecker.class);
 
         bind(ParticipationTokenSigner.class).to(ParticipationTokenSigner.Default.class);
         bind(BookedEventTokenSigner.class).to(BookedEventTokenSigner.Default.class);

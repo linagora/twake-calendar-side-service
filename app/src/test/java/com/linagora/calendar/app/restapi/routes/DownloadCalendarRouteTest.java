@@ -305,36 +305,33 @@ class DownloadCalendarRouteTest {
     }
 
     @Test
-    void downloadShouldFailWhenDavServerFails(TwakeCalendarGuiceServer server) {
-        Username newUser = Username.fromLocalPartWithDomain(UUID.randomUUID().toString(), openPaaSUser.username().getDomainPart().get());
-        server.getProbe(CalendarDataProbe.class).addUser(newUser, PASSWORD);
+    void getSecretLinkShouldBeForbiddenWhenUserCannotReadCalendar() {
+        OpenPaaSUser bob = openPaaSUser;
+        OpenPaaSUser alice = openPaaSUser2;
 
-        Username otherUser = Username.fromLocalPartWithDomain(UUID.randomUUID().toString(), openPaaSUser.username().getDomainPart().get());
-        OpenPaaSId openPaaSIdOfOtherUser = server.getProbe(CalendarDataProbe.class).addUser(otherUser, PASSWORD);
-
-        String secretLink = getSecretLink(newUser, CalendarURL.from(openPaaSIdOfOtherUser));
-
-        String response = RestAssured
-            .given()
+        given()
+            .auth().preemptive().basic(alice.username().asString(), PASSWORD)
         .when()
-            .get(secretLink)
+            .get(String.format("/calendar/api/calendars/%s/secret-link", CalendarURL.from(bob.id()).serialize()))
         .then()
-            .statusCode(HttpStatus.SC_SERVICE_UNAVAILABLE)
-            .contentType(JSON)
-            .extract()
-            .body()
-            .asString();
+            .statusCode(HttpStatus.SC_FORBIDDEN);
+    }
 
-        assertThatJson(response)
-            .isEqualTo("""
-                {
-                    "error": {
-                        "code": 503,
-                        "type": "ServiceUnavailable",
-                        "message": "Service Unavailable",
-                        "details": "Service Unavailable"
-                    }
-                }""");
+    @Test
+    void getSecretLinkOnSourceCalendarShouldBeForbiddenForDelegate() {
+        OpenPaaSUser bob = openPaaSUser;     // Owner
+        OpenPaaSUser alice = openPaaSUser2; // Delegate
+
+        CalendarURL bobDefaultCalendar = new CalendarURL(bob.id(), bob.id());
+        davTestHelper.grantDelegation(bob, bobDefaultCalendar, alice, "dav:read");
+
+        // Alice must go through her delegated copy, whose lifecycle follows the delegation
+        given()
+            .auth().preemptive().basic(alice.username().asString(), PASSWORD)
+        .when()
+            .get(String.format("/calendar/api/calendars/%s/secret-link", bobDefaultCalendar.serialize()))
+        .then()
+            .statusCode(HttpStatus.SC_FORBIDDEN);
     }
 
     @Test
