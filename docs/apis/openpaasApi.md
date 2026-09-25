@@ -352,29 +352,6 @@ Supported configuration keys:
    - `jitsiInstanceUrl`: URL of the jitsi server. Advertised from configuration
    - `openPaasVideoconferenceAppUrl`: legacy. Points to the jisi url.
 
-### PUT /api/configurations
-
-```
-PUT /api/configurations?scope=user
-[
- {
-  "name": "core",
-  "configurations": [
-   {
-    "name": "language",
-    "value": "vi"
-   }
-  ]
- }
-]
-```
-
-Allows to update configuration of a user.
-
-This sets the whole configuration object.
-
-Status code: 201
-
 ### PATCH /api/configurations
 
 ```
