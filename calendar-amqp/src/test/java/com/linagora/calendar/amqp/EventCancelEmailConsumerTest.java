@@ -220,7 +220,7 @@ public class EventCancelEmailConsumerTest {
             messageFactory,
             linkFactory,
             usersRepository, resourceDAO, domainDAO,
-            settingsResolver, actionLinkFactory);
+            settingsResolver, actionLinkFactory, mock(MailDeliveryFailureNotifier.class));
 
         consumer = new EventEmailConsumer(channelPool, QueueArguments.Builder::new, mailHandler,
             eventEmailFilter, new RecordingMetricFactory());

@@ -31,6 +31,7 @@ import static org.mockito.Mockito.when;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Clock;
@@ -197,6 +198,8 @@ public class EventInviteEmailConsumerTest {
 
         Path templateDirectory = Paths.get(Paths.get("").toAbsolutePath().getParent().toString(),
             "app", "src", "main", "resources", "templates");
+        Path logoPath = Paths.get(Paths.get("").toAbsolutePath().getParent().toString(),
+            "calendar-rest-api", "src", "main", "resources", "assets", "calendar", "logo.png");
 
         MailTemplateConfiguration mailTemplateConfig = new MailTemplateConfiguration("file://" + templateDirectory.toAbsolutePath(),
             MaybeSender.getMailSender("no-reply@openpaas.org"));
@@ -227,7 +230,9 @@ public class EventInviteEmailConsumerTest {
             messageFactory,
             linkFactory,
             usersRepository,  resourceDAO, domainDAO,
-            settingsResolver, actionLinkFactory);
+            settingsResolver, actionLinkFactory,
+            new MailDeliveryFailureNotifier(settingsResolver, mailTemplateConfig, messageFactory, mailSenderFactory,
+                Files.readAllBytes(logoPath)));
 
         consumer = new EventEmailConsumer(channelPool, QueueArguments.Builder::new, mailHandler,
             eventEmailFilter, new RecordingMetricFactory());
@@ -297,6 +302,41 @@ public class EventInviteEmailConsumerTest {
             assertThat(message.getFrom().getFirst().getName()).isEqualTo(organizer.username().asString());
             assertThat(((Mailbox) message.getTo().getFirst()).getName()).isEqualTo(attendee.username().asString());
         }));
+    }
+
+    @Test
+    void shouldNotifyOrganizerWhenSmtpRejectsInvitationRecipientAsUnknownUser() throws Exception {
+        String attendeeEmail = attendee.username().asString();
+        given(mockSMTPRequestSpecification())
+            .body("""
+                [ { "command": "RCPT TO", "condition": { "operator": "contains", "matchingValue": "ATTENDEE" }, "response": { "code": "550", "message": "5.1.1 Unknown user: ATTENDEE" } } ]
+                """.replace("ATTENDEE", attendeeEmail))
+            .contentType("application/json")
+            .put("/smtpBehaviors");
+
+        String eventUid = UUID.randomUUID().toString();
+        davTestHelper.upsertCalendar(organizer, generateCalendarData(eventUid,
+            organizer.username().asString(), attendeeEmail, PartStat.NEEDS_ACTION), eventUid);
+
+        awaitAtMost.atMost(Duration.ofSeconds(20))
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
+        String rawMessage = smtpMailsResponse.getString("[0].message");
+        assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+        assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(organizer.username().asString());
+        assertThat(TestFixture.extractSubject(rawMessage)).isEqualTo("Email delivery failed");
+        assertThat(getHtml(smtpMailsResponse))
+            .contains(">Subject</p>", "New event from Van Tung TRAN: Twake Calendar - Sprint planning #04")
+            .contains(">Recipient address</p>", attendeeEmail)
+            .contains("The email address you entered does not match any existing user")
+            .contains("cid:logo")
+            .doesNotContain("See in Calendar", "meeting.ics");
+        assertThat(rawMessage)
+            .contains("Content-Type: image/png", "Content-ID: logo")
+            .doesNotContain("text/calendar", "application/ics");
+
+        Files.writeString(Path.of("target", "mail-delivery-failed-en.eml"), rawMessage, StandardCharsets.UTF_8);
     }
 
     @Test

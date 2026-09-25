@@ -1,0 +1,31 @@
+doctype html
+html
+  head
+    meta(charset='UTF-8')
+    meta(name='viewport' content='width=device-width, initial-scale=1')
+  body(style='margin:0;padding:0;background-color:#f4f5f9;font-family:Arial,sans-serif;')
+    table(role='presentation' border='0' cellpadding='0' cellspacing='0' width='100%' style='background-color:#f4f5f9;')
+      tr
+        td(align='center' style='padding:32px 16px;')
+          table(role='presentation' border='0' cellpadding='0' cellspacing='0' width='600' style='width:100%;max-width:600px;background-color:#ffffff;border:1px solid #e5e7eb;border-radius:8px;')
+            tr
+              td(style='padding:26px 32px 22px;border-top:4px solid #f59e0b;')
+                img(src='cid:logo' alt='Twake Calendar Logo' width='210' height='30' style='display:block;border:0;outline:none;text-decoration:none;')
+            tr
+              td(style='padding:0 32px 24px;')
+                table(role='presentation' border='0' cellpadding='0' cellspacing='0' width='100%' style='background-color:#fff3f2;border-left:4px solid #d64b4b;border-radius:4px;')
+                  tr
+                    td(style='padding:20px 22px;')
+                      h1(style='margin:0 0 8px;color:#9f3030;font-size:20px;line-height:28px;')= translator.get('mail_subject')
+                      p(style='margin:0;color:#5c4141;font-size:14px;line-height:22px;')= translator.get('explanation')
+            tr
+              td(style='padding:0 32px 32px;')
+                table(role='presentation' border='0' cellpadding='0' cellspacing='0' width='100%' style='border:1px solid #e5e7eb;border-radius:6px;')
+                  tr
+                    td(style='padding:20px 22px 18px;')
+                      p(style='margin:0 0 6px;color:#8a5a26;font-size:12px;font-weight:bold;letter-spacing:0.4px;')= translator.get('failed_subject')
+                      p(style='margin:0;color:#252a35;font-size:16px;line-height:24px;word-break:break-word;')= content.failedSubject
+                  tr
+                    td(style='padding:18px 22px 20px;border-top:1px solid #e5e7eb;')
+                      p(style='margin:0 0 6px;color:#8a5a26;font-size:12px;font-weight:bold;letter-spacing:0.4px;')= translator.get('recipient')
+                      p(style='margin:0;color:#252a35;font-size:16px;line-height:24px;word-break:break-word;')= content.recipient

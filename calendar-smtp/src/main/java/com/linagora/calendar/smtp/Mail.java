@@ -24,5 +24,13 @@ import org.apache.james.core.MailAddress;
 import org.apache.james.core.MaybeSender;
 import org.apache.james.mime4j.dom.Message;
 
-public record Mail(MaybeSender sender, Collection<MailAddress> recipients, Message message) {
+public record Mail(MaybeSender sender, Collection<MailAddress> recipients, Message message,
+                   UnknownUserHandling unknownUserHandling) {
+    public enum UnknownUserHandling {
+        IGNORE, PROPAGATE
+    }
+
+    public Mail(MaybeSender sender, Collection<MailAddress> recipients, Message message) {
+        this(sender, recipients, message, UnknownUserHandling.IGNORE);
+    }
 }
