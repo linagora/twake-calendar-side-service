@@ -713,6 +713,15 @@ It uses a `jwt` query parameter build in the emailed link.
 GET /calendar/api/calendars/event/participation?jwt=xxx
 ```
 
+The same URL is also served on `POST`, without payload, with the exact same behaviour and response:
+
+```
+POST /calendar/api/calendars/event/participation?jwt=xxx
+```
+
+Clients should prefer `POST` upon an explicit user action: mail link scanners (Safe Links, antivirus sandboxes)
+may load the excal page and thus trigger the `GET`, answering on behalf of the attendee.
+
 A participation token need to have the following claims:
  - `attendeeEmail`
  - `organizerEmail`

@@ -23,6 +23,7 @@ import static com.linagora.calendar.restapi.RestApiConstants.JSON_HEADER;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
@@ -31,6 +32,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.james.core.Username;
 import org.apache.james.jmap.Endpoint;
+import org.apache.james.jmap.JMAPRoute;
 import org.apache.james.metrics.api.MetricFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,6 +66,7 @@ import reactor.netty.http.server.HttpServerResponse;
 public class EventParticipationRoute extends PublicRoute {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(EventParticipationRoute.class);
+    private static final String PATH = "/calendar/api/calendars/event/participation";
     private static final String JWT_PARAM = "jwt";
     private final ParticipationTokenSigner participationTokenSigner;
     private final CalDavEventRepository calDavEventRepository;
@@ -91,7 +94,20 @@ public class EventParticipationRoute extends PublicRoute {
     }
 
     protected Endpoint endpoint() {
-        return new Endpoint(HttpMethod.GET, "/calendar/api/calendars/event/participation");
+        return new Endpoint(HttpMethod.GET, PATH);
+    }
+
+    /**
+     * Also served on POST, without payload, so that clients can apply the answer on an explicit user action
+     * rather than on a GET that link scanners may trigger.
+     */
+    @Override
+    public Stream<JMAPRoute> routes() {
+        return Stream.concat(super.routes(),
+            Stream.of(JMAPRoute.builder()
+                .endpoint(new Endpoint(HttpMethod.POST, PATH))
+                .action((req, res) -> Mono.from(metricFactory.decoratePublisherWithTimerMetric(this.getClass().getSimpleName(), handleRequest(req, res))))
+                .corsHeaders()));
     }
 
     protected Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response) {
