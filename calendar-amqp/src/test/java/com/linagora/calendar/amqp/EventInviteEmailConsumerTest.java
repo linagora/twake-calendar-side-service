@@ -329,7 +329,7 @@ public class EventInviteEmailConsumerTest {
         assertThat(getHtml(smtpMailsResponse))
             .contains(">Subject</p>", "New event from Van Tung TRAN: Twake Calendar - Sprint planning #04")
             .contains(">Recipient address</p>", attendeeEmail)
-            .contains("The mail server did not recognize the recipient address")
+            .contains("The email address you entered does not match any existing user")
             .contains("cid:logo")
             .doesNotContain("See in Calendar", "meeting.ics");
         assertThat(rawMessage)
