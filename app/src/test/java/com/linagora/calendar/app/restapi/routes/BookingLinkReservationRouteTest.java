@@ -1706,6 +1706,7 @@ class BookingLinkReservationRouteTest {
             .transparency(EventTransparency.TRANSPARENT)
             .resources(List.of(resource.id()))
             .alarm(List.of(new BookingLinkAlarm("-PT10M", BookingLinkAlarmAction.EMAIL)))
+            .autoAccept(true)
             .build();
         BookingLink inserted = server.getProbe(BookingLinkProbe.class).insert(openPaaSUser.username(), insertRequest);
         String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();
@@ -1736,6 +1737,42 @@ class BookingLinkReservationRouteTest {
                 ATTENDEE:mailto:vana@example.com
                 END:VALARM
                 """.formatted(openPaaSUser.username().asString()));
+    }
+
+    @Test
+    void pendingBookingOnTransparentLinkShouldBlockItsSlot(TwakeCalendarGuiceServer server) {
+        BookingLinkInsertRequest insertRequest = BookingLinkInsertRequest.builder()
+            .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+            .eventDuration(DURATION_30_MINUTES)
+            .availabilityRules(AVAILABILITY_RULE)
+            .transparency(EventTransparency.TRANSPARENT)
+            .build();
+        BookingLink inserted = server.getProbe(BookingLinkProbe.class).insert(openPaaSUser.username(), insertRequest);
+        String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();
+
+        given()
+            .auth().none()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body(bodyRequest(slotStartUtc))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED);
+
+        assertThat(exportCalendar(openPaaSUser))
+            .contains("TRANSP:OPAQUE")
+            .doesNotContain("TRANSP:TRANSPARENT");
+        assertThat(getAvailableSlots(inserted.publicId()))
+            .doesNotContain(slotStartUtc);
+
+        given()
+            .auth().none()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body(bodyRequest(slotStartUtc))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_UNPROCESSABLE_ENTITY);
     }
 
     private BookingLink insertActiveBookingLink(TwakeCalendarGuiceServer server) {

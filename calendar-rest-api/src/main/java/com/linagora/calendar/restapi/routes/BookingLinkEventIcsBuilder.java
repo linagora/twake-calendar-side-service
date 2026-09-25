@@ -164,7 +164,7 @@ public class BookingLinkEventIcsBuilder {
                               BookingLinkPublicId bookingLinkPublicId,
                               boolean autoAccept,
                               BookingEventOptions options) {
-        Transp transp = new Transp(options.transparency().map(EventTransparency::value).orElse(Transp.VALUE_OPAQUE));
+        Transp transp = new Transp(effectiveTransparency(options, autoAccept).value());
         Clazz clazz = new Clazz(options.visibility().map(EventVisibility::value).orElse(Clazz.VALUE_PUBLIC));
 
         List<BookingAttendee> newExtraAttendees = newExtraAttendees(request, extraAttendees);
@@ -215,6 +215,18 @@ public class BookingLinkEventIcsBuilder {
             throw new IllegalStateException("Generated booking ICS is invalid for eventId " + eventUid.getValue() + ": " + validationResult);
         }
         return event;
+    }
+
+    /**
+     * A booking still awaiting the organizer validation always blocks its slot: were it transparent, the slot
+     * would remain offered and could be booked again. The transparency configured on the link only applies to
+     * bookings that need no validation.
+     */
+    private EventTransparency effectiveTransparency(BookingEventOptions options, boolean autoAccept) {
+        if (!autoAccept) {
+            return EventTransparency.OPAQUE;
+        }
+        return options.transparency().orElse(EventTransparency.OPAQUE);
     }
 
     /**

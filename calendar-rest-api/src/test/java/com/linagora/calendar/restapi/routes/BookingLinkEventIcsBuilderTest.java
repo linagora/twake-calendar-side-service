@@ -399,7 +399,22 @@ public class BookingLinkEventIcsBuilderTest {
     }
 
     @Test
-    void buildShouldUseTransparentWhenTransparencyTransparent() {
+    void buildShouldUseTransparentWhenTransparencyTransparentAndAutoAccept() {
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.just(VISIO_URL), FIXED_UID_GENERATOR);
+
+        BookingEventOptions options = new BookingEventOptions(Optional.empty(),
+            Optional.empty(), Optional.of(EventTransparency.TRANSPARENT), List.of(), List.of());
+
+        String ics = new String(testee.build(bookingRequest(), OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, true, options).block()
+            .icsBytes(), StandardCharsets.UTF_8);
+
+        assertThat(ics)
+            .contains("TRANSP:TRANSPARENT")
+            .doesNotContain("TRANSP:OPAQUE");
+    }
+
+    @Test
+    void buildShouldUseOpaqueForPendingBookingEvenWhenTransparencyTransparent() {
         BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.just(VISIO_URL), FIXED_UID_GENERATOR);
 
         BookingEventOptions options = new BookingEventOptions(Optional.empty(),
@@ -409,8 +424,8 @@ public class BookingLinkEventIcsBuilderTest {
             .icsBytes(), StandardCharsets.UTF_8);
 
         assertThat(ics)
-            .contains("TRANSP:TRANSPARENT")
-            .doesNotContain("TRANSP:OPAQUE");
+            .contains("TRANSP:OPAQUE")
+            .doesNotContain("TRANSP:TRANSPARENT");
     }
 
     @Test
