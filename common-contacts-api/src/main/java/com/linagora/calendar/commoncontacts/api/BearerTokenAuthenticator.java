@@ -53,7 +53,11 @@ public class BearerTokenAuthenticator {
     }
 
     private Optional<String> extractBearerToken(HttpServerRequest request) {
-        return Optional.ofNullable(request.requestHeaders().get(HttpHeaderNames.AUTHORIZATION))
+        List<String> headers = request.requestHeaders().getAll(HttpHeaderNames.AUTHORIZATION);
+        if (headers.size() != 1) {
+            return Optional.empty();
+        }
+        return Optional.of(headers.getFirst())
             .filter(header -> Strings.CI.startsWith(header, BEARER_PREFIX))
             .map(header -> header.substring(BEARER_PREFIX.length()).trim());
     }
