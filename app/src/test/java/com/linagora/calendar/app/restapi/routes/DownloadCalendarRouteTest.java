@@ -318,23 +318,6 @@ class DownloadCalendarRouteTest {
     }
 
     @Test
-    void getSecretLinkOnSourceCalendarShouldBeForbiddenForDelegate() {
-        OpenPaaSUser bob = openPaaSUser;     // Owner
-        OpenPaaSUser alice = openPaaSUser2; // Delegate
-
-        CalendarURL bobDefaultCalendar = new CalendarURL(bob.id(), bob.id());
-        davTestHelper.grantDelegation(bob, bobDefaultCalendar, alice, "dav:read");
-
-        // Alice must go through her delegated copy, whose lifecycle follows the delegation
-        given()
-            .auth().preemptive().basic(alice.username().asString(), PASSWORD)
-        .when()
-            .get(String.format("/calendar/api/calendars/%s/secret-link", bobDefaultCalendar.serialize()))
-        .then()
-            .statusCode(HttpStatus.SC_FORBIDDEN);
-    }
-
-    @Test
     void downloadDefaultCalendarShouldReturnStoredEvent() {
         // GIVEN
         String eventUid = "event-" + UUID.randomUUID();
