@@ -264,27 +264,38 @@ class CommonContactsSearchRouteTest {
                 ]""");
     }
 
-    @Test
-    void shouldReturnEmptyWhenOnlyUnsupportedObjectTypesAreRequested(TwakeCalendarGuiceServer server) {
-        addContact(server, BOB, "sasuke@domain.tld", "sasuke", "uchiha");
-
-        String response = given()
+    @ParameterizedTest
+    @ValueSource(strings = {"\"user\"", "\"resource\"", "\"team-calendar\"", "\"unknown\"", "\"contact\", \"user\""})
+    void shouldRejectUnsupportedObjectTypes(String objectTypes) {
+        given()
             .body("""
                 {
                   "user": "bob@open-paas.ltd",
                   "q": "sasuke",
-                  "objectTypes": [ "resource", "team-calendar" ],
+                  "objectTypes": [ %s ],
+                  "limit": 10
+                }""".formatted(objectTypes))
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @Test
+    void shouldRejectUserObjectTypeWithExplicitMessage() {
+        given()
+            .body("""
+                {
+                  "user": "bob@open-paas.ltd",
+                  "q": "sasuke",
+                  "objectTypes": [ "user" ],
                   "limit": 10
                 }""")
         .when()
             .post()
         .then()
-            .statusCode(HttpStatus.SC_OK)
-            .extract()
-            .body()
-            .asString();
-
-        assertThatJson(response).isEqualTo("[]");
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.details", equalTo("Unsupported object type: 'user'. Supported: [contact]"));
     }
 
     @Test

@@ -51,7 +51,7 @@ public class CommonContactsSearchRoute {
     public static final Endpoint ENDPOINT = new Endpoint(HttpMethod.POST, "/api/people/search");
     public static final int MAX_RESULTS_LIMIT = 256;
     public static final int MAX_RESULTS_WINDOW = 1000;
-    public static final Set<ObjectType> SUPPORTED_OBJECT_TYPES = ImmutableSet.of(ObjectType.USER, ObjectType.CONTACT);
+    public static final Set<ObjectType> SUPPORTED_OBJECT_TYPES = ImmutableSet.of(ObjectType.CONTACT);
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -68,6 +68,7 @@ public class CommonContactsSearchRoute {
             Preconditions.checkArgument(limit <= MAX_RESULTS_LIMIT, "Maximum limit allowed: %s, but got: %s", MAX_RESULTS_LIMIT, limit);
             Preconditions.checkArgument(offset >= 0, "Offset must be positive");
             Preconditions.checkArgument(offset + limit <= MAX_RESULTS_WINDOW, "offset + limit must not exceed %s", MAX_RESULTS_WINDOW);
+            effectiveObjectTypes();
             return this;
         }
 
@@ -86,9 +87,15 @@ public class CommonContactsSearchRoute {
                 return SUPPORTED_OBJECT_TYPES;
             }
             return objectTypes.stream()
-                .flatMap(objectType -> ObjectType.parse(objectType).stream())
-                .filter(SUPPORTED_OBJECT_TYPES::contains)
+                .map(SearchRequestDTO::parseSupportedObjectType)
                 .collect(ImmutableSet.toImmutableSet());
+        }
+
+        private static ObjectType parseSupportedObjectType(String objectType) {
+            return ObjectType.parse(objectType)
+                .filter(SUPPORTED_OBJECT_TYPES::contains)
+                .orElseThrow(() -> new IllegalArgumentException("Unsupported object type: '%s'. Supported: %s"
+                    .formatted(objectType, SUPPORTED_OBJECT_TYPES.stream().map(ObjectType::serialize).toList())));
         }
     }
 
@@ -148,12 +155,8 @@ public class CommonContactsSearchRoute {
     }
 
     private Flux<ResponseDTO> search(SearchRequestDTO request) {
-        Set<ObjectType> objectTypes = request.effectiveObjectTypes();
-        if (objectTypes.isEmpty()) {
-            return Flux.empty();
-        }
         return peopleSearchService.search(sessionProvider.createSession(request.username()),
-                request.queryOrEmpty(), objectTypes, request.offset() + request.limit())
+                request.queryOrEmpty(), request.effectiveObjectTypes(), request.offset() + request.limit())
             .skip(request.offset());
     }
 }

@@ -49,7 +49,7 @@ Content-Type: application/json
 |-------|----------|-------------|
 | `user` | Yes | Mail address of the user on whose behalf the search is done. Only contacts visible to this user are returned. |
 | `q` | No | Searched text. Defaults to an empty string. |
-| `objectTypes` | No | Among `contact` and `user`. Other values are ignored. Omitted or empty: both types are searched. If only unsupported values are given the result is empty. |
+| `objectTypes` | No | Only `contact` is supported. Any other value is rejected with `400 Bad Request`. Omitted or empty: `contact` is searched. |
 | `limit` | Yes | Maximum number of results. Between `1` and `256`. |
 | `offset` | No | Number of results to skip. Defaults to `0`. `offset + limit` must not exceed `1000`. |
 
@@ -69,11 +69,11 @@ Returns `200 OK`:
 ]
 ```
 
-Results are sorted by object type (`user` first, then `contact`) then by display name.
+Results are sorted by display name.
 
 Errors:
 
-- `400 Bad Request` for a missing or malformed body, a missing `user`, a `user` that is not a mail address, or
-  out of range `limit` / `offset`. The body follows the [error format](errorTypes.md).
+- `400 Bad Request` for a missing or malformed body, a missing `user`, a `user` that is not a mail address,
+  an unsupported object type, or out of range `limit` / `offset`. The body follows the [error format](errorTypes.md).
 - `401 Unauthorized` for a missing or invalid Bearer token.
 - `404 Not Found` for any other route.

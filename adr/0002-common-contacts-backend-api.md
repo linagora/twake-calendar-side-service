@@ -32,8 +32,8 @@ in a **dedicated maven module**, `common-contacts-api`.
   routing so that unauthenticated callers cannot probe the exposed routes.
 - **Impersonation**: as the caller is a backend, the request body carries the `user` on whose behalf the search is
   done. Results are the ones this user would get from the SPA.
-- **Scope**: only `contact` and `user` object types are served, which is what an autocomplete needs. Resources and
-  team calendars are calendar specific and are not exposed. The response only carries `id`, `objectType`, `names`
+- **Scope**: only the `contact` object type is served, which is what an autocomplete needs. Other object types
+  (`user`, resources, team calendars) are not exposed and requesting them is rejected with `400 Bad Request`. The response only carries `id`, `objectType`, `names`
   and `emailAddresses`: avatar URLs point to the end-user authenticated REST API and are meaningless for backends.
   Pagination via `offset` is added, bounded by a maximum window of 1000 results.
 - **Reuse**: the search itself (providers, sorting, user search restrictions of the domain) is extracted from
