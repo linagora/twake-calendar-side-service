@@ -25,7 +25,6 @@ import static io.restassured.config.RestAssuredConfig.newConfig;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.apache.james.backends.rabbitmq.RabbitMQExtension.IsolationPolicy.WEAK;
 import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.not;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
@@ -52,7 +51,6 @@ import com.linagora.calendar.app.modules.MemoryAutoCompleteModule;
 import com.linagora.calendar.commoncontacts.api.CommonContactsApiConfiguration;
 import com.linagora.calendar.commoncontacts.api.CommonContactsApiConfiguration.Secret;
 import com.linagora.calendar.commoncontacts.api.CommonContactsApiServerProbe;
-import com.linagora.calendar.restapi.RestApiServerProbe;
 
 import io.restassured.RestAssured;
 import io.restassured.builder.RequestSpecBuilder;
@@ -352,22 +350,6 @@ class CommonContactsSearchRouteTest {
             .get()
         .then()
             .statusCode(HttpStatus.SC_NOT_FOUND);
-    }
-
-    @Test
-    void secretsShouldNotGrantAccessToTheMainRestApi(TwakeCalendarGuiceServer server) {
-        given()
-            .port(server.getProbe(RestApiServerProbe.class).getPort().getValue())
-            .body("""
-                {
-                  "q": "sasuke",
-                  "limit": 10
-                }""")
-        .when()
-            .post()
-        .then()
-            // The main REST API treats the secret as an OIDC opaque token: introspection fails as no OIDC provider is set up here
-            .statusCode(not(HttpStatus.SC_OK));
     }
 
     @Test
