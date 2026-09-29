@@ -100,6 +100,10 @@
         </dependency>
         <dependency>
             <groupId>${project.groupId}</groupId>
+            <artifactId>common-contacts-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>${project.groupId}</groupId>
             <artifactId>calendar-scheduling</artifactId>
         </dependency>
         <dependency>

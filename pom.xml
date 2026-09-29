@@ -44,6 +44,7 @@
         <module>calendar-scheduling</module>
         <module>calendar-smtp</module>
         <module>calendar-webadmin</module>
+        <module>common-contacts-api</module>
         <module>saas/saas-rabbitmq</module>
         <module>storage-api</module>
         <module>storage-ldap</module>
@@ -145,6 +146,11 @@
             <dependency>
                 <groupId>${project.groupId}</groupId>
                 <artifactId>calendar-webadmin</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>${project.groupId}</groupId>
+                <artifactId>common-contacts-api</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

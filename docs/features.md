@@ -7,6 +7,9 @@ mechanisms.
 
 Exposes a [webadmin interface](apis/webadmin.md) for management.
 
+Exposes, on a dedicated port, a [backend autocomplete API](apis/commonContactsApi.md) allowing other Twake Workplace
+backends to search the contacts of a user.
+
 Additionally, the side service handles sending emails for the calendar stack. Mails are internationalized based on user
 settings. This includes:
 
