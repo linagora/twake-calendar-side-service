@@ -1541,7 +1541,7 @@ authenticated with the technical token of the domain.
 GET /domains/{domain}/addressbooks/{addressBookId}/contactCount
 ```
 
-Examples:
+Where `{addressBookId}` can have the values `dab` and `domain-members`
 
 ```
 GET /domains/linagora.com/addressbooks/dab/contactCount
