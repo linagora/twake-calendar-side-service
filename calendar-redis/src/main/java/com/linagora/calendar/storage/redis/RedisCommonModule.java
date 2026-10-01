@@ -22,13 +22,24 @@ import java.io.FileNotFoundException;
 
 import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.james.backends.redis.RedisConfiguration;
+import org.apache.james.backends.redis.RedisHealthCheck;
+import org.apache.james.core.healthcheck.HealthCheck;
 import org.apache.james.utils.PropertiesProvider;
 
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
+import com.google.inject.Scopes;
 import com.google.inject.Singleton;
+import com.google.inject.multibindings.Multibinder;
 
 public class RedisCommonModule extends AbstractModule {
+    @Override
+    protected void configure() {
+        bind(RedisHealthCheck.class).in(Scopes.SINGLETON);
+        Multibinder.newSetBinder(binder(), HealthCheck.class)
+            .addBinding().to(RedisHealthCheck.class);
+    }
+
     @Provides
     @Singleton
     public RedisConfiguration redisConfiguration(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
