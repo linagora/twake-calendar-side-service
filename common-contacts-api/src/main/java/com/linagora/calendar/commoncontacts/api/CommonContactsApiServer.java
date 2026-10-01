@@ -67,7 +67,8 @@ public class CommonContactsApiServer implements Startable {
                 .handle(this::handle)
                 .bindNow());
         server.ifPresentOrElse(
-            disposableServer -> LOGGER.info("Common contacts API listening on port {}", disposableServer.port()),
+            disposableServer -> LOGGER.info("Common contacts API listening on port {} with {} configured secrets",
+                disposableServer.port(), configuration.secrets().size()),
             () -> LOGGER.info("Common contacts API is disabled as '{}' is not configured", CommonContactsApiConfiguration.PORT_PROPERTY));
     }
 
