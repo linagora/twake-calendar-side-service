@@ -521,8 +521,12 @@ public class CardDavClient extends DavClient {
     }
 
     public Mono<byte[]> listUserAddressBooksAsBytes(Username username, OpenPaaSId userId) {
-        String uri = ADDRESS_BOOK_LIST_URI_TEMPLATE.formatted(userId.value());
-        return httpClientWithImpersonation(username)
+        return listAddressBooksAsBytes(Mono.just(httpClientWithImpersonation(username)), userId);
+    }
+
+    private Mono<byte[]> listAddressBooksAsBytes(Mono<HttpClient> authenticatedClient, OpenPaaSId baseId) {
+        String uri = ADDRESS_BOOK_LIST_URI_TEMPLATE.formatted(baseId.value());
+        return authenticatedClient.flatMap(client -> client
             .headers(headers -> headers.add(HttpHeaderNames.ACCEPT, "application/json"))
             .get()
             .uri(uri)
@@ -533,9 +537,9 @@ public class CardDavClient extends DavClient {
                 return buf.asString(StandardCharsets.UTF_8)
                     .switchIfEmpty(Mono.just(StringUtils.EMPTY))
                     .flatMap(errorBody -> Mono.error(new DavClientException(
-                        "Unexpected status code: %d when listing address books for user %s\n%s"
-                            .formatted(response.status().code(), userId.value(), errorBody))));
-            });
+                        "Unexpected status code: %d when listing address books for %s\n%s"
+                            .formatted(response.status().code(), baseId.value(), errorBody))));
+            }));
     }
 
     public Mono<Boolean> addressBookExists(Username username, OpenPaaSId userId, String addressBookId) {
@@ -591,25 +595,37 @@ public class CardDavClient extends DavClient {
      * Counts the contacts of an address book. Empty when the address book does not exist.
      */
     public Mono<Long> countContacts(Username username, OpenPaaSId userId, String addressBookId) {
-        return retrieveAddressBookMetadata(username, userId, addressBookId)
+        return countContacts(Mono.just(httpClientWithImpersonation(username)), new AddressBookURL(userId, addressBookId));
+    }
+
+    /**
+     * Counts the contacts of a domain address book (e.g. {@code dab}, {@code domain-members}).
+     * Empty when the address book does not exist.
+     */
+    public Mono<Long> countDomainContacts(OpenPaaSId domainId, String addressBookId) {
+        return countContacts(httpClientWithTechnicalToken(domainId).cache(), new AddressBookURL(domainId, addressBookId));
+    }
+
+    private Mono<Long> countContacts(Mono<HttpClient> authenticatedClient, AddressBookURL addressBookURL) {
+        return retrieveAddressBookMetadata(authenticatedClient, addressBookURL)
             .flatMap(addressBook -> Optional.of(addressBook.path(NUMBER_OF_CONTACTS_PROPERTY))
                 .filter(JsonNode::isNumber)
                 .map(JsonNode::asLong)
                 .map(Mono::just)
                 // Mirrors of shared and subscribed address books carry no contact count: count them explicitly.
-                .orElseGet(() -> countContactsViaReport(username, new AddressBookURL(userId, addressBookId))));
+                .orElseGet(() -> countContactsViaReport(authenticatedClient, addressBookURL)));
     }
 
-    private Mono<JsonNode> retrieveAddressBookMetadata(Username username, OpenPaaSId userId, String addressBookId) {
-        String href = "/addressbooks/%s/%s.json".formatted(userId.value(), addressBookId);
-        return listUserAddressBooksAsBytes(username, userId)
+    private Mono<JsonNode> retrieveAddressBookMetadata(Mono<HttpClient> authenticatedClient, AddressBookURL addressBookURL) {
+        String href = addressBookURL.asUri().toASCIIString() + ".json";
+        return listAddressBooksAsBytes(authenticatedClient, addressBookURL.baseId())
             .flatMapIterable(json -> extractAddressBooks(new String(json, StandardCharsets.UTF_8)))
             .filter(addressBook -> href.equals(addressBook.path("_links").path("self").path("href").asText()))
             .next();
     }
 
-    private Mono<Long> countContactsViaReport(Username username, AddressBookURL addressBookURL) {
-        return reportAddressBookContacts(Mono.just(httpClientWithImpersonation(username)), addressBookURL, ADDRESS_BOOK_ETAG_REPORT)
+    private Mono<Long> countContactsViaReport(Mono<HttpClient> authenticatedClient, AddressBookURL addressBookURL) {
+        return reportAddressBookContacts(authenticatedClient, addressBookURL, ADDRESS_BOOK_ETAG_REPORT)
             .map(AddressBookReportXmlResponse::countContacts);
     }
 

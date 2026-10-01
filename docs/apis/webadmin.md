@@ -1778,6 +1778,38 @@ accepts integer values between 2 and 5 matching the WebDAV sharing spec:
 - `400`: missing or malformed `dav:sharee` array, or an invalid `dav:share-access` value
 - `404`: the user or the address book does not exist
 
+## Domain address book management routes
+
+Administrative management of the address books a domain owns, namely:
+- `dab`: the domain address book
+- `domain-members`: the address book listing the members of the domain (see [Domain member synchronisation](#domain-member-synchronisation))
+
+These routes proxy the Sabre DAV server, authenticated with a technical token of the targeted domain.
+
+### Counting the contacts of a domain address book
+
+```
+GET /domains/{domain}/addressbooks/{addressBookId}/contactCount
+```
+
+Examples:
+
+```
+GET /domains/linagora.com/addressbooks/dab/contactCount
+GET /domains/linagora.com/addressbooks/domain-members/contactCount
+```
+
+Returns the number of contacts of the address book:
+
+```json
+{"count": 805}
+```
+
+**Status codes**:
+- `200`: the contact count is returned
+- `400`: the domain is invalid
+- `404`: the domain or the address book does not exist
+
 ## User booking link routes
 
 These routes let an administrator manage the [booking links](bookingLink.md) of a given user.
