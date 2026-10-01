@@ -171,6 +171,49 @@ public interface OpenPaaSUserDAOContract {
     }
 
     @Test
+    default void searchShouldIgnoreAccentsInStoredNames() {
+        Domain domain = Domain.of("domain.tld");
+        OpenPaaSUser user = testee().add(USERNAME, "Théo", "Lefèvre").block();
+
+        assertThat(testee().search(domain, "theo", 10).collectList().block()).contains(user);
+        assertThat(testee().search(domain, "THEO", 10).collectList().block()).contains(user);
+        assertThat(testee().search(domain, "lefev", 10).collectList().block()).contains(user);
+    }
+
+    @Test
+    default void searchShouldIgnoreAccentsInQuery() {
+        Domain domain = Domain.of("domain.tld");
+        OpenPaaSUser user = testee().add(USERNAME, "Theo", "Lefevre").block();
+
+        assertThat(testee().search(domain, "Théo", 10).collectList().block()).contains(user);
+        assertThat(testee().search(domain, "lefè", 10).collectList().block()).contains(user);
+    }
+
+    @Test
+    default void searchShouldIgnoreAccentsInComposedFirstname() {
+        Domain domain = Domain.of("domain.tld");
+        OpenPaaSUser user = testee().add(USERNAME, "Jean Hélène", "Dupont").block();
+
+        assertThat(testee().search(domain, "helene", 10).collectList().block()).contains(user);
+    }
+
+    @Test
+    default void searchShouldNotMatchDifferentLetters() {
+        Domain domain = Domain.of("domain.tld");
+        testee().add(USERNAME, "Théo", "Lefèvre").block();
+
+        assertThat(testee().search(domain, "thao", 10).collectList().block()).isEmpty();
+    }
+
+    @Test
+    default void searchShouldTreatRegexCharactersLiterally() {
+        Domain domain = Domain.of("domain.tld");
+        testee().add(USERNAME, "Théo", "Lefèvre").block();
+
+        assertThat(testee().search(domain, "th.o", 10).collectList().block()).isEmpty();
+    }
+
+    @Test
     default void searchShouldRespectLimit() {
         Domain domain = Domain.of("domain.tld");
         testee().add(USERNAME, "User", "One").block();

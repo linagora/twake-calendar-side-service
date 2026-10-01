@@ -24,6 +24,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
@@ -123,10 +124,14 @@ public class MemoryOpenPaaSUserDAO implements OpenPaaSUserDAO {
         return Flux.fromIterable(hashMap.values())
             .filter(user -> user.username().getDomainPart().map(domain::equals).orElse(false))
             .filter(user ->
-                Strings.CI.contains(user.username().asString(), query)
-                    || Strings.CI.contains(user.firstname(), query)
-                    || Strings.CI.contains(user.lastname(), query))
+                containsIgnoringCaseAndAccents(user.username().asString(), query)
+                    || containsIgnoringCaseAndAccents(user.firstname(), query)
+                    || containsIgnoringCaseAndAccents(user.lastname(), query))
             .take(limit);
+    }
+
+    private boolean containsIgnoringCaseAndAccents(String value, String query) {
+        return Strings.CI.contains(StringUtils.stripAccents(value), StringUtils.stripAccents(query));
     }
 
     @Override
