@@ -173,8 +173,7 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
 
     @Override
     public Flux<OpenPaaSUser> search(Domain domain, String query, int limit) {
-        Pattern searchPattern = Pattern.compile("^" + Pattern.quote(query),
-            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+        Pattern searchPattern = AccentInsensitivePrefixPattern.of(query);
 
         return domainDAO.retrieve(domain)
             .flatMapMany(openPaaSDomain ->
