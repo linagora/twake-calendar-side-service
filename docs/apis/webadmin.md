@@ -1541,7 +1541,10 @@ authenticated with the technical token of the domain.
 GET /domains/{domain}/addressbooks/{addressBookId}/contactCount
 ```
 
-Where `{addressBookId}` can have the values `dab` and `domain-members`
+Where `{addressBookId}` can have the values `dab` and `domain-members`:
+
+ - `domain-members` holds the contact, often extracted by LDAP, of the members of the domain
+ - `dab` stands for `Domain Address Book` holds extra contacts visible by all members of the domain
 
 ```
 GET /domains/linagora.com/addressbooks/dab/contactCount
