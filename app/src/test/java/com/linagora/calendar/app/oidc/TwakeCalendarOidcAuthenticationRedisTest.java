@@ -22,6 +22,7 @@ import static com.linagora.calendar.app.AppTestHelper.COOKIE_RESOLUTION_PATH;
 import static io.restassured.RestAssured.given;
 import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
+import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.apache.james.backends.rabbitmq.RabbitMQExtension.IsolationPolicy.WEAK;
 
 import java.net.URI;
@@ -37,6 +38,7 @@ import org.apache.james.backends.redis.StandaloneRedisConfiguration;
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
 import org.apache.james.jwt.introspection.IntrospectionEndpoint;
+import org.apache.james.utils.WebAdminGuiceProbe;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -180,6 +182,32 @@ public class TwakeCalendarOidcAuthenticationRedisTest {
                 "sid": "dT/8+UDx1lWp1bRZkdhbS1i6ZfYhf8+bWAZQs8p0T/c",
                 "iss": "https://sso.linagora.com"
               }""".formatted(Clock.systemUTC().instant().plus(Duration.ofHours(1)).getEpochSecond()), 200);
+    }
+
+    @Test
+    void webadminHealthcheckShouldExposeRedis(TwakeCalendarGuiceServer server) {
+        String body = given(new RequestSpecBuilder()
+                .setPort(server.getProbe(WebAdminGuiceProbe.class).getWebAdminPort().getValue())
+                .build())
+        .when()
+            .get("/healthcheck")
+        .then()
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(body)
+            .inPath("checks")
+            .isArray()
+            .anySatisfy(node ->
+                assertThatJson(node).isEqualTo("""
+                    {
+                      "componentName" : "Redis",
+                      "escapedComponentName" : "Redis",
+                      "status" : "healthy",
+                      "cause" : null
+                    }
+                    """));
     }
 
     @Test
