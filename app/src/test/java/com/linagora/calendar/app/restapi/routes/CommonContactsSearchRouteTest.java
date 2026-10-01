@@ -121,8 +121,7 @@ class CommonContactsSearchRouteTest {
                   "user": "bob@open-paas.ltd",
                   "q": "sasuke",
                   "objectTypes": [ "contact" ],
-                  "limit": 10,
-                  "offset": 0
+                  "limit": 10
                 }""")
         .when()
             .post()
@@ -208,7 +207,7 @@ class CommonContactsSearchRouteTest {
     }
 
     @Test
-    void shouldApplyOffsetAndLimit(TwakeCalendarGuiceServer server) {
+    void shouldApplyLimit(TwakeCalendarGuiceServer server) {
         addContact(server, BOB, "sasuke1@domain.tld", "sasuke", "a");
         addContact(server, BOB, "sasuke2@domain.tld", "sasuke", "b");
         addContact(server, BOB, "sasuke3@domain.tld", "sasuke", "c");
@@ -219,8 +218,7 @@ class CommonContactsSearchRouteTest {
                   "user": "bob@open-paas.ltd",
                   "q": "sasuke",
                   "objectTypes": [ "contact" ],
-                  "limit": 1,
-                  "offset": 1
+                  "limit": 1
                 }""")
         .when()
             .post()
@@ -234,7 +232,7 @@ class CommonContactsSearchRouteTest {
             .withOptions(Option.IGNORING_EXTRA_FIELDS)
             .isEqualTo("""
                 [
-                  { emailAddresses: [ { value: "sasuke2@domain.tld", type: "Work" } ] }
+                  { emailAddresses: [ { value: "sasuke1@domain.tld", type: "Work" } ] }
                 ]""");
     }
 
@@ -392,23 +390,6 @@ class CommonContactsSearchRouteTest {
                   "q": "sasuke",
                   "limit": %d
                 }""".formatted(limit))
-        .when()
-            .post()
-        .then()
-            .statusCode(HttpStatus.SC_BAD_REQUEST);
-    }
-
-    @ParameterizedTest
-    @ValueSource(ints = {-1, 991})
-    void shouldRejectInvalidOffset(int offset) {
-        given()
-            .body("""
-                {
-                  "user": "bob@open-paas.ltd",
-                  "q": "sasuke",
-                  "limit": 10,
-                  "offset": %d
-                }""".formatted(offset))
         .when()
             .post()
         .then()

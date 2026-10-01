@@ -40,8 +40,7 @@ Content-Type: application/json
   "user": "naruto@domain.tld",
   "q": "sasuke",
   "objectTypes": [ "contact" ],
-  "limit": 10,
-  "offset": 0
+  "limit": 10
 }
 ```
 
@@ -51,7 +50,6 @@ Content-Type: application/json
 | `q` | No | Searched text. Defaults to an empty string. |
 | `objectTypes` | No | Only `contact` is supported. Any other value is rejected with `400 Bad Request`. Omitted or empty: `contact` is searched. |
 | `limit` | Yes | Maximum number of results. Between `1` and `256`. |
-| `offset` | No | Number of results to skip. Defaults to `0`. `offset + limit` must not exceed `1000`. |
 
 The semantics are the ones of the OpenPaaS people search API used by the calendar SPA: user search restrictions
 configured for the domain of `user` apply.
@@ -74,6 +72,6 @@ Results are sorted by display name.
 Errors:
 
 - `400 Bad Request` for a missing or malformed body, a missing `user`, a `user` that is not a mail address,
-  an unsupported object type, or out of range `limit` / `offset`. The body follows the [error format](errorTypes.md).
+  an unsupported object type, or out of range `limit`. The body follows the [error format](errorTypes.md).
 - `401 Unauthorized` for a missing or invalid Bearer token.
 - `404 Not Found` for any other route.

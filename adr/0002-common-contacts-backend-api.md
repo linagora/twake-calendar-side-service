@@ -35,7 +35,6 @@ in a **dedicated maven module**, `common-contacts-api`.
 - **Scope**: only the `contact` object type is served, which is what an autocomplete needs. Other object types
   (`user`, resources, team calendars) are not exposed and requesting them is rejected with `400 Bad Request`. The response only carries `id`, `objectType`, `names`
   and `emailAddresses`: avatar URLs point to the end-user authenticated REST API and are meaningless for backends.
-  Pagination via `offset` is added, bounded by a maximum window of 1000 results.
 - **Reuse**: the search itself (providers, sorting, user search restrictions of the domain) is extracted from
   `PeopleSearchRoute` into `PeopleSearchService` in `calendar-rest-api` and shared by both APIs. Error responses
   reuse `ErrorResponse`.
