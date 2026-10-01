@@ -18,9 +18,7 @@
 
 package com.linagora.calendar.restapi.routes;
 
-import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.UnaryOperator;
@@ -43,13 +41,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Sets;
-import com.linagora.calendar.restapi.routes.people.search.PeopleSearchProvider;
+import com.linagora.calendar.restapi.routes.people.search.PeopleSearchService;
 
 import io.netty.handler.codec.http.HttpMethod;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.server.HttpServerRequest;
 import reactor.netty.http.server.HttpServerResponse;
@@ -66,7 +61,7 @@ public class PeopleSearchRoute extends CalendarRoute {
             return name().toLowerCase().replace('_', '-');
         }
 
-        static Optional<ObjectType> parse(String s) {
+        public static Optional<ObjectType> parse(String s) {
             return Stream.of(ObjectType.values())
                 .filter(t -> t.serialize().equalsIgnoreCase(s))
                 .findAny();
@@ -138,23 +133,13 @@ public class PeopleSearchRoute extends CalendarRoute {
         }
     }
 
-    private static final Map<String, Integer> OBJECT_TYPE_ORDER = ImmutableMap.of(
-        ObjectType.USER.serialize(), 0,
-        ObjectType.RESOURCE.serialize(), 1,
-        ObjectType.CONTACT.serialize(), 2,
-        ObjectType.TEAM_CALENDAR.serialize(), 3);
-
-    private static final Comparator<ResponseDTO> RESULT_COMPARATOR =
-        Comparator.<ResponseDTO>comparingInt(dto -> OBJECT_TYPE_ORDER.getOrDefault(dto.getObjectType(), Integer.MAX_VALUE))
-            .thenComparing(ResponseDTO::getDisplayName, String.CASE_INSENSITIVE_ORDER);
-
-    private final Set<PeopleSearchProvider> searchProviders;
+    private final PeopleSearchService peopleSearchService;
 
     @Inject
     public PeopleSearchRoute(Authenticator authenticator,
-                             MetricFactory metricFactory, Set<PeopleSearchProvider> searchProviders) {
+                             MetricFactory metricFactory, PeopleSearchService peopleSearchService) {
         super(authenticator, metricFactory);
-        this.searchProviders = searchProviders;
+        this.peopleSearchService = peopleSearchService;
     }
 
     @Override
@@ -167,7 +152,7 @@ public class PeopleSearchRoute extends CalendarRoute {
         return req.receive().aggregate().asByteArray()
             .map(Throwing.function(bytes -> OBJECT_MAPPER.readValue(bytes, SearchRequestDTO.class)))
             .map(validateRequest())
-            .flatMapMany(requestDTO -> search(session, requestDTO.query, requestDTO.parsedObjectTypes(), requestDTO.limit))
+            .flatMapMany(requestDTO -> peopleSearchService.search(session, requestDTO.query, requestDTO.parsedObjectTypes(), requestDTO.limit))
             .collectList()
             .map(Throwing.function(OBJECT_MAPPER::writeValueAsBytes))
             .flatMap(bytes -> res.status(200)
@@ -182,16 +167,5 @@ public class PeopleSearchRoute extends CalendarRoute {
             Preconditions.checkArgument(requestDTO.limit <= MAX_RESULTS_LIMIT, "Maximum limit allowed: " + MAX_RESULTS_LIMIT + ", but got: " + requestDTO.limit);
             return requestDTO;
         };
-    }
-
-    private Flux<ResponseDTO> search(MailboxSession session, String query, Set<ObjectType> objectTypesFilter, int limit) {
-        return Flux.fromIterable(searchProviders)
-            .filter(provider -> objectTypesFilter.isEmpty() || !Sets.intersection(
-                objectTypesFilter,
-                provider.supportedTypes()).isEmpty())
-            .flatMap(provider -> provider.search(session, query, objectTypesFilter, limit))
-            .collectSortedList(RESULT_COMPARATOR)
-            .flatMapIterable(results -> results)
-            .take(limit);
     }
 }

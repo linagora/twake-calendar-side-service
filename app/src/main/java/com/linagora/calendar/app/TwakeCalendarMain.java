@@ -71,6 +71,7 @@ import com.linagora.calendar.app.modules.MemoryAutoCompleteModule;
 import com.linagora.calendar.app.modules.MemoryUserModule;
 import com.linagora.calendar.app.modules.OpenSearchClientModule;
 import com.linagora.calendar.app.modules.TwakeCalendarRabbitMQModule;
+import com.linagora.calendar.commoncontacts.api.CommonContactsApiModule;
 import com.linagora.calendar.dav.DavModule;
 import com.linagora.calendar.restapi.MeetRestApiModule;
 import com.linagora.calendar.restapi.RestApiModule;
@@ -152,6 +153,7 @@ public class TwakeCalendarMain {
                 chooseMeet(configuration.meetEnabled()),
                 new FileUploadConfigurationModule(),
                 new RestApiModule(),
+                new CommonContactsApiModule(),
                 new TaskManagerModule(),
                 new DavModule(),
                 new CalendarAmqpModule(),
