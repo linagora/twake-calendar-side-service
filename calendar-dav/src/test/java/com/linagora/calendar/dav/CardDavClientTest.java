@@ -267,6 +267,33 @@ public class CardDavClientTest {
     }
 
     @Test
+    void countDomainContactsShouldReturnContactCount() {
+        OpenPaaSDomain domain = mongoDBOpenPaaSDomainDAO.add(Domain.of("new-domain" + UUID.randomUUID() + ".tld")).block();
+        davTestHelper.createDomainAddressBook(domain.id()).block();
+        IntStream.range(0, 2).forEach(i -> {
+            String uid = UUID.randomUUID().toString();
+            davTestHelper.upsertDomainContact(domain.id(), new AddressBookURL(domain.id(), "dab"), uid, """
+                BEGIN:VCARD
+                VERSION:4.0
+                UID:%s
+                FN:John Doe %d
+                END:VCARD
+                """.formatted(uid, i)).block();
+        });
+
+        assertThat(testee.countDomainContacts(domain.id(), "dab").block())
+            .isEqualTo(2L);
+    }
+
+    @Test
+    void countDomainContactsShouldReturnEmptyWhenAddressBookDoesNotExist() {
+        OpenPaaSDomain domain = mongoDBOpenPaaSDomainDAO.add(Domain.of("new-domain" + UUID.randomUUID() + ".tld")).block();
+
+        assertThat(testee.countDomainContacts(domain.id(), UUID.randomUUID().toString()).blockOptional())
+            .isEmpty();
+    }
+
+    @Test
     void createDomainMembersAddressBookShouldNotThrowWhenCreatedFirstTime() {
         OpenPaaSDomain domain = mongoDBOpenPaaSDomainDAO.add(Domain.of("new-domain" + UUID.randomUUID() + ".tld")).block();
         assertThatCode(() -> testee.createDomainMembersAddressBook(domain.id()).block())

@@ -1529,6 +1529,37 @@ the sharing for the given user.
 - `400`: missing `share` field, `dav:href` is not a `mailto:` URI, or a `set` entry carries no right
 - `404`: the user or the calendar does not exist
 
+## Domain address book routes
+
+Administrative access to the address books owned by a domain, namely the domain address book (`dab`)
+and the `Domain Members` address book (`domain-members`). These routes proxy the Sabre DAV server,
+authenticated with the technical token of the domain.
+
+### Counting the contacts of a domain address book
+
+```
+GET /domains/{domain}/addressbooks/{addressBookId}/contactCount
+```
+
+Examples:
+
+```
+GET /domains/linagora.com/addressbooks/dab/contactCount
+GET /domains/linagora.com/addressbooks/domain-members/contactCount
+```
+
+Returns the number of contacts of the address book:
+
+```json
+{"count": 805}
+```
+
+**Status codes**:
+- `200`: the contact count is returned
+- `400`: the domain is invalid
+- `404`: the domain (`Domain does not exist`) or the address book (`Address book does not exist`) does not exist
+- `500`: error while calling the DAV server
+
 ## User address book management routes
 
 Administrative management of user address books. These routes proxy the Sabre DAV server,

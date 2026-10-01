@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
  - ISSUE-1098 Webadmin: `POST /domains/{domain}/team-calendars/{teamCalendarId}/publicRight` and `POST /domains/{domain}/resources/{resourceId}/publicRight` change the public visibility of team calendars and resources
  - ISSUE-958 Booking links: optional `extraAttendees` field, to hand over a single link for a meeting involving several people. Offered slots intersect the availability of the extra attendees, as seen by the booking link owner, and booked events invite them.
  - ISSUE-1106 Common Contacts: backend autocomplete API `POST /api/people/search` on a dedicated port (`common.contact.api.port`), authenticated with the Bearer tokens listed in `common.contact.api.secrets`
+ - ISSUE-1116 Webadmin: `GET /domains/{domain}/addressbooks/{addressBookId}/contactCount` counts the contacts of the address books a domain owns (`dab`, `domain-members`)
 
 ### Fixes
 
