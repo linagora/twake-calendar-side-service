@@ -29,13 +29,20 @@ import com.google.common.base.Preconditions;
 public record DomainSubscriptionMessage(
     @JsonProperty("domain") String domain,
     @JsonProperty("mailDnsConfigurationValidated") Optional<Boolean> mailDnsConfigurationValidated,
-    @JsonProperty("features") Optional<SaasFeatures> features) {
+    @JsonProperty("features") Optional<SaasFeatures> features,
+    @JsonProperty("dnsOwnershipValidated") Optional<Boolean> dnsOwnershipValidated) {
 
     public static final boolean NO_CALENDAR_FEATURE = false;
+    private static final boolean OWNERSHIP_NOT_VALIDATED = false;
 
     @JsonCreator
     public DomainSubscriptionMessage {
         Preconditions.checkNotNull(domain, "domain cannot be null");
+    }
+
+    public boolean isOwnershipValidated() {
+        // Retain compatibility with legacy DNS events that only included mail validation.
+        return dnsOwnershipValidated.orElse(mailDnsConfigurationValidated.orElse(OWNERSHIP_NOT_VALIDATED));
     }
 
     public Domain domainObject() {

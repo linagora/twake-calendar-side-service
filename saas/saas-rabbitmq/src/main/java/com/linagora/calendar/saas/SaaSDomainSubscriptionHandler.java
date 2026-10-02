@@ -28,7 +28,6 @@ import com.linagora.tmail.saas.rabbitmq.subscription.SaaSMessageHandler;
 import reactor.core.publisher.Mono;
 
 public class SaaSDomainSubscriptionHandler implements SaaSMessageHandler {
-    public static final boolean MAIL_DNS_CONFIGURATION_NOT_VALIDATED = false;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(SaaSDomainSubscriptionHandler.class);
 
@@ -40,12 +39,10 @@ public class SaaSDomainSubscriptionHandler implements SaaSMessageHandler {
 
     @Override
     public Mono<Void> handleMessage(byte[] message) {
-        // Domain provisioning is gated solely on mailDnsConfigurationValidated, carried by the
-        // `domain.dns.configuration.status` message. The `domain.subscription.changed` message carries
-        // `features` but not the DNS status, so both are never present together: the calendar feature is
-        // not checked here (it is enforced per-user in SaaSUserSubscriptionHandler).
+        // Ownership verification is sufficient for migration. TMail must enforce mail DNS
+        // sending restrictions before this provisioning behavior is deployed.
         return Mono.fromCallable(() -> SaaSCalendarSubscriptionDeserializer.parseDomainMessage(message))
-            .filter(domainSubscriptionMessage -> domainSubscriptionMessage.mailDnsConfigurationValidated().orElse(MAIL_DNS_CONFIGURATION_NOT_VALIDATED))
+            .filter(DomainSubscriptionMessage::isOwnershipValidated)
             .flatMap(domainMessage -> createDomainIfNotExists(domainMessage.domainObject()))
             .then();
     }
