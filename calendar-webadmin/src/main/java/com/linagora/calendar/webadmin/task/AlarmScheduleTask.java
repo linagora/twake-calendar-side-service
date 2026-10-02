@@ -61,9 +61,10 @@ public class AlarmScheduleTask implements Task {
 
     @Override
     public Optional<TaskExecutionDetails.AdditionalInformation> details() {
+        AlarmScheduleService.Context.Snapshot snapshot = context.snapshot();
         return Optional.of(new Details(Clock.systemUTC().instant(),
-            context.snapshot().processedEventCount(),
-            context.snapshot().failedEventCount(),
+            snapshot.processedEventCount(),
+            snapshot.failedEventCount(),
             runningOptions.eventsPerSecond()));
     }
 }

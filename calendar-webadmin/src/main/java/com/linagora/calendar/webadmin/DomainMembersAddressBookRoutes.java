@@ -96,17 +96,6 @@ public class DomainMembersAddressBookRoutes implements Routes {
             ImmutableSet<Domain> ignoredDomains = extractIgnoredDomains(request);
             return LdapToDavDomainMembersSyncTask.allDomains(syncService, openPaaSDomainDAO, ignoredDomains, ldapFilter);
         }
-
-        private static ImmutableSet<Domain> extractIgnoredDomains(Request request) {
-            return Optional.ofNullable(StringUtils.trimToNull(request.queryParams(IGNORED_DOMAINS_PARAMETER)))
-                .map(domains -> Splitter.on(DOMAIN_SEPARATOR)
-                    .trimResults()
-                    .omitEmptyStrings()
-                    .splitToStream(domains)
-                    .map(Domain::of)
-                    .collect(ImmutableSet.toImmutableSet()))
-                .orElse(ImmutableSet.of());
-        }
     }
 
     private static Optional<LdapFilter> extractLdapFilter(Request request) {
