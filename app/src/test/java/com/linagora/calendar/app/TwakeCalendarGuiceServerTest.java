@@ -58,6 +58,7 @@ import org.mockserver.model.HttpResponse;
 import com.github.fge.lambdas.Throwing;
 import com.google.inject.multibindings.Multibinder;
 import com.google.inject.name.Names;
+import com.linagora.calendar.amqp.CalendarQueueUtil;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.app.modules.MemoryAutoCompleteModule;
 import com.linagora.calendar.dav.DavModuleTestHelper;
@@ -113,7 +114,9 @@ class TwakeCalendarGuiceServerTest  {
         binder -> binder.bind(URL.class).annotatedWith(Names.named("userInfo")).toProvider(TwakeCalendarGuiceServerTest::getUserInfoTokenEndpoint),
         binder -> binder.bind(IntrospectionEndpoint.class).toProvider(() -> new IntrospectionEndpoint(getInrospectTokenEndpoint(), Optional.empty())),
         binder -> Multibinder.newSetBinder(binder, GuiceProbe.class)
-            .addBinding().to(DomainAdminProbe.class));
+            .addBinding().to(DomainAdminProbe.class),
+        binder -> Multibinder.newSetBinder(binder, GuiceProbe.class)
+            .addBinding().to(MonitoredRabbitMQProbe.class));
 
     @BeforeEach
     void setUp(TwakeCalendarGuiceServer server) {
@@ -150,13 +153,13 @@ class TwakeCalendarGuiceServerTest  {
                 "status" : "healthy",
                 "cause" : null
               }, {
-                "componentName" : "RabbitMQDeadLetterQueueEmptiness",
-                "escapedComponentName" : "RabbitMQDeadLetterQueueEmptiness",
+                "componentName" : "RabbitMQDeadLetterQueues",
+                "escapedComponentName" : "RabbitMQDeadLetterQueues",
                 "status" : "healthy",
                 "cause" : null
               }, {
-                "componentName" : "CalendarQueueConsumers",
-                "escapedComponentName" : "CalendarQueueConsumers",
+                "componentName" : "RabbitMQConsumers",
+                "escapedComponentName" : "RabbitMQConsumers",
                 "status" : "healthy",
                 "cause" : null
               }, {
@@ -172,6 +175,14 @@ class TwakeCalendarGuiceServerTest  {
               } ]
             }
             """);
+    }
+
+    @Test
+    void rabbitMQHealthChecksShouldMonitorTheCalendarQueues(TwakeCalendarGuiceServer server) {
+        MonitoredRabbitMQProbe probe = server.getProbe(MonitoredRabbitMQProbe.class);
+
+        assertThat(probe.consumedQueues()).containsExactlyInAnyOrderElementsOf(CalendarQueueUtil.getAllQueueNames());
+        assertThat(probe.deadLetterQueues()).containsExactlyInAnyOrderElementsOf(CalendarQueueUtil.getAllDeadLetterQueueNames());
     }
 
     @Test

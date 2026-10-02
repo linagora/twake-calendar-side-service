@@ -35,8 +35,6 @@ import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
 import com.linagora.tmail.saas.rabbitmq.TWPCommonRabbitMQConfiguration;
 import com.linagora.tmail.saas.rabbitmq.settings.TWPSettingsConsumer;
-import com.linagora.tmail.saas.rabbitmq.settings.TWPSettingsDeadLetterQueueHealthCheck;
-import com.linagora.tmail.saas.rabbitmq.settings.TWPSettingsQueueConsumerHealthCheck;
 import com.linagora.tmail.saas.rabbitmq.settings.TWPSettingsRabbitMQConfiguration;
 import com.linagora.tmail.saas.rabbitmq.settings.TWPSettingsRabbitmqModule;
 import com.linagora.tmail.saas.rabbitmq.settings.TWPSettingsUpdater;
@@ -66,18 +64,5 @@ public class TWPCalendarSettingsModule extends AbstractModule {
                                                  SaaSUserProvisioner userProvisioner,
                                                  SimpleSessionProvider sessionProvider) {
         return new CalendarSettingUpdater(userConfigurationDAO, openPaaSUserDAO, userProvisioner, sessionProvider);
-    }
-
-    @Provides
-    @Singleton
-    TWPSettingsQueueConsumerHealthCheck provideTWPSettingsQueueConsumerHealthCheck(@Named(TWP_INJECTION_KEY) RabbitMQConfiguration twpRabbitMQConfiguration,
-                                                                                   TWPSettingsConsumer twpSettingsConsumer) {
-        return new TWPSettingsQueueConsumerHealthCheck(twpRabbitMQConfiguration, twpSettingsConsumer, CONSUMER_CONFIG.queue());
-    }
-
-    @Provides
-    @Singleton
-    TWPSettingsDeadLetterQueueHealthCheck provideTWPSettingsDeadLetterQueueHealthCheck(@Named(TWP_INJECTION_KEY) RabbitMQConfiguration twpRabbitMQConfiguration) {
-        return new TWPSettingsDeadLetterQueueHealthCheck(twpRabbitMQConfiguration, CONSUMER_CONFIG.deadLetterQueue());
     }
 }
