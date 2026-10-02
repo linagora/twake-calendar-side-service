@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.webadmin;
 
+import static com.linagora.calendar.webadmin.WebAdminRouteUtils.wrapDavErrors;
 import static org.apache.james.webadmin.Constants.SEPARATOR;
 
 import jakarta.inject.Inject;
@@ -30,7 +31,6 @@ import org.eclipse.jetty.http.HttpStatus;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.linagora.calendar.dav.CardDavClient;
-import com.linagora.calendar.dav.DavClientException;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 
@@ -80,19 +80,10 @@ public class DomainAddressBookRoutes implements Routes {
         OpenPaaSDomain domain = retrieveDomain(request);
         String addressBookId = request.params(ADDRESSBOOK_ID_PARAM);
 
-        try {
-            return cardDavClient.countDomainContacts(domain.id(), addressBookId)
-                .map(ContactCountResponse::new)
-                .blockOptional()
-                .orElseThrow(DomainAddressBookRoutes::addressBookNotFound);
-        } catch (DavClientException e) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.INTERNAL_SERVER_ERROR_500)
-                .type(ErrorResponder.ErrorType.SERVER_ERROR)
-                .message("Error while calling the DAV server")
-                .cause(e)
-                .haltError();
-        }
+        return wrapDavErrors(() -> cardDavClient.countDomainContacts(domain.id(), addressBookId)
+            .map(ContactCountResponse::new)
+            .blockOptional()
+            .orElseThrow(DomainAddressBookRoutes::addressBookNotFound));
     }
 
     private OpenPaaSDomain retrieveDomain(Request request) {
