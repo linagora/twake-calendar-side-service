@@ -65,7 +65,7 @@ public class DomainSettingsResolver {
             .defaultIfEmpty(configuredDefaultCalendarPublicVisibility());
     }
 
-    private DomainSettings applyFallbacks(Domain domain, DomainSettings settings) {
+    public DomainSettings applyFallbacks(Domain domain, DomainSettings settings) {
         return DomainSettings.builder()
             .userSearchMode(settings.userSearchMode().orElseGet(() -> resolveUserSearchModeFromConfig(domain)))
             .resourceSearchEnabled(settings.resourceSearchEnabled()
