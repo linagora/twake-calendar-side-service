@@ -17,6 +17,7 @@
 
 package com.linagora.calendar.webadmin;
 
+import static com.linagora.calendar.webadmin.WebAdminRouteUtils.serverError;
 import static org.apache.james.webadmin.Constants.SEPARATOR;
 
 import java.util.List;
@@ -203,12 +204,7 @@ public class TeamCalendarMemberRoutes implements Routes {
                 .haltError();
         }
         if (error instanceof DavClientException exception) {
-            return ErrorResponder.builder()
-                .statusCode(HttpStatus.INTERNAL_SERVER_ERROR_500)
-                .type(ErrorResponder.ErrorType.SERVER_ERROR)
-                .message("Error while calling the DAV server")
-                .cause(exception)
-                .haltError();
+            return serverError(exception);
         }
         return error;
     }
