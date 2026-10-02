@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.webadmin;
 
+import static com.linagora.calendar.webadmin.WebAdminRouteUtils.createdTaskResponse;
 import static com.linagora.calendar.webadmin.WebAdminRouteUtils.invalidBody;
 import static com.linagora.calendar.webadmin.WebAdminRouteUtils.wrapDavErrors;
 import static org.apache.james.webadmin.Constants.SEPARATOR;
@@ -36,9 +37,7 @@ import org.apache.james.task.TaskId;
 import org.apache.james.task.TaskManager;
 import org.apache.james.webadmin.Constants;
 import org.apache.james.webadmin.Routes;
-import org.apache.james.webadmin.routes.TasksRoutes;
 import org.apache.james.webadmin.utils.ErrorResponder;
-import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpStatus;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -82,7 +81,6 @@ public class UserAddressBookRoutes implements Routes {
     private static final byte[] NO_CONTACT = new byte[0];
 
     private static final String FIELD_ID = "id";
-    private static final String FIELD_TASK_ID = "taskId";
     private static final String FIELD_COUNT = "count";
     private static final String FIELD_NAME = "dav:name";
     private static final String FIELD_DESCRIPTION = "carddav:description";
@@ -241,12 +239,7 @@ public class UserAddressBookRoutes implements Routes {
 
         TaskId taskId = taskManager.submit(new AddressBookImportTask(addressBookImportService, user.username(), addressBookURL, contacts));
 
-        response.status(HttpStatus.CREATED_201);
-        response.header(HttpHeader.LOCATION.asString(), TasksRoutes.BASE + SEPARATOR + taskId.asString());
-        response.type(Constants.JSON_CONTENT_TYPE);
-        return OBJECT_MAPPER.createObjectNode()
-            .put(FIELD_TASK_ID, taskId.asString())
-            .toString();
+        return createdTaskResponse(response, taskId);
     }
 
     private List<ContactToImport> parseContacts(Request request) {
