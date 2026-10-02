@@ -1618,7 +1618,7 @@ Contacts are stored under their UID - a random one is generated for those carryi
 an exported address book updates its contacts rather than duplicating them.
 
 The `domain-members` address book is fed by the LDAP synchronization of the domain members, hence imports into it
-are rejected.
+are rejected. Import is supported solely by the `dab` Domain Address Book.
 
 This triggers a task, and returns its identifier:
 
