@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.webadmin;
 
+import static com.linagora.calendar.webadmin.WebAdminRouteUtils.invalidBody;
 import static org.apache.james.webadmin.Constants.SEPARATOR;
 
 import java.time.Duration;
@@ -32,7 +33,6 @@ import java.util.UUID;
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.james.core.Username;
 import org.apache.james.task.TaskId;
 import org.apache.james.task.TaskManager;
@@ -521,13 +521,6 @@ public class BookingLinkUserRoutes implements Routes {
             .type(ErrorResponder.ErrorType.NOT_FOUND)
             .message("Booking link does not exist: %s", publicId.value())
             .haltError();
-    }
-
-    private HaltException invalidBody(Exception e) {
-        String detail = Optional.ofNullable(ExceptionUtils.getRootCause(e))
-            .map(Throwable::getMessage)
-            .orElse(e.getMessage());
-        return badRequest("Invalid request body: %s".formatted(detail), e);
     }
 
     private HaltException forbidden(String message) {
