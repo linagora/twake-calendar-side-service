@@ -19,13 +19,13 @@
 package com.linagora.calendar.webadmin;
 
 import static com.linagora.calendar.dav.ResourceService.ONLY_ACTIVE;
+import static com.linagora.calendar.webadmin.WebAdminRouteUtils.wrapDavErrors;
 import static org.apache.james.webadmin.Constants.SEPARATOR;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-import java.util.function.Supplier;
 
 import jakarta.inject.Inject;
 
@@ -176,18 +176,5 @@ public class DomainCalendarContentHandler {
                 .haltError();
         }
         return events;
-    }
-
-    private <T> T wrapDavErrors(Supplier<T> supplier) {
-        try {
-            return supplier.get();
-        } catch (DavClientException e) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.INTERNAL_SERVER_ERROR_500)
-                .type(ErrorResponder.ErrorType.SERVER_ERROR)
-                .message("Error while calling the DAV server")
-                .cause(e)
-                .haltError();
-        }
     }
 }
