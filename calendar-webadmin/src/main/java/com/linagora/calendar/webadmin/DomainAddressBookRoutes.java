@@ -18,12 +18,21 @@
 
 package com.linagora.calendar.webadmin;
 
+import static com.linagora.calendar.webadmin.WebAdminRouteUtils.createdTaskResponse;
+import static com.linagora.calendar.webadmin.WebAdminRouteUtils.invalidBody;
 import static com.linagora.calendar.webadmin.WebAdminRouteUtils.wrapDavErrors;
 import static org.apache.james.webadmin.Constants.SEPARATOR;
 
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Locale;
+
 import jakarta.inject.Inject;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.Domain;
+import org.apache.james.task.TaskId;
+import org.apache.james.task.TaskManager;
 import org.apache.james.webadmin.Routes;
 import org.apache.james.webadmin.utils.ErrorResponder;
 import org.apache.james.webadmin.utils.JsonTransformer;
@@ -31,8 +40,12 @@ import org.eclipse.jetty.http.HttpStatus;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.linagora.calendar.dav.CardDavClient;
+import com.linagora.calendar.dav.importer.ContactToImport;
+import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
+import com.linagora.calendar.webadmin.service.AddressBookImportService;
+import com.linagora.calendar.webadmin.task.DomainAddressBookImportTask;
 
 import spark.HaltException;
 import spark.Request;
@@ -52,17 +65,30 @@ public class DomainAddressBookRoutes implements Routes {
 
     private static final String DOMAIN_PARAM = ":domain";
     private static final String ADDRESSBOOK_ID_PARAM = ":addressBookId";
-    private static final String CONTACT_COUNT_PATH = BASE_PATH + SEPARATOR + DOMAIN_PARAM + SEPARATOR + "addressbooks"
-        + SEPARATOR + ADDRESSBOOK_ID_PARAM + SEPARATOR + "contactCount";
+    private static final String ADDRESSBOOK_PATH = BASE_PATH + SEPARATOR + DOMAIN_PARAM + SEPARATOR + "addressbooks"
+        + SEPARATOR + ADDRESSBOOK_ID_PARAM;
+    private static final String CONTACT_COUNT_PATH = ADDRESSBOOK_PATH + SEPARATOR + "contactCount";
+
+    private static final String ACTION_PARAMETER = "action";
+    private static final String EXPORT_ACTION = "export";
+    private static final String IMPORT_ACTION = "import";
+    private static final String VCARD_CONTENT_TYPE = "text/vcard; charset=utf-8";
+    private static final byte[] NO_CONTACT = new byte[0];
 
     private final OpenPaaSDomainDAO domainDAO;
     private final CardDavClient cardDavClient;
+    private final AddressBookImportService addressBookImportService;
+    private final TaskManager taskManager;
     private final JsonTransformer jsonTransformer;
 
     @Inject
-    public DomainAddressBookRoutes(OpenPaaSDomainDAO domainDAO, CardDavClient cardDavClient, JsonTransformer jsonTransformer) {
+    public DomainAddressBookRoutes(OpenPaaSDomainDAO domainDAO, CardDavClient cardDavClient,
+                                   AddressBookImportService addressBookImportService, TaskManager taskManager,
+                                   JsonTransformer jsonTransformer) {
         this.domainDAO = domainDAO;
         this.cardDavClient = cardDavClient;
+        this.addressBookImportService = addressBookImportService;
+        this.taskManager = taskManager;
         this.jsonTransformer = jsonTransformer;
     }
 
@@ -74,6 +100,7 @@ public class DomainAddressBookRoutes implements Routes {
     @Override
     public void define(Service service) {
         service.get(CONTACT_COUNT_PATH, this::countContacts, jsonTransformer);
+        service.post(ADDRESSBOOK_PATH, this::exportOrImportAddressBook);
     }
 
     private ContactCountResponse countContacts(Request request, Response response) {
@@ -84,6 +111,85 @@ public class DomainAddressBookRoutes implements Routes {
             .map(ContactCountResponse::new)
             .blockOptional()
             .orElseThrow(DomainAddressBookRoutes::addressBookNotFound));
+    }
+
+    private String exportOrImportAddressBook(Request request, Response response) throws Exception {
+        String action = StringUtils.trimToEmpty(request.queryParams(ACTION_PARAMETER));
+
+        return switch (action.toLowerCase(Locale.US)) {
+            case EXPORT_ACTION -> exportAddressBook(request, response);
+            case IMPORT_ACTION -> importAddressBook(request, response);
+            default -> throw ErrorResponder.builder()
+                .statusCode(HttpStatus.BAD_REQUEST_400)
+                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                .message("Invalid '%s' query parameter: '%s'. Supported values are: '%s', '%s'"
+                    .formatted(ACTION_PARAMETER, action, EXPORT_ACTION, IMPORT_ACTION))
+                .haltError();
+        };
+    }
+
+    private String exportAddressBook(Request request, Response response) {
+        OpenPaaSDomain domain = retrieveDomain(request);
+        AddressBookURL addressBookURL = retrieveExistingAddressBook(request, domain);
+
+        byte[] vcard = wrapDavErrors(() -> cardDavClient.exportDomainAddressBook(domain.id(), addressBookURL)
+            .blockOptional()
+            .orElse(NO_CONTACT));
+
+        response.status(HttpStatus.OK_200);
+        response.type(VCARD_CONTENT_TYPE);
+        return new String(vcard, StandardCharsets.UTF_8);
+    }
+
+    private String importAddressBook(Request request, Response response) throws Exception {
+        OpenPaaSDomain domain = retrieveDomain(request);
+        AddressBookURL addressBookURL = retrieveImportableAddressBook(request, domain);
+        List<ContactToImport> contacts = parseContacts(request);
+
+        TaskId taskId = taskManager.submit(new DomainAddressBookImportTask(addressBookImportService, domain, addressBookURL, contacts));
+        return createdTaskResponse(response, taskId);
+    }
+
+    /**
+     * The {@code domain-members} address book mirrors the users of the domain: it is fed by the LDAP
+     * synchronization hence rejects imports.
+     */
+    private AddressBookURL retrieveImportableAddressBook(Request request, OpenPaaSDomain domain) {
+        AddressBookURL addressBookURL = retrieveExistingAddressBook(request, domain);
+        if (CardDavClient.DOMAIN_MEMBERS_ADDRESS_BOOK_ID.equals(addressBookURL.addressBookId())) {
+            throw ErrorResponder.builder()
+                .statusCode(HttpStatus.BAD_REQUEST_400)
+                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                .message("Cannot import into the '%s' address book".formatted(CardDavClient.DOMAIN_MEMBERS_ADDRESS_BOOK_ID))
+                .haltError();
+        }
+        return addressBookURL;
+    }
+
+    private AddressBookURL retrieveExistingAddressBook(Request request, OpenPaaSDomain domain) {
+        String addressBookId = request.params(ADDRESSBOOK_ID_PARAM);
+        boolean exists = wrapDavErrors(() -> cardDavClient.domainAddressBookExists(domain.id(), addressBookId).block());
+        if (!exists) {
+            throw addressBookNotFound();
+        }
+        return new AddressBookURL(domain.id(), addressBookId);
+    }
+
+    private List<ContactToImport> parseContacts(Request request) {
+        List<ContactToImport> contacts;
+        try {
+            contacts = ContactToImport.parse(request.bodyAsBytes());
+        } catch (Exception e) {
+            throw invalidBody(e);
+        }
+        if (contacts.isEmpty()) {
+            throw ErrorResponder.builder()
+                .statusCode(HttpStatus.BAD_REQUEST_400)
+                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                .message("Invalid request body: no contact to import")
+                .haltError();
+        }
+        return contacts;
     }
 
     private OpenPaaSDomain retrieveDomain(Request request) {

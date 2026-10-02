@@ -136,6 +136,7 @@ public class CardDavClient extends DavClient {
     }
 
     public static final String LIMIT_PARAM = "limit";
+    public static final String DOMAIN_MEMBERS_ADDRESS_BOOK_ID = "domain-members";
 
     private static final String ADDRESS_BOOK_LIST_URI_TEMPLATE = "/addressbooks/%s.json?contactsCount=true&inviteStatus=2&personal=true&shared=true&subscribed=true";
     private static final String NUMBER_OF_CONTACTS_PROPERTY = "numberOfContacts";
@@ -170,7 +171,6 @@ public class CardDavClient extends DavClient {
 
     private static final String CONTENT_TYPE_VCARD = "application/vcard";
     private static final String CONTENT_TYPE_VCARD_JSON = "application/vcard+json";
-    private static final String DOMAIN_MEMBERS_ADDRESS_BOOK_ID = "domain-members";
     private static final byte[] CREATE_DOMAIN_MEMBERS_ADDRESS_BOOK_PAYLOAD = """
         {
             "id": "%s",
@@ -199,6 +199,11 @@ public class CardDavClient extends DavClient {
             .uri(addressBookURL.vcardUri(vcardUid).toASCIIString())
             .send(Mono.just(Unpooled.wrappedBuffer(vcardPayload)))
             .responseSingle((response, byteBufMono) -> handleContactUpsertResponse(response, byteBufMono, addressBookURL, vcardUid));
+    }
+
+    public Mono<Void> upsertDomainContact(OpenPaaSId domainId, AddressBookURL addressBookURL, String vcardUid, byte[] vcardPayload) {
+        return httpClientWithTechnicalToken(domainId)
+            .flatMap(authenticatedClient -> upsertContact(authenticatedClient, addressBookURL, vcardUid, vcardPayload));
     }
 
     public Mono<byte[]> retrieveContact(Username username, AddressBookURL addressBookURL, ContactUid contactUid) {
@@ -253,7 +258,7 @@ public class CardDavClient extends DavClient {
             }));
     }
 
-    private Mono<byte[]> exportDomainAddressBook(OpenPaaSId domainId, AddressBookURL addressBookURL) {
+    public Mono<byte[]> exportDomainAddressBook(OpenPaaSId domainId, AddressBookURL addressBookURL) {
         return httpClientWithTechnicalToken(domainId)
             .flatMap(authenticatedClient -> exportContactAsVcard(authenticatedClient, addressBookURL));
     }
@@ -604,6 +609,11 @@ public class CardDavClient extends DavClient {
      */
     public Mono<Long> countDomainContacts(OpenPaaSId domainId, String addressBookId) {
         return countContacts(httpClientWithTechnicalToken(domainId), new AddressBookURL(domainId, addressBookId));
+    }
+
+    public Mono<Boolean> domainAddressBookExists(OpenPaaSId domainId, String addressBookId) {
+        return retrieveAddressBookMetadata(httpClientWithTechnicalToken(domainId), new AddressBookURL(domainId, addressBookId))
+            .hasElement();
     }
 
     private Mono<Long> countContacts(Mono<HttpClient> authenticatedClient, AddressBookURL addressBookURL) {

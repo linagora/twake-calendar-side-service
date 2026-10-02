@@ -21,6 +21,7 @@ package com.linagora.calendar.webadmin.service;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
 
 import jakarta.inject.Inject;
 
@@ -33,6 +34,7 @@ import com.google.common.base.MoreObjects;
 import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.dav.importer.ContactToImport;
 import com.linagora.calendar.storage.AddressBookURL;
+import com.linagora.calendar.storage.OpenPaaSId;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -74,21 +76,31 @@ public class AddressBookImportService {
 
     public Mono<Task.Result> importContacts(Username username, AddressBookURL addressBookURL,
                                             List<ContactToImport> contacts, Context context) {
-        return Flux.fromIterable(contacts)
-            .concatMap(contact -> importContact(username, addressBookURL, contact, context))
-            .reduce(Task.Result.COMPLETED, Task::combine);
+        return importContacts(addressBookURL, username.asString(), contacts, context,
+            contact -> cardDavClient.upsertContact(username, addressBookURL, contact.resourceName(), contact.payload()));
     }
 
-    private Mono<Task.Result> importContact(Username username, AddressBookURL addressBookURL,
-                                            ContactToImport contact, Context context) {
-        return cardDavClient.upsertContact(username, addressBookURL, contact.resourceName(), contact.payload())
-            .doOnSuccess(any -> context.importedCount.incrementAndGet())
-            .thenReturn(Task.Result.COMPLETED)
-            .onErrorResume(error -> {
-                LOGGER.warn("Importing contact {} into address book {} of user {} failed",
-                    contact.resourceName(), addressBookURL.asUri().toASCIIString(), username.asString(), error);
-                context.failedCount.incrementAndGet();
-                return Mono.just(Task.Result.PARTIAL);
-            });
+    /**
+     * Imports into a domain scoped address book - e.g. the domain address book - which no user owns.
+     */
+    public Mono<Task.Result> importContacts(OpenPaaSId domainId, AddressBookURL addressBookURL,
+                                            List<ContactToImport> contacts, Context context) {
+        return importContacts(addressBookURL, domainId.value(), contacts, context,
+            contact -> cardDavClient.upsertDomainContact(domainId, addressBookURL, contact.resourceName(), contact.payload()));
+    }
+
+    private Mono<Task.Result> importContacts(AddressBookURL addressBookURL, String requester, List<ContactToImport> contacts,
+                                             Context context, Function<ContactToImport, Mono<Void>> importer) {
+        return Flux.fromIterable(contacts)
+            .concatMap(contact -> importer.apply(contact)
+                .doOnSuccess(any -> context.importedCount.incrementAndGet())
+                .thenReturn(Task.Result.COMPLETED)
+                .onErrorResume(error -> {
+                    LOGGER.warn("Importing contact {} into address book {} on behalf of {} failed",
+                        contact.resourceName(), addressBookURL.asUri().toASCIIString(), requester, error);
+                    context.failedCount.incrementAndGet();
+                    return Mono.just(Task.Result.PARTIAL);
+                }))
+            .reduce(Task.Result.COMPLETED, Task::combine);
     }
 }
