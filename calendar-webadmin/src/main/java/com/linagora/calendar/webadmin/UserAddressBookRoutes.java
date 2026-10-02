@@ -20,6 +20,7 @@ package com.linagora.calendar.webadmin;
 
 import static com.linagora.calendar.webadmin.WebAdminRouteUtils.createdTaskResponse;
 import static com.linagora.calendar.webadmin.WebAdminRouteUtils.invalidBody;
+import static com.linagora.calendar.webadmin.WebAdminRouteUtils.parseDtoBody;
 import static com.linagora.calendar.webadmin.WebAdminRouteUtils.retrieveUser;
 import static com.linagora.calendar.webadmin.WebAdminRouteUtils.wrapDavErrors;
 import static org.apache.james.webadmin.Constants.SEPARATOR;
@@ -167,7 +168,7 @@ public class UserAddressBookRoutes implements Routes {
 
     private String createAddressBook(Request request, Response response) {
         OpenPaaSUser user = retrieveUser(request, userDAO);
-        AddressBookCreationRequest creationRequest = parseBody(request, AddressBookCreationRequest.class);
+        AddressBookCreationRequest creationRequest = parseDtoBody(request, AddressBookCreationRequest.class, OBJECT_MAPPER);
 
         String addressBookId = creationRequest.id()
             .map(StringUtils::trimToNull)
@@ -195,7 +196,7 @@ public class UserAddressBookRoutes implements Routes {
 
     private String updateAddressBookProperties(Request request, Response response) {
         OpenPaaSUser user = retrieveUser(request, userDAO);
-        CardDavClient.AddressBookPropertiesUpdate update = parseBody(request, CardDavClient.AddressBookPropertiesUpdate.class);
+        CardDavClient.AddressBookPropertiesUpdate update = parseDtoBody(request, CardDavClient.AddressBookPropertiesUpdate.class, OBJECT_MAPPER);
         AddressBookURL addressBookURL = retrieveWritableAddressBook(request, user, AddressBookOperation.UPDATE);
 
         wrapDavErrors(() -> cardDavClient.updateAddressBookProperties(user.username(), addressBookURL, update).block());
@@ -346,14 +347,6 @@ public class UserAddressBookRoutes implements Routes {
                 throw new IllegalArgumentException("Request body must be a JSON object");
             }
             return body;
-        } catch (Exception e) {
-            throw invalidBody(e);
-        }
-    }
-
-    private <T> T parseBody(Request request, Class<T> type) {
-        try {
-            return OBJECT_MAPPER.readValue(request.bodyAsBytes(), type);
         } catch (Exception e) {
             throw invalidBody(e);
         }
