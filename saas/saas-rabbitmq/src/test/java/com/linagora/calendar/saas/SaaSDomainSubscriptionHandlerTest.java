@@ -81,7 +81,7 @@ class SaaSDomainSubscriptionHandlerTest {
     }
 
     @Test
-    void shouldNotCreateDomainWhenMailDnsNotValidated() {
+    void shouldCreateVerifiedDomainBeforeMailDnsValidation() {
         String json = """
             {
                 "organizationId": "businesse7f351",
@@ -95,11 +95,11 @@ class SaaSDomainSubscriptionHandlerTest {
         testee.handleMessage(json.getBytes(StandardCharsets.UTF_8)).block();
 
         OpenPaaSDomain domain = domainDAO.retrieve(Domain.of("toto.tld")).block();
-        assertThat(domain).isNull();
+        assertThat(domain).isNotNull();
     }
 
     @Test
-    void shouldNotCreateDomainWhenMailDnsStatusIsMissing() {
+    void shouldCreateVerifiedDomainWhenMailDnsStatusIsMissing() {
         String json = """
             {
                 "organizationId": "businesse7f351",
@@ -112,7 +112,32 @@ class SaaSDomainSubscriptionHandlerTest {
         testee.handleMessage(json.getBytes(StandardCharsets.UTF_8)).block();
 
         OpenPaaSDomain domain = domainDAO.retrieve(Domain.of("toto.tld")).block();
-        assertThat(domain).isNull();
+        assertThat(domain).isNotNull();
+    }
+
+    @Test
+    void shouldNotCreateDomainWhenOwnershipIsExplicitlyUnverified() {
+        String json = """
+            {
+                "domain": "unverified.tld",
+                "dnsOwnershipValidated": false,
+                "mailDnsConfigurationValidated": true
+            }
+            """;
+        testee.handleMessage(json.getBytes(StandardCharsets.UTF_8)).block();
+        assertThat(domainDAO.retrieve(Domain.of("unverified.tld")).block()).isNull();
+    }
+
+    @Test
+    void shouldNotCreateDomainWithoutOwnershipOrMailValidation() {
+        String json = """
+            {
+                "domain": "unverified.tld",
+                "mailDnsConfigurationValidated": false
+            }
+            """;
+        testee.handleMessage(json.getBytes(StandardCharsets.UTF_8)).block();
+        assertThat(domainDAO.retrieve(Domain.of("unverified.tld")).block()).isNull();
     }
 
     @Test
