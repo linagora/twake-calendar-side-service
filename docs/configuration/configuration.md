@@ -122,6 +122,9 @@ its own `EXTERNAL_API_ALLOW_PUBLIC_ACCESS`.
 
 ### SaaS subscription (`saas.subscription.enabled=true`)
 
+Domains are provisioned when `dnsOwnershipValidated=true`, falling back to
+`mailDnsConfigurationValidated` when ownership status is absent (default: `false`).
+
 | Configuration entry | Explanation | Example |
 |---------------------|-------------|---------|
 | twp.saas.subscription.exchange | Optional. Defaults to `saas.subscription`. Exchange the user subscription messages are consumed from. | twp.saas.subscription.exchange=saas.subscription |
