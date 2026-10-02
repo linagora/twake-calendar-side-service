@@ -136,28 +136,19 @@ public class LdapToDavDomainMembersSyncTask implements Task {
                 LOGGER.info("Starting domain members sync for single domain: {}{}",
                     singleDomain.domain().domain().asString(),
                     ldapFilter.map(filter -> " with LDAP filter " + filter.asString()).orElse(""));
-                yield singleDomainSyncProcessor(singleDomain.domain(), ldapFilter).process().block();
+                yield syncDomainMembers(singleDomain.domain(), ldapFilter).block();
             }
             case AllDomain allDomains -> {
                 LOGGER.info("Starting domain members sync for all domains, ignoredDomains={}{}",
                     allDomains.ignoredDomains().stream().map(Domain::asString).collect(ImmutableSet.toImmutableSet()),
                     ldapFilter.map(filter -> ", ldapFilter=" + filter.asString()).orElse(""));
-                yield allDomainsSyncProcessor(allDomains.ignoredDomains(), ldapFilter).process().block();
+                yield syncAllDomains(allDomains.ignoredDomains(), ldapFilter).block();
             }
         };
     }
 
-    @FunctionalInterface
-    interface SyncProcessor {
-        Mono<Result> process();
-    }
-
-    private SyncProcessor singleDomainSyncProcessor(OpenPaaSDomain domain, Optional<LdapFilter> ldapFilter) {
-        return () -> syncDomainMembers(domain, ldapFilter);
-    }
-
-    private SyncProcessor allDomainsSyncProcessor(ImmutableSet<Domain> ignoredDomains, Optional<LdapFilter> ldapFilter) {
-        return () -> openPaaSDomainDAO.list()
+    private Mono<Result> syncAllDomains(ImmutableSet<Domain> ignoredDomains, Optional<LdapFilter> ldapFilter) {
+        return openPaaSDomainDAO.list()
             .filter(openPaaSDomain -> !ignoredDomains.contains(openPaaSDomain.domain()))
             .concatMap(openPaaSDomain -> syncDomainMembers(openPaaSDomain, ldapFilter)
                 .onErrorResume(error -> {

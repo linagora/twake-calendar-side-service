@@ -80,8 +80,9 @@ public class CalendarArchivalTask implements Task {
 
     @Override
     public Optional<TaskExecutionDetails.AdditionalInformation> details() {
+        CalendarEventArchivalService.Context.Snapshot snapshot = context.snapshot();
         return Optional.of(new Details(Clock.systemUTC().instant(),
-            context.snapshot().success(),
-            context.snapshot().failure(), targetUser, criteria, runningOptions.eventsPerSecond()));
+            snapshot.success(),
+            snapshot.failure(), targetUser, criteria, runningOptions.eventsPerSecond()));
     }
 }

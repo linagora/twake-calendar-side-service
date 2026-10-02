@@ -61,9 +61,10 @@ public class LdapUsersImportTask implements Task {
 
     @Override
     public Optional<TaskExecutionDetails.AdditionalInformation> details() {
+        LdapUsersImportService.Context.Snapshot snapshot = context.snapshot();
         return Optional.of(new Details(Clock.systemUTC().instant(),
-            context.snapshot().processedUserCount(),
-            context.snapshot().failedUserCount(),
+            snapshot.processedUserCount(),
+            snapshot.failedUserCount(),
             runningOptions.usersPerSecond()));
     }
 }

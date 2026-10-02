@@ -391,7 +391,7 @@ public class BookingLinkUserRoutes implements Routes {
         if (!node.has(FIELD_NAME)) {
             return ValuePatch.keep();
         }
-        return dto.name().map(String::trim).filter(name -> !name.isEmpty())
+        return dto.name().map(StringUtils::trimToNull)
             .map(ValuePatch::modifyTo)
             .orElseGet(ValuePatch::remove);
     }
@@ -400,7 +400,7 @@ public class BookingLinkUserRoutes implements Routes {
         if (!node.has(FIELD_DESCRIPTION)) {
             return ValuePatch.keep();
         }
-        return dto.description().map(String::trim).filter(description -> !description.isEmpty())
+        return dto.description().map(StringUtils::trimToNull)
             .map(ValuePatch::modifyTo)
             .orElseGet(ValuePatch::remove);
     }
@@ -418,7 +418,7 @@ public class BookingLinkUserRoutes implements Routes {
         if (!node.has(FIELD_LOCATION)) {
             return ValuePatch.keep();
         }
-        return dto.location().map(String::trim).filter(location -> !location.isEmpty())
+        return dto.location().map(StringUtils::trimToNull)
             .map(ValuePatch::modifyTo)
             .orElseGet(ValuePatch::remove);
     }
@@ -427,7 +427,7 @@ public class BookingLinkUserRoutes implements Routes {
         if (!node.has(FIELD_VISIBILITY)) {
             return ValuePatch.keep();
         }
-        return dto.visibility().map(String::trim).filter(visibility -> !visibility.isEmpty())
+        return dto.visibility().map(StringUtils::trimToNull)
             .map(EventVisibility::fromString)
             .map(ValuePatch::modifyTo)
             .orElseGet(ValuePatch::remove);
@@ -437,7 +437,7 @@ public class BookingLinkUserRoutes implements Routes {
         if (!node.has(FIELD_TRANSPARENCY)) {
             return ValuePatch.keep();
         }
-        return dto.transparency().map(String::trim).filter(transparency -> !transparency.isEmpty())
+        return dto.transparency().map(StringUtils::trimToNull)
             .map(EventTransparency::fromString)
             .map(ValuePatch::modifyTo)
             .orElseGet(ValuePatch::remove);
