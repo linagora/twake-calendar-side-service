@@ -24,6 +24,7 @@ import java.util.Optional;
 import java.util.function.Supplier;
 
 import org.apache.commons.lang3.exception.ExceptionUtils;
+import org.apache.james.core.Username;
 import org.apache.james.task.TaskId;
 import org.apache.james.webadmin.Constants;
 import org.apache.james.webadmin.routes.TasksRoutes;
@@ -33,12 +34,37 @@ import org.eclipse.jetty.http.HttpStatus;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.linagora.calendar.dav.DavClientException;
+import com.linagora.calendar.storage.OpenPaaSUser;
+import com.linagora.calendar.storage.OpenPaaSUserDAO;
 
 import spark.HaltException;
+import spark.Request;
 import spark.Response;
 
 final class WebAdminRouteUtils {
+    private static final String USERNAME_PARAM = ":username";
     private static final String TASK_ID_FIELD = "taskId";
+
+    static OpenPaaSUser retrieveUser(Request request, OpenPaaSUserDAO userDAO) {
+        String rawUsername = request.params(USERNAME_PARAM);
+        try {
+            Username username = Username.of(rawUsername);
+            return userDAO.retrieve(username)
+                .blockOptional()
+                .orElseThrow(() -> ErrorResponder.builder()
+                    .statusCode(HttpStatus.NOT_FOUND_404)
+                    .type(ErrorResponder.ErrorType.NOT_FOUND)
+                    .message("User does not exist")
+                    .haltError());
+        } catch (IllegalArgumentException e) {
+            throw ErrorResponder.builder()
+                .statusCode(HttpStatus.BAD_REQUEST_400)
+                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                .message("Invalid username: %s", rawUsername)
+                .cause(e)
+                .haltError();
+        }
+    }
 
     static <T> T wrapDavErrors(Supplier<T> supplier) {
         try {

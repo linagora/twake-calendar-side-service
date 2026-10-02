@@ -20,6 +20,7 @@ package com.linagora.calendar.webadmin;
 
 import static com.linagora.calendar.webadmin.WebAdminRouteUtils.createdTaskResponse;
 import static com.linagora.calendar.webadmin.WebAdminRouteUtils.invalidBody;
+import static com.linagora.calendar.webadmin.WebAdminRouteUtils.retrieveUser;
 import static com.linagora.calendar.webadmin.WebAdminRouteUtils.wrapDavErrors;
 import static org.apache.james.webadmin.Constants.SEPARATOR;
 
@@ -32,7 +33,6 @@ import java.util.UUID;
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
-import org.apache.james.core.Username;
 import org.apache.james.task.TaskId;
 import org.apache.james.task.TaskManager;
 import org.apache.james.webadmin.Constants;
@@ -139,7 +139,7 @@ public class UserCalendarRoutes implements Routes {
     }
 
     private String listCalendars(Request request, Response response) {
-        OpenPaaSUser user = retrieveUser(request);
+        OpenPaaSUser user = retrieveUser(request, userDAO);
 
         byte[] sabreResponse = wrapDavErrors(() -> calDavClient
             .findUserCalendarsAsBytes(user.username(), user.id(), CalDavClient.DEFAULT_FIND_USER_CALENDARS_PARAMS)
@@ -151,7 +151,7 @@ public class UserCalendarRoutes implements Routes {
     }
 
     private String countCalendarEvents(Request request, Response response) {
-        OpenPaaSUser user = retrieveUser(request);
+        OpenPaaSUser user = retrieveUser(request, userDAO);
         CalendarURL calendarURL = retrieveExistingCalendar(request, user);
 
         long count = wrapDavErrors(() -> calDavClient.findUserCalendarEventIds(user.username(), calendarURL)
@@ -166,7 +166,7 @@ public class UserCalendarRoutes implements Routes {
     }
 
     private String createCalendar(Request request, Response response) {
-        OpenPaaSUser user = retrieveUser(request);
+        OpenPaaSUser user = retrieveUser(request, userDAO);
         CalendarCreationRequest creationRequest = parseBody(request, CalendarCreationRequest.class);
 
         String calendarId = creationRequest.id()
@@ -198,7 +198,7 @@ public class UserCalendarRoutes implements Routes {
     }
 
     private String exportCalendar(Request request, Response response) {
-        OpenPaaSUser user = retrieveUser(request);
+        OpenPaaSUser user = retrieveUser(request, userDAO);
         CalendarURL calendarURL = retrieveExportableCalendar(request, user);
 
         byte[] ics = wrapDavErrors(() -> calDavClient.export(calendarURL, user.username())
@@ -212,7 +212,7 @@ public class UserCalendarRoutes implements Routes {
     }
 
     private String importCalendar(Request request, Response response) {
-        OpenPaaSUser user = retrieveUser(request);
+        OpenPaaSUser user = retrieveUser(request, userDAO);
         CalendarURL calendarURL = retrieveExistingCalendar(request, user);
         List<EventToImport> events = parseEvents(request);
 
@@ -239,7 +239,7 @@ public class UserCalendarRoutes implements Routes {
     }
 
     private String deleteCalendar(Request request, Response response) {
-        OpenPaaSUser user = retrieveUser(request);
+        OpenPaaSUser user = retrieveUser(request, userDAO);
         CalendarURL calendarURL = retrieveExistingCalendar(request, user);
 
         wrapDavErrors(() -> calDavClient.deleteCalendar(user.username(), calendarURL).block());
@@ -249,7 +249,7 @@ public class UserCalendarRoutes implements Routes {
     }
 
     private String updateCalendarProperties(Request request, Response response) {
-        OpenPaaSUser user = retrieveUser(request);
+        OpenPaaSUser user = retrieveUser(request, userDAO);
         CalDavClient.CalendarPropertiesUpdate update = parseBody(request, CalDavClient.CalendarPropertiesUpdate.class);
         CalendarURL calendarURL = retrieveExistingCalendar(request, user);
 
@@ -260,7 +260,7 @@ public class UserCalendarRoutes implements Routes {
     }
 
     private String updatePublicRight(Request request, Response response) {
-        OpenPaaSUser user = retrieveUser(request);
+        OpenPaaSUser user = retrieveUser(request, userDAO);
         CalDavClient.PublicRight publicRight = PublicRightParser.parse(request);
         CalendarURL calendarURL = retrieveExistingCalendar(request, user);
 
@@ -271,7 +271,7 @@ public class UserCalendarRoutes implements Routes {
     }
 
     private String updateInvitees(Request request, Response response) {
-        OpenPaaSUser user = retrieveUser(request);
+        OpenPaaSUser user = retrieveUser(request, userDAO);
         CalendarSharingUpdate sharingUpdate = parseBody(request, CalendarSharingUpdate.class);
         CalendarURL calendarURL = retrieveExistingCalendar(request, user);
 
@@ -279,27 +279,6 @@ public class UserCalendarRoutes implements Routes {
 
         response.status(HttpStatus.NO_CONTENT_204);
         return Constants.EMPTY_BODY;
-    }
-
-    private OpenPaaSUser retrieveUser(Request request) {
-        String rawUsername = request.params(USERNAME_PARAM);
-        try {
-            Username username = Username.of(rawUsername);
-            return userDAO.retrieve(username)
-                .blockOptional()
-                .orElseThrow(() -> ErrorResponder.builder()
-                    .statusCode(HttpStatus.NOT_FOUND_404)
-                    .type(ErrorResponder.ErrorType.NOT_FOUND)
-                    .message("User does not exist")
-                    .haltError());
-        } catch (IllegalArgumentException e) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.BAD_REQUEST_400)
-                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                .message("Invalid username: %s", rawUsername)
-                .cause(e)
-                .haltError();
-        }
     }
 
     private CalendarURL retrieveExistingCalendar(Request request, OpenPaaSUser user) {
