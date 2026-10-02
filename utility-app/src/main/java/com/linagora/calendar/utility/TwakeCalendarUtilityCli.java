@@ -24,8 +24,11 @@ import java.util.concurrent.Callable;
 
 import org.apache.commons.configuration2.ex.ConfigurationException;
 
+import com.linagora.calendar.utility.cli.MigrateContactsSortNameCommand;
 import com.linagora.calendar.utility.cli.PurgeInboxCommand;
+import com.linagora.calendar.utility.repository.MongoCardsDAO;
 import com.linagora.calendar.utility.repository.MongoSchedulingObjectsDAO;
+import com.linagora.calendar.utility.service.ContactsSortNameMigrationService;
 import com.linagora.calendar.utility.service.SchedulingObjectsPurgeService;
 
 import picocli.CommandLine;
@@ -58,9 +61,12 @@ public class TwakeCalendarUtilityCli implements Callable<Integer> {
         try {
             MongoSchedulingObjectsDAO schedulingObjectDAO = new MongoSchedulingObjectsDAO(mongoBootstrap.mongoDatabase());
             SchedulingObjectsPurgeService purgeService = new SchedulingObjectsPurgeService(schedulingObjectDAO, out, err);
+            ContactsSortNameMigrationService contactsSortNameMigrationService =
+                new ContactsSortNameMigrationService(new MongoCardsDAO(mongoBootstrap.mongoDatabase()), out, err);
 
             return new CommandLine(new TwakeCalendarUtilityCli())
                 .addSubcommand(new PurgeInboxCommand(out, err, purgeService))
+                .addSubcommand(new MigrateContactsSortNameCommand(out, err, contactsSortNameMigrationService))
                 .execute(args);
         } finally {
             mongoBootstrap.close();
