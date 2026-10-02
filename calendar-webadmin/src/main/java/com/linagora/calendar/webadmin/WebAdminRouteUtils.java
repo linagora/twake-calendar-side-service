@@ -18,18 +18,28 @@
 
 package com.linagora.calendar.webadmin;
 
+import static org.apache.james.webadmin.Constants.SEPARATOR;
+
 import java.util.Optional;
 import java.util.function.Supplier;
 
 import org.apache.commons.lang3.exception.ExceptionUtils;
+import org.apache.james.task.TaskId;
+import org.apache.james.webadmin.Constants;
+import org.apache.james.webadmin.routes.TasksRoutes;
 import org.apache.james.webadmin.utils.ErrorResponder;
+import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpStatus;
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.linagora.calendar.dav.DavClientException;
 
 import spark.HaltException;
+import spark.Response;
 
 final class WebAdminRouteUtils {
+    private static final String TASK_ID_FIELD = "taskId";
+
     static <T> T wrapDavErrors(Supplier<T> supplier) {
         try {
             return supplier.get();
@@ -57,6 +67,15 @@ final class WebAdminRouteUtils {
             .message("Invalid request body: %s".formatted(detail))
             .cause(e)
             .haltError();
+    }
+
+    static String createdTaskResponse(Response response, TaskId taskId) {
+        response.status(HttpStatus.CREATED_201);
+        response.header(HttpHeader.LOCATION.asString(), TasksRoutes.BASE + SEPARATOR + taskId.asString());
+        response.type(Constants.JSON_CONTENT_TYPE);
+        return JsonNodeFactory.instance.objectNode()
+            .put(TASK_ID_FIELD, taskId.asString())
+            .toString();
     }
 
     private WebAdminRouteUtils() {
