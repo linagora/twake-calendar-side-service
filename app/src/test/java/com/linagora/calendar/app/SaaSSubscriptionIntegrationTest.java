@@ -102,7 +102,9 @@ class SaaSSubscriptionIntegrationTest {
         DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
         AppTestHelper.OIDC_BY_PASS_MODULE,
         binder -> Multibinder.newSetBinder(binder, GuiceProbe.class)
-            .addBinding().to(SaaSSubscriptionProbe.class));
+            .addBinding().to(SaaSSubscriptionProbe.class),
+        binder -> Multibinder.newSetBinder(binder, GuiceProbe.class)
+            .addBinding().to(MonitoredRabbitMQProbe.class));
 
     private static SimpleConnectionPool connectionPool;
     private static ReactorRabbitMQChannelPool channelPool;
@@ -152,7 +154,7 @@ class SaaSSubscriptionIntegrationTest {
             .get("/healthcheck")
             .then()
             .statusCode(200)
-            .body("checks.find { it.componentName == 'SaaSSubscriptionQueueConsumerHealthCheck' }.status",
+            .body("checks.find { it.componentName == 'RabbitMQConsumers' }.status",
                 equalTo("healthy")));
     }
 
@@ -260,8 +262,8 @@ class SaaSSubscriptionIntegrationTest {
                 .anySatisfy(node ->
                     assertThatJson(node).isEqualTo("""
                             {
-                              "componentName": "SaaSSubscriptionDeadLetterQueueHealthCheck",
-                              "escapedComponentName": "SaaSSubscriptionDeadLetterQueueHealthCheck",
+                              "componentName": "RabbitMQDeadLetterQueues",
+                              "escapedComponentName": "RabbitMQDeadLetterQueues",
                               "status": "healthy",
                               "cause": null
                             }
@@ -269,13 +271,29 @@ class SaaSSubscriptionIntegrationTest {
                 .anySatisfy(node ->
                     assertThatJson(node).isEqualTo("""
                             {
-                              "componentName": "SaaSSubscriptionQueueConsumerHealthCheck",
-                              "escapedComponentName": "SaaSSubscriptionQueueConsumerHealthCheck",
+                              "componentName": "RabbitMQConsumers",
+                              "escapedComponentName": "RabbitMQConsumers",
                               "status": "healthy",
                               "cause": null
                             }
                         """));
         });
+    }
+
+    @Test
+    void rabbitMQHealthChecksShouldMonitorTheCalendarSubscriptionQueues(TwakeCalendarGuiceServer server) {
+        MonitoredRabbitMQProbe probe = server.getProbe(MonitoredRabbitMQProbe.class);
+
+        assertThat(probe.consumedQueues())
+            .contains(TWPCalendarSubscriptionModule.SUBSCRIPTION_CONSUMER_CONFIG.queue(),
+                TWPCalendarSubscriptionModule.DOMAIN_SUBSCRIPTION_CONSUMER_CONFIG.queue())
+            .doesNotContain(SaaSSubscriptionConsumer.SubscriptionConsumerConfig.DEFAULT.queue(),
+                SaaSDomainSubscriptionConsumer.DomainSubscriptionConsumerConfig.DEFAULT.queue());
+        assertThat(probe.deadLetterQueues())
+            .contains(TWPCalendarSubscriptionModule.SUBSCRIPTION_CONSUMER_CONFIG.deadLetterQueue(),
+                TWPCalendarSubscriptionModule.DOMAIN_SUBSCRIPTION_CONSUMER_CONFIG.deadLetterQueue())
+            .doesNotContain(SaaSSubscriptionConsumer.SubscriptionConsumerConfig.DEFAULT.deadLetterQueue(),
+                SaaSDomainSubscriptionConsumer.DomainSubscriptionConsumerConfig.DEFAULT.deadLetterQueue());
     }
 
     private void publishDomainSubscriptionMessage(String message) {

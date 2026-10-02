@@ -19,25 +19,30 @@
 package com.linagora.calendar.amqp;
 
 import java.io.FileNotFoundException;
+import java.util.Set;
 import java.util.function.Supplier;
 
 import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.james.backends.rabbitmq.MonitoredDeadLetterQueue;
+import org.apache.james.backends.rabbitmq.MonitoredRabbitMQConsumers;
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
 import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
-import org.apache.james.core.healthcheck.HealthCheck;
 import org.apache.james.utils.InitializationOperation;
 import org.apache.james.utils.InitilizationOperationBuilder;
 import org.apache.james.utils.PropertiesProvider;
 
 import com.google.inject.AbstractModule;
+import com.google.inject.Provider;
 import com.google.inject.Provides;
 import com.google.inject.Scopes;
 import com.google.inject.Singleton;
 import com.google.inject.multibindings.Multibinder;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.google.inject.name.Named;
+
+import reactor.core.publisher.Flux;
 
 public class CalendarAmqpModule extends AbstractModule {
     public static final String INJECT_KEY_DAV = "dav";
@@ -63,9 +68,21 @@ public class CalendarAmqpModule extends AbstractModule {
         bind(ItipLocalDeliveryConsumer.class).in(Scopes.SINGLETON);
         bind(EventAuditLogConsumer.class).in(Scopes.SINGLETON);
 
-        Multibinder<HealthCheck> healthCheckMultibinder = Multibinder.newSetBinder(binder(), HealthCheck.class);
-        healthCheckMultibinder.addBinding().to(RabbitMQCalendarQueueConsumerHealthCheck.class);
-        healthCheckMultibinder.addBinding().to(RabbitMQDeadLetterQueueEmptinessHealthCheck.class);
+        Provider<RabbitMQConfiguration> rabbitMQConfiguration = getProvider(RabbitMQConfiguration.class);
+        Multibinder<MonitoredDeadLetterQueue> deadLetterQueues = Multibinder.newSetBinder(binder(), MonitoredDeadLetterQueue.class);
+        CalendarQueueUtil.getAllDeadLetterQueueNames()
+            .forEach(queue -> deadLetterQueues.addBinding()
+                .toProvider(() -> new MonitoredDeadLetterQueue(rabbitMQConfiguration.get(), queue)));
+    }
+
+    @ProvidesIntoSet
+    MonitoredRabbitMQConsumers calendarConsumers(SimpleConnectionPool connectionPool,
+                                                 Set<SimpleConnectionPool.ReconnectionHandler> reconnectionHandlers) {
+        // A queue without consumers restarts every consumer
+        return MonitoredRabbitMQConsumers.of("calendar queues", connectionPool, CalendarQueueUtil::getAllQueueNames,
+            connection -> Flux.fromIterable(reconnectionHandlers)
+                .concatMap(reconnectionHandler -> reconnectionHandler.handleReconnection(connection))
+                .then());
     }
 
     @Provides
