@@ -20,6 +20,7 @@ package com.linagora.calendar.webadmin;
 
 import static com.linagora.calendar.webadmin.WebAdminRouteUtils.createdTaskResponse;
 import static com.linagora.calendar.webadmin.WebAdminRouteUtils.invalidBody;
+import static com.linagora.calendar.webadmin.WebAdminRouteUtils.parseDtoBody;
 import static com.linagora.calendar.webadmin.WebAdminRouteUtils.retrieveUser;
 import static com.linagora.calendar.webadmin.WebAdminRouteUtils.wrapDavErrors;
 import static org.apache.james.webadmin.Constants.SEPARATOR;
@@ -167,7 +168,7 @@ public class UserCalendarRoutes implements Routes {
 
     private String createCalendar(Request request, Response response) {
         OpenPaaSUser user = retrieveUser(request, userDAO);
-        CalendarCreationRequest creationRequest = parseBody(request, CalendarCreationRequest.class);
+        CalendarCreationRequest creationRequest = parseDtoBody(request, CalendarCreationRequest.class, OBJECT_MAPPER);
 
         String calendarId = creationRequest.id()
             .map(StringUtils::trimToNull)
@@ -250,7 +251,7 @@ public class UserCalendarRoutes implements Routes {
 
     private String updateCalendarProperties(Request request, Response response) {
         OpenPaaSUser user = retrieveUser(request, userDAO);
-        CalDavClient.CalendarPropertiesUpdate update = parseBody(request, CalDavClient.CalendarPropertiesUpdate.class);
+        CalDavClient.CalendarPropertiesUpdate update = parseDtoBody(request, CalDavClient.CalendarPropertiesUpdate.class, OBJECT_MAPPER);
         CalendarURL calendarURL = retrieveExistingCalendar(request, user);
 
         wrapDavErrors(() -> calDavClient.updateCalendarProperties(user.username(), calendarURL, update).block());
@@ -272,7 +273,7 @@ public class UserCalendarRoutes implements Routes {
 
     private String updateInvitees(Request request, Response response) {
         OpenPaaSUser user = retrieveUser(request, userDAO);
-        CalendarSharingUpdate sharingUpdate = parseBody(request, CalendarSharingUpdate.class);
+        CalendarSharingUpdate sharingUpdate = parseDtoBody(request, CalendarSharingUpdate.class, OBJECT_MAPPER);
         CalendarURL calendarURL = retrieveExistingCalendar(request, user);
 
         wrapDavErrors(() -> calDavClient.updateCalendarShares(user.username(), calendarURL, sharingUpdate).block());
@@ -315,13 +316,5 @@ public class UserCalendarRoutes implements Routes {
             .type(ErrorResponder.ErrorType.NOT_FOUND)
             .message("Calendar does not exist")
             .haltError();
-    }
-
-    private <T> T parseBody(Request request, Class<T> type) {
-        try {
-            return OBJECT_MAPPER.readValue(request.bodyAsBytes(), type);
-        } catch (Exception e) {
-            throw invalidBody(e);
-        }
     }
 }

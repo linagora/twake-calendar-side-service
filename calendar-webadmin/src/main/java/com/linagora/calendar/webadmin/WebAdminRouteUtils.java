@@ -32,6 +32,7 @@ import org.apache.james.webadmin.utils.ErrorResponder;
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpStatus;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.linagora.calendar.dav.DavClientException;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -93,6 +94,14 @@ final class WebAdminRouteUtils {
             .message("Invalid request body: %s".formatted(detail))
             .cause(e)
             .haltError();
+    }
+
+    static <T> T parseDtoBody(Request request, Class<T> type, ObjectMapper objectMapper) {
+        try {
+            return objectMapper.readValue(request.bodyAsBytes(), type);
+        } catch (Exception e) {
+            throw invalidBody(e);
+        }
     }
 
     static String createdTaskResponse(Response response, TaskId taskId) {
