@@ -20,6 +20,7 @@ package com.linagora.calendar.webadmin;
 
 import static com.linagora.calendar.webadmin.WebAdminRouteUtils.createdTaskResponse;
 import static com.linagora.calendar.webadmin.WebAdminRouteUtils.invalidBody;
+import static com.linagora.calendar.webadmin.WebAdminRouteUtils.retrieveUser;
 import static com.linagora.calendar.webadmin.WebAdminRouteUtils.wrapDavErrors;
 import static org.apache.james.webadmin.Constants.SEPARATOR;
 
@@ -32,7 +33,6 @@ import java.util.UUID;
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
-import org.apache.james.core.Username;
 import org.apache.james.task.TaskId;
 import org.apache.james.task.TaskManager;
 import org.apache.james.webadmin.Constants;
@@ -139,7 +139,7 @@ public class UserAddressBookRoutes implements Routes {
     }
 
     private String listAddressBooks(Request request, Response response) {
-        OpenPaaSUser user = retrieveUser(request);
+        OpenPaaSUser user = retrieveUser(request, userDAO);
 
         byte[] sabreResponse = wrapDavErrors(() -> cardDavClient
             .listUserAddressBooksAsBytes(user.username(), user.id())
@@ -151,7 +151,7 @@ public class UserAddressBookRoutes implements Routes {
     }
 
     private String countContacts(Request request, Response response) {
-        OpenPaaSUser user = retrieveUser(request);
+        OpenPaaSUser user = retrieveUser(request, userDAO);
         String addressBookId = request.params(ADDRESSBOOK_ID_PARAM);
 
         long count = wrapDavErrors(() -> cardDavClient.countContacts(user.username(), user.id(), addressBookId)
@@ -166,7 +166,7 @@ public class UserAddressBookRoutes implements Routes {
     }
 
     private String createAddressBook(Request request, Response response) {
-        OpenPaaSUser user = retrieveUser(request);
+        OpenPaaSUser user = retrieveUser(request, userDAO);
         AddressBookCreationRequest creationRequest = parseBody(request, AddressBookCreationRequest.class);
 
         String addressBookId = creationRequest.id()
@@ -184,7 +184,7 @@ public class UserAddressBookRoutes implements Routes {
     }
 
     private String deleteAddressBook(Request request, Response response) {
-        OpenPaaSUser user = retrieveUser(request);
+        OpenPaaSUser user = retrieveUser(request, userDAO);
         AddressBookURL addressBookURL = retrieveWritableAddressBook(request, user, AddressBookOperation.DELETE);
 
         wrapDavErrors(() -> cardDavClient.deleteUserAddressBook(user.username(), addressBookURL).block());
@@ -194,7 +194,7 @@ public class UserAddressBookRoutes implements Routes {
     }
 
     private String updateAddressBookProperties(Request request, Response response) {
-        OpenPaaSUser user = retrieveUser(request);
+        OpenPaaSUser user = retrieveUser(request, userDAO);
         CardDavClient.AddressBookPropertiesUpdate update = parseBody(request, CardDavClient.AddressBookPropertiesUpdate.class);
         AddressBookURL addressBookURL = retrieveWritableAddressBook(request, user, AddressBookOperation.UPDATE);
 
@@ -220,7 +220,7 @@ public class UserAddressBookRoutes implements Routes {
     }
 
     private String exportAddressBook(Request request, Response response) {
-        OpenPaaSUser user = retrieveUser(request);
+        OpenPaaSUser user = retrieveUser(request, userDAO);
         AddressBookURL addressBookURL = retrieveExistingAddressBook(request, user);
 
         byte[] vcard = wrapDavErrors(() -> cardDavClient.exportContact(user.username(), addressBookURL)
@@ -233,7 +233,7 @@ public class UserAddressBookRoutes implements Routes {
     }
 
     private String importAddressBook(Request request, Response response) {
-        OpenPaaSUser user = retrieveUser(request);
+        OpenPaaSUser user = retrieveUser(request, userDAO);
         AddressBookURL addressBookURL = retrieveExistingAddressBook(request, user);
         List<ContactToImport> contacts = parseContacts(request);
 
@@ -260,7 +260,7 @@ public class UserAddressBookRoutes implements Routes {
     }
 
     private String updatePublicRight(Request request, Response response) {
-        OpenPaaSUser user = retrieveUser(request);
+        OpenPaaSUser user = retrieveUser(request, userDAO);
         boolean publish = PublicRightParser.parse(request) == PublicRight.READ;
         AddressBookURL addressBookURL = retrieveExistingAddressBook(request, user);
 
@@ -271,7 +271,7 @@ public class UserAddressBookRoutes implements Routes {
     }
 
     private String updateInvitees(Request request, Response response) {
-        OpenPaaSUser user = retrieveUser(request);
+        OpenPaaSUser user = retrieveUser(request, userDAO);
         List<CardDavClient.AddressBookSharee> sharees = parseSharees(request);
         AddressBookURL addressBookURL = retrieveExistingAddressBook(request, user);
 
@@ -279,27 +279,6 @@ public class UserAddressBookRoutes implements Routes {
 
         response.status(HttpStatus.NO_CONTENT_204);
         return Constants.EMPTY_BODY;
-    }
-
-    private OpenPaaSUser retrieveUser(Request request) {
-        String rawUsername = request.params(USERNAME_PARAM);
-        try {
-            Username username = Username.of(rawUsername);
-            return userDAO.retrieve(username)
-                .blockOptional()
-                .orElseThrow(() -> ErrorResponder.builder()
-                    .statusCode(HttpStatus.NOT_FOUND_404)
-                    .type(ErrorResponder.ErrorType.NOT_FOUND)
-                    .message("User does not exist")
-                    .haltError());
-        } catch (IllegalArgumentException e) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.BAD_REQUEST_400)
-                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                .message("Invalid username: %s", rawUsername)
-                .cause(e)
-                .haltError();
-        }
     }
 
     /**
