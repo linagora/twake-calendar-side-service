@@ -143,8 +143,7 @@ public class DomainSettingsRoutes implements Routes {
         Domain domain = asDomain(request);
         return domainSettingsDAO.retrieve(domain)
             .defaultIfEmpty(DomainSettings.DEFAULT_DOMAIN_SETTINGS)
-            .flatMap(stored -> domainSettingsResolver.resolve(domain)
-                .map(resolved -> DomainSettingsResponse.of(stored, resolved)))
+            .map(stored -> DomainSettingsResponse.of(stored, domainSettingsResolver.applyFallbacks(domain, stored)))
             .block();
     }
 
