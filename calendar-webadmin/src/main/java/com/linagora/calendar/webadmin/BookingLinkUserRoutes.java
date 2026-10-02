@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.webadmin;
 
+import static com.linagora.calendar.webadmin.WebAdminRouteUtils.retrieveUser;
 import static org.apache.james.webadmin.Constants.SEPARATOR;
 
 import java.time.Duration;
@@ -183,7 +184,7 @@ public class BookingLinkUserRoutes implements Routes {
     }
 
     private Map<String, String> submitDeleteEventsTask(Request request, Response response) {
-        Username username = retrieveUser(request).username();
+        Username username = retrieveUser(request, userDAO).username();
         BookingLinkPublicId publicId = parsePublicId(request);
         Optional<Instant> since = parseSince(request);
 
@@ -212,7 +213,7 @@ public class BookingLinkUserRoutes implements Routes {
     }
 
     private List<BookingLinkDTO> listBookingLinks(Request request, Response response) {
-        Username username = retrieveUser(request).username();
+        Username username = retrieveUser(request, userDAO).username();
 
         return bookingLinkDAO.findByUsername(username)
             .map(BookingLinkDTO::from)
@@ -221,7 +222,7 @@ public class BookingLinkUserRoutes implements Routes {
     }
 
     private BookingLinkDTO getBookingLink(Request request, Response response) {
-        Username username = retrieveUser(request).username();
+        Username username = retrieveUser(request, userDAO).username();
         BookingLinkPublicId publicId = parsePublicId(request);
 
         return bookingLinkDAO.findByPublicId(username, publicId)
@@ -231,7 +232,7 @@ public class BookingLinkUserRoutes implements Routes {
     }
 
     private Map<String, String> createBookingLink(Request request, Response response) {
-        OpenPaaSUser user = retrieveUser(request);
+        OpenPaaSUser user = retrieveUser(request, userDAO);
         BookingLinkInsertRequest insertRequest = parseInsertRequest(request);
 
         BookingLink bookingLink = validateCalendarAccess(user.username(), insertRequest.calendarUrl())
@@ -247,7 +248,7 @@ public class BookingLinkUserRoutes implements Routes {
     }
 
     private String updateBookingLink(Request request, Response response) {
-        Username username = retrieveUser(request).username();
+        Username username = retrieveUser(request, userDAO).username();
         BookingLinkPublicId publicId = parsePublicId(request);
         BookingLinkPatchRequest patchRequest = parsePatchRequest(request);
 
@@ -267,7 +268,7 @@ public class BookingLinkUserRoutes implements Routes {
     }
 
     private String deleteBookingLink(Request request, Response response) {
-        Username username = retrieveUser(request).username();
+        Username username = retrieveUser(request, userDAO).username();
         BookingLinkPublicId publicId = parsePublicId(request);
 
         bookingLinkDAO.findByPublicId(username, publicId)
@@ -280,7 +281,7 @@ public class BookingLinkUserRoutes implements Routes {
     }
 
     private Map<String, String> resetPublicId(Request request, Response response) {
-        Username username = retrieveUser(request).username();
+        Username username = retrieveUser(request, userDAO).username();
         BookingLinkPublicId publicId = parsePublicId(request);
 
         BookingLinkPublicId newPublicId = bookingLinkDAO.resetPublicId(username, publicId)
@@ -478,27 +479,6 @@ public class BookingLinkUserRoutes implements Routes {
                 case READ_ONLY -> Mono.error(forbidden("User does not have write access to calendar: " + calendarURL.asUri()));
                 case NOT_FOUND -> Mono.error(badRequest("Calendar not found or access denied: " + calendarURL.asUri(), null));
             });
-    }
-
-    private OpenPaaSUser retrieveUser(Request request) {
-        String rawUsername = request.params(USERNAME_PARAM);
-        try {
-            Username username = Username.of(rawUsername);
-            return userDAO.retrieve(username)
-                .blockOptional()
-                .orElseThrow(() -> ErrorResponder.builder()
-                    .statusCode(HttpStatus.NOT_FOUND_404)
-                    .type(ErrorResponder.ErrorType.NOT_FOUND)
-                    .message("User does not exist")
-                    .haltError());
-        } catch (IllegalArgumentException e) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.BAD_REQUEST_400)
-                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                .message("Invalid username: %s", rawUsername)
-                .cause(e)
-                .haltError();
-        }
     }
 
     private BookingLinkPublicId parsePublicId(Request request) {
