@@ -45,6 +45,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.common.base.Preconditions;
+import com.linagora.calendar.dav.CalDavClient.PublicRight;
 import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.dav.importer.ContactToImport;
 import com.linagora.calendar.storage.AddressBookURL;
@@ -84,7 +85,6 @@ public class UserAddressBookRoutes implements Routes {
     private static final String FIELD_COUNT = "count";
     private static final String FIELD_NAME = "dav:name";
     private static final String FIELD_DESCRIPTION = "carddav:description";
-    private static final String FIELD_PUBLIC_RIGHT = "public_right";
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module());
 
@@ -261,7 +261,7 @@ public class UserAddressBookRoutes implements Routes {
 
     private String updatePublicRight(Request request, Response response) {
         OpenPaaSUser user = retrieveUser(request);
-        boolean publish = parsePublicRight(request);
+        boolean publish = PublicRightParser.parse(request) == PublicRight.READ;
         AddressBookURL addressBookURL = retrieveExistingAddressBook(request, user);
 
         wrapDavErrors(() -> cardDavClient.updateAddressBookPublicRight(user.username(), addressBookURL, publish).block());
@@ -341,28 +341,6 @@ public class UserAddressBookRoutes implements Routes {
             .type(ErrorResponder.ErrorType.NOT_FOUND)
             .message("Address book does not exist")
             .haltError();
-    }
-
-    private boolean parsePublicRight(Request request) {
-        JsonNode body = parseBody(request);
-        JsonNode publicRightNode = body.path(FIELD_PUBLIC_RIGHT);
-        if (!publicRightNode.isTextual()) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.BAD_REQUEST_400)
-                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                .message("Field '%s' is required".formatted(FIELD_PUBLIC_RIGHT))
-                .haltError();
-        }
-        String publicRight = publicRightNode.asText();
-        return switch (publicRight) {
-            case "" -> false;
-            case "{DAV:}read" -> true;
-            default -> throw ErrorResponder.builder()
-                .statusCode(HttpStatus.BAD_REQUEST_400)
-                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                .message("Invalid '%s' value: '%s'. Supported values are: '' and '{DAV:}read'".formatted(FIELD_PUBLIC_RIGHT, publicRight))
-                .haltError();
-        };
     }
 
     private List<CardDavClient.AddressBookSharee> parseSharees(Request request) {
