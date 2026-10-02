@@ -1569,7 +1569,6 @@ Returns the number of contacts of the address book:
 POST /domains/{domain}/addressbooks/{addressBookId}?action=export
 ```
 
-Example:
 
 ```
 POST /domains/linagora.com/addressbooks/dab?action=export
