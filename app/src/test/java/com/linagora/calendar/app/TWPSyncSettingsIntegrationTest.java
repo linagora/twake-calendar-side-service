@@ -111,6 +111,8 @@ class TWPSyncSettingsIntegrationTest {
                 .addBinding().to(DomainAdminProbe.class);
             Multibinder.newSetBinder(binder, GuiceProbe.class)
                 .addBinding().to(TWPSettingsProbe.class);
+            Multibinder.newSetBinder(binder, GuiceProbe.class)
+                .addBinding().to(MonitoredRabbitMQProbe.class);
         });
 
     private RequestSpecification webadminRequestSpecification;
@@ -148,7 +150,7 @@ class TWPSyncSettingsIntegrationTest {
             .get("/healthcheck")
         .then()
             .statusCode(200)
-            .body("checks.find { it.componentName == 'TWPSettingsQueueConsumerHealthCheck' }.status",
+            .body("checks.find { it.componentName == 'RabbitMQConsumers' }.status",
                 equalTo("healthy")));
     }
 
@@ -404,8 +406,8 @@ class TWPSyncSettingsIntegrationTest {
                 .anySatisfy(node ->
                     assertThatJson(node).isEqualTo("""
                             {
-                              "componentName": "TWPSettingsDeadLetterQueueHealthCheck",
-                              "escapedComponentName": "TWPSettingsDeadLetterQueueHealthCheck",
+                              "componentName": "RabbitMQDeadLetterQueues",
+                              "escapedComponentName": "RabbitMQDeadLetterQueues",
                               "status": "healthy",
                               "cause": null
                             }
@@ -413,13 +415,25 @@ class TWPSyncSettingsIntegrationTest {
                 .anySatisfy(node ->
                     assertThatJson(node).isEqualTo("""
                             {
-                              "componentName": "TWPSettingsQueueConsumerHealthCheck",
-                              "escapedComponentName": "TWPSettingsQueueConsumerHealthCheck",
+                              "componentName": "RabbitMQConsumers",
+                              "escapedComponentName": "RabbitMQConsumers",
                               "status": "healthy",
                               "cause": null
                             }
                         """));
         });
+    }
+
+    @Test
+    void rabbitMQHealthChecksShouldMonitorTheCalendarTWPSettingsQueues(TwakeCalendarGuiceServer server) {
+        MonitoredRabbitMQProbe probe = server.getProbe(MonitoredRabbitMQProbe.class);
+
+        assertThat(probe.consumedQueues())
+            .contains(TWPCalendarSettingsModule.CONSUMER_CONFIG.queue())
+            .doesNotContain(TWPSettingsConsumer.SettingsConsumerConfig.DEFAULT.queue());
+        assertThat(probe.deadLetterQueues())
+            .contains(TWPCalendarSettingsModule.CONSUMER_CONFIG.deadLetterQueue())
+            .doesNotContain(TWPSettingsConsumer.SettingsConsumerConfig.DEFAULT.deadLetterQueue());
     }
 
     private void purgeTWPSettingsDeadLetterQueue() {
