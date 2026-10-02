@@ -120,7 +120,7 @@ public class LdapUsersImportService {
                    return Mono.just(Task.Result.COMPLETED);
                }
                return userDAO.update(storedUser.id(), username, getFirstName(ldapUser), ldapUser.sn().orElse(""))
-                   .then(Mono.just(Task.Result.COMPLETED));
+                   .thenReturn(Task.Result.COMPLETED);
            })
            .doOnNext(completed -> context.incrementProcessedUser())
            .switchIfEmpty(userDAO.add(username, getFirstName(ldapUser), ldapUser.sn().orElse(""))
