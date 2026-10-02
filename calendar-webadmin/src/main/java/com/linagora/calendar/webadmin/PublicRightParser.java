@@ -32,8 +32,8 @@ import spark.HaltException;
 import spark.Request;
 
 /**
- * Parses the {@code {"public_right": "{DAV:}read"}} bodies changing the public visibility of a calendar, be it
- * owned by a user, a team calendar or a resource.
+ * Parses the {@code {"public_right": "{DAV:}read"}} bodies changing the public visibility of a user calendar,
+ * team calendar, resource or address book.
  */
 public class PublicRightParser {
     private static final String FIELD_PUBLIC_RIGHT = "public_right";
