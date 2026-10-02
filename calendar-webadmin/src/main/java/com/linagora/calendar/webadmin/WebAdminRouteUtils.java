@@ -18,8 +18,10 @@
 
 package com.linagora.calendar.webadmin;
 
+import java.util.Optional;
 import java.util.function.Supplier;
 
+import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.james.webadmin.utils.ErrorResponder;
 import org.eclipse.jetty.http.HttpStatus;
 
@@ -41,6 +43,18 @@ final class WebAdminRouteUtils {
             .statusCode(HttpStatus.INTERNAL_SERVER_ERROR_500)
             .type(ErrorResponder.ErrorType.SERVER_ERROR)
             .message("Error while calling the DAV server")
+            .cause(e)
+            .haltError();
+    }
+
+    static HaltException invalidBody(Exception e) {
+        String detail = Optional.ofNullable(ExceptionUtils.getRootCause(e))
+            .map(Throwable::getMessage)
+            .orElse(e.getMessage());
+        return ErrorResponder.builder()
+            .statusCode(HttpStatus.BAD_REQUEST_400)
+            .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+            .message("Invalid request body: %s".formatted(detail))
             .cause(e)
             .haltError();
     }

@@ -19,18 +19,17 @@
 package com.linagora.calendar.webadmin;
 
 import static com.linagora.calendar.dav.ResourceService.ONLY_ACTIVE;
+import static com.linagora.calendar.webadmin.WebAdminRouteUtils.invalidBody;
 import static com.linagora.calendar.webadmin.WebAdminRouteUtils.wrapDavErrors;
 import static org.apache.james.webadmin.Constants.SEPARATOR;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
 
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.james.task.TaskId;
 import org.apache.james.task.TaskManager;
 import org.apache.james.webadmin.Constants;
@@ -159,14 +158,7 @@ public class DomainCalendarContentHandler {
         try {
             events = EventToImport.parse(request.bodyAsBytes());
         } catch (Exception e) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.BAD_REQUEST_400)
-                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                .message("Invalid request body: %s".formatted(Optional.ofNullable(ExceptionUtils.getRootCause(e))
-                    .map(Throwable::getMessage)
-                    .orElse(e.getMessage())))
-                .cause(e)
-                .haltError();
+            throw invalidBody(e);
         }
         if (events.isEmpty()) {
             throw ErrorResponder.builder()

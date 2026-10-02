@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.webadmin;
 
+import static com.linagora.calendar.webadmin.WebAdminRouteUtils.invalidBody;
 import static com.linagora.calendar.webadmin.WebAdminRouteUtils.wrapDavErrors;
 import static org.apache.james.webadmin.Constants.SEPARATOR;
 
@@ -30,7 +31,6 @@ import java.util.UUID;
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.james.core.Username;
 import org.apache.james.task.TaskId;
 import org.apache.james.task.TaskManager;
@@ -407,17 +407,5 @@ public class UserAddressBookRoutes implements Routes {
         } catch (Exception e) {
             throw invalidBody(e);
         }
-    }
-
-    private HaltException invalidBody(Exception e) {
-        String detail = Optional.ofNullable(ExceptionUtils.getRootCause(e))
-            .map(Throwable::getMessage)
-            .orElse(e.getMessage());
-        return ErrorResponder.builder()
-            .statusCode(HttpStatus.BAD_REQUEST_400)
-            .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-            .message("Invalid request body: %s".formatted(detail))
-            .cause(e)
-            .haltError();
     }
 }
