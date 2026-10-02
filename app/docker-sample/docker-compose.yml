@@ -20,7 +20,7 @@ services:
 
   tcalendar-side-service:
 #    image: linagora/twake-calendar-side-service:latest
-    image: linagora/twake-calendar-side-service:2.4.6.4
+    image: linagora/twake-calendar-side-service:2.4.6.5
     container_name: tcalendar-side-service.linagora.local
     depends_on:
       - mongo
