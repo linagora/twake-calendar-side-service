@@ -119,7 +119,7 @@ services:
       retries: 10
 
   rabbitmq:
-    image: rabbitmq:3.13.3-management
+    image: rabbitmq:4.1.1-management
     container_name: rabbitmq
     networks:
       - tcalendar
