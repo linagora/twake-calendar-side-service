@@ -1647,6 +1647,53 @@ The task details are available on `GET /tasks/{taskId}`:
 - `404`: the domain or the address book does not exist
 - `500`: error while calling the DAV server
 
+### Clearing the contacts of a domain address book
+
+```
+DELETE /domains/{domain}/addressbooks/{addressBookId}/contacts[?sourceDomain={sourceDomain}]
+```
+
+```
+DELETE /domains/linagora.com/addressbooks/dab/contacts
+DELETE /domains/school.org/addressbooks/dab/contacts?sourceDomain=student.school.org
+```
+
+Deletes all the contacts of the address book. When `sourceDomain` is specified, solely the contacts having at least
+one mail address within that domain (case-insensitively) are deleted.
+
+The `domain-members` address book is fed by the LDAP synchronization of the domain members, hence clearing it
+through this route is rejected.
+
+This triggers a task, and returns its identifier:
+
+```json
+{"taskId": "6d3bb34e-9dfc-4ecc-a5d0-05a6f2a0e6d6"}
+```
+
+The task details are available on `GET /tasks/{taskId}`:
+
+```json
+{
+  "type": "domain-addressbook-clear",
+  "additionalInformation": {
+    "domain": "school.org",
+    "addressBookId": "dab",
+    "sourceDomain": "student.school.org",
+    "deletedContactCount": 12,
+    "failedContactCount": 0,
+    "timestamp": "2026-06-01T08:00:00Z"
+  }
+}
+```
+
+`sourceDomain` is omitted when all the contacts are cleared.
+
+**Status codes**:
+- `201`: the clear task was created
+- `400`: the domain or the `sourceDomain` is invalid, or the address book is `domain-members`
+- `404`: the domain or the address book does not exist
+- `500`: error while calling the DAV server
+
 ## User address book management routes
 
 Administrative management of user address books. These routes proxy the Sabre DAV server,
@@ -2120,6 +2167,7 @@ The following task types are domain-scoped:
 | `addressbook-import` | domain extracted from `username` |
 | `domain-calendar-import` | `domain` field in additional information |
 | `domain-addressbook-import` | `domain` field in additional information |
+| `domain-addressbook-clear` | `domain` field in additional information |
 | `DeleteUserDataTask` | domain extracted from `username` |
 | `sync-domain-members-contacts-ldap-to-dav` (single-domain) | `domain` field in additional information |
 | `clear-domain-members-contacts-dav` (single-domain) | `domain` field in additional information |
