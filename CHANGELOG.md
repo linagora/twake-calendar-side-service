@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
  - ISSUE-1106 Common Contacts: backend autocomplete API `POST /api/people/search` on a dedicated port (`common.contact.api.port`), authenticated with the Bearer tokens listed in `common.contact.api.secrets`
  - ISSUE-1116 Webadmin: `GET /domains/{domain}/addressbooks/{addressBookId}/contactCount` counts the contacts of the address books a domain owns (`dab`, `domain-members`)
  - ISSUE-1117 Webadmin: `POST /domains/{domain}/addressbooks/{addressBookId}?action=export` returns the vCards of a domain address book (`dab`, `domain-members`), `?action=import` plans a task importing the supplied vCards into it (`domain-members` excluded)
+ - ISSUE-1118 Webadmin: `DELETE /domains/{domain}/addressbooks/{addressBookId}/contacts[?sourceDomain=]` plans a task clearing the contacts of a domain address book (`domain-members` excluded), optionally only those having a mail address within `sourceDomain`
 
 ### Fixes
 

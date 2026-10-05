@@ -42,6 +42,7 @@ import com.linagora.calendar.webadmin.task.BookingLinkEventDeletionTaskAdditiona
 import com.linagora.calendar.webadmin.task.CalendarArchivalTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.CalendarEventsReindexTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.CalendarImportTaskAdditionalInformationDTO;
+import com.linagora.calendar.webadmin.task.DomainAddressBookClearTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.DomainAddressBookImportTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.DomainCalendarImportTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.UnsentMailDeletionTaskAdditionalInformationDTO;
@@ -152,5 +153,11 @@ public class CalendarRoutesModule extends AbstractModule {
     @ProvidesIntoSet
     public AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO> domainAddressBookImportTaskAdditionalInformation() {
         return DomainAddressBookImportTaskAdditionalInformationDTO.module();
+    }
+
+    @Named(DTOModuleInjections.WEBADMIN_DTO)
+    @ProvidesIntoSet
+    public AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO> domainAddressBookClearTaskAdditionalInformation() {
+        return DomainAddressBookClearTaskAdditionalInformationDTO.module();
     }
 }

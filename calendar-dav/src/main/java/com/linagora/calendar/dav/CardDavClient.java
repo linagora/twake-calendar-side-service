@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.dav;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -523,6 +524,28 @@ public class CardDavClient extends DavClient {
                                 addressBookURL.vcardUri(vcardUid).toASCIIString(),
                                 errorBody))));
             });
+    }
+
+    /**
+     * Deletes the contact located at {@code contactUri} - typically an href returned by an addressbook-query REPORT -
+     * from an address book owned by a domain. Deleting an already deleted contact is a no-op.
+     */
+    public Mono<Void> deleteDomainContact(OpenPaaSId domainId, URI contactUri) {
+        return httpClientWithTechnicalToken(domainId)
+            .flatMap(client -> client.headers(headers -> headers
+                    .add(HttpHeaderNames.ACCEPT, HttpHeaderValues.TEXT_PLAIN))
+                .delete()
+                .uri(contactUri.toASCIIString())
+                .responseSingle((response, buf) -> {
+                    int statusCode = response.status().code();
+                    if (statusCode == HttpStatus.SC_NO_CONTENT || statusCode == HttpStatus.SC_NOT_FOUND) {
+                        return Mono.empty();
+                    }
+                    return responseBodyAsString(buf)
+                        .flatMap(errorBody -> Mono.error(new DavClientException(
+                            "Unexpected status code: %d when deleting contact %s\n%s"
+                                .formatted(statusCode, contactUri.toASCIIString(), errorBody))));
+                }));
     }
 
     public Mono<byte[]> listUserAddressBooksAsBytes(Username username, OpenPaaSId userId) {

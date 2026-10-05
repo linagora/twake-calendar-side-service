@@ -26,6 +26,7 @@ import static org.apache.james.webadmin.Constants.SEPARATOR;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 
 import jakarta.inject.Inject;
 
@@ -45,6 +46,8 @@ import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.webadmin.service.AddressBookImportService;
+import com.linagora.calendar.webadmin.service.DomainAddressBookClearService;
+import com.linagora.calendar.webadmin.task.DomainAddressBookClearTask;
 import com.linagora.calendar.webadmin.task.DomainAddressBookImportTask;
 
 import spark.HaltException;
@@ -68,26 +71,31 @@ public class DomainAddressBookRoutes implements Routes {
     private static final String ADDRESSBOOK_PATH = BASE_PATH + SEPARATOR + DOMAIN_PARAM + SEPARATOR + "addressbooks"
         + SEPARATOR + ADDRESSBOOK_ID_PARAM;
     private static final String CONTACT_COUNT_PATH = ADDRESSBOOK_PATH + SEPARATOR + "contactCount";
+    private static final String CONTACTS_PATH = ADDRESSBOOK_PATH + SEPARATOR + "contacts";
 
     private static final String ACTION_PARAMETER = "action";
     private static final String EXPORT_ACTION = "export";
     private static final String IMPORT_ACTION = "import";
+    private static final String SOURCE_DOMAIN_PARAMETER = "sourceDomain";
     private static final String VCARD_CONTENT_TYPE = "text/vcard; charset=utf-8";
     private static final byte[] NO_CONTACT = new byte[0];
 
     private final OpenPaaSDomainDAO domainDAO;
     private final CardDavClient cardDavClient;
     private final AddressBookImportService addressBookImportService;
+    private final DomainAddressBookClearService addressBookClearService;
     private final TaskManager taskManager;
     private final JsonTransformer jsonTransformer;
 
     @Inject
     public DomainAddressBookRoutes(OpenPaaSDomainDAO domainDAO, CardDavClient cardDavClient,
-                                   AddressBookImportService addressBookImportService, TaskManager taskManager,
+                                   AddressBookImportService addressBookImportService,
+                                   DomainAddressBookClearService addressBookClearService, TaskManager taskManager,
                                    JsonTransformer jsonTransformer) {
         this.domainDAO = domainDAO;
         this.cardDavClient = cardDavClient;
         this.addressBookImportService = addressBookImportService;
+        this.addressBookClearService = addressBookClearService;
         this.taskManager = taskManager;
         this.jsonTransformer = jsonTransformer;
     }
@@ -101,6 +109,7 @@ public class DomainAddressBookRoutes implements Routes {
     public void define(Service service) {
         service.get(CONTACT_COUNT_PATH, this::countContacts, jsonTransformer);
         service.post(ADDRESSBOOK_PATH, this::exportOrImportAddressBook);
+        service.delete(CONTACTS_PATH, this::clearContacts);
     }
 
     private ContactCountResponse countContacts(Request request, Response response) {
@@ -150,20 +159,47 @@ public class DomainAddressBookRoutes implements Routes {
         return createdTaskResponse(response, taskId);
     }
 
+    private String clearContacts(Request request, Response response) {
+        OpenPaaSDomain domain = retrieveDomain(request);
+        Optional<Domain> sourceDomain = parseSourceDomain(request);
+        AddressBookURL addressBookURL = retrieveWritableAddressBook(request, domain, "clear");
+
+        TaskId taskId = taskManager.submit(new DomainAddressBookClearTask(addressBookClearService, domain, addressBookURL, sourceDomain));
+        return createdTaskResponse(response, taskId);
+    }
+
+    private AddressBookURL retrieveImportableAddressBook(Request request, OpenPaaSDomain domain) {
+        return retrieveWritableAddressBook(request, domain, "import into");
+    }
+
     /**
      * The {@code domain-members} address book mirrors the users of the domain: it is fed by the LDAP
-     * synchronization hence rejects imports.
+     * synchronization hence rejects direct writes.
      */
-    private AddressBookURL retrieveImportableAddressBook(Request request, OpenPaaSDomain domain) {
+    private AddressBookURL retrieveWritableAddressBook(Request request, OpenPaaSDomain domain, String operation) {
         AddressBookURL addressBookURL = retrieveExistingAddressBook(request, domain);
         if (CardDavClient.DOMAIN_MEMBERS_ADDRESS_BOOK_ID.equals(addressBookURL.addressBookId())) {
             throw ErrorResponder.builder()
                 .statusCode(HttpStatus.BAD_REQUEST_400)
                 .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                .message("Cannot import into the '%s' address book".formatted(CardDavClient.DOMAIN_MEMBERS_ADDRESS_BOOK_ID))
+                .message("Cannot %s the '%s' address book".formatted(operation, CardDavClient.DOMAIN_MEMBERS_ADDRESS_BOOK_ID))
                 .haltError();
         }
         return addressBookURL;
+    }
+
+    private Optional<Domain> parseSourceDomain(Request request) {
+        Optional<String> rawSourceDomain = Optional.ofNullable(request.queryParams(SOURCE_DOMAIN_PARAMETER));
+        try {
+            return rawSourceDomain.map(Domain::of);
+        } catch (IllegalArgumentException e) {
+            throw ErrorResponder.builder()
+                .statusCode(HttpStatus.BAD_REQUEST_400)
+                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                .message("Invalid '%s' query parameter: %s".formatted(SOURCE_DOMAIN_PARAMETER, rawSourceDomain.orElseThrow()))
+                .cause(e)
+                .haltError();
+        }
     }
 
     private AddressBookURL retrieveExistingAddressBook(Request request, OpenPaaSDomain domain) {
