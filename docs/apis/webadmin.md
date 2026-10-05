@@ -1563,6 +1563,90 @@ Returns the number of contacts of the address book:
 - `404`: the domain (`Domain does not exist`) or the address book (`Address book does not exist`) does not exist
 - `500`: error while calling the DAV server
 
+### Exporting the content of a domain address book
+
+```
+POST /domains/{domain}/addressbooks/{addressBookId}?action=export
+```
+
+
+```
+POST /domains/linagora.com/addressbooks/dab?action=export
+POST /domains/linagora.com/addressbooks/domain-members?action=export
+```
+
+Returns, as `text/vcard`, the vCards of all the contacts of the address book:
+
+```
+BEGIN:VCARD
+VERSION:4.0
+UID:3f1a1c8e-1c1a-4a0e-9a5f-0b5f4a2b1c0d
+FN:John Doe
+EMAIL:john.doe@linagora.com
+END:VCARD
+```
+
+The response body is empty when the address book holds no contact.
+
+**Status codes**:
+- `200`: the content of the address book is returned
+- `400`: the domain is invalid, or the `action` query parameter is missing or unsupported. Only `export` and `import` are supported, case-insensitively.
+- `404`: the domain or the address book does not exist
+- `500`: error while calling the DAV server
+
+### Importing contacts into a domain address book
+
+```
+POST /domains/{domain}/addressbooks/{addressBookId}?action=import
+```
+
+The request body holds the vCards to import, typically the ones returned by the export route:
+
+```
+POST /domains/linagora.com/addressbooks/dab?action=import
+
+BEGIN:VCARD
+VERSION:4.0
+UID:3f1a1c8e-1c1a-4a0e-9a5f-0b5f4a2b1c0d
+FN:John Doe
+EMAIL:john.doe@linagora.com
+END:VCARD
+```
+
+Contacts are stored under their UID - a random one is generated for those carrying none - hence re-importing
+an exported address book updates its contacts rather than duplicating them.
+
+The `domain-members` address book is fed by the LDAP synchronization of the domain members, hence imports into it
+are rejected. Import is supported solely by the `dab` Domain Address Book.
+
+This triggers a task, and returns its identifier:
+
+```json
+{"taskId": "6d3bb34e-9dfc-4ecc-a5d0-05a6f2a0e6d6"}
+```
+
+The task details are available on `GET /tasks/{taskId}`:
+
+```json
+{
+  "type": "domain-addressbook-import",
+  "additionalInformation": {
+    "domain": "linagora.com",
+    "addressBookId": "dab",
+    "totalContactCount": 12,
+    "importedContactCount": 12,
+    "failedContactCount": 0,
+    "timestamp": "2026-06-01T08:00:00Z"
+  }
+}
+```
+
+**Status codes**:
+- `201`: the import task was created
+- `400`: the domain is invalid, the body holds no contact to import, or the address book is `domain-members`
+- `404`: the domain or the address book does not exist
+- `500`: error while calling the DAV server
+
 ## User address book management routes
 
 Administrative management of user address books. These routes proxy the Sabre DAV server,
@@ -2035,6 +2119,7 @@ The following task types are domain-scoped:
 | `calendar-import` | domain extracted from `username` |
 | `addressbook-import` | domain extracted from `username` |
 | `domain-calendar-import` | `domain` field in additional information |
+| `domain-addressbook-import` | `domain` field in additional information |
 | `DeleteUserDataTask` | domain extracted from `username` |
 | `sync-domain-members-contacts-ldap-to-dav` (single-domain) | `domain` field in additional information |
 | `clear-domain-members-contacts-dav` (single-domain) | `domain` field in additional information |
