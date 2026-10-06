@@ -68,7 +68,7 @@ public class DomainAddressBookCopyTask implements Task {
 
     @Override
     public Result run() {
-        return copyService.copyUsers(sourceDomain, ldapFilter, domain.id(), addressBookURL, context).block();
+        return copyService.copyUsers(sourceDomain, ldapFilter, new DomainAddressBookCopyService.Destination(domain.id(), addressBookURL), context).block();
     }
 
     @Override
