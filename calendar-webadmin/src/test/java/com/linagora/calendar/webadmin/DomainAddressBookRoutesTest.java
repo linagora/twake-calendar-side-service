@@ -37,7 +37,6 @@ import java.util.stream.IntStream;
 import javax.net.ssl.SSLException;
 
 import org.apache.james.core.Domain;
-import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;
 import org.apache.james.json.DTOConverter;
 import org.apache.james.server.task.json.dto.AdditionalInformationDTO;
@@ -46,7 +45,6 @@ import org.apache.james.task.Hostname;
 import org.apache.james.task.MemoryTaskManager;
 import org.apache.james.task.TaskExecutionDetails;
 import org.apache.james.task.TaskManager;
-import org.apache.james.user.api.UsersRepository;
 import org.apache.james.webadmin.WebAdminServer;
 import org.apache.james.webadmin.WebAdminUtils;
 import org.apache.james.webadmin.routes.TasksRoutes;
@@ -58,6 +56,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.dav.DavTestHelper;
@@ -68,7 +67,6 @@ import com.linagora.calendar.storage.ldap.LdapDomainMemberProvider;
 import com.linagora.calendar.storage.ldap.LdapFilter;
 import com.linagora.calendar.storage.ldap.LdapUser;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
-import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
 import com.linagora.calendar.webadmin.service.AddressBookImportService;
 import com.linagora.calendar.webadmin.service.DomainAddressBookClearService;
 import com.linagora.calendar.webadmin.service.DomainAddressBookCopyService;
@@ -89,10 +87,8 @@ public class DomainAddressBookRoutesTest {
 
     private WebAdminServer webAdminServer;
     private MongoDBOpenPaaSDomainDAO domainDAO;
-    private MongoDBOpenPaaSUserDAO userDAO;
     private CardDavClient cardDavClient;
     private DavTestHelper davTestHelper;
-    private UsersRepository usersRepository;
     private LdapDomainMemberProvider ldapDomainMemberProvider;
     private OpenPaaSDomain domain;
     private OpenPaaSDomain sourceDomain;
@@ -100,23 +96,21 @@ public class DomainAddressBookRoutesTest {
     @BeforeEach
     void setUp() throws SSLException {
         domainDAO = new MongoDBOpenPaaSDomainDAO(sabreDavExtension.dockerSabreDavSetup().getMongoDB());
-        userDAO = new MongoDBOpenPaaSUserDAO(sabreDavExtension.dockerSabreDavSetup().getMongoDB(), domainDAO);
         cardDavClient = new CardDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         davTestHelper = sabreDavExtension.davTestHelper();
-        usersRepository = mock(UsersRepository.class);
         ldapDomainMemberProvider = mock(LdapDomainMemberProvider.class);
         domain = domainDAO.add(Domain.of("new-domain" + UUID.randomUUID() + ".tld")).block();
         sourceDomain = domainDAO.add(Domain.of("student" + UUID.randomUUID() + ".tld")).block();
 
-        startWebAdminServer(Optional.of(ldapDomainMemberProvider));
+        startWebAdminServer(Optional.of(new DomainAddressBookCopyService(cardDavClient, ldapDomainMemberProvider)));
     }
 
-    private void startWebAdminServer(Optional<LdapDomainMemberProvider> ldapDomainMemberProvider) {
+    private void startWebAdminServer(Optional<DomainAddressBookCopyService> addressBookCopyService) {
         TaskManager taskManager = new MemoryTaskManager(new Hostname("foo"));
         webAdminServer = WebAdminUtils.createWebAdminServer(
                 new DomainAddressBookRoutes(domainDAO, cardDavClient, new AddressBookImportService(cardDavClient),
                     new DomainAddressBookClearService(cardDavClient),
-                    new DomainAddressBookCopyService(cardDavClient, usersRepository, userDAO, ldapDomainMemberProvider),
+                    addressBookCopyService,
                     taskManager, new JsonTransformer()),
                 new TasksRoutes(taskManager, new JsonTransformer(),
                     new DTOConverter<>(ImmutableSet.<AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO>>builder()
@@ -679,21 +673,18 @@ public class DomainAddressBookRoutesTest {
     @Test
     void copyFromShouldAddTheSourceDomainUsersToTheDomainAddressBook() {
         davTestHelper.createDomainAddressBook(domain.id()).block();
-        Username jane = sourceDomainUser("jane");
-        Username john = sourceDomainUser("john");
-        userDAO.add(jane, "Jane", "Doe").block();
-        sourceDomainUsersAre(jane, john);
+        sourceDomainUsersAre(sourceDomainLdapUser("jane"), sourceDomainLdapUser("john"));
 
         awaitTask(copyFrom(DOMAIN_ADDRESS_BOOK, sourceDomain.domain().asString()));
 
         assertThat(exportAddressBook(DOMAIN_ADDRESS_BOOK))
-            .contains(jane.asString(), john.asString(), "FN:Jane Doe", "N:Doe;Jane");
+            .contains(sourceDomainUser("jane").asString(), sourceDomainUser("john").asString(), "FN:jane Doe", "N:Doe;jane");
     }
 
     @Test
     void copyFromShouldReturnCompletedTaskDetails() {
         davTestHelper.createDomainAddressBook(domain.id()).block();
-        sourceDomainUsersAre(sourceDomainUser("jane"), sourceDomainUser("john"));
+        sourceDomainUsersAre(sourceDomainLdapUser("jane"), sourceDomainLdapUser("john"));
 
         String taskId = copyFrom(DOMAIN_ADDRESS_BOOK, sourceDomain.domain().asString());
 
@@ -715,7 +706,7 @@ public class DomainAddressBookRoutesTest {
     @Test
     void copyFromShouldUpdatePreviouslyCopiedContacts() {
         davTestHelper.createDomainAddressBook(domain.id()).block();
-        sourceDomainUsersAre(sourceDomainUser("jane"), sourceDomainUser("john"));
+        sourceDomainUsersAre(sourceDomainLdapUser("jane"), sourceDomainLdapUser("john"));
 
         awaitTask(copyFrom(DOMAIN_ADDRESS_BOOK, sourceDomain.domain().asString()));
         awaitTask(copyFrom(DOMAIN_ADDRESS_BOOK, sourceDomain.domain().asString()));
@@ -727,7 +718,7 @@ public class DomainAddressBookRoutesTest {
     void copyFromShouldPreserveExistingContacts() {
         davTestHelper.createDomainAddressBook(domain.id()).block();
         upsertDomainContact(DOMAIN_ADDRESS_BOOK);
-        sourceDomainUsersAre(sourceDomainUser("jane"));
+        sourceDomainUsersAre(sourceDomainLdapUser("jane"));
 
         awaitTask(copyFrom(DOMAIN_ADDRESS_BOOK, sourceDomain.domain().asString()));
 
@@ -745,17 +736,11 @@ public class DomainAddressBookRoutesTest {
     }
 
     @Test
-    void copyFromShouldCopyOnlyTheLdapUsersMatchingTheFilter() throws Exception {
+    void copyFromShouldCopyOnlyTheLdapUsersMatchingTheFilter() {
         davTestHelper.createDomainAddressBook(domain.id()).block();
         String rawLdapFilter = "(employeeType=student)";
         when(ldapDomainMemberProvider.domainMembers(sourceDomain.domain(), Optional.of(LdapFilter.of(rawLdapFilter))))
-            .thenReturn(Flux.just(LdapUser.builder()
-                .uid("jane")
-                .cn("Jane Doe")
-                .sn("Doe")
-                .givenName("Jane")
-                .mail(new MailAddress(sourceDomainUser("jane").asString()))
-                .build()));
+            .thenReturn(Flux.just(sourceDomainLdapUser("jane")));
 
         String taskId = given()
             .queryParam("action", "copyFrom")
@@ -779,7 +764,7 @@ public class DomainAddressBookRoutesTest {
             .body("additionalInformation.copiedContactCount", is(1));
 
         assertThat(exportAddressBook(DOMAIN_ADDRESS_BOOK))
-            .contains(sourceDomainUser("jane").asString(), "FN:Jane Doe");
+            .contains(sourceDomainUser("jane").asString(), "FN:jane Doe");
     }
 
     @Test
@@ -828,7 +813,7 @@ public class DomainAddressBookRoutesTest {
     }
 
     @Test
-    void copyFromShouldReturn400WhenLdapFilterIsUsedWithoutLdap() {
+    void copyFromShouldReturn400WhenLdapIsNotBound() {
         webAdminServer.destroy();
         startWebAdminServer(Optional.empty());
         davTestHelper.createDomainAddressBook(domain.id()).block();
@@ -836,13 +821,12 @@ public class DomainAddressBookRoutesTest {
         given()
             .queryParam("action", "copyFrom")
             .queryParam("sourceDomain", sourceDomain.domain().asString())
-            .queryParam("ldapFilter", "(employeeType=student)")
         .when()
             .post("/domains/{domain}/addressbooks/{addressBookId}", domain.domain().asString(), DOMAIN_ADDRESS_BOOK)
         .then()
             .statusCode(400)
             .body("type", is("InvalidArgument"))
-            .body("message", is("The 'ldapFilter' query parameter requires the LDAP users repository"));
+            .body("message", is("Invalid 'action' query parameter: 'copyFrom'. Supported values are: 'export', 'import'"));
     }
 
     @Test
@@ -890,8 +874,18 @@ public class DomainAddressBookRoutesTest {
         return Username.fromLocalPartWithDomain(localPart, sourceDomain.domain());
     }
 
-    private void sourceDomainUsersAre(Username... users) {
-        when(usersRepository.listUsersOfADomainReactive(sourceDomain.domain())).thenReturn(Flux.just(users));
+    private LdapUser sourceDomainLdapUser(String localPart) {
+        return LdapUser.builder()
+            .uid(localPart)
+            .cn(localPart + " Doe")
+            .sn("Doe")
+            .givenName(localPart)
+            .mail(Throwing.supplier(() -> sourceDomainUser(localPart).asMailAddress()).get())
+            .build();
+    }
+
+    private void sourceDomainUsersAre(LdapUser... users) {
+        when(ldapDomainMemberProvider.domainMembers(sourceDomain.domain(), Optional.empty())).thenReturn(Flux.just(users));
     }
 
     private String clearContacts(String addressBookId) {
