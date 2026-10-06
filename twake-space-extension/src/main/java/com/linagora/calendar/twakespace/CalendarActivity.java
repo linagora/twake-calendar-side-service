@@ -1,0 +1,294 @@
+/********************************************************************
+ *  As a subpart of Twake Mail, this file is edited by Linagora.    *
+ *                                                                  *
+ *  https://twake-mail.com/                                         *
+ *  https://linagora.com                                            *
+ *                                                                  *
+ *  This file is subject to The Affero Gnu Public License           *
+ *  version 3.                                                      *
+ *                                                                  *
+ *  https://www.gnu.org/licenses/agpl-3.0.en.html                   *
+ *                                                                  *
+ *  This program is distributed in the hope that it will be         *
+ *  useful, but WITHOUT ANY WARRANTY; without even the implied      *
+ *  warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR         *
+ *  PURPOSE. See the GNU Affero General Public License for          *
+ *  more details.                                                   *
+ ********************************************************************/
+
+package com.linagora.calendar.twakespace;
+
+import java.io.IOException;
+import java.time.Clock;
+import java.util.List;
+import java.util.Optional;
+
+import jakarta.inject.Inject;
+
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
+import com.linagora.calendar.amqp.CalendarEventNotificationEmailDTO;
+import com.linagora.calendar.amqp.EventCalendarNotificationConsumer;
+import com.linagora.calendar.amqp.EventEmailConsumer;
+import com.linagora.calendar.api.CalendarUtil;
+import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.TeamCalendarRepository;
+import com.linagora.calendar.storage.event.EventFields;
+import com.linagora.calendar.storage.event.EventParseUtils;
+import com.linagora.calendar.storage.model.TeamCalendarId;
+
+import net.fortuna.ical4j.model.Calendar;
+import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.Property;
+import net.fortuna.ical4j.model.component.VEvent;
+import net.fortuna.ical4j.model.parameter.PartStat;
+import net.fortuna.ical4j.model.property.Method;
+import reactor.core.publisher.Mono;
+
+// Sabre names a team calendar only on the copy of a write it sends for the team calendar's own instance, at
+// /calendars/{teamCalendarId}/{teamCalendarId}/: the writes are read from that copy. An attendee outside the space
+// answers from their own calendar, so their answer is read from the mail sabre sends the organizer, matched by UID.
+public class CalendarActivity {
+    static final String CREATED_EXCHANGE = EventCalendarNotificationConsumer.Queue.ADD.exchangeName();
+    static final String UPDATED_EXCHANGE = EventCalendarNotificationConsumer.Queue.UPDATE.exchangeName();
+    static final String EMAIL_EXCHANGE = EventEmailConsumer.EXCHANGE_NAME;
+    static final List<String> EXCHANGES = List.of(CREATED_EXCHANGE, UPDATED_EXCHANGE, EMAIL_EXCHANGE);
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(CalendarActivity.class);
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module())
+        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    private static final String CREATED = "created";
+    private static final String UPDATED = "updated";
+    private static final String RESCHEDULED = "rescheduled";
+    private static final String ACCEPTED = "accepted";
+    private static final String DECLINED = "declined";
+    private static final String PROPOSED = "proposed";
+    private static final String PRINCIPAL_PREFIX = "principals/users/";
+
+    private final TeamCalendarRepository teamCalendarRepository;
+    private final TwakeSpaceRepository spaceRepository;
+    private final OpenPaaSUserDAO userDAO;
+    private final CalendarEventSnapshotRepository snapshotRepository;
+    private final Clock clock;
+
+    @Inject
+    public CalendarActivity(TeamCalendarRepository teamCalendarRepository, TwakeSpaceRepository spaceRepository, OpenPaaSUserDAO userDAO,
+                            CalendarEventSnapshotRepository snapshotRepository, Clock clock) {
+        this.teamCalendarRepository = teamCalendarRepository;
+        this.spaceRepository = spaceRepository;
+        this.userDAO = userDAO;
+        this.snapshotRepository = snapshotRepository;
+        this.clock = clock;
+    }
+
+    public Mono<Void> handle(String exchange, byte[] body, ActivityPublisher publisher) {
+        if (EMAIL_EXCHANGE.equals(exchange)) {
+            return answer(body, publisher);
+        }
+        return write(CREATED_EXCHANGE.equals(exchange), body, publisher);
+    }
+
+    private Mono<Void> write(boolean created, byte[] body, ActivityPublisher publisher) {
+        JsonNode message = readTree(body);
+        Optional<CalendarURL> ownInstance = ownInstance(message.path("eventPath").asText());
+        if (ownInstance.isEmpty()) {
+            return Mono.empty();
+        }
+        CalendarURL calendar = ownInstance.get();
+        TeamCalendarId teamCalendarId = TeamCalendarId.from(calendar.calendarId());
+        return organization(teamCalendarId)
+            .flatMap(organization -> Mono.justOrEmpty(masterEvent(message.path("rawEvent").asText(), calendar,
+                    StringUtils.substringAfterLast(message.path("eventPath").asText(), "/")))
+                .map(event -> CalendarEventSnapshot.from(teamCalendarId, event))
+                .flatMap(snapshot -> {
+                    if (message.path("import").asBoolean()) {
+                        return snapshotRepository.save(snapshot);
+                    }
+                    return actor(message.path("connectedUser").asText(), snapshot)
+                        .flatMap(actor -> snapshotRepository.retrieve(snapshot.uid())
+                            .map(Optional::of)
+                            .defaultIfEmpty(Optional.empty())
+                            .flatMap(previous -> Mono.justOrEmpty(writeActivity(created, organization, actor, snapshot, previous,
+                                message.path("etag").asText(snapshot.uid())))))
+                        .flatMap(publisher::publish)
+                        .then(snapshotRepository.save(snapshot));
+                }));
+    }
+
+    private Optional<ActivityEvent> writeActivity(boolean created, String organization, String actor, CalendarEventSnapshot event,
+                                                  Optional<CalendarEventSnapshot> maybePrevious, String etag) {
+        if (created) {
+            return Optional.of(activity(CREATED, organization, actor, event, emptyState(), attendeesBut(event, actor), etag));
+        }
+        if (maybePrevious.isEmpty()) {
+            return Optional.of(activity(UPDATED, organization, actor, event, emptyState(), List.of(), etag));
+        }
+        CalendarEventSnapshot previous = maybePrevious.get();
+        if (event.equals(previous)) {
+            return Optional.empty();
+        }
+        if (event.rescheduledFrom(previous)) {
+            ObjectNode state = emptyState();
+            ObjectNode previousTime = state.putObject("previous")
+                .put("start", ActivityEvent.time(previous.start(), previous.allDay()));
+            previous.end().ifPresent(end -> previousTime.put("end", ActivityEvent.time(end, previous.allDay())));
+            return Optional.of(activity(RESCHEDULED, organization, actor, event, state, attendeesBut(event, actor), etag));
+        }
+        if (event.onlyPartStatsChangedFrom(previous)) {
+            // Changes of other attendees' answers are sabre applying their reply, published from their reply.
+            return Optional.ofNullable(event.partStatChangesFrom(previous).get(StringUtils.lowerCase(actor)))
+                .map(partStat -> activity(answerAction(partStat), organization, actor, event, emptyState(), organizerBut(event, actor), etag));
+        }
+        return Optional.of(activity(UPDATED, organization, actor, event, emptyState(), List.of(), etag));
+    }
+
+    private Mono<Void> answer(byte[] body, ActivityPublisher publisher) {
+        CalendarEventNotificationEmailDTO mail = readMail(body);
+        String method = mail.method().getValue();
+        if (!Method.VALUE_REPLY.equals(method) && !Method.VALUE_COUNTER.equals(method)) {
+            return Mono.empty();
+        }
+        Optional<VEvent> answered = mail.event().<VEvent>getComponents(Component.VEVENT).stream().findFirst();
+        Optional<String> uid = answered.flatMap(VEvent::getUid).map(Property::getValue);
+        if (uid.isEmpty()) {
+            return Mono.empty();
+        }
+        String attendee = mail.senderEmail().asString();
+        return snapshotRepository.retrieve(uid.get())
+            .flatMap(event -> organization(event.teamCalendarId())
+                .flatMap(organization -> {
+                    if (Method.VALUE_COUNTER.equals(method)) {
+                        return publisher.publish(proposed(organization, attendee, event, answered.get()));
+                    }
+                    return reply(organization, attendee, event, answered.get(), publisher);
+                }));
+    }
+
+    private Mono<Void> reply(String organization, String attendee, CalendarEventSnapshot event, VEvent answered, ActivityPublisher publisher) {
+        Optional<String> partStat = EventParseUtils.getAttendees(answered).stream()
+            .filter(person -> person.email().asString().equalsIgnoreCase(attendee))
+            .findFirst()
+            .flatMap(EventFields.Person::partStat)
+            .map(PartStat::getValue);
+        if (partStat.isEmpty() || partStat.equals(event.partStat(attendee))) {
+            return Mono.empty();
+        }
+        CalendarEventSnapshot answeredEvent = event.withPartStat(attendee, partStat.get());
+        String dtStamp = answered.getProperty(Property.DTSTAMP).map(Property::getValue).orElse("");
+        return publisher.publish(activity(answerAction(partStat.get()), organization, attendee, answeredEvent, emptyState(),
+                organizerBut(answeredEvent, attendee), String.join(":", attendee, partStat.get(), dtStamp)))
+            .then(snapshotRepository.save(answeredEvent));
+    }
+
+    private ActivityEvent proposed(String organization, String attendee, CalendarEventSnapshot event, VEvent counter) {
+        boolean allDay = EventParseUtils.isAllDay(counter);
+        String start = ActivityEvent.time(EventParseUtils.getStartTime(counter).toInstant(), allDay);
+        ObjectNode state = emptyState();
+        ObjectNode proposed = state.putObject("proposed")
+            .put("start", start);
+        Optional<String> end = EventParseUtils.getEndTime(counter).map(time -> ActivityEvent.time(time.toInstant(), allDay));
+        end.ifPresent(value -> proposed.put("end", value));
+        proposed.put("by", attendee);
+        return activity(PROPOSED, organization, attendee, event, state, organizerBut(event, attendee),
+            String.join(":", attendee, start, end.orElse("")));
+    }
+
+    private ActivityEvent activity(String action, String organization, String actor, CalendarEventSnapshot event, ObjectNode state,
+                                   List<String> recipients, String seed) {
+        return ActivityEvent.calendarEvent(action, organization, actor, event, state, recipients, event.uid() + ":" + seed, clock.instant());
+    }
+
+    // The activity of a space that is deleted, or that the extension does not know, is no space's.
+    private Mono<String> organization(TeamCalendarId teamCalendarId) {
+        return teamCalendarRepository.retrieve(teamCalendarId)
+            .flatMap(teamCalendar -> spaceRepository.retrieve(teamCalendar.name()))
+            .filter(space -> space.deletion().isEmpty())
+            .flatMap(space -> Mono.justOrEmpty(space.organization()));
+    }
+
+    // A write made with a technical token has no user: the organizer stands for the actor.
+    private Mono<String> actor(String connectedUser, CalendarEventSnapshot event) {
+        return Mono.justOrEmpty(StringUtils.removeStart(connectedUser, PRINCIPAL_PREFIX))
+            .filter(userId -> connectedUser.startsWith(PRINCIPAL_PREFIX) && !userId.isBlank())
+            .flatMap(userId -> userDAO.retrieve(new OpenPaaSId(userId)))
+            .map(user -> user.username().asString())
+            .switchIfEmpty(Mono.justOrEmpty(event.organizer()))
+            .switchIfEmpty(Mono.<String>empty()
+                .doOnSubscribe(any -> LOGGER.info("Ignoring a change of event {}: neither its author nor its organizer is known", event.uid())));
+    }
+
+    private static Optional<CalendarURL> ownInstance(String eventPath) {
+        try {
+            return Optional.of(CalendarURL.parse(eventPath))
+                .filter(calendar -> calendar.base().equals(calendar.calendarId()));
+        } catch (IllegalArgumentException e) {
+            return Optional.empty();
+        }
+    }
+
+    private static Optional<EventFields> masterEvent(String rawEvent, CalendarURL calendar, String resourceName) {
+        try {
+            Calendar parsed = CalendarUtil.parseIcs(rawEvent);
+            List<VEvent> events = parsed.getComponents(Component.VEVENT);
+            return events.stream()
+                .filter(event -> event.getProperty(Property.RECURRENCE_ID).isEmpty())
+                .findFirst()
+                .or(() -> events.stream().findFirst())
+                .map(event -> EventFields.fromVEvent(event, calendar, resourceName));
+        } catch (RuntimeException e) {
+            LOGGER.warn("Ignoring an event of team calendar {} that can not be read", calendar.calendarId().value(), e);
+            return Optional.empty();
+        }
+    }
+
+    private static String answerAction(String partStat) {
+        return switch (partStat) {
+            case CalendarEventSnapshot.ACCEPTED -> ACCEPTED;
+            case CalendarEventSnapshot.DECLINED -> DECLINED;
+            default -> UPDATED;
+        };
+    }
+
+    private static List<String> attendeesBut(CalendarEventSnapshot event, String actor) {
+        return event.attendees().keySet().stream()
+            .filter(attendee -> !attendee.equalsIgnoreCase(actor))
+            .sorted()
+            .toList();
+    }
+
+    private static List<String> organizerBut(CalendarEventSnapshot event, String actor) {
+        return event.organizer()
+            .filter(organizer -> !organizer.equalsIgnoreCase(actor))
+            .stream()
+            .toList();
+    }
+
+    private static ObjectNode emptyState() {
+        return OBJECT_MAPPER.createObjectNode();
+    }
+
+    private static JsonNode readTree(byte[] body) {
+        try {
+            return OBJECT_MAPPER.readTree(body);
+        } catch (IOException e) {
+            throw new UnprocessableSpaceEventException("Unable to read a calendar event message", e);
+        }
+    }
+
+    private static CalendarEventNotificationEmailDTO readMail(byte[] body) {
+        try {
+            return OBJECT_MAPPER.readValue(body, CalendarEventNotificationEmailDTO.class);
+        } catch (IOException e) {
+            throw new UnprocessableSpaceEventException("Unable to read a calendar mail message", e);
+        }
+    }
+}

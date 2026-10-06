@@ -43,6 +43,7 @@ import java.util.UUID;
 import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
 import org.apache.james.backends.rabbitmq.RabbitMQManagementAPI;
 import org.apache.james.core.Domain;
+import org.apache.james.core.Username;
 import org.apache.james.utils.WebAdminGuiceProbe;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionFactory;
@@ -57,8 +58,14 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
+import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavModuleTestHelper;
+import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
+import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.OpenPaaSUser;
+import com.linagora.calendar.storage.TestFixture;
 import com.rabbitmq.client.AMQP;
 import com.rabbitmq.client.BuiltinExchangeType;
 import com.rabbitmq.client.Channel;
@@ -98,7 +105,13 @@ class TwakeSpaceExtensionIntegrationTest {
 
     // RabbitMQ deletes vhosts asynchronously: reusing a name races with the previous test's deletion.
     private final String spaceVhost = "twake-space-" + UUID.randomUUID();
+    // Sabre publishes on the vhost every test shares: a queue per test keeps a test from reading the previous one's events.
+    private final String calendarQueue = "test-twake-space-calendar-" + UUID.randomUUID();
+    private final String calendarDeadLetterQueue = calendarQueue + "-dead-letter";
+    private final List<String> skippedActivities = new ArrayList<>();
     private TwakeCalendarGuiceServer server;
+    private DavTestHelper dav;
+    private CalDavClient calDavClient;
     private RabbitMQConfiguration rabbitMQConfiguration;
     private RabbitMQManagementAPI managementAPI;
     private RequestSpecification webAdmin;
@@ -125,13 +138,15 @@ class TwakeSpaceExtensionIntegrationTest {
             twakespace.queue=%s
             twakespace.dead.letter.queue=%s
             twakespace.activity.exchange=%s
+            twakespace.calendar.queue=%s
+            twakespace.calendar.dead.letter.queue=%s
             twakespace.rabbitmq.uri=amqp://%s:%s@%s:%d/%s
             twakespace.rabbitmq.management.uri=%s
             twakespace.rabbitmq.management.user=%s
             twakespace.rabbitmq.management.password=%s
             twakespace.rabbitmq.quorum.queues.enable=true
             twakespace.rabbitmq.quorum.queues.delivery.limit=10
-            """.formatted(STARTABLE, SPACE_EXCHANGE, QUEUE, DEAD_LETTER_QUEUE, ACTIVITY_EXCHANGE,
+            """.formatted(STARTABLE, SPACE_EXCHANGE, QUEUE, DEAD_LETTER_QUEUE, ACTIVITY_EXCHANGE, calendarQueue, calendarDeadLetterQueue,
             USER, PASSWORD, amqp.getHost(), amqp.getPort(), spaceVhost,
             rabbitMQConfiguration.getManagementUri(), USER, PASSWORD));
         Files.writeString(conf.resolve("healthcheck.properties"), "additional.healthchecks=" + HEALTH_CHECK);
@@ -156,6 +171,8 @@ class TwakeSpaceExtensionIntegrationTest {
             channel.queueDeclare(FEED_QUEUE, true, false, false, null);
             channel.queueBind(FEED_QUEUE, ACTIVITY_EXCHANGE, "#");
         }
+        dav = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING);
+        calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING);
     }
 
     @AfterEach
@@ -164,6 +181,11 @@ class TwakeSpaceExtensionIntegrationTest {
             server.stop();
         }
         management("DELETE", "/api/vhosts/" + spaceVhost, null);
+        try (Connection connection = calendarConnectionFactory().newConnection();
+             Channel channel = connection.createChannel()) {
+            channel.queueDelete(calendarQueue);
+            channel.queueDelete(calendarDeadLetterQueue);
+        }
     }
 
     @Test
@@ -209,6 +231,129 @@ class TwakeSpaceExtensionIntegrationTest {
         JsonNode second = OBJECT_MAPPER.readTree(AWAIT.until(this::nextActivity, Objects::nonNull).getBody());
         assertThat(second.path("id").asText()).isEqualTo(first.path("id").asText());
         assertThat(second.path("data")).isEqualTo(first.path("data"));
+    }
+
+    @Test
+    void eventCreatedInTheTeamCalendarShouldPublishEventCreated() throws Exception {
+        String spaceId = provisionedSpace(member("alice", "admin"), member("bob", "editor"));
+        String teamCalendarId = teamCalendar(spaceId).path("id").asText();
+
+        putEvent("alice", event("uid-1", "Sprint planning", "20261010T090000Z", "20261010T100000Z", "alice", "bob"));
+
+        JsonNode created = awaitActivity("com.twake.calendar.event.created.v1");
+        assertThat(created.path("source").asText()).isEqualTo("twake://calendar");
+        assertThat(created.path("subject").asText()).isEqualTo("event/uid-1");
+        assertThat(created.path("twakeorg").asText()).isEqualTo("org");
+        assertThat(created.path("twakeactor").asText()).isEqualTo("alice@space.tld");
+        assertThat(created.path("data").path("object")).isEqualTo(OBJECT_MAPPER.readTree("""
+            {"type": "event", "id": "uid-1", "title": "Sprint planning", "container": {"kind": "calendar", "id": "%s"}}"""
+            .formatted(teamCalendarId)));
+        assertThat(created.path("data").path("state")).isEqualTo(OBJECT_MAPPER.readTree("""
+            {"start": "2026-10-10T09:00:00Z", "end": "2026-10-10T10:00:00Z", "allDay": false, "location": "Room 1",
+             "rsvp": {"accepted": 0, "declined": 0, "tentative": 0, "pending": 1}}"""));
+        assertThat(created.path("data").path("preview").asText()).isEqualTo("Room 1");
+        assertThat(created.path("data").path("recipients")).isEqualTo(OBJECT_MAPPER.readTree("""
+            [{"email": "bob@space.tld", "reason": "attendee"}]"""));
+    }
+
+    @Test
+    void reschedulingShouldPublishEventRescheduledWithThePreviousTime() throws Exception {
+        provisionedSpace(member("alice", "admin"), member("bob", "editor"));
+        putEvent("alice", event("uid-1", "Sprint planning", "20261010T090000Z", "20261010T100000Z", "alice", "bob"));
+        awaitActivity("com.twake.calendar.event.created.v1");
+
+        putEvent("alice", event("uid-1", "Sprint planning", "20261011T090000Z", "20261011T100000Z", "alice", "bob"));
+
+        JsonNode rescheduled = awaitActivity("com.twake.calendar.event.rescheduled.v1");
+        assertThat(rescheduled.path("data").path("state").path("start").asText()).isEqualTo("2026-10-11T09:00:00Z");
+        assertThat(rescheduled.path("data").path("state").path("previous")).isEqualTo(OBJECT_MAPPER.readTree("""
+            {"start": "2026-10-10T09:00:00Z", "end": "2026-10-10T10:00:00Z"}"""));
+        assertThat(rescheduled.path("data").path("recipients")).isEqualTo(OBJECT_MAPPER.readTree("""
+            [{"email": "bob@space.tld", "reason": "attendee"}]"""));
+    }
+
+    @Test
+    void renamingAnEventShouldPublishEventUpdatedWithoutRecipients() throws Exception {
+        provisionedSpace(member("alice", "admin"), member("bob", "editor"));
+        putEvent("alice", event("uid-1", "Sprint planning", "20261010T090000Z", "20261010T100000Z", "alice", "bob"));
+        awaitActivity("com.twake.calendar.event.created.v1");
+
+        putEvent("alice", event("uid-1", "Sprint review", "20261010T090000Z", "20261010T100000Z", "alice", "bob"));
+
+        JsonNode updated = awaitActivity("com.twake.calendar.event.updated.v1");
+        assertThat(updated.path("data").path("object").path("title").asText()).isEqualTo("Sprint review");
+        assertThat(updated.path("data").has("recipients")).isFalse();
+        assertThat(updated.path("data").path("state").has("previous")).isFalse();
+    }
+
+    @Test
+    void memberAcceptingShouldPublishEventAccepted() throws Exception {
+        provisionedSpace(member("alice", "admin"), member("bob", "editor"));
+        String ics = event("uid-1", "Sprint planning", "20261010T090000Z", "20261010T100000Z", "alice", "bob");
+        putEvent("alice", ics);
+        awaitActivity("com.twake.calendar.event.created.v1");
+
+        putEvent("bob", ics.replace("PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN=bob", "PARTSTAT=ACCEPTED;CN=bob"));
+
+        JsonNode accepted = awaitActivity("com.twake.calendar.event.accepted.v1");
+        assertThat(accepted.path("twakeactor").asText()).isEqualTo("bob@space.tld");
+        assertThat(accepted.path("data").path("state").path("rsvp")).isEqualTo(OBJECT_MAPPER.readTree("""
+            {"accepted": 1, "declined": 0, "tentative": 0, "pending": 0}"""));
+        assertThat(accepted.path("data").path("recipients")).isEqualTo(OBJECT_MAPPER.readTree("""
+            [{"email": "alice@space.tld", "reason": "attendee"}]"""));
+    }
+
+    @Test
+    void attendeeOutsideTheSpaceDecliningShouldPublishEventDeclined() throws Exception {
+        provisionedSpace(member("alice", "admin"));
+        server.getProbe(CalendarDataProbe.class).addUser(username("carol"), "secret");
+        putEvent("alice", event("uid-1", "Sprint planning", "20261010T090000Z", "20261010T100000Z", "alice", "carol"));
+        awaitActivity("com.twake.calendar.event.created.v1");
+        String carolEvent = AWAIT.until(() -> personalEventIds("carol"), ids -> !ids.isEmpty()).getFirst();
+
+        dav.upsertCalendar(username("carol"), personalEventUri("carol", carolEvent),
+            event("uid-1", "Sprint planning", "20261010T090000Z", "20261010T100000Z", "alice", "carol")
+                .replace("PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN=carol", "PARTSTAT=DECLINED;CN=carol")).block();
+
+        JsonNode declined = awaitActivity("com.twake.calendar.event.declined.v1");
+        assertThat(declined.path("twakeactor").asText()).isEqualTo("carol@space.tld");
+        assertThat(declined.path("data").path("object").path("id").asText()).isEqualTo("uid-1");
+        assertThat(declined.path("data").path("state").path("rsvp")).isEqualTo(OBJECT_MAPPER.readTree("""
+            {"accepted": 0, "declined": 1, "tentative": 0, "pending": 0}"""));
+        assertThat(declined.path("data").path("recipients")).isEqualTo(OBJECT_MAPPER.readTree("""
+            [{"email": "alice@space.tld", "reason": "attendee"}]"""));
+    }
+
+    @Test
+    void attendeeOutsideTheSpaceProposingANewTimeShouldPublishEventProposed() throws Exception {
+        provisionedSpace(member("alice", "admin"));
+        server.getProbe(CalendarDataProbe.class).addUser(username("carol"), "secret");
+        OpenPaaSUser carol = server.getProbe(CalendarDataProbe.class).getUser(username("carol"));
+        putEvent("alice", event("uid-1", "Sprint planning", "20261010T090000Z", "20261010T100000Z", "alice", "carol"));
+        awaitActivity("com.twake.calendar.event.created.v1");
+        String carolEvent = AWAIT.until(() -> personalEventIds("carol"), ids -> !ids.isEmpty()).getFirst();
+
+        String counter = event("uid-1", "Sprint planning", "20261012T140000Z", "20261012T150000Z", "alice", "carol")
+            .replace("BEGIN:VEVENT", "METHOD:COUNTER\r\nBEGIN:VEVENT");
+        dav.postCounter(carol, carolEvent, new DavTestHelper.CounterRequest(counter, "carol@space.tld", "alice@space.tld", "uid-1", 0)).block();
+
+        JsonNode proposed = awaitActivity("com.twake.calendar.event.proposed.v1");
+        assertThat(proposed.path("twakeactor").asText()).isEqualTo("carol@space.tld");
+        assertThat(proposed.path("data").path("state").path("start").asText()).isEqualTo("2026-10-10T09:00:00Z");
+        assertThat(proposed.path("data").path("state").path("proposed")).isEqualTo(OBJECT_MAPPER.readTree("""
+            {"start": "2026-10-12T14:00:00Z", "end": "2026-10-12T15:00:00Z", "by": "carol@space.tld"}"""));
+    }
+
+    @Test
+    void eventOfAPersonalCalendarShouldPublishNoActivity() throws Exception {
+        provisionedSpace(member("alice", "admin"), member("bob", "editor"));
+        OpenPaaSUser alice = server.getProbe(CalendarDataProbe.class).getUser(username("alice"));
+        dav.upsertCalendar(alice, event("uid-personal", "Dentist", "20261010T090000Z", "20261010T100000Z", "alice", "bob"), "uid-personal");
+
+        putEvent("alice", event("uid-1", "Sprint planning", "20261010T090000Z", "20261010T100000Z", "alice", "bob"));
+
+        assertThat(awaitActivity("com.twake.calendar.event.created.v1").path("subject").asText()).isEqualTo("event/uid-1");
+        assertThat(skippedActivities).containsOnly("com.twake.calendar.space.provisioned.v1");
     }
 
     @Test
@@ -567,6 +712,76 @@ class TwakeSpaceExtensionIntegrationTest {
         }
     }
 
+    private String provisionedSpace(String... members) throws Exception {
+        String spaceId = UUID.randomUUID().toString();
+        publish("twake.space.created", created(spaceId, "Marketing", members));
+        AWAIT.untilAsserted(() -> assertThat(members(spaceId)).hasSize(members.length));
+        return spaceId;
+    }
+
+    private JsonNode awaitActivity(String type) {
+        return AWAIT.until(() -> {
+            Delivery delivery;
+            while ((delivery = nextActivity()) != null) {
+                JsonNode event = OBJECT_MAPPER.readTree(delivery.getBody());
+                assertThat(delivery.getEnvelope().getRoutingKey()).isEqualTo(event.path("type").asText());
+                if (event.path("type").asText().equals(type)) {
+                    return event;
+                }
+                skippedActivities.add(event.path("type").asText());
+            }
+            return null;
+        }, Objects::nonNull);
+    }
+
+    // Members reach the team calendar through their own instance of it, as the calendar frontend does.
+    private void putEvent(String username, String ics) throws Exception {
+        OpenPaaSId userId = server.getProbe(CalendarDataProbe.class).userId(username(username));
+        CalendarURL instance = calDavClient.findUserCalendars(username(username), userId)
+            .filter(calendar -> !calendar.calendarId().equals(userId))
+            .blockFirst();
+        String uid = ics.substring(ics.indexOf("UID:") + 4, ics.indexOf("\r\n", ics.indexOf("UID:")));
+        dav.upsertCalendar(username(username), URI.create(instance.asUri() + "/" + uid + ".ics"), ics).block();
+    }
+
+    private List<String> personalEventIds(String username) {
+        OpenPaaSId userId = server.getProbe(CalendarDataProbe.class).userId(username(username));
+        return calDavClient.findUserCalendarEventIds(username(username), CalendarURL.from(userId)).collectList().block();
+    }
+
+    private URI personalEventUri(String username, String eventId) {
+        OpenPaaSId userId = server.getProbe(CalendarDataProbe.class).userId(username(username));
+        return URI.create(CalendarURL.from(userId).asUri() + "/" + eventId + ".ics");
+    }
+
+    private static Username username(String localPart) {
+        return Username.fromLocalPartWithDomain(localPart, DOMAIN);
+    }
+
+    private static String event(String uid, String summary, String start, String end, String organizer, String... attendees) {
+        StringBuilder attendeeLines = new StringBuilder("ATTENDEE;PARTSTAT=ACCEPTED;CN=%s:mailto:%s@%s\r\n".formatted(organizer, organizer, DOMAIN.asString()));
+        for (String attendee : attendees) {
+            if (!attendee.equals(organizer)) {
+                attendeeLines.append("ATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN=%s:mailto:%s@%s\r\n".formatted(attendee, attendee, DOMAIN.asString()));
+            }
+        }
+        return """
+            BEGIN:VCALENDAR\r
+            VERSION:2.0\r
+            PRODID:-//TwakeSpace extension test\r
+            BEGIN:VEVENT\r
+            UID:%s\r
+            DTSTAMP:20261007T000000Z\r
+            DTSTART:%s\r
+            DTEND:%s\r
+            SUMMARY:%s\r
+            LOCATION:Room 1\r
+            ORGANIZER;CN=%s:mailto:%s@%s\r
+            %sEND:VEVENT\r
+            END:VCALENDAR\r
+            """.formatted(uid, start, end, summary, organizer, organizer, DOMAIN.asString(), attendeeLines);
+    }
+
     // The management API refreshes its counts every few seconds, AMQP answers the current ones.
     private long messageCount(String queue) throws Exception {
         try (Connection connection = connectionFactory().newConnection();
@@ -588,6 +803,14 @@ class TwakeSpaceExtensionIntegrationTest {
         connectionFactory.setUsername(USER);
         connectionFactory.setPassword(PASSWORD);
         connectionFactory.setVirtualHost(spaceVhost);
+        return connectionFactory;
+    }
+
+    private ConnectionFactory calendarConnectionFactory() throws Exception {
+        ConnectionFactory connectionFactory = new ConnectionFactory();
+        connectionFactory.setUri(rabbitMQConfiguration.getUri());
+        connectionFactory.setUsername(USER);
+        connectionFactory.setPassword(PASSWORD);
         return connectionFactory;
     }
 

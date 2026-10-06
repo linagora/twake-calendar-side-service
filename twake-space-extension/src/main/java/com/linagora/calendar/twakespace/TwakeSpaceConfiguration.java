@@ -30,7 +30,10 @@ public record TwakeSpaceConfiguration(RabbitMQConfiguration rabbitMQ,
                                       List<String> routingKeys,
                                       String queue,
                                       String deadLetterQueue,
-                                      String activityExchange) {
+                                      String activityExchange,
+                                      RabbitMQConfiguration calendarRabbitMQ,
+                                      String calendarQueue,
+                                      String calendarDeadLetterQueue) {
     private static final String RABBITMQ_PREFIX = "twakespace.rabbitmq";
     private static final String RABBITMQ_URI = RABBITMQ_PREFIX + ".uri";
     private static final String EXCHANGE = "twakespace.exchange";
@@ -38,6 +41,8 @@ public record TwakeSpaceConfiguration(RabbitMQConfiguration rabbitMQ,
     private static final String QUEUE = "twakespace.queue";
     private static final String DEAD_LETTER_QUEUE = "twakespace.dead.letter.queue";
     private static final String ACTIVITY_EXCHANGE = "twakespace.activity.exchange";
+    private static final String CALENDAR_QUEUE = "twakespace.calendar.queue";
+    private static final String CALENDAR_DEAD_LETTER_QUEUE = "twakespace.calendar.dead.letter.queue";
     private static final String DEFAULT_EXCHANGE = "space";
     private static final List<String> DEFAULT_ROUTING_KEYS = List.of(TwakeSpaceProvisioner.CREATED, TwakeSpaceProvisioner.UPDATED,
         TwakeSpaceProvisioner.DELETED, TwakeSpaceProvisioner.MEMBER_ADDED, TwakeSpaceProvisioner.MEMBER_ROLE_CHANGED,
@@ -45,6 +50,8 @@ public record TwakeSpaceConfiguration(RabbitMQConfiguration rabbitMQ,
     private static final String DEFAULT_QUEUE = "tcalendar:twake-space";
     private static final String DEFAULT_DEAD_LETTER_QUEUE = "tcalendar:twake-space-dead-letter";
     private static final String DEFAULT_ACTIVITY_EXCHANGE = "activity";
+    private static final String DEFAULT_CALENDAR_QUEUE = "tcalendar:twake-space-calendar";
+    private static final String DEFAULT_CALENDAR_DEAD_LETTER_QUEUE = "tcalendar:twake-space-calendar-dead-letter";
 
     public static TwakeSpaceConfiguration from(Configuration extensions, RabbitMQConfiguration sideServiceRabbitMQ) {
         List<String> routingKeys = extensions.getList(String.class, ROUTING_KEYS, DEFAULT_ROUTING_KEYS);
@@ -59,7 +66,10 @@ public record TwakeSpaceConfiguration(RabbitMQConfiguration rabbitMQ,
             routingKeys,
             name(extensions, QUEUE, DEFAULT_QUEUE),
             name(extensions, DEAD_LETTER_QUEUE, DEFAULT_DEAD_LETTER_QUEUE),
-            name(extensions, ACTIVITY_EXCHANGE, DEFAULT_ACTIVITY_EXCHANGE));
+            name(extensions, ACTIVITY_EXCHANGE, DEFAULT_ACTIVITY_EXCHANGE),
+            sideServiceRabbitMQ,
+            name(extensions, CALENDAR_QUEUE, DEFAULT_CALENDAR_QUEUE),
+            name(extensions, CALENDAR_DEAD_LETTER_QUEUE, DEFAULT_CALENDAR_DEAD_LETTER_QUEUE));
     }
 
     private static String name(Configuration extensions, String key, String defaultValue) {

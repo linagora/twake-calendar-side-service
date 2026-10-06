@@ -43,6 +43,8 @@ class TwakeSpaceConfigurationTest {
         twakespace.queue=custom-queue
         twakespace.dead.letter.queue=custom-dead-letter
         twakespace.activity.exchange=custom-activity
+        twakespace.calendar.queue=custom-calendar
+        twakespace.calendar.dead.letter.queue=custom-calendar-dead-letter
         """;
     private static final String RABBITMQ = """
         twakespace.rabbitmq.uri=amqp://space:secret@space-rabbitmq:5672/%2F
@@ -62,6 +64,14 @@ class TwakeSpaceConfigurationTest {
         assertThat(configuration.queue()).isEqualTo("tcalendar:twake-space");
         assertThat(configuration.deadLetterQueue()).isEqualTo("tcalendar:twake-space-dead-letter");
         assertThat(configuration.activityExchange()).isEqualTo("activity");
+        assertThat(configuration.calendarQueue()).isEqualTo("tcalendar:twake-space-calendar");
+        assertThat(configuration.calendarDeadLetterQueue()).isEqualTo("tcalendar:twake-space-calendar-dead-letter");
+    }
+
+    @Test
+    void fromShouldConsumeTheCalendarEventsFromTheSideServiceRabbitMQ() throws Exception {
+        assertThat(TwakeSpaceConfiguration.from(properties(RABBITMQ), SIDE_SERVICE_RABBITMQ).calendarRabbitMQ())
+            .isSameAs(SIDE_SERVICE_RABBITMQ);
     }
 
     @Test
@@ -73,11 +83,13 @@ class TwakeSpaceConfigurationTest {
         assertThat(configuration.queue()).isEqualTo("custom-queue");
         assertThat(configuration.deadLetterQueue()).isEqualTo("custom-dead-letter");
         assertThat(configuration.activityExchange()).isEqualTo("custom-activity");
+        assertThat(configuration.calendarQueue()).isEqualTo("custom-calendar");
+        assertThat(configuration.calendarDeadLetterQueue()).isEqualTo("custom-calendar-dead-letter");
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"twakespace.exchange", "twakespace.routing.keys", "twakespace.queue", "twakespace.dead.letter.queue",
-        "twakespace.activity.exchange"})
+        "twakespace.activity.exchange", "twakespace.calendar.queue", "twakespace.calendar.dead.letter.queue"})
     void fromShouldFailWhenANameIsBlank(String key) throws Exception {
         PropertiesConfiguration configuration = properties(NAMES);
         configuration.setProperty(key, " ");

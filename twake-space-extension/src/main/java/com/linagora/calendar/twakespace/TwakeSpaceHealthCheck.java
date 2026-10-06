@@ -29,6 +29,7 @@ import reactor.core.publisher.Mono;
 // Restarts the consumer when its queue has none, like the side service does for its own consumers.
 public class TwakeSpaceHealthCheck implements HealthCheck {
     static final ComponentName COMPONENT_NAME = new ComponentName("TwakeSpace");
+    static final ComponentName CALENDAR_COMPONENT_NAME = new ComponentName("TwakeSpaceCalendar");
 
     private final TwakeSpaceStartable startable;
 
