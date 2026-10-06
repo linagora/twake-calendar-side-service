@@ -156,6 +156,13 @@ public interface I18NTranslator {
             public long getTimeToLive(String baseName, Locale locale) {
                 return TTL_DONT_CACHE;
             }
+
+            // Never fall back to the JVM default locale: a missing bundle must surface as a
+            // MissingResourceException so that the explicit English fallback of the Factory applies.
+            @Override
+            public Locale getFallbackLocale(String baseName, Locale locale) {
+                return null;
+            }
         }
     }
 }

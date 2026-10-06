@@ -106,6 +106,26 @@ public class PropertiesI18NTranslatorTest {
     }
 
     @Test
+    void shouldFallbackToEnglishWhenLocaleFileIsMissingRegardlessOfJvmDefaultLocale() {
+        writePropertiesFile("messages_en.properties", Map.of(
+            "greeting", "Hello"));
+        writePropertiesFile("messages_fr.properties", Map.of(
+            "greeting", "Bonjour"));
+
+        Locale jvmDefaultLocale = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.FRENCH);
+
+            I18NTranslator translator = translatorFactory().forLocale(Locale.of("es"));
+
+            assertThat(translator.get("greeting")).isEqualTo("Hello");
+            assertThat(translator.associatedLocale()).isEqualTo(Locale.ENGLISH);
+        } finally {
+            Locale.setDefault(jvmDefaultLocale);
+        }
+    }
+
+    @Test
     void shouldReturnKeyWhenNotFoundInLocaleOrFallback() {
         writePropertiesFile("messages_en.properties", Map.of());
 
