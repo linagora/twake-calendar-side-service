@@ -1662,9 +1662,10 @@ Adds the users of `sourceDomain` as contacts of the address book, so that the me
 them. Typically, a school holding teachers and students in separate domains copies the students into the teachers
 domain address book: teachers auto-complete students, and not the other way around.
 
-The users are listed from the users repository, their names being the ones known by Twake Calendar. When `ldapFilter`
-(an RFC 4515 LDAP filter) is specified, the users are read from the LDAP - with their LDAP names and phone numbers -
-and only those matching the filter are copied. `ldapFilter` requires the LDAP users repository.
+Only enabled if LDAP is configured.
+
+The users are read from the LDAP, with their LDAP names and phone numbers. When `ldapFilter` (an RFC 4515 LDAP filter)
+is specified, only the users matching it are copied.
 
 Each contact UID derives from the user mail address, hence copying again updates the previously copied contacts rather
 than duplicating them. Contacts are never deleted: combine with the clear route
@@ -1701,8 +1702,8 @@ The task details are available on `GET /tasks/{taskId}`:
 
 **Status codes**:
 - `201`: the copy task was created
-- `400`: the domain, `sourceDomain` or `ldapFilter` is invalid, `sourceDomain` is missing, `ldapFilter` is used without
-  the LDAP users repository, or the address book is `domain-members`
+- `400`: the domain, `sourceDomain` or `ldapFilter` is invalid, `sourceDomain` is missing, LDAP is not configured, or
+  the address book is `domain-members`
 - `404`: the domain or the address book does not exist
 - `500`: error while calling the DAV server
 

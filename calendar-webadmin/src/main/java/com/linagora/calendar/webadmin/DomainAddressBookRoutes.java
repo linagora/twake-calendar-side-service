@@ -27,6 +27,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
 
@@ -90,7 +92,8 @@ public class DomainAddressBookRoutes implements Routes {
     private final CardDavClient cardDavClient;
     private final AddressBookImportService addressBookImportService;
     private final DomainAddressBookClearService addressBookClearService;
-    private final DomainAddressBookCopyService addressBookCopyService;
+    // Solely bound when relying on the LDAP users repository
+    private final Optional<DomainAddressBookCopyService> addressBookCopyService;
     private final TaskManager taskManager;
     private final JsonTransformer jsonTransformer;
 
@@ -98,7 +101,7 @@ public class DomainAddressBookRoutes implements Routes {
     public DomainAddressBookRoutes(OpenPaaSDomainDAO domainDAO, CardDavClient cardDavClient,
                                    AddressBookImportService addressBookImportService,
                                    DomainAddressBookClearService addressBookClearService,
-                                   DomainAddressBookCopyService addressBookCopyService, TaskManager taskManager,
+                                   Optional<DomainAddressBookCopyService> addressBookCopyService, TaskManager taskManager,
                                    JsonTransformer jsonTransformer) {
         this.domainDAO = domainDAO;
         this.cardDavClient = cardDavClient;
@@ -137,14 +140,28 @@ public class DomainAddressBookRoutes implements Routes {
         return switch (action.toLowerCase(Locale.US)) {
             case EXPORT_ACTION -> exportAddressBook(request, response);
             case IMPORT_ACTION -> importAddressBook(request, response);
-            case COPY_FROM_ACTION -> copyFromDomain(request, response);
-            default -> throw ErrorResponder.builder()
-                .statusCode(HttpStatus.BAD_REQUEST_400)
-                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                .message("Invalid '%s' query parameter: '%s'. Supported values are: '%s', '%s', '%s'"
-                    .formatted(ACTION_PARAMETER, action, EXPORT_ACTION, IMPORT_ACTION, COPY_FROM_ACTION))
-                .haltError();
+            case COPY_FROM_ACTION -> addressBookCopyService
+                .map(copyService -> copyFromDomain(copyService, request, response))
+                .orElseThrow(() -> invalidAction(action));
+            default -> throw invalidAction(action);
         };
+    }
+
+    private HaltException invalidAction(String action) {
+        String supportedActions = supportedActions()
+            .map("'%s'"::formatted)
+            .collect(Collectors.joining(", "));
+        return ErrorResponder.builder()
+            .statusCode(HttpStatus.BAD_REQUEST_400)
+            .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+            .message("Invalid '%s' query parameter: '%s'. Supported values are: %s"
+                .formatted(ACTION_PARAMETER, action, supportedActions))
+            .haltError();
+    }
+
+    private Stream<String> supportedActions() {
+        return Stream.concat(Stream.of(EXPORT_ACTION, IMPORT_ACTION),
+            addressBookCopyService.map(copyService -> COPY_FROM_ACTION).stream());
     }
 
     private String exportAddressBook(Request request, Response response) {
@@ -178,7 +195,7 @@ public class DomainAddressBookRoutes implements Routes {
         return createdTaskResponse(response, taskId);
     }
 
-    private String copyFromDomain(Request request, Response response) {
+    private String copyFromDomain(DomainAddressBookCopyService copyService, Request request, Response response) {
         OpenPaaSDomain domain = retrieveDomain(request);
         Domain sourceDomain = parseSourceDomain(request)
             .orElseThrow(() -> ErrorResponder.builder()
@@ -189,21 +206,13 @@ public class DomainAddressBookRoutes implements Routes {
         Optional<LdapFilter> ldapFilter = parseLdapFilter(request);
         AddressBookURL addressBookURL = retrieveWritableAddressBook(request, domain, "copy into");
 
-        TaskId taskId = taskManager.submit(new DomainAddressBookCopyTask(addressBookCopyService, domain, addressBookURL, sourceDomain, ldapFilter));
+        TaskId taskId = taskManager.submit(new DomainAddressBookCopyTask(copyService, domain, addressBookURL, sourceDomain, ldapFilter));
         return createdTaskResponse(response, taskId);
     }
 
     private Optional<LdapFilter> parseLdapFilter(Request request) {
-        Optional<LdapFilter> ldapFilter = Optional.ofNullable(StringUtils.trimToNull(request.queryParams(LDAP_FILTER_PARAMETER)))
+        return Optional.ofNullable(StringUtils.trimToNull(request.queryParams(LDAP_FILTER_PARAMETER)))
             .map(this::asLdapFilter);
-        if (ldapFilter.isPresent() && !addressBookCopyService.supportsLdapFilter()) {
-            throw ErrorResponder.builder()
-                .statusCode(HttpStatus.BAD_REQUEST_400)
-                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                .message("The '%s' query parameter requires the LDAP users repository".formatted(LDAP_FILTER_PARAMETER))
-                .haltError();
-        }
-        return ldapFilter;
     }
 
     private LdapFilter asLdapFilter(String rawLdapFilter) {
