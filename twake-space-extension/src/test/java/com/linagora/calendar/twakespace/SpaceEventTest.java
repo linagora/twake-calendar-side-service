@@ -35,7 +35,7 @@ class SpaceEventTest {
              "groups": [], "actor": "alice@space.tld", "timestamp": "2026-10-06T10:00:00.000Z"}""";
 
         assertThat(SpaceEvent.deserialize(body.getBytes(StandardCharsets.UTF_8)))
-            .isEqualTo(new SpaceEvent(null, "space-1", "Marketing", List.of(new SpaceEvent.Member("alice@space.tld", "admin"))));
+            .isEqualTo(new SpaceEvent("org", null, "space-1", "Marketing", List.of(new SpaceEvent.Member("alice@space.tld", "admin"))));
     }
 
     @Test

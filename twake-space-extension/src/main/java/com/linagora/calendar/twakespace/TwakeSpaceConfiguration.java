@@ -29,19 +29,22 @@ public record TwakeSpaceConfiguration(RabbitMQConfiguration rabbitMQ,
                                       String exchange,
                                       List<String> routingKeys,
                                       String queue,
-                                      String deadLetterQueue) {
+                                      String deadLetterQueue,
+                                      String activityExchange) {
     private static final String RABBITMQ_PREFIX = "twakespace.rabbitmq";
     private static final String RABBITMQ_URI = RABBITMQ_PREFIX + ".uri";
     private static final String EXCHANGE = "twakespace.exchange";
     private static final String ROUTING_KEYS = "twakespace.routing.keys";
     private static final String QUEUE = "twakespace.queue";
     private static final String DEAD_LETTER_QUEUE = "twakespace.dead.letter.queue";
+    private static final String ACTIVITY_EXCHANGE = "twakespace.activity.exchange";
     private static final String DEFAULT_EXCHANGE = "space";
     private static final List<String> DEFAULT_ROUTING_KEYS = List.of(TwakeSpaceProvisioner.CREATED, TwakeSpaceProvisioner.UPDATED,
         TwakeSpaceProvisioner.DELETED, TwakeSpaceProvisioner.MEMBER_ADDED, TwakeSpaceProvisioner.MEMBER_ROLE_CHANGED,
         TwakeSpaceProvisioner.MEMBER_REMOVED);
     private static final String DEFAULT_QUEUE = "tcalendar:twake-space";
     private static final String DEFAULT_DEAD_LETTER_QUEUE = "tcalendar:twake-space-dead-letter";
+    private static final String DEFAULT_ACTIVITY_EXCHANGE = "activity";
 
     public static TwakeSpaceConfiguration from(Configuration extensions, RabbitMQConfiguration sideServiceRabbitMQ) {
         List<String> routingKeys = extensions.getList(String.class, ROUTING_KEYS, DEFAULT_ROUTING_KEYS);
@@ -55,7 +58,8 @@ public record TwakeSpaceConfiguration(RabbitMQConfiguration rabbitMQ,
             name(extensions, EXCHANGE, DEFAULT_EXCHANGE),
             routingKeys,
             name(extensions, QUEUE, DEFAULT_QUEUE),
-            name(extensions, DEAD_LETTER_QUEUE, DEFAULT_DEAD_LETTER_QUEUE));
+            name(extensions, DEAD_LETTER_QUEUE, DEFAULT_DEAD_LETTER_QUEUE),
+            name(extensions, ACTIVITY_EXCHANGE, DEFAULT_ACTIVITY_EXCHANGE));
     }
 
     private static String name(Configuration extensions, String key, String defaultValue) {

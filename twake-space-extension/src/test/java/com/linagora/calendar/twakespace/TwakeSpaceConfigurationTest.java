@@ -42,6 +42,7 @@ class TwakeSpaceConfigurationTest {
         twakespace.routing.keys=twake.space.created, twake.space.member.#
         twakespace.queue=custom-queue
         twakespace.dead.letter.queue=custom-dead-letter
+        twakespace.activity.exchange=custom-activity
         """;
     private static final String RABBITMQ = """
         twakespace.rabbitmq.uri=amqp://space:secret@space-rabbitmq:5672/%2F
@@ -60,6 +61,7 @@ class TwakeSpaceConfigurationTest {
             "twake.space.member.added", "twake.space.member.role.changed", "twake.space.member.removed");
         assertThat(configuration.queue()).isEqualTo("tcalendar:twake-space");
         assertThat(configuration.deadLetterQueue()).isEqualTo("tcalendar:twake-space-dead-letter");
+        assertThat(configuration.activityExchange()).isEqualTo("activity");
     }
 
     @Test
@@ -70,10 +72,12 @@ class TwakeSpaceConfigurationTest {
         assertThat(configuration.routingKeys()).containsExactly("twake.space.created", "twake.space.member.#");
         assertThat(configuration.queue()).isEqualTo("custom-queue");
         assertThat(configuration.deadLetterQueue()).isEqualTo("custom-dead-letter");
+        assertThat(configuration.activityExchange()).isEqualTo("custom-activity");
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"twakespace.exchange", "twakespace.routing.keys", "twakespace.queue", "twakespace.dead.letter.queue"})
+    @ValueSource(strings = {"twakespace.exchange", "twakespace.routing.keys", "twakespace.queue", "twakespace.dead.letter.queue",
+        "twakespace.activity.exchange"})
     void fromShouldFailWhenANameIsBlank(String key) throws Exception {
         PropertiesConfiguration configuration = properties(NAMES);
         configuration.setProperty(key, " ");
