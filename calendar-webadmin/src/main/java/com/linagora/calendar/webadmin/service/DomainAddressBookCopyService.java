@@ -79,6 +79,9 @@ public class DomainAddressBookCopyService {
         }
     }
 
+    public record Destination(OpenPaaSId domainId, AddressBookURL addressBookURL) {
+    }
+
     public static class LdapFilterNotSupportedException extends RuntimeException {
         public LdapFilterNotSupportedException() {
             super("Filtering users with an LDAP filter requires the LDAP users repository");
@@ -105,14 +108,13 @@ public class DomainAddressBookCopyService {
         return ldapDomainMemberProvider.isPresent();
     }
 
-    public Mono<Task.Result> copyUsers(Domain sourceDomain, Optional<LdapFilter> ldapFilter,
-                                       OpenPaaSId destinationDomainId, AddressBookURL addressBookURL, Context context) {
+    public Mono<Task.Result> copyUsers(Domain sourceDomain, Optional<LdapFilter> ldapFilter, Destination destination, Context context) {
         return sourceDomainContacts(sourceDomain, ldapFilter)
-            .concatMap(contact -> copyContact(destinationDomainId, addressBookURL, contact, context))
+            .concatMap(contact -> copyContact(destination, contact, context))
             .reduce(Task.Result.COMPLETED, Task::combine)
             .onErrorResume(error -> {
                 LOGGER.error("Copying the users of {} into address book {} failed", sourceDomain.asString(),
-                    addressBookURL.asUri().toASCIIString(), error);
+                    destination.addressBookURL().asUri().toASCIIString(), error);
                 return Mono.just(Task.Result.PARTIAL);
             });
     }
@@ -167,16 +169,15 @@ public class DomainAddressBookCopyService {
             .mail(mailAddress);
     }
 
-    private Mono<Task.Result> copyContact(OpenPaaSId destinationDomainId, AddressBookURL addressBookURL,
-                                          AddressBookContact contact, Context context) {
-        return cardDavClient.upsertDomainContact(destinationDomainId, addressBookURL, contact.vcardUid(), contact.toVcardBytes())
+    private Mono<Task.Result> copyContact(Destination destination, AddressBookContact contact, Context context) {
+        return cardDavClient.upsertDomainContact(destination.domainId(), destination.addressBookURL(), contact.vcardUid(), contact.toVcardBytes())
             .then(Mono.fromCallable(() -> {
                 context.copiedCount.incrementAndGet();
                 return Task.Result.COMPLETED;
             }))
             .onErrorResume(error -> {
                 LOGGER.warn("Copying contact {} into address book {} failed", contact.vcardUid(),
-                    addressBookURL.asUri().toASCIIString(), error);
+                    destination.addressBookURL().asUri().toASCIIString(), error);
                 context.failedCount.incrementAndGet();
                 return Mono.just(Task.Result.PARTIAL);
             });
