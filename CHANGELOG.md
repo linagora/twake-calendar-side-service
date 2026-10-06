@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
  - Mail templates: Spanish (`es`), German (`de`) and Italian (`it`) translations of every email
  - ISSUE-1118 Webadmin: `DELETE /domains/{domain}/addressbooks/{addressBookId}/contacts[?sourceDomain=]` plans a task clearing the contacts of a domain address book (`domain-members` excluded), optionally only those having a mail address within `sourceDomain`
  - ISSUE-1119 Webadmin: `POST /domains/{domain}/addressbooks/{addressBookId}?action=copyFrom&sourceDomain=...[&ldapFilter=...]` plans a task copying the LDAP users of `sourceDomain` into a domain address book (`domain-members` excluded), e.g. letting teachers auto-complete students but not the other way around
+ - ISSUE-1137 TwakeSpace extension: enabled through `extensions.properties`, it gives each Twake Workplace space a team calendar shared with its members following their role. See [its configuration](docs/configuration/twake-space.md).
 
 ### Fixes
 
