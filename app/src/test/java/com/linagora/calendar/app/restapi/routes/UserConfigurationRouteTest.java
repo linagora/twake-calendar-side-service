@@ -398,6 +398,88 @@ class UserConfigurationRouteTest {
             ]""");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"darkMode", "highContrastMode"})
+    void postShouldReturnNullForThemeSettingsWhenNotConfigured(String key) {
+        String body = given()
+            .auth().preemptive().basic(USERNAME.asString(), PASSWORD)
+            .body(String.format("""
+                [ {
+                  "name" : "core",
+                  "keys" : [ "%s" ]
+                } ]""", key))
+        .when()
+            .post("/api/configurations")
+        .then()
+            .statusCode(200)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(body).isEqualTo(String.format("""
+            [
+                {
+                    "name": "core",
+                    "configurations": [
+                        {
+                            "name": "%s",
+                            "value": null
+                        }
+                    ]
+                }
+            ]""", key));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"darkMode", "highContrastMode"})
+    void putShouldSaveThemeSettings(String key) {
+        given()
+            .body(String.format("""
+                [
+                  {
+                    "name": "core",
+                    "configurations": [
+                      {
+                        "name": "%s",
+                        "value": true
+                      }
+                    ]
+                  }
+                ]""", key))
+        .when()
+            .put("/api/configurations?scope=user")
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        String body = given()
+            .auth().preemptive().basic(USERNAME.asString(), PASSWORD)
+            .body(String.format("""
+                [ {
+                  "name" : "core",
+                  "keys" : [ "%s" ]
+                } ]""", key))
+        .when()
+            .post("/api/configurations")
+        .then()
+            .statusCode(200)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(body).isEqualTo(String.format("""
+            [
+                {
+                    "name": "core",
+                    "configurations": [
+                        {
+                            "name": "%s",
+                            "value": true
+                        }
+                    ]
+                }
+            ]""", key));
+    }
+
     @Test
     void postShouldReturnDefaultTrueForDisplayWeekNumbersWhenNotConfigured() {
         String body = given()
