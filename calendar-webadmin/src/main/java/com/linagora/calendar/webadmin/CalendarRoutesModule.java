@@ -32,9 +32,11 @@ import org.apache.james.webadmin.tasks.TaskFromRequestRegistry;
 import com.google.inject.AbstractModule;
 import com.google.inject.Scopes;
 import com.google.inject.multibindings.Multibinder;
+import com.google.inject.multibindings.OptionalBinder;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.google.inject.name.Named;
 import com.google.inject.name.Names;
+import com.linagora.calendar.storage.ldap.LdapDomainMemberProvider;
 import com.linagora.calendar.webadmin.task.AddMissingFieldsTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.AddressBookImportTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.AlarmScheduleTaskAdditionalInformationDTO;
@@ -43,6 +45,7 @@ import com.linagora.calendar.webadmin.task.CalendarArchivalTaskAdditionalInforma
 import com.linagora.calendar.webadmin.task.CalendarEventsReindexTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.CalendarImportTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.DomainAddressBookClearTaskAdditionalInformationDTO;
+import com.linagora.calendar.webadmin.task.DomainAddressBookCopyTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.DomainAddressBookImportTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.DomainCalendarImportTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.UnsentMailDeletionTaskAdditionalInformationDTO;
@@ -87,6 +90,9 @@ public class CalendarRoutesModule extends AbstractModule {
 
         Multibinder<TaskFromRequestRegistry.TaskRegistration> userCalendarTaskRegistrationMultibinder = Multibinder.newSetBinder(binder(), TaskFromRequestRegistry.TaskRegistration.class, Names.named(USER_CALENDAR_TASKS_KEY));
         userCalendarTaskRegistrationMultibinder.addBinding().to(CalendarRoutes.UserArchiveRequestToTask.class);
+
+        // Solely bound when relying on the LDAP users repository
+        OptionalBinder.newOptionalBinder(binder(), LdapDomainMemberProvider.class);
     }
 
     @Named(DTOModuleInjections.WEBADMIN_DTO)
@@ -159,5 +165,11 @@ public class CalendarRoutesModule extends AbstractModule {
     @ProvidesIntoSet
     public AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO> domainAddressBookClearTaskAdditionalInformation() {
         return DomainAddressBookClearTaskAdditionalInformationDTO.module();
+    }
+
+    @Named(DTOModuleInjections.WEBADMIN_DTO)
+    @ProvidesIntoSet
+    public AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO> domainAddressBookCopyTaskAdditionalInformation() {
+        return DomainAddressBookCopyTaskAdditionalInformationDTO.module();
     }
 }

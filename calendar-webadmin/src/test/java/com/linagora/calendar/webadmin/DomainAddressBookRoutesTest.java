@@ -24,9 +24,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -34,6 +37,8 @@ import java.util.stream.IntStream;
 import javax.net.ssl.SSLException;
 
 import org.apache.james.core.Domain;
+import org.apache.james.core.MailAddress;
+import org.apache.james.core.Username;
 import org.apache.james.json.DTOConverter;
 import org.apache.james.server.task.json.dto.AdditionalInformationDTO;
 import org.apache.james.server.task.json.dto.AdditionalInformationDTOModule;
@@ -41,6 +46,7 @@ import org.apache.james.task.Hostname;
 import org.apache.james.task.MemoryTaskManager;
 import org.apache.james.task.TaskExecutionDetails;
 import org.apache.james.task.TaskManager;
+import org.apache.james.user.api.UsersRepository;
 import org.apache.james.webadmin.WebAdminServer;
 import org.apache.james.webadmin.WebAdminUtils;
 import org.apache.james.webadmin.routes.TasksRoutes;
@@ -58,13 +64,20 @@ import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.OpenPaaSDomain;
+import com.linagora.calendar.storage.ldap.LdapDomainMemberProvider;
+import com.linagora.calendar.storage.ldap.LdapFilter;
+import com.linagora.calendar.storage.ldap.LdapUser;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
+import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
 import com.linagora.calendar.webadmin.service.AddressBookImportService;
 import com.linagora.calendar.webadmin.service.DomainAddressBookClearService;
+import com.linagora.calendar.webadmin.service.DomainAddressBookCopyService;
 import com.linagora.calendar.webadmin.task.DomainAddressBookClearTaskAdditionalInformationDTO;
+import com.linagora.calendar.webadmin.task.DomainAddressBookCopyTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.DomainAddressBookImportTaskAdditionalInformationDTO;
 
 import io.restassured.RestAssured;
+import reactor.core.publisher.Flux;
 
 public class DomainAddressBookRoutesTest {
 
@@ -76,25 +89,40 @@ public class DomainAddressBookRoutesTest {
 
     private WebAdminServer webAdminServer;
     private MongoDBOpenPaaSDomainDAO domainDAO;
+    private MongoDBOpenPaaSUserDAO userDAO;
     private CardDavClient cardDavClient;
     private DavTestHelper davTestHelper;
+    private UsersRepository usersRepository;
+    private LdapDomainMemberProvider ldapDomainMemberProvider;
     private OpenPaaSDomain domain;
+    private OpenPaaSDomain sourceDomain;
 
     @BeforeEach
     void setUp() throws SSLException {
         domainDAO = new MongoDBOpenPaaSDomainDAO(sabreDavExtension.dockerSabreDavSetup().getMongoDB());
+        userDAO = new MongoDBOpenPaaSUserDAO(sabreDavExtension.dockerSabreDavSetup().getMongoDB(), domainDAO);
         cardDavClient = new CardDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         davTestHelper = sabreDavExtension.davTestHelper();
+        usersRepository = mock(UsersRepository.class);
+        ldapDomainMemberProvider = mock(LdapDomainMemberProvider.class);
         domain = domainDAO.add(Domain.of("new-domain" + UUID.randomUUID() + ".tld")).block();
+        sourceDomain = domainDAO.add(Domain.of("student" + UUID.randomUUID() + ".tld")).block();
 
+        startWebAdminServer(Optional.of(ldapDomainMemberProvider));
+    }
+
+    private void startWebAdminServer(Optional<LdapDomainMemberProvider> ldapDomainMemberProvider) {
         TaskManager taskManager = new MemoryTaskManager(new Hostname("foo"));
         webAdminServer = WebAdminUtils.createWebAdminServer(
                 new DomainAddressBookRoutes(domainDAO, cardDavClient, new AddressBookImportService(cardDavClient),
-                    new DomainAddressBookClearService(cardDavClient), taskManager, new JsonTransformer()),
+                    new DomainAddressBookClearService(cardDavClient),
+                    new DomainAddressBookCopyService(cardDavClient, usersRepository, userDAO, ldapDomainMemberProvider),
+                    taskManager, new JsonTransformer()),
                 new TasksRoutes(taskManager, new JsonTransformer(),
                     new DTOConverter<>(ImmutableSet.<AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO>>builder()
                         .add(DomainAddressBookImportTaskAdditionalInformationDTO.module())
                         .add(DomainAddressBookClearTaskAdditionalInformationDTO.module())
+                        .add(DomainAddressBookCopyTaskAdditionalInformationDTO.module())
                         .build())))
             .start();
 
@@ -646,6 +674,224 @@ public class DomainAddressBookRoutesTest {
             .statusCode(404)
             .body("type", is("notFound"))
             .body("message", is("Domain does not exist"));
+    }
+
+    @Test
+    void copyFromShouldAddTheSourceDomainUsersToTheDomainAddressBook() {
+        davTestHelper.createDomainAddressBook(domain.id()).block();
+        Username jane = sourceDomainUser("jane");
+        Username john = sourceDomainUser("john");
+        userDAO.add(jane, "Jane", "Doe").block();
+        sourceDomainUsersAre(jane, john);
+
+        awaitTask(copyFrom(DOMAIN_ADDRESS_BOOK, sourceDomain.domain().asString()));
+
+        assertThat(exportAddressBook(DOMAIN_ADDRESS_BOOK))
+            .contains(jane.asString(), john.asString(), "FN:Jane Doe", "N:Doe;Jane");
+    }
+
+    @Test
+    void copyFromShouldReturnCompletedTaskDetails() {
+        davTestHelper.createDomainAddressBook(domain.id()).block();
+        sourceDomainUsersAre(sourceDomainUser("jane"), sourceDomainUser("john"));
+
+        String taskId = copyFrom(DOMAIN_ADDRESS_BOOK, sourceDomain.domain().asString());
+
+        given()
+        .when()
+            .get(TasksRoutes.BASE + "/" + taskId + "/await")
+        .then()
+            .statusCode(200)
+            .body("status", is("completed"))
+            .body("type", is("domain-addressbook-copy"))
+            .body("additionalInformation.domain", is(domain.domain().asString()))
+            .body("additionalInformation.addressBookId", is(DOMAIN_ADDRESS_BOOK))
+            .body("additionalInformation.sourceDomain", is(sourceDomain.domain().asString()))
+            .body("additionalInformation.ldapFilter", nullValue())
+            .body("additionalInformation.copiedContactCount", is(2))
+            .body("additionalInformation.failedContactCount", is(0));
+    }
+
+    @Test
+    void copyFromShouldUpdatePreviouslyCopiedContacts() {
+        davTestHelper.createDomainAddressBook(domain.id()).block();
+        sourceDomainUsersAre(sourceDomainUser("jane"), sourceDomainUser("john"));
+
+        awaitTask(copyFrom(DOMAIN_ADDRESS_BOOK, sourceDomain.domain().asString()));
+        awaitTask(copyFrom(DOMAIN_ADDRESS_BOOK, sourceDomain.domain().asString()));
+
+        assertContactCount(DOMAIN_ADDRESS_BOOK, 2);
+    }
+
+    @Test
+    void copyFromShouldPreserveExistingContacts() {
+        davTestHelper.createDomainAddressBook(domain.id()).block();
+        upsertDomainContact(DOMAIN_ADDRESS_BOOK);
+        sourceDomainUsersAre(sourceDomainUser("jane"));
+
+        awaitTask(copyFrom(DOMAIN_ADDRESS_BOOK, sourceDomain.domain().asString()));
+
+        assertContactCount(DOMAIN_ADDRESS_BOOK, 2);
+    }
+
+    @Test
+    void copyFromShouldSucceedWhenSourceDomainHasNoUser() {
+        davTestHelper.createDomainAddressBook(domain.id()).block();
+        sourceDomainUsersAre();
+
+        awaitTask(copyFrom(DOMAIN_ADDRESS_BOOK, sourceDomain.domain().asString()));
+
+        assertContactCount(DOMAIN_ADDRESS_BOOK, 0);
+    }
+
+    @Test
+    void copyFromShouldCopyOnlyTheLdapUsersMatchingTheFilter() throws Exception {
+        davTestHelper.createDomainAddressBook(domain.id()).block();
+        String rawLdapFilter = "(employeeType=student)";
+        when(ldapDomainMemberProvider.domainMembers(sourceDomain.domain(), Optional.of(LdapFilter.of(rawLdapFilter))))
+            .thenReturn(Flux.just(LdapUser.builder()
+                .uid("jane")
+                .cn("Jane Doe")
+                .sn("Doe")
+                .givenName("Jane")
+                .mail(new MailAddress(sourceDomainUser("jane").asString()))
+                .build()));
+
+        String taskId = given()
+            .queryParam("action", "copyFrom")
+            .queryParam("sourceDomain", sourceDomain.domain().asString())
+            .queryParam("ldapFilter", rawLdapFilter)
+        .when()
+            .post("/domains/{domain}/addressbooks/{addressBookId}", domain.domain().asString(), DOMAIN_ADDRESS_BOOK)
+        .then()
+            .statusCode(201)
+            .extract()
+            .jsonPath()
+            .getString("taskId");
+
+        given()
+        .when()
+            .get(TasksRoutes.BASE + "/" + taskId + "/await")
+        .then()
+            .statusCode(200)
+            .body("status", is("completed"))
+            .body("additionalInformation.ldapFilter", is(rawLdapFilter))
+            .body("additionalInformation.copiedContactCount", is(1));
+
+        assertThat(exportAddressBook(DOMAIN_ADDRESS_BOOK))
+            .contains(sourceDomainUser("jane").asString(), "FN:Jane Doe");
+    }
+
+    @Test
+    void copyFromShouldReturn400WhenSourceDomainIsMissing() {
+        davTestHelper.createDomainAddressBook(domain.id()).block();
+
+        given()
+            .queryParam("action", "copyFrom")
+        .when()
+            .post("/domains/{domain}/addressbooks/{addressBookId}", domain.domain().asString(), DOMAIN_ADDRESS_BOOK)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"))
+            .body("message", is("Missing 'sourceDomain' query parameter"));
+    }
+
+    @Test
+    void copyFromShouldReturn400WhenSourceDomainIsInvalid() {
+        davTestHelper.createDomainAddressBook(domain.id()).block();
+
+        given()
+            .queryParam("action", "copyFrom")
+            .queryParam("sourceDomain", "invalid@domain")
+        .when()
+            .post("/domains/{domain}/addressbooks/{addressBookId}", domain.domain().asString(), DOMAIN_ADDRESS_BOOK)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"))
+            .body("message", containsString("sourceDomain"));
+    }
+
+    @Test
+    void copyFromShouldReturn400WhenLdapFilterIsInvalid() {
+        davTestHelper.createDomainAddressBook(domain.id()).block();
+
+        given()
+            .queryParam("action", "copyFrom")
+            .queryParam("sourceDomain", sourceDomain.domain().asString())
+            .queryParam("ldapFilter", "(invalid")
+        .when()
+            .post("/domains/{domain}/addressbooks/{addressBookId}", domain.domain().asString(), DOMAIN_ADDRESS_BOOK)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"))
+            .body("message", containsString("ldapFilter"));
+    }
+
+    @Test
+    void copyFromShouldReturn400WhenLdapFilterIsUsedWithoutLdap() {
+        webAdminServer.destroy();
+        startWebAdminServer(Optional.empty());
+        davTestHelper.createDomainAddressBook(domain.id()).block();
+
+        given()
+            .queryParam("action", "copyFrom")
+            .queryParam("sourceDomain", sourceDomain.domain().asString())
+            .queryParam("ldapFilter", "(employeeType=student)")
+        .when()
+            .post("/domains/{domain}/addressbooks/{addressBookId}", domain.domain().asString(), DOMAIN_ADDRESS_BOOK)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"))
+            .body("message", is("The 'ldapFilter' query parameter requires the LDAP users repository"));
+    }
+
+    @Test
+    void copyFromShouldReturn400WhenTargetingDomainMembers() {
+        upsertDomainMember();
+
+        given()
+            .queryParam("action", "copyFrom")
+            .queryParam("sourceDomain", sourceDomain.domain().asString())
+        .when()
+            .post("/domains/{domain}/addressbooks/{addressBookId}", domain.domain().asString(), DOMAIN_MEMBERS_ADDRESS_BOOK)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"))
+            .body("message", is("Cannot copy into the 'domain-members' address book"));
+    }
+
+    @Test
+    void copyFromShouldReturn404WhenAddressBookDoesNotExist() {
+        given()
+            .queryParam("action", "copyFrom")
+            .queryParam("sourceDomain", sourceDomain.domain().asString())
+        .when()
+            .post("/domains/{domain}/addressbooks/{addressBookId}", domain.domain().asString(), UUID.randomUUID().toString())
+        .then()
+            .statusCode(404)
+            .body("type", is("notFound"))
+            .body("message", is("Address book does not exist"));
+    }
+
+    private String copyFrom(String addressBookId, String sourceDomain) {
+        return given()
+            .queryParam("action", "copyFrom")
+            .queryParam("sourceDomain", sourceDomain)
+        .when()
+            .post("/domains/{domain}/addressbooks/{addressBookId}", domain.domain().asString(), addressBookId)
+        .then()
+            .statusCode(201)
+            .extract()
+            .jsonPath()
+            .getString("taskId");
+    }
+
+    private Username sourceDomainUser(String localPart) {
+        return Username.fromLocalPartWithDomain(localPart, sourceDomain.domain());
+    }
+
+    private void sourceDomainUsersAre(Username... users) {
+        when(usersRepository.listUsersOfADomainReactive(sourceDomain.domain())).thenReturn(Flux.just(users));
     }
 
     private String clearContacts(String addressBookId) {
