@@ -176,7 +176,10 @@ public class HtmlEmailAlarmRenderTest {
     static Stream<Arguments> localeWithNotification() {
         return Stream.of(
             Arguments.of(Locale.ENGLISH, "This event is about to begin in 5 minutes"),
-            Arguments.of(Locale.of("ru"), "Это событие скоро начнется через 5 минут")
+            Arguments.of(Locale.of("ru"), "Это событие скоро начнется через 5 минут"),
+            Arguments.of(Locale.of("es"), "Este evento comenzar&aacute; en 5 minutos"),
+            Arguments.of(Locale.GERMAN, "Dieser Termin beginnt in 5 Minuten"),
+            Arguments.of(Locale.ITALIAN, "Questo evento inizier&agrave; tra 5 minuti")
         );
     }
 
