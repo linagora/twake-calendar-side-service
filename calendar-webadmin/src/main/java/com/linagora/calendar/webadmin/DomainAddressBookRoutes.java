@@ -45,9 +45,12 @@ import com.linagora.calendar.dav.importer.ContactToImport;
 import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
+import com.linagora.calendar.storage.ldap.LdapFilter;
 import com.linagora.calendar.webadmin.service.AddressBookImportService;
 import com.linagora.calendar.webadmin.service.DomainAddressBookClearService;
+import com.linagora.calendar.webadmin.service.DomainAddressBookCopyService;
 import com.linagora.calendar.webadmin.task.DomainAddressBookClearTask;
+import com.linagora.calendar.webadmin.task.DomainAddressBookCopyTask;
 import com.linagora.calendar.webadmin.task.DomainAddressBookImportTask;
 
 import spark.HaltException;
@@ -76,7 +79,10 @@ public class DomainAddressBookRoutes implements Routes {
     private static final String ACTION_PARAMETER = "action";
     private static final String EXPORT_ACTION = "export";
     private static final String IMPORT_ACTION = "import";
+    // Actions are matched case-insensitively, hence documented as 'copyFrom'
+    private static final String COPY_FROM_ACTION = "copyfrom";
     private static final String SOURCE_DOMAIN_PARAMETER = "sourceDomain";
+    private static final String LDAP_FILTER_PARAMETER = "ldapFilter";
     private static final String VCARD_CONTENT_TYPE = "text/vcard; charset=utf-8";
     private static final byte[] NO_CONTACT = new byte[0];
 
@@ -84,18 +90,21 @@ public class DomainAddressBookRoutes implements Routes {
     private final CardDavClient cardDavClient;
     private final AddressBookImportService addressBookImportService;
     private final DomainAddressBookClearService addressBookClearService;
+    private final DomainAddressBookCopyService addressBookCopyService;
     private final TaskManager taskManager;
     private final JsonTransformer jsonTransformer;
 
     @Inject
     public DomainAddressBookRoutes(OpenPaaSDomainDAO domainDAO, CardDavClient cardDavClient,
                                    AddressBookImportService addressBookImportService,
-                                   DomainAddressBookClearService addressBookClearService, TaskManager taskManager,
+                                   DomainAddressBookClearService addressBookClearService,
+                                   DomainAddressBookCopyService addressBookCopyService, TaskManager taskManager,
                                    JsonTransformer jsonTransformer) {
         this.domainDAO = domainDAO;
         this.cardDavClient = cardDavClient;
         this.addressBookImportService = addressBookImportService;
         this.addressBookClearService = addressBookClearService;
+        this.addressBookCopyService = addressBookCopyService;
         this.taskManager = taskManager;
         this.jsonTransformer = jsonTransformer;
     }
@@ -108,7 +117,7 @@ public class DomainAddressBookRoutes implements Routes {
     @Override
     public void define(Service service) {
         service.get(CONTACT_COUNT_PATH, this::countContacts, jsonTransformer);
-        service.post(ADDRESSBOOK_PATH, this::exportOrImportAddressBook);
+        service.post(ADDRESSBOOK_PATH, this::applyAddressBookAction);
         service.delete(CONTACTS_PATH, this::clearContacts);
     }
 
@@ -122,17 +131,18 @@ public class DomainAddressBookRoutes implements Routes {
             .orElseThrow(DomainAddressBookRoutes::addressBookNotFound));
     }
 
-    private String exportOrImportAddressBook(Request request, Response response) throws Exception {
+    private String applyAddressBookAction(Request request, Response response) throws Exception {
         String action = StringUtils.trimToEmpty(request.queryParams(ACTION_PARAMETER));
 
         return switch (action.toLowerCase(Locale.US)) {
             case EXPORT_ACTION -> exportAddressBook(request, response);
             case IMPORT_ACTION -> importAddressBook(request, response);
+            case COPY_FROM_ACTION -> copyFromDomain(request, response);
             default -> throw ErrorResponder.builder()
                 .statusCode(HttpStatus.BAD_REQUEST_400)
                 .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
-                .message("Invalid '%s' query parameter: '%s'. Supported values are: '%s', '%s'"
-                    .formatted(ACTION_PARAMETER, action, EXPORT_ACTION, IMPORT_ACTION))
+                .message("Invalid '%s' query parameter: '%s'. Supported values are: '%s', '%s', '%s'"
+                    .formatted(ACTION_PARAMETER, action, EXPORT_ACTION, IMPORT_ACTION, COPY_FROM_ACTION))
                 .haltError();
         };
     }
@@ -166,6 +176,47 @@ public class DomainAddressBookRoutes implements Routes {
 
         TaskId taskId = taskManager.submit(new DomainAddressBookClearTask(addressBookClearService, domain, addressBookURL, sourceDomain));
         return createdTaskResponse(response, taskId);
+    }
+
+    private String copyFromDomain(Request request, Response response) {
+        OpenPaaSDomain domain = retrieveDomain(request);
+        Domain sourceDomain = parseSourceDomain(request)
+            .orElseThrow(() -> ErrorResponder.builder()
+                .statusCode(HttpStatus.BAD_REQUEST_400)
+                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                .message("Missing '%s' query parameter".formatted(SOURCE_DOMAIN_PARAMETER))
+                .haltError());
+        Optional<LdapFilter> ldapFilter = parseLdapFilter(request);
+        AddressBookURL addressBookURL = retrieveWritableAddressBook(request, domain, "copy into");
+
+        TaskId taskId = taskManager.submit(new DomainAddressBookCopyTask(addressBookCopyService, domain, addressBookURL, sourceDomain, ldapFilter));
+        return createdTaskResponse(response, taskId);
+    }
+
+    private Optional<LdapFilter> parseLdapFilter(Request request) {
+        Optional<LdapFilter> ldapFilter = Optional.ofNullable(StringUtils.trimToNull(request.queryParams(LDAP_FILTER_PARAMETER)))
+            .map(this::asLdapFilter);
+        if (ldapFilter.isPresent() && !addressBookCopyService.supportsLdapFilter()) {
+            throw ErrorResponder.builder()
+                .statusCode(HttpStatus.BAD_REQUEST_400)
+                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                .message("The '%s' query parameter requires the LDAP users repository".formatted(LDAP_FILTER_PARAMETER))
+                .haltError();
+        }
+        return ldapFilter;
+    }
+
+    private LdapFilter asLdapFilter(String rawLdapFilter) {
+        try {
+            return LdapFilter.of(rawLdapFilter);
+        } catch (LdapFilter.InvalidLdapFilterException e) {
+            throw ErrorResponder.builder()
+                .statusCode(HttpStatus.BAD_REQUEST_400)
+                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                .message("Invalid '%s' query parameter: %s".formatted(LDAP_FILTER_PARAMETER, rawLdapFilter))
+                .cause(e)
+                .haltError();
+        }
     }
 
     private AddressBookURL retrieveImportableAddressBook(Request request, OpenPaaSDomain domain) {

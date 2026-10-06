@@ -1647,6 +1647,65 @@ The task details are available on `GET /tasks/{taskId}`:
 - `404`: the domain or the address book does not exist
 - `500`: error while calling the DAV server
 
+### Copying the users of another domain into a domain address book
+
+```
+POST /domains/{domain}/addressbooks/{addressBookId}?action=copyFrom&sourceDomain={sourceDomain}[&ldapFilter={ldapFilter}]
+```
+
+```
+POST /domains/teachers.school.org/addressbooks/dab?action=copyFrom&sourceDomain=students.school.org
+POST /domains/teachers.school.org/addressbooks/dab?action=copyFrom&sourceDomain=students.school.org&ldapFilter=(employeeType=student)
+```
+
+Adds the users of `sourceDomain` as contacts of the address book, so that the members of `{domain}` can auto-complete
+them. Typically, a school holding teachers and students in separate domains copies the students into the teachers
+domain address book: teachers auto-complete students, and not the other way around.
+
+The users are listed from the users repository, their names being the ones known by Twake Calendar. When `ldapFilter`
+(an RFC 4515 LDAP filter) is specified, the users are read from the LDAP - with their LDAP names and phone numbers -
+and only those matching the filter are copied. `ldapFilter` requires the LDAP users repository.
+
+Each contact UID derives from the user mail address, hence copying again updates the previously copied contacts rather
+than duplicating them. Contacts are never deleted: combine with the clear route
+(`DELETE /domains/{domain}/addressbooks/{addressBookId}/contacts?sourceDomain={sourceDomain}`) to drop users that left
+the source domain.
+
+The `domain-members` address book is fed by the LDAP synchronization of the domain members, hence copying into it is
+rejected.
+
+This triggers a task, and returns its identifier:
+
+```json
+{"taskId": "6d3bb34e-9dfc-4ecc-a5d0-05a6f2a0e6d6"}
+```
+
+The task details are available on `GET /tasks/{taskId}`:
+
+```json
+{
+  "type": "domain-addressbook-copy",
+  "additionalInformation": {
+    "domain": "teachers.school.org",
+    "addressBookId": "dab",
+    "sourceDomain": "students.school.org",
+    "ldapFilter": "(employeeType=student)",
+    "copiedContactCount": 120,
+    "failedContactCount": 0,
+    "timestamp": "2026-06-01T08:00:00Z"
+  }
+}
+```
+
+`ldapFilter` is omitted when no LDAP filter was specified.
+
+**Status codes**:
+- `201`: the copy task was created
+- `400`: the domain, `sourceDomain` or `ldapFilter` is invalid, `sourceDomain` is missing, `ldapFilter` is used without
+  the LDAP users repository, or the address book is `domain-members`
+- `404`: the domain or the address book does not exist
+- `500`: error while calling the DAV server
+
 ### Clearing the contacts of a domain address book
 
 ```
@@ -2168,6 +2227,7 @@ The following task types are domain-scoped:
 | `domain-calendar-import` | `domain` field in additional information |
 | `domain-addressbook-import` | `domain` field in additional information |
 | `domain-addressbook-clear` | `domain` field in additional information |
+| `domain-addressbook-copy` | `domain` field in additional information |
 | `DeleteUserDataTask` | domain extracted from `username` |
 | `sync-domain-members-contacts-ldap-to-dav` (single-domain) | `domain` field in additional information |
 | `clear-domain-members-contacts-dav` (single-domain) | `domain` field in additional information |
