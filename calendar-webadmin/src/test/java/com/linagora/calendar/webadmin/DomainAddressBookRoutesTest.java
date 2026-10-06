@@ -23,9 +23,12 @@ import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.nullValue;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import javax.net.ssl.SSLException;
@@ -57,6 +60,8 @@ import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.webadmin.service.AddressBookImportService;
+import com.linagora.calendar.webadmin.service.DomainAddressBookClearService;
+import com.linagora.calendar.webadmin.task.DomainAddressBookClearTaskAdditionalInformationDTO;
 import com.linagora.calendar.webadmin.task.DomainAddressBookImportTaskAdditionalInformationDTO;
 
 import io.restassured.RestAssured;
@@ -84,10 +89,12 @@ public class DomainAddressBookRoutesTest {
 
         TaskManager taskManager = new MemoryTaskManager(new Hostname("foo"));
         webAdminServer = WebAdminUtils.createWebAdminServer(
-                new DomainAddressBookRoutes(domainDAO, cardDavClient, new AddressBookImportService(cardDavClient), taskManager, new JsonTransformer()),
+                new DomainAddressBookRoutes(domainDAO, cardDavClient, new AddressBookImportService(cardDavClient),
+                    new DomainAddressBookClearService(cardDavClient), taskManager, new JsonTransformer()),
                 new TasksRoutes(taskManager, new JsonTransformer(),
                     new DTOConverter<>(ImmutableSet.<AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO>>builder()
                         .add(DomainAddressBookImportTaskAdditionalInformationDTO.module())
+                        .add(DomainAddressBookClearTaskAdditionalInformationDTO.module())
                         .build())))
             .start();
 
@@ -482,6 +489,185 @@ public class DomainAddressBookRoutesTest {
             .body("type", is("InvalidArgument"));
     }
 
+    @Test
+    void clearShouldDeleteAllContactsOfTheDomainAddressBook() {
+        davTestHelper.createDomainAddressBook(domain.id()).block();
+        IntStream.range(0, 3).forEach(i -> upsertDomainContact(DOMAIN_ADDRESS_BOOK));
+
+        awaitTask(clearContacts(DOMAIN_ADDRESS_BOOK));
+
+        assertContactCount(DOMAIN_ADDRESS_BOOK, 0);
+    }
+
+    @Test
+    void clearShouldReturnCompletedTaskDetails() {
+        davTestHelper.createDomainAddressBook(domain.id()).block();
+        IntStream.range(0, 2).forEach(i -> upsertDomainContact(DOMAIN_ADDRESS_BOOK));
+
+        String taskId = clearContacts(DOMAIN_ADDRESS_BOOK);
+
+        given()
+        .when()
+            .get(TasksRoutes.BASE + "/" + taskId + "/await")
+        .then()
+            .statusCode(200)
+            .body("status", is("completed"))
+            .body("type", is("domain-addressbook-clear"))
+            .body("additionalInformation.domain", is(domain.domain().asString()))
+            .body("additionalInformation.addressBookId", is(DOMAIN_ADDRESS_BOOK))
+            .body("additionalInformation.sourceDomain", nullValue())
+            .body("additionalInformation.deletedContactCount", is(2))
+            .body("additionalInformation.failedContactCount", is(0));
+    }
+
+    @Test
+    void clearShouldSucceedWhenAddressBookHasNoContact() {
+        davTestHelper.createDomainAddressBook(domain.id()).block();
+
+        awaitTask(clearContacts(DOMAIN_ADDRESS_BOOK));
+
+        assertContactCount(DOMAIN_ADDRESS_BOOK, 0);
+    }
+
+    @Test
+    void clearShouldDeleteOnlyContactsWithAMailAddressInTheSourceDomain() {
+        davTestHelper.createDomainAddressBook(domain.id()).block();
+        upsertDomainContact(DOMAIN_ADDRESS_BOOK, vcardWithMails("student-1", "student-1@student.school.org"));
+        upsertDomainContact(DOMAIN_ADDRESS_BOOK, vcardWithMails("student-2", "student-2@STUDENT.school.org"));
+        upsertDomainContact(DOMAIN_ADDRESS_BOOK, vcardWithMails("teacher", "teacher@school.org"));
+        upsertDomainContact(DOMAIN_ADDRESS_BOOK, vcardWithMails("other", "other@other-student.school.org"));
+
+        String taskId = given()
+            .queryParam("sourceDomain", "student.school.org")
+        .when()
+            .delete("/domains/{domain}/addressbooks/{addressBookId}/contacts", domain.domain().asString(), DOMAIN_ADDRESS_BOOK)
+        .then()
+            .statusCode(201)
+            .extract()
+            .jsonPath()
+            .getString("taskId");
+
+        given()
+        .when()
+            .get(TasksRoutes.BASE + "/" + taskId + "/await")
+        .then()
+            .statusCode(200)
+            .body("status", is("completed"))
+            .body("additionalInformation.sourceDomain", is("student.school.org"))
+            .body("additionalInformation.deletedContactCount", is(2));
+
+        assertThat(exportAddressBook(DOMAIN_ADDRESS_BOOK))
+            .contains("teacher@school.org", "other@other-student.school.org")
+            .doesNotContain("student-1@student.school.org")
+            .doesNotContainIgnoringCase("student-2@student.school.org");
+    }
+
+    @Test
+    void clearShouldDeleteContactsHavingOneOfTheirMailAddressesInTheSourceDomain() {
+        davTestHelper.createDomainAddressBook(domain.id()).block();
+        upsertDomainContact(DOMAIN_ADDRESS_BOOK, vcardWithMails("student", "student@school.org", "student@student.school.org"));
+
+        String taskId = given()
+            .queryParam("sourceDomain", "student.school.org")
+        .when()
+            .delete("/domains/{domain}/addressbooks/{addressBookId}/contacts", domain.domain().asString(), DOMAIN_ADDRESS_BOOK)
+        .then()
+            .statusCode(201)
+            .extract()
+            .jsonPath()
+            .getString("taskId");
+        awaitTask(taskId);
+
+        assertContactCount(DOMAIN_ADDRESS_BOOK, 0);
+    }
+
+    @Test
+    void clearShouldNotDeleteContactsOfOtherDomains() {
+        OpenPaaSDomain otherDomain = domainDAO.add(Domain.of("other-domain" + UUID.randomUUID() + ".tld")).block();
+        davTestHelper.createDomainAddressBook(domain.id()).block();
+        davTestHelper.createDomainAddressBook(otherDomain.id()).block();
+        String uid = UUID.randomUUID().toString();
+        davTestHelper.upsertDomainContact(otherDomain.id(), new AddressBookURL(otherDomain.id(), DOMAIN_ADDRESS_BOOK), uid, vcard(uid)).block();
+
+        awaitTask(clearContacts(DOMAIN_ADDRESS_BOOK));
+
+        given()
+        .when()
+            .get("/domains/{domain}/addressbooks/{addressBookId}/contactCount", otherDomain.domain().asString(), DOMAIN_ADDRESS_BOOK)
+        .then()
+            .statusCode(200)
+            .body("count", is(1));
+    }
+
+    @Test
+    void clearShouldReturn400WhenSourceDomainIsInvalid() {
+        davTestHelper.createDomainAddressBook(domain.id()).block();
+
+        given()
+            .queryParam("sourceDomain", "invalid@domain")
+        .when()
+            .delete("/domains/{domain}/addressbooks/{addressBookId}/contacts", domain.domain().asString(), DOMAIN_ADDRESS_BOOK)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"))
+            .body("message", containsString("sourceDomain"));
+    }
+
+    @Test
+    void clearShouldReturn400WhenTargetingDomainMembers() {
+        upsertDomainMember();
+
+        given()
+        .when()
+            .delete("/domains/{domain}/addressbooks/{addressBookId}/contacts", domain.domain().asString(), DOMAIN_MEMBERS_ADDRESS_BOOK)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"))
+            .body("message", is("Cannot clear the 'domain-members' address book"));
+    }
+
+    @Test
+    void clearShouldReturn404WhenAddressBookDoesNotExist() {
+        given()
+        .when()
+            .delete("/domains/{domain}/addressbooks/{addressBookId}/contacts", domain.domain().asString(), UUID.randomUUID().toString())
+        .then()
+            .statusCode(404)
+            .body("type", is("notFound"))
+            .body("message", is("Address book does not exist"));
+    }
+
+    @Test
+    void clearShouldReturn404WhenDomainDoesNotExist() {
+        given()
+        .when()
+            .delete("/domains/{domain}/addressbooks/{addressBookId}/contacts", "ghost.tld", DOMAIN_ADDRESS_BOOK)
+        .then()
+            .statusCode(404)
+            .body("type", is("notFound"))
+            .body("message", is("Domain does not exist"));
+    }
+
+    private String clearContacts(String addressBookId) {
+        return given()
+        .when()
+            .delete("/domains/{domain}/addressbooks/{addressBookId}/contacts", domain.domain().asString(), addressBookId)
+        .then()
+            .statusCode(201)
+            .extract()
+            .jsonPath()
+            .getString("taskId");
+    }
+
+    private void assertContactCount(String addressBookId, int expectedCount) {
+        given()
+        .when()
+            .get("/domains/{domain}/addressbooks/{addressBookId}/contactCount", domain.domain().asString(), addressBookId)
+        .then()
+            .statusCode(200)
+            .body("count", is(expectedCount));
+    }
+
     private String importAddressBook(String addressBookId, String vcards) {
         return given()
             .queryParam("action", "import")
@@ -521,6 +707,10 @@ public class DomainAddressBookRoutesTest {
         return uid;
     }
 
+    private void upsertDomainContact(String addressBookId, String vcard) {
+        davTestHelper.upsertDomainContact(domain.id(), new AddressBookURL(domain.id(), addressBookId), UUID.randomUUID().toString(), vcard).block();
+    }
+
     private String upsertDomainMember() {
         String uid = UUID.randomUUID().toString();
         cardDavClient.upsertContactDomainMembers(domain.id(), uid, vcard(uid).getBytes(StandardCharsets.UTF_8)).block();
@@ -540,5 +730,12 @@ public class DomainAddressBookRoutesTest {
             EMAIL;TYPE=Work:%s@example.com
             END:VCARD
             """.formatted(uid, fullName, uid);
+    }
+
+    private String vcardWithMails(String uid, String... mailAddresses) {
+        String emails = Arrays.stream(mailAddresses)
+            .map("EMAIL;TYPE=Work:%s\n"::formatted)
+            .collect(Collectors.joining());
+        return "BEGIN:VCARD\nVERSION:4.0\nUID:%s\nFN:%s\n%sEND:VCARD\n".formatted(uid, uid, emails);
     }
 }
