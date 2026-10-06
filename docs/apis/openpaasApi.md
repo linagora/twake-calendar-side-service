@@ -339,6 +339,10 @@ Supported configuration keys:
      Note that writes replace the whole `datetime` object: a client updating it needs to resend all its fields,
      otherwise the omitted ones fall back to their defaults.
    - `businessHours`: stored in user settings, eg `[{"start":"8:0","end":"19:0","daysOfWeek":[1,2,3,4,5]}]`
+   - `darkMode`: stored in user settings, optional boolean: should the front use a dark theme? Defaults to `null`,
+     meaning the user did not express a preference and the front is free to pick one (eg follow the system theme).
+   - `highContrastMode`: stored in user settings, optional boolean: should the front use a high contrast theme?
+     Defaults to `null`, meaning the user did not express a preference.
  - `linagora.esn.contact`
    - `features`: advertised from configuration `{"isVirtualFollowingAddressbookEnabled":false,"isSharingAddressbookEnabled":true,"isVirtualUserAddressbookEnabled":false,"isDomainMembersAddressbookEnabled":true}`
  - `linagora.esn.calendar"`
