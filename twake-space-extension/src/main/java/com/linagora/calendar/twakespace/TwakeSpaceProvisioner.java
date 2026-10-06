@@ -18,6 +18,9 @@
 
 package com.linagora.calendar.twakespace;
 
+import java.time.Clock;
+import java.util.Optional;
+
 import jakarta.inject.Inject;
 
 import org.apache.james.core.Domain;
@@ -42,52 +45,78 @@ public class TwakeSpaceProvisioner {
     private final TwakeSpaceRepository spaceRepository;
     private final SpaceTeamCalendars teamCalendars;
     private final TeamCalendarSharing sharing;
+    private final Clock clock;
 
     @Inject
-    public TwakeSpaceProvisioner(TwakeSpaceRepository spaceRepository, SpaceTeamCalendars teamCalendars, TeamCalendarSharing sharing) {
+    public TwakeSpaceProvisioner(TwakeSpaceRepository spaceRepository, SpaceTeamCalendars teamCalendars, TeamCalendarSharing sharing,
+                                 Clock clock) {
         this.spaceRepository = spaceRepository;
         this.teamCalendars = teamCalendars;
         this.sharing = sharing;
+        this.clock = clock;
     }
 
-    public Mono<Void> handle(String routingKey, SpaceEvent event) {
+    // Emits the activity event to publish once the space event is applied.
+    public Mono<ActivityEvent> handle(String routingKey, SpaceEvent event) {
         return switch (routingKey) {
             case CREATED -> created(event);
             case UPDATED -> Mono.justOrEmpty(event.name())
                 .flatMap(name -> liveTeamCalendar(routingKey, event.id())
                     .flatMap(teamCalendar -> teamCalendars.rename(teamCalendar, name)))
-                .then();
+                .then(Mono.empty());
             case MEMBER_ADDED, MEMBER_ROLE_CHANGED -> liveTeamCalendar(routingKey, event.id())
-                .flatMap(teamCalendar -> sharing.share(teamCalendar, event.members()));
+                .flatMap(teamCalendar -> sharing.share(teamCalendar, event.members()))
+                .then(Mono.empty());
             case MEMBER_REMOVED -> liveTeamCalendar(routingKey, event.id())
                 .flatMap(teamCalendar -> sharing.unshare(teamCalendar, event.members().stream()
                     .map(member -> Username.of(member.email()))
-                    .toList()));
+                    .toList()))
+                .then(Mono.empty());
             case DELETED -> provisionedSpace(event.id())
                 .flatMap(this::teamCalendar)
                 .flatMap(teamCalendar -> spaceRepository.markDeleted(event.id())
-                    .then(sharing.unshareEveryone(teamCalendar)));
+                    .then(sharing.unshareEveryone(teamCalendar)))
+                .then(Mono.empty());
             default -> Mono.fromRunnable(() -> LOGGER.warn("Ignoring {} for space {}: not a space event the extension handles", routingKey, event.id()));
         };
     }
 
     // The space is recorded last: a recorded space was fully provisioned, so a replayed created cannot undo later events.
-    private Mono<Void> created(SpaceEvent event) {
+    // A redelivered created publishes the provisioned event again, as its first publication may have failed.
+    private Mono<ActivityEvent> created(SpaceEvent event) {
+        if (event.organizationId() == null) {
+            return Mono.error(new UnprocessableSpaceEventException("Space " + event.id() + " has no organization"));
+        }
         return spaceRepository.retrieve(event.id())
-            .hasElement()
-            .flatMap(provisioned -> {
-                if (provisioned) {
-                    LOGGER.info("Space {} already has its team calendar, ignoring its creation", event.id());
-                    return Mono.empty();
-                }
-                if (event.name() == null) {
-                    throw new UnprocessableSpaceEventException("Space " + event.id() + " has no name");
-                }
-                Domain domain = domain(event);
-                return teamCalendars.findOrCreate(domain, event.id(), event.name())
-                    .flatMap(teamCalendar -> sharing.share(teamCalendar, event.members()))
-                    .then(spaceRepository.save(event.id(), domain));
-            });
+            .map(Optional::of)
+            .defaultIfEmpty(Optional.empty())
+            .flatMap(provisioned -> provisioned
+                .map(space -> alreadyCreated(space, event.organizationId()))
+                .orElseGet(() -> create(event)));
+    }
+
+    private Mono<ActivityEvent> alreadyCreated(TwakeSpaceRepository.TwakeSpace space, String organization) {
+        if (space.deletion().isPresent()) {
+            LOGGER.info("Ignoring {} for space {}: the space is deleted", CREATED, space.id());
+            return Mono.empty();
+        }
+        return teamCalendar(space)
+            .map(teamCalendar -> provisioned(organization, space.id(), teamCalendar));
+    }
+
+    private Mono<ActivityEvent> create(SpaceEvent event) {
+        if (event.name() == null) {
+            return Mono.error(new UnprocessableSpaceEventException("Space " + event.id() + " has no name"));
+        }
+        Domain domain = domain(event);
+        return teamCalendars.findOrCreate(domain, event.id(), event.name())
+            .flatMap(teamCalendar -> sharing.share(teamCalendar, event.members())
+                .then(spaceRepository.save(event.id(), event.organizationId(), domain))
+                .thenReturn(provisioned(event.organizationId(), event.id(), teamCalendar)));
+    }
+
+    private ActivityEvent provisioned(String organization, String spaceId, TeamCalendar teamCalendar) {
+        return ActivityEvent.provisioned(organization, spaceId, teamCalendar.id(), clock.instant());
     }
 
     // A deleted space stays deleted: a late event must not share its calendar again.

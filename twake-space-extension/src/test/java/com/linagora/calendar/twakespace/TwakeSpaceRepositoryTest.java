@@ -34,6 +34,7 @@ import com.linagora.calendar.storage.mongodb.DockerMongoDBExtension;
 
 class TwakeSpaceRepositoryTest {
     private static final Instant NOW = Instant.parse("2026-10-06T10:00:00Z");
+    private static final String ORGANIZATION = "org";
     private static final Domain DOMAIN = Domain.of("space.tld");
 
     @RegisterExtension
@@ -48,10 +49,10 @@ class TwakeSpaceRepositoryTest {
 
     @Test
     void retrieveShouldReturnTheSavedSpace() {
-        repository.save("space-1", DOMAIN).block();
+        repository.save("space-1", ORGANIZATION, DOMAIN).block();
 
         assertThat(repository.retrieve("space-1").block())
-            .isEqualTo(new TwakeSpaceRepository.TwakeSpace("space-1", DOMAIN, Optional.empty()));
+            .isEqualTo(new TwakeSpaceRepository.TwakeSpace("space-1", ORGANIZATION, DOMAIN, Optional.empty()));
     }
 
     @Test
@@ -61,19 +62,19 @@ class TwakeSpaceRepositoryTest {
 
     @Test
     void markDeletedShouldRecordTheDeletionTime() {
-        repository.save("space-1", DOMAIN).block();
+        repository.save("space-1", ORGANIZATION, DOMAIN).block();
 
         repository.markDeleted("space-1").block();
 
         assertThat(repository.retrieve("space-1").block())
-            .isEqualTo(new TwakeSpaceRepository.TwakeSpace("space-1", DOMAIN, Optional.of(NOW)));
+            .isEqualTo(new TwakeSpaceRepository.TwakeSpace("space-1", ORGANIZATION, DOMAIN, Optional.of(NOW)));
     }
 
     @Test
     void markDeletedShouldKeepTheFirstDeletionTime() {
         UpdatableTickingClock clock = new UpdatableTickingClock(NOW);
         repository = new TwakeSpaceRepository(mongo.getDb(), clock);
-        repository.save("space-1", DOMAIN).block();
+        repository.save("space-1", ORGANIZATION, DOMAIN).block();
         repository.markDeleted("space-1").block();
 
         clock.setInstant(NOW.plusSeconds(3600));

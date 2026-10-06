@@ -67,6 +67,7 @@ public class TwakeSpaceStartable implements UserDefinedStartable {
     private SimpleConnectionPool connectionPool;
     private ReactorRabbitMQChannelPool channelPool;
     private ManagedRabbitMQConsumer consumer;
+    private ActivityPublisher activityPublisher;
     private volatile RabbitMQConsumersHealthCheck consumersCheck;
     private Disposable declaration;
 
@@ -86,6 +87,7 @@ public class TwakeSpaceStartable implements UserDefinedStartable {
         channelPool = new ReactorRabbitMQChannelPool(connectionPool.getResilientConnection(),
             ReactorRabbitMQChannelPool.Configuration.DEFAULT, metricFactory, new NoopGaugeRegistry());
         channelPool.start();
+        activityPublisher = new ActivityPublisher(channelPool.getSender(), configuration.activityExchange());
 
         QueueDeclaration.Builder queueDeclaration = QueueDeclaration.builder()
             .queue(configuration.queue())
@@ -103,7 +105,8 @@ public class TwakeSpaceStartable implements UserDefinedStartable {
             "Error while restarting the TwakeSpace consumer");
         connectionPool.init(Set.of(reconnectionHandler));
 
-        declaration = consumer.declare()
+        declaration = activityPublisher.declare()
+            .then(consumer.declare())
             .retryWhen(Retry.backoff(Long.MAX_VALUE, MIN_DECLARE_BACKOFF).maxBackoff(MAX_DECLARE_BACKOFF)
                 .doBeforeRetry(signal -> LOGGER.warn("Failed to declare {}, retrying", configuration.queue(), signal.failure())))
             .then(Mono.fromRunnable(() -> {
@@ -134,7 +137,8 @@ public class TwakeSpaceStartable implements UserDefinedStartable {
         String routingKey = delivery.getEnvelope().getRoutingKey();
         return Mono.fromCallable(() -> SpaceEvent.deserialize(delivery.getBody()))
             .doOnNext(event -> LOGGER.debug("Received {} for space {}", routingKey, event.id()))
-            .flatMap(event -> Mono.defer(() -> provisioner.handle(routingKey, event))
+            .flatMap(event -> Mono.defer(() -> provisioner.handle(routingKey, event)
+                    .flatMap(activityPublisher::publish))
                 .retryWhen(Retry.backoff(MAX_HANDLE_RETRIES, FIRST_HANDLE_BACKOFF)
                     .filter(error -> !(error instanceof UnprocessableSpaceEventException))
                     .doBeforeRetry(signal -> LOGGER.warn("Failed to handle {} for space {}, retrying", routingKey, event.id(), signal.failure()))));

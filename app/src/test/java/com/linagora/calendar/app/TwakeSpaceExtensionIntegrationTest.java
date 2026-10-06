@@ -37,6 +37,7 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
@@ -59,9 +60,12 @@ import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.rabbitmq.client.AMQP;
+import com.rabbitmq.client.BuiltinExchangeType;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
+import com.rabbitmq.client.Delivery;
+import com.rabbitmq.client.GetResponse;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
@@ -77,6 +81,8 @@ class TwakeSpaceExtensionIntegrationTest {
     private static final String SPACE_EXCHANGE = "test-space";
     private static final String QUEUE = "test-calendar-space";
     private static final String DEAD_LETTER_QUEUE = "test-calendar-space-dead-letter";
+    private static final String ACTIVITY_EXCHANGE = "test-activity";
+    private static final String FEED_QUEUE = "test-feed";
     private static final String USER = "calendar";
     private static final String PASSWORD = "calendar";
     private static final String UNREADABLE = "not json";
@@ -118,13 +124,14 @@ class TwakeSpaceExtensionIntegrationTest {
             twakespace.routing.keys=twake.space.created,twake.space.updated,twake.space.deleted,twake.space.member.#
             twakespace.queue=%s
             twakespace.dead.letter.queue=%s
+            twakespace.activity.exchange=%s
             twakespace.rabbitmq.uri=amqp://%s:%s@%s:%d/%s
             twakespace.rabbitmq.management.uri=%s
             twakespace.rabbitmq.management.user=%s
             twakespace.rabbitmq.management.password=%s
             twakespace.rabbitmq.quorum.queues.enable=true
             twakespace.rabbitmq.quorum.queues.delivery.limit=10
-            """.formatted(STARTABLE, SPACE_EXCHANGE, QUEUE, DEAD_LETTER_QUEUE,
+            """.formatted(STARTABLE, SPACE_EXCHANGE, QUEUE, DEAD_LETTER_QUEUE, ACTIVITY_EXCHANGE,
             USER, PASSWORD, amqp.getHost(), amqp.getPort(), spaceVhost,
             rabbitMQConfiguration.getManagementUri(), USER, PASSWORD));
         Files.writeString(conf.resolve("healthcheck.properties"), "additional.healthchecks=" + HEALTH_CHECK);
@@ -143,6 +150,12 @@ class TwakeSpaceExtensionIntegrationTest {
             .setBasePath("/domains/" + DOMAIN.asString() + "/team-calendars")
             .build();
         AWAIT.untilAsserted(() -> assertThat(consumerCount(QUEUE)).isEqualTo(1));
+        try (Connection connection = connectionFactory().newConnection();
+             Channel channel = connection.createChannel()) {
+            channel.exchangeDeclare(ACTIVITY_EXCHANGE, BuiltinExchangeType.TOPIC, true);
+            channel.queueDeclare(FEED_QUEUE, true, false, false, null);
+            channel.queueBind(FEED_QUEUE, ACTIVITY_EXCHANGE, "#");
+        }
     }
 
     @AfterEach
@@ -160,6 +173,42 @@ class TwakeSpaceExtensionIntegrationTest {
         .then()
             .statusCode(200)
             .body("status", equalTo("healthy"));
+    }
+
+    @Test
+    void spaceCreatedShouldPublishTheProvisionedTeamCalendar() throws Exception {
+        String spaceId = UUID.randomUUID().toString();
+
+        publish("twake.space.created", created(spaceId, "Marketing", member("alice", "admin")));
+
+        AWAIT.untilAsserted(() -> teamCalendar(spaceId));
+        Delivery provisioned = AWAIT.until(this::nextActivity, Objects::nonNull);
+        JsonNode event = OBJECT_MAPPER.readTree(provisioned.getBody());
+        assertThat(provisioned.getEnvelope().getRoutingKey()).isEqualTo("com.twake.calendar.space.provisioned.v1");
+        assertThat(provisioned.getProperties().getContentType()).isEqualTo("application/cloudevents+json");
+        assertThat(event.path("specversion").asText()).isEqualTo("1.0");
+        assertThat(event.path("type").asText()).isEqualTo("com.twake.calendar.space.provisioned.v1");
+        assertThat(event.path("source").asText()).isEqualTo("twake://calendar");
+        assertThat(event.path("twakeorg").asText()).isEqualTo("org");
+        assertThat(event.path("id").asText()).isNotBlank();
+        assertThat(event.path("time").asText()).isNotBlank();
+        assertThat(event.path("data").path("space_id").asText()).isEqualTo(spaceId);
+        assertThat(event.path("data").path("resource").path("kind").asText()).isEqualTo("calendar");
+        assertThat(event.path("data").path("resource").path("id").asText()).isEqualTo(teamCalendar(spaceId).path("id").asText());
+    }
+
+    @Test
+    void redeliveredSpaceCreatedShouldPublishTheSameProvisionedEventAgain() throws Exception {
+        String spaceId = UUID.randomUUID().toString();
+        String created = created(spaceId, "Marketing", member("alice", "admin"));
+        publish("twake.space.created", created);
+        JsonNode first = OBJECT_MAPPER.readTree(AWAIT.until(this::nextActivity, Objects::nonNull).getBody());
+
+        publish("twake.space.created", created);
+
+        JsonNode second = OBJECT_MAPPER.readTree(AWAIT.until(this::nextActivity, Objects::nonNull).getBody());
+        assertThat(second.path("id").asText()).isEqualTo(first.path("id").asText());
+        assertThat(second.path("data")).isEqualTo(first.path("data"));
     }
 
     @Test
@@ -504,6 +553,17 @@ class TwakeSpaceExtensionIntegrationTest {
              Channel channel = connection.createChannel()) {
             channel.basicPublish(SPACE_EXCHANGE, routingKey, new AMQP.BasicProperties.Builder().deliveryMode(2).build(),
                 body.getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
+    private Delivery nextActivity() throws Exception {
+        try (Connection connection = connectionFactory().newConnection();
+             Channel channel = connection.createChannel()) {
+            GetResponse response = channel.basicGet(FEED_QUEUE, true);
+            if (response == null) {
+                return null;
+            }
+            return new Delivery(response.getEnvelope(), response.getProps(), response.getBody());
         }
     }
 
