@@ -40,7 +40,8 @@ import com.mongodb.reactivestreams.client.MongoDatabase;
 import reactor.core.publisher.Mono;
 
 public class TwakeSpaceRepository {
-    public record TwakeSpace(String id, String organization, Domain domain, Optional<Instant> deletion) {
+    // Spaces recorded before the organization was stored have none.
+    public record TwakeSpace(SpaceId id, Optional<OrganizationId> organization, Domain domain, Optional<Instant> deletion) {
     }
 
     public static final String COLLECTION = "twake_spaces";
@@ -58,26 +59,26 @@ public class TwakeSpaceRepository {
         this.clock = clock;
     }
 
-    public Mono<Void> save(String spaceId, String organization, Domain domain) {
-        return Mono.from(collection.replaceOne(eq(ID_FIELD, spaceId),
-                new Document(ID_FIELD, spaceId)
-                    .append(ORGANIZATION_FIELD, organization)
+    public Mono<Void> save(SpaceId spaceId, OrganizationId organization, Domain domain) {
+        return Mono.from(collection.replaceOne(eq(ID_FIELD, spaceId.value()),
+                new Document(ID_FIELD, spaceId.value())
+                    .append(ORGANIZATION_FIELD, organization.value())
                     .append(DOMAIN_FIELD, domain.asString()),
                 new ReplaceOptions().upsert(true)))
             .then();
     }
 
     // A redelivered deleted keeps the first time, which the deletion of the team calendar counts from.
-    public Mono<Void> markDeleted(String spaceId) {
-        return Mono.from(collection.updateOne(and(eq(ID_FIELD, spaceId), exists(DELETION_FIELD, false)),
+    public Mono<Void> markDeleted(SpaceId spaceId) {
+        return Mono.from(collection.updateOne(and(eq(ID_FIELD, spaceId.value()), exists(DELETION_FIELD, false)),
                 Updates.set(DELETION_FIELD, Date.from(clock.instant()))))
             .then();
     }
 
-    public Mono<TwakeSpace> retrieve(String spaceId) {
-        return Mono.from(collection.find(eq(ID_FIELD, spaceId)).first())
-            .map(document -> new TwakeSpace(document.getString(ID_FIELD),
-                document.getString(ORGANIZATION_FIELD),
+    public Mono<TwakeSpace> retrieve(SpaceId spaceId) {
+        return Mono.from(collection.find(eq(ID_FIELD, spaceId.value())).first())
+            .map(document -> new TwakeSpace(new SpaceId(document.getString(ID_FIELD)),
+                Optional.ofNullable(document.getString(ORGANIZATION_FIELD)).map(OrganizationId::new),
                 Domain.of(document.getString(DOMAIN_FIELD)),
                 Optional.ofNullable(document.getDate(DELETION_FIELD)).map(Date::toInstant)));
     }

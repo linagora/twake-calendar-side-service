@@ -34,12 +34,6 @@ import reactor.core.publisher.Mono;
 
 public class TwakeSpaceProvisioner {
     private static final Logger LOGGER = LoggerFactory.getLogger(TwakeSpaceProvisioner.class);
-    static final String CREATED = "twake.space.created";
-    static final String UPDATED = "twake.space.updated";
-    static final String DELETED = "twake.space.deleted";
-    static final String MEMBER_ADDED = "twake.space.member.added";
-    static final String MEMBER_ROLE_CHANGED = "twake.space.member.role.changed";
-    static final String MEMBER_REMOVED = "twake.space.member.removed";
     static final String ADMIN = "admin";
 
     private final TwakeSpaceRepository spaceRepository;
@@ -57,17 +51,17 @@ public class TwakeSpaceProvisioner {
     }
 
     // Emits the activity event to publish once the space event is applied.
-    public Mono<ActivityEvent> handle(String routingKey, SpaceEvent event) {
-        return switch (routingKey) {
+    public Mono<ActivityEvent> handle(SpaceEventType type, SpaceEvent event) {
+        return switch (type) {
             case CREATED -> created(event);
             case UPDATED -> Mono.justOrEmpty(event.name())
-                .flatMap(name -> liveTeamCalendar(routingKey, event.id())
+                .flatMap(name -> liveTeamCalendar(type, event.id())
                     .flatMap(teamCalendar -> teamCalendars.rename(teamCalendar, name)))
                 .then(Mono.empty());
-            case MEMBER_ADDED, MEMBER_ROLE_CHANGED -> liveTeamCalendar(routingKey, event.id())
+            case MEMBER_ADDED, MEMBER_ROLE_CHANGED -> liveTeamCalendar(type, event.id())
                 .flatMap(teamCalendar -> sharing.share(teamCalendar, event.members()))
                 .then(Mono.empty());
-            case MEMBER_REMOVED -> liveTeamCalendar(routingKey, event.id())
+            case MEMBER_REMOVED -> liveTeamCalendar(type, event.id())
                 .flatMap(teamCalendar -> sharing.unshare(teamCalendar, event.members().stream()
                     .map(member -> Username.of(member.email()))
                     .toList()))
@@ -77,7 +71,6 @@ public class TwakeSpaceProvisioner {
                 .flatMap(teamCalendar -> spaceRepository.markDeleted(event.id())
                     .then(sharing.unshareEveryone(teamCalendar)))
                 .then(Mono.empty());
-            default -> Mono.fromRunnable(() -> LOGGER.warn("Ignoring {} for space {}: not a space event the extension handles", routingKey, event.id()));
         };
     }
 
@@ -95,9 +88,9 @@ public class TwakeSpaceProvisioner {
                 .orElseGet(() -> create(event)));
     }
 
-    private Mono<ActivityEvent> alreadyCreated(TwakeSpaceRepository.TwakeSpace space, String organization) {
+    private Mono<ActivityEvent> alreadyCreated(TwakeSpaceRepository.TwakeSpace space, OrganizationId organization) {
         if (space.deletion().isPresent()) {
-            LOGGER.info("Ignoring {} for space {}: the space is deleted", CREATED, space.id());
+            LOGGER.info("Ignoring {} for space {}: the space is deleted", SpaceEventType.CREATED.routingKey(), space.id());
             return Mono.empty();
         }
         return teamCalendar(space)
@@ -115,16 +108,16 @@ public class TwakeSpaceProvisioner {
                 .thenReturn(provisioned(event.organizationId(), event.id(), teamCalendar)));
     }
 
-    private ActivityEvent provisioned(String organization, String spaceId, TeamCalendar teamCalendar) {
+    private ActivityEvent provisioned(OrganizationId organization, SpaceId spaceId, TeamCalendar teamCalendar) {
         return ActivityEvent.provisioned(organization, spaceId, teamCalendar.id(), clock.instant());
     }
 
     // A deleted space stays deleted: a late event must not share its calendar again.
-    private Mono<TeamCalendar> liveTeamCalendar(String routingKey, String spaceId) {
+    private Mono<TeamCalendar> liveTeamCalendar(SpaceEventType type, SpaceId spaceId) {
         return provisionedSpace(spaceId)
             .filter(space -> {
                 if (space.deletion().isPresent()) {
-                    LOGGER.info("Ignoring {} for space {}: the space is deleted", routingKey, spaceId);
+                    LOGGER.info("Ignoring {} for space {}: the space is deleted", type.routingKey(), spaceId);
                 }
                 return space.deletion().isEmpty();
             })
@@ -132,7 +125,7 @@ public class TwakeSpaceProvisioner {
     }
 
     // Dead lettered rather than dropped, so that the spaces missing their team calendar show.
-    private Mono<TwakeSpaceRepository.TwakeSpace> provisionedSpace(String spaceId) {
+    private Mono<TwakeSpaceRepository.TwakeSpace> provisionedSpace(SpaceId spaceId) {
         return spaceRepository.retrieve(spaceId)
             .switchIfEmpty(Mono.error(() -> noTeamCalendar(spaceId)));
     }
@@ -142,7 +135,7 @@ public class TwakeSpaceProvisioner {
             .switchIfEmpty(Mono.error(() -> noTeamCalendar(space.id())));
     }
 
-    private static UnprocessableSpaceEventException noTeamCalendar(String spaceId) {
+    private static UnprocessableSpaceEventException noTeamCalendar(SpaceId spaceId) {
         return new UnprocessableSpaceEventException("Space " + spaceId + " has no team calendar");
     }
 

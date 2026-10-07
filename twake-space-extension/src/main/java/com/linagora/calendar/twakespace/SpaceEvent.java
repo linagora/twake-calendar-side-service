@@ -27,7 +27,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record SpaceEvent(String organizationId, String organizationDomain, @JsonProperty(required = true) String id, String name, List<Member> members) {
+public record SpaceEvent(OrganizationId organizationId, String organizationDomain, @JsonProperty(required = true) SpaceId id, String name,
+                         List<Member> members) {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Member(@JsonProperty(required = true) String email, String role) {
     }

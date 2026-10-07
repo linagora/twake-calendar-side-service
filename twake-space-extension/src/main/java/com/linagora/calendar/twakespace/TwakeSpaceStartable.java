@@ -169,9 +169,12 @@ public class TwakeSpaceStartable implements UserDefinedStartable {
         String routingKey = delivery.getEnvelope().getRoutingKey();
         return Mono.fromCallable(() -> SpaceEvent.deserialize(delivery.getBody()))
             .doOnNext(event -> LOGGER.debug("Received {} for space {}", routingKey, event.id()))
-            .flatMap(event -> retried(Mono.defer(() -> provisioner.handle(routingKey, event)
-                    .flatMap(activityPublisher::publish)),
-                "Failed to handle " + routingKey + " for space " + event.id() + ", retrying"));
+            .flatMap(event -> SpaceEventType.fromRoutingKey(routingKey)
+                .map(type -> retried(Mono.defer(() -> provisioner.handle(type, event)
+                        .flatMap(activityPublisher::publish)),
+                    "Failed to handle " + routingKey + " for space " + event.id() + ", retrying"))
+                .orElseGet(() -> Mono.fromRunnable(() ->
+                    LOGGER.warn("Ignoring {} for space {}: not a space event the extension handles", routingKey, event.id()))));
     }
 
     private Mono<Void> handleCalendarEvent(AcknowledgableDelivery delivery) {
