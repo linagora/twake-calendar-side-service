@@ -26,15 +26,19 @@ import java.util.Optional;
 
 import org.apache.james.core.Domain;
 import org.apache.james.utils.UpdatableTickingClock;
+import org.bson.Document;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.linagora.calendar.storage.mongodb.DockerMongoDBExtension;
 
+import reactor.core.publisher.Mono;
+
 class TwakeSpaceRepositoryTest {
     private static final Instant NOW = Instant.parse("2026-10-06T10:00:00Z");
-    private static final String ORGANIZATION = "org";
+    private static final SpaceId SPACE_ID = new SpaceId("space-1");
+    private static final OrganizationId ORGANIZATION = new OrganizationId("org");
     private static final Domain DOMAIN = Domain.of("space.tld");
 
     @RegisterExtension
@@ -49,37 +53,45 @@ class TwakeSpaceRepositoryTest {
 
     @Test
     void retrieveShouldReturnTheSavedSpace() {
-        repository.save("space-1", ORGANIZATION, DOMAIN).block();
+        repository.save(SPACE_ID, ORGANIZATION, DOMAIN).block();
 
-        assertThat(repository.retrieve("space-1").block())
-            .isEqualTo(new TwakeSpaceRepository.TwakeSpace("space-1", ORGANIZATION, DOMAIN, Optional.empty()));
+        assertThat(repository.retrieve(SPACE_ID).block())
+            .isEqualTo(new TwakeSpaceRepository.TwakeSpace(SPACE_ID, Optional.of(ORGANIZATION), DOMAIN, Optional.empty()));
+    }
+
+    @Test
+    void retrieveShouldHaveNoOrganizationForASpaceRecordedWithoutOne() {
+        Mono.from(mongo.getDb().getCollection(TwakeSpaceRepository.COLLECTION)
+            .insertOne(new Document("_id", SPACE_ID.value()).append("domain", DOMAIN.asString()))).block();
+
+        assertThat(repository.retrieve(SPACE_ID).block().organization()).isEmpty();
     }
 
     @Test
     void retrieveShouldBeEmptyForAnUnknownSpace() {
-        assertThat(repository.retrieve("space-1").blockOptional()).isEmpty();
+        assertThat(repository.retrieve(SPACE_ID).blockOptional()).isEmpty();
     }
 
     @Test
     void markDeletedShouldRecordTheDeletionTime() {
-        repository.save("space-1", ORGANIZATION, DOMAIN).block();
+        repository.save(SPACE_ID, ORGANIZATION, DOMAIN).block();
 
-        repository.markDeleted("space-1").block();
+        repository.markDeleted(SPACE_ID).block();
 
-        assertThat(repository.retrieve("space-1").block())
-            .isEqualTo(new TwakeSpaceRepository.TwakeSpace("space-1", ORGANIZATION, DOMAIN, Optional.of(NOW)));
+        assertThat(repository.retrieve(SPACE_ID).block())
+            .isEqualTo(new TwakeSpaceRepository.TwakeSpace(SPACE_ID, Optional.of(ORGANIZATION), DOMAIN, Optional.of(NOW)));
     }
 
     @Test
     void markDeletedShouldKeepTheFirstDeletionTime() {
         UpdatableTickingClock clock = new UpdatableTickingClock(NOW);
         repository = new TwakeSpaceRepository(mongo.getDb(), clock);
-        repository.save("space-1", ORGANIZATION, DOMAIN).block();
-        repository.markDeleted("space-1").block();
+        repository.save(SPACE_ID, ORGANIZATION, DOMAIN).block();
+        repository.markDeleted(SPACE_ID).block();
 
         clock.setInstant(NOW.plusSeconds(3600));
-        repository.markDeleted("space-1").block();
+        repository.markDeleted(SPACE_ID).block();
 
-        assertThat(repository.retrieve("space-1").block().deletion()).contains(NOW);
+        assertThat(repository.retrieve(SPACE_ID).block().deletion()).contains(NOW);
     }
 }

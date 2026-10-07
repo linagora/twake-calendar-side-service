@@ -45,6 +45,8 @@ import com.linagora.calendar.storage.TeamCalendarRepository;
 import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.model.TeamCalendarId;
+import com.linagora.calendar.twakespace.ActivityEvent.EventAction;
+import com.linagora.calendar.twakespace.ActivityEvent.EventChange;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
@@ -66,12 +68,6 @@ public class CalendarActivity {
     private static final Logger LOGGER = LoggerFactory.getLogger(CalendarActivity.class);
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module())
         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-    private static final String CREATED = "created";
-    private static final String UPDATED = "updated";
-    private static final String RESCHEDULED = "rescheduled";
-    private static final String ACCEPTED = "accepted";
-    private static final String DECLINED = "declined";
-    private static final String PROPOSED = "proposed";
     private static final String PRINCIPAL_PREFIX = "principals/users/";
 
     private final TeamCalendarRepository teamCalendarRepository;
@@ -124,13 +120,14 @@ public class CalendarActivity {
                 }));
     }
 
-    private Optional<ActivityEvent> writeActivity(boolean created, String organization, String actor, CalendarEventSnapshot event,
+    private Optional<ActivityEvent> writeActivity(boolean created, OrganizationId organization, String actor, CalendarEventSnapshot event,
                                                   Optional<CalendarEventSnapshot> maybePrevious, String etag) {
         if (created) {
-            return Optional.of(activity(CREATED, organization, actor, event, emptyState(), attendeesBut(event, actor), etag));
+            return Optional.of(activity(new EventChange(EventAction.CREATED, organization, actor, event, emptyState(),
+                attendeesBut(event, actor), etag)));
         }
         if (maybePrevious.isEmpty()) {
-            return Optional.of(activity(UPDATED, organization, actor, event, emptyState(), List.of(), etag));
+            return Optional.of(activity(new EventChange(EventAction.UPDATED, organization, actor, event, emptyState(), List.of(), etag)));
         }
         CalendarEventSnapshot previous = maybePrevious.get();
         if (event.equals(previous)) {
@@ -141,14 +138,16 @@ public class CalendarActivity {
             ObjectNode previousTime = state.putObject("previous")
                 .put("start", ActivityEvent.time(previous.start(), previous.allDay()));
             previous.end().ifPresent(end -> previousTime.put("end", ActivityEvent.time(end, previous.allDay())));
-            return Optional.of(activity(RESCHEDULED, organization, actor, event, state, attendeesBut(event, actor), etag));
+            return Optional.of(activity(new EventChange(EventAction.RESCHEDULED, organization, actor, event, state,
+                attendeesBut(event, actor), etag)));
         }
         if (event.onlyPartStatsChangedFrom(previous)) {
             // Changes of other attendees' answers are sabre applying their reply, published from their reply.
             return Optional.ofNullable(event.partStatChangesFrom(previous).get(StringUtils.lowerCase(actor)))
-                .map(partStat -> activity(answerAction(partStat), organization, actor, event, emptyState(), organizerBut(event, actor), etag));
+                .map(partStat -> activity(new EventChange(answerAction(partStat), organization, actor, event, emptyState(),
+                    organizerBut(event, actor), etag)));
         }
-        return Optional.of(activity(UPDATED, organization, actor, event, emptyState(), List.of(), etag));
+        return Optional.of(activity(new EventChange(EventAction.UPDATED, organization, actor, event, emptyState(), List.of(), etag)));
     }
 
     private Mono<Void> answer(byte[] body, ActivityPublisher publisher) {
@@ -173,7 +172,7 @@ public class CalendarActivity {
                 }));
     }
 
-    private Mono<Void> reply(String organization, String attendee, CalendarEventSnapshot event, VEvent answered, ActivityPublisher publisher) {
+    private Mono<Void> reply(OrganizationId organization, String attendee, CalendarEventSnapshot event, VEvent answered, ActivityPublisher publisher) {
         Optional<String> partStat = EventParseUtils.getAttendees(answered).stream()
             .filter(person -> person.email().asString().equalsIgnoreCase(attendee))
             .findFirst()
@@ -184,12 +183,12 @@ public class CalendarActivity {
         }
         CalendarEventSnapshot answeredEvent = event.withPartStat(attendee, partStat.get());
         String dtStamp = answered.getProperty(Property.DTSTAMP).map(Property::getValue).orElse("");
-        return publisher.publish(activity(answerAction(partStat.get()), organization, attendee, answeredEvent, emptyState(),
-                organizerBut(answeredEvent, attendee), String.join(":", attendee, partStat.get(), dtStamp)))
+        return publisher.publish(activity(new EventChange(answerAction(partStat.get()), organization, attendee, answeredEvent, emptyState(),
+                organizerBut(answeredEvent, attendee), String.join(":", attendee, partStat.get(), dtStamp))))
             .then(snapshotRepository.save(answeredEvent));
     }
 
-    private ActivityEvent proposed(String organization, String attendee, CalendarEventSnapshot event, VEvent counter) {
+    private ActivityEvent proposed(OrganizationId organization, String attendee, CalendarEventSnapshot event, VEvent counter) {
         boolean allDay = EventParseUtils.isAllDay(counter);
         String start = ActivityEvent.time(EventParseUtils.getStartTime(counter).toInstant(), allDay);
         ObjectNode state = emptyState();
@@ -198,19 +197,18 @@ public class CalendarActivity {
         Optional<String> end = EventParseUtils.getEndTime(counter).map(time -> ActivityEvent.time(time.toInstant(), allDay));
         end.ifPresent(value -> proposed.put("end", value));
         proposed.put("by", attendee);
-        return activity(PROPOSED, organization, attendee, event, state, organizerBut(event, attendee),
-            String.join(":", attendee, start, end.orElse("")));
+        return activity(new EventChange(EventAction.PROPOSED, organization, attendee, event, state, organizerBut(event, attendee),
+            String.join(":", attendee, start, end.orElse(""))));
     }
 
-    private ActivityEvent activity(String action, String organization, String actor, CalendarEventSnapshot event, ObjectNode state,
-                                   List<String> recipients, String seed) {
-        return ActivityEvent.calendarEvent(action, organization, actor, event, state, recipients, event.uid() + ":" + seed, clock.instant());
+    private ActivityEvent activity(EventChange change) {
+        return ActivityEvent.calendarEvent(change, clock.instant());
     }
 
     // The activity of a space that is deleted, or that the extension does not know, is no space's.
-    private Mono<String> organization(TeamCalendarId teamCalendarId) {
+    private Mono<OrganizationId> organization(TeamCalendarId teamCalendarId) {
         return teamCalendarRepository.retrieve(teamCalendarId)
-            .flatMap(teamCalendar -> spaceRepository.retrieve(teamCalendar.name()))
+            .flatMap(teamCalendar -> spaceRepository.retrieve(new SpaceId(teamCalendar.name())))
             .filter(space -> space.deletion().isEmpty())
             .flatMap(space -> Mono.justOrEmpty(space.organization()));
     }
@@ -250,11 +248,11 @@ public class CalendarActivity {
         }
     }
 
-    private static String answerAction(String partStat) {
+    private static EventAction answerAction(String partStat) {
         return switch (partStat) {
-            case CalendarEventSnapshot.ACCEPTED -> ACCEPTED;
-            case CalendarEventSnapshot.DECLINED -> DECLINED;
-            default -> UPDATED;
+            case CalendarEventSnapshot.ACCEPTED -> EventAction.ACCEPTED;
+            case CalendarEventSnapshot.DECLINED -> EventAction.DECLINED;
+            default -> EventAction.UPDATED;
         };
     }
 

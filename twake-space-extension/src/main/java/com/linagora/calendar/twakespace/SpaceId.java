@@ -18,32 +18,20 @@
 
 package com.linagora.calendar.twakespace;
 
-import java.io.IOException;
-import java.util.List;
-import java.util.Objects;
+import org.apache.commons.lang3.StringUtils;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+import com.google.common.base.Preconditions;
 
-@JsonIgnoreProperties(ignoreUnknown = true)
-public record SpaceEvent(OrganizationId organizationId, String organizationDomain, @JsonProperty(required = true) SpaceId id, String name,
-                         List<Member> members) {
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Member(@JsonProperty(required = true) String email, String role) {
+public record SpaceId(@JsonValue String value) {
+    @JsonCreator(mode = JsonCreator.Mode.DELEGATING)
+    public SpaceId {
+        Preconditions.checkArgument(!StringUtils.isBlank(value), "space id must not be empty");
     }
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-
-    public static SpaceEvent deserialize(byte[] body) {
-        try {
-            return OBJECT_MAPPER.readValue(body, SpaceEvent.class);
-        } catch (IOException e) {
-            throw new UnprocessableSpaceEventException("Unable to deserialize space event", e);
-        }
-    }
-
-    public SpaceEvent {
-        members = List.copyOf(Objects.requireNonNullElse(members, List.of()));
+    @Override
+    public String toString() {
+        return value;
     }
 }

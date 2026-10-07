@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.twakespace;
 
+import java.util.Arrays;
 import java.util.List;
 
 import org.apache.commons.configuration2.Configuration;
@@ -44,9 +45,9 @@ public record TwakeSpaceConfiguration(RabbitMQConfiguration rabbitMQ,
     private static final String CALENDAR_QUEUE = "twakespace.calendar.queue";
     private static final String CALENDAR_DEAD_LETTER_QUEUE = "twakespace.calendar.dead.letter.queue";
     private static final String DEFAULT_EXCHANGE = "space";
-    private static final List<String> DEFAULT_ROUTING_KEYS = List.of(TwakeSpaceProvisioner.CREATED, TwakeSpaceProvisioner.UPDATED,
-        TwakeSpaceProvisioner.DELETED, TwakeSpaceProvisioner.MEMBER_ADDED, TwakeSpaceProvisioner.MEMBER_ROLE_CHANGED,
-        TwakeSpaceProvisioner.MEMBER_REMOVED);
+    private static final List<String> DEFAULT_ROUTING_KEYS = Arrays.stream(SpaceEventType.values())
+        .map(SpaceEventType::routingKey)
+        .toList();
     private static final String DEFAULT_QUEUE = "tcalendar:twake-space";
     private static final String DEFAULT_DEAD_LETTER_QUEUE = "tcalendar:twake-space-dead-letter";
     private static final String DEFAULT_ACTIVITY_EXCHANGE = "activity";

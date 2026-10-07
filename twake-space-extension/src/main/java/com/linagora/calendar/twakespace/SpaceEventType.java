@@ -18,32 +18,30 @@
 
 package com.linagora.calendar.twakespace;
 
-import java.io.IOException;
-import java.util.List;
-import java.util.Objects;
+import java.util.Arrays;
+import java.util.Optional;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.ObjectMapper;
+public enum SpaceEventType {
+    CREATED("twake.space.created"),
+    UPDATED("twake.space.updated"),
+    DELETED("twake.space.deleted"),
+    MEMBER_ADDED("twake.space.member.added"),
+    MEMBER_ROLE_CHANGED("twake.space.member.role.changed"),
+    MEMBER_REMOVED("twake.space.member.removed");
 
-@JsonIgnoreProperties(ignoreUnknown = true)
-public record SpaceEvent(OrganizationId organizationId, String organizationDomain, @JsonProperty(required = true) SpaceId id, String name,
-                         List<Member> members) {
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Member(@JsonProperty(required = true) String email, String role) {
+    public static Optional<SpaceEventType> fromRoutingKey(String routingKey) {
+        return Arrays.stream(values())
+            .filter(type -> type.routingKey.equals(routingKey))
+            .findFirst();
     }
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private final String routingKey;
 
-    public static SpaceEvent deserialize(byte[] body) {
-        try {
-            return OBJECT_MAPPER.readValue(body, SpaceEvent.class);
-        } catch (IOException e) {
-            throw new UnprocessableSpaceEventException("Unable to deserialize space event", e);
-        }
+    SpaceEventType(String routingKey) {
+        this.routingKey = routingKey;
     }
 
-    public SpaceEvent {
-        members = List.copyOf(Objects.requireNonNullElse(members, List.of()));
+    public String routingKey() {
+        return routingKey;
     }
 }

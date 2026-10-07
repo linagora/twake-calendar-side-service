@@ -43,17 +43,17 @@ public class SpaceTeamCalendars {
         this.teamCalendarService = teamCalendarService;
     }
 
-    public Mono<TeamCalendar> find(Domain domain, String spaceId) {
+    public Mono<TeamCalendar> find(Domain domain, SpaceId spaceId) {
         return domainDAO.retrieve(domain)
-            .flatMapMany(openPaaSDomain -> teamCalendarRepository.retrieve(openPaaSDomain.id(), spaceId))
+            .flatMapMany(openPaaSDomain -> teamCalendarRepository.retrieve(openPaaSDomain.id(), spaceId.value()))
             .next();
     }
 
     // A created that failed halfway may have left its team calendar behind: complete it rather than create a second one.
-    public Mono<TeamCalendar> findOrCreate(Domain domain, String spaceId, String name) {
+    public Mono<TeamCalendar> findOrCreate(Domain domain, SpaceId spaceId, String name) {
         return find(domain, spaceId)
             .flatMap(existing -> rename(existing, name))
-            .switchIfEmpty(Mono.defer(() -> teamCalendarService.create(domain, spaceId, name)));
+            .switchIfEmpty(Mono.defer(() -> teamCalendarService.create(domain, spaceId.value(), name)));
     }
 
     public Mono<TeamCalendar> rename(TeamCalendar teamCalendar, String name) {

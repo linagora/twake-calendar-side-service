@@ -35,8 +35,32 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.linagora.calendar.storage.model.TeamCalendarId;
 
-public record ActivityEvent(String id, String type, Instant time, String organization, Optional<String> subject,
+public record ActivityEvent(String id, String type, Instant time, OrganizationId organization, Optional<String> subject,
                             Optional<String> actor, JsonNode data) {
+    public enum EventAction {
+        CREATED("created"),
+        UPDATED("updated"),
+        RESCHEDULED("rescheduled"),
+        ACCEPTED("accepted"),
+        DECLINED("declined"),
+        PROPOSED("proposed");
+
+        private final String value;
+
+        EventAction(String value) {
+            this.value = value;
+        }
+
+        String type() {
+            return EVENT_TYPE_PREFIX + value + VERSION_SUFFIX;
+        }
+    }
+
+    // extraState completes the state with what only this action has, idSeed tells this change from the others of the event.
+    public record EventChange(EventAction action, OrganizationId organization, String actor, CalendarEventSnapshot event,
+                              ObjectNode extraState, List<String> recipients, String idSeed) {
+    }
+
     static final String PROVISIONED = "com.twake.calendar.space.provisioned.v1";
     private static final String SPEC_VERSION = "1.0";
     private static final String SOURCE = "twake://calendar";
@@ -49,19 +73,19 @@ public record ActivityEvent(String id, String type, Instant time, String organiz
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     // Named after the space and its calendar, so that a redelivered created publishes the same event.
-    public static ActivityEvent provisioned(String organization, String spaceId, TeamCalendarId teamCalendarId, Instant time) {
-        ObjectNode data = OBJECT_MAPPER.createObjectNode().put("space_id", spaceId);
+    public static ActivityEvent provisioned(OrganizationId organization, SpaceId spaceId, TeamCalendarId teamCalendarId, Instant time) {
+        ObjectNode data = OBJECT_MAPPER.createObjectNode().put("space_id", spaceId.value());
         data.putObject("resource")
             .put("kind", CALENDAR_KIND)
             .put("id", teamCalendarId.value());
-        return new ActivityEvent(nameBasedId(PROVISIONED, spaceId, teamCalendarId.value()), PROVISIONED, time, organization,
+        return new ActivityEvent(nameBasedId(PROVISIONED, spaceId.value(), teamCalendarId.value()), PROVISIONED, time, organization,
             Optional.empty(), Optional.empty(), data);
     }
 
     // The card shows the state of the latest event of an object, so every event carries the whole state.
-    public static ActivityEvent calendarEvent(String action, String organization, String actor, CalendarEventSnapshot event,
-                                              ObjectNode extraState, List<String> recipients, String idSeed, Instant time) {
-        String type = EVENT_TYPE_PREFIX + action + VERSION_SUFFIX;
+    public static ActivityEvent calendarEvent(EventChange change, Instant time) {
+        String type = change.action().type();
+        CalendarEventSnapshot event = change.event();
         ObjectNode data = OBJECT_MAPPER.createObjectNode();
         data.putObject("object")
             .put("type", EVENT_OBJECT)
@@ -82,15 +106,15 @@ public record ActivityEvent(String id, String type, Instant time, String organiz
             .put("declined", rsvp.declined())
             .put("tentative", rsvp.tentative())
             .put("pending", rsvp.pending());
-        state.setAll(extraState);
-        if (!recipients.isEmpty()) {
+        state.setAll(change.extraState());
+        if (!change.recipients().isEmpty()) {
             ArrayNode recipientsNode = data.putArray("recipients");
-            recipients.forEach(email -> recipientsNode.addObject()
+            change.recipients().forEach(email -> recipientsNode.addObject()
                 .put("email", email)
                 .put("reason", ATTENDEE_REASON));
         }
-        return new ActivityEvent(nameBasedId(type, idSeed), type, time, organization, Optional.of(EVENT_OBJECT + "/" + event.uid()),
-            Optional.of(actor), data);
+        return new ActivityEvent(nameBasedId(type, change.idSeed()), type, time, change.organization(),
+            Optional.of(EVENT_OBJECT + "/" + event.uid()), Optional.of(change.actor()), data);
     }
 
     // All day events are dates: their start and end carry no time zone.
@@ -112,7 +136,7 @@ public record ActivityEvent(String id, String type, Instant time, String organiz
             .put("source", SOURCE)
             .put("type", type)
             .put("time", time.toString())
-            .put("twakeorg", organization);
+            .put("twakeorg", organization.value());
         subject.ifPresent(value -> event.put("subject", value));
         actor.ifPresent(value -> event.put("twakeactor", value));
         event.set("data", data);

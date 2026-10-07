@@ -18,32 +18,18 @@
 
 package com.linagora.calendar.twakespace;
 
-import java.io.IOException;
-import java.util.List;
-import java.util.Objects;
+import static org.assertj.core.api.Assertions.assertThat;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.Test;
 
-@JsonIgnoreProperties(ignoreUnknown = true)
-public record SpaceEvent(OrganizationId organizationId, String organizationDomain, @JsonProperty(required = true) SpaceId id, String name,
-                         List<Member> members) {
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Member(@JsonProperty(required = true) String email, String role) {
+class SpaceEventTypeTest {
+    @Test
+    void fromRoutingKeyShouldReadTheRoutingKeyOfASpaceEvent() {
+        assertThat(SpaceEventType.fromRoutingKey("twake.space.member.role.changed")).contains(SpaceEventType.MEMBER_ROLE_CHANGED);
     }
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-
-    public static SpaceEvent deserialize(byte[] body) {
-        try {
-            return OBJECT_MAPPER.readValue(body, SpaceEvent.class);
-        } catch (IOException e) {
-            throw new UnprocessableSpaceEventException("Unable to deserialize space event", e);
-        }
-    }
-
-    public SpaceEvent {
-        members = List.copyOf(Objects.requireNonNullElse(members, List.of()));
+    @Test
+    void fromRoutingKeyShouldBeEmptyForAnotherRoutingKey() {
+        assertThat(SpaceEventType.fromRoutingKey("twake.space.archived")).isEmpty();
     }
 }
