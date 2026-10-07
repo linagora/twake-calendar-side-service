@@ -1360,7 +1360,7 @@ class TwakeCalendarGuiceServerTest  {
                                     ]
                                 },
                                 {
-                                    "name": "darkMode",
+                                    "name": "theme",
                                     "value": null
                                 },
                                 {
