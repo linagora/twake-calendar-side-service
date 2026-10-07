@@ -399,7 +399,7 @@ class UserConfigurationRouteTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"darkMode", "highContrastMode"})
+    @ValueSource(strings = {"theme", "highContrastMode"})
     void postShouldReturnNullForThemeSettingsWhenNotConfigured(String key) {
         String body = given()
             .auth().preemptive().basic(USERNAME.asString(), PASSWORD)
@@ -430,9 +430,18 @@ class UserConfigurationRouteTest {
             ]""", key));
     }
 
+    @Test
+    void putShouldSaveHighContrastMode() {
+        putAndAssertCoreSetting("highContrastMode", "true");
+    }
+
     @ParameterizedTest
-    @ValueSource(strings = {"darkMode", "highContrastMode"})
-    void putShouldSaveThemeSettings(String key) {
+    @ValueSource(strings = {"dark", "light", "auto", "solarized"})
+    void putShouldSaveTheme(String theme) {
+        putAndAssertCoreSetting("theme", "\"" + theme + "\"");
+    }
+
+    private void putAndAssertCoreSetting(String key, String jsonValue) {
         given()
             .body(String.format("""
                 [
@@ -441,11 +450,11 @@ class UserConfigurationRouteTest {
                     "configurations": [
                       {
                         "name": "%s",
-                        "value": true
+                        "value": %s
                       }
                     ]
                   }
-                ]""", key))
+                ]""", key, jsonValue))
         .when()
             .put("/api/configurations?scope=user")
         .then()
@@ -473,11 +482,11 @@ class UserConfigurationRouteTest {
                     "configurations": [
                         {
                             "name": "%s",
-                            "value": true
+                            "value": %s
                         }
                     ]
                 }
-            ]""", key));
+            ]""", key, jsonValue));
     }
 
     @Test

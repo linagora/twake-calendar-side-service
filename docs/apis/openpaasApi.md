@@ -339,8 +339,9 @@ Supported configuration keys:
      Note that writes replace the whole `datetime` object: a client updating it needs to resend all its fields,
      otherwise the omitted ones fall back to their defaults.
    - `businessHours`: stored in user settings, eg `[{"start":"8:0","end":"19:0","daysOfWeek":[1,2,3,4,5]}]`
-   - `darkMode`: stored in user settings, optional boolean: should the front use a dark theme? Defaults to `null`,
-     meaning the user did not express a preference and the front is free to pick one (eg follow the system theme).
+   - `theme`: stored in user settings, optional string: the theme the front should use. Expected values are `dark`,
+     `light` and `auto` (follow the system theme), but values are not validated. Defaults to `null`, meaning the user
+     did not express a preference and the front is free to pick one.
    - `highContrastMode`: stored in user settings, optional boolean: should the front use a high contrast theme?
      Defaults to `null`, meaning the user did not express a preference.
  - `linagora.esn.contact`
