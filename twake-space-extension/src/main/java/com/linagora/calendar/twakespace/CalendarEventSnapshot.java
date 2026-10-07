@@ -20,18 +20,28 @@ package com.linagora.calendar.twakespace;
 
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
+import org.apache.commons.lang3.StringUtils;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.google.common.collect.Streams;
+import com.linagora.calendar.amqp.EventFieldConverter;
+import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.model.TeamCalendarId;
 
 import net.fortuna.ical4j.model.parameter.PartStat;
 
-// What a card shows of an event of a team calendar, kept to tell what the next change of the event is.
+// What a card shows of a version of an event of a team calendar.
 public record CalendarEventSnapshot(String uid, TeamCalendarId teamCalendarId, String title, Instant start, Optional<Instant> end,
                                     boolean allDay, Optional<String> location, Optional<String> organizer, Map<String, String> attendees) {
     public record Rsvp(long accepted, long declined, long tentative, long pending) {
@@ -41,6 +51,7 @@ public record CalendarEventSnapshot(String uid, TeamCalendarId teamCalendarId, S
     static final String DECLINED = "DECLINED";
     static final String TENTATIVE = "TENTATIVE";
     private static final String NEEDS_ACTION = "NEEDS-ACTION";
+    private static final String MAILTO = "mailto:";
 
     public static CalendarEventSnapshot from(TeamCalendarId teamCalendarId, EventFields event) {
         return new CalendarEventSnapshot(event.uid().value(), teamCalendarId, Objects.requireNonNullElse(event.summary(), ""),
@@ -49,6 +60,35 @@ public record CalendarEventSnapshot(String uid, TeamCalendarId teamCalendarId, S
             event.attendees().stream().collect(Collectors.toMap(attendee -> attendee.email().asString(),
                 attendee -> attendee.partStat().map(PartStat::getValue).orElse(NEEDS_ACTION),
                 (first, second) -> first)));
+    }
+
+    // Sabre sends the event as jCal, of which EventFieldConverter reads no attendee answer.
+    public static Optional<CalendarEventSnapshot> fromJCal(CalendarURL calendar, String resourceName, JsonNode jCal) {
+        TeamCalendarId teamCalendarId = TeamCalendarId.from(calendar.calendarId());
+        List<JsonNode> events = Streams.stream(jCal.path(2).elements())
+            .filter(component -> "vevent".equalsIgnoreCase(component.path(0).asText()))
+            .toList();
+        return events.stream()
+            .filter(event -> properties(event, "recurrence-id").findAny().isEmpty())
+            .findFirst()
+            .or(() -> events.stream().findFirst())
+            .map(event -> {
+                ArrayNode calendarOfEvent = JsonNodeFactory.instance.arrayNode().add("vcalendar");
+                calendarOfEvent.addArray();
+                calendarOfEvent.addArray().add(event);
+                EventFields fields = EventFieldConverter.from(EventFieldConverter.extractVEventProperties(calendarOfEvent).getFirst())
+                    .calendarURL(calendar)
+                    .resourceName(resourceName)
+                    .build();
+                Map<String, String> answers = properties(event, "attendee")
+                    .filter(attendee -> !"RESOURCE".equalsIgnoreCase(attendee.path(1).path("cutype").asText()))
+                    .collect(Collectors.toMap(attendee -> StringUtils.removeStartIgnoreCase(attendee.path(3).asText(), MAILTO),
+                        attendee -> attendee.path(1).path("partstat").asText(NEEDS_ACTION),
+                        (first, second) -> first));
+                CalendarEventSnapshot snapshot = from(teamCalendarId, fields);
+                return new CalendarEventSnapshot(snapshot.uid, teamCalendarId, snapshot.title, snapshot.start, snapshot.end, snapshot.allDay,
+                    snapshot.location, snapshot.organizer, answers);
+            });
     }
 
     public CalendarEventSnapshot {
@@ -61,10 +101,6 @@ public record CalendarEventSnapshot(String uid, TeamCalendarId teamCalendarId, S
         Map<String, String> answered = new HashMap<>(attendees);
         answered.put(normalize(attendee), partStat);
         return new CalendarEventSnapshot(uid, teamCalendarId, title, start, end, allDay, location, organizer, answered);
-    }
-
-    public Optional<String> partStat(String attendee) {
-        return Optional.ofNullable(attendees.get(normalize(attendee)));
     }
 
     public boolean rescheduledFrom(CalendarEventSnapshot previous) {
@@ -98,6 +134,11 @@ public record CalendarEventSnapshot(String uid, TeamCalendarId teamCalendarId, S
         Map<String, String> partStats = new HashMap<>(attendees);
         other.attendees.forEach((attendee, partStat) -> partStats.computeIfPresent(attendee, (key, value) -> partStat));
         return new CalendarEventSnapshot(uid, teamCalendarId, title, start, end, allDay, location, organizer, partStats);
+    }
+
+    private static Stream<JsonNode> properties(JsonNode event, String name) {
+        return Streams.stream(event.path(1).elements())
+            .filter(property -> name.equalsIgnoreCase(property.path(0).asText()));
     }
 
     private static String normalize(String email) {
