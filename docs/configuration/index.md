@@ -12,7 +12,7 @@ The side service can be suppied the following configuration files:
  - [redis.properties](https://james.staged.apache.org/james-project/3.9.0/servers/distributed/configure/redis.html) 
 inherited of Apache James. Only `redisUrl` property is needed. Optional: if omitted a memory cache is used instead.
  - [extensions.properties](https://james.staged.apache.org/james-project/3.9.0/servers/distributed/configure/extensions.html)
-inherited of Apache James. Enables the [TwakeSpace extension](twake-space.md). Optional.
+inherited of Apache James. Currently unused. Optional.
  - [healthcheck.properties](https://james.staged.apache.org/james-project/3.9.0/servers/distributed/configure/healthcheck.html)
    inherited of Apache James. Only `healthcheck.period` is used. Optional.
  - [jvm.properties](https://james.staged.apache.org/james-project/3.9.0/servers/distributed/configure/jvm.html)

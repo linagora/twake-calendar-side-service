@@ -18,64 +18,25 @@
 
 package com.linagora.calendar.twakespace;
 
-import java.util.Arrays;
-import java.util.List;
+import java.io.FileNotFoundException;
 
 import org.apache.commons.configuration2.Configuration;
-import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
+import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.james.utils.PropertiesProvider;
 
-import com.google.common.base.Preconditions;
+public record TwakeSpaceConfiguration(String spaceExchange, String activityExchange) {
+    public static final String ENABLED_PROPERTY = "twakespace.enabled";
+    public static final String SPACE_EXCHANGE_PROPERTY = "twakespace.exchange";
+    public static final String ACTIVITY_EXCHANGE_PROPERTY = "twakespace.activity.exchange";
+    public static final String DEFAULT_SPACE_EXCHANGE = "space";
+    public static final String DEFAULT_ACTIVITY_EXCHANGE = "activity";
 
-public record TwakeSpaceConfiguration(RabbitMQConfiguration rabbitMQ,
-                                      String exchange,
-                                      List<String> routingKeys,
-                                      String queue,
-                                      String deadLetterQueue,
-                                      String activityExchange,
-                                      RabbitMQConfiguration calendarRabbitMQ,
-                                      String calendarQueue,
-                                      String calendarDeadLetterQueue) {
-    private static final String RABBITMQ_PREFIX = "twakespace.rabbitmq";
-    private static final String RABBITMQ_URI = RABBITMQ_PREFIX + ".uri";
-    private static final String EXCHANGE = "twakespace.exchange";
-    private static final String ROUTING_KEYS = "twakespace.routing.keys";
-    private static final String QUEUE = "twakespace.queue";
-    private static final String DEAD_LETTER_QUEUE = "twakespace.dead.letter.queue";
-    private static final String ACTIVITY_EXCHANGE = "twakespace.activity.exchange";
-    private static final String CALENDAR_QUEUE = "twakespace.calendar.queue";
-    private static final String CALENDAR_DEAD_LETTER_QUEUE = "twakespace.calendar.dead.letter.queue";
-    private static final String DEFAULT_EXCHANGE = "space";
-    private static final List<String> DEFAULT_ROUTING_KEYS = Arrays.stream(SpaceEventType.values())
-        .map(SpaceEventType::routingKey)
-        .toList();
-    private static final String DEFAULT_QUEUE = "tcalendar:twake-space";
-    private static final String DEFAULT_DEAD_LETTER_QUEUE = "tcalendar:twake-space-dead-letter";
-    private static final String DEFAULT_ACTIVITY_EXCHANGE = "activity";
-    private static final String DEFAULT_CALENDAR_QUEUE = "tcalendar:twake-space-calendar";
-    private static final String DEFAULT_CALENDAR_DEAD_LETTER_QUEUE = "tcalendar:twake-space-calendar-dead-letter";
-
-    public static TwakeSpaceConfiguration from(Configuration extensions, RabbitMQConfiguration sideServiceRabbitMQ) {
-        List<String> routingKeys = extensions.getList(String.class, ROUTING_KEYS, DEFAULT_ROUTING_KEYS);
-        Preconditions.checkArgument(!routingKeys.isEmpty() && routingKeys.stream().noneMatch(String::isBlank), "'%s' can not be blank", ROUTING_KEYS);
-
-        RabbitMQConfiguration rabbitMQ = extensions.containsKey(RABBITMQ_URI)
-            ? RabbitMQConfiguration.from(extensions.subset(RABBITMQ_PREFIX))
-            : sideServiceRabbitMQ;
-
-        return new TwakeSpaceConfiguration(rabbitMQ,
-            name(extensions, EXCHANGE, DEFAULT_EXCHANGE),
-            routingKeys,
-            name(extensions, QUEUE, DEFAULT_QUEUE),
-            name(extensions, DEAD_LETTER_QUEUE, DEFAULT_DEAD_LETTER_QUEUE),
-            name(extensions, ACTIVITY_EXCHANGE, DEFAULT_ACTIVITY_EXCHANGE),
-            sideServiceRabbitMQ,
-            name(extensions, CALENDAR_QUEUE, DEFAULT_CALENDAR_QUEUE),
-            name(extensions, CALENDAR_DEAD_LETTER_QUEUE, DEFAULT_CALENDAR_DEAD_LETTER_QUEUE));
+    public static TwakeSpaceConfiguration from(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
+        return from(propertiesProvider.getConfiguration("rabbitmq"));
     }
 
-    private static String name(Configuration extensions, String key, String defaultValue) {
-        String value = extensions.getString(key, defaultValue);
-        Preconditions.checkArgument(!value.isBlank(), "'%s' can not be blank", key);
-        return value;
+    public static TwakeSpaceConfiguration from(Configuration configuration) {
+        return new TwakeSpaceConfiguration(configuration.getString(SPACE_EXCHANGE_PROPERTY, DEFAULT_SPACE_EXCHANGE),
+            configuration.getString(ACTIVITY_EXCHANGE_PROPERTY, DEFAULT_ACTIVITY_EXCHANGE));
     }
 }

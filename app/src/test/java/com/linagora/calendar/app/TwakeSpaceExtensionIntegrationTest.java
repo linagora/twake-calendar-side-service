@@ -20,20 +20,14 @@ package com.linagora.calendar.app;
 
 import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.hamcrest.Matchers.equalTo;
 
 import java.io.InputStream;
 import java.net.URI;
-import java.net.URLEncoder;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,9 +35,9 @@ import java.util.Objects;
 import java.util.UUID;
 
 import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
-import org.apache.james.backends.rabbitmq.RabbitMQManagementAPI;
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
+import org.apache.james.utils.GuiceProbe;
 import org.apache.james.utils.WebAdminGuiceProbe;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionFactory;
@@ -53,10 +47,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
-import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.inject.multibindings.Multibinder;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavModuleTestHelper;
@@ -66,6 +60,9 @@ import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.TestFixture;
+import com.linagora.calendar.twakespace.CalendarActivityConsumer;
+import com.linagora.calendar.twakespace.SpaceEventConsumer;
+import com.linagora.calendar.twakespace.TwakeSpaceConfiguration;
 import com.rabbitmq.client.AMQP;
 import com.rabbitmq.client.BuiltinExchangeType;
 import com.rabbitmq.client.Channel;
@@ -74,21 +71,21 @@ import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.Delivery;
 import com.rabbitmq.client.GetResponse;
 
-import ch.qos.logback.classic.Level;
-import ch.qos.logback.classic.Logger;
-import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.core.read.ListAppender;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.specification.RequestSpecification;
 import reactor.core.publisher.Mono;
 
 class TwakeSpaceExtensionIntegrationTest {
-    private static final String STARTABLE = "com.linagora.calendar.twakespace.TwakeSpaceStartable";
-    private static final String HEALTH_CHECK = "com.linagora.calendar.twakespace.TwakeSpaceHealthCheck";
-    private static final String SPACE_EXCHANGE = "test-space";
-    private static final String QUEUE = "test-calendar-space";
-    private static final String DEAD_LETTER_QUEUE = "test-calendar-space-dead-letter";
-    private static final String ACTIVITY_EXCHANGE = "test-activity";
+    private record Slot(String start, String end) {
+    }
+
+    private static final Slot PLANNED = new Slot("20261010T090000Z", "20261010T100000Z");
+    private static final Slot MOVED = new Slot("20261011T090000Z", "20261011T100000Z");
+    private static final Slot PROPOSED = new Slot("20261012T140000Z", "20261012T150000Z");
+    private static final String SPACE_EXCHANGE = TwakeSpaceConfiguration.DEFAULT_SPACE_EXCHANGE;
+    private static final String QUEUE = SpaceEventConsumer.QUEUE;
+    private static final String DEAD_LETTER_QUEUE = SpaceEventConsumer.DEAD_LETTER_QUEUE;
+    private static final String ACTIVITY_EXCHANGE = TwakeSpaceConfiguration.DEFAULT_ACTIVITY_EXCHANGE;
     private static final String FEED_QUEUE = "test-feed";
     private static final String USER = "calendar";
     private static final String PASSWORD = "calendar";
@@ -103,61 +100,34 @@ class TwakeSpaceExtensionIntegrationTest {
     @TempDir
     Path workingDirectory;
 
-    // RabbitMQ deletes vhosts asynchronously: reusing a name races with the previous test's deletion.
-    private final String spaceVhost = "twake-space-" + UUID.randomUUID();
-    // Sabre publishes on the vhost every test shares: a queue per test keeps a test from reading the previous one's events.
-    private final String calendarQueue = "test-twake-space-calendar-" + UUID.randomUUID();
-    private final String calendarDeadLetterQueue = calendarQueue + "-dead-letter";
     private final List<String> skippedActivities = new ArrayList<>();
     private TwakeCalendarGuiceServer server;
     private DavTestHelper dav;
     private CalDavClient calDavClient;
     private RabbitMQConfiguration rabbitMQConfiguration;
-    private RabbitMQManagementAPI managementAPI;
     private RequestSpecification webAdmin;
 
+    // Without twp.rabbitmq.uri, the TWP connection carrying space events is the side service's one.
     @BeforeEach
     void setUp() throws Exception {
         rabbitMQConfiguration = sabreDavExtension.dockerSabreDavSetup().rabbitMQConfiguration();
-        managementAPI = RabbitMQManagementAPI.from(rabbitMQConfiguration);
-        managementAPI.addVhost(spaceVhost);
-        assertThat(management("PUT", "/api/permissions/" + spaceVhost + "/" + USER, """
-            {"configure": ".*", "write": ".*", "read": ".*"}""").statusCode()).isBetween(200, 299);
-
         Path conf = Files.createDirectories(workingDirectory.resolve("conf"));
         for (String file : List.of("configuration.properties", "jwt_privatekey", "jwt_publickey", "rabbitmq.properties", "webadmin.properties")) {
             try (InputStream in = ClassLoader.getSystemResourceAsStream(file)) {
                 Files.copy(in, conf.resolve(file));
             }
         }
-        URI amqp = rabbitMQConfiguration.getUri();
-        Files.writeString(conf.resolve("extensions.properties"), """
-            guice.extension.startable=%s
-            twakespace.exchange=%s
-            twakespace.routing.keys=twake.space.created,twake.space.updated,twake.space.deleted,twake.space.member.#
-            twakespace.queue=%s
-            twakespace.dead.letter.queue=%s
-            twakespace.activity.exchange=%s
-            twakespace.calendar.queue=%s
-            twakespace.calendar.dead.letter.queue=%s
-            twakespace.rabbitmq.uri=amqp://%s:%s@%s:%d/%s
-            twakespace.rabbitmq.management.uri=%s
-            twakespace.rabbitmq.management.user=%s
-            twakespace.rabbitmq.management.password=%s
-            twakespace.rabbitmq.quorum.queues.enable=true
-            twakespace.rabbitmq.quorum.queues.delivery.limit=10
-            """.formatted(STARTABLE, SPACE_EXCHANGE, QUEUE, DEAD_LETTER_QUEUE, ACTIVITY_EXCHANGE, calendarQueue, calendarDeadLetterQueue,
-            USER, PASSWORD, amqp.getHost(), amqp.getPort(), spaceVhost,
-            rabbitMQConfiguration.getManagementUri(), USER, PASSWORD));
-        Files.writeString(conf.resolve("healthcheck.properties"), "additional.healthchecks=" + HEALTH_CHECK);
 
         server = TwakeCalendarMain.createServer(TwakeCalendarConfiguration.builder()
                 .workingDirectory(workingDirectory.toFile())
                 .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
                 .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB)
+                .enableTwpSetting()
+                .enableTwakeSpace()
                 .build())
             .overrideWith(List.of(AppTestHelper.OIDC_BY_PASS_MODULE,
-                DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension)));
+                DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
+                binder -> Multibinder.newSetBinder(binder, GuiceProbe.class).addBinding().to(MonitoredRabbitMQProbe.class)));
         server.start();
         server.getProbe(CalendarDataProbe.class).addDomain(DOMAIN);
         webAdmin = new RequestSpecBuilder()
@@ -180,21 +150,20 @@ class TwakeSpaceExtensionIntegrationTest {
         if (server != null) {
             server.stop();
         }
-        management("DELETE", "/api/vhosts/" + spaceVhost, null);
-        try (Connection connection = calendarConnectionFactory().newConnection();
+        try (Connection connection = connectionFactory().newConnection();
              Channel channel = connection.createChannel()) {
-            channel.queueDelete(calendarQueue);
-            channel.queueDelete(calendarDeadLetterQueue);
+            for (String queue : List.of(QUEUE, DEAD_LETTER_QUEUE, CalendarActivityConsumer.QUEUE, CalendarActivityConsumer.DEAD_LETTER_QUEUE, FEED_QUEUE)) {
+                channel.queueDelete(queue);
+            }
         }
     }
 
     @Test
-    void healthCheckShouldReportTheConsumerHealthy() {
-        given().port(server.getProbe(WebAdminGuiceProbe.class).getWebAdminPort().getValue())
-            .get("/healthcheck/checks/TwakeSpace")
-        .then()
-            .statusCode(200)
-            .body("status", equalTo("healthy"));
+    void rabbitMQHealthChecksShouldMonitorTheTwakeSpaceQueues() {
+        MonitoredRabbitMQProbe probe = server.getProbe(MonitoredRabbitMQProbe.class);
+
+        assertThat(probe.consumedQueues()).contains(QUEUE, CalendarActivityConsumer.QUEUE);
+        assertThat(probe.deadLetterQueues()).contains(DEAD_LETTER_QUEUE, CalendarActivityConsumer.DEAD_LETTER_QUEUE);
     }
 
     @Test
@@ -238,7 +207,7 @@ class TwakeSpaceExtensionIntegrationTest {
         String spaceId = provisionedSpace(member("alice", "admin"), member("bob", "editor"));
         String teamCalendarId = teamCalendar(spaceId).path("id").asText();
 
-        putEvent("alice", event("uid-1", "Sprint planning", "20261010T090000Z", "20261010T100000Z", "alice", "bob"));
+        putEvent("alice", event("uid-1", "Sprint planning", PLANNED,"bob"));
 
         JsonNode created = awaitActivity("com.twake.calendar.event.created.v1");
         assertThat(created.path("source").asText()).isEqualTo("twake://calendar");
@@ -259,10 +228,10 @@ class TwakeSpaceExtensionIntegrationTest {
     @Test
     void reschedulingShouldPublishEventRescheduledWithThePreviousTime() throws Exception {
         provisionedSpace(member("alice", "admin"), member("bob", "editor"));
-        putEvent("alice", event("uid-1", "Sprint planning", "20261010T090000Z", "20261010T100000Z", "alice", "bob"));
+        putEvent("alice", event("uid-1", "Sprint planning", PLANNED,"bob"));
         awaitActivity("com.twake.calendar.event.created.v1");
 
-        putEvent("alice", event("uid-1", "Sprint planning", "20261011T090000Z", "20261011T100000Z", "alice", "bob"));
+        putEvent("alice", event("uid-1", "Sprint planning", MOVED, "bob"));
 
         JsonNode rescheduled = awaitActivity("com.twake.calendar.event.rescheduled.v1");
         assertThat(rescheduled.path("data").path("state").path("start").asText()).isEqualTo("2026-10-11T09:00:00Z");
@@ -275,10 +244,10 @@ class TwakeSpaceExtensionIntegrationTest {
     @Test
     void renamingAnEventShouldPublishEventUpdatedWithoutRecipients() throws Exception {
         provisionedSpace(member("alice", "admin"), member("bob", "editor"));
-        putEvent("alice", event("uid-1", "Sprint planning", "20261010T090000Z", "20261010T100000Z", "alice", "bob"));
+        putEvent("alice", event("uid-1", "Sprint planning", PLANNED,"bob"));
         awaitActivity("com.twake.calendar.event.created.v1");
 
-        putEvent("alice", event("uid-1", "Sprint review", "20261010T090000Z", "20261010T100000Z", "alice", "bob"));
+        putEvent("alice", event("uid-1", "Sprint review", PLANNED, "bob"));
 
         JsonNode updated = awaitActivity("com.twake.calendar.event.updated.v1");
         assertThat(updated.path("data").path("object").path("title").asText()).isEqualTo("Sprint review");
@@ -289,7 +258,7 @@ class TwakeSpaceExtensionIntegrationTest {
     @Test
     void memberAcceptingShouldPublishEventAccepted() throws Exception {
         provisionedSpace(member("alice", "admin"), member("bob", "editor"));
-        String ics = event("uid-1", "Sprint planning", "20261010T090000Z", "20261010T100000Z", "alice", "bob");
+        String ics = event("uid-1", "Sprint planning", PLANNED,"bob");
         putEvent("alice", ics);
         awaitActivity("com.twake.calendar.event.created.v1");
 
@@ -303,16 +272,46 @@ class TwakeSpaceExtensionIntegrationTest {
             [{"email": "alice@space.tld", "reason": "attendee"}]"""));
     }
 
+    // Sabre also mails the organizer a reply, which must not publish a second card.
+    @Test
+    void memberAcceptingShouldPublishASingleCard() throws Exception {
+        provisionedSpace(member("alice", "admin"), member("bob", "editor"));
+        String ics = event("uid-1", "Sprint planning", PLANNED, "bob");
+        putEvent("alice", ics);
+        awaitActivity("com.twake.calendar.event.created.v1");
+        putEvent("bob", ics.replace("PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN=bob", "PARTSTAT=ACCEPTED;CN=bob"));
+        awaitActivity("com.twake.calendar.event.accepted.v1");
+
+        putEvent("alice", event("uid-2", "Retro", PLANNED, "bob"));
+
+        awaitActivity("com.twake.calendar.event.created.v1");
+        assertThat(skippedActivities).doesNotContain("com.twake.calendar.event.accepted.v1");
+    }
+
+    @Test
+    void unreadableCalendarMessageShouldBeDeadLetteredWithoutStoppingTheConsumer() throws Exception {
+        provisionedSpace(member("alice", "admin"));
+        try (Connection connection = connectionFactory().newConnection();
+             Channel channel = connection.createChannel()) {
+            channel.basicPublish("calendar:event:updated", "", null, UNREADABLE.getBytes(StandardCharsets.UTF_8));
+        }
+
+        putEvent("alice", event("uid-1", "Sprint planning", PLANNED));
+
+        awaitActivity("com.twake.calendar.event.created.v1");
+        assertThat(messageCount(CalendarActivityConsumer.DEAD_LETTER_QUEUE)).isEqualTo(1);
+    }
+
     @Test
     void attendeeOutsideTheSpaceDecliningShouldPublishEventDeclined() throws Exception {
         provisionedSpace(member("alice", "admin"));
         server.getProbe(CalendarDataProbe.class).addUser(username("carol"), "secret");
-        putEvent("alice", event("uid-1", "Sprint planning", "20261010T090000Z", "20261010T100000Z", "alice", "carol"));
+        putEvent("alice", event("uid-1", "Sprint planning", PLANNED,"carol"));
         awaitActivity("com.twake.calendar.event.created.v1");
         String carolEvent = AWAIT.until(() -> personalEventIds("carol"), ids -> !ids.isEmpty()).getFirst();
 
         dav.upsertCalendar(username("carol"), personalEventUri("carol", carolEvent),
-            event("uid-1", "Sprint planning", "20261010T090000Z", "20261010T100000Z", "alice", "carol")
+            event("uid-1", "Sprint planning", PLANNED,"carol")
                 .replace("PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN=carol", "PARTSTAT=DECLINED;CN=carol")).block();
 
         JsonNode declined = awaitActivity("com.twake.calendar.event.declined.v1");
@@ -329,11 +328,11 @@ class TwakeSpaceExtensionIntegrationTest {
         provisionedSpace(member("alice", "admin"));
         server.getProbe(CalendarDataProbe.class).addUser(username("carol"), "secret");
         OpenPaaSUser carol = server.getProbe(CalendarDataProbe.class).getUser(username("carol"));
-        putEvent("alice", event("uid-1", "Sprint planning", "20261010T090000Z", "20261010T100000Z", "alice", "carol"));
+        putEvent("alice", event("uid-1", "Sprint planning", PLANNED,"carol"));
         awaitActivity("com.twake.calendar.event.created.v1");
         String carolEvent = AWAIT.until(() -> personalEventIds("carol"), ids -> !ids.isEmpty()).getFirst();
 
-        String counter = event("uid-1", "Sprint planning", "20261012T140000Z", "20261012T150000Z", "alice", "carol")
+        String counter = event("uid-1", "Sprint planning", PROPOSED, "carol")
             .replace("BEGIN:VEVENT", "METHOD:COUNTER\r\nBEGIN:VEVENT");
         dav.postCounter(carol, carolEvent, new DavTestHelper.CounterRequest(counter, "carol@space.tld", "alice@space.tld", "uid-1", 0)).block();
 
@@ -348,9 +347,9 @@ class TwakeSpaceExtensionIntegrationTest {
     void eventOfAPersonalCalendarShouldPublishNoActivity() throws Exception {
         provisionedSpace(member("alice", "admin"), member("bob", "editor"));
         OpenPaaSUser alice = server.getProbe(CalendarDataProbe.class).getUser(username("alice"));
-        dav.upsertCalendar(alice, event("uid-personal", "Dentist", "20261010T090000Z", "20261010T100000Z", "alice", "bob"), "uid-personal");
+        dav.upsertCalendar(alice, event("uid-personal", "Dentist", PLANNED, "bob"), "uid-personal");
 
-        putEvent("alice", event("uid-1", "Sprint planning", "20261010T090000Z", "20261010T100000Z", "alice", "bob"));
+        putEvent("alice", event("uid-1", "Sprint planning", PLANNED,"bob"));
 
         assertThat(awaitActivity("com.twake.calendar.event.created.v1").path("subject").asText()).isEqualTo("event/uid-1");
         assertThat(skippedActivities).containsOnly("com.twake.calendar.space.provisioned.v1");
@@ -367,18 +366,9 @@ class TwakeSpaceExtensionIntegrationTest {
             Map.entry("bob@space.tld", "dav:read")));
     }
 
-    @Test
-    void spaceQueueShouldBeAQuorumQueueWithSingleActiveConsumerAndDeadLetter() {
-        assertThat(managementAPI.queueDetails(spaceVhost, QUEUE).getArguments())
-            .containsEntry("x-queue-type", "quorum")
-            .containsEntry("x-single-active-consumer", "true")
-            .containsEntry("x-dead-letter-exchange", DEAD_LETTER_QUEUE)
-            .containsEntry("x-delivery-limit", "10");
-    }
-
     // Unreadable events are dead lettered, so the dead letter queue counts the events the queue received.
     @Test
-    void spaceQueueShouldReceiveEverySpaceAndMemberEvent() throws Exception {
+    void unreadableSpaceAndMemberEventsShouldBeDeadLettered() throws Exception {
         List<String> routingKeys = List.of("twake.space.created", "twake.space.updated", "twake.space.deleted",
             "twake.space.member.added", "twake.space.member.removed", "twake.space.member.role.changed");
         for (String routingKey : routingKeys) {
@@ -389,21 +379,11 @@ class TwakeSpaceExtensionIntegrationTest {
     }
 
     @Test
-    void spaceQueueShouldNotReceiveGroupEvents() throws Exception {
+    void unreadableGroupEventsShouldNotBeDeadLettered() throws Exception {
         publish("twake.space.group.linked", UNREADABLE);
         awaitConsumed();
 
         assertThat(messageCount(DEAD_LETTER_QUEUE)).isZero();
-    }
-
-    @Test
-    void spaceEventsShouldBeConsumedAfterTheConnectionIsLost() throws Exception {
-        AWAIT.until(() -> closeConnectionsOf(spaceVhost) > 0);
-        AWAIT.untilAsserted(() -> assertThat(consumerCount(QUEUE)).isEqualTo(1));
-
-        publish("twake.space.created", UNREADABLE);
-
-        AWAIT.untilAsserted(() -> assertThat(messageCount(DEAD_LETTER_QUEUE)).isEqualTo(1));
     }
 
     @Test
@@ -540,30 +520,6 @@ class TwakeSpaceExtensionIntegrationTest {
         publish("twake.space.created", createdIn(Domain.of("unknown.tld"), UUID.randomUUID().toString()));
 
         AWAIT.untilAsserted(() -> assertThat(messageCount(DEAD_LETTER_QUEUE)).isEqualTo(1));
-    }
-
-    @Test
-    void failedEventShouldBeRetriedBeforeBeingDeadLettered() throws Exception {
-        Domain lateDomain = Domain.of("late.tld");
-        String spaceId = UUID.randomUUID().toString();
-        Logger startableLogger = (Logger) LoggerFactory.getLogger(STARTABLE);
-        Level level = startableLogger.getLevel();
-        ListAppender<ILoggingEvent> logs = new ListAppender<>();
-        logs.start();
-        startableLogger.setLevel(Level.WARN);
-        startableLogger.addAppender(logs);
-        try {
-            publish("twake.space.created", createdIn(lateDomain, spaceId));
-            AWAIT.until(() -> logs.list.stream().anyMatch(event -> event.getFormattedMessage().contains("Failed to handle twake.space.created for space " + spaceId)));
-
-            server.getProbe(CalendarDataProbe.class).addDomain(lateDomain);
-
-            AWAIT.untilAsserted(() -> assertThat(teamCalendarNames(lateDomain)).containsExactly(spaceId));
-            assertThat(messageCount(DEAD_LETTER_QUEUE)).isZero();
-        } finally {
-            startableLogger.detachAppender(logs);
-            startableLogger.setLevel(level);
-        }
     }
 
     @Test
@@ -758,12 +714,11 @@ class TwakeSpaceExtensionIntegrationTest {
         return Username.fromLocalPartWithDomain(localPart, DOMAIN);
     }
 
-    private static String event(String uid, String summary, String start, String end, String organizer, String... attendees) {
-        StringBuilder attendeeLines = new StringBuilder("ATTENDEE;PARTSTAT=ACCEPTED;CN=%s:mailto:%s@%s\r\n".formatted(organizer, organizer, DOMAIN.asString()));
+    // Alice organizes every event.
+    private static String event(String uid, String summary, Slot slot, String... attendees) {
+        StringBuilder attendeeLines = new StringBuilder("ATTENDEE;PARTSTAT=ACCEPTED;CN=alice:mailto:alice@%s\r\n".formatted(DOMAIN.asString()));
         for (String attendee : attendees) {
-            if (!attendee.equals(organizer)) {
-                attendeeLines.append("ATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN=%s:mailto:%s@%s\r\n".formatted(attendee, attendee, DOMAIN.asString()));
-            }
+            attendeeLines.append("ATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN=%s:mailto:%s@%s\r\n".formatted(attendee, attendee, DOMAIN.asString()));
         }
         return """
             BEGIN:VCALENDAR\r
@@ -776,10 +731,10 @@ class TwakeSpaceExtensionIntegrationTest {
             DTEND:%s\r
             SUMMARY:%s\r
             LOCATION:Room 1\r
-            ORGANIZER;CN=%s:mailto:%s@%s\r
+            ORGANIZER;CN=alice:mailto:alice@%s\r
             %sEND:VEVENT\r
             END:VCALENDAR\r
-            """.formatted(uid, start, end, summary, organizer, organizer, DOMAIN.asString(), attendeeLines);
+            """.formatted(uid, slot.start(), slot.end(), summary, DOMAIN.asString(), attendeeLines);
     }
 
     // The management API refreshes its counts every few seconds, AMQP answers the current ones.
@@ -802,37 +757,6 @@ class TwakeSpaceExtensionIntegrationTest {
         connectionFactory.setUri(rabbitMQConfiguration.getUri());
         connectionFactory.setUsername(USER);
         connectionFactory.setPassword(PASSWORD);
-        connectionFactory.setVirtualHost(spaceVhost);
         return connectionFactory;
-    }
-
-    private ConnectionFactory calendarConnectionFactory() throws Exception {
-        ConnectionFactory connectionFactory = new ConnectionFactory();
-        connectionFactory.setUri(rabbitMQConfiguration.getUri());
-        connectionFactory.setUsername(USER);
-        connectionFactory.setPassword(PASSWORD);
-        return connectionFactory;
-    }
-
-    private int closeConnectionsOf(String vhost) throws Exception {
-        int closed = 0;
-        for (JsonNode connection : OBJECT_MAPPER.readTree(management("GET", "/api/vhosts/" + vhost + "/connections", null).body())) {
-            String name = URLEncoder.encode(connection.get("name").asText(), StandardCharsets.UTF_8).replace("+", "%20");
-            if (management("DELETE", "/api/connections/" + name, null).statusCode() == 204) {
-                closed++;
-            }
-        }
-        return closed;
-    }
-
-    private HttpResponse<String> management(String method, String path, String body) throws Exception {
-        String credentials = Base64.getEncoder().encodeToString((USER + ":" + PASSWORD).getBytes(StandardCharsets.UTF_8));
-        try (HttpClient client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build()) {
-            return client.send(HttpRequest.newBuilder(rabbitMQConfiguration.getManagementUri().resolve(path))
-                .header("Authorization", "Basic " + credentials)
-                .header("Content-Type", "application/json")
-                .method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(body))
-                .build(), HttpResponse.BodyHandlers.ofString());
-        }
     }
 }

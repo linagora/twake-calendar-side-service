@@ -50,7 +50,6 @@ public class TwakeSpaceProvisioner {
         this.clock = clock;
     }
 
-    // Emits the activity event to publish once the space event is applied.
     public Mono<ActivityEvent> handle(SpaceEventType type, SpaceEvent event) {
         return switch (type) {
             case CREATED -> created(event);

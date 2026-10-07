@@ -18,7 +18,14 @@
 
 package com.linagora.calendar.twakespace;
 
-import org.apache.james.backends.rabbitmq.Constants;
+import static com.linagora.tmail.saas.rabbitmq.TWPConstants.TWP_INJECTION_KEY;
+import static org.apache.james.backends.rabbitmq.Constants.DURABLE;
+
+import jakarta.inject.Inject;
+import jakarta.inject.Named;
+
+import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
+import org.apache.james.lifecycle.api.Startable;
 
 import com.rabbitmq.client.AMQP;
 import com.rabbitmq.client.BuiltinExchangeType;
@@ -28,23 +35,24 @@ import reactor.rabbitmq.ExchangeSpecification;
 import reactor.rabbitmq.OutboundMessage;
 import reactor.rabbitmq.Sender;
 
-public class ActivityPublisher {
+public class ActivityPublisher implements Startable {
     private static final String CONTENT_TYPE = "application/cloudevents+json";
     private static final int PERSISTENT = 2;
 
     private final Sender sender;
     private final String exchange;
 
-    public ActivityPublisher(Sender sender, String exchange) {
-        this.sender = sender;
-        this.exchange = exchange;
+    @Inject
+    public ActivityPublisher(@Named(TWP_INJECTION_KEY) ReactorRabbitMQChannelPool channelPool, TwakeSpaceConfiguration configuration) {
+        this.sender = channelPool.getSender();
+        this.exchange = configuration.activityExchange();
     }
 
-    public Mono<Void> declare() {
-        return sender.declareExchange(ExchangeSpecification.exchange(exchange)
-                .type(BuiltinExchangeType.TOPIC.getType())
-                .durable(Constants.DURABLE))
-            .then();
+    public void init() {
+        sender.declareExchange(ExchangeSpecification.exchange(exchange)
+                .durable(DURABLE)
+                .type(BuiltinExchangeType.TOPIC.getType()))
+            .block();
     }
 
     // Confirmed before returning: an event is only acknowledged once its activity is queued, and the

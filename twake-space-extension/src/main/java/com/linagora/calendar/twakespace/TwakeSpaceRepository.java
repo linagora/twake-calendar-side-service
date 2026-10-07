@@ -68,7 +68,6 @@ public class TwakeSpaceRepository {
             .then();
     }
 
-    // A redelivered deleted keeps the first time, which the deletion of the team calendar counts from.
     public Mono<Void> markDeleted(SpaceId spaceId) {
         return Mono.from(collection.updateOne(and(eq(ID_FIELD, spaceId.value()), exists(DELETION_FIELD, false)),
                 Updates.set(DELETION_FIELD, Date.from(clock.instant()))))
