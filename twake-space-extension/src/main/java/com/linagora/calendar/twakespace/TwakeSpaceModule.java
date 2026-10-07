@@ -22,12 +22,14 @@ import static com.linagora.tmail.saas.rabbitmq.TWPConstants.TWP_INJECTION_KEY;
 
 import java.io.FileNotFoundException;
 import java.util.List;
+import java.util.function.Supplier;
 
 import jakarta.inject.Named;
 
 import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.james.backends.rabbitmq.MonitoredDeadLetterQueue;
 import org.apache.james.backends.rabbitmq.MonitoredRabbitMQConsumers;
+import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
 import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
 import org.apache.james.utils.InitializationOperation;
@@ -35,18 +37,35 @@ import org.apache.james.utils.InitilizationOperationBuilder;
 import org.apache.james.utils.PropertiesProvider;
 
 import com.google.inject.AbstractModule;
+import com.google.inject.Module;
 import com.google.inject.Provides;
 import com.google.inject.Scopes;
 import com.google.inject.Singleton;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.linagora.calendar.amqp.ConsumerReconnectionHandler;
+import com.linagora.calendar.twakespace.amqp.ActivityPublisher;
+import com.linagora.calendar.twakespace.amqp.CalendarActivityConsumer;
+import com.linagora.calendar.twakespace.amqp.SpaceEventConsumer;
+import com.linagora.calendar.twakespace.storage.MemoryTwakeSpaceRepository;
+import com.linagora.calendar.twakespace.storage.MongoTwakeSpaceRepository;
+import com.linagora.calendar.twakespace.storage.TwakeSpaceRepository;
+import com.linagora.tmail.saas.rabbitmq.TWPCommonRabbitMQConfiguration;
 
 import reactor.core.publisher.Mono;
 
 public class TwakeSpaceModule extends AbstractModule {
+    public static final Module MEMORY_STORAGE = binder -> {
+        binder.bind(MemoryTwakeSpaceRepository.class).in(Scopes.SINGLETON);
+        binder.bind(TwakeSpaceRepository.class).to(MemoryTwakeSpaceRepository.class);
+    };
+
+    public static final Module MONGODB_STORAGE = binder -> {
+        binder.bind(MongoTwakeSpaceRepository.class).in(Scopes.SINGLETON);
+        binder.bind(TwakeSpaceRepository.class).to(MongoTwakeSpaceRepository.class);
+    };
+
     @Override
     protected void configure() {
-        bind(TwakeSpaceRepository.class).in(Scopes.SINGLETON);
         bind(SpaceTeamCalendars.class).in(Scopes.SINGLETON);
         bind(TeamCalendarSharing.class).in(Scopes.SINGLETON);
         bind(TwakeSpaceProvisioner.class).in(Scopes.SINGLETON);
@@ -60,6 +79,17 @@ public class TwakeSpaceModule extends AbstractModule {
     @Singleton
     TwakeSpaceConfiguration configuration(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
         return TwakeSpaceConfiguration.from(propertiesProvider);
+    }
+
+    @Provides
+    @Singleton
+    @Named(TWP_INJECTION_KEY)
+    Supplier<QueueArguments.Builder> spaceEventQueueArguments(@Named(TWP_INJECTION_KEY) RabbitMQConfiguration rabbitMQConfiguration,
+                                                              TWPCommonRabbitMQConfiguration twpCommonRabbitMQConfiguration) {
+        if (twpCommonRabbitMQConfiguration.quorumQueuesBypass()) {
+            return QueueArguments::builder;
+        }
+        return rabbitMQConfiguration::workQueueArgumentsBuilder;
     }
 
     @ProvidesIntoSet

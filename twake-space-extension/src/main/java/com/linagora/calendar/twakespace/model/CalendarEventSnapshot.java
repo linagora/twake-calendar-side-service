@@ -16,7 +16,7 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.twakespace;
+package com.linagora.calendar.twakespace.model;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -47,8 +47,8 @@ public record CalendarEventSnapshot(String uid, TeamCalendarId teamCalendarId, S
     public record Rsvp(long accepted, long declined, long tentative, long pending) {
     }
 
-    static final String ACCEPTED = "ACCEPTED";
-    static final String DECLINED = "DECLINED";
+    public static final String ACCEPTED = "ACCEPTED";
+    public static final String DECLINED = "DECLINED";
     static final String TENTATIVE = "TENTATIVE";
     private static final String NEEDS_ACTION = "NEEDS-ACTION";
     private static final String MAILTO = "mailto:";

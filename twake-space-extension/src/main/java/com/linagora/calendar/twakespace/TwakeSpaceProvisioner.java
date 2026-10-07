@@ -29,6 +29,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.linagora.calendar.storage.model.TeamCalendar;
+import com.linagora.calendar.twakespace.model.ActivityEvent;
+import com.linagora.calendar.twakespace.model.OrganizationId;
+import com.linagora.calendar.twakespace.model.SpaceEvent;
+import com.linagora.calendar.twakespace.model.SpaceEventType;
+import com.linagora.calendar.twakespace.model.SpaceId;
+import com.linagora.calendar.twakespace.model.UnprocessableSpaceEventException;
+import com.linagora.calendar.twakespace.storage.TwakeSpaceRepository;
 
 import reactor.core.publisher.Mono;
 

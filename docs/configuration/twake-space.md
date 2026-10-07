@@ -7,7 +7,9 @@ twp.settings.enabled=true
 twakespace.enabled=true
 ```
 
-It needs `twp.settings.enabled`, as it reads the space events on the [Twake Workplace broker](configuration.md#twake-workplace-rabbitmq-properties), and the MongoDB backend, where the `twake_spaces` collection keeps the organization, domain and deletion time of each space. The startup fails otherwise.
+It needs `twp.settings.enabled`, as it reads the space events on the [Twake Workplace broker](configuration.md#twake-workplace-rabbitmq-properties). The startup fails otherwise.
+
+TwakeSpace keeps the organization, domain and deletion time of each space. With the MongoDB backend they go to the `twake_spaces` collection. With the memory backend they are lost on restart, which only suits tests.
 
 ## Team calendars
 
@@ -20,15 +22,24 @@ It needs `twp.settings.enabled`, as it reads the space events on the [Twake Work
 
 ## Activity
 
-TwakeSpace publishes CloudEvents on the activity exchange, a durable topic exchange of the Twake Workplace broker, with the event type as routing key. The TwakeSpace feed shows them as cards.
+Each time something happens in a team calendar, TwakeSpace publishes one activity: a CloudEvent that the TwakeSpace feed shows as a card. Activities go to the activity exchange, a durable topic exchange of the Twake Workplace broker, with the CloudEvent type as routing key.
 
-- `com.twake.calendar.space.provisioned.v1` once a space has its team calendar, again when `twake.space.created` is redelivered.
-- `com.twake.calendar.event.created.v1`, `updated.v1` and `rescheduled.v1` when an event of a team calendar changes. Imported events publish nothing.
-- `com.twake.calendar.event.accepted.v1` and `declined.v1` when an attendee accepts or declines, `updated.v1` for any other answer, `proposed.v1` when an attendee outside the space proposes another time.
+The CloudEvent types are:
 
-A card shows a whole event: a change or an answer that concerns a single occurrence of a recurring event publishes nothing.
+- `com.twake.calendar.space.provisioned.v1`: the space got its team calendar. A redelivered `twake.space.created` publishes it again.
+- `com.twake.calendar.event.created.v1`: someone created an event in the team calendar.
+- `com.twake.calendar.event.rescheduled.v1`: an event moved. The card keeps the previous start and end.
+- `com.twake.calendar.event.updated.v1`: any other change to an event, or an answer other than accept or decline.
+- `com.twake.calendar.event.accepted.v1` and `com.twake.calendar.event.declined.v1`: an attendee accepted or declined.
+- `com.twake.calendar.event.proposed.v1`: an attendee proposed another time.
 
-Events of personal calendars publish nothing. TwakeSpace reads the changes of team calendars from the `calendar:event:created`, `calendar:event:updated` and `calendar:event:notificationEmail:send` exchanges of the side service's broker, and stores none of them.
+Some changes publish nothing:
+
+- events of personal calendars;
+- imported events;
+- changes and answers that concern a single occurrence of a recurring event, as a card shows the whole event.
+
+TwakeSpace reads the changes of team calendars from the `calendar:event:created`, `calendar:event:updated` and `calendar:event:notificationEmail:send` exchanges of the side service's broker. It does not store them.
 
 ## Queues
 

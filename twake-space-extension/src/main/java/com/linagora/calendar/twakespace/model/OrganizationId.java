@@ -16,7 +16,7 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.twakespace;
+package com.linagora.calendar.twakespace.model;
 
 import org.apache.commons.lang3.StringUtils;
 

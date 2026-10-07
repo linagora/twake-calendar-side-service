@@ -50,8 +50,13 @@ import com.linagora.calendar.storage.TeamCalendarRepository;
 import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.model.TeamCalendarId;
-import com.linagora.calendar.twakespace.ActivityEvent.EventAction;
-import com.linagora.calendar.twakespace.ActivityEvent.EventChange;
+import com.linagora.calendar.twakespace.model.ActivityEvent;
+import com.linagora.calendar.twakespace.model.ActivityEvent.EventAction;
+import com.linagora.calendar.twakespace.model.ActivityEvent.EventChange;
+import com.linagora.calendar.twakespace.model.CalendarEventSnapshot;
+import com.linagora.calendar.twakespace.model.OrganizationId;
+import com.linagora.calendar.twakespace.model.SpaceId;
+import com.linagora.calendar.twakespace.storage.TwakeSpaceRepository;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
@@ -70,7 +75,7 @@ public class CalendarActivity {
     static final String CREATED_EXCHANGE = EventCalendarNotificationConsumer.Queue.ADD.exchangeName();
     static final String UPDATED_EXCHANGE = EventCalendarNotificationConsumer.Queue.UPDATE.exchangeName();
     static final String EMAIL_EXCHANGE = EventEmailConsumer.EXCHANGE_NAME;
-    static final List<String> EXCHANGES = List.of(CREATED_EXCHANGE, UPDATED_EXCHANGE, EMAIL_EXCHANGE);
+    public static final List<String> EXCHANGES = List.of(CREATED_EXCHANGE, UPDATED_EXCHANGE, EMAIL_EXCHANGE);
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CalendarActivity.class);
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module())

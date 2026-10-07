@@ -16,22 +16,32 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.twakespace;
+package com.linagora.calendar.twakespace.model;
 
-import org.apache.commons.lang3.StringUtils;
+import java.util.Arrays;
+import java.util.Optional;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonValue;
-import com.google.common.base.Preconditions;
+public enum SpaceEventType {
+    CREATED("twake.space.created"),
+    UPDATED("twake.space.updated"),
+    DELETED("twake.space.deleted"),
+    MEMBER_ADDED("twake.space.member.added"),
+    MEMBER_ROLE_CHANGED("twake.space.member.role.changed"),
+    MEMBER_REMOVED("twake.space.member.removed");
 
-public record SpaceId(@JsonValue String value) {
-    @JsonCreator(mode = JsonCreator.Mode.DELEGATING)
-    public SpaceId {
-        Preconditions.checkArgument(!StringUtils.isBlank(value), "space id must not be empty");
+    public static Optional<SpaceEventType> fromRoutingKey(String routingKey) {
+        return Arrays.stream(values())
+            .filter(type -> type.routingKey.equals(routingKey))
+            .findFirst();
     }
 
-    @Override
-    public String toString() {
-        return value;
+    private final String routingKey;
+
+    SpaceEventType(String routingKey) {
+        this.routingKey = routingKey;
+    }
+
+    public String routingKey() {
+        return routingKey;
     }
 }

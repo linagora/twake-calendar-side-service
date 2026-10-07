@@ -16,34 +16,14 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.twakespace;
+package com.linagora.calendar.twakespace.model;
 
-import java.io.IOException;
-import java.util.List;
-import java.util.Objects;
-
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
-@JsonIgnoreProperties(ignoreUnknown = true)
-public record SpaceEvent(OrganizationId organizationId, String organizationDomain, @JsonProperty(required = true) SpaceId id, String name,
-                         List<Member> members) {
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Member(@JsonProperty(required = true) String email, String role) {
+public class UnprocessableSpaceEventException extends RuntimeException {
+    public UnprocessableSpaceEventException(String message) {
+        super(message);
     }
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-
-    public static SpaceEvent deserialize(byte[] body) {
-        try {
-            return OBJECT_MAPPER.readValue(body, SpaceEvent.class);
-        } catch (IOException e) {
-            throw new UnprocessableSpaceEventException("Unable to deserialize space event", e);
-        }
-    }
-
-    public SpaceEvent {
-        members = List.copyOf(Objects.requireNonNullElse(members, List.of()));
+    public UnprocessableSpaceEventException(String message, Throwable cause) {
+        super(message, cause);
     }
 }

@@ -16,7 +16,7 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.twakespace;
+package com.linagora.calendar.twakespace.model;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
