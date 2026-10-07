@@ -47,7 +47,9 @@ public class MemoryTeamCalendarRepository implements TeamCalendarRepository {
     public Mono<TeamCalendar> create(TeamCalendarInsertRequest teamCalendar) {
         return Mono.fromCallable(() -> {
             TeamCalendar created = toTeamCalendar(teamCalendar);
-            teamCalendars.put(created.id(), created);
+            if (teamCalendars.putIfAbsent(created.id(), created) != null) {
+                throw new TeamCalendarAlreadyExistsException(created.id());
+            }
             return created;
         });
     }
@@ -105,7 +107,7 @@ public class MemoryTeamCalendarRepository implements TeamCalendarRepository {
 
     private TeamCalendar toTeamCalendar(TeamCalendarInsertRequest request) {
         Instant now = clock.instant();
-        return new TeamCalendar(new TeamCalendarId(UUID.randomUUID().toString()), request.domain(),
+        return new TeamCalendar(request.id().orElseGet(() -> new TeamCalendarId(UUID.randomUUID().toString())), request.domain(),
             request.name(), request.displayName(), now, now);
     }
 

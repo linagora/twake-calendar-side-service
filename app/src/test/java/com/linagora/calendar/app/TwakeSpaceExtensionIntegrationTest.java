@@ -20,6 +20,7 @@ package com.linagora.calendar.app;
 
 import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.InputStream;
 import java.net.URI;
@@ -27,16 +28,21 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Stream;
 
 import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
+import org.apache.james.util.concurrency.ConcurrentTestRunner;
 import org.apache.james.utils.GuiceProbe;
 import org.apache.james.utils.WebAdminGuiceProbe;
 import org.awaitility.Awaitility;
@@ -47,6 +53,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -60,9 +68,12 @@ import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.TestFixture;
+import com.linagora.calendar.twakespace.SpaceTeamCalendars;
 import com.linagora.calendar.twakespace.TwakeSpaceConfiguration;
 import com.linagora.calendar.twakespace.amqp.CalendarActivityConsumer;
 import com.linagora.calendar.twakespace.amqp.SpaceEventConsumer;
+import com.linagora.calendar.twakespace.model.DuplicateSpaceTeamCalendarException;
+import com.linagora.calendar.twakespace.model.SpaceId;
 import com.rabbitmq.client.AMQP;
 import com.rabbitmq.client.BuiltinExchangeType;
 import com.rabbitmq.client.Channel;
@@ -92,6 +103,7 @@ class TwakeSpaceExtensionIntegrationTest {
     private static final String UNREADABLE = "not json";
     private static final Domain DOMAIN = Domain.of("space.tld");
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final AtomicLong EVENT_COUNT = new AtomicLong();
     private static final ConditionFactory AWAIT = Awaitility.await().atMost(Duration.ofSeconds(30)).pollInterval(Duration.ofMillis(200));
 
     @RegisterExtension
@@ -127,7 +139,11 @@ class TwakeSpaceExtensionIntegrationTest {
                 .build())
             .overrideWith(List.of(AppTestHelper.OIDC_BY_PASS_MODULE,
                 DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
-                binder -> Multibinder.newSetBinder(binder, GuiceProbe.class).addBinding().to(MonitoredRabbitMQProbe.class)));
+                binder -> {
+                    Multibinder<GuiceProbe> probes = Multibinder.newSetBinder(binder, GuiceProbe.class);
+                    probes.addBinding().to(MonitoredRabbitMQProbe.class);
+                    probes.addBinding().to(SpaceTeamCalendarsProbe.class);
+                }));
         server.start();
         server.getProbe(CalendarDataProbe.class).addDomain(DOMAIN);
         webAdmin = new RequestSpecBuilder()
@@ -164,6 +180,32 @@ class TwakeSpaceExtensionIntegrationTest {
 
         assertThat(probe.consumedQueues()).contains(QUEUE, CalendarActivityConsumer.QUEUE);
         assertThat(probe.deadLetterQueues()).contains(DEAD_LETTER_QUEUE, CalendarActivityConsumer.DEAD_LETTER_QUEUE);
+    }
+
+    @Test
+    void concurrentFindOrCreateShouldMakeASingleTeamCalendar() throws Exception {
+        SpaceId spaceId = new SpaceId(UUID.randomUUID().toString());
+        SpaceTeamCalendarsProbe probe = server.getProbe(SpaceTeamCalendarsProbe.class);
+
+        ConcurrentTestRunner.builder()
+            .reactorOperation((threadNumber, step) -> probe.findOrCreate(DOMAIN, spaceId, Optional.of("Marketing")).then())
+            .threadCount(10)
+            .operationCount(1)
+            .runSuccessfullyWithin(Duration.ofMinutes(1));
+
+        assertThat(teamCalendar(spaceId.value()).path("id").asText()).isEqualTo(SpaceTeamCalendars.teamCalendarId(spaceId).value());
+    }
+
+    @Test
+    void findShouldFailWhenASpaceHasTwoTeamCalendars() {
+        SpaceId spaceId = new SpaceId(UUID.randomUUID().toString());
+        for (String displayName : List.of("Marketing", "Marketing again")) {
+            given(webAdmin).body("{\"name\": \"%s\", \"displayName\": \"%s\"}".formatted(spaceId.value(), displayName))
+                .post().then().statusCode(201);
+        }
+
+        assertThatThrownBy(() -> server.getProbe(SpaceTeamCalendarsProbe.class).find(DOMAIN, spaceId).block())
+            .isInstanceOf(DuplicateSpaceTeamCalendarException.class);
     }
 
     @Test
@@ -460,9 +502,7 @@ class TwakeSpaceExtensionIntegrationTest {
         String spaceId = UUID.randomUUID().toString();
         publish("twake.space.created", created(spaceId, "Marketing", member("alice", "admin")));
 
-        publish("twake.space.updated", """
-            {"organizationId": "org", "id": "%s", "name": "Sales", "actor": "alice@%s", "timestamp": "2026-10-06T10:00:00.000Z"}"""
-            .formatted(spaceId, DOMAIN.asString()));
+        publish("twake.space.updated", updated(spaceId, "Sales"));
 
         AWAIT.untilAsserted(() -> assertThat(teamCalendar(spaceId).path("displayName").asText()).isEqualTo("Sales"));
     }
@@ -472,9 +512,7 @@ class TwakeSpaceExtensionIntegrationTest {
         String spaceId = UUID.randomUUID().toString();
         publish("twake.space.created", created(spaceId, "Marketing", member("alice", "admin")));
 
-        publish("twake.space.deleted", """
-            {"organizationId": "org", "id": "%s", "actor": "alice@%s", "timestamp": "2026-10-06T10:00:00.000Z"}"""
-            .formatted(spaceId, DOMAIN.asString()));
+        publish("twake.space.deleted", deleted(spaceId));
         awaitConsumed();
 
         Document space = Mono.from(sabreDavExtension.dockerSabreDavSetup().getMongoDB()
@@ -487,19 +525,118 @@ class TwakeSpaceExtensionIntegrationTest {
         String spaceId = UUID.randomUUID().toString();
         publish("twake.space.created", created(spaceId, "Marketing", member("alice", "admin"), member("bob", "viewer")));
 
-        publish("twake.space.deleted", """
-            {"organizationId": "org", "id": "%s", "actor": "alice@%s", "timestamp": "2026-10-06T10:00:00.000Z"}"""
-            .formatted(spaceId, DOMAIN.asString()));
+        publish("twake.space.deleted", deleted(spaceId));
         awaitConsumed();
 
         assertThat(members(spaceId)).isEmpty();
     }
 
     @Test
-    void eventOfASpaceWithoutTeamCalendarShouldBeDeadLettered() throws Exception {
-        publish("twake.space.member.added", memberEvent(UUID.randomUUID().toString(), member("bob", "viewer")));
+    void memberAddedToAnUnknownSpaceShouldProvisionItsTeamCalendar() throws Exception {
+        String spaceId = UUID.randomUUID().toString();
 
-        AWAIT.untilAsserted(() -> assertThat(messageCount(DEAD_LETTER_QUEUE)).isEqualTo(1));
+        publish("twake.space.member.added", memberEventIn(DOMAIN, spaceId, member("bob", "viewer")));
+
+        AWAIT.untilAsserted(() -> assertThat(members(spaceId)).containsOnly(Map.entry("bob@space.tld", "dav:read")));
+        assertThat(teamCalendar(spaceId).path("displayName").asText()).isEqualTo(spaceId);
+    }
+
+    @Test
+    void eventsHandledInAnyOrderShouldKeepTheNewestValues() throws Exception {
+        String spaceId = UUID.randomUUID().toString();
+        String created = created(spaceId, "Marketing", member("alice", "admin"), member("bob", "editor"));
+        String roleChanged = memberEvent(spaceId, member("bob", "viewer"));
+        String renamed = updated(spaceId, "Sales");
+
+        publish("twake.space.member.role.changed", roleChanged);
+        publish("twake.space.updated", renamed);
+        publish("twake.space.created", created);
+
+        AWAIT.untilAsserted(() -> assertThat(members(spaceId)).containsOnly(
+            Map.entry("alice@space.tld", "dav:read-write"),
+            Map.entry("bob@space.tld", "dav:read")));
+        assertThat(teamCalendar(spaceId).path("displayName").asText()).isEqualTo("Sales");
+    }
+
+    static Stream<List<Integer>> handlingOrders() {
+        return Stream.of(
+            List.of(0, 1, 2, 3, 4, 5),
+            List.of(5, 4, 3, 2, 1, 0),
+            List.of(3, 5, 1, 0, 4, 2),
+            List.of(4, 2, 0, 5, 3, 1),
+            List.of(1, 4, 3, 2, 5, 0));
+    }
+
+    // Built in this order, so each event is newer than the ones before it.
+    private static List<Map.Entry<String, String>> spaceHistory(String spaceId) {
+        return List.of(
+            Map.entry("twake.space.created", created(spaceId, "Marketing", member("alice", "admin"), member("bob", "editor"))),
+            Map.entry("twake.space.member.added", memberEvent(spaceId, member("carol", "editor"))),
+            Map.entry("twake.space.member.role.changed", memberEvent(spaceId, member("bob", "viewer"))),
+            Map.entry("twake.space.updated", updated(spaceId, "Sales")),
+            Map.entry("twake.space.member.removed", memberEvent(spaceId, member("carol", "editor"))),
+            Map.entry("twake.space.member.added", memberEvent(spaceId, member("dave", "viewer"))));
+    }
+
+    @ParameterizedTest
+    @MethodSource("handlingOrders")
+    void spaceEventsShouldGiveTheSameTeamCalendarWhateverTheirOrder(List<Integer> order) throws Exception {
+        String spaceId = UUID.randomUUID().toString();
+        List<Map.Entry<String, String>> history = spaceHistory(spaceId);
+
+        for (int index : order) {
+            publish(history.get(index).getKey(), history.get(index).getValue());
+        }
+        awaitConsumed();
+
+        assertThat(teamCalendar(spaceId).path("displayName").asText()).isEqualTo("Sales");
+        assertThat(members(spaceId)).containsOnly(
+            Map.entry("alice@space.tld", "dav:read-write"),
+            Map.entry("bob@space.tld", "dav:read"),
+            Map.entry("dave@space.tld", "dav:read"));
+    }
+
+    // Index 6 is the deletion, the newest event.
+    static Stream<List<Integer>> handlingOrdersWithDeletion() {
+        return Stream.of(
+            List.of(0, 1, 2, 3, 4, 5, 6),
+            List.of(6, 5, 4, 3, 2, 1, 0),
+            List.of(0, 6, 1, 2, 3, 4, 5),
+            List.of(3, 5, 1, 0, 6, 4, 2),
+            List.of(4, 2, 6, 0, 5, 3, 1));
+    }
+
+    // The team calendar exists when the creation was handled before the deletion, and nobody keeps access to it.
+    @ParameterizedTest
+    @MethodSource("handlingOrdersWithDeletion")
+    void deletedSpaceShouldBeSharedWithNoOneWhateverTheOrderOfItsEvents(List<Integer> order) throws Exception {
+        String spaceId = UUID.randomUUID().toString();
+        List<Map.Entry<String, String>> history = new ArrayList<>(spaceHistory(spaceId));
+        history.add(Map.entry("twake.space.deleted", deleted(spaceId)));
+
+        for (int index : order) {
+            publish(history.get(index).getKey(), history.get(index).getValue());
+        }
+        awaitConsumed();
+
+        if (teamCalendarNames(DOMAIN).contains(spaceId)) {
+            assertThat(members(spaceId)).isEmpty();
+        }
+        assertThat(messageCount(DEAD_LETTER_QUEUE)).isZero();
+    }
+
+    @Test
+    void spaceDeletedBeforeItsCreationIsHandledShouldGetNoTeamCalendar() throws Exception {
+        String spaceId = UUID.randomUUID().toString();
+        String created = created(spaceId, "Marketing", member("alice", "admin"));
+        String deleted = deleted(spaceId);
+
+        publish("twake.space.deleted", deleted);
+        publish("twake.space.created", created);
+        awaitConsumed();
+
+        assertThat(teamCalendarNames(DOMAIN)).doesNotContain(spaceId);
+        assertThat(messageCount(DEAD_LETTER_QUEUE)).isZero();
     }
 
     @Test
@@ -563,9 +700,7 @@ class TwakeSpaceExtensionIntegrationTest {
     void memberAddedToADeletedSpaceShouldNotBeShared() throws Exception {
         String spaceId = UUID.randomUUID().toString();
         publish("twake.space.created", created(spaceId, "Marketing", member("alice", "admin")));
-        publish("twake.space.deleted", """
-            {"organizationId": "org", "id": "%s", "actor": "alice@%s", "timestamp": "2026-10-06T10:00:00.000Z"}"""
-            .formatted(spaceId, DOMAIN.asString()));
+        publish("twake.space.deleted", deleted(spaceId));
 
         publish("twake.space.member.added", memberEvent(spaceId, member("bob", "viewer")));
         awaitConsumed();
@@ -577,13 +712,13 @@ class TwakeSpaceExtensionIntegrationTest {
     @Test
     void spaceCreatedWithoutNameShouldBeDeadLettered() throws Exception {
         publish("twake.space.created", """
-            {"organizationId": "org", "id": "%s", "members": [%s], "actor": "alice@%s", "timestamp": "2026-10-06T10:00:00.000Z"}"""
-            .formatted(UUID.randomUUID(), member("alice", "admin"), DOMAIN.asString()));
+            {"organizationId": "org", "id": "%s", "members": [%s], "actor": "alice@%s", "timestamp": "%s"}"""
+            .formatted(UUID.randomUUID(), member("alice", "admin"), DOMAIN.asString(), timestamp()));
 
         AWAIT.untilAsserted(() -> assertThat(messageCount(DEAD_LETTER_QUEUE)).isEqualTo(1));
     }
 
-    // Events are consumed in order: once this space has its team calendar, the events before were handled.
+    // The test server consumes one event at a time: once this space has its team calendar, the events before were handled.
     private void awaitConsumed() throws Exception {
         String sentinel = UUID.randomUUID().toString();
         publish("twake.space.created", created(sentinel, "Sentinel", member("alice", "admin")));
@@ -626,21 +761,44 @@ class TwakeSpaceExtensionIntegrationTest {
     private static String createdIn(Domain organizationDomain, String spaceId) {
         return """
             {"organizationId": "org", "organizationDomain": "%s", "id": "%s", "name": "Marketing",
-             "members": [%s], "groups": [], "actor": "alice@%s", "timestamp": "2026-10-06T10:00:00.000Z"}"""
-            .formatted(organizationDomain.asString(), spaceId, member("alice", "admin"), DOMAIN.asString());
+             "members": [%s], "groups": [], "actor": "alice@%s", "timestamp": "%s"}"""
+            .formatted(organizationDomain.asString(), spaceId, member("alice", "admin"), DOMAIN.asString(), timestamp());
     }
 
     private static String created(String spaceId, String name, String... members) {
         return """
             {"organizationId": "org", "id": "%s", "name": "%s", "members": [%s], "groups": [],
-             "actor": "alice@%s", "timestamp": "2026-10-06T10:00:00.000Z"}"""
-            .formatted(spaceId, name, String.join(",", members), DOMAIN.asString());
+             "actor": "alice@%s", "timestamp": "%s"}"""
+            .formatted(spaceId, name, String.join(",", members), DOMAIN.asString(), timestamp());
     }
 
     private static String memberEvent(String spaceId, String member) {
         return """
-            {"organizationId": "org", "id": "%s", "members": [%s], "actor": "alice@%s", "timestamp": "2026-10-06T10:00:00.000Z"}"""
-            .formatted(spaceId, member, DOMAIN.asString());
+            {"organizationId": "org", "id": "%s", "members": [%s], "actor": "alice@%s", "timestamp": "%s"}"""
+            .formatted(spaceId, member, DOMAIN.asString(), timestamp());
+    }
+
+    private static String memberEventIn(Domain organizationDomain, String spaceId, String member) {
+        return """
+            {"organizationId": "org", "organizationDomain": "%s", "id": "%s", "members": [%s], "actor": "alice@%s", "timestamp": "%s"}"""
+            .formatted(organizationDomain.asString(), spaceId, member, DOMAIN.asString(), timestamp());
+    }
+
+    private static String updated(String spaceId, String name) {
+        return """
+            {"organizationId": "org", "id": "%s", "name": "%s", "actor": "alice@%s", "timestamp": "%s"}"""
+            .formatted(spaceId, name, DOMAIN.asString(), timestamp());
+    }
+
+    private static String deleted(String spaceId) {
+        return """
+            {"organizationId": "org", "id": "%s", "actor": "alice@%s", "timestamp": "%s"}"""
+            .formatted(spaceId, DOMAIN.asString(), timestamp());
+    }
+
+    // Each event built is newer than the ones built before it, as ldap-rest stamps them.
+    private static String timestamp() {
+        return Instant.now().plusMillis(EVENT_COUNT.incrementAndGet()).toString();
     }
 
     private static String member(String username, String role) {

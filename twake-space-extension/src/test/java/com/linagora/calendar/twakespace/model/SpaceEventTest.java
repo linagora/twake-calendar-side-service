@@ -22,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
@@ -36,7 +37,16 @@ class SpaceEventTest {
 
         assertThat(SpaceEvent.deserialize(body.getBytes(StandardCharsets.UTF_8)))
             .isEqualTo(new SpaceEvent(new OrganizationId("org"), null, new SpaceId("space-1"), "Marketing",
-                List.of(new SpaceEvent.Member("alice@space.tld", "admin"))));
+                List.of(new SpaceEvent.Member("alice@space.tld", "admin")), Instant.parse("2026-10-06T10:00:00Z")));
+    }
+
+    @Test
+    void deserializeShouldFailWithoutTimestamp() {
+        String body = """
+            {"organizationId": "org", "id": "space-1", "actor": "alice@space.tld"}""";
+
+        assertThatThrownBy(() -> SpaceEvent.deserialize(body.getBytes(StandardCharsets.UTF_8)))
+            .isInstanceOf(UnprocessableSpaceEventException.class);
     }
 
     @Test

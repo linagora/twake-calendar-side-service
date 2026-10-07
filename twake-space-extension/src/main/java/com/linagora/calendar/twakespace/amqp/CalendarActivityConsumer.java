@@ -40,7 +40,6 @@ import com.rabbitmq.client.BuiltinExchangeType;
 import reactor.core.publisher.Mono;
 import reactor.rabbitmq.AcknowledgableDelivery;
 
-// A single active consumer, so that the cards of an event reach the feed in the order of its changes.
 public class CalendarActivityConsumer implements Closeable, Startable {
     public static final String QUEUE = "tcalendar:twake-space-calendar";
     public static final String DEAD_LETTER_QUEUE = "tcalendar:twake-space-calendar-dead-letter";
@@ -64,7 +63,6 @@ public class CalendarActivityConsumer implements Closeable, Startable {
             .create(ManagedRabbitMQConsumer.Parameters.builder()
                 .queueDeclaration(queueDeclaration.build())
                 .queueArguments(queueArgumentSupplier)
-                .singleActiveConsumer()
                 .handleDelivery(this::handleDelivery)
                 .build());
     }

@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.storage.mongodb;
 
+import static com.linagora.calendar.storage.mongodb.MongoConstants.MONGO_DUPLICATE_KEY_CODE;
 import static com.mongodb.client.model.Filters.and;
 import static com.mongodb.client.model.Filters.eq;
 
@@ -35,11 +36,13 @@ import org.bson.types.ObjectId;
 
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.TeamCalendarAlreadyExistsException;
 import com.linagora.calendar.storage.TeamCalendarInsertRequest;
 import com.linagora.calendar.storage.TeamCalendarNotFoundException;
 import com.linagora.calendar.storage.TeamCalendarRepository;
 import com.linagora.calendar.storage.model.TeamCalendar;
 import com.linagora.calendar.storage.model.TeamCalendarId;
+import com.mongodb.MongoWriteException;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.FindOneAndUpdateOptions;
 import com.mongodb.client.model.IndexOptions;
@@ -83,7 +86,13 @@ public class MongoDBTeamCalendarRepository implements TeamCalendarRepository {
     public Mono<TeamCalendar> create(TeamCalendarInsertRequest request) {
         Document document = toDocument(request);
         return Mono.from(collection.insertOne(document))
-            .thenReturn(fromDocument(document));
+            .thenReturn(fromDocument(document))
+            .onErrorMap(MongoWriteException.class, e -> {
+                if (e.getError().getCode() == MONGO_DUPLICATE_KEY_CODE) {
+                    return new TeamCalendarAlreadyExistsException(new TeamCalendarId(document.getObjectId(ID_FIELD).toHexString()));
+                }
+                return e;
+            });
     }
 
     @Override
@@ -180,7 +189,7 @@ public class MongoDBTeamCalendarRepository implements TeamCalendarRepository {
     private Document toDocument(TeamCalendarInsertRequest request) {
         Date now = Date.from(clock.instant());
         return new Document()
-            .append(ID_FIELD, new ObjectId())
+            .append(ID_FIELD, request.id().map(id -> new ObjectId(id.value())).orElseGet(ObjectId::new))
             .append(DOMAIN_ID_FIELD, new ObjectId(request.domain().id().value()))
             .append(DOMAIN_NAME_FIELD, request.domain().domain().asString())
             .append(NAME_FIELD, request.name())

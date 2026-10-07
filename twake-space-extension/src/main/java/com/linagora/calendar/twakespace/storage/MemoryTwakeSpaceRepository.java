@@ -18,39 +18,20 @@
 
 package com.linagora.calendar.twakespace.storage;
 
-import java.time.Clock;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
-import jakarta.inject.Inject;
-
-import org.apache.james.core.Domain;
-
-import com.linagora.calendar.twakespace.model.OrganizationId;
 import com.linagora.calendar.twakespace.model.SpaceId;
+import com.linagora.calendar.twakespace.model.TwakeSpace;
 
 import reactor.core.publisher.Mono;
 
 public class MemoryTwakeSpaceRepository implements TwakeSpaceRepository {
     private final Map<SpaceId, TwakeSpace> spaces = new ConcurrentHashMap<>();
-    private final Clock clock;
-
-    @Inject
-    public MemoryTwakeSpaceRepository(Clock clock) {
-        this.clock = clock;
-    }
 
     @Override
-    public Mono<Void> save(SpaceId spaceId, OrganizationId organization, Domain domain) {
-        return Mono.fromRunnable(() -> spaces.put(spaceId, new TwakeSpace(spaceId, Optional.of(organization), domain, Optional.empty())));
-    }
-
-    @Override
-    public Mono<Void> markDeleted(SpaceId spaceId) {
-        return Mono.fromRunnable(() -> spaces.computeIfPresent(spaceId, (id, space) -> space.deletion().isPresent()
-            ? space
-            : new TwakeSpace(id, space.organization(), space.domain(), Optional.of(clock.instant()))));
+    public Mono<TwakeSpace> merge(TwakeSpace change) {
+        return Mono.fromCallable(() -> spaces.merge(change.id(), change, TwakeSpace::merge));
     }
 
     @Override

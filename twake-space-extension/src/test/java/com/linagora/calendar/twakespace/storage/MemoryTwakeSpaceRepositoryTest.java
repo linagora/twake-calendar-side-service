@@ -18,26 +18,18 @@
 
 package com.linagora.calendar.twakespace.storage;
 
-import org.apache.james.utils.UpdatableTickingClock;
 import org.junit.jupiter.api.BeforeEach;
 
 class MemoryTwakeSpaceRepositoryTest implements TwakeSpaceRepositoryContract {
-    private UpdatableTickingClock clock;
     private MemoryTwakeSpaceRepository repository;
 
     @BeforeEach
     void setUp() {
-        clock = new UpdatableTickingClock(NOW);
-        repository = new MemoryTwakeSpaceRepository(clock);
+        repository = new MemoryTwakeSpaceRepository();
     }
 
     @Override
     public TwakeSpaceRepository testee() {
         return repository;
-    }
-
-    @Override
-    public UpdatableTickingClock clock() {
-        return clock;
     }
 }
