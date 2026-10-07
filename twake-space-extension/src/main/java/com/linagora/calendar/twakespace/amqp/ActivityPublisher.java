@@ -16,7 +16,7 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.twakespace;
+package com.linagora.calendar.twakespace.amqp;
 
 import static com.linagora.tmail.saas.rabbitmq.TWPConstants.TWP_INJECTION_KEY;
 import static org.apache.james.backends.rabbitmq.Constants.DURABLE;
@@ -27,6 +27,8 @@ import jakarta.inject.Named;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.lifecycle.api.Startable;
 
+import com.linagora.calendar.twakespace.TwakeSpaceConfiguration;
+import com.linagora.calendar.twakespace.model.ActivityEvent;
 import com.rabbitmq.client.AMQP;
 import com.rabbitmq.client.BuiltinExchangeType;
 

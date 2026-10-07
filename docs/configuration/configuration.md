@@ -65,7 +65,7 @@ Here is the detail of the configuration entries:
 | common.contact.api.port | Optional. Port the [Common Contacts backend autocomplete API](../apis/commonContactsApi.md) listens on. The API is disabled when unset. | common.contact.api.port=81 |
 | common.contact.api.secrets | Required when `common.contact.api.port` is set (startup fails otherwise). Coma separated list of the Bearer tokens accepted by the Common Contacts API. Surrounding spaces and empty entries are ignored. | common.contact.api.secrets=abcdef,ghijz |
 | saas.subscription.enabled | Optional. Defaults to `false`. Enables the SaaS subscription consumers that listen to the Twake Workplace RabbitMQ broker for domain and user subscription messages, and automatically provision domains and register users with their calendar features. Requires `twp.settings.enabled=true` (startup fails otherwise). The related broker properties are described in [Twake Workplace RabbitMQ properties](#twake-workplace-rabbitmq-properties). | saas.subscription.enabled=true |
-| twakespace.enabled | Optional. Defaults to `false`. Gives each Twake Workplace space a team calendar and publishes its activity for the TwakeSpace feed. Requires `twp.settings.enabled=true` and the MongoDB backend (startup fails otherwise). See [TwakeSpace](twake-space.md). | twakespace.enabled=true |
+| twakespace.enabled | Optional. Defaults to `false`. Gives each Twake Workplace space a team calendar and publishes its activity for the TwakeSpace feed. Requires `twp.settings.enabled=true` (startup fails otherwise). See [TwakeSpace](twake-space.md). | twakespace.enabled=true |
 
 Please find hereby a [working example](../../app/src/main/conf/configuration.properties).
 

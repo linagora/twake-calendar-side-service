@@ -219,10 +219,6 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                 throw new IllegalArgumentException("TWP Setting must be enabled when TwakeSpace is enabled");
             }
 
-            if (dbChoice != DbChoice.MONGODB && twakeSpaceEnabledValue) {
-                throw new IllegalArgumentException("TwakeSpace needs the MongoDB backend");
-            }
-
             if (!twpSettingEnabledValue && saasSubscriptionEnabledValue) {
                 throw new IllegalArgumentException("TWP Setting must be enabled when SaaS Subscription is enabled");
             }

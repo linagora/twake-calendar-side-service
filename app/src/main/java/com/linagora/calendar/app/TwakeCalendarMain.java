@@ -152,7 +152,7 @@ public class TwakeCalendarMain {
                 chooseCommonContacts(configuration.commonContactsEnabled()),
                 chooseSaaSSubscription(configuration.saasSubscriptionEnabled()),
                 chooseMeet(configuration.meetEnabled()),
-                chooseTwakeSpace(configuration.twakeSpaceEnabled()),
+                chooseTwakeSpace(configuration.twakeSpaceEnabled(), configuration.dbChoice()),
                 new FileUploadConfigurationModule(),
                 new RestApiModule(),
                 new CommonContactsApiModule(),
@@ -267,9 +267,12 @@ public class TwakeCalendarMain {
         return Modules.EMPTY_MODULE;
     }
 
-    public static Module chooseTwakeSpace(boolean enabled) {
+    public static Module chooseTwakeSpace(boolean enabled, TwakeCalendarConfiguration.DbChoice dbChoice) {
         if (enabled) {
-            return new TwakeSpaceModule();
+            return Modules.combine(new TwakeSpaceModule(), switch (dbChoice) {
+                case MEMORY -> TwakeSpaceModule.MEMORY_STORAGE;
+                case MONGODB -> TwakeSpaceModule.MONGODB_STORAGE;
+            });
         }
         return Modules.EMPTY_MODULE;
     }

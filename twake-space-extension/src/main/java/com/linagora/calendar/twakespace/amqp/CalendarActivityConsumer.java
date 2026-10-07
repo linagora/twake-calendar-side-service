@@ -16,62 +16,54 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.twakespace;
+package com.linagora.calendar.twakespace.amqp;
 
-import static com.linagora.tmail.saas.rabbitmq.TWPConstants.TWP_INJECTION_KEY;
+import static com.linagora.calendar.amqp.CalendarAmqpModule.INJECT_KEY_DAV;
+import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
 
 import java.io.Closeable;
-import java.util.stream.Stream;
+import java.util.function.Supplier;
 
 import jakarta.annotation.PreDestroy;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 
 import org.apache.james.backends.rabbitmq.QueueArguments;
-import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.lifecycle.api.Startable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
+import com.linagora.calendar.twakespace.CalendarActivity;
 import com.linagora.tmail.rabbitmq.ManagedRabbitMQConsumer;
 import com.linagora.tmail.rabbitmq.QueueDeclaration;
-import com.linagora.tmail.saas.rabbitmq.TWPCommonRabbitMQConfiguration;
+import com.rabbitmq.client.BuiltinExchangeType;
 
 import reactor.core.publisher.Mono;
 import reactor.rabbitmq.AcknowledgableDelivery;
 
-// A single active consumer, so that the events of a space are handled in order across replicas.
-public class SpaceEventConsumer implements Closeable, Startable {
-    public static final String QUEUE = "tcalendar:twake-space";
-    public static final String DEAD_LETTER_QUEUE = "tcalendar:twake-space-dead-letter";
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(SpaceEventConsumer.class);
+// A single active consumer, so that the cards of an event reach the feed in the order of its changes.
+public class CalendarActivityConsumer implements Closeable, Startable {
+    public static final String QUEUE = "tcalendar:twake-space-calendar";
+    public static final String DEAD_LETTER_QUEUE = "tcalendar:twake-space-calendar-dead-letter";
 
     private final ManagedRabbitMQConsumer consumer;
-    private final TwakeSpaceProvisioner provisioner;
+    private final CalendarActivity calendarActivity;
     private final ActivityPublisher activityPublisher;
 
     @Inject
-    public SpaceEventConsumer(@Named(TWP_INJECTION_KEY) ReactorRabbitMQChannelPool channelPool,
-                              @Named(TWP_INJECTION_KEY) RabbitMQConfiguration rabbitMQConfiguration,
-                              TWPCommonRabbitMQConfiguration twpCommonRabbitMQConfiguration,
-                              TwakeSpaceConfiguration configuration,
-                              TwakeSpaceProvisioner provisioner,
-                              ActivityPublisher activityPublisher) {
-        this.provisioner = provisioner;
+    public CalendarActivityConsumer(ReactorRabbitMQChannelPool channelPool,
+                                    @Named(INJECT_KEY_DAV) Supplier<QueueArguments.Builder> queueArgumentSupplier,
+                                    CalendarActivity calendarActivity,
+                                    ActivityPublisher activityPublisher) {
+        this.calendarActivity = calendarActivity;
         this.activityPublisher = activityPublisher;
         QueueDeclaration.Builder queueDeclaration = QueueDeclaration.builder()
             .queue(QUEUE)
             .deadLetterQueue(DEAD_LETTER_QUEUE);
-        Stream.of(SpaceEventType.values())
-            .forEach(type -> queueDeclaration.binding(configuration.spaceExchange(), type.routingKey()));
+        CalendarActivity.EXCHANGES.forEach(exchange -> queueDeclaration.binding(exchange, BuiltinExchangeType.FANOUT, EMPTY_ROUTING_KEY));
         consumer = new ManagedRabbitMQConsumer.Factory(channelPool)
             .create(ManagedRabbitMQConsumer.Parameters.builder()
                 .queueDeclaration(queueDeclaration.build())
-                .queueArguments(() -> twpCommonRabbitMQConfiguration.quorumQueuesBypass()
-                    ? QueueArguments.builder()
-                    : rabbitMQConfiguration.workQueueArgumentsBuilder())
+                .queueArguments(queueArgumentSupplier)
                 .singleActiveConsumer()
                 .handleDelivery(this::handleDelivery)
                 .build());
@@ -92,13 +84,7 @@ public class SpaceEventConsumer implements Closeable, Startable {
     }
 
     private Mono<Void> handleDelivery(AcknowledgableDelivery delivery) {
-        String routingKey = delivery.getEnvelope().getRoutingKey();
-        return Mono.fromCallable(() -> SpaceEvent.deserialize(delivery.getBody()))
-            .doOnNext(event -> LOGGER.debug("Received {} for space {}", routingKey, event.id()))
-            .flatMap(event -> SpaceEventType.fromRoutingKey(routingKey)
-                .map(type -> provisioner.handle(type, event)
-                    .flatMap(activityPublisher::publish))
-                .orElseGet(() -> Mono.fromRunnable(() ->
-                    LOGGER.warn("Ignoring {} for space {}: not a space event TwakeSpace handles", routingKey, event.id()))));
+        return calendarActivity.handle(delivery.getEnvelope().getExchange(), delivery.getBody())
+            .flatMap(activityPublisher::publish);
     }
 }

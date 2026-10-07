@@ -16,14 +16,13 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.twakespace;
+package com.linagora.calendar.twakespace.storage;
 
 import static com.mongodb.client.model.Filters.and;
 import static com.mongodb.client.model.Filters.eq;
 import static com.mongodb.client.model.Filters.exists;
 
 import java.time.Clock;
-import java.time.Instant;
 import java.util.Date;
 import java.util.Optional;
 
@@ -32,6 +31,8 @@ import jakarta.inject.Inject;
 import org.apache.james.core.Domain;
 import org.bson.Document;
 
+import com.linagora.calendar.twakespace.model.OrganizationId;
+import com.linagora.calendar.twakespace.model.SpaceId;
 import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.Updates;
 import com.mongodb.reactivestreams.client.MongoCollection;
@@ -39,11 +40,7 @@ import com.mongodb.reactivestreams.client.MongoDatabase;
 
 import reactor.core.publisher.Mono;
 
-public class TwakeSpaceRepository {
-    // Spaces recorded before the organization was stored have none.
-    public record TwakeSpace(SpaceId id, Optional<OrganizationId> organization, Domain domain, Optional<Instant> deletion) {
-    }
-
+public class MongoTwakeSpaceRepository implements TwakeSpaceRepository {
     public static final String COLLECTION = "twake_spaces";
     private static final String ID_FIELD = "_id";
     private static final String ORGANIZATION_FIELD = "organization";
@@ -54,11 +51,12 @@ public class TwakeSpaceRepository {
     private final Clock clock;
 
     @Inject
-    public TwakeSpaceRepository(MongoDatabase database, Clock clock) {
+    public MongoTwakeSpaceRepository(MongoDatabase database, Clock clock) {
         this.collection = database.getCollection(COLLECTION);
         this.clock = clock;
     }
 
+    @Override
     public Mono<Void> save(SpaceId spaceId, OrganizationId organization, Domain domain) {
         return Mono.from(collection.replaceOne(eq(ID_FIELD, spaceId.value()),
                 new Document(ID_FIELD, spaceId.value())
@@ -68,12 +66,14 @@ public class TwakeSpaceRepository {
             .then();
     }
 
+    @Override
     public Mono<Void> markDeleted(SpaceId spaceId) {
         return Mono.from(collection.updateOne(and(eq(ID_FIELD, spaceId.value()), exists(DELETION_FIELD, false)),
                 Updates.set(DELETION_FIELD, Date.from(clock.instant()))))
             .then();
     }
 
+    @Override
     public Mono<TwakeSpace> retrieve(SpaceId spaceId) {
         return Mono.from(collection.find(eq(ID_FIELD, spaceId.value())).first())
             .map(document -> new TwakeSpace(new SpaceId(document.getString(ID_FIELD)),

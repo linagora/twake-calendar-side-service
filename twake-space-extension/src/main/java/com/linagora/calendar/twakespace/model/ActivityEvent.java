@@ -16,7 +16,7 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.twakespace;
+package com.linagora.calendar.twakespace.model;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -118,7 +118,7 @@ public record ActivityEvent(String id, String type, Instant time, OrganizationId
     }
 
     // All day events are dates: their start and end carry no time zone.
-    static String time(Instant instant, boolean allDay) {
+    public static String time(Instant instant, boolean allDay) {
         if (allDay) {
             return LocalDate.ofInstant(instant, ZoneOffset.UTC).toString();
         }

@@ -16,32 +16,27 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.twakespace;
+package com.linagora.calendar.twakespace.storage;
 
-import java.util.Arrays;
+import java.time.Instant;
 import java.util.Optional;
 
-public enum SpaceEventType {
-    CREATED("twake.space.created"),
-    UPDATED("twake.space.updated"),
-    DELETED("twake.space.deleted"),
-    MEMBER_ADDED("twake.space.member.added"),
-    MEMBER_ROLE_CHANGED("twake.space.member.role.changed"),
-    MEMBER_REMOVED("twake.space.member.removed");
+import org.apache.james.core.Domain;
 
-    public static Optional<SpaceEventType> fromRoutingKey(String routingKey) {
-        return Arrays.stream(values())
-            .filter(type -> type.routingKey.equals(routingKey))
-            .findFirst();
+import com.linagora.calendar.twakespace.model.OrganizationId;
+import com.linagora.calendar.twakespace.model.SpaceId;
+
+import reactor.core.publisher.Mono;
+
+public interface TwakeSpaceRepository {
+    // Spaces recorded before the organization was stored have none.
+    record TwakeSpace(SpaceId id, Optional<OrganizationId> organization, Domain domain, Optional<Instant> deletion) {
     }
 
-    private final String routingKey;
+    Mono<Void> save(SpaceId spaceId, OrganizationId organization, Domain domain);
 
-    SpaceEventType(String routingKey) {
-        this.routingKey = routingKey;
-    }
+    // A redelivered deleted keeps the first deletion time.
+    Mono<Void> markDeleted(SpaceId spaceId);
 
-    public String routingKey() {
-        return routingKey;
-    }
+    Mono<TwakeSpace> retrieve(SpaceId spaceId);
 }
