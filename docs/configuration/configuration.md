@@ -60,7 +60,7 @@ Here is the detail of the configuration entries:
 | upload.expiration | Optional. Defaulting to 1 hour. After this amount of time uploads are removed.                                                                                                                                                                                                              | upload.expiration=1h                                                                 |
 | basic.auth.enabled | Optional. Defaults to false (basic auth disabled). Alows regular user to use bsic auth mecanism. While implemented by OpenPaaS it shall not be needed by the SPAs.                                                                                                                          | basic.auth.enabled=true |
 | default.calendar.public.visibility | Optional. Defaults to private. One of private, read. If it is set to read, default calendars will be set publicly visible upon creation.                                                                                                                                                                                     | default.calendar.public.visibility=read |
-| twp.settings.enabled | Optional. Defaults to `false`. Enables synchronization of user settings from Twake Workplace. When enabled, some settings become read-only via REST APIs. The related broker properties are described in [Twake Workplace RabbitMQ properties](#twake-workplace-rabbitmq-properties). | twp.settings.enabled=true |
+| twp.settings.enabled | Optional. Defaults to `false`. Enables synchronization of user settings from Twake Workplace. When enabled, some settings become read-only via REST APIs, and user data is deleted upon Twake Workplace user deletion events. The related broker properties are described in [Twake Workplace RabbitMQ properties](#twake-workplace-rabbitmq-properties). | twp.settings.enabled=true |
 | common.contacts.enabled | Optional. Defaults to `false`. Enables Common Contacts synchronization through the Twake Workplace RabbitMQ broker. Requires `twp.settings.enabled=true` for the shared Twake Workplace RabbitMQ infrastructure. | common.contacts.enabled=true |
 | common.contact.api.port | Optional. Port the [Common Contacts backend autocomplete API](../apis/commonContactsApi.md) listens on. The API is disabled when unset. | common.contact.api.port=81 |
 | common.contact.api.secrets | Required when `common.contact.api.port` is set (startup fails otherwise). Coma separated list of the Bearer tokens accepted by the Common Contacts API. Surrounding spaces and empty entries are ignored. | common.contact.api.secrets=abcdef,ghijz |
@@ -92,6 +92,21 @@ standard RabbitMQ connection (`uri`, ...); set `twp.rabbitmq.uri` only when Twak
 |---------------------|-------------|---------|
 | twp.settings.exchange | Optional. Defaults to `settings`. Exchange the user settings updates are consumed from. | twp.settings.exchange=settings |
 | twp.settings.routingKey | Optional. Defaults to `user.settings.updated`. Routing key bound for user settings updates. | twp.settings.routingKey=user.settings.updated |
+
+### TWP user deletion (`twp.settings.enabled=true`)
+
+When TWP settings synchronization is enabled, the service also consumes Twake Workplace user deletion events on the
+`tcalendar-user-deletion` queue (dead letter queue: `tcalendar-user-deletion-dead-letter`). The user is identified by the
+top-level `internalEmail` field (`{"internalEmail": "alice@twake.app"}`), additional fields are tolerated. Each event
+triggers the same user data deletion as the WebAdmin `POST /users/{username}?action=deleteData` endpoint: DAV calendars
+and events, DAV contacts and address books, calendar search index then the OpenPaaS user record.
+
+| Configuration entry | Explanation | Example |
+|---------------------|-------------|---------|
+| twp.user.deletion.b2c.exchange | Optional. Defaults to `auth`. Exchange the B2C user deletion events are consumed from. | twp.user.deletion.b2c.exchange=auth |
+| twp.user.deletion.b2c.routingKey | Optional. Defaults to `user.deleted`. Routing key bound for B2C user deletion events. | twp.user.deletion.b2c.routingKey=user.deleted |
+| twp.user.deletion.b2b.exchange | Optional. Defaults to `b2b`. Exchange the B2B user deletion events are consumed from. | twp.user.deletion.b2b.exchange=b2b |
+| twp.user.deletion.b2b.routingKey | Optional. Defaults to `domain.user.deleted`. Routing key bound for B2B user deletion events. | twp.user.deletion.b2b.routingKey=domain.user.deleted |
 
 ### Common Contacts synchronization (`common.contacts.enabled=true`)
 
