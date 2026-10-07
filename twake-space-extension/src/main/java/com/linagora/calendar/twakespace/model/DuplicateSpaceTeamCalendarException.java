@@ -16,26 +16,19 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.twakespace.storage;
+package com.linagora.calendar.twakespace.model;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.List;
+import java.util.stream.Collectors;
 
-import com.linagora.calendar.twakespace.model.SpaceId;
-import com.linagora.calendar.twakespace.model.TwakeSpace;
+import org.apache.james.core.Domain;
 
-import reactor.core.publisher.Mono;
+import com.linagora.calendar.storage.model.TeamCalendarId;
 
-public class MemoryTwakeSpaceRepository implements TwakeSpaceRepository {
-    private final Map<SpaceId, TwakeSpace> spaces = new ConcurrentHashMap<>();
-
-    @Override
-    public Mono<TwakeSpace> merge(TwakeSpace change) {
-        return Mono.fromCallable(() -> spaces.merge(change.id(), change, TwakeSpace::merge));
-    }
-
-    @Override
-    public Mono<TwakeSpace> retrieve(SpaceId spaceId) {
-        return Mono.justOrEmpty(spaces.get(spaceId));
+public class DuplicateSpaceTeamCalendarException extends RuntimeException {
+    public DuplicateSpaceTeamCalendarException(SpaceId spaceId, Domain domain, List<TeamCalendarId> teamCalendars) {
+        super("Space " + spaceId + " has " + teamCalendars.size() + " team calendars in " + domain.asString() + ": "
+            + teamCalendars.stream().map(TeamCalendarId::value).collect(Collectors.joining(", "))
+            + ". Delete all but one with the team calendar webadmin routes.");
     }
 }

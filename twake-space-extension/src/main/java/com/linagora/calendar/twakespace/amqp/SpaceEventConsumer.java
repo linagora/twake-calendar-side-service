@@ -44,7 +44,6 @@ import com.linagora.tmail.rabbitmq.QueueDeclaration;
 import reactor.core.publisher.Mono;
 import reactor.rabbitmq.AcknowledgableDelivery;
 
-// A single active consumer, so that the events of a space are handled in order across replicas.
 public class SpaceEventConsumer implements Closeable, Startable {
     public static final String QUEUE = "tcalendar:twake-space";
     public static final String DEAD_LETTER_QUEUE = "tcalendar:twake-space-dead-letter";
@@ -72,7 +71,6 @@ public class SpaceEventConsumer implements Closeable, Startable {
             .create(ManagedRabbitMQConsumer.Parameters.builder()
                 .queueDeclaration(queueDeclaration.build())
                 .queueArguments(queueArgumentSupplier)
-                .singleActiveConsumer()
                 .handleDelivery(this::handleDelivery)
                 .build());
     }

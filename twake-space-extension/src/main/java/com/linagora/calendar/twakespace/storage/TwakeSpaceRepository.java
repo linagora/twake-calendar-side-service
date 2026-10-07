@@ -18,25 +18,14 @@
 
 package com.linagora.calendar.twakespace.storage;
 
-import java.time.Instant;
-import java.util.Optional;
-
-import org.apache.james.core.Domain;
-
-import com.linagora.calendar.twakespace.model.OrganizationId;
 import com.linagora.calendar.twakespace.model.SpaceId;
+import com.linagora.calendar.twakespace.model.TwakeSpace;
 
 import reactor.core.publisher.Mono;
 
 public interface TwakeSpaceRepository {
-    // Spaces recorded before the organization was stored have none.
-    record TwakeSpace(SpaceId id, Optional<OrganizationId> organization, Domain domain, Optional<Instant> deletion) {
-    }
-
-    Mono<Void> save(SpaceId spaceId, OrganizationId organization, Domain domain);
-
-    // A redelivered deleted keeps the first deletion time.
-    Mono<Void> markDeleted(SpaceId spaceId);
+    // Atomic, so that concurrent merges into a space all count. Returns the stored space.
+    Mono<TwakeSpace> merge(TwakeSpace change);
 
     Mono<TwakeSpace> retrieve(SpaceId spaceId);
 }

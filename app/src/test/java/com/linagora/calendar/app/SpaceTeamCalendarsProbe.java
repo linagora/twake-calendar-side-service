@@ -16,26 +16,34 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.twakespace.storage;
+package com.linagora.calendar.app;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Optional;
 
+import jakarta.inject.Inject;
+
+import org.apache.james.core.Domain;
+import org.apache.james.utils.GuiceProbe;
+
+import com.linagora.calendar.storage.model.TeamCalendar;
+import com.linagora.calendar.twakespace.SpaceTeamCalendars;
 import com.linagora.calendar.twakespace.model.SpaceId;
-import com.linagora.calendar.twakespace.model.TwakeSpace;
 
 import reactor.core.publisher.Mono;
 
-public class MemoryTwakeSpaceRepository implements TwakeSpaceRepository {
-    private final Map<SpaceId, TwakeSpace> spaces = new ConcurrentHashMap<>();
+public class SpaceTeamCalendarsProbe implements GuiceProbe {
+    private final SpaceTeamCalendars spaceTeamCalendars;
 
-    @Override
-    public Mono<TwakeSpace> merge(TwakeSpace change) {
-        return Mono.fromCallable(() -> spaces.merge(change.id(), change, TwakeSpace::merge));
+    @Inject
+    public SpaceTeamCalendarsProbe(SpaceTeamCalendars spaceTeamCalendars) {
+        this.spaceTeamCalendars = spaceTeamCalendars;
     }
 
-    @Override
-    public Mono<TwakeSpace> retrieve(SpaceId spaceId) {
-        return Mono.justOrEmpty(spaces.get(spaceId));
+    public Mono<TeamCalendar> findOrCreate(Domain domain, SpaceId spaceId, Optional<String> name) {
+        return spaceTeamCalendars.findOrCreate(domain, spaceId, name);
+    }
+
+    public Mono<TeamCalendar> find(Domain domain, SpaceId spaceId) {
+        return spaceTeamCalendars.find(domain, spaceId);
     }
 }

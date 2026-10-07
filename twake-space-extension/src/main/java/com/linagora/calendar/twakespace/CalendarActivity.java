@@ -84,6 +84,39 @@ public class CalendarActivity {
 
     private record EventWrite(boolean created, OrganizationId organization, String actor, CalendarEventSnapshot event,
                               Optional<CalendarEventSnapshot> previous, String etag) {
+        Optional<EventChange> change() {
+            if (created) {
+                return Optional.of(change(EventAction.CREATED, emptyState(), attendeesBut(event, actor)));
+            }
+            if (previous.isEmpty()) {
+                return Optional.of(updated());
+            }
+            CalendarEventSnapshot previousEvent = previous.get();
+            if (event.equals(previousEvent)) {
+                return Optional.empty();
+            }
+            if (event.rescheduledFrom(previousEvent)) {
+                ObjectNode state = emptyState();
+                ObjectNode previousTime = state.putObject("previous")
+                    .put("start", ActivityEvent.time(previousEvent.start(), previousEvent.allDay()));
+                previousEvent.end().ifPresent(end -> previousTime.put("end", ActivityEvent.time(end, previousEvent.allDay())));
+                return Optional.of(change(EventAction.RESCHEDULED, state, attendeesBut(event, actor)));
+            }
+            if (event.onlyPartStatsChangedFrom(previousEvent)) {
+                // Changes of other attendees' answers are sabre applying their reply, published from their reply.
+                return Optional.ofNullable(event.partStatChangesFrom(previousEvent).get(StringUtils.lowerCase(actor)))
+                    .map(partStat -> change(answerAction(partStat), emptyState(), organizerBut(event, actor)));
+            }
+            return Optional.of(updated());
+        }
+
+        private EventChange updated() {
+            return change(EventAction.UPDATED, emptyState(), List.of());
+        }
+
+        private EventChange change(EventAction action, ObjectNode state, List<String> recipients) {
+            return new EventChange(action, organization, actor, event, state, recipients, etag);
+        }
     }
 
     private record EventAnswer(OrganizationId organization, MailAddress attendee, CalendarEventSnapshot event, VEvent answered) {
@@ -128,42 +161,7 @@ public class CalendarActivity {
                 .flatMap(event -> actor(message.path("connectedUser").asText(), event)
                     .map(actor -> new EventWrite(created, organization, actor, event,
                         previousVersion(message.path("old_event"), calendar, resourceName), message.path("etag").asText(event.uid())))))
-            .flatMap(write -> Mono.justOrEmpty(writeActivity(write)));
-    }
-
-    private Optional<ActivityEvent> writeActivity(EventWrite write) {
-        CalendarEventSnapshot event = write.event();
-        if (write.created()) {
-            return Optional.of(activity(new EventChange(EventAction.CREATED, write.organization(), write.actor(), event, emptyState(),
-                attendeesBut(event, write.actor()), write.etag())));
-        }
-        if (write.previous().isEmpty()) {
-            return Optional.of(updated(write));
-        }
-        CalendarEventSnapshot previous = write.previous().get();
-        if (event.equals(previous)) {
-            return Optional.empty();
-        }
-        if (event.rescheduledFrom(previous)) {
-            ObjectNode state = emptyState();
-            ObjectNode previousTime = state.putObject("previous")
-                .put("start", ActivityEvent.time(previous.start(), previous.allDay()));
-            previous.end().ifPresent(end -> previousTime.put("end", ActivityEvent.time(end, previous.allDay())));
-            return Optional.of(activity(new EventChange(EventAction.RESCHEDULED, write.organization(), write.actor(), event, state,
-                attendeesBut(event, write.actor()), write.etag())));
-        }
-        if (event.onlyPartStatsChangedFrom(previous)) {
-            // Changes of other attendees' answers are sabre applying their reply, published from their reply.
-            return Optional.ofNullable(event.partStatChangesFrom(previous).get(StringUtils.lowerCase(write.actor())))
-                .map(partStat -> activity(new EventChange(answerAction(partStat), write.organization(), write.actor(), event, emptyState(),
-                    organizerBut(event, write.actor()), write.etag())));
-        }
-        return Optional.of(updated(write));
-    }
-
-    private ActivityEvent updated(EventWrite write) {
-        return activity(new EventChange(EventAction.UPDATED, write.organization(), write.actor(), write.event(), emptyState(), List.of(),
-            write.etag()));
+            .flatMap(write -> Mono.justOrEmpty(write.change().map(this::activity)));
     }
 
     // An answer to a single occurrence publishes nothing: a card shows the whole event.

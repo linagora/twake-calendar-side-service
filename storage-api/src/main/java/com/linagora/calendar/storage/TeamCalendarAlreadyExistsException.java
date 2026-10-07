@@ -16,26 +16,19 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.twakespace.storage;
+package com.linagora.calendar.storage;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import com.linagora.calendar.storage.model.TeamCalendarId;
 
-import com.linagora.calendar.twakespace.model.SpaceId;
-import com.linagora.calendar.twakespace.model.TwakeSpace;
+public class TeamCalendarAlreadyExistsException extends RuntimeException {
+    private final TeamCalendarId id;
 
-import reactor.core.publisher.Mono;
-
-public class MemoryTwakeSpaceRepository implements TwakeSpaceRepository {
-    private final Map<SpaceId, TwakeSpace> spaces = new ConcurrentHashMap<>();
-
-    @Override
-    public Mono<TwakeSpace> merge(TwakeSpace change) {
-        return Mono.fromCallable(() -> spaces.merge(change.id(), change, TwakeSpace::merge));
+    public TeamCalendarAlreadyExistsException(TeamCalendarId id) {
+        super("Team calendar already exists: " + id.value());
+        this.id = id;
     }
 
-    @Override
-    public Mono<TwakeSpace> retrieve(SpaceId spaceId) {
-        return Mono.justOrEmpty(spaces.get(spaceId));
+    public TeamCalendarId id() {
+        return id;
     }
 }

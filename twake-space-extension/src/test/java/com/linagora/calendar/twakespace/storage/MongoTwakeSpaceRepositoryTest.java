@@ -21,14 +21,15 @@ package com.linagora.calendar.twakespace.storage;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
+import java.util.Map;
 
-import org.apache.james.utils.UpdatableTickingClock;
 import org.bson.Document;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.linagora.calendar.storage.mongodb.DockerMongoDBExtension;
+import com.linagora.calendar.twakespace.model.TwakeSpace;
 
 import reactor.core.publisher.Mono;
 
@@ -36,13 +37,11 @@ class MongoTwakeSpaceRepositoryTest implements TwakeSpaceRepositoryContract {
     @RegisterExtension
     static DockerMongoDBExtension mongo = new DockerMongoDBExtension(List.of(MongoTwakeSpaceRepository.COLLECTION));
 
-    private UpdatableTickingClock clock;
     private MongoTwakeSpaceRepository repository;
 
     @BeforeEach
     void setUp() {
-        clock = new UpdatableTickingClock(NOW);
-        repository = new MongoTwakeSpaceRepository(mongo.getDb(), clock);
+        repository = new MongoTwakeSpaceRepository(mongo.getDb());
     }
 
     @Override
@@ -50,16 +49,14 @@ class MongoTwakeSpaceRepositoryTest implements TwakeSpaceRepositoryContract {
         return repository;
     }
 
-    @Override
-    public UpdatableTickingClock clock() {
-        return clock;
-    }
-
     @Test
-    void retrieveShouldHaveNoOrganizationForASpaceRecordedWithoutOne() {
+    void mergeShouldUpdateASpaceStoredBeforeSpacesWereMerged() {
         Mono.from(mongo.getDb().getCollection(MongoTwakeSpaceRepository.COLLECTION)
             .insertOne(new Document("_id", SPACE_ID.value()).append("domain", DOMAIN.asString()))).block();
 
-        assertThat(repository.retrieve(SPACE_ID).block().organization()).isEmpty();
+        repository.merge(SPACE.withMembers(Map.of(ALICE, TwakeSpace.Membership.role("admin", NOW)))).block();
+
+        assertThat(repository.retrieve(SPACE_ID).block())
+            .isEqualTo(SPACE.withMembers(Map.of(ALICE, TwakeSpace.Membership.role("admin", NOW))));
     }
 }
