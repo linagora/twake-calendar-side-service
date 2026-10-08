@@ -29,7 +29,6 @@ import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.http.Authenticator;
 import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.metrics.api.MetricFactory;
-import org.apache.james.user.api.UsersRepository;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
@@ -37,11 +36,9 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
-import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
-import com.linagora.calendar.storage.UserNameResolver;
+import com.linagora.calendar.storage.UserProvisioner;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
-import com.linagora.calendar.storage.exception.UserConflictException;
 
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -57,9 +54,8 @@ public class UsersRoute extends CalendarRoute {
 
     private final OpenPaaSUserDAO userDAO;
     private final OpenPaaSDomainDAO domainDAO;
-    private final UsersRepository usersRepository;
     private final SettingsBasedResolver settingsResolver;
-    private final UserNameResolver userNameResolver;
+    private final UserProvisioner userProvisioner;
     private final CrossDomainAccessControl crossDomainAccessControl;
 
     @Inject
@@ -67,16 +63,14 @@ public class UsersRoute extends CalendarRoute {
                       MetricFactory metricFactory,
                       OpenPaaSUserDAO userDAO,
                       OpenPaaSDomainDAO domainDAO,
-                      UsersRepository usersRepository,
                       @Named("language_timezone") SettingsBasedResolver settingsResolver,
-                      UserNameResolver userNameResolver,
+                      UserProvisioner userProvisioner,
                       CrossDomainAccessControl crossDomainAccessControl) {
         super(authenticator, metricFactory);
         this.userDAO = userDAO;
         this.domainDAO = domainDAO;
-        this.usersRepository = usersRepository;
         this.settingsResolver = settingsResolver;
-        this.userNameResolver = userNameResolver;
+        this.userProvisioner = userProvisioner;
         this.crossDomainAccessControl = crossDomainAccessControl;
     }
 
@@ -96,7 +90,7 @@ public class UsersRoute extends CalendarRoute {
             return respondWithEmptyResult(response);
         }
         return userDAO.retrieve(queryUsername)
-            .switchIfEmpty(provisionUser(queryUsername))
+            .switchIfEmpty(userProvisioner.provisionIfExists(queryUsername))
             .flatMap(user -> Mono.zip(domainDAO.retrieve(queryDomain),
                     settingsResolver.resolveOrDefault(user.username()))
                 .map(tuple -> {
@@ -119,18 +113,5 @@ public class UsersRoute extends CalendarRoute {
         return response.status(HttpResponseStatus.OK)
             .sendString(Mono.just(EMPTY_JSON_ARRAY))
             .then();
-    }
-
-    private Mono<OpenPaaSUser> provisionUser(Username username) {
-        return Mono.from(usersRepository.containsReactive(username))
-            .flatMap(exists -> {
-                if (exists) {
-                    return userNameResolver.resolve(username)
-                        .flatMap(optionalUserNames -> userDAO.add(username, optionalUserNames)
-                            .onErrorResume(UserConflictException.class, e -> userDAO.retrieve(username)
-                                .switchIfEmpty(Mono.error(e))));
-                }
-                return Mono.empty();
-            });
     }
 }
