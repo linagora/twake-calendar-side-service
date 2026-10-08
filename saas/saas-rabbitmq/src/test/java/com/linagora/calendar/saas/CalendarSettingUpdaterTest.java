@@ -186,7 +186,7 @@ public class CalendarSettingUpdaterTest {
     @Test
     void shouldNotPersistWhenPayloadHasNoLanguage() {
         TWPCommonSettingsMessage message = new TWPCommonSettingsMessage("source", "nick", "req-1",
-            System.currentTimeMillis(), 10L, new TWPCommonSettingsMessage.Payload(USER.asString(), Optional.empty()));
+            System.currentTimeMillis(), 10L, new TWPCommonSettingsMessage.Payload(USER.asString(), Optional.empty(), Optional.empty()));
 
         testee.updateSettings(message).block();
 
@@ -205,7 +205,7 @@ public class CalendarSettingUpdaterTest {
         Username unknownUser = Username.of(UUID.randomUUID() + "@domain.tld");
         TWPCommonSettingsMessage message = new TWPCommonSettingsMessage("source", "nick", "req-404",
             System.currentTimeMillis(), 3L,
-            new TWPCommonSettingsMessage.Payload(unknownUser.asString(), Optional.of("en")));
+            new TWPCommonSettingsMessage.Payload(unknownUser.asString(), Optional.of("en"), Optional.empty()));
 
         testee.updateSettings(message).block();
 
@@ -247,7 +247,7 @@ public class CalendarSettingUpdaterTest {
     void shouldThrowWhenIncorrectLanguage() {
         TWPCommonSettingsMessage message = new TWPCommonSettingsMessage("source", "nick", "req-invalid-lang",
             System.currentTimeMillis(), 1L,
-            new TWPCommonSettingsMessage.Payload(USER.asString(), Optional.of("??invalid??")));
+            new TWPCommonSettingsMessage.Payload(USER.asString(), Optional.of("??invalid??"), Optional.empty()));
 
         assertThatThrownBy(() -> testee.updateSettings(message).block())
             .isInstanceOf(IllegalArgumentException.class);
@@ -285,7 +285,7 @@ public class CalendarSettingUpdaterTest {
 
         // Update Alice only
         testee.updateSettings(new TWPCommonSettingsMessage("src", "nick", "req1", System.currentTimeMillis(), 1L,
-            new TWPCommonSettingsMessage.Payload(alice.asString(), Optional.of("en")))).block();
+            new TWPCommonSettingsMessage.Payload(alice.asString(), Optional.of("en"), Optional.empty()))).block();
 
         // Verify Alice updated
         List<ConfigurationEntry> aliceEntries = userConfigurationDAO
@@ -372,7 +372,7 @@ public class CalendarSettingUpdaterTest {
         // Given
         userNameResolver.register(USER, new UserNameResolver.UserNames("Tung", "Tran"));
         TWPCommonSettingsMessage message = new TWPCommonSettingsMessage("source", "nick", "req-1",
-            System.currentTimeMillis(), 10L, new TWPCommonSettingsMessage.Payload(USER.asString(), Optional.empty()));
+            System.currentTimeMillis(), 10L, new TWPCommonSettingsMessage.Payload(USER.asString(), Optional.empty(), Optional.empty()));
 
         // When
         testee.updateSettings(message).block();
@@ -400,6 +400,6 @@ public class CalendarSettingUpdaterTest {
     private TWPCommonSettingsMessage newMessage(long version, String language) {
         return new TWPCommonSettingsMessage("source", "nick", "req-1",
             System.currentTimeMillis(), version,
-            new TWPCommonSettingsMessage.Payload(USER.asString(), Optional.ofNullable(language)));
+            new TWPCommonSettingsMessage.Payload(USER.asString(), Optional.ofNullable(language), Optional.empty()));
     }
 }
