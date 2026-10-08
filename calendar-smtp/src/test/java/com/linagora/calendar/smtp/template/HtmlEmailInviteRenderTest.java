@@ -93,60 +93,37 @@ public class HtmlEmailInviteRenderTest {
         String result = htmlBodyRenderer.render(model);
 
         assertThat(result).isEqualToIgnoringNewLines("""
-            <!DOCTYPE html><head><title></title><!-- [if !mso] <!--><meta http-equiv="X-UA-Compatible" content="IE=edge"><!-- <![endif]--><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style type="text/css">#outlook a {
-            padding: 0;
-            }
-            body {
+            <!DOCTYPE html><html><head><title></title><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style type="text/css">body {
             margin: 0;
             padding: 0;
             -webkit-text-size-adjust: 100%;
             -ms-text-size-adjust: 100%;
             }
-            table,
-            td {
-            border-collapse: collapse;
-            mso-table-lspace: 0pt;
-            mso-table-rspace: 0pt;
-            }
-            img {
-            border: 0;
-            height: auto;
-            line-height: 100%;
-            outline: none;
+            a {
+            color: #1a73e8;
             text-decoration: none;
-            -ms-interpolation-mode: bicubic;
             }
-            p {
-            display: block;
-            margin: 13px 0;
-            }</style><!--if msoxml
-              o:officedocumentsettings
-                o:allowpng
-                  o:pixelsperinch 96--><!--if lte mso 11style(type='text/css').
-              .mj-outlook-group-fix { width:100% !important; }--><!-- [if !mso] <!--><link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700" rel="stylesheet" type="text/css"><style type="text/css">@import url(https://fonts.googleapis.com/css?family=Roboto:300,400,500,700);</style><!-- <![endif]--><style type="text/css">@media only screen and (min-width:480px) {
-            .mj-column-per-100 {
-            width: 100% !important;
-            max-width: 100%;
+            @media only screen and (min-width: 720px) {
+            .col-left {
+            width: 66% !important;
             }
-            }</style><style type="text/css"></style></head><div style=""><!--if mso | IEtable(align='center' border='0' cellpadding='0' cellspacing='0' style='width:600px;' width='600')
-              tr
-                td(style='line-height:0px;font-size:0px;mso-line-height-rule:exactly;')--><div style="margin:0px auto;max-width:600px;"><table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;"><tbody><tr><td style="direction:ltr;font-size:0px;padding:20px 0;padding-bottom:0;text-align:center;"><!--if mso | IEtable(role='presentation' border='0' cellpadding='0' cellspacing='0')
-              tr
-                td(width='600px')
-                  table(align='center' border='0' cellpadding='0' cellspacing='0' style='width:600px;' width='600')
-                    tr
-                      td(style='line-height:0px;font-size:0px;mso-line-height-rule:exactly;')--><div style="margin:0px auto;max-width:600px;"><table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;"><tbody><tr><td style="direction:ltr;font-size:0px;padding:20px 0;padding-bottom:0;padding-top:0;text-align:center;"><!--if mso | IEtable(role='presentation' border='0' cellpadding='0' cellspacing='0')
-              tr
-                td.invitation-title-container-outlook(style='vertical-align:top;width:600px;')--><div class="mj-column-per-100 mj-outlook-group-fix invitation-title-container" style="background: #deffe1; border-radius: 4px; border: 1px solid #deffe1; font-size: 0px; text-align: left; direction: ltr; display: inline-block; vertical-align: top; width: 100%;"><table border="0" cellpadding="0" cellspacing="0" role="presentation" width="100%"><tbody><tr><td style="vertical-align:top;padding-top:4px;padding-bottom:4px;"><table border="0" cellpadding="0" cellspacing="0" role="presentation" style="" width="100%"><tbody><tr><td align="left" style="font-size:0px;padding:0;padding-top:8px;padding-right:20px;padding-bottom:8px;padding-left:20px;word-break:break-word;"><div style="font-family:Roboto;font-size:16px;line-height:1;text-align:left;color:#222222;"><span style="font-weight: 500;">Alice Organizer</span><span>&nbsp;has invited you in to an event</span></div></td></tr></tbody></table></td></tr></tbody></table></div><!--if mso | IEtd.content-outlook(style='vertical-align:top;width:600px;')--><div class="mj-column-per-100 mj-outlook-group-fix content" style="border: 1px solid #ccc; border-radius: 4px; margin-top: 24px; font-size: 0px; text-align: left; direction: ltr; display: inline-block; vertical-align: top; width: 100%;"><table border="0" cellpadding="0" cellspacing="0" role="presentation" style="vertical-align:top;" width="100%"><tbody><tr><td align="left" style="font-size:0px;padding:20px;word-break:break-word;"><div style="font-family:Roboto;font-size:20px;font-weight:500;line-height:1;text-align:left;color:#434343;">Team Meeting</div></td></tr><tr><td align="left" style="font-size:0px;padding:20px;padding-top:0px;word-break:break-word;"><table cellpadding="4px" cellspacing="0" width="100%" border="0" style="color:#434343;font-family:Roboto;font-size:14px;line-height:22px;table-layout:auto;width:100%;border:none;"><tr><td valign="top" style="min-width: 80px;"><strong>Time</strong></td><td><span style="display: inline-block;">2025-06-27 10:00 - 11:00</span><span style="color: #787878; font-weight: 400; display: inline-block;">&nbsp;Europe/Paris</span>&nbsp;(<a class="link" href="https://calendar.example.com/event/123" style="text-decoration: none; color: #4d91c9;">See in Calendar</a>)</td></tr><tr><td style="min-width: 96px;" valign="top"><strong>Location</strong></td><td>Conference Room (<a href="https://www.openstreetmap.org/search?query=Conference%20Room">See in Map</a>)</td></tr><tr><td valign="top"><strong>Attendees</strong></td><td><ul style="padding-inline-start: 16px; margin: 0;"><li><span style="font-weight: 500">Alice Organizer</span><span style="color: #787878;">&nbsp;&lt;alice@domain.tld&gt;</span><span style="font-weight: 500">&nbsp;(Organizer)</span></li><li><span style="font-weight: 500">Bob Attendee</span><span style="color: #787878;">&nbsp;&lt;bob@domain.tld&gt;</span></li><li><span style="font-weight: 500">Carol Attendee</span><span style="color: #787878;">&nbsp;&lt;carol@domain.tld&gt;</span></li></ul></td></tr><tr><td valign="top"><strong>Resources</strong></td><td><span>Projector,&nbsp;Room A</span></td></tr><tr><td valign="top"><strong>Notes</strong></td><td style="white-space: pre-line;">Discuss project updates.</td></tr></table></td></tr><tr><td class="part-table" align="left" style="background: #f7f7f7; font-size: 0px; padding: 20px; padding-top: 16px; padding-bottom: 16px; word-break: break-word;"><table cellpadding="0" cellspacing="0" width="100%" border="0" style="color:#000000;font-family:Roboto;font-size:13px;line-height:22px;table-layout:auto;width:100%;border:none;"><tr><td class="part-message-container" colspan="3" style="font-size: 16px; font-family: Roboto; color: #333; font-weight: 500; padding-bottom: 12px;">Will you attend this event?</td></tr><tr><td class="part-button-container" style="white-space: nowrap;"><a class="part-button" href="https://calendar.example.com/event/123/yes" target="_blank" style="display: block; color: #333; text-align: center; margin-right: 8px; min-width: 64px; font-size: 16px; text-decoration: none; padding: 6px 8px; background: #fff; border-radius: 18px; border: 1px solid #ccc;"><span style="color: green; font-size: 18px;">&nbsp;&#10003;&nbsp;</span>&nbsp;Yes</a></td><td class="part-button-container" style="white-space: nowrap;"><a class="part-button" href="https://calendar.example.com/event/123/maybe" target="_blank" style="display: block; color: #333; text-align: center; margin-right: 8px; min-width: 64px; font-size: 16px; text-decoration: none; padding: 6px 8px; background: #fff; border-radius: 18px; border: 1px solid #ccc;"><span style="color: orange; font-weight: 500;">&nbsp;?&nbsp;</span>&nbsp;Maybe</a></td><td class="part-button-container" style="white-space: nowrap;"><a class="part-button" href="https://calendar.example.com/event/123/no" target="_blank" style="display: block; color: #333; text-align: center; margin-right: 8px; min-width: 64px; font-size: 16px; text-decoration: none; padding: 6px 8px; background: #fff; border-radius: 18px; border: 1px solid #ccc;"><span style="color: red; font-size: 18px;">&nbsp;&#x2715;&nbsp;</span>&nbsp;No</a></td><td class="part-button-container--last" style="width: 100%;" width="100%">&nbsp;</td></tr></table></td></tr></tbody></table></div><!--if mso | IE--></td></tr></tbody></table></div><!--if mso | IE--></td></tr></tbody></table></div><!--if mso | IEtable(align='center' border='0' cellpadding='0' cellspacing='0' style='width:600px;' width='600')
-              tr
-                td(style='line-height:0px;font-size:0px;mso-line-height-rule:exactly;')--><div style="margin:0px auto;max-width:600px;"><table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;"><tbody><tr><td style="direction:ltr;font-size:0px;padding:20px 0;text-align:center;"><!--if mso | IEtable(role='presentation' border='0' cellpadding='0' cellspacing='0')
-              tr
-                td(width='600px')
-                  table(align='center' border='0' cellpadding='0' cellspacing='0' style='width:600px;' width='600')
-                    tr
-                      td(style='line-height:0px;font-size:0px;mso-line-height-rule:exactly;')--><div style="margin:0px auto;max-width:600px;"><table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;"><tbody><tr><td style="direction:ltr;font-size:0px;padding:0;text-align:center;"><!--if mso | IEtable(role='presentation' border='0' cellpadding='0' cellspacing='0')
-              tr
-                td(style='vertical-align:top;width:600px;')--><div class="mj-column-per-100 mj-outlook-group-fix" style="font-size:0px;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%;"><table border="0" cellpadding="0" cellspacing="0" role="presentation" style="vertical-align:top;" width="100%"><tbody><tr><td class="warning-text" align="left" style="background-color: #fffaea; border-radius: 4px; font-size: 0px; padding: 12px; word-break: break-word;" bgcolor="#fffaea"><div style="font-family:Roboto;font-size:12px;line-height:1;text-align:left;color:#808080;">&#x26A0; Forwarding this invitation could allow any recipient to send a response to the organizer and be added to the guest list, or invite others regardless of their own invitation status, or to modify your RSVP.</div></td></tr></tbody></table></div><!--if mso | IE--></td></tr></tbody></table></div><!--if mso | IE--></td></tr></tbody></table></div><!--if mso | IE--></div>""".trim());
+            .col-right {
+            width: 34% !important;
+            }
+            }
+            @media only screen and (max-width: 719px) {
+            .conference-box {
+            background: #f8f9fa !important;
+            padding: 14px !important;
+            text-align: left !important;
+            }
+            .join-desktop {
+            display: none !important;
+            }
+            .join-mobile {
+            display: block !important;
+            }
+            }</style></head><body style="margin: 0; padding: 0; background: #ffffff;"><div style="border: 1px solid #e0e0e0; border-radius: 8px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1a1a1a;"><div style="padding: 16px 16px 0 16px;"><div style="font-size: 0;"><div class="col-left" style="display: inline-block; vertical-align: top; min-width: 66%; max-width: 100%; width: calc((720px - 100%) * 720); font-size: 14px;"><div style="display: inline-block; background: #e8f0fe; font-size: 13px; line-height: 1.4; padding: 4px 8px; border-radius: 4px; margin-bottom: 8px;"><b>Alice Organizer</b>&nbsp;has invited you in to an event</div><div style="font-size: 18px; font-weight: 600; line-height: 1.3; margin: 0 0 16px 0;">Team Meeting</div></div></div><div style="max-width: 620px;"><div style="margin-bottom: 16px;"><div style="font-size: 14px; font-weight: 700; margin: 0 0 4px 0;">When</div><div style="font-size: 14px; line-height: 1.5;">2025-06-27 10:00 - 11:00<span style="color: #5f6368;">&nbsp;(Europe/Paris)</span>&nbsp;<a href="https://calendar.example.com/event/123" style="color: #1a73e8; text-decoration: none;">See in Calendar</a></div></div><div style="margin-bottom: 16px;"><div style="font-size: 14px; font-weight: 700; margin: 0 0 4px 0;">Where</div><div style="font-size: 14px; line-height: 1.5;">Conference Room&nbsp;<a href="https://www.openstreetmap.org/search?query=Conference%20Room" style="color: #1a73e8; text-decoration: none;">See in Map</a></div></div><div style="margin-bottom: 16px;"><div style="font-size: 14px; font-weight: 700; margin: 0 0 4px 0;">Participants</div><div style="font-size: 14px; line-height: 1.5;"><div style="margin: 4px 0;"><b>Alice Organizer</b>&nbsp;<span style="color: #5f6368;">alice@domain.tld</span><span style="color: #5f6368;">&nbsp;- organizer</span></div><div style="margin: 4px 0;"><b>Bob Attendee</b>&nbsp;<span style="color: #5f6368;">bob@domain.tld</span></div><div style="margin: 4px 0;"><b>Carol Attendee</b>&nbsp;<span style="color: #5f6368;">carol@domain.tld</span></div></div></div><div style="margin-bottom: 16px;"><div style="font-size: 14px; font-weight: 700; margin: 0 0 4px 0;">Resources</div><div style="font-size: 14px; line-height: 1.5;"><span>Projector,&nbsp;Room A</span></div></div><div style="margin-bottom: 16px;"><div style="font-size: 14px; font-weight: 700; margin: 0 0 4px 0;">Will you attend this event?</div><div style="font-size: 14px; line-height: 1.5;"><table role="presentation" border="0" cellpadding="0" cellspacing="0" style="border-collapse: collapse;"><tr><td style="padding: 4px 4px 0 0;"><a href="https://calendar.example.com/event/123/yes" target="_blank" style="display: inline-block; padding: 6px 18px; border: 1px solid #c9c9c9; border-radius: 999px; background: #ffffff; color: #1a1a1a; font-size: 14px; text-align: center; text-decoration: none; white-space: nowrap;">Yes</a></td><td style="padding: 4px 4px 0 0;"><a href="https://calendar.example.com/event/123/no" target="_blank" style="display: inline-block; padding: 6px 18px; border: 1px solid #c9c9c9; border-radius: 999px; background: #ffffff; color: #1a1a1a; font-size: 14px; text-align: center; text-decoration: none; white-space: nowrap;">No</a></td><td style="padding: 4px 4px 0 0;"><a href="https://calendar.example.com/event/123/maybe" target="_blank" style="display: inline-block; padding: 6px 18px; border: 1px solid #c9c9c9; border-radius: 999px; background: #ffffff; color: #1a1a1a; font-size: 14px; text-align: center; text-decoration: none; white-space: nowrap;">Maybe</a></td></tr></table></div></div><div style="margin-bottom: 16px;"><div style="font-size: 14px; font-weight: 700; margin: 0 0 4px 0;">Notes</div><div style="font-size: 14px; line-height: 1.5;"><div style="white-space: pre-line;">Discuss project updates.</div></div></div></div></div><div style="border-top: 1px solid #e0e0e0; padding: 16px; font-size: 12px; line-height: 1.6; color: #5f6368;"><p style="margin: 0;">Forwarding this invitation could allow any recipient to send a response to the organizer, be added to the guest list, invite others regardless of their own invitation status, or modify your RSVP.</p></div></div></body></html>""".trim());
     }
 
     @Test
@@ -178,60 +155,37 @@ public class HtmlEmailInviteRenderTest {
         String result = htmlBodyRenderer.render(model);
 
         assertThat(result).isEqualToIgnoringNewLines("""
-            <!DOCTYPE html><head><title></title><!-- [if !mso] <!--><meta http-equiv="X-UA-Compatible" content="IE=edge"><!-- <![endif]--><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style type="text/css">#outlook a {
-            padding: 0;
-            }
-            body {
+            <!DOCTYPE html><html><head><title></title><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style type="text/css">body {
             margin: 0;
             padding: 0;
             -webkit-text-size-adjust: 100%;
             -ms-text-size-adjust: 100%;
             }
-            table,
-            td {
-            border-collapse: collapse;
-            mso-table-lspace: 0pt;
-            mso-table-rspace: 0pt;
-            }
-            img {
-            border: 0;
-            height: auto;
-            line-height: 100%;
-            outline: none;
+            a {
+            color: #1a73e8;
             text-decoration: none;
-            -ms-interpolation-mode: bicubic;
             }
-            p {
-            display: block;
-            margin: 13px 0;
-            }</style><!--if msoxml
-              o:officedocumentsettings
-                o:allowpng
-                  o:pixelsperinch 96--><!--if lte mso 11style(type='text/css').
-              .mj-outlook-group-fix { width:100% !important; }--><!-- [if !mso] <!--><link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700" rel="stylesheet" type="text/css"><style type="text/css">@import url(https://fonts.googleapis.com/css?family=Roboto:300,400,500,700);</style><!-- <![endif]--><style type="text/css">@media only screen and (min-width:480px) {
-            .mj-column-per-100 {
-            width: 100% !important;
-            max-width: 100%;
+            @media only screen and (min-width: 720px) {
+            .col-left {
+            width: 66% !important;
             }
-            }</style><style type="text/css"></style></head><div style=""><!--if mso | IEtable(align='center' border='0' cellpadding='0' cellspacing='0' style='width:600px;' width='600')
-              tr
-                td(style='line-height:0px;font-size:0px;mso-line-height-rule:exactly;')--><div style="margin:0px auto;max-width:600px;"><table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;"><tbody><tr><td style="direction:ltr;font-size:0px;padding:20px 0;padding-bottom:0;text-align:center;"><!--if mso | IEtable(role='presentation' border='0' cellpadding='0' cellspacing='0')
-              tr
-                td(width='600px')
-                  table(align='center' border='0' cellpadding='0' cellspacing='0' style='width:600px;' width='600')
-                    tr
-                      td(style='line-height:0px;font-size:0px;mso-line-height-rule:exactly;')--><div style="margin:0px auto;max-width:600px;"><table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;"><tbody><tr><td style="direction:ltr;font-size:0px;padding:20px 0;padding-bottom:0;padding-top:0;text-align:center;"><!--if mso | IEtable(role='presentation' border='0' cellpadding='0' cellspacing='0')
-              tr
-                td.invitation-title-container-outlook(style='vertical-align:top;width:600px;')--><div class="mj-column-per-100 mj-outlook-group-fix invitation-title-container" style="background: #deffe1; border-radius: 4px; border: 1px solid #deffe1; font-size: 0px; text-align: left; direction: ltr; display: inline-block; vertical-align: top; width: 100%;"><table border="0" cellpadding="0" cellspacing="0" role="presentation" width="100%"><tbody><tr><td style="vertical-align:top;padding-top:4px;padding-bottom:4px;"><table border="0" cellpadding="0" cellspacing="0" role="presentation" style="" width="100%"><tbody><tr><td align="left" style="font-size:0px;padding:0;padding-top:8px;padding-right:20px;padding-bottom:8px;padding-left:20px;word-break:break-word;"><div style="font-family:Roboto;font-size:16px;line-height:1;text-align:left;color:#222222;"><span style="font-weight: 500;">Alice</span><span>&nbsp;has invited you in to an event</span></div></td></tr></tbody></table></td></tr></tbody></table></div><!--if mso | IEtd.content-outlook(style='vertical-align:top;width:600px;')--><div class="mj-column-per-100 mj-outlook-group-fix content" style="border: 1px solid #ccc; border-radius: 4px; margin-top: 24px; font-size: 0px; text-align: left; direction: ltr; display: inline-block; vertical-align: top; width: 100%;"><table border="0" cellpadding="0" cellspacing="0" role="presentation" style="vertical-align:top;" width="100%"><tbody><tr><td align="left" style="font-size:0px;padding:20px;word-break:break-word;"><div style="font-family:Roboto;font-size:20px;font-weight:500;line-height:1;text-align:left;color:#434343;">All Day Workshop</div></td></tr><tr><td align="left" style="font-size:0px;padding:20px;padding-top:0px;word-break:break-word;"><table cellpadding="4px" cellspacing="0" width="100%" border="0" style="color:#434343;font-family:Roboto;font-size:14px;line-height:22px;table-layout:auto;width:100%;border:none;"><tr><td valign="top" style="min-width: 80px;"><strong>Time</strong></td><td><span style="display: inline-block;">July 1, 2025 - July 2, 2025 (All day)</span></td></tr><tr><td valign="top"><strong>Attendees</strong></td><td><ul style="padding-inline-start: 16px; margin: 0;"><li><span style="font-weight: 500">Alice</span><span style="color: #787878;">&nbsp;&lt;alice@domain.tld&gt;</span><span style="font-weight: 500">&nbsp;(Organizer)</span></li><li><span style="font-weight: 500">Bob Attendee</span><span style="color: #787878;">&nbsp;&lt;bob@domain.tld&gt;</span></li><li><span style="font-weight: 500">Carol Attendee</span><span style="color: #787878;">&nbsp;&lt;carol@domain.tld&gt;</span></li></ul></td></tr></table></td></tr><tr><td class="part-table" align="left" style="background: #f7f7f7; font-size: 0px; padding: 20px; padding-top: 16px; padding-bottom: 16px; word-break: break-word;"><table cellpadding="0" cellspacing="0" width="100%" border="0" style="color:#000000;font-family:Roboto;font-size:13px;line-height:22px;table-layout:auto;width:100%;border:none;"><tr><td class="part-message-container" colspan="3" style="font-size: 16px; font-family: Roboto; color: #333; font-weight: 500; padding-bottom: 12px;">Will you attend this event?</td></tr><tr><td class="part-button-container" style="white-space: nowrap;"><a class="part-button" target="_blank" style="display: block; color: #333; text-align: center; margin-right: 8px; min-width: 64px; font-size: 16px; text-decoration: none; padding: 6px 8px; background: #fff; border-radius: 18px; border: 1px solid #ccc;"><span style="color: green; font-size: 18px;">&nbsp;&#10003;&nbsp;</span>&nbsp;Yes</a></td><td class="part-button-container" style="white-space: nowrap;"><a class="part-button" target="_blank" style="display: block; color: #333; text-align: center; margin-right: 8px; min-width: 64px; font-size: 16px; text-decoration: none; padding: 6px 8px; background: #fff; border-radius: 18px; border: 1px solid #ccc;"><span style="color: orange; font-weight: 500;">&nbsp;?&nbsp;</span>&nbsp;Maybe</a></td><td class="part-button-container" style="white-space: nowrap;"><a class="part-button" target="_blank" style="display: block; color: #333; text-align: center; margin-right: 8px; min-width: 64px; font-size: 16px; text-decoration: none; padding: 6px 8px; background: #fff; border-radius: 18px; border: 1px solid #ccc;"><span style="color: red; font-size: 18px;">&nbsp;&#x2715;&nbsp;</span>&nbsp;No</a></td><td class="part-button-container--last" style="width: 100%;" width="100%">&nbsp;</td></tr></table></td></tr></tbody></table></div><!--if mso | IE--></td></tr></tbody></table></div><!--if mso | IE--></td></tr></tbody></table></div><!--if mso | IEtable(align='center' border='0' cellpadding='0' cellspacing='0' style='width:600px;' width='600')
-              tr
-                td(style='line-height:0px;font-size:0px;mso-line-height-rule:exactly;')--><div style="margin:0px auto;max-width:600px;"><table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;"><tbody><tr><td style="direction:ltr;font-size:0px;padding:20px 0;text-align:center;"><!--if mso | IEtable(role='presentation' border='0' cellpadding='0' cellspacing='0')
-              tr
-                td(width='600px')
-                  table(align='center' border='0' cellpadding='0' cellspacing='0' style='width:600px;' width='600')
-                    tr
-                      td(style='line-height:0px;font-size:0px;mso-line-height-rule:exactly;')--><div style="margin:0px auto;max-width:600px;"><table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;"><tbody><tr><td style="direction:ltr;font-size:0px;padding:0;text-align:center;"><!--if mso | IEtable(role='presentation' border='0' cellpadding='0' cellspacing='0')
-              tr
-                td(style='vertical-align:top;width:600px;')--><div class="mj-column-per-100 mj-outlook-group-fix" style="font-size:0px;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%;"><table border="0" cellpadding="0" cellspacing="0" role="presentation" style="vertical-align:top;" width="100%"><tbody><tr><td class="warning-text" align="left" style="background-color: #fffaea; border-radius: 4px; font-size: 0px; padding: 12px; word-break: break-word;" bgcolor="#fffaea"><div style="font-family:Roboto;font-size:12px;line-height:1;text-align:left;color:#808080;">&#x26A0; Forwarding this invitation could allow any recipient to send a response to the organizer and be added to the guest list, or invite others regardless of their own invitation status, or to modify your RSVP.</div></td></tr></tbody></table></div><!--if mso | IE--></td></tr></tbody></table></div><!--if mso | IE--></td></tr></tbody></table></div><!--if mso | IE--></div>""".trim());
+            .col-right {
+            width: 34% !important;
+            }
+            }
+            @media only screen and (max-width: 719px) {
+            .conference-box {
+            background: #f8f9fa !important;
+            padding: 14px !important;
+            text-align: left !important;
+            }
+            .join-desktop {
+            display: none !important;
+            }
+            .join-mobile {
+            display: block !important;
+            }
+            }</style></head><body style="margin: 0; padding: 0; background: #ffffff;"><div style="border: 1px solid #e0e0e0; border-radius: 8px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1a1a1a;"><div style="padding: 16px 16px 0 16px;"><div style="font-size: 0;"><div class="col-left" style="display: inline-block; vertical-align: top; min-width: 66%; max-width: 100%; width: calc((720px - 100%) * 720); font-size: 14px;"><div style="display: inline-block; background: #e8f0fe; font-size: 13px; line-height: 1.4; padding: 4px 8px; border-radius: 4px; margin-bottom: 8px;"><b>Alice</b>&nbsp;has invited you in to an event</div><div style="font-size: 18px; font-weight: 600; line-height: 1.3; margin: 0 0 16px 0;">All Day Workshop</div></div></div><div style="max-width: 620px;"><div style="margin-bottom: 16px;"><div style="font-size: 14px; font-weight: 700; margin: 0 0 4px 0;">When</div><div style="font-size: 14px; line-height: 1.5;">July 1, 2025 - July 2, 2025 (All day)</div></div><div style="margin-bottom: 16px;"><div style="font-size: 14px; font-weight: 700; margin: 0 0 4px 0;">Participants</div><div style="font-size: 14px; line-height: 1.5;"><div style="margin: 4px 0;"><b>Alice</b>&nbsp;<span style="color: #5f6368;">alice@domain.tld</span><span style="color: #5f6368;">&nbsp;- organizer</span></div><div style="margin: 4px 0;"><b>Bob Attendee</b>&nbsp;<span style="color: #5f6368;">bob@domain.tld</span></div><div style="margin: 4px 0;"><b>Carol Attendee</b>&nbsp;<span style="color: #5f6368;">carol@domain.tld</span></div></div></div><div style="margin-bottom: 16px;"><div style="font-size: 14px; font-weight: 700; margin: 0 0 4px 0;">Will you attend this event?</div><div style="font-size: 14px; line-height: 1.5;"><table role="presentation" border="0" cellpadding="0" cellspacing="0" style="border-collapse: collapse;"><tr><td style="padding: 4px 4px 0 0;"><a target="_blank" style="display: inline-block; padding: 6px 18px; border: 1px solid #c9c9c9; border-radius: 999px; background: #ffffff; color: #1a1a1a; font-size: 14px; text-align: center; text-decoration: none; white-space: nowrap;">Yes</a></td><td style="padding: 4px 4px 0 0;"><a target="_blank" style="display: inline-block; padding: 6px 18px; border: 1px solid #c9c9c9; border-radius: 999px; background: #ffffff; color: #1a1a1a; font-size: 14px; text-align: center; text-decoration: none; white-space: nowrap;">No</a></td><td style="padding: 4px 4px 0 0;"><a target="_blank" style="display: inline-block; padding: 6px 18px; border: 1px solid #c9c9c9; border-radius: 999px; background: #ffffff; color: #1a1a1a; font-size: 14px; text-align: center; text-decoration: none; white-space: nowrap;">Maybe</a></td></tr></table></div></div></div></div><div style="border-top: 1px solid #e0e0e0; padding: 16px; font-size: 12px; line-height: 1.6; color: #5f6368;"><p style="margin: 0;">Forwarding this invitation could allow any recipient to send a response to the organizer, be added to the guest list, invite others regardless of their own invitation status, or modify your RSVP.</p></div></div></body></html>""".trim());
     }
 
     @Test
@@ -262,60 +216,37 @@ public class HtmlEmailInviteRenderTest {
         String result = htmlBodyRenderer.render(model);
 
         assertThat(result).isEqualToIgnoringNewLines("""
-            <!DOCTYPE html><head><title></title><!-- [if !mso] <!--><meta http-equiv="X-UA-Compatible" content="IE=edge"><!-- <![endif]--><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style type="text/css">#outlook a {
-            padding: 0;
-            }
-            body {
+            <!DOCTYPE html><html><head><title></title><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style type="text/css">body {
             margin: 0;
             padding: 0;
             -webkit-text-size-adjust: 100%;
             -ms-text-size-adjust: 100%;
             }
-            table,
-            td {
-            border-collapse: collapse;
-            mso-table-lspace: 0pt;
-            mso-table-rspace: 0pt;
-            }
-            img {
-            border: 0;
-            height: auto;
-            line-height: 100%;
-            outline: none;
+            a {
+            color: #1a73e8;
             text-decoration: none;
-            -ms-interpolation-mode: bicubic;
             }
-            p {
-            display: block;
-            margin: 13px 0;
-            }</style><!--if msoxml
-              o:officedocumentsettings
-                o:allowpng
-                  o:pixelsperinch 96--><!--if lte mso 11style(type='text/css').
-              .mj-outlook-group-fix { width:100% !important; }--><!-- [if !mso] <!--><link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700" rel="stylesheet" type="text/css"><style type="text/css">@import url(https://fonts.googleapis.com/css?family=Roboto:300,400,500,700);</style><!-- <![endif]--><style type="text/css">@media only screen and (min-width:480px) {
-            .mj-column-per-100 {
-            width: 100% !important;
-            max-width: 100%;
+            @media only screen and (min-width: 720px) {
+            .col-left {
+            width: 66% !important;
             }
-            }</style><style type="text/css"></style></head><div style=""><!--if mso | IEtable(align='center' border='0' cellpadding='0' cellspacing='0' style='width:600px;' width='600')
-              tr
-                td(style='line-height:0px;font-size:0px;mso-line-height-rule:exactly;')--><div style="margin:0px auto;max-width:600px;"><table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;"><tbody><tr><td style="direction:ltr;font-size:0px;padding:20px 0;padding-bottom:0;text-align:center;"><!--if mso | IEtable(role='presentation' border='0' cellpadding='0' cellspacing='0')
-              tr
-                td(width='600px')
-                  table(align='center' border='0' cellpadding='0' cellspacing='0' style='width:600px;' width='600')
-                    tr
-                      td(style='line-height:0px;font-size:0px;mso-line-height-rule:exactly;')--><div style="margin:0px auto;max-width:600px;"><table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;"><tbody><tr><td style="direction:ltr;font-size:0px;padding:20px 0;padding-bottom:0;padding-top:0;text-align:center;"><!--if mso | IEtable(role='presentation' border='0' cellpadding='0' cellspacing='0')
-              tr
-                td.invitation-title-container-outlook(style='vertical-align:top;width:600px;')--><div class="mj-column-per-100 mj-outlook-group-fix invitation-title-container" style="background: #deffe1; border-radius: 4px; border: 1px solid #deffe1; font-size: 0px; text-align: left; direction: ltr; display: inline-block; vertical-align: top; width: 100%;"><table border="0" cellpadding="0" cellspacing="0" role="presentation" width="100%"><tbody><tr><td style="vertical-align:top;padding-top:4px;padding-bottom:4px;"><table border="0" cellpadding="0" cellspacing="0" role="presentation" style="" width="100%"><tbody><tr><td align="left" style="font-size:0px;padding:0;padding-top:8px;padding-right:20px;padding-bottom:8px;padding-left:20px;word-break:break-word;"><div style="font-family:Roboto;font-size:16px;line-height:1;text-align:left;color:#222222;"><span style="font-weight: 500;">Alice</span><span>&nbsp;has invited you in to an event</span></div></td></tr></tbody></table></td></tr></tbody></table></div><!--if mso | IEtd.content-outlook(style='vertical-align:top;width:600px;')--><div class="mj-column-per-100 mj-outlook-group-fix content" style="border: 1px solid #ccc; border-radius: 4px; margin-top: 24px; font-size: 0px; text-align: left; direction: ltr; display: inline-block; vertical-align: top; width: 100%;"><table border="0" cellpadding="0" cellspacing="0" role="presentation" style="vertical-align:top;" width="100%"><tbody><tr><td align="left" style="font-size:0px;padding:20px;word-break:break-word;"><div style="font-family:Roboto;font-size:20px;font-weight:500;line-height:1;text-align:left;color:#434343;">Online Call</div></td></tr><tr><td align="left" style="font-size:0px;padding:20px;padding-top:0px;word-break:break-word;"><table cellpadding="4px" cellspacing="0" width="100%" border="0" style="color:#434343;font-family:Roboto;font-size:14px;line-height:22px;table-layout:auto;width:100%;border:none;"><tr><td valign="top" style="min-width: 80px;"><strong>Time</strong></td><td><span style="display: inline-block;">2025-07-03 15:00 - 16:00</span><span style="color: #787878; font-weight: 400; display: inline-block;">&nbsp;UTC</span></td></tr><tr><td style="min-width: 96px;" valign="top"><strong>Location</strong></td><td><a class="link" href="https://meet.example.com/room" style="text-decoration: none; color: #4d91c9;">https://meet.example.com/room</a></td></tr><tr><td valign="top"><strong>Attendees</strong></td><td><ul style="padding-inline-start: 16px; margin: 0;"><li><span style="font-weight: 500">Alice</span><span style="color: #787878;">&nbsp;&lt;alice@domain.tld&gt;</span><span style="font-weight: 500">&nbsp;(Organizer)</span></li><li><span style="font-weight: 500">Bob Attendee</span><span style="color: #787878;">&nbsp;&lt;bob@domain.tld&gt;</span></li><li><span style="font-weight: 500">Carol Attendee</span><span style="color: #787878;">&nbsp;&lt;carol@domain.tld&gt;</span></li></ul></td></tr></table></td></tr><tr><td class="part-table" align="left" style="background: #f7f7f7; font-size: 0px; padding: 20px; padding-top: 16px; padding-bottom: 16px; word-break: break-word;"><table cellpadding="0" cellspacing="0" width="100%" border="0" style="color:#000000;font-family:Roboto;font-size:13px;line-height:22px;table-layout:auto;width:100%;border:none;"><tr><td class="part-message-container" colspan="3" style="font-size: 16px; font-family: Roboto; color: #333; font-weight: 500; padding-bottom: 12px;">Will you attend this event?</td></tr><tr><td class="part-button-container" style="white-space: nowrap;"><a class="part-button" target="_blank" style="display: block; color: #333; text-align: center; margin-right: 8px; min-width: 64px; font-size: 16px; text-decoration: none; padding: 6px 8px; background: #fff; border-radius: 18px; border: 1px solid #ccc;"><span style="color: green; font-size: 18px;">&nbsp;&#10003;&nbsp;</span>&nbsp;Yes</a></td><td class="part-button-container" style="white-space: nowrap;"><a class="part-button" target="_blank" style="display: block; color: #333; text-align: center; margin-right: 8px; min-width: 64px; font-size: 16px; text-decoration: none; padding: 6px 8px; background: #fff; border-radius: 18px; border: 1px solid #ccc;"><span style="color: orange; font-weight: 500;">&nbsp;?&nbsp;</span>&nbsp;Maybe</a></td><td class="part-button-container" style="white-space: nowrap;"><a class="part-button" target="_blank" style="display: block; color: #333; text-align: center; margin-right: 8px; min-width: 64px; font-size: 16px; text-decoration: none; padding: 6px 8px; background: #fff; border-radius: 18px; border: 1px solid #ccc;"><span style="color: red; font-size: 18px;">&nbsp;&#x2715;&nbsp;</span>&nbsp;No</a></td><td class="part-button-container--last" style="width: 100%;" width="100%">&nbsp;</td></tr></table></td></tr></tbody></table></div><!--if mso | IE--></td></tr></tbody></table></div><!--if mso | IE--></td></tr></tbody></table></div><!--if mso | IEtable(align='center' border='0' cellpadding='0' cellspacing='0' style='width:600px;' width='600')
-              tr
-                td(style='line-height:0px;font-size:0px;mso-line-height-rule:exactly;')--><div style="margin:0px auto;max-width:600px;"><table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;"><tbody><tr><td style="direction:ltr;font-size:0px;padding:20px 0;text-align:center;"><!--if mso | IEtable(role='presentation' border='0' cellpadding='0' cellspacing='0')
-              tr
-                td(width='600px')
-                  table(align='center' border='0' cellpadding='0' cellspacing='0' style='width:600px;' width='600')
-                    tr
-                      td(style='line-height:0px;font-size:0px;mso-line-height-rule:exactly;')--><div style="margin:0px auto;max-width:600px;"><table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;"><tbody><tr><td style="direction:ltr;font-size:0px;padding:0;text-align:center;"><!--if mso | IEtable(role='presentation' border='0' cellpadding='0' cellspacing='0')
-              tr
-                td(style='vertical-align:top;width:600px;')--><div class="mj-column-per-100 mj-outlook-group-fix" style="font-size:0px;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%;"><table border="0" cellpadding="0" cellspacing="0" role="presentation" style="vertical-align:top;" width="100%"><tbody><tr><td class="warning-text" align="left" style="background-color: #fffaea; border-radius: 4px; font-size: 0px; padding: 12px; word-break: break-word;" bgcolor="#fffaea"><div style="font-family:Roboto;font-size:12px;line-height:1;text-align:left;color:#808080;">&#x26A0; Forwarding this invitation could allow any recipient to send a response to the organizer and be added to the guest list, or invite others regardless of their own invitation status, or to modify your RSVP.</div></td></tr></tbody></table></div><!--if mso | IE--></td></tr></tbody></table></div><!--if mso | IE--></td></tr></tbody></table></div><!--if mso | IE--></div>""".trim());
+            .col-right {
+            width: 34% !important;
+            }
+            }
+            @media only screen and (max-width: 719px) {
+            .conference-box {
+            background: #f8f9fa !important;
+            padding: 14px !important;
+            text-align: left !important;
+            }
+            .join-desktop {
+            display: none !important;
+            }
+            .join-mobile {
+            display: block !important;
+            }
+            }</style></head><body style="margin: 0; padding: 0; background: #ffffff;"><div style="border: 1px solid #e0e0e0; border-radius: 8px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1a1a1a;"><div style="padding: 16px 16px 0 16px;"><div style="font-size: 0;"><div class="col-left" style="display: inline-block; vertical-align: top; min-width: 66%; max-width: 100%; width: calc((720px - 100%) * 720); font-size: 14px;"><div style="display: inline-block; background: #e8f0fe; font-size: 13px; line-height: 1.4; padding: 4px 8px; border-radius: 4px; margin-bottom: 8px;"><b>Alice</b>&nbsp;has invited you in to an event</div><div style="font-size: 18px; font-weight: 600; line-height: 1.3; margin: 0 0 16px 0;">Online Call</div></div></div><div style="max-width: 620px;"><div style="margin-bottom: 16px;"><div style="font-size: 14px; font-weight: 700; margin: 0 0 4px 0;">When</div><div style="font-size: 14px; line-height: 1.5;">2025-07-03 15:00 - 16:00<span style="color: #5f6368;">&nbsp;(UTC)</span></div></div><div style="margin-bottom: 16px;"><div style="font-size: 14px; font-weight: 700; margin: 0 0 4px 0;">Where</div><div style="font-size: 14px; line-height: 1.5;"><a href="https://meet.example.com/room" style="color: #1a73e8; text-decoration: none;">https://meet.example.com/room</a></div></div><div style="margin-bottom: 16px;"><div style="font-size: 14px; font-weight: 700; margin: 0 0 4px 0;">Participants</div><div style="font-size: 14px; line-height: 1.5;"><div style="margin: 4px 0;"><b>Alice</b>&nbsp;<span style="color: #5f6368;">alice@domain.tld</span><span style="color: #5f6368;">&nbsp;- organizer</span></div><div style="margin: 4px 0;"><b>Bob Attendee</b>&nbsp;<span style="color: #5f6368;">bob@domain.tld</span></div><div style="margin: 4px 0;"><b>Carol Attendee</b>&nbsp;<span style="color: #5f6368;">carol@domain.tld</span></div></div></div><div style="margin-bottom: 16px;"><div style="font-size: 14px; font-weight: 700; margin: 0 0 4px 0;">Will you attend this event?</div><div style="font-size: 14px; line-height: 1.5;"><table role="presentation" border="0" cellpadding="0" cellspacing="0" style="border-collapse: collapse;"><tr><td style="padding: 4px 4px 0 0;"><a target="_blank" style="display: inline-block; padding: 6px 18px; border: 1px solid #c9c9c9; border-radius: 999px; background: #ffffff; color: #1a1a1a; font-size: 14px; text-align: center; text-decoration: none; white-space: nowrap;">Yes</a></td><td style="padding: 4px 4px 0 0;"><a target="_blank" style="display: inline-block; padding: 6px 18px; border: 1px solid #c9c9c9; border-radius: 999px; background: #ffffff; color: #1a1a1a; font-size: 14px; text-align: center; text-decoration: none; white-space: nowrap;">No</a></td><td style="padding: 4px 4px 0 0;"><a target="_blank" style="display: inline-block; padding: 6px 18px; border: 1px solid #c9c9c9; border-radius: 999px; background: #ffffff; color: #1a1a1a; font-size: 14px; text-align: center; text-decoration: none; white-space: nowrap;">Maybe</a></td></tr></table></div></div></div></div><div style="border-top: 1px solid #e0e0e0; padding: 16px; font-size: 12px; line-height: 1.6; color: #5f6368;"><p style="margin: 0;">Forwarding this invitation could allow any recipient to send a response to the organizer, be added to the guest list, invite others regardless of their own invitation status, or modify your RSVP.</p></div></div></body></html>""".trim());
     }
 
     @Test
@@ -363,59 +294,36 @@ public class HtmlEmailInviteRenderTest {
         String result = htmlBodyRenderer.render(model);
 
         assertThat(result).isEqualToIgnoringNewLines("""
-            <!DOCTYPE html><head><title></title><!-- [if !mso] <!--><meta http-equiv="X-UA-Compatible" content="IE=edge"><!-- <![endif]--><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style type="text/css">#outlook a {
-            padding: 0;
-            }
-            body {
+            <!DOCTYPE html><html><head><title></title><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style type="text/css">body {
             margin: 0;
             padding: 0;
             -webkit-text-size-adjust: 100%;
             -ms-text-size-adjust: 100%;
             }
-            table,
-            td {
-            border-collapse: collapse;
-            mso-table-lspace: 0pt;
-            mso-table-rspace: 0pt;
-            }
-            img {
-            border: 0;
-            height: auto;
-            line-height: 100%;
-            outline: none;
+            a {
+            color: #1a73e8;
             text-decoration: none;
-            -ms-interpolation-mode: bicubic;
             }
-            p {
-            display: block;
-            margin: 13px 0;
-            }</style><!--if msoxml
-              o:officedocumentsettings
-                o:allowpng
-                  o:pixelsperinch 96--><!--if lte mso 11style(type='text/css').
-              .mj-outlook-group-fix { width:100% !important; }--><!-- [if !mso] <!--><link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700" rel="stylesheet" type="text/css"><style type="text/css">@import url(https://fonts.googleapis.com/css?family=Roboto:300,400,500,700);</style><!-- <![endif]--><style type="text/css">@media only screen and (min-width:480px) {
-            .mj-column-per-100 {
-            width: 100% !important;
-            max-width: 100%;
+            @media only screen and (min-width: 720px) {
+            .col-left {
+            width: 66% !important;
             }
-            }</style><style type="text/css"></style></head><div style=""><!--if mso | IEtable(align='center' border='0' cellpadding='0' cellspacing='0' style='width:600px;' width='600')
-              tr
-                td(style='line-height:0px;font-size:0px;mso-line-height-rule:exactly;')--><div style="margin:0px auto;max-width:600px;"><table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;"><tbody><tr><td style="direction:ltr;font-size:0px;padding:20px 0;padding-bottom:0;text-align:center;"><!--if mso | IEtable(role='presentation' border='0' cellpadding='0' cellspacing='0')
-              tr
-                td(width='600px')
-                  table(align='center' border='0' cellpadding='0' cellspacing='0' style='width:600px;' width='600')
-                    tr
-                      td(style='line-height:0px;font-size:0px;mso-line-height-rule:exactly;')--><div style="margin:0px auto;max-width:600px;"><table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;"><tbody><tr><td style="direction:ltr;font-size:0px;padding:20px 0;padding-bottom:0;padding-top:0;text-align:center;"><!--if mso | IEtable(role='presentation' border='0' cellpadding='0' cellspacing='0')
-              tr
-                td.invitation-title-container-outlook(style='vertical-align:top;width:600px;')--><div class="mj-column-per-100 mj-outlook-group-fix invitation-title-container" style="background: #deffe1; border-radius: 4px; border: 1px solid #deffe1; font-size: 0px; text-align: left; direction: ltr; display: inline-block; vertical-align: top; width: 100%;"><table border="0" cellpadding="0" cellspacing="0" role="presentation" width="100%"><tbody><tr><td style="vertical-align:top;padding-top:4px;padding-bottom:4px;"><table border="0" cellpadding="0" cellspacing="0" role="presentation" style="" width="100%"><tbody><tr><td align="left" style="font-size:0px;padding:0;padding-top:8px;padding-right:20px;padding-bottom:8px;padding-left:20px;word-break:break-word;"><div style="font-family:Roboto;font-size:16px;line-height:1;text-align:left;color:#222222;"><span style="font-weight: 500;">Alice Organizer</span><span>&nbsp;has invited you in to an event</span></div></td></tr></tbody></table></td></tr></tbody></table></div><!--if mso | IEtd.content-outlook(style='vertical-align:top;width:600px;')--><div class="mj-column-per-100 mj-outlook-group-fix content" style="border: 1px solid #ccc; border-radius: 4px; margin-top: 24px; font-size: 0px; text-align: left; direction: ltr; display: inline-block; vertical-align: top; width: 100%;"><table border="0" cellpadding="0" cellspacing="0" role="presentation" style="vertical-align:top;" width="100%"><tbody><tr><td align="left" style="font-size:0px;padding:20px;word-break:break-word;"><div style="font-family:Roboto;font-size:20px;font-weight:500;line-height:1;text-align:left;color:#434343;">Team Meeting</div></td></tr><tr><td align="left" style="font-size:0px;padding:20px;padding-top:0px;word-break:break-word;"><table cellpadding="4px" cellspacing="0" width="100%" border="0" style="color:#434343;font-family:Roboto;font-size:14px;line-height:22px;table-layout:auto;width:100%;border:none;"><tr><td valign="top" style="min-width: 80px;"><strong>Time</strong></td><td><span style="display: inline-block;">2025-06-27 10:00 - 11:00</span><span style="color: #787878; font-weight: 400; display: inline-block;">&nbsp;Europe/Paris</span>&nbsp;(<a class="link" href="https://calendar.example.com/event/123" style="text-decoration: none; color: #4d91c9;">See in Calendar</a>)</td></tr><tr><td style="min-width: 96px;" valign="top"><strong>Location</strong></td><td>Conference Room (<a href="https://www.openstreetmap.org/search?query=Conference%20Room">See in Map</a>)</td></tr><tr><td style="min-width: 96px;" valign="top"><strong>Link</strong></td><td><a class="link" href="https://jitsi.linagora.com/11bb0e17-9b2d-433e-992f-1d797b8c9a5d" style="text-decoration: none; color: #4d91c9;">https://jitsi.linagora.com/11bb0e17-9b2d-433e-992f-1d797b8c9a5d</a></td></tr><tr><td valign="top"><strong>Attendees</strong></td><td><ul style="padding-inline-start: 16px; margin: 0;"><li><span style="font-weight: 500">Alice Organizer</span><span style="color: #787878;">&nbsp;&lt;alice@domain.tld&gt;</span><span style="font-weight: 500">&nbsp;(Organizer)</span></li><li><span style="font-weight: 500">Bob Attendee</span><span style="color: #787878;">&nbsp;&lt;bob@domain.tld&gt;</span></li><li><span style="font-weight: 500">Carol Attendee</span><span style="color: #787878;">&nbsp;&lt;carol@domain.tld&gt;</span></li></ul></td></tr><tr><td valign="top"><strong>Resources</strong></td><td><span>Projector,&nbsp;Room A</span></td></tr><tr><td valign="top"><strong>Notes</strong></td><td style="white-space: pre-line;">Discuss project updates.</td></tr></table></td></tr><tr><td class="part-table" align="left" style="background: #f7f7f7; font-size: 0px; padding: 20px; padding-top: 16px; padding-bottom: 16px; word-break: break-word;"><table cellpadding="0" cellspacing="0" width="100%" border="0" style="color:#000000;font-family:Roboto;font-size:13px;line-height:22px;table-layout:auto;width:100%;border:none;"><tr><td class="part-message-container" colspan="3" style="font-size: 16px; font-family: Roboto; color: #333; font-weight: 500; padding-bottom: 12px;">Will you attend this event?</td></tr><tr><td class="part-button-container" style="white-space: nowrap;"><a class="part-button" href="https://calendar.example.com/event/123/yes" target="_blank" style="display: block; color: #333; text-align: center; margin-right: 8px; min-width: 64px; font-size: 16px; text-decoration: none; padding: 6px 8px; background: #fff; border-radius: 18px; border: 1px solid #ccc;"><span style="color: green; font-size: 18px;">&nbsp;&#10003;&nbsp;</span>&nbsp;Yes</a></td><td class="part-button-container" style="white-space: nowrap;"><a class="part-button" href="https://calendar.example.com/event/123/maybe" target="_blank" style="display: block; color: #333; text-align: center; margin-right: 8px; min-width: 64px; font-size: 16px; text-decoration: none; padding: 6px 8px; background: #fff; border-radius: 18px; border: 1px solid #ccc;"><span style="color: orange; font-weight: 500;">&nbsp;?&nbsp;</span>&nbsp;Maybe</a></td><td class="part-button-container" style="white-space: nowrap;"><a class="part-button" href="https://calendar.example.com/event/123/no" target="_blank" style="display: block; color: #333; text-align: center; margin-right: 8px; min-width: 64px; font-size: 16px; text-decoration: none; padding: 6px 8px; background: #fff; border-radius: 18px; border: 1px solid #ccc;"><span style="color: red; font-size: 18px;">&nbsp;&#x2715;&nbsp;</span>&nbsp;No</a></td><td class="part-button-container--last" style="width: 100%;" width="100%">&nbsp;</td></tr></table></td></tr></tbody></table></div><!--if mso | IE--></td></tr></tbody></table></div><!--if mso | IE--></td></tr></tbody></table></div><!--if mso | IEtable(align='center' border='0' cellpadding='0' cellspacing='0' style='width:600px;' width='600')
-              tr
-                td(style='line-height:0px;font-size:0px;mso-line-height-rule:exactly;')--><div style="margin:0px auto;max-width:600px;"><table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;"><tbody><tr><td style="direction:ltr;font-size:0px;padding:20px 0;text-align:center;"><!--if mso | IEtable(role='presentation' border='0' cellpadding='0' cellspacing='0')
-              tr
-                td(width='600px')
-                  table(align='center' border='0' cellpadding='0' cellspacing='0' style='width:600px;' width='600')
-                    tr
-                      td(style='line-height:0px;font-size:0px;mso-line-height-rule:exactly;')--><div style="margin:0px auto;max-width:600px;"><table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;"><tbody><tr><td style="direction:ltr;font-size:0px;padding:0;text-align:center;"><!--if mso | IEtable(role='presentation' border='0' cellpadding='0' cellspacing='0')
-              tr
-                td(style='vertical-align:top;width:600px;')--><div class="mj-column-per-100 mj-outlook-group-fix" style="font-size:0px;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%;"><table border="0" cellpadding="0" cellspacing="0" role="presentation" style="vertical-align:top;" width="100%"><tbody><tr><td class="warning-text" align="left" style="background-color: #fffaea; border-radius: 4px; font-size: 0px; padding: 12px; word-break: break-word;" bgcolor="#fffaea"><div style="font-family:Roboto;font-size:12px;line-height:1;text-align:left;color:#808080;">&#x26A0; Forwarding this invitation could allow any recipient to send a response to the organizer and be added to the guest list, or invite others regardless of their own invitation status, or to modify your RSVP.</div></td></tr></tbody></table></div><!--if mso | IE--></td></tr></tbody></table></div><!--if mso | IE--></td></tr></tbody></table></div><!--if mso | IE--></div>""".trim());
+            .col-right {
+            width: 34% !important;
+            }
+            }
+            @media only screen and (max-width: 719px) {
+            .conference-box {
+            background: #f8f9fa !important;
+            padding: 14px !important;
+            text-align: left !important;
+            }
+            .join-desktop {
+            display: none !important;
+            }
+            .join-mobile {
+            display: block !important;
+            }
+            }</style></head><body style="margin: 0; padding: 0; background: #ffffff;"><div style="border: 1px solid #e0e0e0; border-radius: 8px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1a1a1a;"><div style="padding: 16px 16px 0 16px;"><div style="font-size: 0;"><div class="col-left" style="display: inline-block; vertical-align: top; min-width: 66%; max-width: 100%; width: calc((720px - 100%) * 720); font-size: 14px;"><div style="display: inline-block; background: #e8f0fe; font-size: 13px; line-height: 1.4; padding: 4px 8px; border-radius: 4px; margin-bottom: 8px;"><b>Alice Organizer</b>&nbsp;has invited you in to an event</div><div style="font-size: 18px; font-weight: 600; line-height: 1.3; margin: 0 0 16px 0;">Team Meeting</div></div><div class="col-right" style="display: inline-block; vertical-align: top; min-width: 34%; max-width: 100%; width: calc((720px - 100%) * 720); font-size: 14px;"><div class="conference-box" style="margin-bottom: 16px; padding: 0 0 0 16px; border-radius: 8px; text-align: right;"><a class="join-desktop" href="https://jitsi.linagora.com/11bb0e17-9b2d-433e-992f-1d797b8c9a5d" target="_blank" style="display: inline-block; margin-bottom: 18px; padding: 10px 18px; background: #1a73e8; color: #ffffff; font-size: 14px; font-weight: 500; border-radius: 6px; text-decoration: none; white-space: nowrap;">&#128249;&nbsp; Join with Twake Visio</a><div style="font-size: 14px; font-weight: 700; margin: 0 0 6px 0;">Video conference</div><a href="https://jitsi.linagora.com/11bb0e17-9b2d-433e-992f-1d797b8c9a5d" target="_blank" style="font-size: 14px; color: #1a73e8; text-decoration: none; word-break: break-all;">https://jitsi.linagora.com/11bb0e17-9b2d-433e-992f-1d797b8c9a5d</a><a class="join-mobile" href="https://jitsi.linagora.com/11bb0e17-9b2d-433e-992f-1d797b8c9a5d" target="_blank" style="display: none; mso-hide: all; margin-top: 12px; padding: 10px 16px; background: #1a73e8; color: #ffffff; font-size: 14px; font-weight: 600; text-align: center; border-radius: 20px; text-decoration: none;">&#128249;&nbsp; Join with Twake Visio</a></div></div></div><div style="max-width: 620px;"><div style="margin-bottom: 16px;"><div style="font-size: 14px; font-weight: 700; margin: 0 0 4px 0;">When</div><div style="font-size: 14px; line-height: 1.5;">2025-06-27 10:00 - 11:00<span style="color: #5f6368;">&nbsp;(Europe/Paris)</span>&nbsp;<a href="https://calendar.example.com/event/123" style="color: #1a73e8; text-decoration: none;">See in Calendar</a></div></div><div style="margin-bottom: 16px;"><div style="font-size: 14px; font-weight: 700; margin: 0 0 4px 0;">Where</div><div style="font-size: 14px; line-height: 1.5;">Conference Room&nbsp;<a href="https://www.openstreetmap.org/search?query=Conference%20Room" style="color: #1a73e8; text-decoration: none;">See in Map</a></div></div><div style="margin-bottom: 16px;"><div style="font-size: 14px; font-weight: 700; margin: 0 0 4px 0;">Participants</div><div style="font-size: 14px; line-height: 1.5;"><div style="margin: 4px 0;"><b>Alice Organizer</b>&nbsp;<span style="color: #5f6368;">alice@domain.tld</span><span style="color: #5f6368;">&nbsp;- organizer</span></div><div style="margin: 4px 0;"><b>Bob Attendee</b>&nbsp;<span style="color: #5f6368;">bob@domain.tld</span></div><div style="margin: 4px 0;"><b>Carol Attendee</b>&nbsp;<span style="color: #5f6368;">carol@domain.tld</span></div></div></div><div style="margin-bottom: 16px;"><div style="font-size: 14px; font-weight: 700; margin: 0 0 4px 0;">Resources</div><div style="font-size: 14px; line-height: 1.5;"><span>Projector,&nbsp;Room A</span></div></div><div style="margin-bottom: 16px;"><div style="font-size: 14px; font-weight: 700; margin: 0 0 4px 0;">Will you attend this event?</div><div style="font-size: 14px; line-height: 1.5;"><table role="presentation" border="0" cellpadding="0" cellspacing="0" style="border-collapse: collapse;"><tr><td style="padding: 4px 4px 0 0;"><a href="https://calendar.example.com/event/123/yes" target="_blank" style="display: inline-block; padding: 6px 18px; border: 1px solid #c9c9c9; border-radius: 999px; background: #ffffff; color: #1a1a1a; font-size: 14px; text-align: center; text-decoration: none; white-space: nowrap;">Yes</a></td><td style="padding: 4px 4px 0 0;"><a href="https://calendar.example.com/event/123/no" target="_blank" style="display: inline-block; padding: 6px 18px; border: 1px solid #c9c9c9; border-radius: 999px; background: #ffffff; color: #1a1a1a; font-size: 14px; text-align: center; text-decoration: none; white-space: nowrap;">No</a></td><td style="padding: 4px 4px 0 0;"><a href="https://calendar.example.com/event/123/maybe" target="_blank" style="display: inline-block; padding: 6px 18px; border: 1px solid #c9c9c9; border-radius: 999px; background: #ffffff; color: #1a1a1a; font-size: 14px; text-align: center; text-decoration: none; white-space: nowrap;">Maybe</a></td></tr></table></div></div><div style="margin-bottom: 16px;"><div style="font-size: 14px; font-weight: 700; margin: 0 0 4px 0;">Notes</div><div style="font-size: 14px; line-height: 1.5;"><div style="white-space: pre-line;">Discuss project updates.</div></div></div></div></div><div style="border-top: 1px solid #e0e0e0; padding: 16px; font-size: 12px; line-height: 1.6; color: #5f6368;"><p style="margin: 0;">Forwarding this invitation could allow any recipient to send a response to the organizer, be added to the guest list, invite others regardless of their own invitation status, or modify your RSVP.</p></div></div></body></html>""".trim());
     }
 }
