@@ -30,6 +30,7 @@ import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.ResourceDAO;
+import com.linagora.calendar.storage.UserProvisioner;
 import com.linagora.calendar.storage.model.ResourceId;
 
 import reactor.core.publisher.Mono;
@@ -46,25 +47,34 @@ public class LocalRecipientResolver {
     private final OpenPaaSUserDAO openPaaSUserDAO;
     private final ResourceDAO resourceDAO;
     private final OpenPaaSDomainDAO domainDAO;
+    private final UserProvisioner userProvisioner;
 
     @Inject
     @Singleton
     public LocalRecipientResolver(OpenPaaSUserDAO openPaaSUserDAO,
                                   ResourceDAO resourceDAO,
-                                  OpenPaaSDomainDAO domainDAO) {
+                                  OpenPaaSDomainDAO domainDAO,
+                                  UserProvisioner userProvisioner) {
         this.openPaaSUserDAO = openPaaSUserDAO;
         this.resourceDAO = resourceDAO;
         this.domainDAO = domainDAO;
+        this.userProvisioner = userProvisioner;
     }
 
+    /**
+     * Resolution order: known user, then resource, then a user of the users repository (eg LDAP)
+     * not yet known by Calendar, which gets provisioned so that the iTIP message can be delivered to it.
+     * Provisioning comes last so that a resource address is never turned into a user.
+     */
     public Mono<Optional<ResolvedRecipient>> resolve(Username username) {
-        return resolveAsUser(username)
+        return resolveAsUser(openPaaSUserDAO.retrieve(username))
             .switchIfEmpty(resolveAsResource(username))
+            .switchIfEmpty(resolveAsUser(userProvisioner.provisionIfExists(username)))
             .switchIfEmpty(Mono.just(Optional.empty()));
     }
 
-    private Mono<Optional<ResolvedRecipient>> resolveAsUser(Username username) {
-        return openPaaSUserDAO.retrieve(username)
+    private Mono<Optional<ResolvedRecipient>> resolveAsUser(Mono<OpenPaaSUser> user) {
+        return user
             .map(OpenPaaSUser::id)
             .map(id -> Optional.of((ResolvedRecipient) new ResolvedRecipient.LocalUser(id)));
     }
