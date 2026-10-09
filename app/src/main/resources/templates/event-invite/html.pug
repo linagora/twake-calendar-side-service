@@ -57,36 +57,35 @@ html
       .col-right {
       width: 34% !important;
       }
-      }
-      @media only screen and (max-width: 719px) {
       .conference-box {
-      background: #f8f9fa !important;
-      padding: 14px !important;
-      text-align: left !important;
+      max-width: none !important;
+      background: transparent !important;
+      padding: 0 0 0 16px !important;
+      text-align: right !important;
       }
       .join-desktop {
-      display: none !important;
+      display: inline-block !important;
       }
       .join-mobile {
-      display: block !important;
+      display: none !important;
       }
       }
   body(style='margin: 0; padding: 0; background: #ffffff;')
     div(style='border: 1px solid #e0e0e0; border-radius: 8px; font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, Helvetica, Arial, sans-serif; color: #1a1a1a;')
       div(style='padding: 16px 16px 0 16px;')
         div(style='font-size: 0;')
-          div.col-left(style='display: inline-block; vertical-align: top; min-width: 66%; max-width: 100%; width: calc((720px - 100%) * 720); font-size: 14px;')
+          div.col-left(style='display: inline-block; vertical-align: top; width: 100%; font-size: 14px;')
             div(style='display: inline-block; background: #e8f0fe; font-size: 13px; line-height: 1.4; padding: 4px 8px; border-radius: 4px; margin-bottom: 8px;')
               b #{content.event.organizer.cn}
               | &nbsp;#{translator.get('invite_to_meeting')}
             div(style='font-size: 18px; font-weight: 600; line-height: 1.3; margin: 0 0 16px 0;') #{content.event.summary}
           if (content.event.videoConferenceLink)
-            div.col-right(style='display: inline-block; vertical-align: top; min-width: 34%; max-width: 100%; width: calc((720px - 100%) * 720); font-size: 14px;')
-              div.conference-box(style='margin-bottom: 16px; padding: 0 0 0 16px; border-radius: 8px; text-align: right;')
-                a.join-desktop(href=content.event.videoConferenceLink target='_blank' style='display: inline-block; margin-bottom: 18px; padding: 10px 18px; background: #1a73e8; color: #ffffff; font-size: 14px; font-weight: 500; border-radius: 6px; text-decoration: none; white-space: nowrap;') &#128249;&nbsp; #{translator.get('join_video_conference')}
+            div.col-right(style='display: inline-block; vertical-align: top; width: 100%; font-size: 14px;')
+              div.conference-box(style='box-sizing: border-box; max-width: 400px; margin-bottom: 16px; padding: 14px; background: #f8f9fa; border-radius: 8px; text-align: left;')
+                a.join-desktop(href=content.event.videoConferenceLink target='_blank' style='display: none; mso-hide: all; margin-bottom: 18px; padding: 10px 18px; background: #1a73e8; color: #ffffff; font-size: 14px; font-weight: 500; border-radius: 6px; text-decoration: none; white-space: nowrap;') &#128249;&nbsp; #{translator.get('join_video_conference')}
                 div(style='font-size: 14px; font-weight: 700; margin: 0 0 6px 0;') #{translator.get('video_conference')}
                 a(href=content.event.videoConferenceLink target='_blank' style='font-size: 14px; color: #1a73e8; text-decoration: none; word-break: break-all;') #{content.event.videoConferenceLink}
-                a.join-mobile(href=content.event.videoConferenceLink target='_blank' style='display: none; mso-hide: all; margin-top: 12px; padding: 10px 16px; background: #1a73e8; color: #ffffff; font-size: 14px; font-weight: 600; text-align: center; border-radius: 20px; text-decoration: none;') &#128249;&nbsp; #{translator.get('join_video_conference')}
+                a.join-mobile(href=content.event.videoConferenceLink target='_blank' style='display: block; margin-top: 12px; padding: 10px 16px; background: #1a73e8; color: #ffffff; font-size: 14px; font-weight: 600; text-align: center; border-radius: 20px; text-decoration: none;') &#128249;&nbsp; #{translator.get('join_video_conference')}
         div(style='max-width: 620px;')
           +section(translator.get('when'))
             if (!content.event.allDay)
