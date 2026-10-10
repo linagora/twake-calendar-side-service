@@ -248,6 +248,30 @@ public class CalDavClient extends DavClient {
             }));
     }
 
+    /**
+     * Writes a new event as the user, as a client does: unlike an import, sabre schedules and publishes it as any
+     * other write. False when the calendar already holds an object at that event id.
+     */
+    public Mono<Boolean> createCalendarEvent(Username username, CalendarURL calendarURL, String eventId, byte[] calendarData) {
+        String uri = calendarURL.asUri() + "/" + eventId + ICS_EXTENSION;
+        return httpClientWithImpersonation(username)
+            .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, "text/calendar; charset=utf-8")
+                .add(HttpHeaderNames.IF_NONE_MATCH, "*"))
+            .request(HttpMethod.PUT)
+            .uri(uri)
+            .send(Mono.just(Unpooled.wrappedBuffer(calendarData)))
+            .responseSingle((response, responseContent) -> switch (response.status().code()) {
+                case HttpStatus.SC_CREATED -> Mono.just(true);
+                case HttpStatus.SC_PRECONDITION_FAILED -> Mono.just(false);
+                default -> responseContent.asString(StandardCharsets.UTF_8)
+                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .flatMap(responseBody -> Mono.error(new DavClientException("""
+                        Unexpected status code: %d when creating calendar object '%s'
+                        %s
+                        """.formatted(response.status().code(), uri, responseBody))));
+            });
+    }
+
     public Flux<CalendarURL> findUserCalendars(Username user, OpenPaaSId userId) {
         return findUserCalendars(user, userId, DEFAULT_FIND_USER_CALENDARS_PARAMS)
             .flatMapIterable(response -> response.calendars().keySet());
