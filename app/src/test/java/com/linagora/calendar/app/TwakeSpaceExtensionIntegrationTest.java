@@ -90,9 +90,10 @@ class TwakeSpaceExtensionIntegrationTest {
     private record Slot(String start, String end) {
     }
 
-    private static final Slot PLANNED = new Slot("20261010T090000Z", "20261010T100000Z");
-    private static final Slot MOVED = new Slot("20261011T090000Z", "20261011T100000Z");
-    private static final Slot PROPOSED = new Slot("20261012T140000Z", "20261012T150000Z");
+    // Sabre sends no reply for a past event, so the slots stay in the future.
+    private static final Slot PLANNED = new Slot("20361010T090000Z", "20361010T100000Z");
+    private static final Slot MOVED = new Slot("20361011T090000Z", "20361011T100000Z");
+    private static final Slot PROPOSED = new Slot("20361012T140000Z", "20361012T150000Z");
     private static final String SPACE_EXCHANGE = TwakeSpaceConfiguration.DEFAULT_SPACE_EXCHANGE;
     private static final String QUEUE = SpaceEventConsumer.QUEUE;
     private static final String DEAD_LETTER_QUEUE = SpaceEventConsumer.DEAD_LETTER_QUEUE;
@@ -260,7 +261,7 @@ class TwakeSpaceExtensionIntegrationTest {
             {"type": "event", "id": "uid-1", "title": "Sprint planning", "container": {"kind": "calendar", "id": "%s"}}"""
             .formatted(teamCalendarId)));
         assertThat(created.path("data").path("state")).isEqualTo(OBJECT_MAPPER.readTree("""
-            {"start": "2026-10-10T09:00:00Z", "end": "2026-10-10T10:00:00Z", "allDay": false, "location": "Room 1",
+            {"start": "2036-10-10T09:00:00Z", "end": "2036-10-10T10:00:00Z", "allDay": false, "location": "Room 1",
              "rsvp": {"accepted": 0, "declined": 0, "tentative": 0, "pending": 1}}"""));
         assertThat(created.path("data").path("preview").asText()).isEqualTo("Room 1");
         assertThat(created.path("data").path("recipients")).isEqualTo(OBJECT_MAPPER.readTree("""
@@ -276,9 +277,9 @@ class TwakeSpaceExtensionIntegrationTest {
         putEvent("alice", event("uid-1", "Sprint planning", MOVED, "bob"));
 
         JsonNode rescheduled = awaitActivity("com.twake.calendar.event.rescheduled.v1");
-        assertThat(rescheduled.path("data").path("state").path("start").asText()).isEqualTo("2026-10-11T09:00:00Z");
+        assertThat(rescheduled.path("data").path("state").path("start").asText()).isEqualTo("2036-10-11T09:00:00Z");
         assertThat(rescheduled.path("data").path("state").path("previous")).isEqualTo(OBJECT_MAPPER.readTree("""
-            {"start": "2026-10-10T09:00:00Z", "end": "2026-10-10T10:00:00Z"}"""));
+            {"start": "2036-10-10T09:00:00Z", "end": "2036-10-10T10:00:00Z"}"""));
         assertThat(rescheduled.path("data").path("recipients")).isEqualTo(OBJECT_MAPPER.readTree("""
             [{"email": "bob@space.tld", "reason": "attendee"}]"""));
     }
@@ -380,9 +381,9 @@ class TwakeSpaceExtensionIntegrationTest {
 
         JsonNode proposed = awaitActivity("com.twake.calendar.event.proposed.v1");
         assertThat(proposed.path("twakeactor").asText()).isEqualTo("carol@space.tld");
-        assertThat(proposed.path("data").path("state").path("start").asText()).isEqualTo("2026-10-10T09:00:00Z");
+        assertThat(proposed.path("data").path("state").path("start").asText()).isEqualTo("2036-10-10T09:00:00Z");
         assertThat(proposed.path("data").path("state").path("proposed")).isEqualTo(OBJECT_MAPPER.readTree("""
-            {"start": "2026-10-12T14:00:00Z", "end": "2026-10-12T15:00:00Z", "by": "carol@space.tld"}"""));
+            {"start": "2036-10-12T14:00:00Z", "end": "2036-10-12T15:00:00Z", "by":"carol@space.tld"}"""));
     }
 
     @Test
