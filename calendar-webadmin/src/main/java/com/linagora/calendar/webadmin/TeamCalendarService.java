@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.webadmin;
 
+import java.util.Optional;
+
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
@@ -57,8 +59,17 @@ public class TeamCalendarService {
     }
 
     public Mono<TeamCalendar> create(Domain domainName, String name, String displayName) {
+        return create(domainName, name, displayName, Optional.empty());
+    }
+
+    // Fails with TeamCalendarAlreadyExistsException when the id is taken, so that concurrent creations make one team calendar.
+    public Mono<TeamCalendar> create(Domain domainName, TeamCalendarId id, String name, String displayName) {
+        return create(domainName, name, displayName, Optional.of(id));
+    }
+
+    private Mono<TeamCalendar> create(Domain domainName, String name, String displayName, Optional<TeamCalendarId> id) {
         return resolveDomain(domainName)
-            .flatMap(domain -> teamCalendarRepository.create(new TeamCalendarInsertRequest(domain, name, displayName)))
+            .flatMap(domain -> teamCalendarRepository.create(new TeamCalendarInsertRequest(domain, name, displayName, id)))
             .flatMap(teamCalendar -> createDavCalendar(teamCalendar).thenReturn(teamCalendar));
     }
 

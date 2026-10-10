@@ -16,29 +16,34 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage;
+package com.linagora.calendar.app;
 
 import java.util.Optional;
 
-import org.apache.commons.lang3.StringUtils;
+import jakarta.inject.Inject;
 
-import com.google.common.base.Preconditions;
-import com.linagora.calendar.storage.model.TeamCalendarId;
+import org.apache.james.core.Domain;
+import org.apache.james.utils.GuiceProbe;
 
-// Without an id the repository generates one. With one, creating it twice fails with TeamCalendarAlreadyExistsException.
-public record TeamCalendarInsertRequest(OpenPaaSDomain domain,
-                                        String name,
-                                        String displayName,
-                                        Optional<TeamCalendarId> id) {
+import com.linagora.calendar.storage.model.TeamCalendar;
+import com.linagora.calendar.twakespace.SpaceTeamCalendars;
+import com.linagora.calendar.twakespace.model.SpaceId;
 
-    public TeamCalendarInsertRequest {
-        Preconditions.checkNotNull(domain, "domain must not be null");
-        Preconditions.checkArgument(!StringUtils.isBlank(name), "team calendar name must not be empty");
-        Preconditions.checkArgument(!StringUtils.isBlank(displayName), "team calendar displayName must not be empty");
-        Preconditions.checkNotNull(id, "id must not be null");
+import reactor.core.publisher.Mono;
+
+public class SpaceTeamCalendarsProbe implements GuiceProbe {
+    private final SpaceTeamCalendars spaceTeamCalendars;
+
+    @Inject
+    public SpaceTeamCalendarsProbe(SpaceTeamCalendars spaceTeamCalendars) {
+        this.spaceTeamCalendars = spaceTeamCalendars;
     }
 
-    public TeamCalendarInsertRequest(OpenPaaSDomain domain, String name, String displayName) {
-        this(domain, name, displayName, Optional.empty());
+    public Mono<TeamCalendar> findOrCreate(Domain domain, SpaceId spaceId, Optional<String> name) {
+        return spaceTeamCalendars.findOrCreate(domain, spaceId, name);
+    }
+
+    public Mono<TeamCalendar> find(Domain domain, SpaceId spaceId) {
+        return spaceTeamCalendars.find(domain, spaceId);
     }
 }

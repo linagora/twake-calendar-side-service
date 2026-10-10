@@ -50,6 +50,7 @@
         <module>storage-ldap</module>
         <module>storage-mongodb</module>
         <module>storage-opensearch</module>
+        <module>twake-space-extension</module>
         <module>utility-app</module>
     </modules>
 
@@ -151,6 +152,11 @@
             <dependency>
                 <groupId>${project.groupId}</groupId>
                 <artifactId>common-contacts-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>${project.groupId}</groupId>
+                <artifactId>twake-space-extension</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

@@ -16,29 +16,32 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage;
+package com.linagora.calendar.twakespace.model;
 
+import java.util.Arrays;
 import java.util.Optional;
 
-import org.apache.commons.lang3.StringUtils;
+public enum SpaceEventType {
+    CREATED("twake.space.created"),
+    UPDATED("twake.space.updated"),
+    DELETED("twake.space.deleted"),
+    MEMBER_ADDED("twake.space.member.added"),
+    MEMBER_ROLE_CHANGED("twake.space.member.role.changed"),
+    MEMBER_REMOVED("twake.space.member.removed");
 
-import com.google.common.base.Preconditions;
-import com.linagora.calendar.storage.model.TeamCalendarId;
-
-// Without an id the repository generates one. With one, creating it twice fails with TeamCalendarAlreadyExistsException.
-public record TeamCalendarInsertRequest(OpenPaaSDomain domain,
-                                        String name,
-                                        String displayName,
-                                        Optional<TeamCalendarId> id) {
-
-    public TeamCalendarInsertRequest {
-        Preconditions.checkNotNull(domain, "domain must not be null");
-        Preconditions.checkArgument(!StringUtils.isBlank(name), "team calendar name must not be empty");
-        Preconditions.checkArgument(!StringUtils.isBlank(displayName), "team calendar displayName must not be empty");
-        Preconditions.checkNotNull(id, "id must not be null");
+    public static Optional<SpaceEventType> fromRoutingKey(String routingKey) {
+        return Arrays.stream(values())
+            .filter(type -> type.routingKey.equals(routingKey))
+            .findFirst();
     }
 
-    public TeamCalendarInsertRequest(OpenPaaSDomain domain, String name, String displayName) {
-        this(domain, name, displayName, Optional.empty());
+    private final String routingKey;
+
+    SpaceEventType(String routingKey) {
+        this.routingKey = routingKey;
+    }
+
+    public String routingKey() {
+        return routingKey;
     }
 }

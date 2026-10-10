@@ -16,29 +16,16 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage;
+package com.linagora.calendar.twakespace.storage;
 
-import java.util.Optional;
+import com.linagora.calendar.twakespace.model.SpaceId;
+import com.linagora.calendar.twakespace.model.TwakeSpace;
 
-import org.apache.commons.lang3.StringUtils;
+import reactor.core.publisher.Mono;
 
-import com.google.common.base.Preconditions;
-import com.linagora.calendar.storage.model.TeamCalendarId;
+public interface TwakeSpaceRepository {
+    // Atomic, so that concurrent merges into a space all count. Returns the stored space.
+    Mono<TwakeSpace> merge(TwakeSpace change);
 
-// Without an id the repository generates one. With one, creating it twice fails with TeamCalendarAlreadyExistsException.
-public record TeamCalendarInsertRequest(OpenPaaSDomain domain,
-                                        String name,
-                                        String displayName,
-                                        Optional<TeamCalendarId> id) {
-
-    public TeamCalendarInsertRequest {
-        Preconditions.checkNotNull(domain, "domain must not be null");
-        Preconditions.checkArgument(!StringUtils.isBlank(name), "team calendar name must not be empty");
-        Preconditions.checkArgument(!StringUtils.isBlank(displayName), "team calendar displayName must not be empty");
-        Preconditions.checkNotNull(id, "id must not be null");
-    }
-
-    public TeamCalendarInsertRequest(OpenPaaSDomain domain, String name, String displayName) {
-        this(domain, name, displayName, Optional.empty());
-    }
+    Mono<TwakeSpace> retrieve(SpaceId spaceId);
 }
