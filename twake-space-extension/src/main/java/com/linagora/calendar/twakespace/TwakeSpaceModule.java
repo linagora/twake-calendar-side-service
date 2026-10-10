@@ -45,6 +45,7 @@ import com.google.inject.multibindings.ProvidesIntoSet;
 import com.linagora.calendar.amqp.ConsumerReconnectionHandler;
 import com.linagora.calendar.twakespace.amqp.ActivityPublisher;
 import com.linagora.calendar.twakespace.amqp.CalendarActivityConsumer;
+import com.linagora.calendar.twakespace.amqp.MeetingRequestConsumer;
 import com.linagora.calendar.twakespace.amqp.SpaceEventConsumer;
 import com.linagora.calendar.twakespace.storage.MemoryTwakeSpaceRepository;
 import com.linagora.calendar.twakespace.storage.MongoTwakeSpaceRepository;
@@ -73,6 +74,8 @@ public class TwakeSpaceModule extends AbstractModule {
         bind(ActivityPublisher.class).in(Scopes.SINGLETON);
         bind(SpaceEventConsumer.class).in(Scopes.SINGLETON);
         bind(CalendarActivityConsumer.class).in(Scopes.SINGLETON);
+        bind(SpaceMeetings.class).in(Scopes.SINGLETON);
+        bind(MeetingRequestConsumer.class).in(Scopes.SINGLETON);
     }
 
     @Provides
@@ -116,6 +119,13 @@ public class TwakeSpaceModule extends AbstractModule {
     }
 
     @ProvidesIntoSet
+    InitializationOperation initializeMeetingRequestConsumer(MeetingRequestConsumer consumer) {
+        return InitilizationOperationBuilder
+            .forClass(MeetingRequestConsumer.class)
+            .init(consumer::init);
+    }
+
+    @ProvidesIntoSet
     SimpleConnectionPool.ReconnectionHandler provideCalendarActivityReconnectionHandler(CalendarActivityConsumer consumer) {
         return new ConsumerReconnectionHandler(consumer::restart, "Error while handling reconnection for CalendarActivityConsumer");
     }
@@ -130,6 +140,17 @@ public class TwakeSpaceModule extends AbstractModule {
     MonitoredRabbitMQConsumers calendarActivityConsumers(SimpleConnectionPool connectionPool, CalendarActivityConsumer consumer) {
         return MonitoredRabbitMQConsumers.of("twake space calendar queue", connectionPool, () -> List.of(CalendarActivityConsumer.QUEUE),
             connection -> Mono.fromRunnable(consumer::restart));
+    }
+
+    @ProvidesIntoSet
+    MonitoredRabbitMQConsumers meetingRequestConsumers(@Named(TWP_INJECTION_KEY) SimpleConnectionPool connectionPool, MeetingRequestConsumer consumer) {
+        return MonitoredRabbitMQConsumers.of("twake space meeting queue", connectionPool, () -> List.of(MeetingRequestConsumer.QUEUE),
+            connection -> Mono.fromRunnable(consumer::restart));
+    }
+
+    @ProvidesIntoSet
+    MonitoredDeadLetterQueue meetingRequestDeadLetterQueue(@Named(TWP_INJECTION_KEY) RabbitMQConfiguration rabbitMQConfiguration) {
+        return new MonitoredDeadLetterQueue(rabbitMQConfiguration, MeetingRequestConsumer.DEAD_LETTER_QUEUE);
     }
 
     @ProvidesIntoSet
