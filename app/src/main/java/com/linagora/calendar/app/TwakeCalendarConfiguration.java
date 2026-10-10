@@ -219,6 +219,10 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                 throw new IllegalArgumentException("TWP Setting must be enabled when TwakeSpace is enabled");
             }
 
+            if (!meetEnabledValue && twakeSpaceEnabledValue) {
+                throw new IllegalArgumentException("Meet must be enabled when TwakeSpace is enabled");
+            }
+
             if (!twpSettingEnabledValue && saasSubscriptionEnabledValue) {
                 throw new IllegalArgumentException("TWP Setting must be enabled when SaaS Subscription is enabled");
             }

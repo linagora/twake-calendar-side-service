@@ -59,6 +59,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.multibindings.Multibinder;
+import com.linagora.calendar.amqp.meet.MeetConfiguration;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavModuleTestHelper;
@@ -106,6 +107,8 @@ class TwakeSpaceExtensionIntegrationTest {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final AtomicLong EVENT_COUNT = new AtomicLong();
     private static final ConditionFactory AWAIT = Awaitility.await().atMost(Duration.ofSeconds(30)).pollInterval(Duration.ofMillis(200));
+    private static final String ROOM = "abc-defg-hij";
+    private static final String MEET_URL = "https://meet.space.tld";
 
     @RegisterExtension
     static SabreDavExtension sabreDavExtension = SabreDavExtension.perClass();
@@ -136,10 +139,13 @@ class TwakeSpaceExtensionIntegrationTest {
                 .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
                 .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB)
                 .enableTwpSetting()
+                .enableMeet()
                 .enableTwakeSpace()
                 .build())
             .overrideWith(List.of(AppTestHelper.OIDC_BY_PASS_MODULE,
                 DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
+                binder -> binder.bind(MeetConfiguration.class).toInstance(new MeetConfiguration("test-client-id", "test-client-secret",
+                    URI.create(MEET_URL), false, Duration.ofSeconds(5), Optional.empty())),
                 binder -> {
                     Multibinder<GuiceProbe> probes = Multibinder.newSetBinder(binder, GuiceProbe.class);
                     probes.addBinding().to(MonitoredRabbitMQProbe.class);
@@ -181,6 +187,29 @@ class TwakeSpaceExtensionIntegrationTest {
 
         assertThat(probe.consumedQueues()).contains(QUEUE, CalendarActivityConsumer.QUEUE);
         assertThat(probe.deadLetterQueues()).contains(DEAD_LETTER_QUEUE, CalendarActivityConsumer.DEAD_LETTER_QUEUE);
+    }
+
+    @Test
+    void eventLinkedToAMeetRoomShouldCarryTheRoom() throws Exception {
+        provisionedSpace(member("alice", "admin"));
+        String ics = event("uid-1", "Sprint planning", PLANNED);
+        putEvent("alice", ics);
+        assertThat(awaitActivity("com.twake.calendar.event.created.v1").path("data").path("state").has("meeting")).isFalse();
+
+        putEvent("alice", ics.replace("LOCATION:Room 1\r\n", "LOCATION:Room 1\r\nX-OPENPAAS-VIDEOCONFERENCE:%s/%s\r\n".formatted(MEET_URL, ROOM)));
+
+        assertThat(awaitActivity("com.twake.calendar.event.updated.v1").path("data").path("state").path("meeting")).isEqualTo(OBJECT_MAPPER.readTree("""
+            {"room": "%s"}""".formatted(ROOM)));
+    }
+
+    @Test
+    void eventLinkedToAnotherVisioShouldCarryNoRoom() throws Exception {
+        provisionedSpace(member("alice", "admin"));
+
+        putEvent("alice", event("uid-1", "Sprint planning", PLANNED)
+            .replace("LOCATION:Room 1\r\n", "LOCATION:Room 1\r\nX-OPENPAAS-VIDEOCONFERENCE:https://visio.other.tld/%s\r\n".formatted(ROOM)));
+
+        assertThat(awaitActivity("com.twake.calendar.event.created.v1").path("data").path("state").has("meeting")).isFalse();
     }
 
     @Test

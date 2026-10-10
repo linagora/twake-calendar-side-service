@@ -36,7 +36,7 @@ import com.linagora.calendar.storage.model.TeamCalendarId;
 class CalendarEventSnapshotTest {
     private static final CalendarURL CALENDAR = new CalendarURL(new OpenPaaSId("team-1"), new OpenPaaSId("team-1"));
     private static final CalendarEventSnapshot SNAPSHOT = new CalendarEventSnapshot("uid-1", new TeamCalendarId("team-1"), "Sprint planning",
-        Instant.parse("2026-10-10T09:00:00Z"), Optional.of(Instant.parse("2026-10-10T10:00:00Z")), false, Optional.of("Room 1"),
+        Instant.parse("2026-10-10T09:00:00Z"), Optional.of(Instant.parse("2026-10-10T10:00:00Z")), false, Optional.of("Room 1"), Optional.of("https://meet.space.tld/abc-defg-hij"),
         Optional.of("alice@space.tld"), Map.of("alice@space.tld", "ACCEPTED", "bob@space.tld", "NEEDS-ACTION",
             "carol@space.tld", "DECLINED", "dave@space.tld", "TENTATIVE", "erin@space.tld", "DELEGATED"));
 
@@ -48,7 +48,7 @@ class CalendarEventSnapshotTest {
     @Test
     void rescheduledShouldBeFalseWhenOnlyTheTitleChanges() {
         CalendarEventSnapshot renamed = new CalendarEventSnapshot("uid-1", SNAPSHOT.teamCalendarId(), "Retro", SNAPSHOT.start(),
-            SNAPSHOT.end(), false, SNAPSHOT.location(), SNAPSHOT.organizer(), SNAPSHOT.attendees());
+            SNAPSHOT.end(), false, SNAPSHOT.location(), SNAPSHOT.videoconference(), SNAPSHOT.organizer(), SNAPSHOT.attendees());
 
         assertThat(renamed.rescheduledFrom(SNAPSHOT)).isFalse();
     }
@@ -56,7 +56,8 @@ class CalendarEventSnapshotTest {
     @Test
     void rescheduledShouldBeTrueWhenTheEndChanges() {
         CalendarEventSnapshot longer = new CalendarEventSnapshot("uid-1", SNAPSHOT.teamCalendarId(), SNAPSHOT.title(), SNAPSHOT.start(),
-            Optional.of(Instant.parse("2026-10-10T11:00:00Z")), false, SNAPSHOT.location(), SNAPSHOT.organizer(), SNAPSHOT.attendees());
+            Optional.of(Instant.parse("2026-10-10T11:00:00Z")), false, SNAPSHOT.location(), SNAPSHOT.videoconference(), SNAPSHOT.organizer(),
+            SNAPSHOT.attendees());
 
         assertThat(longer.rescheduledFrom(SNAPSHOT)).isTrue();
     }
@@ -75,7 +76,7 @@ class CalendarEventSnapshotTest {
     @Test
     void attendeeEmailsShouldBeComparedIgnoringCase() {
         CalendarEventSnapshot snapshot = new CalendarEventSnapshot("uid-1", SNAPSHOT.teamCalendarId(), SNAPSHOT.title(), SNAPSHOT.start(),
-            SNAPSHOT.end(), false, SNAPSHOT.location(), Optional.of("Alice@Space.TLD"), Map.of("Bob@Space.TLD", "ACCEPTED"));
+            SNAPSHOT.end(), false, SNAPSHOT.location(), Optional.empty(), Optional.of("Alice@Space.TLD"), Map.of("Bob@Space.TLD", "ACCEPTED"));
 
         assertThat(snapshot.attendees()).containsEntry("bob@space.tld", "ACCEPTED");
         assertThat(snapshot.organizer()).contains("alice@space.tld");
@@ -97,6 +98,7 @@ class CalendarEventSnapshotTest {
                 ["dtend", {}, "date-time", "2026-10-10T10:00:00Z"],
                 ["summary", {}, "text", "Sprint planning"],
                 ["location", {}, "text", "Room 1"],
+                ["x-openpaas-videoconference", {}, "unknown", "https://meet.space.tld/abc-defg-hij"],
                 ["organizer", {"cn": "Alice"}, "cal-address", "mailto:alice@space.tld"],
                 ["attendee", {"partstat": "ACCEPTED"}, "cal-address", "mailto:alice@space.tld"],
                 ["attendee", {"partstat": "DECLINED"}, "cal-address", "mailto:Bob@space.tld"],
@@ -107,7 +109,7 @@ class CalendarEventSnapshotTest {
 
         assertThat(CalendarEventSnapshot.fromJCal(CALENDAR, "uid-1.ics", jCal))
             .contains(new CalendarEventSnapshot("uid-1", SNAPSHOT.teamCalendarId(), "Sprint planning", SNAPSHOT.start(), SNAPSHOT.end(),
-                false, SNAPSHOT.location(), SNAPSHOT.organizer(),
+                false, SNAPSHOT.location(), SNAPSHOT.videoconference(), SNAPSHOT.organizer(),
                 Map.of("alice@space.tld", "ACCEPTED", "bob@space.tld", "DECLINED", "carol@space.tld", "NEEDS-ACTION")));
     }
 
@@ -121,6 +123,6 @@ class CalendarEventSnapshotTest {
         Map<String, String> attendees = new HashMap<>(SNAPSHOT.attendees());
         attendees.put("bob@space.tld", "ACCEPTED");
         return new CalendarEventSnapshot("uid-1", SNAPSHOT.teamCalendarId(), title, SNAPSHOT.start(), SNAPSHOT.end(), false,
-            SNAPSHOT.location(), SNAPSHOT.organizer(), attendees);
+            SNAPSHOT.location(), SNAPSHOT.videoconference(), SNAPSHOT.organizer(), attendees);
     }
 }

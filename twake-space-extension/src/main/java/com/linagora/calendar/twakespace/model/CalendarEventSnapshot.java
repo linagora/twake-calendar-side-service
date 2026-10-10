@@ -43,7 +43,8 @@ import net.fortuna.ical4j.model.parameter.PartStat;
 
 // What a card shows of a version of an event of a team calendar.
 public record CalendarEventSnapshot(String uid, TeamCalendarId teamCalendarId, String title, Instant start, Optional<Instant> end,
-                                    boolean allDay, Optional<String> location, Optional<String> organizer, Map<String, String> attendees) {
+                                    boolean allDay, Optional<String> location, Optional<String> videoconference, Optional<String> organizer,
+                                    Map<String, String> attendees) {
     public record Rsvp(long accepted, long declined, long tentative, long pending) {
     }
 
@@ -56,6 +57,7 @@ public record CalendarEventSnapshot(String uid, TeamCalendarId teamCalendarId, S
     public static CalendarEventSnapshot from(TeamCalendarId teamCalendarId, EventFields event) {
         return new CalendarEventSnapshot(event.uid().value(), teamCalendarId, Objects.requireNonNullElse(event.summary(), ""),
             event.start(), Optional.ofNullable(event.end()), Boolean.TRUE.equals(event.allDay()), Optional.ofNullable(event.location()),
+            Optional.ofNullable(StringUtils.trimToNull(event.videoconferenceUrl())),
             Optional.ofNullable(event.organizer()).map(organizer -> organizer.email().asString()),
             event.attendees().stream().collect(Collectors.toMap(attendee -> attendee.email().asString(),
                 attendee -> attendee.partStat().map(PartStat::getValue).orElse(NEEDS_ACTION),
@@ -87,7 +89,7 @@ public record CalendarEventSnapshot(String uid, TeamCalendarId teamCalendarId, S
                         (first, second) -> first));
                 CalendarEventSnapshot snapshot = from(teamCalendarId, fields);
                 return new CalendarEventSnapshot(snapshot.uid, teamCalendarId, snapshot.title, snapshot.start, snapshot.end, snapshot.allDay,
-                    snapshot.location, snapshot.organizer, answers);
+                    snapshot.location, snapshot.videoconference, snapshot.organizer, answers);
             });
     }
 
@@ -100,7 +102,7 @@ public record CalendarEventSnapshot(String uid, TeamCalendarId teamCalendarId, S
     public CalendarEventSnapshot withPartStat(String attendee, String partStat) {
         Map<String, String> answered = new HashMap<>(attendees);
         answered.put(normalize(attendee), partStat);
-        return new CalendarEventSnapshot(uid, teamCalendarId, title, start, end, allDay, location, organizer, answered);
+        return new CalendarEventSnapshot(uid, teamCalendarId, title, start, end, allDay, location, videoconference, organizer, answered);
     }
 
     public boolean rescheduledFrom(CalendarEventSnapshot previous) {
@@ -133,7 +135,7 @@ public record CalendarEventSnapshot(String uid, TeamCalendarId teamCalendarId, S
     private CalendarEventSnapshot withPartStatsOf(CalendarEventSnapshot other) {
         Map<String, String> partStats = new HashMap<>(attendees);
         other.attendees.forEach((attendee, partStat) -> partStats.computeIfPresent(attendee, (key, value) -> partStat));
-        return new CalendarEventSnapshot(uid, teamCalendarId, title, start, end, allDay, location, organizer, partStats);
+        return new CalendarEventSnapshot(uid, teamCalendarId, title, start, end, allDay, location, videoconference, organizer, partStats);
     }
 
     private static Stream<JsonNode> properties(JsonNode event, String name) {
