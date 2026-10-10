@@ -21,6 +21,8 @@ package com.linagora.calendar.app;
 import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockserver.model.HttpRequest.request;
+import static org.mockserver.model.HttpResponse.response;
 
 import java.io.InputStream;
 import java.net.URI;
@@ -55,6 +57,8 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.mockserver.integration.ClientAndServer;
+import org.mockserver.model.MediaType;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -72,6 +76,7 @@ import com.linagora.calendar.storage.TestFixture;
 import com.linagora.calendar.twakespace.SpaceTeamCalendars;
 import com.linagora.calendar.twakespace.TwakeSpaceConfiguration;
 import com.linagora.calendar.twakespace.amqp.CalendarActivityConsumer;
+import com.linagora.calendar.twakespace.amqp.MeetingRequestConsumer;
 import com.linagora.calendar.twakespace.amqp.SpaceEventConsumer;
 import com.linagora.calendar.twakespace.model.DuplicateSpaceTeamCalendarException;
 import com.linagora.calendar.twakespace.model.SpaceId;
@@ -107,8 +112,12 @@ class TwakeSpaceExtensionIntegrationTest {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final AtomicLong EVENT_COUNT = new AtomicLong();
     private static final ConditionFactory AWAIT = Awaitility.await().atMost(Duration.ofSeconds(30)).pollInterval(Duration.ofMillis(200));
+    private static final String COMMAND_EXCHANGE = TwakeSpaceConfiguration.DEFAULT_COMMAND_EXCHANGE;
+    private static final String MEET_TOKEN_PATH = "/external-api/v1.0/application/token/";
+    private static final String MEET_ROOMS_PATH = "/external-api/v1.0/rooms/";
     private static final String ROOM = "abc-defg-hij";
-    private static final String MEET_URL = "https://meet.space.tld";
+    private static final ClientAndServer MEET = ClientAndServer.startClientAndServer(0);
+    private static final String MEET_URL = "http://127.0.0.1:" + MEET.getLocalPort();
 
     @RegisterExtension
     static SabreDavExtension sabreDavExtension = SabreDavExtension.perClass();
@@ -166,6 +175,13 @@ class TwakeSpaceExtensionIntegrationTest {
         }
         dav = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING);
         calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING);
+        MEET.reset();
+        MEET.when(request().withMethod("POST").withPath(MEET_TOKEN_PATH))
+            .respond(response().withStatusCode(200).withContentType(MediaType.APPLICATION_JSON)
+                .withBody("{\"access_token\":\"jwt\",\"token_type\":\"Bearer\",\"expires_in\":3600}"));
+        MEET.when(request().withMethod("POST").withPath(MEET_ROOMS_PATH))
+            .respond(response().withStatusCode(201).withContentType(MediaType.APPLICATION_JSON)
+                .withBody("{\"id\":\"550e8400-e29b-41d4-a716-446655440000\",\"slug\":\"%s\",\"url\":\"%s/%s\"}".formatted(ROOM, MEET_URL, ROOM)));
     }
 
     @AfterEach
@@ -175,7 +191,8 @@ class TwakeSpaceExtensionIntegrationTest {
         }
         try (Connection connection = connectionFactory().newConnection();
              Channel channel = connection.createChannel()) {
-            for (String queue : List.of(QUEUE, DEAD_LETTER_QUEUE, CalendarActivityConsumer.QUEUE, CalendarActivityConsumer.DEAD_LETTER_QUEUE, FEED_QUEUE)) {
+            for (String queue : List.of(QUEUE, DEAD_LETTER_QUEUE, CalendarActivityConsumer.QUEUE, CalendarActivityConsumer.DEAD_LETTER_QUEUE,
+                MeetingRequestConsumer.QUEUE, MeetingRequestConsumer.DEAD_LETTER_QUEUE, FEED_QUEUE)) {
                 channel.queueDelete(queue);
             }
         }
@@ -185,8 +202,110 @@ class TwakeSpaceExtensionIntegrationTest {
     void rabbitMQHealthChecksShouldMonitorTheTwakeSpaceQueues() {
         MonitoredRabbitMQProbe probe = server.getProbe(MonitoredRabbitMQProbe.class);
 
-        assertThat(probe.consumedQueues()).contains(QUEUE, CalendarActivityConsumer.QUEUE);
-        assertThat(probe.deadLetterQueues()).contains(DEAD_LETTER_QUEUE, CalendarActivityConsumer.DEAD_LETTER_QUEUE);
+        assertThat(probe.consumedQueues()).contains(QUEUE, CalendarActivityConsumer.QUEUE, MeetingRequestConsumer.QUEUE);
+        assertThat(probe.deadLetterQueues()).contains(DEAD_LETTER_QUEUE, CalendarActivityConsumer.DEAD_LETTER_QUEUE,
+            MeetingRequestConsumer.DEAD_LETTER_QUEUE);
+    }
+
+    @Test
+    void meetingRequestShouldPublishTheMeetingWithItsRoom() throws Exception {
+        String spaceId = provisionedSpace(member("alice", "admin"), member("bob", "viewer"));
+        String teamCalendarId = teamCalendar(spaceId).path("id").asText();
+
+        publishCommand(meetingRequest("alice", teamCalendarId, "meeting-1"));
+
+        JsonNode created = awaitActivity("com.twake.calendar.event.created.v1");
+        assertThat(created.path("subject").asText()).isEqualTo("event/meeting-1");
+        assertThat(created.path("twakeactor").asText()).isEqualTo("alice@space.tld");
+        assertThat(created.path("data").path("object")).isEqualTo(OBJECT_MAPPER.readTree("""
+            {"type": "event", "id": "meeting-1", "title": "Design review", "container": {"kind": "calendar", "id": "%s"}}"""
+            .formatted(teamCalendarId)));
+        assertThat(created.path("data").path("state").path("meeting")).isEqualTo(OBJECT_MAPPER.readTree("""
+            {"room": "%s"}""".formatted(ROOM)));
+        assertThat(created.path("data").path("state").path("start").asText()).isEqualTo("2036-10-08T10:32:00Z");
+        assertThat(created.path("data").path("state").path("end").asText()).isEqualTo("2036-10-08T11:02:00Z");
+        assertThat(created.path("data").has("recipients")).isFalse();
+        assertThat(MEET.retrieveRecordedRequests(request().withMethod("POST").withPath(MEET_TOKEN_PATH)))
+            .singleElement()
+            .satisfies(token -> assertThat(token.getBodyAsString().replaceAll("\\s", "")).contains("\"scope\":\"alice@space.tld\""));
+    }
+
+    @Test
+    void meetingRequestShouldPutTheMeetingInTheTeamCalendar() throws Exception {
+        String spaceId = provisionedSpace(member("alice", "admin"), member("bob", "viewer"));
+        String teamCalendarId = teamCalendar(spaceId).path("id").asText();
+
+        publishCommand(meetingRequest("alice", teamCalendarId, "meeting-1"));
+
+        awaitActivity("com.twake.calendar.event.created.v1");
+        String meeting = calDavClient.fetchCalendarEvent(username("bob"),
+                URI.create(CalendarURL.from(new OpenPaaSId(teamCalendarId)).asUri() + "/meeting-1.ics"))
+            .block().calendarData().toString();
+        assertThat(meeting)
+            .contains("DTSTART;TZID=Europe/Paris:20361008T123200")
+            .contains("SUMMARY:Design review")
+            .contains("DESCRIPTION:Last pass on the mockups")
+            .containsPattern("ORGANIZER[^:]*:mailto:alice@space.tld")
+            .contains("X-OPENPAAS-VIDEOCONFERENCE;VALUE=URI:%s/%s".formatted(MEET_URL, ROOM))
+            .doesNotContain("ATTENDEE");
+    }
+
+    @Test
+    void meetingRequestedAgainShouldCreateASingleMeeting() throws Exception {
+        String spaceId = provisionedSpace(member("alice", "admin"));
+        String teamCalendarId = teamCalendar(spaceId).path("id").asText();
+        publishCommand(meetingRequest("alice", teamCalendarId, "meeting-1"));
+        awaitActivity("com.twake.calendar.event.created.v1");
+
+        publishCommand(meetingRequest("alice", teamCalendarId, "meeting-1"));
+        awaitMeetingsHandled(teamCalendarId);
+
+        assertThat(MEET.retrieveRecordedRequests(request().withMethod("POST").withPath(MEET_ROOMS_PATH))).hasSize(2);
+        assertThat(messageCount(MeetingRequestConsumer.DEAD_LETTER_QUEUE)).isZero();
+    }
+
+    @Test
+    void meetingRequestOfAViewerShouldCreateNothing() throws Exception {
+        String spaceId = provisionedSpace(member("alice", "admin"), member("bob", "viewer"));
+        String teamCalendarId = teamCalendar(spaceId).path("id").asText();
+
+        publishCommand(meetingRequest("bob", teamCalendarId, "meeting-1"));
+        awaitMeetingsHandled(teamCalendarId);
+
+        assertThat(MEET.retrieveRecordedRequests(request().withMethod("POST").withPath(MEET_ROOMS_PATH))).hasSize(1);
+        assertThat(calDavClient.calendarReportByUid(username("alice"), new OpenPaaSId(teamCalendarId), "meeting-1").blockOptional()).isEmpty();
+        assertThat(messageCount(MeetingRequestConsumer.DEAD_LETTER_QUEUE)).isZero();
+    }
+
+    @Test
+    void meetingRequestOfANonMemberShouldCreateNothing() throws Exception {
+        String spaceId = provisionedSpace(member("alice", "admin"));
+        String teamCalendarId = teamCalendar(spaceId).path("id").asText();
+        provisionedSpace(member("carol", "admin"));
+
+        publishCommand(meetingRequest("carol", teamCalendarId, "meeting-1"));
+        awaitMeetingsHandled(teamCalendarId);
+
+        assertThat(MEET.retrieveRecordedRequests(request().withMethod("POST").withPath(MEET_ROOMS_PATH))).hasSize(1);
+        assertThat(messageCount(MeetingRequestConsumer.DEAD_LETTER_QUEUE)).isZero();
+    }
+
+    @Test
+    void unreadableMeetingRequestShouldGoToTheDeadLetterQueue() throws Exception {
+        publishCommand(UNREADABLE);
+
+        AWAIT.untilAsserted(() -> assertThat(messageCount(MeetingRequestConsumer.DEAD_LETTER_QUEUE)).isEqualTo(1));
+    }
+
+    @Test
+    void meetingRequestShouldGoToTheDeadLetterQueueWhenMeetFails() throws Exception {
+        String spaceId = provisionedSpace(member("alice", "admin"));
+        MEET.reset();
+        MEET.when(request().withMethod("POST").withPath(MEET_TOKEN_PATH)).respond(response().withStatusCode(503));
+
+        publishCommand(meetingRequest("alice", teamCalendar(spaceId).path("id").asText(), "meeting-1"));
+
+        AWAIT.untilAsserted(() -> assertThat(messageCount(MeetingRequestConsumer.DEAD_LETTER_QUEUE)).isEqualTo(1));
     }
 
     @Test
@@ -843,6 +962,31 @@ class TwakeSpaceExtensionIntegrationTest {
             channel.basicPublish(SPACE_EXCHANGE, routingKey, new AMQP.BasicProperties.Builder().deliveryMode(2).build(),
                 body.getBytes(StandardCharsets.UTF_8));
         }
+    }
+
+    private void publishCommand(String body) throws Exception {
+        try (Connection connection = connectionFactory().newConnection();
+             Channel channel = connection.createChannel()) {
+            channel.basicPublish(COMMAND_EXCHANGE, "com.twake.space.meeting.requested.v1", new AMQP.BasicProperties.Builder().deliveryMode(2).build(),
+                body.getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
+    private static String meetingRequest(String organizer, String teamCalendarId, String uid) {
+        return """
+            {"specversion": "1.0", "id": "%s", "source": "twake://space", "type": "com.twake.space.meeting.requested.v1",
+             "time": "2026-10-08T10:02:11Z", "twakeorg": "org", "twakeactorid": "%s", "twakeactor": "%s@%s",
+             "data": {"uid": "%s", "container": {"kind": "calendar", "id": "%s"}, "title": "Design review",
+                      "start": "2036-10-08T12:32:00+02:00", "end": "2036-10-08T13:02:00+02:00", "timezone": "Europe/Paris",
+                      "description": "Last pass on the mockups"}}"""
+            .formatted(UUID.randomUUID(), UUID.randomUUID(), organizer, DOMAIN.asString(), uid, teamCalendarId);
+    }
+
+    // The test server handles one request at a time: once alice's meeting reaches the feed, the requests before were handled.
+    private void awaitMeetingsHandled(String teamCalendarId) throws Exception {
+        String sentinel = UUID.randomUUID().toString();
+        publishCommand(meetingRequest("alice", teamCalendarId, sentinel));
+        AWAIT.until(() -> awaitActivity("com.twake.calendar.event.created.v1").path("subject").asText().equals("event/" + sentinel));
     }
 
     private Delivery nextActivity() throws Exception {
