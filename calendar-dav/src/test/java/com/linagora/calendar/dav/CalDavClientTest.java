@@ -326,6 +326,65 @@ public class CalDavClientTest {
     }
 
     @Test
+    void createCalendarEventShouldWriteTheEvent() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL calendarURL = CalendarURL.from(user.id());
+        String uid = UUID.randomUUID().toString();
+        testee.export(calendarURL, MailboxSessionUtil.create(user.username())).block();
+
+        assertThat(testee.createCalendarEvent(user.username(), calendarURL, uid, simpleEvent(uid, "Created").getBytes(StandardCharsets.UTF_8)).block())
+            .isTrue();
+
+        DavCalendarObject calendarObject = testee.fetchCalendarEvent(user.username(), URI.create(calendarURL.asUri() + "/" + uid + ".ics")).block();
+        VEvent vEvent = (VEvent) calendarObject.calendarData().getComponent(Component.VEVENT).get();
+        assertThat(vEvent.getSummary().getValue()).isEqualTo("Created");
+    }
+
+    @Test
+    void createCalendarEventShouldKeepAnExistingEvent() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL calendarURL = CalendarURL.from(user.id());
+        String uid = UUID.randomUUID().toString();
+        testee.export(calendarURL, MailboxSessionUtil.create(user.username())).block();
+        testee.createCalendarEvent(user.username(), calendarURL, uid, simpleEvent(uid, "First").getBytes(StandardCharsets.UTF_8)).block();
+
+        assertThat(testee.createCalendarEvent(user.username(), calendarURL, uid, simpleEvent(uid, "Second").getBytes(StandardCharsets.UTF_8)).block())
+            .isFalse();
+
+        DavCalendarObject calendarObject = testee.fetchCalendarEvent(user.username(), URI.create(calendarURL.asUri() + "/" + uid + ".ics")).block();
+        VEvent vEvent = (VEvent) calendarObject.calendarData().getComponent(Component.VEVENT).get();
+        assertThat(vEvent.getSummary().getValue()).isEqualTo("First");
+    }
+
+    @Test
+    void createCalendarEventShouldThrowInACalendarOfAnotherUser() {
+        OpenPaaSUser owner = createOpenPaaSUser();
+        OpenPaaSUser other = createOpenPaaSUser();
+        CalendarURL calendarURL = CalendarURL.from(owner.id());
+        String uid = UUID.randomUUID().toString();
+        testee.export(calendarURL, MailboxSessionUtil.create(owner.username())).block();
+
+        assertThatThrownBy(() -> testee.createCalendarEvent(other.username(), calendarURL, uid, simpleEvent(uid, "Created").getBytes(StandardCharsets.UTF_8)).block())
+            .isInstanceOf(DavClientException.class);
+    }
+
+    private static String simpleEvent(String uid, String summary) {
+        return """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//CalDavClientTest
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250102T120000Z
+            DTEND:20250102T130000Z
+            SUMMARY:%s
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uid, summary);
+    }
+
+    @Test
     void findUserCalendarsShouldSucceed() {
         OpenPaaSUser user = createOpenPaaSUser();
         CalDavClient.NewCalendar newCalendar = new CalDavClient.NewCalendar(
