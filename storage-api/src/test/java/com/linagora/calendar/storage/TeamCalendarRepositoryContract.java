@@ -22,15 +22,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.james.core.Domain;
+import org.apache.james.util.concurrency.ConcurrentTestRunner;
 import org.apache.james.utils.UpdatableTickingClock;
 import org.junit.jupiter.api.Test;
 
 import com.linagora.calendar.storage.model.TeamCalendar;
 import com.linagora.calendar.storage.model.TeamCalendarId;
+
+import reactor.core.publisher.Mono;
 
 public interface TeamCalendarRepositoryContract {
     OpenPaaSId DOMAIN_ID = new OpenPaaSId("659387b9d486dc0046aeff96");
@@ -85,6 +91,45 @@ public interface TeamCalendarRepositoryContract {
         assertThat(result)
             .extracting(TeamCalendar::id)
             .doesNotHaveDuplicates();
+    }
+
+    @Test
+    default void createShouldUseTheRequestedId() {
+        TeamCalendarId id = generateTeamCalendarId();
+
+        TeamCalendar created = testee().create(new TeamCalendarInsertRequest(DOMAIN, SALES, "Sales Team", Optional.of(id))).block();
+
+        assertThat(created.id()).isEqualTo(id);
+        assertThat(testee().retrieve(id).block()).isEqualTo(created);
+    }
+
+    @Test
+    default void createShouldRejectAnExistingId() {
+        TeamCalendarId id = generateTeamCalendarId();
+        testee().create(new TeamCalendarInsertRequest(DOMAIN, SALES, "Sales Team", Optional.of(id))).block();
+
+        assertThatThrownBy(() -> testee().create(new TeamCalendarInsertRequest(DOMAIN, SALES, "Other Sales Team", Optional.of(id))).block())
+            .isInstanceOf(TeamCalendarAlreadyExistsException.class);
+        assertThat(testee().retrieve(id).block().displayName()).isEqualTo("Sales Team");
+    }
+
+    @Test
+    default void concurrentCreationsOfAnIdShouldCreateItOnce() throws Exception {
+        TeamCalendarId id = generateTeamCalendarId();
+        AtomicInteger created = new AtomicInteger();
+
+        ConcurrentTestRunner.builder()
+            .reactorOperation((threadNumber, step) -> testee()
+                .create(new TeamCalendarInsertRequest(DOMAIN, SALES, "Sales Team " + threadNumber, Optional.of(id)))
+                .doOnNext(any -> created.incrementAndGet())
+                .onErrorResume(TeamCalendarAlreadyExistsException.class, e -> Mono.empty())
+                .then())
+            .threadCount(10)
+            .operationCount(1)
+            .runSuccessfullyWithin(Duration.ofMinutes(1));
+
+        assertThat(created).hasValue(1);
+        assertThat(testee().retrieve(DOMAIN_ID, SALES).collectList().block()).hasSize(1);
     }
 
     @Test

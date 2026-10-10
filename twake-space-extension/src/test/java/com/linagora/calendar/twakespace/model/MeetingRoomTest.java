@@ -16,29 +16,28 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage;
+package com.linagora.calendar.twakespace.model;
 
-import java.util.Optional;
+import static org.assertj.core.api.Assertions.assertThat;
 
-import org.apache.commons.lang3.StringUtils;
+import java.net.URI;
 
-import com.google.common.base.Preconditions;
-import com.linagora.calendar.storage.model.TeamCalendarId;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
-// Without an id the repository generates one. With one, creating it twice fails with TeamCalendarAlreadyExistsException.
-public record TeamCalendarInsertRequest(OpenPaaSDomain domain,
-                                        String name,
-                                        String displayName,
-                                        Optional<TeamCalendarId> id) {
+class MeetingRoomTest {
+    private static final URI MEET = URI.create("https://meet.space.tld");
 
-    public TeamCalendarInsertRequest {
-        Preconditions.checkNotNull(domain, "domain must not be null");
-        Preconditions.checkArgument(!StringUtils.isBlank(name), "team calendar name must not be empty");
-        Preconditions.checkArgument(!StringUtils.isBlank(displayName), "team calendar displayName must not be empty");
-        Preconditions.checkNotNull(id, "id must not be null");
+    @ParameterizedTest
+    @ValueSource(strings = {"https://meet.space.tld/abc-defg-hij", "https://MEET.space.tld/abc-defg-hij/", " https://meet.space.tld/abc-defg-hij "})
+    void ofShouldReadTheRoomOfALinkToTheConfiguredMeet(String link) {
+        assertThat(MeetingRoom.of(link, MEET)).contains("abc-defg-hij");
     }
 
-    public TeamCalendarInsertRequest(OpenPaaSDomain domain, String name, String displayName) {
-        this(domain, name, displayName, Optional.empty());
+    @ParameterizedTest
+    @ValueSource(strings = {"https://visio.other.tld/abc-defg-hij", "https://meet.space.tld/", "https://meet.space.tld/api/abc-defg-hij",
+        "not a link", ""})
+    void ofShouldBeEmptyForAnyOtherLink(String link) {
+        assertThat(MeetingRoom.of(link, MEET)).isEmpty();
     }
 }

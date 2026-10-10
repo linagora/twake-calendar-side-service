@@ -16,29 +16,20 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage;
+package com.linagora.calendar.twakespace.model;
 
-import java.util.Optional;
+import static org.assertj.core.api.Assertions.assertThat;
 
-import org.apache.commons.lang3.StringUtils;
+import org.junit.jupiter.api.Test;
 
-import com.google.common.base.Preconditions;
-import com.linagora.calendar.storage.model.TeamCalendarId;
-
-// Without an id the repository generates one. With one, creating it twice fails with TeamCalendarAlreadyExistsException.
-public record TeamCalendarInsertRequest(OpenPaaSDomain domain,
-                                        String name,
-                                        String displayName,
-                                        Optional<TeamCalendarId> id) {
-
-    public TeamCalendarInsertRequest {
-        Preconditions.checkNotNull(domain, "domain must not be null");
-        Preconditions.checkArgument(!StringUtils.isBlank(name), "team calendar name must not be empty");
-        Preconditions.checkArgument(!StringUtils.isBlank(displayName), "team calendar displayName must not be empty");
-        Preconditions.checkNotNull(id, "id must not be null");
+class SpaceEventTypeTest {
+    @Test
+    void fromRoutingKeyShouldReadTheRoutingKeyOfASpaceEvent() {
+        assertThat(SpaceEventType.fromRoutingKey("twake.space.member.role.changed")).contains(SpaceEventType.MEMBER_ROLE_CHANGED);
     }
 
-    public TeamCalendarInsertRequest(OpenPaaSDomain domain, String name, String displayName) {
-        this(domain, name, displayName, Optional.empty());
+    @Test
+    void fromRoutingKeyShouldBeEmptyForAnotherRoutingKey() {
+        assertThat(SpaceEventType.fromRoutingKey("twake.space.archived")).isEmpty();
     }
 }

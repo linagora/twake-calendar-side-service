@@ -16,29 +16,22 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage;
-
-import java.util.Optional;
+package com.linagora.calendar.twakespace.model;
 
 import org.apache.commons.lang3.StringUtils;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
 import com.google.common.base.Preconditions;
-import com.linagora.calendar.storage.model.TeamCalendarId;
 
-// Without an id the repository generates one. With one, creating it twice fails with TeamCalendarAlreadyExistsException.
-public record TeamCalendarInsertRequest(OpenPaaSDomain domain,
-                                        String name,
-                                        String displayName,
-                                        Optional<TeamCalendarId> id) {
-
-    public TeamCalendarInsertRequest {
-        Preconditions.checkNotNull(domain, "domain must not be null");
-        Preconditions.checkArgument(!StringUtils.isBlank(name), "team calendar name must not be empty");
-        Preconditions.checkArgument(!StringUtils.isBlank(displayName), "team calendar displayName must not be empty");
-        Preconditions.checkNotNull(id, "id must not be null");
+public record SpaceId(@JsonValue String value) {
+    @JsonCreator(mode = JsonCreator.Mode.DELEGATING)
+    public SpaceId {
+        Preconditions.checkArgument(!StringUtils.isBlank(value), "space id must not be empty");
     }
 
-    public TeamCalendarInsertRequest(OpenPaaSDomain domain, String name, String displayName) {
-        this(domain, name, displayName, Optional.empty());
+    @Override
+    public String toString() {
+        return value;
     }
 }

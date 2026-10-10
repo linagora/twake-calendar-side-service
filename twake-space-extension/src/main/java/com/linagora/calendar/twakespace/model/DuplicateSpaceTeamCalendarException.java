@@ -16,29 +16,19 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage;
+package com.linagora.calendar.twakespace.model;
 
-import java.util.Optional;
+import java.util.List;
+import java.util.stream.Collectors;
 
-import org.apache.commons.lang3.StringUtils;
+import org.apache.james.core.Domain;
 
-import com.google.common.base.Preconditions;
 import com.linagora.calendar.storage.model.TeamCalendarId;
 
-// Without an id the repository generates one. With one, creating it twice fails with TeamCalendarAlreadyExistsException.
-public record TeamCalendarInsertRequest(OpenPaaSDomain domain,
-                                        String name,
-                                        String displayName,
-                                        Optional<TeamCalendarId> id) {
-
-    public TeamCalendarInsertRequest {
-        Preconditions.checkNotNull(domain, "domain must not be null");
-        Preconditions.checkArgument(!StringUtils.isBlank(name), "team calendar name must not be empty");
-        Preconditions.checkArgument(!StringUtils.isBlank(displayName), "team calendar displayName must not be empty");
-        Preconditions.checkNotNull(id, "id must not be null");
-    }
-
-    public TeamCalendarInsertRequest(OpenPaaSDomain domain, String name, String displayName) {
-        this(domain, name, displayName, Optional.empty());
+public class DuplicateSpaceTeamCalendarException extends RuntimeException {
+    public DuplicateSpaceTeamCalendarException(SpaceId spaceId, Domain domain, List<TeamCalendarId> teamCalendars) {
+        super("Space " + spaceId + " has " + teamCalendars.size() + " team calendars in " + domain.asString() + ": "
+            + teamCalendars.stream().map(TeamCalendarId::value).collect(Collectors.joining(", "))
+            + ". Delete all but one with the team calendar webadmin routes.");
     }
 }

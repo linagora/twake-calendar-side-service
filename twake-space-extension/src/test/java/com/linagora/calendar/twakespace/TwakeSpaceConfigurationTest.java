@@ -16,29 +16,28 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage;
+package com.linagora.calendar.twakespace;
 
-import java.util.Optional;
+import static org.assertj.core.api.Assertions.assertThat;
 
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.configuration2.PropertiesConfiguration;
+import org.junit.jupiter.api.Test;
 
-import com.google.common.base.Preconditions;
-import com.linagora.calendar.storage.model.TeamCalendarId;
-
-// Without an id the repository generates one. With one, creating it twice fails with TeamCalendarAlreadyExistsException.
-public record TeamCalendarInsertRequest(OpenPaaSDomain domain,
-                                        String name,
-                                        String displayName,
-                                        Optional<TeamCalendarId> id) {
-
-    public TeamCalendarInsertRequest {
-        Preconditions.checkNotNull(domain, "domain must not be null");
-        Preconditions.checkArgument(!StringUtils.isBlank(name), "team calendar name must not be empty");
-        Preconditions.checkArgument(!StringUtils.isBlank(displayName), "team calendar displayName must not be empty");
-        Preconditions.checkNotNull(id, "id must not be null");
+class TwakeSpaceConfigurationTest {
+    @Test
+    void fromShouldDefaultToTheTwakeSpaceExchanges() {
+        assertThat(TwakeSpaceConfiguration.from(new PropertiesConfiguration()))
+            .isEqualTo(new TwakeSpaceConfiguration("space", "activity", "twake-space"));
     }
 
-    public TeamCalendarInsertRequest(OpenPaaSDomain domain, String name, String displayName) {
-        this(domain, name, displayName, Optional.empty());
+    @Test
+    void fromShouldReadTheConfiguredExchanges() {
+        PropertiesConfiguration configuration = new PropertiesConfiguration();
+        configuration.addProperty("twakespace.exchange", "custom-space");
+        configuration.addProperty("twakespace.activity.exchange", "custom-activity");
+        configuration.addProperty("twakespace.command.exchange", "custom-command");
+
+        assertThat(TwakeSpaceConfiguration.from(configuration))
+            .isEqualTo(new TwakeSpaceConfiguration("custom-space", "custom-activity", "custom-command"));
     }
 }

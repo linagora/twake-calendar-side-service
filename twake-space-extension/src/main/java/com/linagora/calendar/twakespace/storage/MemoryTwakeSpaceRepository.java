@@ -16,29 +16,26 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage;
+package com.linagora.calendar.twakespace.storage;
 
-import java.util.Optional;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
-import org.apache.commons.lang3.StringUtils;
+import com.linagora.calendar.twakespace.model.SpaceId;
+import com.linagora.calendar.twakespace.model.TwakeSpace;
 
-import com.google.common.base.Preconditions;
-import com.linagora.calendar.storage.model.TeamCalendarId;
+import reactor.core.publisher.Mono;
 
-// Without an id the repository generates one. With one, creating it twice fails with TeamCalendarAlreadyExistsException.
-public record TeamCalendarInsertRequest(OpenPaaSDomain domain,
-                                        String name,
-                                        String displayName,
-                                        Optional<TeamCalendarId> id) {
+public class MemoryTwakeSpaceRepository implements TwakeSpaceRepository {
+    private final Map<SpaceId, TwakeSpace> spaces = new ConcurrentHashMap<>();
 
-    public TeamCalendarInsertRequest {
-        Preconditions.checkNotNull(domain, "domain must not be null");
-        Preconditions.checkArgument(!StringUtils.isBlank(name), "team calendar name must not be empty");
-        Preconditions.checkArgument(!StringUtils.isBlank(displayName), "team calendar displayName must not be empty");
-        Preconditions.checkNotNull(id, "id must not be null");
+    @Override
+    public Mono<TwakeSpace> merge(TwakeSpace change) {
+        return Mono.fromCallable(() -> spaces.merge(change.id(), change, TwakeSpace::merge));
     }
 
-    public TeamCalendarInsertRequest(OpenPaaSDomain domain, String name, String displayName) {
-        this(domain, name, displayName, Optional.empty());
+    @Override
+    public Mono<TwakeSpace> retrieve(SpaceId spaceId) {
+        return Mono.justOrEmpty(spaces.get(spaceId));
     }
 }

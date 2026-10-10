@@ -16,29 +16,27 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.storage;
+package com.linagora.calendar.twakespace.model;
 
+import java.net.URI;
 import java.util.Optional;
 
 import org.apache.commons.lang3.StringUtils;
 
-import com.google.common.base.Preconditions;
-import com.linagora.calendar.storage.model.TeamCalendarId;
-
-// Without an id the repository generates one. With one, creating it twice fails with TeamCalendarAlreadyExistsException.
-public record TeamCalendarInsertRequest(OpenPaaSDomain domain,
-                                        String name,
-                                        String displayName,
-                                        Optional<TeamCalendarId> id) {
-
-    public TeamCalendarInsertRequest {
-        Preconditions.checkNotNull(domain, "domain must not be null");
-        Preconditions.checkArgument(!StringUtils.isBlank(name), "team calendar name must not be empty");
-        Preconditions.checkArgument(!StringUtils.isBlank(displayName), "team calendar displayName must not be empty");
-        Preconditions.checkNotNull(id, "id must not be null");
+// A card names the room, not the link: the feed builds the link from its own Meet URL.
+public final class MeetingRoom {
+    private MeetingRoom() {
     }
 
-    public TeamCalendarInsertRequest(OpenPaaSDomain domain, String name, String displayName) {
-        this(domain, name, displayName, Optional.empty());
+    public static Optional<String> of(String videoconference, URI meet) {
+        try {
+            URI link = URI.create(videoconference.trim());
+            return Optional.ofNullable(link.getPath())
+                .filter(path -> StringUtils.equalsIgnoreCase(link.getHost(), meet.getHost()))
+                .map(path -> StringUtils.strip(path, "/"))
+                .filter(room -> !room.isEmpty() && !room.contains("/"));
+        } catch (IllegalArgumentException e) {
+            return Optional.empty();
+        }
     }
 }
