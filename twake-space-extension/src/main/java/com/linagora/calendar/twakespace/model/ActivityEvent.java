@@ -83,7 +83,7 @@ public record ActivityEvent(String id, String type, Instant time, OrganizationId
     }
 
     // The card shows the state of the latest event of an object, so every event carries the whole state.
-    public static ActivityEvent calendarEvent(EventChange change, Instant time) {
+    public static ActivityEvent calendarEvent(EventChange change, Optional<String> meetingRoom, Instant time) {
         String type = change.action().type();
         CalendarEventSnapshot event = change.event();
         ObjectNode data = OBJECT_MAPPER.createObjectNode();
@@ -100,6 +100,7 @@ public record ActivityEvent(String id, String type, Instant time, OrganizationId
         event.end().ifPresent(end -> state.put("end", time(end, event.allDay())));
         state.put("allDay", event.allDay());
         event.location().ifPresent(location -> state.put("location", location));
+        meetingRoom.ifPresent(room -> state.putObject("meeting").put("room", room));
         CalendarEventSnapshot.Rsvp rsvp = event.rsvp();
         state.putObject("rsvp")
             .put("accepted", rsvp.accepted())
