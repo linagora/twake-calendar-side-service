@@ -40,6 +40,7 @@ import com.linagora.calendar.amqp.CalendarEventDeserializeException;
 import com.linagora.calendar.amqp.CalendarEventNotificationEmailDTO;
 import com.linagora.calendar.amqp.EventCalendarNotificationConsumer;
 import com.linagora.calendar.amqp.EventEmailConsumer;
+import com.linagora.calendar.amqp.meet.MeetConfiguration;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.dto.CalendarMirrorSource;
 import com.linagora.calendar.dav.dto.CalendarReportJsonResponse;
@@ -54,6 +55,7 @@ import com.linagora.calendar.twakespace.model.ActivityEvent;
 import com.linagora.calendar.twakespace.model.ActivityEvent.EventAction;
 import com.linagora.calendar.twakespace.model.ActivityEvent.EventChange;
 import com.linagora.calendar.twakespace.model.CalendarEventSnapshot;
+import com.linagora.calendar.twakespace.model.MeetingRoom;
 import com.linagora.calendar.twakespace.model.OrganizationId;
 import com.linagora.calendar.twakespace.model.SpaceId;
 import com.linagora.calendar.twakespace.storage.TwakeSpaceRepository;
@@ -126,15 +128,17 @@ public class CalendarActivity {
     private final TwakeSpaceRepository spaceRepository;
     private final OpenPaaSUserDAO userDAO;
     private final CalDavClient calDavClient;
+    private final MeetConfiguration meetConfiguration;
     private final Clock clock;
 
     @Inject
     public CalendarActivity(TeamCalendarRepository teamCalendarRepository, TwakeSpaceRepository spaceRepository, OpenPaaSUserDAO userDAO,
-                            CalDavClient calDavClient, Clock clock) {
+                            CalDavClient calDavClient, MeetConfiguration meetConfiguration, Clock clock) {
         this.teamCalendarRepository = teamCalendarRepository;
         this.spaceRepository = spaceRepository;
         this.userDAO = userDAO;
         this.calDavClient = calDavClient;
+        this.meetConfiguration = meetConfiguration;
         this.clock = clock;
     }
 
@@ -229,7 +233,9 @@ public class CalendarActivity {
     }
 
     private ActivityEvent activity(EventChange change) {
-        return ActivityEvent.calendarEvent(change, clock.instant());
+        Optional<String> meetingRoom = change.event().videoconference()
+            .flatMap(link -> MeetingRoom.of(link, meetConfiguration.externalApiBaseUrl()));
+        return ActivityEvent.calendarEvent(change, meetingRoom, clock.instant());
     }
 
     // The activity of a space that is deleted, or that the extension does not know, is no space's.
