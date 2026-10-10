@@ -27,7 +27,7 @@ class TwakeSpaceConfigurationTest {
     @Test
     void fromShouldDefaultToTheTwakeSpaceExchanges() {
         assertThat(TwakeSpaceConfiguration.from(new PropertiesConfiguration()))
-            .isEqualTo(new TwakeSpaceConfiguration("space", "activity"));
+            .isEqualTo(new TwakeSpaceConfiguration("space", "activity", "twake-space"));
     }
 
     @Test
@@ -35,8 +35,9 @@ class TwakeSpaceConfigurationTest {
         PropertiesConfiguration configuration = new PropertiesConfiguration();
         configuration.addProperty("twakespace.exchange", "custom-space");
         configuration.addProperty("twakespace.activity.exchange", "custom-activity");
+        configuration.addProperty("twakespace.command.exchange", "custom-command");
 
         assertThat(TwakeSpaceConfiguration.from(configuration))
-            .isEqualTo(new TwakeSpaceConfiguration("custom-space", "custom-activity"));
+            .isEqualTo(new TwakeSpaceConfiguration("custom-space", "custom-activity", "custom-command"));
     }
 }

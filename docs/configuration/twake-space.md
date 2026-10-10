@@ -4,10 +4,11 @@ TwakeSpace gives each space of the Twake Workplace directory a team calendar, fo
 
 ```
 twp.settings.enabled=true
+meet.enabled=true
 twakespace.enabled=true
 ```
 
-It needs `twp.settings.enabled`, as it reads the space events on the [Twake Workplace broker](configuration.md#twake-workplace-rabbitmq-properties). The startup fails otherwise.
+It needs `twp.settings.enabled`, as it reads the space events on the [Twake Workplace broker](configuration.md#twake-workplace-rabbitmq-properties). It needs the [Meet integration](configuration.md#meet-integration-meetenabledtrue), as it opens a Meet room for each meeting a space asks for. The startup fails without either.
 
 TwakeSpace keeps what the space events say about each space: its organization, domain, name, members with their role, and deletion. With the MongoDB backend it goes to the `twake_spaces` collection.
 
@@ -22,6 +23,22 @@ Space events may be handled in any order, and concurrently. Each event is merged
 - A member outside the calendar's domain is not shared, and a warning is logged.
 - Shares of users that no space event named are left alone.
 - On `twake.space.deleted`, every member loses access and the deletion is recorded. The calendar and its events are kept. A deleted space stays deleted: its later events, and older ones handled late, share nothing and create no calendar.
+
+## Meetings
+
+A member asks for a meeting from the space with a `com.twake.space.meeting.requested.v1` CloudEvent on the command exchange of the Twake Workplace broker. Its `twakeactor` is the organizer, and its `data` gives the meeting:
+
+- `uid`: the event's UID, chosen by the sender;
+- `container`: `{"kind": "calendar", "id": ...}`, with the team calendar id of `com.twake.calendar.space.provisioned.v1`;
+- `title`, `start` and `end` (ISO 8601 with an offset), `timezone` (an IANA zone) and an optional `description`.
+
+TwakeSpace opens a Meet room as the organizer, then writes the meeting in the team calendar as the organizer, through their own instance of it. Sabre applies the organizer's rights and publishes the write like any other, so the feed gets `com.twake.calendar.event.created.v1`. The meeting has the organizer and no attendee: every member sees it in the team calendar, and no invitation is sent. Its link is in `X-OPENPAAS-VIDEOCONFERENCE`.
+
+- A UID already in the team calendar creates nothing, so a redelivered request is harmless.
+- An organizer who may not write to the team calendar, viewers included, gets nothing, and a warning is logged.
+- A request that cannot be read goes to the dead letter queue, as does one that fails at Meet or at the calendar.
+
+Every card of an event whose link is a room of the configured Meet carries it as `data.state.meeting.room`, the room slug. A link is a Meet room when its host is the host of `meet.external.api.base.url`.
 
 ## Activity
 
@@ -51,12 +68,13 @@ It does not store any of them. Each card shows the event as one change left it, 
 
 ## Queues
 
-Every replica consumes both queues.
+Every replica consumes every queue.
 
 - `tcalendar:twake-space` on the Twake Workplace broker receives the space events. It is a quorum queue unless `twp.queues.quorum.bypass` is set.
+- `tcalendar:twake-space-meeting` on the Twake Workplace broker receives the meeting requests. It is a quorum queue unless `twp.queues.quorum.bypass` is set.
 - `tcalendar:twake-space-calendar` on the side service's broker receives the changes of calendars. It follows `dav.queues.quorum.bypass`, like the other calendar queues.
 
-An event that fails is not retried: it goes straight to the queue's dead letter queue, `tcalendar:twake-space-dead-letter` or `tcalendar:twake-space-calendar-dead-letter`. The RabbitMQ health check reports both queues and their dead letter queues. Space events can be replayed from the dead letter queue: a replayed event never overrides a newer one.
+An event that fails is not retried: it goes straight to the queue's dead letter queue, `tcalendar:twake-space-dead-letter`, `tcalendar:twake-space-meeting-dead-letter` or `tcalendar:twake-space-calendar-dead-letter`. The RabbitMQ health check reports the queues and their dead letter queues. Space events can be replayed from the dead letter queue: a replayed event never overrides a newer one.
 
 ## Properties
 
@@ -64,3 +82,4 @@ These go in `rabbitmq.properties`, next to the other Twake Workplace broker prop
 
 - `twakespace.exchange`: the exchange carrying space events. Defaults to `space`.
 - `twakespace.activity.exchange`: the exchange the activity is published on. Defaults to `activity`.
+- `twakespace.command.exchange`: the exchange carrying meeting requests. Defaults to `twake-space`.
