@@ -1,3 +1,26 @@
+// app runs the full-stack tests with two existing Surefire forks. Run the remaining
+// modules sequentially alongside it, without adding reactor or in-JVM test parallelism.
+def runTestBranch(String branch, String projects) {
+    withEnv(["TEST_PROJECTS=${projects}", "RESOURCES_FILE=${env.WORKSPACE}/ci-logs/test-resources-${branch}.txt"]) {
+        sh label: 'Run Maven tests', script: '''
+            mkdir -p ci-logs
+            (
+                set +x
+                free -m | head -n 1
+                while true; do
+                    echo "$(date +%T) $(free -m | sed -n 2p) load $(cut -d ' ' -f 1-3 /proc/loadavg)"
+                    sleep 30
+                done
+            ) > "$RESOURCES_FILE" 2>&1 &
+            MONITOR_PID=$!
+            trap 'kill "$MONITOR_PID" 2>/dev/null || true' 0
+            # Both Maven builds read the artifacts installed by Compile and share ~/.m2.
+            mvn -B -Dapi.version=1.43 surefire:test -pl "$TEST_PROJECTS" \
+                -Daether.syncContext.named.factory=file-lock -Daether.syncContext.named.nameMapper=file-gav
+        '''
+    }
+}
+
 pipeline {
     agent {
         label 'heavy'
@@ -76,12 +99,25 @@ pipeline {
                 sh 'mvn clean install -Dmaven.javadoc.skip=true -DskipTests -T1C'
             }
         }
-        stage('Test') {
-            steps {
-                sh 'mvn -B -Dapi.version=1.43 surefire:test'
+        stage('Parallel tests') {
+            failFast true
+            parallel {
+                stage('Tests: app') {
+                    steps {
+                        runTestBranch('app', 'app')
+                    }
+                }
+                stage('Tests: general') {
+                    steps {
+                        // The complement includes new modules automatically; do not use -am,
+                        // which would retest dependencies and write reports in both branches.
+                        runTestBranch('modules', '!app')
+                    }
+                }
             }
             post {
                 always {
+                    archiveArtifacts artifacts: 'ci-logs/test-resources-*.txt', allowEmptyArchive: true, fingerprint: false
                     junit(testResults: '**/surefire-reports/*.xml', allowEmptyResults: false)
                 }
                 failure {
