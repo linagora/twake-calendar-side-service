@@ -260,8 +260,8 @@
                     <systemPropertyVariables>
                         <james.exit.on.startup.error>false</james.exit.on.startup.error>
                     </systemPropertyVariables>
-                    <!-- Fail tests longer than 20 minutes, prevent form random locking tests -->
-                    <forkedProcessTimeoutInSeconds>1200</forkedProcessTimeoutInSeconds>
+                    <!-- Allow 30 minutes per fork when app and module tests run concurrently. -->
+                    <forkedProcessTimeoutInSeconds>1800</forkedProcessTimeoutInSeconds>
                 </configuration>
             </plugin>
             <plugin>
@@ -416,8 +416,8 @@
                             <systemPropertyVariables>
                                 <james.exit.on.startup.error>false</james.exit.on.startup.error>
                             </systemPropertyVariables>
-                            <!-- Fail tests longer than 20 minutes, prevent form random locking tests -->
-                            <forkedProcessTimeoutInSeconds>1200</forkedProcessTimeoutInSeconds>
+                            <!-- Allow 30 minutes per fork when app and module tests run concurrently. -->
+                            <forkedProcessTimeoutInSeconds>1800</forkedProcessTimeoutInSeconds>
                         </configuration>
                     </plugin>
                     <plugin>
