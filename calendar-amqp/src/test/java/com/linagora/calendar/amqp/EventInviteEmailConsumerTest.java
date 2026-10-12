@@ -486,6 +486,7 @@ public class EventInviteEmailConsumerTest {
             DESCRIPTION:This is a meeting to discuss the sprint planning for the next week.
             ORGANIZER;CN=Van Tung TRAN:mailto:{organizerEmail}
             ATTENDEE;PARTSTAT={partStat};CN=Benoît TELLIER:mailto:{attendeeEmail}
+            X-OPENPAAS-VIDEOCONFERENCE;VALUE=URI:https://meet.example.com
             END:VEVENT
             END:VCALENDAR
             """.replace("{eventUid}", eventUid)
