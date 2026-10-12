@@ -298,7 +298,7 @@ public class EventUpdateEmailConsumerTest {
 
             assertThat(html).contains("Van Tung TRAN")
                 .contains("has updated an event")
-                .contains("Changed:")
+                .contains("Changed")
                 .contains("Sprint planning #01")
                 .contains("Sprint planning #02")
                 .contains("Monday, 11 April 3025 10:00 - 11:00")
@@ -361,6 +361,7 @@ public class EventUpdateEmailConsumerTest {
             DESCRIPTION:{description}
             ORGANIZER;CN=Van Tung TRAN:mailto:{organizerEmail}
             ATTENDEE;PARTSTAT=NEEDS-ACTION;CN=Benoît TELLIER:mailto:{attendeeEmail}
+            X-OPENPAAS-VIDEOCONFERENCE;VALUE=URI:https://meet.example.com
             END:VEVENT
             END:VCALENDAR
             """.replace("{eventUid}", eventUid)
