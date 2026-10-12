@@ -234,7 +234,7 @@ public class CalendarActivity {
 
     private ActivityEvent activity(EventChange change) {
         Optional<String> meetingRoom = change.event().videoconference()
-            .flatMap(link -> MeetingRoom.of(link, meetConfiguration.externalApiBaseUrl()));
+            .flatMap(link -> MeetingRoom.of(meetConfiguration.externalApiBaseUrl(), link));
         return ActivityEvent.calendarEvent(change, meetingRoom, clock.instant());
     }
 
