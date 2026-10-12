@@ -29,6 +29,10 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
  - ISSUE-1074 `POST /api/import` now shares its parsing with the webadmin import: imported events keep the calendar level properties and time zones they rely on, and re-importing the same vCard file updates the contacts rather than duplicating them.
  - Mail templates: a language without translations now falls back to English instead of the JVM default locale
 
+### Improvements
+
+ - ISSUE-1152 Docker images are based on `eclipse-temurin:27-jre-resolute` (Java 27, Ubuntu 26.04)
+
 ## [2.1.0] - 2026-05-07
 
 ### New Features

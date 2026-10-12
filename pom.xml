@@ -58,6 +58,7 @@
         <james.groupId>org.apache.james</james.groupId>
         <james.version>3.10.0-SNAPSHOT</james.version>
         <scala.base>2.13</scala.base>
+        <jib.base.image>eclipse-temurin:27-jre-resolute</jib.base.image>
     </properties>
 
     <dependencyManagement>
