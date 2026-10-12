@@ -31,13 +31,13 @@ class MeetingRoomTest {
     @ParameterizedTest
     @ValueSource(strings = {"https://meet.space.tld/abc-defg-hij", "https://MEET.space.tld/abc-defg-hij/", " https://meet.space.tld/abc-defg-hij "})
     void ofShouldReadTheRoomOfALinkToTheConfiguredMeet(String link) {
-        assertThat(MeetingRoom.of(link, MEET)).contains("abc-defg-hij");
+        assertThat(MeetingRoom.of(MEET, link)).contains("abc-defg-hij");
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"https://visio.other.tld/abc-defg-hij", "https://meet.space.tld/", "https://meet.space.tld/api/abc-defg-hij",
         "not a link", ""})
     void ofShouldBeEmptyForAnyOtherLink(String link) {
-        assertThat(MeetingRoom.of(link, MEET)).isEmpty();
+        assertThat(MeetingRoom.of(MEET, link)).isEmpty();
     }
 }

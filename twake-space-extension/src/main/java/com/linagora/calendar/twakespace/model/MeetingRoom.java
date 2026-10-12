@@ -28,7 +28,7 @@ public final class MeetingRoom {
     private MeetingRoom() {
     }
 
-    public static Optional<String> of(String videoconference, URI meet) {
+    public static Optional<String> of(URI meet, String videoconference) {
         try {
             URI link = URI.create(videoconference.trim());
             return Optional.ofNullable(link.getPath())
