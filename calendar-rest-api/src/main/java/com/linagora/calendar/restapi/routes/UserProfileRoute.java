@@ -24,12 +24,10 @@ import java.time.ZonedDateTime;
 
 import jakarta.inject.Inject;
 
-import org.apache.james.core.Username;
 import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.http.Authenticator;
 import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.metrics.api.MetricFactory;
-import org.apache.james.user.api.UsersRepository;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -44,9 +42,8 @@ import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
-import com.linagora.calendar.storage.UserNameResolver;
+import com.linagora.calendar.storage.UserProvisioner;
 import com.linagora.calendar.storage.configuration.resolver.ConfigurationResolver;
-import com.linagora.calendar.storage.exception.UserConflictException;
 
 import io.netty.handler.codec.http.HttpMethod;
 import reactor.core.publisher.Mono;
@@ -145,17 +142,15 @@ public class UserProfileRoute extends CalendarRoute {
     private final OpenPaaSUserDAO userDAO;
     private final OpenPaaSDomainDAO domainDAO;
     private final ConfigurationResolver configurationResolver;
-    private final UsersRepository usersRepository;
-    private final UserNameResolver userNameResolver;
+    private final UserProvisioner userProvisioner;
 
     @Inject
-    public UserProfileRoute(Authenticator authenticator, MetricFactory metricFactory, OpenPaaSUserDAO userDAO, OpenPaaSDomainDAO domainDAO, ConfigurationResolver configurationResolver, UsersRepository usersRepository, UserNameResolver userNameResolver) {
+    public UserProfileRoute(Authenticator authenticator, MetricFactory metricFactory, OpenPaaSUserDAO userDAO, OpenPaaSDomainDAO domainDAO, ConfigurationResolver configurationResolver, UserProvisioner userProvisioner) {
         super(authenticator, metricFactory);
         this.userDAO = userDAO;
         this.domainDAO = domainDAO;
         this.configurationResolver = configurationResolver;
-        this.usersRepository = usersRepository;
-        this.userNameResolver = userNameResolver;
+        this.userProvisioner = userProvisioner;
     }
 
     @Override
@@ -166,7 +161,7 @@ public class UserProfileRoute extends CalendarRoute {
     @Override
     Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response, MailboxSession session) {
         return userDAO.retrieve(session.getUser())
-            .switchIfEmpty(provisionUser(session.getUser()))
+            .switchIfEmpty(userProvisioner.provisionIfExists(session.getUser()))
             .flatMap(openPaaSUser -> domainDAO.retrieve(session.getUser().getDomainPart().get())
                 .flatMap(openPaaSDomain -> configurationResolver.resolveAll(session)
                     .map(conf -> new ProfileResponseDTO(openPaaSUser, openPaaSDomain.id(), conf.asJson()))))
@@ -175,18 +170,5 @@ public class UserProfileRoute extends CalendarRoute {
                 .header("Content-Type", "application/json;charset=utf-8")
                 .sendByteArray(Mono.just(bytes))
                 .then());
-    }
-
-    private Mono<OpenPaaSUser> provisionUser(Username username) {
-        return Mono.from(usersRepository.containsReactive(username))
-            .flatMap(exists -> {
-                if (exists) {
-                    return userNameResolver.resolve(username)
-                        .flatMap(optionalUserNames -> userDAO.add(username, optionalUserNames)
-                            .onErrorResume(UserConflictException.class, e -> userDAO.retrieve(username)
-                                .switchIfEmpty(Mono.error(e))));
-                }
-                return Mono.empty();
-            });
     }
 }

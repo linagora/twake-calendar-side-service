@@ -21,6 +21,7 @@ package com.linagora.calendar.amqp;
 import java.util.Objects;
 import java.util.Optional;
 
+import org.apache.james.user.api.UsersRepository;
 import org.junit.jupiter.api.extension.AfterAllCallback;
 import org.junit.jupiter.api.extension.AfterEachCallback;
 import org.junit.jupiter.api.extension.BeforeAllCallback;
@@ -105,5 +106,9 @@ public class SabreDavWithAsyncSchedulingExtension implements BeforeAllCallback, 
 
     public DavTestHelper davTestHelper() {
         return sabreDavExtension.davTestHelper();
+    }
+
+    public UsersRepository usersRepository() {
+        return asyncSchedulingExtension.usersRepository();
     }
 }

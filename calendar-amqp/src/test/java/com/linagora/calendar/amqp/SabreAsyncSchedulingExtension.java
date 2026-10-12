@@ -20,6 +20,9 @@ package com.linagora.calendar.amqp;
 
 import static com.linagora.calendar.amqp.CalendarAmqpModule.DEFAULT_ITIP_EVENT_MESSAGES_PREFETCH_COUNT;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -30,8 +33,10 @@ import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
 import org.apache.james.backends.rabbitmq.RabbitMQConnectionFactory;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
+import org.apache.james.core.Username;
 import org.apache.james.metrics.api.NoopGaugeRegistry;
 import org.apache.james.metrics.tests.RecordingMetricFactory;
+import org.apache.james.user.api.UsersRepository;
 import org.junit.jupiter.api.extension.AfterAllCallback;
 import org.junit.jupiter.api.extension.AfterEachCallback;
 import org.junit.jupiter.api.extension.BeforeAllCallback;
@@ -41,11 +46,14 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalendarSearchSourceResolver;
 import com.linagora.calendar.dav.SabreDavExtension;
+import com.linagora.calendar.storage.UserNameResolver;
+import com.linagora.calendar.storage.UserProvisioner;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
+import reactor.core.publisher.Mono;
 import reactor.rabbitmq.QueueSpecification;
 
 public class SabreAsyncSchedulingExtension implements BeforeAllCallback, BeforeEachCallback, AfterEachCallback, AfterAllCallback {
@@ -54,6 +62,7 @@ public class SabreAsyncSchedulingExtension implements BeforeAllCallback, BeforeE
     private SimpleConnectionPool connectionPool;
     private ReactorRabbitMQChannelPool channelPool;
     private ItipLocalDeliveryConsumer itipLocalDeliveryConsumer;
+    private UsersRepository usersRepository;
 
     public SabreAsyncSchedulingExtension(SabreDavExtension sabreDavExtension) {
         this.sabreDavExtension = Objects.requireNonNull(sabreDavExtension);
@@ -80,6 +89,8 @@ public class SabreAsyncSchedulingExtension implements BeforeAllCallback, BeforeE
 
     @Override
     public void beforeEach(ExtensionContext extensionContext) throws Exception {
+        usersRepository = mock(UsersRepository.class);
+        when(usersRepository.containsReactive(any(Username.class))).thenReturn(Mono.just(false));
         CalDavClient calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         itipLocalDeliveryConsumer = new ItipLocalDeliveryConsumer(channelPool,
             QueueArguments.Builder::new,
@@ -111,9 +122,18 @@ public class SabreAsyncSchedulingExtension implements BeforeAllCallback, BeforeE
     private LocalRecipientResolver localRecipientResolver() {
         MongoDatabase mongoDB = sabreDavExtension.dockerSabreDavSetup().getMongoDB();
         MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
-        return new LocalRecipientResolver(new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO),
+        MongoDBOpenPaaSUserDAO userDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
+        return new LocalRecipientResolver(userDAO,
             new MongoDBResourceDAO(mongoDB, Clock.systemUTC()),
-            domainDAO);
+            domainDAO,
+            new UserProvisioner(userDAO, domainDAO, usersRepository, new UserNameResolver.Noop()));
+    }
+
+    /**
+     * Users repository backing the lazy provisioning of recipients. Knows no user unless stubbed.
+     */
+    public UsersRepository usersRepository() {
+        return usersRepository;
     }
 
     @Override
