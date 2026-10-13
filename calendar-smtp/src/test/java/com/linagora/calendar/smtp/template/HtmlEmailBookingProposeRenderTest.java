@@ -31,14 +31,14 @@ import org.junit.jupiter.api.Test;
 import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.smtp.i18n.I18NTranslator;
 
-public class HtmlEmailProposeRenderTest {
+public class HtmlEmailBookingProposeRenderTest {
     private HtmlBodyRenderer htmlBodyRenderer;
     private I18NTranslator.PropertiesI18NTranslator.Factory i18nFactory;
 
     @BeforeEach
     void setUp() throws Exception {
         Path templateDirectory = Paths.get(Paths.get("").toAbsolutePath().getParent().toString(),
-            "app", "src", "main", "resources", "templates", "event-propose");
+            "app", "src", "main", "resources", "templates", "event-booking-propose");
 
         htmlBodyRenderer = HtmlBodyRenderer.forPath(templateDirectory.toAbsolutePath().toString());
         i18nFactory = new I18NTranslator.PropertiesI18NTranslator.Factory(templateDirectory.resolve("translations").toFile());

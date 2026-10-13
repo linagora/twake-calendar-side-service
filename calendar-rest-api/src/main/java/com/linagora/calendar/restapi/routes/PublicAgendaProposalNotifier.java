@@ -58,7 +58,7 @@ import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 public class PublicAgendaProposalNotifier {
-    private static final TemplateType EVENT_PROPOSE_TEMPLATE = new TemplateType("event-propose");
+    private static final TemplateType EVENT_BOOKING_PROPOSE_TEMPLATE = new TemplateType("event-booking-propose");
 
     private final SettingsBasedResolver settingsResolver;
     private final EventParticipationActionLinkFactory actionLinkFactory;
@@ -100,7 +100,7 @@ public class PublicAgendaProposalNotifier {
     }
 
     private Mono<Mail> generateMail(ResolvedSettings settings, BookingCreated bookingCreated, ActionLinks actionLinks) {
-        return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(settings.locale()), EVENT_PROPOSE_TEMPLATE))
+        return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(settings.locale()), EVENT_BOOKING_PROPOSE_TEMPLATE))
             .flatMap(messageGenerator -> generateMessage(settings, bookingCreated, actionLinks, messageGenerator))
             .map(Throwing.function(message -> new Mail(templateConfiguration.sender(), List.of(bookingCreated.organizer().username().asMailAddress()), message)))
             .subscribeOn(Schedulers.boundedElastic());
