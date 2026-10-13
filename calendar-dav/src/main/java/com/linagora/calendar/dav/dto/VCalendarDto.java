@@ -32,7 +32,10 @@ public record VCalendarDto(JsonNode value) {
     private static final String CANCELLED = "CANCELLED";
 
     public static VCalendarDto from(CalendarReportJsonResponse reportResponse) {
-        JsonNode davItem = reportResponse.firstDavItemNode();
+        return from(reportResponse.firstDavItemNode());
+    }
+
+    public static VCalendarDto from(JsonNode davItem) {
         JsonNode data = davItem.path("data");
         if (data.isMissingNode() || !data.isArray()) {
             throw new IllegalStateException("Missing or invalid 'data' field in 'dav:item'");

@@ -41,13 +41,12 @@ import com.linagora.calendar.amqp.CalendarEventNotificationEmailDTO;
 import com.linagora.calendar.amqp.EventCalendarNotificationConsumer;
 import com.linagora.calendar.amqp.EventEmailConsumer;
 import com.linagora.calendar.dav.CalDavClient;
-import com.linagora.calendar.dav.dto.CalendarMirrorSource;
 import com.linagora.calendar.dav.dto.CalendarReportJsonResponse;
+import com.linagora.calendar.dav.dto.VCalendarDto;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.TeamCalendarRepository;
-import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.model.TeamCalendarId;
 import com.linagora.calendar.twakespace.model.ActivityEvent;
@@ -58,7 +57,6 @@ import com.linagora.calendar.twakespace.model.OrganizationId;
 import com.linagora.calendar.twakespace.model.SpaceId;
 import com.linagora.calendar.twakespace.storage.TwakeSpaceRepository;
 
-import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.component.VEvent;
@@ -184,19 +182,18 @@ public class CalendarActivity {
             .flatMap(answer -> Mono.justOrEmpty(Method.VALUE_COUNTER.equals(method) ? Optional.of(proposed(answer)) : reply(answer)));
     }
 
-    // Sabre finds no event by UID in the organizer's instance of a team calendar, only in the team calendar itself.
     private Mono<CalendarEventSnapshot> teamCalendarEvent(Username organizer, String uid) {
         return userDAO.retrieve(organizer)
-            .flatMap(calDavClient::findUserCalendarList)
-            .flatMapMany(calendars -> Flux.fromIterable(calendars.calendars().values()))
-            .flatMap(metadata -> Mono.justOrEmpty(CalendarMirrorSource.parse(metadata).delegatedSource()))
-            .filterWhen(source -> teamCalendarRepository.retrieve(TeamCalendarId.from(source.calendarId())).hasElement())
-            .concatMap(teamCalendar -> calDavClient.calendarReportByUid(organizer, teamCalendar.base(), uid)
-                .map(CalendarReportJsonResponse::calendarHref)
-                .flatMap(href -> calDavClient.fetchCalendarEvent(organizer, href)
-                    .flatMap(object -> Mono.justOrEmpty(masterEvent(object.calendarData(), teamCalendar,
-                        StringUtils.substringAfterLast(href.getPath(), "/")))))
-                .map(event -> CalendarEventSnapshot.from(TeamCalendarId.from(teamCalendar.calendarId()), event)))
+            .flatMap(user -> calDavClient.queryTeamCalendarEventsByUid(organizer, user.id(), uid))
+            .flatMapMany(report -> Flux.fromIterable(report.davItems()))
+            .concatMap(item -> {
+                // The report resolves delegated instances and returns the event in its source calendar.
+                String href = CalendarReportJsonResponse.calendarHref(item).toString();
+                CalendarURL calendar = CalendarURL.parse(href);
+                return Mono.justOrEmpty(CalendarEventSnapshot.fromJCal(calendar,
+                    StringUtils.substringAfterLast(href, "/"), VCalendarDto.from(item).value()));
+            })
+            .filterWhen(event -> teamCalendarRepository.retrieve(event.teamCalendarId()).hasElement())
             .next();
     }
 
@@ -272,15 +269,6 @@ public class CalendarActivity {
                 resourceName, calendar.calendarId().value(), e);
             return Optional.empty();
         }
-    }
-
-    private static Optional<EventFields> masterEvent(Calendar calendarData, CalendarURL calendar, String resourceName) {
-        List<VEvent> events = calendarData.getComponents(Component.VEVENT);
-        return events.stream()
-            .filter(event -> event.getProperty(Property.RECURRENCE_ID).isEmpty())
-            .findFirst()
-            .or(() -> events.stream().findFirst())
-            .map(event -> EventFields.fromVEvent(event, calendar, resourceName));
     }
 
     private static EventAction answerAction(String partStat) {
