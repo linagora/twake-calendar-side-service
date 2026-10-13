@@ -8,9 +8,13 @@ from Twake Workplace (TWP).
 Calendar can synchronize a subset of user settings from Twake Workplace via
 RabbitMQ. When enabled, TWP becomes the source of truth for these settings.
 
-Currently, the following setting is synchronized from TWP:
+Currently, the following settings are synchronized from TWP:
 
 - `core.language`
+- `core.theme`: stored as is (expected values are `dark`, `light` and `auto`, but they are not validated). It is
+  optional: messages without a theme leave the stored theme untouched.
+
+Settings are applied only if the version of the TWP message is higher than the version of the last applied message.
 
 ## RabbitMQ Configuration
 

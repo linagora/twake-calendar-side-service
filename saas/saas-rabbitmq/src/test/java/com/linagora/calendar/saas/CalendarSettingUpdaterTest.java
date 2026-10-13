@@ -18,7 +18,8 @@
 
 package com.linagora.calendar.saas;
 
-import static com.linagora.calendar.saas.CalendarSettingUpdater.LANGUAGE_VERSION_IDENTIFIER;
+import static com.linagora.calendar.saas.CalendarSettingUpdater.THEME_IDENTIFIER;
+import static com.linagora.calendar.saas.CalendarSettingUpdater.TWP_SETTINGS_VERSION_IDENTIFIER;
 import static com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.TimeZoneSettingReader.TIMEZONE_IDENTIFIER;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
@@ -114,14 +115,14 @@ public class CalendarSettingUpdaterTest {
             .isNotNull()
             .hasSize(2)
             .containsExactlyInAnyOrder(ConfigurationEntry.of(EntryIdentifier.LANGUAGE_IDENTIFIER, TextNode.valueOf("en")),
-                ConfigurationEntry.of(LANGUAGE_VERSION_IDENTIFIER, LongNode.valueOf(5)));
+                ConfigurationEntry.of(TWP_SETTINGS_VERSION_IDENTIFIER, LongNode.valueOf(5)));
     }
 
     @Test
     void shouldUpdateWhenIncomingVersionIsHigher() {
         // Given: existing language + version=1
         ConfigurationEntry existingLanguage = ConfigurationEntry.of(EntryIdentifier.LANGUAGE_IDENTIFIER, TextNode.valueOf("fr"));
-        ConfigurationEntry existingVersion = ConfigurationEntry.of(LANGUAGE_VERSION_IDENTIFIER, LongNode.valueOf(1));
+        ConfigurationEntry existingVersion = ConfigurationEntry.of(TWP_SETTINGS_VERSION_IDENTIFIER, LongNode.valueOf(1));
 
         userConfigurationDAO.persistConfiguration(Set.of(existingLanguage, existingVersion), sessionProvider.createSession(USER)).block();
 
@@ -138,7 +139,7 @@ public class CalendarSettingUpdaterTest {
             .isNotNull()
             .hasSize(2)
             .containsExactlyInAnyOrder(ConfigurationEntry.of(EntryIdentifier.LANGUAGE_IDENTIFIER, TextNode.valueOf("en")),
-                ConfigurationEntry.of(LANGUAGE_VERSION_IDENTIFIER, LongNode.valueOf(2)));
+                ConfigurationEntry.of(TWP_SETTINGS_VERSION_IDENTIFIER, LongNode.valueOf(2)));
     }
 
     @Test
@@ -158,7 +159,7 @@ public class CalendarSettingUpdaterTest {
             .isNotNull()
             .hasSize(2)
             .containsExactlyInAnyOrder(ConfigurationEntry.of(EntryIdentifier.LANGUAGE_IDENTIFIER, TextNode.valueOf("en")),
-                ConfigurationEntry.of(LANGUAGE_VERSION_IDENTIFIER, LongNode.valueOf(2)));
+                ConfigurationEntry.of(TWP_SETTINGS_VERSION_IDENTIFIER, LongNode.valueOf(2)));
     }
 
     @ParameterizedTest
@@ -166,7 +167,7 @@ public class CalendarSettingUpdaterTest {
     void shouldSkipUpdateWhenIncomingVersionIsNotHigher(long version) {
         // Given
         ConfigurationEntry existingLanguage = ConfigurationEntry.of(EntryIdentifier.LANGUAGE_IDENTIFIER, TextNode.valueOf("fr"));
-        ConfigurationEntry existingVersion = ConfigurationEntry.of(LANGUAGE_VERSION_IDENTIFIER, LongNode.valueOf(2));
+        ConfigurationEntry existingVersion = ConfigurationEntry.of(TWP_SETTINGS_VERSION_IDENTIFIER, LongNode.valueOf(2));
         userConfigurationDAO.persistConfiguration(Set.of(existingLanguage, existingVersion), sessionProvider.createSession(USER)).block();
 
         // When
@@ -218,7 +219,7 @@ public class CalendarSettingUpdaterTest {
 
         assertThat(entries)
             .containsExactlyInAnyOrder(ConfigurationEntry.of(EntryIdentifier.LANGUAGE_IDENTIFIER, TextNode.valueOf("en")),
-                ConfigurationEntry.of(LANGUAGE_VERSION_IDENTIFIER, LongNode.valueOf(3)));
+                ConfigurationEntry.of(TWP_SETTINGS_VERSION_IDENTIFIER, LongNode.valueOf(3)));
     }
 
     @Test
@@ -240,7 +241,7 @@ public class CalendarSettingUpdaterTest {
         assertThat(entries)
             .hasSize(2)
             .containsExactlyInAnyOrder(ConfigurationEntry.of(EntryIdentifier.LANGUAGE_IDENTIFIER, TextNode.valueOf("fr")),
-                ConfigurationEntry.of(LANGUAGE_VERSION_IDENTIFIER, LongNode.valueOf(2)));
+                ConfigurationEntry.of(TWP_SETTINGS_VERSION_IDENTIFIER, LongNode.valueOf(2)));
     }
 
     @Test
@@ -271,7 +272,7 @@ public class CalendarSettingUpdaterTest {
             .isNotNull()
             .hasSize(2)
             .containsExactlyInAnyOrder(ConfigurationEntry.of(EntryIdentifier.LANGUAGE_IDENTIFIER, TextNode.valueOf("en")),
-                ConfigurationEntry.of(LANGUAGE_VERSION_IDENTIFIER, LongNode.valueOf(version)));
+                ConfigurationEntry.of(TWP_SETTINGS_VERSION_IDENTIFIER, LongNode.valueOf(version)));
     }
 
     @Test
@@ -310,7 +311,7 @@ public class CalendarSettingUpdaterTest {
         // Given: existing timezone + existing language + version
         ConfigurationEntry timezone = ConfigurationEntry.of(TIMEZONE_IDENTIFIER, TextNode.valueOf("Asia/Ho_Chi_Minh"));
         ConfigurationEntry language = ConfigurationEntry.of(EntryIdentifier.LANGUAGE_IDENTIFIER, TextNode.valueOf("fr"));
-        ConfigurationEntry version = ConfigurationEntry.of(CalendarSettingUpdater.LANGUAGE_VERSION_IDENTIFIER, LongNode.valueOf(1));
+        ConfigurationEntry version = ConfigurationEntry.of(TWP_SETTINGS_VERSION_IDENTIFIER, LongNode.valueOf(1));
 
         userConfigurationDAO.persistConfiguration(Set.of(timezone, language, version), sessionProvider.createSession(USER)).block();
 
@@ -327,7 +328,7 @@ public class CalendarSettingUpdaterTest {
             .hasSize(3)
             .containsExactlyInAnyOrder(timezone,
                 ConfigurationEntry.of(EntryIdentifier.LANGUAGE_IDENTIFIER, TextNode.valueOf("en")),
-                ConfigurationEntry.of(CalendarSettingUpdater.LANGUAGE_VERSION_IDENTIFIER, LongNode.valueOf(2)));
+                ConfigurationEntry.of(TWP_SETTINGS_VERSION_IDENTIFIER, LongNode.valueOf(2)));
     }
 
     @Test
@@ -350,7 +351,7 @@ public class CalendarSettingUpdaterTest {
             .hasSize(3)
             .containsExactlyInAnyOrder(timezone,
                 ConfigurationEntry.of(EntryIdentifier.LANGUAGE_IDENTIFIER, TextNode.valueOf("en")),
-                ConfigurationEntry.of(LANGUAGE_VERSION_IDENTIFIER, LongNode.valueOf(2)));
+                ConfigurationEntry.of(TWP_SETTINGS_VERSION_IDENTIFIER, LongNode.valueOf(2)));
     }
 
     @Test
@@ -397,9 +398,85 @@ public class CalendarSettingUpdaterTest {
         assertThat(user.lastname()).isEqualTo("Tran");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"dark", "light", "auto", "unknown-theme"})
+    void shouldStoreThemeAsIs(String theme) {
+        testee.updateSettings(newMessage(2, "en", theme)).block();
+
+        List<ConfigurationEntry> entries = userConfigurationDAO
+            .retrieveConfiguration(sessionProvider.createSession(USER))
+            .collectList()
+            .block();
+
+        assertThat(entries)
+            .containsExactlyInAnyOrder(ConfigurationEntry.of(EntryIdentifier.LANGUAGE_IDENTIFIER, TextNode.valueOf("en")),
+                ConfigurationEntry.of(THEME_IDENTIFIER, TextNode.valueOf(theme)),
+                ConfigurationEntry.of(TWP_SETTINGS_VERSION_IDENTIFIER, LongNode.valueOf(2)));
+    }
+
+    @Test
+    void shouldUpdateThemeWhenPayloadHasNoLanguage() {
+        ConfigurationEntry existingLanguage = ConfigurationEntry.of(EntryIdentifier.LANGUAGE_IDENTIFIER, TextNode.valueOf("fr"));
+        ConfigurationEntry existingVersion = ConfigurationEntry.of(TWP_SETTINGS_VERSION_IDENTIFIER, LongNode.valueOf(1));
+        userConfigurationDAO.persistConfiguration(Set.of(existingLanguage, existingVersion), sessionProvider.createSession(USER)).block();
+
+        testee.updateSettings(newMessage(2, null, "dark")).block();
+
+        List<ConfigurationEntry> entries = userConfigurationDAO
+            .retrieveConfiguration(sessionProvider.createSession(USER))
+            .collectList()
+            .block();
+
+        assertThat(entries)
+            .containsExactlyInAnyOrder(existingLanguage,
+                ConfigurationEntry.of(THEME_IDENTIFIER, TextNode.valueOf("dark")),
+                ConfigurationEntry.of(TWP_SETTINGS_VERSION_IDENTIFIER, LongNode.valueOf(2)));
+    }
+
+    @Test
+    void shouldLeaveStoredThemeUntouchedWhenPayloadHasNoTheme() {
+        ConfigurationEntry existingTheme = ConfigurationEntry.of(THEME_IDENTIFIER, TextNode.valueOf("dark"));
+        ConfigurationEntry existingVersion = ConfigurationEntry.of(TWP_SETTINGS_VERSION_IDENTIFIER, LongNode.valueOf(1));
+        userConfigurationDAO.persistConfiguration(Set.of(existingTheme, existingVersion), sessionProvider.createSession(USER)).block();
+
+        testee.updateSettings(newMessage(2, "en")).block();
+
+        List<ConfigurationEntry> entries = userConfigurationDAO
+            .retrieveConfiguration(sessionProvider.createSession(USER))
+            .collectList()
+            .block();
+
+        assertThat(entries)
+            .containsExactlyInAnyOrder(existingTheme,
+                ConfigurationEntry.of(EntryIdentifier.LANGUAGE_IDENTIFIER, TextNode.valueOf("en")),
+                ConfigurationEntry.of(TWP_SETTINGS_VERSION_IDENTIFIER, LongNode.valueOf(2)));
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {2, 1})
+    void shouldSkipThemeUpdateWhenIncomingVersionIsNotHigher(long version) {
+        ConfigurationEntry existingTheme = ConfigurationEntry.of(THEME_IDENTIFIER, TextNode.valueOf("light"));
+        ConfigurationEntry existingVersion = ConfigurationEntry.of(TWP_SETTINGS_VERSION_IDENTIFIER, LongNode.valueOf(2));
+        userConfigurationDAO.persistConfiguration(Set.of(existingTheme, existingVersion), sessionProvider.createSession(USER)).block();
+
+        testee.updateSettings(newMessage(version, null, "dark")).block();
+
+        List<ConfigurationEntry> entries = userConfigurationDAO
+            .retrieveConfiguration(sessionProvider.createSession(USER))
+            .collectList()
+            .block();
+
+        assertThat(entries)
+            .containsExactlyInAnyOrder(existingTheme, existingVersion);
+    }
+
     private TWPCommonSettingsMessage newMessage(long version, String language) {
+        return newMessage(version, language, null);
+    }
+
+    private TWPCommonSettingsMessage newMessage(long version, String language, String theme) {
         return new TWPCommonSettingsMessage("source", "nick", "req-1",
             System.currentTimeMillis(), version,
-            new TWPCommonSettingsMessage.Payload(USER.asString(), Optional.ofNullable(language), Optional.empty()));
+            new TWPCommonSettingsMessage.Payload(USER.asString(), Optional.ofNullable(language), Optional.ofNullable(theme)));
     }
 }
