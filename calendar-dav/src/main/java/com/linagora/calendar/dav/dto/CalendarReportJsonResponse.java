@@ -19,11 +19,13 @@
 package com.linagora.calendar.dav.dto;
 
 import java.net.URI;
+import java.util.List;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.Streams;
 
 public record CalendarReportJsonResponse(JsonNode value) {
 
@@ -37,20 +39,31 @@ public record CalendarReportJsonResponse(JsonNode value) {
         Preconditions.checkNotNull(value, "value must not be null");
     }
 
-    public JsonNode firstDavItemNode() {
+    public List<JsonNode> davItems() {
         JsonNode embedded = value().path("_embedded");
         if (embedded.isMissingNode()) {
             throw new IllegalStateException("Missing '_embedded' field in response");
         }
         JsonNode davItems = embedded.path("dav:item");
-        if (!davItems.isArray() || davItems.isEmpty()) {
+        if (!davItems.isArray()) {
+            throw new IllegalStateException("Expected 'dav:item' array in response");
+        }
+        return Streams.stream(davItems).toList();
+    }
+
+    public JsonNode firstDavItemNode() {
+        List<JsonNode> items = davItems();
+        if (items.isEmpty()) {
             throw new IllegalStateException("Expected non-empty 'dav:item' array in response");
         }
-        return davItems.get(0);
+        return items.getFirst();
     }
 
     public URI calendarHref() {
-        JsonNode davItem = firstDavItemNode();
+        return calendarHref(firstDavItemNode());
+    }
+
+    public static URI calendarHref(JsonNode davItem) {
         JsonNode hrefNode = davItem.path("_links").path("self").path("href");
 
         if (hrefNode.isMissingNode() || !hrefNode.isTextual()) {

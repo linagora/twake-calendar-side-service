@@ -535,6 +535,49 @@ public class CalDavClient extends DavClient {
             });
     }
 
+    public Mono<CalendarReportJsonResponse> queryTeamCalendarEventsByUid(Username username, OpenPaaSId userId, String eventUid) {
+        Preconditions.checkArgument(StringUtils.isNotEmpty(eventUid), "eventUid must not be empty");
+
+        return queryCalendarEvents(username, userId,
+            Map.of(
+                "ownCalendar", false,
+                "teamCalendars", true,
+                "publicSubscriptions", false,
+                "sharedCalendars", false,
+                "resourceCalendars", false),
+            Map.of("uid", eventUid));
+    }
+
+    public Mono<CalendarReportJsonResponse> queryCalendarEvents(Username username, OpenPaaSId userId,
+                                                              Map<String, Boolean> sourceSelectors, Map<String, Object> filters) {
+        Preconditions.checkArgument(username != null, "username must not be null");
+        Preconditions.checkArgument(userId != null, "userId must not be null");
+        Preconditions.checkArgument(sourceSelectors != null, "sourceSelectors must not be null");
+        Preconditions.checkArgument(filters != null, "filters must not be null");
+
+        URIBuilder uriBuilder = new URIBuilder()
+            .setPath(CalendarURL.CALENDAR_URL_PATH_PREFIX + "/" + userId.value() + "/events");
+        sourceSelectors.forEach((source, selected) -> uriBuilder.addParameter(source, selected.toString()));
+
+        return httpClientWithImpersonation(username)
+            .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_JSON)
+                .add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_JSON))
+            .post()
+            .uri(uriBuilder.toString())
+            .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(
+                OBJECT_MAPPER.writeValueAsBytes(filters))))
+            .responseSingle((response, content) -> responseBodyAsString(content)
+                .flatMap(body -> {
+                    if (response.status().code() == HttpStatus.SC_OK) {
+                        return Mono.fromCallable(() -> CalendarReportJsonResponse.from(body));
+                    }
+                    return Mono.error(new DavClientException("""
+                        Unexpected status code: %d while querying calendar events for user '%s' with sources %s and filters %s
+                        Response body: %s
+                        """.formatted(response.status().code(), userId.value(), sourceSelectors, filters, body)));
+                }));
+    }
+
     protected Mono<Void> updateCalendarEvent(Mono<HttpClient> httpClientPublisher, DavCalendarObject updatedCalendarObject) {
         return httpClientPublisher.flatMap(httpClient ->
             httpClient.headers(headers ->

@@ -18,11 +18,17 @@
 
 package com.linagora.calendar.dav.dto;
 
-import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.net.URI;
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 
 public class CalendarReportJsonResponseTest {
     private static final String VALID_JSON = """
@@ -106,5 +112,57 @@ public class CalendarReportJsonResponseTest {
         assertThat(response.calendarHref().toString())
             .isEqualTo("""
                 /calendars/686f3edd543b4d0056c3f05d/686f3edd543b4d0056c3f05d/sabredav-5016701f-069f-4295-aceb-a506f36551d0.ics""".trim());
+    }
+
+    @Test
+    void davItemsShouldAllowEmptyResults() throws JsonProcessingException {
+        CalendarReportJsonResponse response = CalendarReportJsonResponse.from("""
+            {
+              "_embedded": {
+                "dav:item": []
+              }
+            }
+            """);
+
+        assertThat(response.davItems()).isEmpty();
+        assertThatThrownBy(response::firstDavItemNode)
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessage("Expected non-empty 'dav:item' array in response");
+    }
+
+    @Test
+    void davItemsShouldExposeEachEventsHrefAndData() throws JsonProcessingException {
+        CalendarReportJsonResponse response = CalendarReportJsonResponse.from("""
+            {
+              "_embedded": {
+                "dav:item": [
+                  {
+                    "_links": {
+                      "self": {"href": "/calendars/first/first/event.ics"}
+                    },
+                    "data": ["vcalendar", [], []]
+                  },
+                  {
+                    "_links": {
+                      "self": {"href": "/calendars/second/second/event.ics"}
+                    },
+                    "data": ["vcalendar", [["version", {}, "text", "2.0"]], []]
+                  }
+                ]
+              }
+            }
+            """);
+
+        List<JsonNode> items = response.davItems();
+
+        assertThat(items)
+            .extracting(CalendarReportJsonResponse::calendarHref)
+            .containsExactly(
+                URI.create("/calendars/first/first/event.ics"),
+                URI.create("/calendars/second/second/event.ics"));
+        assertThatJson(VCalendarDto.from(items.get(1)).value())
+            .isEqualTo("""
+                ["vcalendar", [["version", {}, "text", "2.0"]], []]
+                """);
     }
 }

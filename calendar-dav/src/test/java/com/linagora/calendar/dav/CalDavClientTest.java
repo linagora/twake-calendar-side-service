@@ -691,6 +691,132 @@ public class CalDavClientTest {
     }
 
     @Test
+    void queryTeamCalendarEventsByUidShouldReturnOnlyAccessibleTeamEvents() {
+        OpenPaaSUser member = createOpenPaaSUser();
+        OpenPaaSDomain domain = sabreDavExtension.dockerSabreDavSetup()
+            .getOpenPaaSProvisioningService()
+            .getDomain()
+            .block();
+        MongoDBTeamCalendarRepository teamCalendarRepository = new MongoDBTeamCalendarRepository(
+            sabreDavExtension.dockerSabreDavSetup().getMongoDB(), Clock.systemUTC());
+        TeamCalendar teamCalendar = teamCalendarRepository
+            .create(new TeamCalendarInsertRequest(domain, "report-" + UUID.randomUUID(), "Report team"))
+            .block();
+        CalendarURL teamCalendarURL = CalendarURL.from(teamCalendar.id().asOpenPaaSId());
+
+        // Given a member who can read the team calendar
+        testee.updateCalendarShares(
+            domain.id(),
+            teamCalendarURL,
+            CalendarSharingUpdate.grant(member.username(), DavRight.READ))
+            .block();
+
+        // And matching events in the team calendar and the member's personal calendar
+        String eventUid = "report-" + UUID.randomUUID() + "\"quoted";
+        String eventIcs = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Twake//Calendar//EN
+            BEGIN:VEVENT
+            UID:${eventUid}
+            DTSTAMP:20300101T080000Z
+            DTSTART:20300110T090000Z
+            DTEND:20300110T100000Z
+            SUMMARY:Report source event
+            END:VEVENT
+            END:VCALENDAR
+            """.replace("${eventUid}", eventUid);
+        URI teamEventHref = URI.create(teamCalendarURL.asUri() + "/" + UUID.randomUUID() + ".ics");
+        String personalEventId = UUID.randomUUID().toString();
+        String personalEventHref = "/calendars/" + member.id().value() + "/" + member.id().value()
+            + "/" + personalEventId + ".ics";
+
+        davTestHelper.upsertCalendar(domain.id(), teamEventHref, eventIcs).block();
+        davTestHelper.upsertCalendar(member, eventIcs, personalEventId);
+
+        // When selecting only team calendars
+        CalendarReportJsonResponse report = testee
+            .queryTeamCalendarEventsByUid(member.username(), member.id(), eventUid)
+            .block();
+
+        // Then the canonical team event is returned and the personal event is excluded
+        assertThatJson(report.value())
+            .inPath("_embedded['dav:item']")
+            .isArray()
+            .hasSize(1);
+        assertThat(report.calendarHref())
+            .isEqualTo(teamEventHref)
+            .isNotEqualTo(URI.create(personalEventHref));
+        assertThatJson(VCalendarDto.from(report).value())
+            .inPath("[2][0][1]")
+            .isArray()
+            .contains(List.of("summary", Map.of(), "text", "Report source event"));
+
+        // When an outsider queries the same sources, the private team event is inaccessible
+        OpenPaaSUser outsider = createOpenPaaSUser();
+        CalendarReportJsonResponse outsiderReport = testee
+            .queryTeamCalendarEventsByUid(outsider.username(), member.id(), eventUid)
+            .block();
+
+        assertThatJson(outsiderReport.value())
+            .inPath("_embedded['dav:item']")
+            .isArray()
+            .isEmpty();
+    }
+
+    @Test
+    void queryCalendarEventsShouldQueryOwnCalendarWhenSelected() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        String eventUid = UUID.randomUUID().toString();
+        String eventIcs = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Twake//Calendar//EN
+            BEGIN:VEVENT
+            UID:${eventUid}
+            DTSTAMP:20300101T080000Z
+            DTSTART:20300110T090000Z
+            DTEND:20300110T100000Z
+            SUMMARY:Personal event
+            END:VEVENT
+            END:VCALENDAR
+            """.replace("${eventUid}", eventUid);
+        davTestHelper.upsertCalendar(user, eventIcs, eventUid);
+        String personalEventHref = "/calendars/" + user.id().value() + "/" + user.id().value()
+            + "/" + eventUid + ".ics";
+
+        CalendarReportJsonResponse report = testee
+            .queryCalendarEvents(user.username(), user.id(),
+                Map.of("ownCalendar", true, "teamCalendars", false),
+                Map.of("uid", eventUid))
+            .block();
+
+        assertThatJson(report.value())
+            .inPath("_embedded['dav:item']")
+            .isArray()
+            .hasSize(1);
+        assertThat(report.calendarHref())
+            .isEqualTo(URI.create(personalEventHref));
+    }
+
+    @Test
+    void queryCalendarEventsShouldReturnEmptyItemsWhenUidDoesNotExist() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        String missingUid = UUID.randomUUID().toString();
+
+        CalendarReportJsonResponse report = testee
+            .queryCalendarEvents(user.username(), user.id(),
+                Map.of("teamCalendars", true),
+                Map.of("uid", missingUid))
+            .block();
+
+        assertThatJson(report.value())
+            .inPath("_embedded['dav:item']")
+            .isArray()
+            .isEmpty();
+    }
+
+    @Test
     void calendarReportByUidShouldReturnExpectedJsonNode() throws JsonProcessingException {
         OpenPaaSUser user = createOpenPaaSUser();
         String uid = UUID.randomUUID().toString();
