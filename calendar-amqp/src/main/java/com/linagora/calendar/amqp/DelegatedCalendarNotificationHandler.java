@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.amqp;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
@@ -26,6 +27,7 @@ import java.util.Map;
 
 import jakarta.inject.Named;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
@@ -45,10 +47,12 @@ import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.smtp.EventEmailFilter;
 import com.linagora.calendar.smtp.Mail;
 import com.linagora.calendar.smtp.MailSender;
+import com.linagora.calendar.smtp.i18n.I18NTranslator;
 import com.linagora.calendar.smtp.template.Language;
 import com.linagora.calendar.smtp.template.MailTemplateConfiguration;
 import com.linagora.calendar.smtp.template.MessageGenerator;
 import com.linagora.calendar.smtp.template.MimeAttachment;
+import com.linagora.calendar.smtp.template.SubjectRenderer;
 import com.linagora.calendar.smtp.template.TemplateType;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -73,6 +77,8 @@ public class DelegatedCalendarNotificationHandler {
     private static final TemplateType RESOURCE_ADMIN_MAIL_TEMPLATE = new TemplateType("calendar-resource-admin-created");
     private static final String DELEGATED_SOURCE_PROPERTY = "calendarserver:delegatedsource";
     private static final String CALENDAR_NAME_PROPERTY = "dav:name";
+    private static final String DEFAULT_CALENDAR_DAV_NAME = "#default";
+    private static final String DEFAULT_CALENDAR_NAME_KEY = "default_calendar_name";
 
     private final OpenPaaSUserDAO openPaaSUserDAO;
     private final ResourceDAO resourceDAO;
@@ -125,14 +131,27 @@ public class DelegatedCalendarNotificationHandler {
                                                     String rightKey,
                                                     boolean isResource) {
 
-        public Map<String, Object> toPugModel(URI spaCalendarBaseUrl) {
+        public Map<String, Object> toPugModel(URI spaCalendarBaseUrl, I18NTranslator translator) throws IOException {
+            String calendarDisplayName = calendarDisplayName(translator);
             return ImmutableMap.of(
                 "content", ImmutableMap.of(
                     "delegatorName", delegatorFullName,
-                    "calendarName", originalCalendarName,
+                    "calendarName", calendarDisplayName,
                     "calendarUrl", spaCalendarBaseUrl.toASCIIString()),
                 "delegatorName", delegatorFullName,
-                "calendarName", originalCalendarName);
+                "calendarName", calendarDisplayName);
+        }
+
+        private String calendarDisplayName(I18NTranslator translator) throws IOException {
+            if (isDefaultCalendarName()) {
+                return SubjectRenderer.of(translator.get(DEFAULT_CALENDAR_NAME_KEY))
+                    .render(Map.of("delegatorName", delegatorFullName));
+            }
+            return originalCalendarName;
+        }
+
+        private boolean isDefaultCalendarName() {
+            return StringUtils.isBlank(originalCalendarName) || DEFAULT_CALENDAR_DAV_NAME.equals(originalCalendarName);
         }
     }
 
@@ -162,8 +181,8 @@ public class DelegatedCalendarNotificationHandler {
             .subscribeOn(Schedulers.boundedElastic())
             .flatMap(messageGenerator -> {
                 Username recipientUser = notificationData.delegatedUser().username();
-                return messageGenerator.generate(recipientUser, senderAddress, notificationData.toPugModel(spaCalendarBaseUrl),
-                    List.of(logoAttachment));
+                return Mono.fromCallable(() -> notificationData.toPugModel(spaCalendarBaseUrl, messageGenerator.getI18nTranslator()))
+                    .flatMap(pugModel -> messageGenerator.generate(recipientUser, senderAddress, pugModel, List.of(logoAttachment)));
             })
             .onErrorResume(error -> Mono.error(new CalendarDelegatedNotificationHandlerException("Failed to generate delegated calendar notification email", error)));
     }

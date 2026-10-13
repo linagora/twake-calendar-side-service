@@ -253,6 +253,38 @@ public class CalendarDelegatedNotificationConsumerTest {
     }
 
     @Test
+    void shouldNotExposeInternalNameWhenDefaultCalendarIsDelegated() throws Exception {
+        calDavClient.patchReadWriteDelegations(domain.id(), CalendarURL.from(bob.id()),
+                List.of(alice.username()), List.of())
+            .block();
+
+        awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+        JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
+
+        String subject = extractSubject(smtpMailsResponse.getString("[0].message"));
+
+        assertThat(subject)
+            .isEqualTo("%s shared the “%s's calendar” calendar with you".formatted(bob.fullName(), bob.fullName()));
+    }
+
+    @Test
+    void shouldLocalizeDefaultCalendarNameUsingRecipientLocale() throws Exception {
+        when(settingsResolver.resolveOrDefault(any(Username.class)))
+            .thenReturn(Mono.just(new SettingsBasedResolver.ResolvedSettings(
+                Map.of(LANGUAGE_IDENTIFIER, Locale.FRENCH))));
+
+        calDavClient.patchReadWriteDelegations(domain.id(), CalendarURL.from(bob.id()),
+                List.of(alice.username()), List.of())
+            .block();
+
+        awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+        String subject = extractSubject(smtpMailsResponseSupplier.get().getString("[0].message"));
+
+        assertThat(subject)
+            .isEqualTo("%s a partagé le calendrier « Calendrier de %s » avec vous".formatted(bob.fullName(), bob.fullName()));
+    }
+
+    @Test
     void shouldGenerateMailUsingRecipientLocale() {
         String calendarName = "Bob Private1";
         // Override settingsResolver to return Locale.FRENCH for Alice
