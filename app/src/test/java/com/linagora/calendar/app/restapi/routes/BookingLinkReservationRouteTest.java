@@ -640,8 +640,8 @@ class BookingLinkReservationRouteTest {
             messageForRecipient(awaitBookingEmails(), openPaaSUser.username().asString())));
         Map<String, String> linksByLabel = Map.of(
             "yes", actionLinks.get(0),
-            "maybe", actionLinks.get(1),
-            "no", actionLinks.get(2));
+            "no", actionLinks.get(1),
+            "maybe", actionLinks.get(2));
         Consumer<String> awaitOrganizerPartStat = expectedPartStat ->
             CALMLY_AWAIT
                 .atMost(Duration.ofSeconds(5))
