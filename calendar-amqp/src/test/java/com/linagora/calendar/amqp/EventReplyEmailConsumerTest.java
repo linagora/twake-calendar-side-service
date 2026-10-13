@@ -267,14 +267,19 @@ public class EventReplyEmailConsumerTest {
             PartStat.NEEDS_ACTION);
         davTestHelper.upsertCalendar(organizer, initialCalendarData, eventUid);
 
+        // Wait until invitation email is sent to attendee
+        awaitAtMost
+            .atMost(Duration.ofSeconds(20))
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+        mockSmtpExtension.clear();
+
         // When: Attendee replies to the event (e.g. accepts the invitation)
-        waitForEventCreation(attendee);
         updateAttendeePartStat(eventUid, new PartStat(partStatValue));
 
         // Wait for the mail to be received via mock SMTP
         awaitAtMost
             .atMost(Duration.ofSeconds(20))
-            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(2));
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
 
         // Then: Received mail
         JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
@@ -287,9 +292,9 @@ public class EventReplyEmailConsumerTest {
         };
 
         assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[1].from")).isEqualTo(attendee.username().asString());
-            softly.assertThat(smtpMailsResponse.getString("[1].recipients[0].address")).isEqualTo(organizer.username().asString());
-            softly.assertThat(smtpMailsResponse.getString("[1].message"))
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo(attendee.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(organizer.username().asString());
+            softly.assertThat(smtpMailsResponse.getString("[0].message"))
                 .contains("Subject: =?ISO-8859-1?Q?" + partStatDisplayFunction.apply(partStatValue) + ":_Twake_Calendar")
                 .contains("Content-Type: multipart/mixed;")
                 .containsIgnoringNewLines("""
