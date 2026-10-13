@@ -59,7 +59,7 @@ public class ImportMailReportRender {
                                   MessageGenerator.Factory factory,
                                   RestApiConfiguration configuration,
                                   @Named("calendar-logo") byte[] calendarLogo,
-                                  @Named("calendar-logo") byte[] contactLogo) {
+                                  @Named("contacts-logo") byte[] contactLogo) {
         this.templateConfiguration = templateConfiguration;
         this.messageGeneratorFactory = factory;
         this.configuration = configuration;

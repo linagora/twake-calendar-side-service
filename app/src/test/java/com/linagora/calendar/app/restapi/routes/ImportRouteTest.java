@@ -27,7 +27,10 @@ import static org.awaitility.Durations.ONE_HUNDRED_MILLISECONDS;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.notNullValue;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
@@ -43,6 +46,7 @@ import javax.mail.internet.MimeUtility;
 
 import org.apache.http.HttpStatus;
 import org.apache.james.core.MaybeSender;
+import org.apache.james.util.ClassLoaderUtils;
 import org.apache.james.util.Port;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionFactory;
@@ -588,13 +592,16 @@ public class ImportRouteTest {
     }
 
     private String getHtml(String message) {
-        Pattern htmlPattern = Pattern.compile(
-            "Content-Type: text/html; charset=UTF-8\\r?\\n(?:[^\\r\\n]+\\r?\\n)*\\r?\\n([A-Za-z0-9+/=\\r\\n]+)",
+        return new String(getPartBody(message, "text/html; charset=UTF-8"), StandardCharsets.UTF_8);
+    }
+
+    private byte[] getPartBody(String message, String contentType) {
+        Pattern bodyPattern = Pattern.compile(
+            "Content-Type: " + Pattern.quote(contentType) + "\\r?\\n(?:[^\\r\\n]+\\r?\\n)*\\r?\\n([A-Za-z0-9+/=\\r\\n]+)",
             Pattern.DOTALL);
-        Matcher matcher = htmlPattern.matcher(message);
+        Matcher matcher = bodyPattern.matcher(message);
         assertThat(matcher.find()).isTrue();
-        String base64Html = matcher.group(1).replaceAll("\\s+", "");
-        return new String(Base64.getDecoder().decode(base64Html), StandardCharsets.UTF_8);
+        return Base64.getMimeDecoder().decode(matcher.group(1));
     }
 
     @Test
@@ -737,7 +744,7 @@ public class ImportRouteTest {
     }
 
     @Test
-    void shouldReportMailWhenImportVcardSucceed(TwakeCalendarGuiceServer server) {
+    void shouldReportMailWhenImportVcardSucceed(TwakeCalendarGuiceServer server) throws IOException {
         String addressBook = "collected";
         String vcardUid = UUID.randomUUID().toString();
         byte[] vcard = """
@@ -788,6 +795,15 @@ public class ImportRouteTest {
                     "Content-Transfer-Encoding: base64",
                     "Content-Type: image/png; name=\"logo.png\""); // base64 encoded image
         }));
+
+        String message = smtpMailsResponse.getString("[0].message");
+        assertThat(getHtml(message))
+            .contains("alt=\"Twake Contacts Logo\"", "src=\"cid:logo\"", "href=\"https://e-contacts.avocat.fr\"");
+        assertThat(getPartBody(message, "image/png; name=\"logo.png\""))
+            .isEqualTo(ClassLoaderUtils.getSystemResourceAsByteArray("assets/contacts/logo.png"));
+        assertThat(ClassLoaderUtils.getSystemResourceAsByteArray("assets/contacts/logo.png"))
+            .isNotEqualTo(ClassLoaderUtils.getSystemResourceAsByteArray("assets/calendar/logo.png"));
+        Files.writeString(Path.of("target", "import-contacts-en.eml"), message, StandardCharsets.UTF_8);
     }
 
     @Test

@@ -3,30 +3,25 @@ html.mail
   head
     meta(charset='utf-8')
     meta(name='viewport', content='width=device-width, initial-scale=1')
-    style
-      | @media (max-width: 768px) {
-      |   .content {
-      |     width: 100% !important;
-      |     border-radius: 0 !important;
-      |   }
-      | }
-  body(style="background-color: #EEEEEE;")
-    .wrapper.mail-content(style="width: 700px; margin-left: auto; margin-right: auto; padding: 10px 13px; border-radius: 5px; text-align: justify; background-color: white;")
-      .grid-container(style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; grid-template-areas: 'header header header header' 'import import import import' 'failed failed failed failed';")
-        .header(style="display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-areas: 'logo subject subject'; grid-area: header; align-self: center;")
-          .logo(style="grid-area: logo; align-self: center;")
-            a(href=content.baseUrl)
-              img(src="cid:logo", alt="Twake Calendar Logo")
-          .subject(style="grid-area: subject; justify-self: center;")
-            div.title(style="padding-bottom: 10px; padding-top: 20px; text-align: left; font-size: 25px; font-weight: bold;") #{translator.get('header')}
-        .import(style="grid-area: import;")
-          span #{translator.get('completed_message')}
-            ul
-              li #{content.jobSucceedCount} #{translator.get('import_success')}
-              li #{content.jobFailedCount} #{translator.get('import_failure')}
-        if content.jobFailedCount
-          .failed(style="grid-area: failed;")
-            span #{translator.get('import_failure_list')}
-            ul
-              each contact in content.jobFailedList
-                li #{contact.email}
+  body(style="margin: 0; background-color: #EEEEEE;")
+    table(align="center" width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background-color: #EEEEEE;")
+      tr
+        td(align="center" style="padding: 24px 12px;")
+          table.wrapper.mail-content(width="600" cellpadding="0" cellspacing="0" role="presentation" style="width: 100%; max-width: 600px; background-color: white; border-radius: 5px;")
+            tr
+              td(style="padding: 24px; text-align: left; font-family: Arial, sans-serif; font-size: 14px; line-height: 21px; color: #222222;")
+                .logo(style="margin-bottom: 20px;")
+                  a(href=content.baseUrl)
+                    img(src="cid:logo" alt="Twake Contacts Logo" width="210" height="30" style="display: block; width: 210px; height: 30px; border: 0;")
+                h2.title(style="margin: 0 0 16px; font-size: 22px; line-height: 28px; font-weight: bold;") #{translator.get('header')}
+                .import
+                  p(style="margin: 0 0 12px;") #{translator.get('completed_message')}
+                  ul(style="margin: 0; padding-left: 20px;")
+                    li #{content.jobSucceedCount} #{translator.get('import_success')}
+                    li #{content.jobFailedCount} #{translator.get('import_failure')}
+                if content.jobFailedCount
+                  .failed(style="margin-top: 20px;")
+                    p(style="margin: 0 0 12px;") #{translator.get('import_failure_list')}
+                    ul(style="margin: 0; padding-left: 20px;")
+                      each contact in content.jobFailedList
+                        li #{contact.email}
