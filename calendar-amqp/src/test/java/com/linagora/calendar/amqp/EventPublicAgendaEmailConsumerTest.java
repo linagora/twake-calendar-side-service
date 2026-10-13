@@ -283,7 +283,7 @@ public class EventPublicAgendaEmailConsumerTest {
         assertThat(extractDecodedPart(message, "text/html; charset=UTF-8"))
             .contains("Van Tung TRAN")
             .contains("has accepted your event proposal")
-            .contains("(Proposer)")
+            .contains("- proposer")
             .doesNotContain("Will you attend this event?")
             .doesNotContain("Resources");
         assertThat(message)
@@ -334,7 +334,7 @@ public class EventPublicAgendaEmailConsumerTest {
             softly.assertThat(extractDecodedPart(message, "text/html; charset=UTF-8"))
                 .contains("Van Tung TRAN")
                 .contains("has declined your event proposal")
-                .contains("(Proposer)")
+                .contains("- proposer")
                 .doesNotContain("has accepted");
         });
     }
@@ -374,9 +374,9 @@ public class EventPublicAgendaEmailConsumerTest {
 
             assertThat(extractDecodedPart(message, "text/html; charset=UTF-8"))
                 .contains("a refus&eacute; la proposition d'&eacute;v&eacute;nement de vous")
-                .contains("Heure")
-                .contains("(Organisateur)")
-                .contains("(Proposant)");
+                .contains("Quand")
+                .contains("- organisateur")
+                .contains("- proposant");
         });
     }
 
@@ -493,9 +493,9 @@ public class EventPublicAgendaEmailConsumerTest {
         String message = smtpMailsResponseSupplier.get().getString("[0].message");
 
         assertThat(extractDecodedPart(message, "text/html; charset=UTF-8"))
-            .contains("Heure")
-            .contains("(Organisateur)")
-            .contains("(Proposant)");
+            .contains("Quand")
+            .contains("- organisateur")
+            .contains("- proposant");
         assertThat(message)
             .contains("Content-Language: fr")
             .contains("Subject: =?ISO-8859-1?Q?Van_Tung_TRAN_a_accept");
@@ -530,7 +530,7 @@ public class EventPublicAgendaEmailConsumerTest {
         assertThat(extractDecodedPart(message, "text/html; charset=UTF-8"))
             .contains("has accepted Bob event proposal")
             .contains("Bob")
-            .contains("(Proposer)");
+            .contains("- proposer");
         assertThat(message)
             .contains("Subject: Van Tung TRAN has accepted Bob event proposal")
             .contains("Content-Type: text/html; charset=UTF-8")
