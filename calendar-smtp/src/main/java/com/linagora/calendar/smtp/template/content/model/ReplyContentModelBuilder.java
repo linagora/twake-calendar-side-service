@@ -109,10 +109,10 @@ public class ReplyContentModelBuilder {
 
     private static String partStatColor(PartStat partStat) {
         return switch (partStat.getValue().toLowerCase(Locale.US)) {
-            case "accepted" -> "#deffe1";
-            case "declined" -> "#ffdede";
-            case "tentative" -> "#fffcde";
-            default -> "#deffe1";
+            case "accepted" -> "#B9F6CA";
+            case "declined" -> "#FFD2D7";
+            case "tentative" -> "#fef7e0";
+            default -> "#B9F6CA";
         };
     }
 
