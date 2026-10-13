@@ -80,7 +80,7 @@ public class HtmlEmailBookingConfirmedRenderTest {
             .contains("has accepted your event proposal")
             .contains("Booking Confirmation")
             .contains("Bob Attendee")
-            .contains("(Proposer)")
+            .contains("&nbsp;- proposer")
             .contains("Discuss project updates.")
             .contains("Visio: https://meet.example.com/booking-confirmed")
             .contains("white-space: pre-line;")
