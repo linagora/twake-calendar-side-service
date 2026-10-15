@@ -263,6 +263,99 @@ class CommonContactsSearchRouteTest {
                 ]""");
     }
 
+    @Test
+    void shouldReturnContactsHavingRequiredFields(TwakeCalendarGuiceServer server) {
+        addContact(server, BOB, "sasuke@domain.tld", "sasuke", "uchiha");
+
+        String response = given()
+            .body("""
+                {
+                  "user": "bob@open-paas.ltd",
+                  "q": "sasuke",
+                  "objectTypes": [ "contact" ],
+                  "hasFields": [ "emailAddresses" ],
+                  "limit": 10
+                }""")
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response)
+            .withOptions(Option.IGNORING_EXTRA_FIELDS)
+            .isEqualTo("""
+                [
+                  { emailAddresses: [ { value: "sasuke@domain.tld", type: "Work" } ] }
+                ]""");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"\"phoneNumbers\"", "\"matrixIds\"", "\"emailAddresses\", \"phoneNumbers\""})
+    void shouldFilterOutContactsMissingRequiredFields(String hasFields, TwakeCalendarGuiceServer server) {
+        addContact(server, BOB, "sasuke@domain.tld", "sasuke", "uchiha");
+
+        String response = given()
+            .body("""
+                {
+                  "user": "bob@open-paas.ltd",
+                  "q": "sasuke",
+                  "hasFields": [ %s ],
+                  "limit": 10
+                }""".formatted(hasFields))
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response).isArray().isEmpty();
+    }
+
+    @Test
+    void shouldNotFilterWhenHasFieldsIsEmpty(TwakeCalendarGuiceServer server) {
+        addContact(server, BOB, "sasuke@domain.tld", "sasuke", "uchiha");
+
+        String response = given()
+            .body("""
+                {
+                  "user": "bob@open-paas.ltd",
+                  "q": "sasuke",
+                  "hasFields": [],
+                  "limit": 10
+                }""")
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response).isArray().hasSize(1);
+    }
+
+    @Test
+    void shouldRejectUnsupportedHasFields() {
+        given()
+            .body("""
+                {
+                  "user": "bob@open-paas.ltd",
+                  "q": "sasuke",
+                  "hasFields": [ "unknown" ],
+                  "limit": 10
+                }""")
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.details", equalTo("Unsupported field: 'unknown'. Supported: [emailAddresses, phoneNumbers, matrixIds]"));
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"\"user\"", "\"resource\"", "\"team-calendar\"", "\"unknown\"", "\"contact\", \"user\""})
     void shouldRejectUnsupportedObjectTypes(String objectTypes) {
