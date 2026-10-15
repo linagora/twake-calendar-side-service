@@ -62,53 +62,7 @@ class TextBodyRendererTest {
 
     @Test
     void renderEventUpdateShouldMentionChangesAndPreviousValues() throws IOException {
-        Map<String, Object> model = ImmutableMap.of(
-            "content", ImmutableMap.builder()
-                .put("event", ImmutableMap.builder()
-                    .put("organizer", ImmutableMap.of("cn", "Alice Organizer", "email", "alice@domain.tld"))
-                    .put("attendees", ImmutableMap.of(
-                        "bob@domain.tld", ImmutableMap.of("cn", "Bob Attendee", "email", "bob@domain.tld")))
-                    .put("summary", "Updated Meeting Title")
-                    .put("allDay", false)
-                    .put("start", ImmutableMap.of(
-                        "date", "2025-07-06",
-                        "fullDateTime", "2025-07-06 14:00",
-                        "time", "14:00",
-                        "timezone", "UTC",
-                        "fullDate", "2025-07-06"))
-                    .put("end", ImmutableMap.of(
-                        "date", "2025-07-06",
-                        "fullDateTime", "2025-07-06 15:00",
-                        "time", "15:00",
-                        "fullDate", "2025-07-06"))
-                    .put("location", ImmutableMap.of(
-                        "value", "https://meet.example.com/room",
-                        "isLocationAValidURL", true,
-                        "isLocationAnAbsoluteURL", true))
-                    .put("hasResources", false)
-                    .build())
-                .put("seeInCalendarLink", "https://calendar.example.com/event/789")
-                .put("yesLink", "https://calendar.example.com/event/789/yes")
-                .put("maybeLink", "https://calendar.example.com/event/789/maybe")
-                .put("noLink", "https://calendar.example.com/event/789/no")
-                .put("changes", ImmutableMap.of(
-                    "summary", ImmutableMap.of("previous", "Old Meeting Title"),
-                    "dtstart", ImmutableMap.of("previous", ImmutableMap.of(
-                        "date", "2025-07-06",
-                        "fullDateTime", "2025-07-06 09:00",
-                        "time", "09:00",
-                        "fullDate", "2025-07-06")),
-                    "dtend", ImmutableMap.of("previous", ImmutableMap.of(
-                        "date", "2025-07-06",
-                        "fullDateTime", "2025-07-06 10:00",
-                        "time", "10:00",
-                        "fullDate", "2025-07-06")),
-                    "location", ImmutableMap.of("previous", "Old Conference Room"),
-                    "description", ImmutableMap.of("previous", "Old agenda for the meeting."),
-                    "isOldEventAllDay", false))
-                .build());
-
-        assertThat(render("event-update", model)).isEqualTo("""
+        assertThat(render("event-update", eventUpdateModel())).isEqualTo("""
             Alice Organizer has updated an event
             Updated Meeting Title [Changed]
             Previously: Old Meeting Title
@@ -229,6 +183,62 @@ class TextBodyRendererTest {
             .contains("Tuesday, 1 July 2025", "10:00", "11:00", "Europe/Paris")
             .contains(": Alice <alice@domain.tld>")
             .endsWith(": https://calendar.example.com/booking/123\n");
+    }
+
+    private Map<String, Object> eventUpdateModel() {
+        return ImmutableMap.of(
+            "content", ImmutableMap.builder()
+                .put("event", updatedEvent())
+                .put("seeInCalendarLink", "https://calendar.example.com/event/789")
+                .put("yesLink", "https://calendar.example.com/event/789/yes")
+                .put("maybeLink", "https://calendar.example.com/event/789/maybe")
+                .put("noLink", "https://calendar.example.com/event/789/no")
+                .put("changes", eventChanges())
+                .build());
+    }
+
+    private Map<Object, Object> updatedEvent() {
+        return ImmutableMap.builder()
+            .put("organizer", ImmutableMap.of("cn", "Alice Organizer", "email", "alice@domain.tld"))
+            .put("attendees", ImmutableMap.of(
+                "bob@domain.tld", ImmutableMap.of("cn", "Bob Attendee", "email", "bob@domain.tld")))
+            .put("summary", "Updated Meeting Title")
+            .put("allDay", false)
+            .put("start", ImmutableMap.of(
+                "date", "2025-07-06",
+                "fullDateTime", "2025-07-06 14:00",
+                "time", "14:00",
+                "timezone", "UTC",
+                "fullDate", "2025-07-06"))
+            .put("end", ImmutableMap.of(
+                "date", "2025-07-06",
+                "fullDateTime", "2025-07-06 15:00",
+                "time", "15:00",
+                "fullDate", "2025-07-06"))
+            .put("location", ImmutableMap.of(
+                "value", "https://meet.example.com/room",
+                "isLocationAValidURL", true,
+                "isLocationAnAbsoluteURL", true))
+            .put("hasResources", false)
+            .build();
+    }
+
+    private Map<String, Object> eventChanges() {
+        return ImmutableMap.of(
+            "summary", ImmutableMap.of("previous", "Old Meeting Title"),
+            "dtstart", ImmutableMap.of("previous", ImmutableMap.of(
+                "date", "2025-07-06",
+                "fullDateTime", "2025-07-06 09:00",
+                "time", "09:00",
+                "fullDate", "2025-07-06")),
+            "dtend", ImmutableMap.of("previous", ImmutableMap.of(
+                "date", "2025-07-06",
+                "fullDateTime", "2025-07-06 10:00",
+                "time", "10:00",
+                "fullDate", "2025-07-06")),
+            "location", ImmutableMap.of("previous", "Old Conference Room"),
+            "description", ImmutableMap.of("previous", "Old agenda for the meeting."),
+            "isOldEventAllDay", false);
     }
 
     private String render(String templateName, Map<String, Object> model) throws IOException {
