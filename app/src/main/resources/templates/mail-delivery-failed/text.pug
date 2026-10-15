@@ -1,0 +1,10 @@
+mixin line(text)
+  | !{text}
+  |
+
++line(translator.get('mail_subject'))
++line()
++line(translator.get('explanation'))
++line()
++line(`${translator.get('failed_subject')}: ${content.failedSubject}`)
++line(`${translator.get('recipient')}: ${content.recipient}`)

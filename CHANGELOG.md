@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
  - ISSUE-1116 Webadmin: `GET /domains/{domain}/addressbooks/{addressBookId}/contactCount` counts the contacts of the address books a domain owns (`dab`, `domain-members`)
  - ISSUE-1117 Webadmin: `POST /domains/{domain}/addressbooks/{addressBookId}?action=export` returns the vCards of a domain address book (`dab`, `domain-members`), `?action=import` plans a task importing the supplied vCards into it (`domain-members` excluded)
  - Mail templates: Spanish (`es`), German (`de`) and Italian (`it`) translations of every email
+ - ISSUE-1173 Mail templates: every email now carries a `text/plain` alternative to its (preferred) `text/html` body, as `multipart/alternative`. It is rendered from an optional `text.pug` template next to `html.pug`; custom template directories lacking it keep sending HTML only.
  - ISSUE-1118 Webadmin: `DELETE /domains/{domain}/addressbooks/{addressBookId}/contacts[?sourceDomain=]` plans a task clearing the contacts of a domain address book (`domain-members` excluded), optionally only those having a mail address within `sourceDomain`
  - ISSUE-1119 Webadmin: `POST /domains/{domain}/addressbooks/{addressBookId}?action=copyFrom&sourceDomain=...[&ldapFilter=...]` plans a task copying the LDAP users of `sourceDomain` into a domain address book (`domain-members` excluded), e.g. letting teachers auto-complete students but not the other way around
 

@@ -1,0 +1,65 @@
+mixin line(text)
+  | !{text}
+  |
+
+mixin section(heading)
+  +line()
+  +line(heading)
+  block
+
+mixin link(label, url)
+  if (url)
+    +line(`${label}: ${url}`)
+
+mixin participant(cn, email, suffix)
+  if (cn)
+    +line(`- ${cn} <${email}>${suffix}`)
+  else
+    +line(`- ${email}${suffix}`)
+
+mixin attendees(attendees, organizer)
+  +participant(organizer.cn, organizer.email, ` - ${translator.get('organizer')}`)
+  each attendee, attendeeEmail in attendees
+    if (attendeeEmail !== organizer.email)
+      +participant(attendee.cn, attendeeEmail, '')
+
+mixin when(event)
+  if (!event.allDay)
+    if (event.start.date === event.end.date)
+      +line(`${event.start.fullDateTime} - ${event.end.time} (${event.start.timezone})`)
+    else
+      +line(`${event.start.fullDateTime} - ${event.end.fullDateTime} (${event.start.timezone})`)
+  else
+    if (event.start.date === event.end.date)
+      +line(`${event.start.fullDate} (${translator.get('all_day')})`)
+    else
+      +line(`${event.start.fullDate} - ${event.end.fullDate} (${translator.get('all_day')})`)
+
+mixin location(location, isValidURL)
+  +line(location.value)
+  if (!isValidURL)
+    +link(translator.get('see_in_map'), `https://www.openstreetmap.org/search?query=${location.urlEncodedValue}`)
+
++line(`${content.editorDisplayName} ${translator.get('propose_change_message')}`)
+if (content.oldEvent)
+  +line(content.oldEvent.summary)
++section(translator.get('proposed_time'))
+  +when(content.event)
+  +link(translator.get('see_in_calendar'), content.seeInCalendarLink)
+if (content.event.comment)
+  +section(translator.get('comment'))
+    +line(content.event.comment)
+if (content.oldEvent)
+  +section(translator.get('current_time'))
+    +when(content.oldEvent)
+  if (content.oldEvent.location)
+    +section(translator.get('where'))
+      +location(content.oldEvent.location, content.oldEvent.location.isValidURL)
+  +section(translator.get('participants'))
+    +attendees(content.oldEvent.attendees, content.oldEvent.organizer)
+  if (content.oldEvent.hasResources)
+    +section(translator.get('resources'))
+      +line(content.oldEvent.resourcesJoined)
+  if (content.oldEvent.description)
+    +section(translator.get('notes'))
+      +line(content.oldEvent.description)

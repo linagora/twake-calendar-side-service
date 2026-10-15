@@ -1,0 +1,58 @@
+mixin line(text)
+  | !{text}
+  |
+
+mixin section(heading)
+  +line()
+  +line(heading)
+  block
+
+mixin link(label, url)
+  if (url)
+    +line(`${label}: ${url}`)
+
+mixin participant(cn, email, suffix)
+  if (cn)
+    +line(`- ${cn} <${email}>${suffix}`)
+  else
+    +line(`- ${email}${suffix}`)
+
+mixin attendees(attendees, organizer)
+  +participant(organizer.cn, organizer.email, ` - ${translator.get('organizer')}`)
+  each attendee, attendeeEmail in attendees
+    if (attendeeEmail !== organizer.email)
+      +participant(attendee.cn, attendeeEmail, '')
+
+mixin when(event)
+  if (!event.allDay)
+    if (event.start.date === event.end.date)
+      +line(`${event.start.fullDateTime} - ${event.end.time} (${event.start.timezone})`)
+    else
+      +line(`${event.start.fullDateTime} - ${event.end.fullDateTime} (${event.start.timezone})`)
+  else
+    if (event.start.date === event.end.date)
+      +line(`${event.start.fullDate} (${translator.get('all_day')})`)
+    else
+      +line(`${event.start.fullDate} - ${event.end.fullDate} (${translator.get('all_day')})`)
+
+mixin location(location, isValidURL)
+  +line(location.value)
+  if (!isValidURL)
+    +link(translator.get('see_in_map'), `https://www.openstreetmap.org/search?query=${location.urlEncodedValue}`)
+
+if content.event.recipientIsBooker
+  +line(translator.get('booking_cancelled_for_booker'))
+else
+  +line(`${content.event.cancelledBy.cn} ${translator.get('cancel_booking')}`)
++line(content.event.summary)
++section(translator.get('when'))
+  +when(content.event)
+  +link(translator.get('see_in_calendar'), content.seeInCalendarLink)
+if (content.event.location)
+  +section(translator.get('where'))
+    +location(content.event.location, content.event.location.isLocationAValidURL)
++section(translator.get('participants'))
+  +attendees(content.event.attendees, content.event.organizer)
+if (content.event.description)
+  +section(translator.get('notes'))
+    +line(content.event.description)

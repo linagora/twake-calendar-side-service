@@ -1,0 +1,138 @@
+mixin line(text)
+  | !{text}
+  |
+
+mixin tagged(text, tag)
+  if (tag)
+    +line(`${text} [${tag}]`)
+  else
+    +line(text)
+
+mixin section(heading, tag)
+  +line()
+  +tagged(heading, tag)
+  block
+
+mixin previous(text)
+  +line(`${translator.get('previous_value')}: ${text}`)
+
+mixin link(label, url)
+  if (url)
+    +line(`${label}: ${url}`)
+
+mixin participant(cn, email, suffix)
+  if (cn)
+    +line(`- ${cn} <${email}>${suffix}`)
+  else
+    +line(`- ${email}${suffix}`)
+
+mixin attendees(attendees, organizer)
+  +participant(organizer.cn, organizer.email, ` - ${translator.get('organizer')}`)
+  each attendee, attendeeEmail in attendees
+    if (attendeeEmail !== organizer.email)
+      +participant(attendee.cn, attendeeEmail, '')
+
+mixin resources(resources)
+  each resource, key in resources
+    +line(`- ${resource.cn}`)
+
+mixin when(event)
+  if (!event.allDay)
+    if (event.start.date === event.end.date)
+      +line(`${event.start.fullDateTime} - ${event.end.time} (${event.start.timezone})`)
+    else
+      +line(`${event.start.fullDateTime} - ${event.end.fullDateTime} (${event.start.timezone})`)
+  else
+    if (event.start.date === event.end.date)
+      +line(`${event.start.fullDate} (${translator.get('all_day')})`)
+    else
+      +line(`${event.start.fullDate} - ${event.end.fullDate} (${translator.get('all_day')})`)
+
+mixin previousTime(changes, event)
+  if (!changes.isOldEventAllDay)
+    if (changes.dtstart && changes.dtend)
+      if (changes.dtstart.previous.date === changes.dtend.previous.date)
+        +previous(`${changes.dtstart.previous.fullDateTime} - ${changes.dtend.previous.time}`)
+      else
+        +previous(`${changes.dtstart.previous.fullDateTime} - ${changes.dtend.previous.fullDateTime}`)
+    else if (!changes.dtstart)
+      if (event.start.date === changes.dtend.previous.date)
+        +previous(`${event.start.fullDateTime} - ${changes.dtend.previous.time}`)
+      else
+        +previous(`${event.start.fullDateTime} - ${changes.dtend.previous.fullDateTime}`)
+    else
+      if (changes.dtstart.previous.date === event.end.date)
+        +previous(`${changes.dtstart.previous.fullDateTime} - ${event.end.time}`)
+      else
+        +previous(`${changes.dtstart.previous.fullDateTime} - ${event.end.fullDateTime}`)
+  else
+    if (changes.dtstart && changes.dtend)
+      if (changes.dtstart.previous.date === changes.dtend.previous.date)
+        +previous(`${changes.dtstart.previous.fullDate} (${translator.get('all_day')})`)
+      else
+        +previous(`${changes.dtstart.previous.fullDate} - ${changes.dtend.previous.fullDate} (${translator.get('all_day')})`)
+    else if (!changes.dtstart)
+      if (event.start.date === changes.dtend.previous.date)
+        +previous(`${event.start.fullDate} (${translator.get('all_day')})`)
+      else
+        +previous(`${event.start.fullDate} - ${changes.dtend.previous.fullDate} (${translator.get('all_day')})`)
+    else
+      if (changes.dtstart.previous.date === event.end.date)
+        +previous(`${changes.dtstart.previous.fullDate} (${translator.get('all_day')})`)
+      else
+        +previous(`${changes.dtstart.previous.fullDate} - ${event.end.fullDate} (${translator.get('all_day')})`)
+
+mixin location(location, isValidURL)
+  +line(location.value)
+  if (!isValidURL)
+    +link(translator.get('see_in_map'), `https://www.openstreetmap.org/search?query=${location.urlEncodedValue}`)
+
++line(`${content.event.organizer.cn} ${translator.get('update_event')}`)
+- var summaryTag = content.changes && content.changes.summary ? translator.get('changed') : null
+if (content.event.summary)
+  +tagged(content.event.summary, summaryTag)
+else
+  +tagged(translator.get('no_title'), summaryTag)
+if (content.changes && content.changes.summary)
+  if (content.changes.summary.previous)
+    +previous(content.changes.summary.previous)
+  else
+    +previous(translator.get('no_title'))
+if (content.event.videoConferenceLink)
+  +section(translator.get('video_conference'))
+    +line(content.event.videoConferenceLink)
+- var timeChanged = content.changes && ((content.changes.dtstart && content.changes.dtstart.previous.fullDateTime !== content.event.start.fullDateTime) || (content.changes.dtend && content.changes.dtend.previous.fullDateTime !== content.event.end.fullDateTime))
++section(translator.get('when'), timeChanged ? translator.get('changed') : null)
+  +when(content.event)
+  if (timeChanged)
+    +previousTime(content.changes, content.event)
+  +link(translator.get('see_in_calendar'), content.seeInCalendarLink)
+if (content.event.location)
+  - var locationTag = content.changes && content.changes.location ? (content.changes.location.previous ? translator.get('changed') : translator.get('added')) : null
+  +section(translator.get('where'), locationTag)
+    +location(content.event.location, content.event.location.isLocationAValidURL)
+    if (content.changes && content.changes.location && content.changes.location.previous)
+      +previous(content.changes.location.previous)
+else if (content.changes && content.changes.location && content.changes.location.previous)
+  +section(translator.get('where'), translator.get('removed'))
+    +previous(content.changes.location.previous)
++section(translator.get('participants'))
+  +attendees(content.event.attendees, content.event.organizer)
+if (content.event.hasResources)
+  +section(translator.get('resources'))
+    +resources(content.event.resources)
++section(translator.get('attend_event'))
+  +link(translator.get('yes'), content.yesLink)
+  +link(translator.get('no'), content.noLink)
+  +link(translator.get('maybe'), content.maybeLink)
+if (content.event.description)
+  - var descriptionTag = content.changes && content.changes.description ? (content.changes.description.previous ? translator.get('changed') : translator.get('added')) : null
+  +section(translator.get('notes'), descriptionTag)
+    +line(content.event.description)
+    if (content.changes && content.changes.description && content.changes.description.previous)
+      +previous(content.changes.description.previous)
+else if (content.changes && content.changes.description && content.changes.description.previous)
+  +section(translator.get('notes'), translator.get('removed'))
+    +previous(content.changes.description.previous)
++line()
++line(translator.get('forward_warning'))

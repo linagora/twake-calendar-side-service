@@ -40,6 +40,7 @@ import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;
 import org.apache.james.filesystem.api.FileSystem;
 import org.apache.james.mime4j.dom.Message;
+import org.apache.james.mime4j.message.BodyPart;
 import org.apache.james.mime4j.message.BodyPartBuilder;
 import org.apache.james.mime4j.message.MultipartBuilder;
 import org.apache.james.mime4j.stream.RawField;
@@ -84,7 +85,8 @@ public class MessageGenerator {
                 I18NTranslator i18NTranslator = getI18NTranslator(templateType, language.locale());
 
                 HtmlBodyRenderer htmlBodyRenderer = HtmlBodyRenderer.forPath(templateFileDirectory.getAbsolutePath());
-                return new MessageGenerator(i18NTranslator, htmlBodyRenderer, userDAO);
+                Optional<TextBodyRenderer> textBodyRenderer = TextBodyRenderer.forPath(templateFileDirectory.getAbsolutePath());
+                return new MessageGenerator(i18NTranslator, htmlBodyRenderer, textBodyRenderer, userDAO);
             }
 
             public Factory cached() {
@@ -135,16 +137,21 @@ public class MessageGenerator {
     private static final String TRANSLATOR_FUNCTION_NAME = "translator";
     private static final String MULTIPART_MIXED = "mixed";
     private static final String MULTIPART_RELATED = "related";
+    private static final String MULTIPART_ALTERNATIVE = "alternative";
+    private static final String CONTENT_LANGUAGE = "Content-Language";
 
     private final HtmlBodyRenderer htmlBodyRenderer;
+    private final Optional<TextBodyRenderer> textBodyRenderer;
     private final I18NTranslator i18nTranslator;
     private final OpenPaaSUserDAO userDAO;
 
     public MessageGenerator(I18NTranslator i18nTranslator,
                             HtmlBodyRenderer htmlBodyRenderer,
+                            Optional<TextBodyRenderer> textBodyRenderer,
                             OpenPaaSUserDAO userDAO) {
         this.i18nTranslator = i18nTranslator;
         this.htmlBodyRenderer = htmlBodyRenderer;
+        this.textBodyRenderer = textBodyRenderer;
         this.userDAO = userDAO;
     }
 
@@ -177,14 +184,12 @@ public class MessageGenerator {
                 .put(TRANSLATOR_FUNCTION_NAME, i18nTranslator)
                 .build();
 
-            String htmlBodyText = htmlBodyRenderer.render(scopedVariableFinal);
+            BodyPart htmlBodyPart = textualBodyPart(htmlBodyRenderer.render(scopedVariableFinal), "html", "base64");
+            Optional<BodyPart> textBodyPart = textBodyRenderer
+                .map(renderer -> renderer.render(scopedVariableFinal))
+                .map(Throwing.function((String text) -> textualBodyPart(text, "plain", "quoted-printable")).sneakyThrow());
 
-            BodyPartBuilder htmlBodyPart = BodyPartBuilder.create()
-                .setContentTransferEncoding("base64")
-                .setBody(htmlBodyText, "html", StandardCharsets.UTF_8);
-            htmlBodyPart.addField(new RawField("Content-Language", i18nTranslator.associatedLocale().getLanguage()));
-
-            MultipartBuilder multipartBuilder = buildMultipart(htmlBodyPart, mimeAttachments);
+            MultipartBuilder multipartBuilder = buildMultipart(htmlBodyPart, textBodyPart, mimeAttachments);
 
             MailAddress fromAsMailAddress = new MailAddress(fromAddress.getAddress());
 
@@ -199,7 +204,19 @@ public class MessageGenerator {
         });
     }
 
-    private MultipartBuilder buildMultipart(BodyPartBuilder htmlBodyPart, List<MimeAttachment> attachments) {
+    private BodyPart textualBodyPart(String content, String subtype, String transferEncoding) throws IOException {
+        BodyPartBuilder bodyPart = BodyPartBuilder.create()
+            .setContentTransferEncoding(transferEncoding)
+            .setBody(content, subtype, StandardCharsets.UTF_8);
+        bodyPart.addField(new RawField(CONTENT_LANGUAGE, i18nTranslator.associatedLocale().getLanguage()));
+        return bodyPart.build();
+    }
+
+    /**
+     * Builds multipart/mixed[ multipart/alternative[ text/plain, multipart/related[ text/html, inline attachments ] ], attachments ].
+     * The alternative level is omitted when no text template is defined, the related level when there is no inline attachment.
+     */
+    private MultipartBuilder buildMultipart(BodyPart htmlBodyPart, Optional<BodyPart> textBodyPart, List<MimeAttachment> attachments) {
         List<MimeAttachment> inlineAttachments = attachments.stream()
             .filter(MimeAttachment::inline)
             .toList();
@@ -208,43 +225,33 @@ public class MessageGenerator {
             .filter(attachment -> !attachment.inline())
             .toList();
 
-        if (!inlineAttachments.isEmpty() && !nonInlineAttachments.isEmpty()) {
-            return buildMixedWithRelatedAndAttachments(htmlBodyPart, inlineAttachments, nonInlineAttachments);
-        }
+        BodyPart htmlContent = withInlineAttachments(htmlBodyPart, inlineAttachments);
+        BodyPart content = textBodyPart
+            .map(textPart -> asBodyPart(MultipartBuilder.create(MULTIPART_ALTERNATIVE)
+                .addBodyPart(textPart)
+                .addBodyPart(htmlContent)))
+            .orElse(htmlContent);
 
-        if (!inlineAttachments.isEmpty()) {
-            return buildRelatedWithAttachments(htmlBodyPart, inlineAttachments);
-        }
-
-        if (!nonInlineAttachments.isEmpty()) {
-            return buildMixedWithAttachments(htmlBodyPart, nonInlineAttachments);
-        }
-
-        return MultipartBuilder.create(MULTIPART_MIXED)
-            .addBodyPart(htmlBodyPart.build());
-    }
-
-    private MultipartBuilder buildMixedWithAttachments(BodyPartBuilder htmlBodyPart, List<MimeAttachment> attachments) {
-        MultipartBuilder builder = MultipartBuilder.create(MULTIPART_MIXED)
-            .addBodyPart(htmlBodyPart.build());
-        attachments.forEach(Throwing.consumer(a -> builder.addBodyPart(a.asBodyPart())));
-        return builder;
-    }
-
-    private MultipartBuilder buildRelatedWithAttachments(BodyPartBuilder htmlBodyPart, List<MimeAttachment> inlineAttachments) {
-        MultipartBuilder builder = MultipartBuilder.create(MULTIPART_RELATED)
-            .addBodyPart(htmlBodyPart.build());
-        inlineAttachments.forEach(Throwing.consumer(a -> builder.addBodyPart(a.asBodyPart())));
-        return builder;
-    }
-
-    private MultipartBuilder buildMixedWithRelatedAndAttachments(BodyPartBuilder htmlBodyPart,
-                                                               List<MimeAttachment> inlineAttachments,
-                                                               List<MimeAttachment> nonInlineAttachments) {
         MultipartBuilder mixed = MultipartBuilder.create(MULTIPART_MIXED)
-            .addBodyPart(BodyPartBuilder.create().setBody(buildRelatedWithAttachments(htmlBodyPart, inlineAttachments).build()));
+            .addBodyPart(content);
         nonInlineAttachments.forEach(Throwing.consumer(attachment -> mixed.addBodyPart(attachment.asBodyPart())));
         return mixed;
+    }
+
+    private BodyPart withInlineAttachments(BodyPart htmlBodyPart, List<MimeAttachment> inlineAttachments) {
+        if (inlineAttachments.isEmpty()) {
+            return htmlBodyPart;
+        }
+        MultipartBuilder related = MultipartBuilder.create(MULTIPART_RELATED)
+            .addBodyPart(htmlBodyPart);
+        inlineAttachments.forEach(Throwing.consumer(attachment -> related.addBodyPart(attachment.asBodyPart())));
+        return asBodyPart(related);
+    }
+
+    private BodyPart asBodyPart(MultipartBuilder multipart) {
+        return BodyPartBuilder.create()
+            .setBody(multipart.build())
+            .build();
     }
 
     private String subject(Map<String, Object> scopedVariable) throws IOException {

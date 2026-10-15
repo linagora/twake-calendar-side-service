@@ -1,0 +1,7 @@
+mixin line(text)
+  | !{text}
+  |
+
++line(`${translator.get('mail_body_resource_admin_title')} "${content.calendarName}" ${translator.get('mail_body_resource_admin_title_suffix')}`)
++line()
++line(`${translator.get('mail_body_resource_admin_body_prefix')} ${translator.get('mail_body_resource_admin_body_link')}: ${content.calendarUrl}`)
