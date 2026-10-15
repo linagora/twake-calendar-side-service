@@ -59,6 +59,7 @@ public class CommonContactsSearchRoute {
     record SearchRequestDTO(@JsonProperty("user") String user,
                             @JsonProperty("q") String query,
                             @JsonProperty("objectTypes") List<String> objectTypes,
+                            @JsonProperty("hasFields") List<String> hasFields,
                             @JsonProperty("limit") int limit,
                             @JsonProperty("offset") int offset) {
 
@@ -69,7 +70,21 @@ public class CommonContactsSearchRoute {
             Preconditions.checkArgument(offset >= 0, "Offset must be positive");
             Preconditions.checkArgument(offset + limit <= MAX_RESULTS_WINDOW, "offset + limit must not exceed %s", MAX_RESULTS_WINDOW);
             effectiveObjectTypes();
+            requiredFields();
             return this;
+        }
+
+        Set<ContactField> requiredFields() {
+            return Optional.ofNullable(hasFields)
+                .stream()
+                .flatMap(List::stream)
+                .map(ContactField::parse)
+                .collect(ImmutableSet.toImmutableSet());
+        }
+
+        boolean hasRequiredFields(ResponseDTO responseDTO) {
+            return requiredFields().stream()
+                .allMatch(field -> field.isPresentIn(responseDTO));
         }
 
         Username username() {
@@ -157,6 +172,7 @@ public class CommonContactsSearchRoute {
     private Flux<ResponseDTO> search(SearchRequestDTO request) {
         return peopleSearchService.search(sessionProvider.createSession(request.username()),
                 request.queryOrEmpty(), request.effectiveObjectTypes(), request.offset() + request.limit())
+            .filter(request::hasRequiredFields)
             .skip(request.offset());
     }
 }
