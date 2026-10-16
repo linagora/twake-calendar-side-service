@@ -308,21 +308,21 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
                                        Optional<OpenPaaSId> localRecipientId) {
         return Mono.justOrEmpty(localRecipientId)
             .flatMap(recipientId -> retrieveRecipientEventHref(recipientUsername, recipientId, localDelivery.uid()))
-            .switchIfEmpty(Mono.defer(() -> retrieveDelegatedSourceEventHref(localDelivery)))
+            .switchIfEmpty(Mono.defer(() -> retrieveSenderSourceEventHref(localDelivery)))
             .switchIfEmpty(Mono.fromSupplier(() -> defaultEventPath(localDelivery.calendarId(), localDelivery.uid())));
     }
 
-    private Mono<URI> retrieveDelegatedSourceEventHref(ItipLocalDeliveryDTO localDelivery) {
+    private Mono<URI> retrieveSenderSourceEventHref(ItipLocalDeliveryDTO localDelivery) {
         return Mono.fromCallable(() -> Username.of(localDelivery.strippedSender()))
-            .flatMap(sender -> resolveDelegatedSourceEventHref(sender, localDelivery))
+            .flatMap(sender -> resolveSenderSourceEventHref(sender, localDelivery))
             .onErrorResume(e -> {
-                LOGGER.debug("Could not resolve delegated source event href for uid {} and sender {}",
+                LOGGER.debug("Could not resolve sender source event href for uid {} and sender {}",
                     localDelivery.uid(), localDelivery.strippedSender(), e);
                 return Mono.empty();
             });
     }
 
-    private Mono<URI> resolveDelegatedSourceEventHref(Username sender, ItipLocalDeliveryDTO localDelivery) {
+    private Mono<URI> resolveSenderSourceEventHref(Username sender, ItipLocalDeliveryDTO localDelivery) {
         return localRecipientResolver.resolve(sender)
             .flatMap(Mono::justOrEmpty)
             .flatMap(resolvedSender -> {
@@ -330,7 +330,7 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
                 OpenPaaSUser senderUser = new OpenPaaSUser(sender, resolvedSender.id(), StringUtils.EMPTY, StringUtils.EMPTY);
                 return calendarSearchSourceResolver.resolve(senderUser, List.of(senderCalendar))
                     .flatMap(calendars -> Mono.justOrEmpty(calendars.get(senderCalendar)))
-                    .filter(source -> !source.equals(senderCalendar))
+                    // Personal calendars also need the owner's base ID, which can differ from the calendar ID.
                     .map(source -> URI.create(source.asUri().toASCIIString() + "/" + localDelivery.uid() + ".ics"));
             });
     }

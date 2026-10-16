@@ -100,6 +100,7 @@ import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.smtp.MailSenderConfiguration;
 import com.linagora.calendar.smtp.MockSmtpServerExtension;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.model.TeamCalendarId;
 
@@ -341,6 +342,67 @@ class EventParticipationRouteTest {
                   }
                 }
                 """.formatted(externalUser));
+    }
+
+    @Test
+    void actionLinksShouldWorkForExternalUserInPersonalSecondCalendar() {
+        // Given the organizer has a personal second calendar.
+        String externalUser = "external-" + UUID.randomUUID() + "@example.com";
+        String calendarId = UUID.randomUUID().toString();
+        calDavClient.createNewCalendar(
+            organizer.username(),
+            organizer.id(),
+            new CalDavClient.NewCalendar(calendarId, "Personal second calendar", "#00AACC", "RSVP reproduction"))
+            .block();
+
+        // And an event in that calendar invites an external attendee.
+        CalendarURL calendar = new CalendarURL(organizer.id(), new OpenPaaSId(calendarId));
+        String eventUid = UUID.randomUUID().toString();
+        URI eventHref = URI.create(calendar.asUri().toASCIIString() + "/" + eventUid + ".ics");
+        davTestHelper.upsertCalendar(
+            organizer.username(),
+            eventHref,
+            generateCalendarData(eventUid, organizer.username().asString(), externalUser))
+            .block();
+
+        // Wait for the invitation email and read its acceptance link.
+        AtomicReference<String> acceptLink = new AtomicReference<>();
+        CALMLY_AWAIT
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> {
+                JsonPath smtpMailsResponse = smtpMails();
+                List<String> recipients = IntStream.range(0, smtpMailsResponse.getList("").size())
+                    .mapToObj(i -> smtpMailsResponse.getString("[" + i + "].recipients[0].address"))
+                    .toList();
+                assertThat(recipients).contains(externalUser);
+                List<String> actionLinks = extractActionLinks(getHtml(inviteMailOf(smtpMailsResponse, externalUser)));
+                assertThat(actionLinks).hasSize(3);
+                acceptLink.set(actionLinks.getFirst());
+            });
+
+        // Confirm the event exists before following the email link.
+        assertThat(calDavClient.fetchCalendarEvent(organizer.username(), eventHref).blockOptional())
+            .isPresent();
+
+        // When the attendee follows the actual acceptance link from the invitation email.
+        String response = given()
+            .when()
+            .get(asLocalParticipationLink(acceptLink.get()))
+            .then()
+            // Then the event is found and the attendee details are returned.
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(JSON)
+            .extract()
+            .asString();
+
+        assertThatJson(response).node("attendeeEmail").isEqualTo(externalUser);
+        DavCalendarObject updated = calDavClient.fetchCalendarEvent(organizer.username(), eventHref).block();
+        assertThat(updated.calendarData().toString()).contains("PARTSTAT=ACCEPTED");
+
+        // Wait for the asynchronous reply email before the next test resets the SMTP server.
+        CALMLY_AWAIT
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> assertThat(replyMailsTo(organizer.username().asString())).hasSize(1));
     }
 
     @Test
