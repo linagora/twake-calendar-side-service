@@ -36,7 +36,12 @@ import org.apache.james.metrics.api.MetricFactory;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.cfg.CoercionAction;
+import com.fasterxml.jackson.databind.cfg.CoercionInputShape;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.databind.type.LogicalType;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.dav.CalendarSearchSourceResolver;
@@ -222,7 +227,13 @@ public class CalendarSearchRoute extends CalendarRoute {
     public static final int DEFAULT_LIMIT = 30;
     public static final int DEFAULT_OFFSET = 0;
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module());
+    private static final ObjectMapper OBJECT_MAPPER = JsonMapper.builder()
+        .addModule(new Jdk8Module())
+        .withCoercionConfig(LogicalType.Textual, config -> config
+            .setCoercion(CoercionInputShape.Integer, CoercionAction.Fail)
+            .setCoercion(CoercionInputShape.Float, CoercionAction.Fail)
+            .setCoercion(CoercionInputShape.Boolean, CoercionAction.Fail))
+        .build();
 
     private final CalendarSearchService searchService;
     private final OpenPaaSUserDAO openPaaSUserDAO;
@@ -252,7 +263,7 @@ public class CalendarSearchRoute extends CalendarRoute {
         int offset = extractOffset(queryStringDecoder);
 
         return request.receive().aggregate().asString()
-            .map(Throwing.function(string -> OBJECT_MAPPER.readValue(string, SearchRequest.class)))
+            .flatMap(this::parseSearchRequest)
             .flatMap(searchRequest -> {
                 List<CalendarURL> requestedCalendars = extractCalendarUrls(searchRequest);
 
@@ -260,12 +271,17 @@ public class CalendarSearchRoute extends CalendarRoute {
                     .map(searchSourceCalendars -> toEventSearchQuery(searchRequest, searchSourceCalendars, limit, offset))
                     .flatMapMany(searchService::search)
                     .collectList()
-                    .map(Throwing.function(events -> OBJECT_MAPPER.writeValueAsString(SearchResponse.from(events, limit, offset, request.uri()))))
+                    .map(Throwing.function(events -> OBJECT_MAPPER.writeValueAsString(SearchResponse.from(events, limit, offset, queryStringDecoder.path()))))
                     .flatMap(responseBody -> response.status(200)
                         .header("Content-Type", "application/json")
                         .sendString(Mono.just(responseBody))
                         .then());
             });
+    }
+
+    private Mono<SearchRequest> parseSearchRequest(String payload) {
+        return Mono.fromCallable(() -> OBJECT_MAPPER.readValue(payload, SearchRequest.class))
+            .onErrorMap(JsonProcessingException.class, error -> new IllegalArgumentException("Invalid request body: " + error.getOriginalMessage(), error));
     }
 
     private Mono<List<CalendarURL>> resolveSearchSourceCalendars(MailboxSession session, List<CalendarURL> requestedCalendars) {

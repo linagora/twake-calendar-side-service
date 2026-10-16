@@ -22,6 +22,7 @@ import static io.restassured.RestAssured.given;
 import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.startsWith;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -563,6 +564,65 @@ public interface CalendarSearchRouteContract {
             .body("error.code", equalTo(400))
             .body("error.message", equalTo("Bad request"))
             .body("error.details", equalTo("limit param must be positive"));
+    }
+
+    @Test
+    default void shouldReturn400WhenBodyIsMalformedJson(TwakeCalendarGuiceServer server) {
+        given()
+            .body("{bad")
+            .post("/calendar/api/events/search?limit=30&offset=0")
+            .then()
+            .statusCode(400)
+            .body("error.code", equalTo(400))
+            .body("error.message", equalTo("Bad request"))
+            .body("error.details", startsWith("Invalid request body"));
+    }
+
+    @Test
+    default void shouldReturn400WhenCalendarsIsNotAnArray(TwakeCalendarGuiceServer server) {
+        given()
+            .body("""
+                { "query": "test", "calendars": "x" }
+                """)
+            .post("/calendar/api/events/search?limit=30&offset=0")
+            .then()
+            .statusCode(400)
+            .body("error.code", equalTo(400))
+            .body("error.message", equalTo("Bad request"))
+            .body("error.details", startsWith("Invalid request body"));
+    }
+
+    @Test
+    default void shouldReturn400WhenQueryIsNotAString(TwakeCalendarGuiceServer server) {
+        given()
+            .body("""
+                { "query": 123, "calendars": [] }
+                """)
+            .post("/calendar/api/events/search?limit=30&offset=0")
+            .then()
+            .statusCode(400)
+            .body("error.code", equalTo(400))
+            .body("error.message", equalTo("Bad request"))
+            .body("error.details", startsWith("Invalid request body"));
+    }
+
+    @Test
+    default void selfLinkShouldNotDuplicateQueryString(TwakeCalendarGuiceServer server) {
+        CalendarURL calendarURL = defaultCalendarURL(server);
+
+        given()
+            .body("""
+                {
+                    "calendars": [
+                        { "userId": "%s", "calendarId": "%s" }
+                    ],
+                    "query": "test"
+                }
+                """.formatted(calendarURL.base().value(), calendarURL.calendarId().value()))
+            .post("/calendar/api/events/search?limit=30&offset=0")
+            .then()
+            .statusCode(200)
+            .body("_links.self.href", equalTo("/calendar/api/events/search?limit=30&offset=0"));
     }
 
     @Test
