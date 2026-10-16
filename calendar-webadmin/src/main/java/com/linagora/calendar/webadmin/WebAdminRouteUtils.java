@@ -31,10 +31,13 @@ import org.apache.james.webadmin.routes.TasksRoutes;
 import org.apache.james.webadmin.utils.ErrorResponder;
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpStatus;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.linagora.calendar.dav.DavClientException;
+import com.linagora.calendar.dav.DavResponseException;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 
@@ -43,6 +46,9 @@ import spark.Request;
 import spark.Response;
 
 final class WebAdminRouteUtils {
+    private static final Logger LOGGER = LoggerFactory.getLogger(WebAdminRouteUtils.class);
+    private static final String DAV_SERVER_ERROR_MESSAGE = "Error while calling the DAV server";
+    private static final String DAV_REFUSAL_MESSAGE = "The DAV server refused the request";
     private static final String USERNAME_PARAM = ":username";
     private static final String TASK_ID_FIELD = "taskId";
 
@@ -71,16 +77,53 @@ final class WebAdminRouteUtils {
         try {
             return supplier.get();
         } catch (DavClientException e) {
-            throw serverError(e);
+            throw davError(e);
         }
     }
 
-    static HaltException serverError(DavClientException e) {
+    static HaltException davError(DavClientException e) {
+        if (e instanceof DavResponseException davResponseException) {
+            return davResponseError(davResponseException);
+        }
         return ErrorResponder.builder()
             .statusCode(HttpStatus.INTERNAL_SERVER_ERROR_500)
             .type(ErrorResponder.ErrorType.SERVER_ERROR)
-            .message("Error while calling the DAV server")
+            .message(DAV_SERVER_ERROR_MESSAGE)
             .cause(e)
+            .haltError();
+    }
+
+    private static HaltException davResponseError(DavResponseException e) {
+        return davRefusalType(e.statusCode())
+            .map(type -> davRefusal(e, type))
+            .orElseGet(() -> unexpectedDavResponse(e));
+    }
+
+    private static Optional<ErrorResponder.ErrorType> davRefusalType(int davStatusCode) {
+        return switch (davStatusCode) {
+            case HttpStatus.BAD_REQUEST_400 -> Optional.of(ErrorResponder.ErrorType.INVALID_ARGUMENT);
+            case HttpStatus.NOT_FOUND_404 -> Optional.of(ErrorResponder.ErrorType.NOT_FOUND);
+            case HttpStatus.FORBIDDEN_403, HttpStatus.CONFLICT_409 -> Optional.of(ErrorResponder.ErrorType.WRONG_STATE);
+            default -> Optional.empty();
+        };
+    }
+
+    private static HaltException davRefusal(DavResponseException e, ErrorResponder.ErrorType type) {
+        LOGGER.info("DAV server refused the request: {}", e.getMessage());
+        return ErrorResponder.builder()
+            .statusCode(e.statusCode())
+            .type(type)
+            .message(e.davMessage().orElse(DAV_REFUSAL_MESSAGE))
+            .haltError();
+    }
+
+    private static HaltException unexpectedDavResponse(DavResponseException e) {
+        LOGGER.error(DAV_SERVER_ERROR_MESSAGE, e);
+        return ErrorResponder.builder()
+            .statusCode(HttpStatus.INTERNAL_SERVER_ERROR_500)
+            .type(ErrorResponder.ErrorType.SERVER_ERROR)
+            .message(DAV_SERVER_ERROR_MESSAGE)
+            .cause(new DavClientException(e.summary()))
             .haltError();
     }
 

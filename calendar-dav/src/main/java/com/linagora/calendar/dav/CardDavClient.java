@@ -501,9 +501,8 @@ public class CardDavClient extends DavClient {
                 }
                 return buf.asString(StandardCharsets.UTF_8)
                     .switchIfEmpty(Mono.just(StringUtils.EMPTY))
-                    .flatMap(errorBody -> Mono.error(new DavClientException(
-                        "Unexpected status code: %d when deleting address book %s\n%s"
-                            .formatted(response.status().code(), addressBookURL.asUri().toASCIIString(), errorBody))));
+                    .flatMap(errorBody -> Mono.error(new DavResponseException(response.status().code(),
+                        "deleting address book %s".formatted(addressBookURL.asUri().toASCIIString()), errorBody)));
             });
     }
 
@@ -686,9 +685,8 @@ public class CardDavClient extends DavClient {
                 }
                 return buf.asString(StandardCharsets.UTF_8)
                     .switchIfEmpty(Mono.just(StringUtils.EMPTY))
-                    .flatMap(errorBody -> Mono.error(new DavClientException(
-                        "Unexpected status code: %d when creating address book for user %s\n%s"
-                            .formatted(response.status().code(), userId.value(), errorBody))));
+                    .flatMap(errorBody -> Mono.error(new DavResponseException(response.status().code(),
+                        "creating address book for user %s".formatted(userId.value()), errorBody)));
             });
     }
 
@@ -709,9 +707,8 @@ public class CardDavClient extends DavClient {
                 case HttpStatus.SC_OK, HttpStatus.SC_NO_CONTENT, HttpStatus.SC_MULTI_STATUS -> Mono.empty();
                 case HttpStatus.SC_FORBIDDEN -> Mono.error(new SystemAddressBookException(addressBookURL));
                 default -> responseBodyAsString(buf)
-                    .flatMap(errorBody -> Mono.error(new DavClientException(
-                        "Unexpected status code: %d when updating properties of address book %s\n%s"
-                            .formatted(response.status().code(), uri, errorBody))));
+                    .flatMap(errorBody -> Mono.error(new DavResponseException(response.status().code(),
+                        "updating properties of address book %s".formatted(uri), errorBody)));
             });
     }
 
@@ -732,9 +729,8 @@ public class CardDavClient extends DavClient {
                 case HttpStatus.SC_OK, HttpStatus.SC_NO_CONTENT -> Mono.empty();
                 default -> buf.asString(StandardCharsets.UTF_8)
                     .switchIfEmpty(Mono.just(StringUtils.EMPTY))
-                    .flatMap(errorBody -> Mono.error(new DavClientException(
-                        "Unexpected status code: %d when updating public right of address book %s\n%s"
-                            .formatted(response.status().code(), uri, errorBody))));
+                    .flatMap(errorBody -> Mono.error(new DavResponseException(response.status().code(),
+                        "updating public right of address book %s".formatted(uri), errorBody)));
             });
     }
 
@@ -762,9 +758,8 @@ public class CardDavClient extends DavClient {
                 case HttpStatus.SC_OK, HttpStatus.SC_NO_CONTENT -> Mono.empty();
                 default -> buf.asString(StandardCharsets.UTF_8)
                     .switchIfEmpty(Mono.just(StringUtils.EMPTY))
-                    .flatMap(errorBody -> Mono.error(new DavClientException(
-                        "Unexpected status code: %d when updating shares of address book %s\n%s"
-                            .formatted(response.status().code(), uri, errorBody))));
+                    .flatMap(errorBody -> Mono.error(new DavResponseException(response.status().code(),
+                        "updating shares of address book %s".formatted(uri), errorBody)));
             });
     }
 
@@ -791,9 +786,8 @@ public class CardDavClient extends DavClient {
                 }
                 return buf.asString(StandardCharsets.UTF_8)
                     .switchIfEmpty(Mono.just(StringUtils.EMPTY))
-                    .flatMap(errorBody -> Mono.error(new DavClientException(
-                        "Unexpected status code: %d when creating user address book for user %s\n%s"
-                            .formatted(response.status().code(), userId.value(), errorBody))));
+                    .flatMap(errorBody -> Mono.error(new DavResponseException(response.status().code(),
+                        "creating user address book for user %s".formatted(userId.value()), errorBody)));
             });
     }
 

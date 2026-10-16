@@ -25,6 +25,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.emptyString;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.nullValue;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -237,6 +238,18 @@ public class UserCalendarRoutesTest {
     }
 
     @Test
+    void deleteCalendarShouldReturn403WhenDeletingMainCalendar() {
+        given()
+        .when()
+            .delete("/users/{username}/calendars/{calendarId}", user.username().asString(), user.id().value())
+        .then()
+            .statusCode(403)
+            .body("type", is("WrongState"))
+            .body("message", is("Forbidden: You can not delete your main calendar"))
+            .body("details", nullValue());
+    }
+
+    @Test
     void deleteCalendarShouldDeleteDelegatedCalendarCopy() {
         String calendarId = createCalendar(user, "Delegated calendar");
         davTestHelper.grantDelegation(user, new CalendarURL(user.id(), new OpenPaaSId(calendarId)), otherUser, "dav:read");
@@ -429,6 +442,23 @@ public class UserCalendarRoutesTest {
         .then()
             .statusCode(400)
             .body("type", is("InvalidArgument"));
+    }
+
+    @Test
+    void inviteeShouldReturn400WhenDelegatingToTheOwner() {
+        String calendarId = createCalendar(user, "Calendar");
+
+        given()
+            .body("""
+                {"share":{"set":[{"dav:href":"mailto:%s","dav:read":true}],"remove":[]}}
+                """.formatted(user.username().asString()))
+        .when()
+            .post("/users/{username}/calendars/{calendarId}/invitee", user.username().asString(), calendarId)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"))
+            .body("message", is("Cannot delegate a calendar to yourself"))
+            .body("details", nullValue());
     }
 
     @Test

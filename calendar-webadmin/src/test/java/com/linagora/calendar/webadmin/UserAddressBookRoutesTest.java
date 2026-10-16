@@ -25,6 +25,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.emptyString;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.nullValue;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -680,6 +681,23 @@ public class UserAddressBookRoutesTest {
             .post("/users/{username}/addressbooks/{addressBookId}/invitee", user.username().asString(), addressBookId)
         .then()
             .statusCode(204);
+    }
+
+    @Test
+    void inviteeShouldReturn400WhenSharingWithTheOwner() {
+        String addressBookId = createAddressBook(user, "Address book");
+
+        given()
+            .body("""
+                {"dav:sharee":[{"dav:href":"mailto:%s","dav:share-access":2}]}
+                """.formatted(user.username().asString()))
+        .when()
+            .post("/users/{username}/addressbooks/{addressBookId}/invitee", user.username().asString(), addressBookId)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"))
+            .body("message", is("Cannot delegate an address book to yourself"))
+            .body("details", nullValue());
     }
 
     @Test
