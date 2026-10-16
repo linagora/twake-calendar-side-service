@@ -26,12 +26,16 @@ import java.util.stream.Stream;
 
 import org.apache.james.task.Task;
 import org.apache.james.task.TaskExecutionDetails;
+import org.apache.james.task.TaskId;
 import org.apache.james.task.TaskType;
 
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.webadmin.service.CommonContactRepublishService;
+
+import reactor.core.publisher.Mono;
+import reactor.core.publisher.Sinks;
 
 public class CommonContactRepublishTask implements Task {
     public record Details(Instant instant, Optional<String> username, Optional<String> domain, Optional<String> scope,
@@ -102,6 +106,7 @@ public class CommonContactRepublishTask implements Task {
     private final RunningOptions runningOptions;
     private final Scope scope;
     private final CommonContactRepublishService.Context context;
+    private final Sinks.One<TaskId> taskId = Sinks.one();
 
     public CommonContactRepublishTask(CommonContactRepublishService republishService, RunningOptions runningOptions, Scope scope) {
         this.republishService = republishService;
@@ -111,8 +116,13 @@ public class CommonContactRepublishTask implements Task {
     }
 
     @Override
-    public Result run() {
-        return republishService.republish(context, runningOptions, scope).block();
+    public Mono<Result> runAsync() {
+        // Submission can start the worker before the route receives the generated task ID.
+        return taskId.asMono().flatMap(id -> republishService.republish(id, context, runningOptions, scope));
+    }
+
+    public void assignTaskId(TaskId id) {
+        taskId.emitValue(id, Sinks.EmitFailureHandler.FAIL_FAST);
     }
 
     @Override
