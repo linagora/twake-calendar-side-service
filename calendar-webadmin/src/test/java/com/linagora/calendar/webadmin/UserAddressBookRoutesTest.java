@@ -339,6 +339,8 @@ public class UserAddressBookRoutesTest {
             Arguments.of("00000000-0000-0000-0000-000000000000", validBody, 404, "notFound", "Address book does not exist"),
             Arguments.of("contacts", validBody, 400, "InvalidArgument", "Cannot update system address book"),
             Arguments.of("contacts", "{}", 400, "InvalidArgument", "At least one of 'dav:name', 'carddav:description' must be provided"),
+            Arguments.of("contacts", "{\"dav:name\":\"\"}", 400, "InvalidArgument", "'dav:name' must not be blank"),
+            Arguments.of("contacts", "{\"dav:name\":\"   \"}", 400, "InvalidArgument", "'dav:name' must not be blank"),
             Arguments.of("contacts", "{\"unknown\":\"value\"}", 400, "InvalidArgument", "Invalid request body"),
             Arguments.of("contacts", "not json", 400, "InvalidArgument", "Invalid request body"));
     }

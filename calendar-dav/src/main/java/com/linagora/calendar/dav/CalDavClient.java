@@ -108,6 +108,7 @@ public class CalDavClient extends DavClient {
         public CalendarPropertiesUpdate {
             Preconditions.checkArgument(name.isPresent() || color.isPresent() || description.isPresent(),
                 "At least one of 'dav:name', 'apple:color', 'caldav:description' must be provided");
+            Preconditions.checkArgument(name.map(StringUtils::isNotBlank).orElse(true), "'dav:name' must not be blank");
         }
 
         public static CalendarPropertiesUpdate withName(String name) {

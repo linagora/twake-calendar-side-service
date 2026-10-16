@@ -491,6 +491,23 @@ public class UserCalendarRoutesTest {
             .body("type", is("InvalidArgument"));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"", "   "})
+    void patchShouldRejectBlankName(String blankName) {
+        String calendarId = createCalendar(user, "Calendar");
+
+        given()
+            .body("{\"dav:name\":\"" + blankName + "\"}")
+        .when()
+            .patch("/users/{username}/calendars/{calendarId}", user.username().asString(), calendarId)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"))
+            .body("message", containsString("'dav:name' must not be blank"));
+
+        assertThat(calendarMetadata(user, calendarId).getString("'dav:name'")).isEqualTo("Calendar");
+    }
+
     @Test
     void patchShouldReturn404WhenCalendarDoesNotExist() {
         given()

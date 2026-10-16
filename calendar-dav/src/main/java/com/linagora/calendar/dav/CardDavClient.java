@@ -125,6 +125,7 @@ public class CardDavClient extends DavClient {
         public AddressBookPropertiesUpdate {
             Preconditions.checkArgument(name.isPresent() || description.isPresent(),
                 "At least one of 'dav:name', 'carddav:description' must be provided");
+            Preconditions.checkArgument(name.map(StringUtils::isNotBlank).orElse(true), "'dav:name' must not be blank");
         }
     }
 
