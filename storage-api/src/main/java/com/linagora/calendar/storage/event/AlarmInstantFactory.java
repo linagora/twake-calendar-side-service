@@ -41,8 +41,8 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
+import org.apache.commons.lang3.RegExUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
 import org.apache.commons.lang3.tuple.Triple;
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;
@@ -167,7 +167,8 @@ public interface AlarmInstantFactory {
                     try {
                         return Optional.ofNullable(((Attendee) property).getCalAddress())
                             .map(Object::toString)
-                            .map(value -> Strings.CI.removeStart(value, "mailto:"))
+                            // Legacy ICS can contain repeated mailto: prefixes in VALARM recipients.
+                            .map(value -> RegExUtils.removeFirst(value, "(?i)^(?:mailto:)+"))
                             .filter(StringUtils::isNotEmpty)
                             .map(Throwing.function(MailAddress::new))
                             .stream();
