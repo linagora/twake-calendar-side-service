@@ -99,9 +99,7 @@ public class DavResponseException extends DavClientException {
     private static Optional<String> readSabreMessage(XMLStreamReader reader) throws XMLStreamException {
         try {
             while (reader.hasNext()) {
-                if (reader.next() == XMLStreamConstants.START_ELEMENT
-                    && SABRE_NAMESPACE.equals(reader.getNamespaceURI())
-                    && SABRE_MESSAGE_ELEMENT.equals(reader.getLocalName())) {
+                if (reader.next() == XMLStreamConstants.START_ELEMENT && isSabreMessage(reader)) {
                     return Optional.of(reader.getElementText());
                 }
             }
@@ -109,5 +107,10 @@ public class DavResponseException extends DavClientException {
         } finally {
             reader.close();
         }
+    }
+
+    private static boolean isSabreMessage(XMLStreamReader reader) {
+        return SABRE_NAMESPACE.equals(reader.getNamespaceURI())
+            && SABRE_MESSAGE_ELEMENT.equals(reader.getLocalName());
     }
 }
