@@ -53,10 +53,18 @@ public record AddressBookReportXmlResponse(byte[] xml) {
     }
 
     public List<ContactObject> extractContactObjects() {
+        return extractContactObjects(false);
+    }
+
+    public List<ContactObject> extractCompleteContactObjects() {
+        return extractContactObjects(true);
+    }
+
+    private List<ContactObject> extractContactObjects(boolean requireComplete) {
         XMLStreamReader reader = null;
         try {
             reader = XML_INPUT_FACTORY.createXMLStreamReader(new ByteArrayInputStream(xml));
-            return readContactObjects(reader);
+            return readContactObjects(reader, requireComplete);
         } catch (Exception e) {
             throw new IllegalStateException("Failed to parse CardDAV multistatus XML", e);
         } finally {
@@ -90,16 +98,29 @@ public record AddressBookReportXmlResponse(byte[] xml) {
         return count;
     }
 
-    private List<ContactObject> readContactObjects(XMLStreamReader reader) throws XMLStreamException {
+    private List<ContactObject> readContactObjects(XMLStreamReader reader, boolean requireComplete) throws XMLStreamException {
         List<ContactObject> items = new ArrayList<>();
         URI currentHref = null;
         String currentCardData = null;
+        boolean resourceComplete = false;
+        if (requireComplete) {
+            reader.nextTag();
+            Preconditions.checkState(new QName("DAV:", "multistatus").equals(reader.getName()), "Expected DAV:multistatus REPORT");
+        }
 
         while (reader.hasNext()) {
-            if (reader.next() == XMLStreamConstants.START_ELEMENT) {
+            int event = reader.next();
+            if (event == XMLStreamConstants.START_ELEMENT) {
                 QName name = reader.getName();
-
-                if (isDavHref(name)) {
+                if (requireComplete && new QName("DAV:", "response").equals(name)) {
+                    currentHref = null;
+                    currentCardData = null;
+                    resourceComplete = false;
+                }
+                if (requireComplete && new QName("DAV:", "status").equals(name)) {
+                    String[] status = reader.getElementText().trim().split("\\s+", 3);
+                    Preconditions.checkState(status.length >= 2 && "200".equals(status[1]), "Unsuccessful resource in address book REPORT");
+                } else if (isDavHref(name)) {
                     currentHref = URI.create(reader.getElementText());
                 } else if (isAddressData(name)) {
                     currentCardData = reader.getElementText();
@@ -108,8 +129,12 @@ public record AddressBookReportXmlResponse(byte[] xml) {
 
             if (currentHref != null && currentCardData != null) {
                 items.add(new ContactObject(currentHref, currentCardData));
+                resourceComplete = true;
                 currentHref = null;
                 currentCardData = null;
+            }
+            if (requireComplete && event == XMLStreamConstants.END_ELEMENT && new QName("DAV:", "response").equals(reader.getName())) {
+                Preconditions.checkState(resourceComplete, "Missing contact data in address book REPORT");
             }
         }
 
