@@ -55,12 +55,17 @@ public record CalendarListResponse(Map<CalendarURL, JsonNode> calendars) {
                     return Map.entry(calendarURL, calendarNode);
                 })
                 .filter(Objects::nonNull)
-                .collect(Collectors.toUnmodifiableMap(Map.Entry::getKey, Map.Entry::getValue));
+                .collect(Collectors.toUnmodifiableMap(Map.Entry::getKey, Map.Entry::getValue, CalendarListResponse::keepFirstOccurrence));
 
             return new CalendarListResponse(calendars);
         } catch (Exception e) {
             throw new DavClientException("Failed to parse calendar list response", e);
         }
+    }
+
+    // The DAV server can list the same calendar twice (concurrent lazy provisioning of the user home)
+    private static JsonNode keepFirstOccurrence(JsonNode first, JsonNode duplicate) {
+        return first;
     }
 
     public Optional<CalendarURL> findCalendarByName(String name) {
