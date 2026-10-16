@@ -344,6 +344,13 @@ public class RestApiModule extends AbstractModule {
 
     @Provides
     @Singleton
+    @Named("spaContactsUrl")
+    URL provideSpaContactsUrl(RestApiConfiguration configuration) {
+        return configuration.getContactSpaUrl();
+    }
+
+    @Provides
+    @Singleton
     @Named("spaExcalUrl")
     URL provideSpaExcalUrl(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
         return getURLFromConfiguration(propertiesProvider, "spa.excal.url");
