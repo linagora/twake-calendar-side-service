@@ -24,12 +24,14 @@ import static org.apache.http.HttpStatus.SC_NOT_FOUND;
 import java.util.List;
 import java.util.Objects;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.Username;
 import org.apache.james.jmap.Endpoint;
+import org.apache.james.jmap.JMAPRoute;
 import org.apache.james.jmap.http.Authenticator;
 import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.metrics.api.MetricFactory;
@@ -57,10 +59,12 @@ import reactor.netty.http.server.HttpServerRequest;
 import reactor.netty.http.server.HttpServerResponse;
 
 public class ContactSearchRoute extends CalendarRoute {
+    private static final String ENDPOINT_PATH = "/contacts/api/contacts/search";
     private static final String LIMIT_PARAM = "limit";
     private static final String OFFSET_PARAM = "offset";
     private static final int DEFAULT_LIMIT = 30;
     private static final int DEFAULT_OFFSET = 0;
+    private static final int MAX_QUERY_LENGTH = 255;
     private static final int MAX_CONCURRENT_BOOK_SEARCHES = 4;
     private static final Logger LOGGER = LoggerFactory.getLogger(ContactSearchRoute.class);
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
@@ -69,6 +73,10 @@ public class ContactSearchRoute extends CalendarRoute {
     public record SearchRequest(String query, List<AddressBookRef> addressBooks, int limit, int offset) {
         public SearchRequest {
             query = query == null ? StringUtils.EMPTY : query;
+            // The query is forwarded in the DAV request line: bound it to stay under proxy request line limits.
+            if (query.length() > MAX_QUERY_LENGTH) {
+                throw new IllegalArgumentException("Query must not exceed " + MAX_QUERY_LENGTH + " characters");
+            }
             addressBooks = addressBooks == null ? List.of() : addressBooks;
             if (addressBooks.stream().anyMatch(Objects::isNull)) {
                 throw new IllegalArgumentException("Address book must not be null");
@@ -104,11 +112,19 @@ public class ContactSearchRoute extends CalendarRoute {
             if (values.size() != 1) {
                 throw new IllegalArgumentException("Repeated " + name);
             }
-            int value = Integer.parseInt(values.getFirst());
+            int value = parseInt(values.getFirst(), name);
             if (value < minimum) {
                 throw new IllegalArgumentException("Invalid " + name);
             }
             return value;
+        }
+
+        private static int parseInt(String value, String name) {
+            try {
+                return Integer.parseInt(value);
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("Invalid " + name, e);
+            }
         }
 
         int fetchLimit() {
@@ -165,7 +181,22 @@ public class ContactSearchRoute extends CalendarRoute {
 
     @Override
     Endpoint endpoint() {
-        return new Endpoint(HttpMethod.POST, "/contacts/api/contacts/search");
+        return new Endpoint(HttpMethod.POST, ENDPOINT_PATH);
+    }
+
+    @Override
+    public Stream<JMAPRoute> routes() {
+        return Stream.concat(super.routes(), Stream.of(methodNotAllowedRoute()));
+    }
+
+    // Without it, a GET falls through to the legacy fallback proxy, which answers 502.
+    private JMAPRoute methodNotAllowedRoute() {
+        return JMAPRoute.builder()
+            .endpoint(new Endpoint(HttpMethod.GET, ENDPOINT_PATH))
+            .action((req, res) -> res.status(HttpResponseStatus.METHOD_NOT_ALLOWED)
+                .header("Allow", HttpMethod.POST.name())
+                .send())
+            .corsHeaders();
     }
 
     @Override

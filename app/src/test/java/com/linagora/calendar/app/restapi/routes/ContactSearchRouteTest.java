@@ -24,6 +24,7 @@ import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.apache.http.HttpStatus.SC_BAD_REQUEST;
+import static org.apache.http.HttpStatus.SC_METHOD_NOT_ALLOWED;
 import static org.apache.http.HttpStatus.SC_OK;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -874,6 +875,112 @@ class ContactSearchRouteTest {
             .post(ROUTE)
             .then()
             .statusCode(SC_BAD_REQUEST);
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("unparsablePaginationParameters")
+    void shouldReportInvalidParameterWhenPaginationIsNotAnInteger(String parameter, String value) {
+        // Given a non-numeric or overflowing pagination parameter
+        // When searching contacts
+        String response = given()
+            .queryParam(parameter, value)
+            .body("{}")
+            .post(ROUTE)
+            .then()
+            .statusCode(SC_BAD_REQUEST)
+            .extract()
+            .body()
+            .asString();
+
+        // Then the error names the invalid parameter without leaking the parser message
+        assertThatJson(response).isEqualTo("""
+            {
+              "error": {
+                "code": 400,
+                "type": "BadRequest",
+                "message": "Bad request",
+                "details": "Invalid {parameter}"
+              }
+            }
+            """.replace("{parameter}", parameter));
+    }
+
+    @Test
+    void shouldRejectTooLongQuery() {
+        // Given a query exceeding the maximum length
+        String requestBody = """
+            {
+              "query": "{query}",
+              "addressBooks": [
+                { "userId": "{userId}", "addressBookId": "contacts" }
+              ]
+            }
+            """.replace("{query}", "a".repeat(10000))
+            .replace("{userId}", requester.id().value());
+
+        // When searching contacts
+        String response = given()
+            .body(requestBody)
+            .post(ROUTE)
+            .then()
+            .statusCode(SC_BAD_REQUEST)
+            .extract()
+            .body()
+            .asString();
+
+        // Then the request is rejected before reaching the DAV server
+        assertThatJson(response).isEqualTo("""
+            {
+              "error": {
+                "code": 400,
+                "type": "BadRequest",
+                "message": "Bad request",
+                "details": "Query must not exceed 255 characters"
+              }
+            }
+            """);
+    }
+
+    @Test
+    void shouldAcceptQueryOfMaximumLength() {
+        // Given a query of exactly the maximum length
+        String requestBody = """
+            {
+              "query": "{query}",
+              "addressBooks": [
+                { "userId": "{userId}", "addressBookId": "contacts" }
+              ]
+            }
+            """.replace("{query}", "a".repeat(255))
+            .replace("{userId}", requester.id().value());
+
+        // When searching contacts, then the search succeeds
+        given()
+            .body(requestBody)
+            .post(ROUTE)
+            .then()
+            .statusCode(SC_OK);
+    }
+
+    @Test
+    void shouldRejectGetWithMethodNotAllowed() {
+        // Given the search endpoint only supports POST
+        // When calling it with GET
+        // Then the server answers 405 and advertises POST
+        given()
+            .queryParam("limit", 30)
+            .get(ROUTE)
+            .then()
+            .statusCode(SC_METHOD_NOT_ALLOWED)
+            .header("Allow", "POST");
+    }
+
+    private static Stream<Arguments> unparsablePaginationParameters() {
+        return Stream.of(
+            Arguments.of("limit", "abc"),
+            Arguments.of("limit", "99999999999"),
+            Arguments.of("offset", "abc"),
+            Arguments.of("offset", "99999999999"));
     }
 
     private static Stream<Arguments> queryFieldsSearchingAllContacts() {
