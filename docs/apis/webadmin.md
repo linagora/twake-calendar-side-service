@@ -289,7 +289,9 @@ POST /contacts?action=republish&scope=user
 
 Iterates all registered users and all domains, lists the contacts of their CardDav address books through an
 `addressbook-query` REPORT, and republishes every contact as an `ADD` JSContact event on the `twake:contacts:common`
-exchange.
+exchange. Each owned address book now emits `SYNC_START` and `SYNC_END`, and republished contacts carry a
+`syncId` derived from the Webadmin task ID and address-book path. See the [sync protocol](../features/common-contacts.md#republication-sync-protocol)
+for message examples, failure semantics and consumer requirements.
 
 Address books shared with, or delegated to, a user are listed under that user as mirrors of the owner's address book
 (`openpaas:source`): they are skipped, so each contact is published once, with its owner as audience.

@@ -60,6 +60,37 @@ Sample payload:
   - `uid`: the vCard UID.
   - `payload`: the JSContact `Card` (RFC 9553).
 
+### Republication sync protocol
+
+Webadmin republication uses the same exchange as forwarded Sabre events. Each address book is bracketed by
+`SYNC_START` and `SYNC_END`; republished `ADD` events carry a `syncId`. Forwarded Sabre events keep their existing
+format, without `syncId`. Consumer queues bound to the exchange receive both contact and sync messages.
+
+The sync ID is `<webadmin-task-id>:<canonical-address-book-path>`, where the path has no leading or trailing slash.
+A task reads each owned address book once; starting another task produces new sync IDs.
+
+For example, three separate messages for an address book containing one contact:
+
+```json
+{ "action": "SYNC_START", "audience": { "domain": "org.example.com" }, "path": "addressbooks/domain-id/domain-members", "syncId": "task-id:addressbooks/domain-id/domain-members" }
+```
+
+```json
+{ "action": "ADD", "audience": { "domain": "org.example.com" }, "path": "addressbooks/domain-id/domain-members/contact-1.vcf", "uid": "contact-1", "payload": { "@type": "Card", "version": "2.0", "uid": "contact-1" }, "syncId": "task-id:addressbooks/domain-id/domain-members" }
+```
+
+```json
+{ "action": "SYNC_END", "audience": { "domain": "org.example.com" }, "path": "addressbooks/domain-id/domain-members", "syncId": "task-id:addressbooks/domain-id/domain-members", "complete": true, "count": 1 }
+```
+
+- `complete: true`: all contacts were read, converted and sent without error. `count` excludes START/END;
+  empty books complete with `count: 0`.
+- Any error stops the book, attempts END with `complete: false`, then continues with the next book. The task is partial.
+- Consumers must require a complete END and matching distinct-contact count before cleanup. END may be missing.
+- Processing is sequential and rate-limited. Live events may interleave; this is not a point-in-time snapshot.
+
+Publisher confirms are not used, so broker receipt is not guaranteed. Consumer cleanup is outside this implementation.
+
 ## Inbound: Twake Workplace -> Calendar
 
 ### Source: collected contacts
