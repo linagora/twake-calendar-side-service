@@ -683,7 +683,7 @@ class ResourceRoutesTest {
                     "name": "Meeting Room A",
                     "description": "Room for team meetings",
                     "creator": "%s",
-                    "icon": "door",
+                    "icon": "meeting-room",
                     "administrators": [
                         { "email": "%s" }
                     ]
@@ -734,7 +734,7 @@ class ResourceRoutesTest {
                     "name": "Managed Room",
                     "description": "Room with ACL administrator",
                     "creator": "%s",
-                    "icon": "door",
+                    "icon": "meeting-room",
                     "administrators": [
                         {
                             "email": "%s",
@@ -785,7 +785,7 @@ class ResourceRoutesTest {
                     "name": "Invalid right room",
                     "description": "Room with invalid administrator right",
                     "creator": "%s",
-                    "icon": "door",
+                    "icon": "meeting-room",
                     "administrators": [{ "email": "%s", "davRight": "%s" }]
                 }
                 """.formatted(creator.username().asString(), administrator.username().asString(), davRight))
@@ -800,6 +800,141 @@ class ResourceRoutesTest {
             .isEqualTo("Unsupported DAV right: " + davRight);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "{\"description\": \"nameless\", \"icon\": \"projector\", \"creator\": \"%s\"}",
+        "{\"name\": null, \"icon\": \"projector\", \"creator\": \"%s\"}",
+        "{\"name\": \"\", \"icon\": \"projector\", \"creator\": \"%s\"}",
+        "{\"name\": \"  \", \"icon\": \"projector\", \"creator\": \"%s\"}"
+    })
+    void createResourceShouldRejectMissingOrBlankName(String body) {
+        OpenPaaSUser creator = sabreDavExtension.newTestUser();
+
+        String response = given()
+            .body(body.formatted(creator.username().asString()))
+            .post("/domains/" + DOMAIN + "/resources")
+            .then()
+            .statusCode(400)
+            .extract()
+            .asString();
+
+        assertThatJson(response)
+            .inPath("$.message")
+            .isEqualTo("Field 'name' is required");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "../../etc", "door", "meeting_room"})
+    void createResourceShouldRejectUnsupportedIcon(String icon) {
+        OpenPaaSUser creator = sabreDavExtension.newTestUser();
+
+        String response = given()
+            .body("""
+                {
+                    "name": "QA Bad Icon",
+                    "creator": "%s",
+                    "icon": "%s"
+                }
+                """.formatted(creator.username().asString(), icon))
+            .post("/domains/" + DOMAIN + "/resources")
+            .then()
+            .statusCode(400)
+            .extract()
+            .asString();
+
+        assertThatJson(response)
+            .inPath("$.message")
+            .asString()
+            .startsWith("Field 'icon' must be one of ");
+    }
+
+    @Test
+    void createResourceShouldNotStoreInvalidResource() {
+        OpenPaaSUser creator = sabreDavExtension.newTestUser();
+
+        given()
+            .body("""
+                {
+                    "name": "",
+                    "creator": "%s",
+                    "icon": "../../etc"
+                }
+                """.formatted(creator.username().asString()))
+            .post("/domains/" + DOMAIN + "/resources")
+            .then()
+            .statusCode(400);
+
+        String resources = when()
+            .get("/domains/" + DOMAIN + "/resources")
+        .then()
+            .statusCode(200)
+            .extract()
+            .asString();
+
+        assertThat(resources).doesNotContain("../../etc");
+    }
+
+    @Test
+    void createResourceShouldAllowIconToBeOmitted() {
+        OpenPaaSUser creator = sabreDavExtension.newTestUser();
+
+        given()
+            .body("""
+                {
+                    "name": "Iconless room",
+                    "creator": "%s"
+                }
+                """.formatted(creator.username().asString()))
+            .post("/domains/" + DOMAIN + "/resources")
+            .then()
+            .statusCode(201);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "  "})
+    void patchShouldRejectBlankName(String name) {
+        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
+        OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
+        ResourceId resourceId = createResource(domain, user1, user1);
+
+        String response = given()
+            .body("""
+                {"name": "%s"}
+                """.formatted(name))
+            .patch("/domains/linagora.com/resources/" + resourceId.value())
+            .then()
+            .statusCode(400)
+            .extract()
+            .asString();
+
+        assertThatJson(response)
+            .inPath("$.message")
+            .isEqualTo("Field 'name' is required");
+        assertThatJson(when().get("/domains/linagora.com/resources/" + resourceId.value()).then().extract().asString())
+            .inPath("$.name")
+            .isEqualTo("Resource name");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "../../etc", "door"})
+    void patchShouldRejectUnsupportedIcon(String icon) {
+        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
+        OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
+        ResourceId resourceId = createResource(domain, user1, user1);
+
+        given()
+            .body("""
+                {"icon": "%s"}
+                """.formatted(icon))
+            .patch("/domains/linagora.com/resources/" + resourceId.value())
+            .then()
+            .statusCode(400);
+
+        assertThatJson(when().get("/domains/linagora.com/resources/" + resourceId.value()).then().extract().asString())
+            .inPath("$.icon")
+            .isEqualTo("laptop");
+    }
+
     @Test
     void updateResourceShouldSupportUpdateAdministratorDavRight() {
         OpenPaaSUser creator = sabreDavExtension.newTestUser();
@@ -811,7 +946,7 @@ class ResourceRoutesTest {
                     "name": "Upgradeable Room",
                     "description": "Room with upgradeable administrator",
                     "creator": "%s",
-                    "icon": "door",
+                    "icon": "meeting-room",
                     "administrators": [{ "email": "%s" }]
                 }
                 """.formatted(creator.username().asString(), admin.username().asString()))
@@ -859,7 +994,7 @@ class ResourceRoutesTest {
                     "name": "Meeting Room Without Admins",
                     "description": "Room created without administrators field",
                     "creator": "%s",
-                    "icon": "door"
+                    "icon": "meeting-room"
                 }
                 """.formatted(creator.username().asString()))
             .post("/domains/" + DOMAIN + "/resources")
@@ -897,7 +1032,7 @@ class ResourceRoutesTest {
                     "name": "Meeting Room B",
                     "description": "Room for board meetings",
                     "creator": "%s",
-                    "icon": "meeting_room",
+                    "icon": "meeting-room",
                     "administrators": [
                         { "email": "%s" },
                         { "email": "%s" }
@@ -943,7 +1078,7 @@ class ResourceRoutesTest {
                     "name": "Meeting Room C",
                     "description": "Room for presentations",
                     "creator": "%s",
-                    "icon": "meeting_room",
+                    "icon": "meeting-room",
                     "administrators": [
                         { "email": "%s" },
                         { "email": "%s" }
@@ -1007,7 +1142,7 @@ class ResourceRoutesTest {
                     "name": "Meeting Room D",
                     "description": "Room for updates",
                     "creator": "%s",
-                    "icon": "door",
+                    "icon": "meeting-room",
                     "administrators": [{ "email": "%s" }]
                 }
                 """.formatted(creator.username().asString(), admin1.username().asString()))
@@ -1067,7 +1202,7 @@ class ResourceRoutesTest {
                     "name": "Meeting Room E",
                     "description": "Room for admin revocation",
                     "creator": "%s",
-                    "icon": "door",
+                    "icon": "meeting-room",
                     "administrators": [
                         { "email": "%s" },
                         { "email": "%s" }
@@ -1128,7 +1263,7 @@ class ResourceRoutesTest {
                     "name": "Meeting Room F",
                     "description": "Original description",
                     "creator": "%s",
-                    "icon": "door",
+                    "icon": "meeting-room",
                     "administrators": [{ "email": "%s" }]
                 }
                 """.formatted(creator.username().asString(), admin.username().asString()))
@@ -1183,7 +1318,7 @@ class ResourceRoutesTest {
                     "name": "Meeting Room G",
                     "description": "Room for clearing all admins",
                     "creator": "%s",
-                    "icon": "door",
+                    "icon": "meeting-room",
                     "administrators": [
                         { "email": "%s" },
                         { "email": "%s" }
