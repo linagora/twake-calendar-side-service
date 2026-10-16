@@ -116,7 +116,7 @@ public class ItipLocalDeliveryConsumerTest {
 
     @RegisterExtension
     static RabbitMQExtension rabbitMQExtension = RabbitMQExtension.singletonRabbitMQ()
-        .isolationPolicy(RabbitMQExtension.IsolationPolicy.WEAK);
+        .isolationPolicy(RabbitMQExtension.IsolationPolicy.STRONG);
 
     private static ReactorRabbitMQChannelPool channelPool;
     private static SimpleConnectionPool connectionPool;
