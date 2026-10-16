@@ -165,4 +165,45 @@ public class CalendarListResponseTest {
         assertThat(response.findCalendarByName("Archival"))
             .isEmpty();
     }
+
+    @Test
+    void parseShouldTolerateDuplicatedCalendarHrefs() {
+        CalendarListResponse response = CalendarListResponse.parse("""
+            {
+                 "_embedded": {
+                     "dav:calendar": [
+                         {
+                             "_links": {
+                                 "self": {
+                                     "href": "/calendars/user/user.json"
+                                 }
+                             },
+                             "dav:name": "#default"
+                         },
+                         {
+                             "_links": {
+                                 "self": {
+                                     "href": "/calendars/user/user.json"
+                                 }
+                             },
+                             "dav:name": "#default"
+                         },
+                         {
+                             "_links": {
+                                 "self": {
+                                     "href": "/calendars/user/archival.json"
+                                 }
+                             },
+                             "dav:name": "Archival"
+                         }
+                     ]
+                 }
+            }
+            """.getBytes(StandardCharsets.UTF_8));
+
+        assertThat(response.calendars())
+            .containsOnlyKeys(CalendarURL.parse("/calendars/user/user"), CalendarURL.parse("/calendars/user/archival"));
+        assertThat(response.findCalendarByName("Archival"))
+            .contains(CalendarURL.parse("/calendars/user/archival"));
+    }
 }
