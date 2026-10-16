@@ -614,8 +614,12 @@ Will create the following resource.
 
 Status codes:
  - 201 if created. Location header contains the URL to read resource details
- - 400 if invalid: creator/administrator do not exist, or extra fields / invalid JSON
+ - 400 if invalid: missing or blank `name`, unsupported `icon`, creator/administrator do not exist, or extra fields / invalid JSON
  - 404 if domain does not exist
+
+`name` is required and must not be blank. `icon` is optional; when provided, it must be one of the icons served by
+`GET /images/icon/{icon}.svg` (see [the icon list](https://github.com/linagora/twake-calendar-side-service/tree/main/calendar-rest-api/src/main/resources/icons/resources)),
+without the `.svg` extension, e.g. `laptop` or `meeting-room`.
 
 A resource without administrator is not subject to the validation flow: any event request with this resource is
 automatically accepted.
@@ -642,7 +646,9 @@ PATCH /domains/linagora.com/resources/RESOURCE_ID
 
 Would update the resource accordingly. Each field is optional; omitting a field leaves it unchanged.
 
-Status codes: 204 if updated, 400 if invalid (e.g. administrator not found), 404 if domain or resource not found.
+When provided, `name` must not be blank and `icon` must be a supported icon, as for creation.
+
+Status codes: 204 if updated, 400 if invalid (e.g. blank name, unsupported icon, administrator not found), 404 if domain or resource not found.
 
 Both rights can update event participation; only `dav:administration` can manage the resource ACL.
 

@@ -22,6 +22,7 @@ import static com.linagora.calendar.dav.ResourceService.ONLY_ACTIVE;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.function.UnaryOperator;
 
 import jakarta.inject.Inject;
 
@@ -40,6 +41,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.base.Preconditions;
 import com.linagora.calendar.dav.DavRight;
 import com.linagora.calendar.dav.ResourceAdministratorNotFoundException;
 import com.linagora.calendar.dav.ResourceService;
@@ -105,6 +107,12 @@ public class ResourceRoutes implements Routes {
                                       @JsonProperty("icon") String icon,
                                       @JsonProperty("administrators") List<AdministratorDTO> administrators,
                                       @JsonProperty("creator") String creator) {
+        public ResourceCreationDTO validate() {
+            validateName(name);
+            Optional.ofNullable(icon).ifPresent(ResourceIcons::validate);
+            return this;
+        }
+
         public ResourceInsertRequest toInsertRequest(OpenPaaSId creatorId, OpenPaaSId domainId) {
             return new ResourceInsertRequest(creatorId, description, domainId, icon, name);
         }
@@ -117,9 +125,19 @@ public class ResourceRoutes implements Routes {
                                     @JsonProperty("domain") Optional<String> domain,
                                     @JsonProperty("administrators") Optional<List<AdministratorDTO>> administrators,
                                     @JsonProperty("creator") Optional<String> creator) {
+        public ResourceUpdateDTO validate() {
+            name.ifPresent(ResourceRoutes::validateName);
+            icon.ifPresent(ResourceIcons::validate);
+            return this;
+        }
+
         public ResourceUpdateRequest toUpdateRequest() {
             return new ResourceUpdateRequest(name, description, icon);
         }
+    }
+
+    private static void validateName(String name) {
+        Preconditions.checkArgument(StringUtils.isNotBlank(name), "Field 'name' is required");
     }
 
     @Override
@@ -209,7 +227,7 @@ public class ResourceRoutes implements Routes {
 
     private String createResource(Request req, Response res) throws JsonExtractException {
         OpenPaaSDomain domain = asDomainObject(req);
-        ResourceCreationDTO creationDTO = creationDTOJsonExtractor.parse(req.body());
+        ResourceCreationDTO creationDTO = validate(creationDTOJsonExtractor.parse(req.body()), ResourceCreationDTO::validate);
         Mono<OpenPaaSId> creatorIdMono = retrieveExistingUser(Username.of(creationDTO.creator))
             .map(OpenPaaSUser::id);
         List<ResourceAdministrator> administrators = toResourceAdministrators(creationDTO.administrators);
@@ -228,7 +246,7 @@ public class ResourceRoutes implements Routes {
 
     private String updateResource(Request req, Response res) throws JsonExtractException {
         OpenPaaSDomain domain = asDomainObject(req);
-        ResourceUpdateDTO dto = updateDTOJsonExtractor.parse(req.body());
+        ResourceUpdateDTO dto = validate(updateDTOJsonExtractor.parse(req.body()), ResourceUpdateDTO::validate);
         ResourceId resourceId = new ResourceId(req.params("id"));
 
         return retrieveActiveResource(resourceId, domain.id())
@@ -246,6 +264,14 @@ public class ResourceRoutes implements Routes {
             .map(administrators -> resourceService.updateAdmins(resource, toResourceAdministrators(administrators)))
             .orElse(Mono.empty())
             .then(resourceService.update(resource.id(), dto.toUpdateRequest()));
+    }
+
+    private <T> T validate(T dto, UnaryOperator<T> validation) {
+        try {
+            return validation.apply(dto);
+        } catch (IllegalArgumentException e) {
+            throw badRequest(e);
+        }
     }
 
     private List<ResourceAdministrator> toResourceAdministrators(List<AdministratorDTO> administrators) {
