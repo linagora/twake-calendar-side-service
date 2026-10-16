@@ -23,24 +23,30 @@ import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.net.URI;
 import java.time.Duration;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.james.task.Task;
-import org.apache.james.util.ReactorUtils;
+import org.apache.james.task.TaskId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.MoreObjects;
+import com.google.common.base.Preconditions;
 import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.dav.CardDavClient.MirrorAddressBooks;
 import com.linagora.calendar.dav.dto.AddressBookReportXmlResponse;
+import com.linagora.calendar.dav.dto.AddressBookReportXmlResponse.ContactObject;
 import com.linagora.calendar.saas.contact.CommonContactEventConverter;
 import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.Action;
 import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.Audience;
 import com.linagora.calendar.saas.contact.CommonContactPublisher;
+import com.linagora.calendar.saas.contact.CommonContactSyncEvent;
 import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
@@ -56,6 +62,9 @@ import reactor.core.scheduler.Schedulers;
 public class CommonContactRepublishService {
 
     public record ContactToRepublish(Audience audience, String path, String cardData) {
+    }
+
+    private record AddressBookToRepublish(Audience audience, AddressBookURL url, Mono<AddressBookReportXmlResponse> report) {
     }
 
     public static class Context {
@@ -145,20 +154,15 @@ public class CommonContactRepublishService {
         this.publisher = publisher;
     }
 
-    public Mono<Task.Result> republish(Context context, CommonContactRepublishTask.RunningOptions runningOptions, Scope scope) {
-        return contacts(context, scope)
-            .transform(ReactorUtils.<ContactToRepublish, Task.Result>throttle()
-                .elements(runningOptions.contactsPerSecond())
-                .per(Duration.ofSeconds(1))
-                .forOperation(contact -> republish(context, contact)))
+    public Mono<Task.Result> republish(TaskId taskId, Context context, CommonContactRepublishTask.RunningOptions runningOptions, Scope scope) {
+        return addressBooks(context, scope)
+            // Keep the existing task-wide rate limit: one address book publishes at a time.
+            .concatMap(book -> republishAddressBook(taskId, context, runningOptions, book))
             .reduce(Task.Result.COMPLETED, Task::combine)
             .map(result -> {
-                if (context.hasFailures()) {
-                    LOGGER.info("{} task result: {}. Detail:\n{}", TASK_NAME, Task.Result.PARTIAL, context.snapshot());
-                    return Task.Result.PARTIAL;
-                }
-                LOGGER.info("{} task result: {}. Detail:\n{}", TASK_NAME, result, context.snapshot());
-                return result;
+                Task.Result taskResult = context.hasFailures() ? Task.Result.PARTIAL : result;
+                LOGGER.info("{} task result: {}. Detail:\n{}", TASK_NAME, taskResult, context.snapshot());
+                return taskResult;
             })
             .onErrorResume(e -> {
                 LOGGER.error("Task {} is incomplete", TASK_NAME, e);
@@ -166,53 +170,102 @@ public class CommonContactRepublishService {
             });
     }
 
-    private Mono<Task.Result> republish(Context context, ContactToRepublish contact) {
-        return Mono.fromCallable(() -> converter.convert(Action.ADD, contact.audience(), contact.path(), contact.cardData()))
+    private Mono<Task.Result> republishAddressBook(TaskId taskId, Context context,
+                                                  CommonContactRepublishTask.RunningOptions options, AddressBookToRepublish book) {
+        return Mono.defer(() -> {
+            String path = contactPath(book.url().asUri());
+            String syncId = CommonContactSyncIdFactory.create(taskId, book.url());
+            URI addressBookPath = URI.create(path);
+            AtomicLong publishedCount = new AtomicLong();
+            return publisher.publish(CommonContactSyncEvent.start(book.audience(), addressBookPath, syncId))
+                .then(book.report().flatMap(response -> republishContacts(context, options, book, response, syncId, publishedCount)))
+                .then(Mono.defer(() -> publisher.publish(CommonContactSyncEvent.end(book.audience(), addressBookPath, syncId,
+                    true, publishedCount.get()))))
+                .thenReturn(Task.Result.COMPLETED)
+                .onErrorResume(e -> {
+                    LOGGER.error("Error while doing task {} for address book {} (syncId={})", TASK_NAME, path, syncId, e);
+                    context.incrementFailedAddressBook();
+                    // A failed END is best effort; consumers must expire unfinished syncs without deleting contacts.
+                    return publisher.publish(CommonContactSyncEvent.end(book.audience(), addressBookPath, syncId, false, publishedCount.get()))
+                        .thenReturn(Task.Result.PARTIAL)
+                        .onErrorResume(endError -> {
+                            LOGGER.error("Unable to close contact sync {} for address book {}", syncId, path, endError);
+                            return Mono.just(Task.Result.PARTIAL);
+                        });
+                });
+        });
+    }
+
+    private Mono<Void> republishContacts(Context context, CommonContactRepublishTask.RunningOptions options,
+                                                AddressBookToRepublish book, AddressBookReportXmlResponse response,
+                                                String syncId, AtomicLong publishedCount) {
+        return Mono.fromCallable(() -> {
+                List<ContactObject> contacts = response.extractCompleteContactObjects();
+                // A 207 can contain failed resources. Never certify a snapshot with silently omitted contacts.
+                Preconditions.checkState(contacts.size() == response.countContacts(), "Incomplete address book REPORT for %s", book.url());
+                String bookPath = contactPath(book.url().asUri());
+                Set<String> paths = new HashSet<>();
+                for (ContactObject contact : contacts) {
+                    String path = contactPath(contact.href());
+                    Preconditions.checkState(bookPath.equals(StringUtils.substringBeforeLast(path, "/")) && paths.add(path),
+                        "Unexpected or duplicate contact path %s in address book %s", path, bookPath);
+                }
+                return contacts;
+            })
+            .subscribeOn(Schedulers.boundedElastic())
+            .flatMapMany(Flux::fromIterable)
+            .map(contact -> new ContactToRepublish(book.audience(), contactPath(contact.href()), contact.cardData()))
+            // Unlike the generic throttler, this must propagate REPORT/validation failures to SYNC_END.
+            .delayElements(Duration.ofNanos(Math.ceilDiv(Duration.ofSeconds(1).toNanos(), options.contactsPerSecond())))
+            // Wait for each publication so a failed contact stops the book before the next one starts.
+            .concatMap(contact -> republish(context, contact, syncId)
+                .doOnSuccess(unused -> publishedCount.incrementAndGet()))
+            .then();
+    }
+
+    private Mono<Void> republish(Context context, ContactToRepublish contact, String syncId) {
+        return Mono.fromCallable(() -> converter.convert(Action.ADD, contact.audience(), contact.path(), contact.cardData()).withSyncId(syncId))
             .subscribeOn(Schedulers.boundedElastic())
             .flatMap(publisher::publish)
-            .then(Mono.fromCallable(() -> {
-                context.incrementProcessedContact();
-                return Task.Result.COMPLETED;
-            }))
-            .onErrorResume(e -> {
-                LOGGER.error("Error while doing task {} for contact {}", TASK_NAME, contact.path(), e);
+            .doOnSuccess(unused -> context.incrementProcessedContact())
+            .onErrorMap(e -> {
                 context.incrementFailedContact();
-                return Mono.just(Task.Result.PARTIAL);
+                return new IllegalStateException("Unable to republish contact " + contact.path() + " in sync " + syncId, e);
             });
     }
 
-    private Flux<ContactToRepublish> contacts(Context context, Scope scope) {
+    private Flux<AddressBookToRepublish> addressBooks(Context context, Scope scope) {
         return switch (scope) {
             case Scope.All all -> switch (all.selection()) {
-                case USERS -> allUserContacts(context);
-                case DOMAIN_ADDRESS_BOOKS -> allDomainContacts(context);
-                case BOTH -> Flux.concat(allUserContacts(context), allDomainContacts(context));
+                case USERS -> allUserAddressBooks(context);
+                case DOMAIN_ADDRESS_BOOKS -> allDomainAddressBooks(context);
+                case BOTH -> Flux.concat(allUserAddressBooks(context), allDomainAddressBooks(context));
             };
-            case Scope.ForUser forUser -> userContacts(context, forUser.user());
+            case Scope.ForUser forUser -> userAddressBooks(context, forUser.user());
             case Scope.ForDomain forDomain -> switch (forDomain.selection()) {
-                case USERS -> usersOfDomainContacts(context, forDomain.domain());
-                case DOMAIN_ADDRESS_BOOKS -> domainContacts(context, forDomain.domain());
-                case BOTH -> Flux.concat(usersOfDomainContacts(context, forDomain.domain()),
-                    domainContacts(context, forDomain.domain()));
+                case USERS -> usersOfDomainAddressBooks(context, forDomain.domain());
+                case DOMAIN_ADDRESS_BOOKS -> domainAddressBooks(context, forDomain.domain());
+                case BOTH -> Flux.concat(usersOfDomainAddressBooks(context, forDomain.domain()),
+                    domainAddressBooks(context, forDomain.domain()));
             };
         };
     }
 
-    private Flux<ContactToRepublish> allUserContacts(Context context) {
+    private Flux<AddressBookToRepublish> allUserAddressBooks(Context context) {
         return userDAO.list()
-            .flatMap(user -> userContacts(context, user), DEFAULT_CONCURRENCY);
+            .flatMap(user -> userAddressBooks(context, user), DEFAULT_CONCURRENCY);
     }
 
-    private Flux<ContactToRepublish> usersOfDomainContacts(Context context, OpenPaaSDomain domain) {
+    private Flux<AddressBookToRepublish> usersOfDomainAddressBooks(Context context, OpenPaaSDomain domain) {
         return userDAO.listByDomain(domain.domain())
-            .flatMap(user -> userContacts(context, user), DEFAULT_CONCURRENCY);
+            .flatMap(user -> userAddressBooks(context, user), DEFAULT_CONCURRENCY);
     }
 
-    private Flux<ContactToRepublish> userContacts(Context context, OpenPaaSUser user) {
+    private Flux<AddressBookToRepublish> userAddressBooks(Context context, OpenPaaSUser user) {
         return cardDavClient.listUserAddressBookUrls(user.username(), user.id(), MirrorAddressBooks.EXCLUDE)
-            .flatMap(addressBookURL -> cardDavClient.reportUserAddressBookContacts(user.username(), addressBookURL)
-                    .flatMapMany(payload -> contacts(context, new Audience.User(user.username()), addressBookURL, payload)),
-                DEFAULT_CONCURRENCY)
+            .distinct()
+            .map(url -> new AddressBookToRepublish(new Audience.User(user.username()), url,
+                Mono.defer(() -> cardDavClient.reportUserAddressBookContacts(user.username(), url))))
             .onErrorResume(e -> {
                 LOGGER.error("Error while doing task {} for user {}", TASK_NAME, user.username().asString(), e);
                 context.incrementFailedUser();
@@ -220,16 +273,16 @@ public class CommonContactRepublishService {
             });
     }
 
-    private Flux<ContactToRepublish> allDomainContacts(Context context) {
+    private Flux<AddressBookToRepublish> allDomainAddressBooks(Context context) {
         return domainDAO.list()
-            .flatMap(domain -> domainContacts(context, domain), DEFAULT_CONCURRENCY);
+            .flatMap(domain -> domainAddressBooks(context, domain), DEFAULT_CONCURRENCY);
     }
 
-    private Flux<ContactToRepublish> domainContacts(Context context, OpenPaaSDomain domain) {
+    private Flux<AddressBookToRepublish> domainAddressBooks(Context context, OpenPaaSDomain domain) {
         return cardDavClient.listDomainAddressBookUrls(domain.id(), MirrorAddressBooks.EXCLUDE)
-            .flatMap(addressBookURL -> cardDavClient.reportDomainAddressBookContacts(domain.id(), addressBookURL)
-                    .flatMapMany(response -> contacts(context, new Audience.Domain(domain.domain()), addressBookURL, response)),
-                DEFAULT_CONCURRENCY)
+            .distinct()
+            .map(url -> new AddressBookToRepublish(new Audience.Domain(domain.domain()), url,
+                Mono.defer(() -> cardDavClient.reportDomainAddressBookContacts(domain.id(), url))))
             .onErrorResume(e -> {
                 LOGGER.error("Error while doing task {} for domain {}", TASK_NAME, domain.domain().asString(), e);
                 context.incrementFailedDomain();
@@ -237,20 +290,7 @@ public class CommonContactRepublishService {
             });
     }
 
-    private Flux<ContactToRepublish> contacts(Context context, Audience audience, AddressBookURL addressBookURL,
-                                              AddressBookReportXmlResponse response) {
-        return Mono.fromCallable(response::extractContactObjects)
-            .subscribeOn(Schedulers.boundedElastic())
-            .flatMapMany(Flux::fromIterable)
-            .map(contactObject -> new ContactToRepublish(audience, contactPath(contactObject.href()), contactObject.cardData()))
-            .onErrorResume(e -> {
-                LOGGER.error("Error while doing task {} for address book {}", TASK_NAME, addressBookURL.asUri().toASCIIString(), e);
-                context.incrementFailedAddressBook();
-                return Flux.empty();
-            });
-    }
-
     private String contactPath(URI href) {
-        return StringUtils.removeStart(href.toASCIIString(), "/");
+        return StringUtils.removeStart(href.getRawPath(), "/");
     }
 }

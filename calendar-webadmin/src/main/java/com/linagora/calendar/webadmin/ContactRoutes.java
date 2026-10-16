@@ -21,6 +21,7 @@ package com.linagora.calendar.webadmin;
 import static com.linagora.calendar.webadmin.task.CommonContactRepublishTask.RunningOptions.DEFAULT_CONTACTS_PER_SECOND;
 import static org.apache.james.webadmin.Constants.SEPARATOR;
 
+import java.util.Map;
 import java.util.Optional;
 
 import jakarta.inject.Inject;
@@ -29,12 +30,15 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
 import org.apache.james.task.Task;
+import org.apache.james.task.TaskId;
 import org.apache.james.task.TaskManager;
 import org.apache.james.webadmin.Routes;
+import org.apache.james.webadmin.routes.TasksRoutes;
 import org.apache.james.webadmin.tasks.TaskFromRequestRegistry;
 import org.apache.james.webadmin.tasks.TaskRegistrationKey;
 import org.apache.james.webadmin.utils.ErrorResponder;
 import org.apache.james.webadmin.utils.JsonTransformer;
+import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpStatus;
 
 import com.google.common.base.Preconditions;
@@ -161,10 +165,18 @@ public class ContactRoutes implements Routes {
     }
 
     private Route republishRoute() {
-        return TaskFromRequestRegistry.builder()
+        TaskFromRequestRegistry registry = TaskFromRequestRegistry.builder()
             .parameterName(ACTION_PARAMETER)
             .registrations(republishRegistration)
-            .buildAsRoute(taskManager);
+            .build();
+        return (request, response) -> {
+            CommonContactRepublishTask task = (CommonContactRepublishTask) registry.fromRequest(request);
+            TaskId taskId = taskManager.submit(task);
+            task.assignTaskId(taskId);
+            response.status(HttpStatus.CREATED_201);
+            response.header(HttpHeader.LOCATION.asString(), TasksRoutes.BASE + SEPARATOR + taskId.asString());
+            return Map.of(Task.TASK_ID, taskId.asString());
+        };
     }
 
     private static Optional<String> extractPathParameter(Request request, String parameterName) {
