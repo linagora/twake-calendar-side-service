@@ -59,7 +59,7 @@ public class CommonContactPublisher implements Startable {
             .block();
     }
 
-    public Mono<Void> publish(CommonContactOutboundEvent event) {
+    public Mono<Void> publish(CommonContactMessage event) {
         return Mono.fromCallable(event::serialize)
             .map(body -> new OutboundMessage(exchange, EMPTY_ROUTING_KEY, PERSISTENT_JSON, body))
             .flatMap(message -> sender.send(Mono.just(message)));
