@@ -17,7 +17,7 @@
 
 package com.linagora.calendar.webadmin;
 
-import static com.linagora.calendar.webadmin.WebAdminRouteUtils.serverError;
+import static com.linagora.calendar.webadmin.WebAdminRouteUtils.davError;
 import static org.apache.james.webadmin.Constants.SEPARATOR;
 
 import java.util.List;
@@ -204,7 +204,7 @@ public class TeamCalendarMemberRoutes implements Routes {
                 .haltError();
         }
         if (error instanceof DavClientException exception) {
-            return serverError(exception);
+            return davError(exception);
         }
         return error;
     }

@@ -431,10 +431,8 @@ public class CalDavClient extends DavClient {
                     }
                     return responseContent.asString(StandardCharsets.UTF_8)
                         .switchIfEmpty(Mono.just(StringUtils.EMPTY))
-                        .flatMap(responseBody -> Mono.error(new DavClientException("""
-                                Unexpected status code: %d when deleting calendar '%s'
-                                %s
-                                """.formatted(response.status().code(), uri, responseBody))));
+                        .flatMap(responseBody -> Mono.error(new DavResponseException(response.status().code(),
+                            "deleting calendar '%s'".formatted(uri), responseBody)));
                 }
             });
     }
@@ -484,10 +482,8 @@ public class CalDavClient extends DavClient {
                 } else {
                     return responseContent.asString(StandardCharsets.UTF_8)
                         .switchIfEmpty(Mono.just(StringUtils.EMPTY))
-                        .flatMap(responseBody -> Mono.error(new DavClientException("""
-                                Unexpected status code: %d when create new calendar directory '%s' in '%s'
-                                %s
-                                """.formatted(response.status().code(), newCalendar.id(), uri, responseBody))));
+                        .flatMap(responseBody -> Mono.error(new DavResponseException(response.status().code(),
+                            "create new calendar directory '%s' in '%s'".formatted(newCalendar.id(), uri), responseBody)));
                 }
             });
     }
@@ -707,10 +703,8 @@ public class CalDavClient extends DavClient {
                 }
                 return responseContent.asString(StandardCharsets.UTF_8)
                     .switchIfEmpty(Mono.just(StringUtils.EMPTY))
-                    .flatMap(errorBody -> Mono.error(new DavClientException("""
-                        Unexpected status code: %d when updating ACL for calendar '%s'
-                        %s
-                        """.formatted(response.status().code(), uri, errorBody))));
+                    .flatMap(errorBody -> Mono.error(new DavResponseException(response.status().code(),
+                        "updating ACL for calendar '%s'".formatted(uri), errorBody)));
             }));
     }
 
@@ -740,10 +734,8 @@ public class CalDavClient extends DavClient {
                 case 200, 204, 207 -> Mono.empty();
                 case 404 -> Mono.error(new CalendarNotFoundException(calendarURL));
                 default -> responseBodyAsString(responseContent)
-                    .flatMap(errorBody -> Mono.error(new DavClientException("""
-                        Unexpected status code: %d when updating properties of calendar '%s'
-                        %s
-                        """.formatted(response.status().code(), uri, errorBody))));
+                    .flatMap(errorBody -> Mono.error(new DavResponseException(response.status().code(),
+                        "updating properties of calendar '%s'".formatted(uri), errorBody)));
             }));
     }
 
@@ -773,10 +765,8 @@ public class CalDavClient extends DavClient {
                 case 200, 204 -> Mono.empty();
                 case 404 -> Mono.error(new CalendarNotFoundException(calendarURL));
                 default -> responseBodyAsString(responseContent)
-                    .flatMap(errorBody -> Mono.error(new DavClientException("""
-                        Unexpected status code: %d when updating shares of calendar '%s'
-                        %s
-                        """.formatted(response.status().code(), uri, errorBody))));
+                    .flatMap(errorBody -> Mono.error(new DavResponseException(response.status().code(),
+                        "updating shares of calendar '%s'".formatted(uri), errorBody)));
             }));
     }
 
