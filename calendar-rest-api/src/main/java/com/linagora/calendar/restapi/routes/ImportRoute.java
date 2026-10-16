@@ -20,7 +20,11 @@ package com.linagora.calendar.restapi.routes;
 
 import static com.linagora.calendar.restapi.RestApiConstants.JSON_HEADER;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import jakarta.inject.Inject;
 
@@ -35,11 +39,17 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
+import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.CalDavClient.CalendarAccess;
+import com.linagora.calendar.restapi.ForbiddenException;
 import com.linagora.calendar.restapi.routes.ImportProcessor.ImportCommand;
 import com.linagora.calendar.restapi.routes.ImportProcessor.ImportType;
+import com.linagora.calendar.storage.AddressBookURL;
+import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.OpenPaaSUser;
+import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.UploadedFileDAO;
 import com.linagora.calendar.storage.model.ImportId;
 import com.linagora.calendar.storage.model.UploadedMimeType;
@@ -67,6 +77,23 @@ public class ImportRoute extends CalendarRoute {
         }
     }
 
+    record ImportTarget(ImportType importType, OpenPaaSId baseId, String collectionId) {
+        private static final Pattern TARGET_PATTERN = Pattern.compile(
+            "^/(" + CalendarURL.CALENDAR_SEGMENT + "|" + AddressBookURL.ADDRESS_BOOKS_SEGMENT + ")/([\\w-]+)/([\\w-]+)(?:\\.json)?$");
+
+        static ImportTarget parse(String target) {
+            Matcher matcher = TARGET_PATTERN.matcher(target);
+            if (!matcher.matches()) {
+                throw new IllegalArgumentException("Invalid target path");
+            }
+            return new ImportTarget(importTypeOf(matcher.group(1)), new OpenPaaSId(matcher.group(2)), matcher.group(3));
+        }
+
+        private static ImportType importTypeOf(String collectionSegment) {
+            return CalendarURL.CALENDAR_SEGMENT.equals(collectionSegment) ? ImportType.ICS : ImportType.VCARD;
+        }
+    }
+
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ImportRoute.class);
@@ -74,15 +101,21 @@ public class ImportRoute extends CalendarRoute {
 
     private final UploadedFileDAO fileDAO;
     private final ImportProcessor importProcessor;
+    private final CalDavClient calDavClient;
+    private final OpenPaaSUserDAO userDAO;
 
     @Inject
     public ImportRoute(Authenticator authenticator,
                        MetricFactory metricFactory,
                        UploadedFileDAO fileDAO,
-                       ImportProcessor importProcessor) {
+                       ImportProcessor importProcessor,
+                       CalDavClient calDavClient,
+                       OpenPaaSUserDAO userDAO) {
         super(authenticator, metricFactory);
         this.fileDAO = fileDAO;
         this.importProcessor = importProcessor;
+        this.calDavClient = calDavClient;
+        this.userDAO = userDAO;
     }
 
     @Override
@@ -93,7 +126,8 @@ public class ImportRoute extends CalendarRoute {
     @Override
     Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response, MailboxSession session) {
         return request.receive().aggregate().asInputStream()
-            .map(Throwing.function(inputStream -> OBJECT_MAPPER.readValue(inputStream, ImportRequest.class)))
+            .switchIfEmpty(Mono.error(new IllegalArgumentException("Request body must not be empty")))
+            .map(this::parseRequest)
             .flatMap(importRequest -> handleImport(importRequest, session))
             .flatMap(importId -> response.status(HttpResponseStatus.ACCEPTED)
                 .headers(JSON_HEADER)
@@ -101,25 +135,53 @@ public class ImportRoute extends CalendarRoute {
                 .then());
     }
 
+    private ImportRequest parseRequest(InputStream body) {
+        try {
+            return OBJECT_MAPPER.readValue(body, ImportRequest.class);
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Invalid request body", e);
+        }
+    }
+
     private Mono<ImportId> handleImport(ImportRequest request, MailboxSession session) {
         Preconditions.checkArgument(StringUtils.isNotEmpty(request.fileId), "fileId must be present");
         Preconditions.checkArgument(StringUtils.isNotEmpty(request.target), "target must be present");
 
-        String[] parts = request.target.split("/");
-        if (parts.length < 4) {
-            throw new IllegalArgumentException("Invalid target path");
-        }
-        String baseId = parts[2];
-        String davCollectionId = parts[3].replace(".json", "");
+        ImportTarget target = ImportTarget.parse(request.target);
 
         return fileDAO.getFile(session.getUser(), new OpenPaaSId(request.fileId))
             .switchIfEmpty(Mono.error(new IllegalArgumentException("Uploaded file not found")))
-            .map(uploadedFile -> ImportCommand.create(getImportType(uploadedFile.uploadedMimeType()), uploadedFile, baseId, davCollectionId))
+            .map(uploadedFile -> ImportCommand.create(getImportType(uploadedFile.uploadedMimeType()), uploadedFile, target.baseId().value(), target.collectionId()))
+            .filter(importCommand -> importCommand.importType() == target.importType())
+            .switchIfEmpty(Mono.error(new IllegalArgumentException("Uploaded file type does not match target")))
+            .flatMap(importCommand -> checkWriteAccess(importCommand, session).thenReturn(importCommand))
             .doOnSuccess(importCommand -> importProcessor.process(importCommand, session)
                 .doOnSuccess(unused -> LOGGER.info("Import of {} with fileId {} completed successfully", importCommand.importType().name(), request.fileId))
                 .doOnError(ex -> LOGGER.error("Error during import of {} with fileId {}", importCommand.importType().name(), request.fileId, ex))
                 .subscribe())
             .map(ImportCommand::importId);
+    }
+
+    private Mono<Void> checkWriteAccess(ImportCommand importCommand, MailboxSession session) {
+        return switch (importCommand.importType()) {
+            case ICS -> checkCalendarWriteAccess(new CalendarURL(importCommand.baseId(), new OpenPaaSId(importCommand.resourceId())), session);
+            case VCARD -> checkAddressBookHomeOwnership(importCommand.baseId(), session);
+        };
+    }
+
+    private Mono<Void> checkCalendarWriteAccess(CalendarURL calendarURL, MailboxSession session) {
+        return calDavClient.resolveCalendarAccess(session.getUser(), calendarURL)
+            .filter(CalendarAccess.WRITABLE::equals)
+            .switchIfEmpty(Mono.error(() -> new ForbiddenException("User does not have write access to calendar: " + calendarURL.asUri())))
+            .then();
+    }
+
+    private Mono<Void> checkAddressBookHomeOwnership(OpenPaaSId baseId, MailboxSession session) {
+        return userDAO.retrieve(session.getUser())
+            .map(OpenPaaSUser::id)
+            .filter(baseId::equals)
+            .switchIfEmpty(Mono.error(() -> new ForbiddenException("User does not own address book home: " + baseId.value())))
+            .then();
     }
 
     private ImportType getImportType(UploadedMimeType mimeType) {

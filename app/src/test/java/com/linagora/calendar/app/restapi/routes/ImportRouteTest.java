@@ -949,6 +949,122 @@ public class ImportRouteTest {
     }
 
     @Test
+    void shouldReturnErrorWhenTargetContainsPathTraversal(TwakeCalendarGuiceServer server) {
+        OpenPaaSId fileId = saveIcsFile(server, UUID.randomUUID().toString());
+
+        given()
+            .body(importRequestBody(fileId, "/calendars/../../etc"))
+        .when()
+            .post("/api/import")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.details", equalTo("Invalid target path"));
+    }
+
+    @Test
+    void shouldReturnErrorWhenBodyIsMissing() {
+        given()
+        .when()
+            .post("/api/import")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.details", equalTo("Request body must not be empty"));
+    }
+
+    @Test
+    void shouldReturnErrorWhenBodyIsMalformed() {
+        given()
+            .body("{bad")
+        .when()
+            .post("/api/import")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.details", equalTo("Invalid request body"));
+    }
+
+    @Test
+    void shouldReturnErrorWhenFileTypeDoesNotMatchTarget(TwakeCalendarGuiceServer server) {
+        OpenPaaSId fileId = saveIcsFile(server, UUID.randomUUID().toString());
+
+        given()
+            .body(importRequestBody(fileId, "/addressbooks/%s/collected.json".formatted(openPaaSUser.id().value())))
+        .when()
+            .post("/api/import")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.details", equalTo("Uploaded file type does not match target"));
+    }
+
+    @Test
+    void shouldRejectImportIntoCalendarOfAnotherUser(TwakeCalendarGuiceServer server) {
+        OpenPaaSUser bob = sabreDavExtension.newTestUser();
+        CalendarURL bobCalendar = CalendarURL.from(bob.id());
+        String uid = UUID.randomUUID().toString();
+        OpenPaaSId fileId = saveIcsFile(server, uid);
+
+        // To trigger calendar directory activation
+        server.getProbe(CalendarDataProbe.class).exportCalendarFromCalDav(bobCalendar, MailboxSessionUtil.create(bob.username()));
+
+        given()
+            .body(importRequestBody(fileId, "/calendars/%s/%s.json".formatted(bob.id().value(), bob.id().value())))
+        .when()
+            .post("/api/import")
+        .then()
+            .statusCode(HttpStatus.SC_FORBIDDEN);
+
+        String bobEvents = new String(server.getProbe(CalendarDataProbe.class)
+            .exportCalendarFromCalDav(bobCalendar, MailboxSessionUtil.create(bob.username())), StandardCharsets.UTF_8);
+        assertThat(bobEvents).doesNotContain(uid);
+    }
+
+    @Test
+    void shouldRejectImportIntoAddressBookOfAnotherUser(TwakeCalendarGuiceServer server) {
+        OpenPaaSUser bob = sabreDavExtension.newTestUser();
+        byte[] vcard = """
+            BEGIN:VCARD
+            VERSION:4.0
+            UID:%s
+            FN:John Doe
+            END:VCARD
+            """.formatted(UUID.randomUUID().toString()).getBytes(StandardCharsets.UTF_8);
+        OpenPaaSId fileId = server.getProbe(CalendarDataProbe.class).saveUploadedFile(openPaaSUser.username(),
+            new Upload("contact.vcf", UploadedMimeType.TEXT_VCARD, Instant.now(), (long) vcard.length, vcard));
+
+        given()
+            .body(importRequestBody(fileId, "/addressbooks/%s/collected.json".formatted(bob.id().value())))
+        .when()
+            .post("/api/import")
+        .then()
+            .statusCode(HttpStatus.SC_FORBIDDEN);
+    }
+
+    private OpenPaaSId saveIcsFile(TwakeCalendarGuiceServer server, String uid) {
+        byte[] ics = """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250102T120000Z
+            DTEND:20250102T130000Z
+            SUMMARY:Test Event
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uid).getBytes(StandardCharsets.UTF_8);
+
+        return server.getProbe(CalendarDataProbe.class).saveUploadedFile(openPaaSUser.username(),
+            new Upload("abc.ics", UploadedMimeType.TEXT_CALENDAR, Instant.now(), (long) ics.length, ics));
+    }
+
+    private String importRequestBody(OpenPaaSId fileId, String target) {
+        return """
+            {
+                "fileId": "%s",
+                "target": "%s"
+            }
+            """.formatted(fileId.value(), target);
+    }
+
+    @Test
     void shouldReturnErrorWhenFileIdFieldIsMissing() {
         String requestBody = """
             {
