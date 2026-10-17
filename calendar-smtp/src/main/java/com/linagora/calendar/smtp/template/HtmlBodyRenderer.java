@@ -30,13 +30,17 @@ public class HtmlBodyRenderer {
     private static final String TEMPLATE_FILE_NAME = "html.pug";
 
     public static HtmlBodyRenderer forPath(String templatePath) throws IOException {
+        return new HtmlBodyRenderer(loadTemplate(templatePath, TEMPLATE_FILE_NAME));
+    }
+
+    static PugTemplate loadTemplate(String templatePath, String templateFileName) throws IOException {
         FileTemplateLoader fileLoader = new FileTemplateLoader(templatePath);
         fileLoader.setBase("");
 
         PugConfiguration pugConfiguration = new PugConfiguration();
         pugConfiguration.setTemplateLoader(fileLoader);
 
-        return new HtmlBodyRenderer(pugConfiguration.getTemplate(TEMPLATE_FILE_NAME));
+        return pugConfiguration.getTemplate(templateFileName);
     }
 
     private final PugTemplate template;

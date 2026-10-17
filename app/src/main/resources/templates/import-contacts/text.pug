@@ -1,0 +1,14 @@
+mixin line(text)
+  | !{text}
+  |
+
++line(translator.get('header'))
++line()
++line(translator.get('completed_message'))
++line(`- ${content.jobSucceedCount} ${translator.get('import_success')}`)
++line(`- ${content.jobFailedCount} ${translator.get('import_failure')}`)
+if content.jobFailedCount
+  +line()
+  +line(translator.get('import_failure_list'))
+  each contact in content.jobFailedList
+    +line(`- ${contact.email}`)

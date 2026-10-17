@@ -1,0 +1,20 @@
+mixin line(text)
+  | !{text}
+  |
+
++line(translator.get('request_received'))
++line()
+if (content.start.date === content.end.date)
+  +line(`${translator.get('registered_request_prefix')} ${content.start.fullDate} ${translator.get('from')} ${content.start.time} ${translator.get('to')} ${content.end.time} ${content.start.timezone}.`)
+else
+  +line(`${translator.get('registered_request_prefix')} ${content.start.fullDateTime} ${translator.get('to_date')} ${content.end.fullDateTime} ${content.start.timezone}.`)
++line()
++line(`${translator.get('owner')}: ${content.owner.cn} <${content.owner.email}>`)
+if (content.description)
+  +line()
+  +line(`${translator.get('description')}: ${content.description}`)
++line()
++line(translator.get('organizer_notified'))
+if (content.reservationLink)
+  +line()
+  +line(`${translator.get('see_reservation')}: ${content.reservationLink}`)

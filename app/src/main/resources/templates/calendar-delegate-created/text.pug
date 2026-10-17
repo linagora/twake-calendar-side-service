@@ -1,0 +1,7 @@
+mixin line(text)
+  | !{text}
+  |
+
++line(`${content.delegatorName} ${translator.get('mail_body_shared_calendar_title_middle')} “${content.calendarName}” ${translator.get('mail_body_shared_calendar_title_suffix')}`)
++line()
++line(`${translator.get('mail_body_shared_calendar_body_prefix')} ${translator.get('mail_body_shared_calendar_body_link')}: ${content.calendarUrl}`)

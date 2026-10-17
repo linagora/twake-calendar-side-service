@@ -1,0 +1,50 @@
+mixin line(text)
+  | !{text}
+  |
+
+mixin section(heading)
+  +line()
+  +line(heading)
+  block
+
+mixin link(label, url)
+  if (url)
+    +line(`${label}: ${url}`)
+
+mixin participant(cn, email, suffix)
+  if (cn)
+    +line(`- ${cn} <${email}>${suffix}`)
+  else
+    +line(`- ${email}${suffix}`)
+
+mixin attendees(attendees, organizer)
+  +participant(organizer.cn, organizer.email, ` - ${translator.get('organizer')}`)
+  each attendee, attendeeEmail in attendees
+    if (attendeeEmail !== organizer.email)
+      +participant(attendee.cn, attendeeEmail, '')
+
+mixin resources(resources)
+  each resource, key in resources
+    +line(`- ${resource.cn}`)
+
+mixin location(location, isValidURL)
+  +line(location.value)
+  if (!isValidURL)
+    +link(translator.get('see_in_map'), `https://www.openstreetmap.org/search?query=${location.urlEncodedValue}`)
+
++line(`${translator.get('notification')} ${content.duration}`)
++line(content.event.summary)
+if (content.event.videoConferenceLink)
+  +section(translator.get('video_conference'))
+    +line(content.event.videoConferenceLink)
+if (content.event.location)
+  +section(translator.get('where'))
+    +location(content.event.location, content.event.location.isValidURL)
++section(translator.get('participants'))
+  +attendees(content.event.attendees, content.event.organizer)
+if (content.event.hasResources)
+  +section(translator.get('resources'))
+    +resources(content.event.resources)
+if (content.event.description)
+  +section(translator.get('notes'))
+    +line(content.event.description)
