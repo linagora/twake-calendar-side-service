@@ -75,6 +75,10 @@ public class DavProxy extends DavClient {
                                     Optional.ofNullable(entries.get("Content-Type", null)).ifPresent(value -> proxiedHeader.add("Content-Type", value));
                                     Optional.ofNullable(entries.get("X-Http-Method-Override", null)).ifPresent(value -> proxiedHeader.add("X-Http-Method-Override", value));
                                     Optional.ofNullable(entries.get("Prefer", null)).ifPresent(value -> proxiedHeader.add("Prefer", value));
+                                    Optional.ofNullable(entries.get("If-Match", null)).ifPresent(value -> proxiedHeader.add("If-Match", value));
+                                    Optional.ofNullable(entries.get("If-None-Match", null)).ifPresent(value -> proxiedHeader.add("If-None-Match", value));
+                                    Optional.ofNullable(entries.get("If-Modified-Since", null)).ifPresent(value -> proxiedHeader.add("If-Modified-Since", value));
+                                    Optional.ofNullable(entries.get("If-Unmodified-Since", null)).ifPresent(value -> proxiedHeader.add("If-Unmodified-Since", value));
                                 })
                                 .request(request.method())
                                 .uri(request.uri().substring(4)) // remove /dav
