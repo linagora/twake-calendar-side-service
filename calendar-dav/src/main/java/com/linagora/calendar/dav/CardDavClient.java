@@ -649,6 +649,10 @@ public class CardDavClient extends DavClient {
                 .orElseGet(() -> countContactsViaReport(authenticatedClient, addressBookURL)));
     }
 
+    public Mono<JsonNode> fetchAddressBookMetadata(Username username, AddressBookURL addressBookURL) {
+        return retrieveAddressBookMetadata(Mono.just(httpClientWithImpersonation(username)), addressBookURL);
+    }
+
     private Mono<JsonNode> retrieveAddressBookMetadata(Mono<HttpClient> authenticatedClient, AddressBookURL addressBookURL) {
         String href = addressBookURL.asUri().toASCIIString() + ".json";
         return listAddressBooksAsBytes(authenticatedClient, addressBookURL.baseId())

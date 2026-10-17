@@ -1,0 +1,7 @@
+mixin line(text)
+  | !{text}
+  |
+
++line(`${content.delegatorName} ${translator.get('mail_body_shared_addressbook_title_middle')} “${content.addressBookName}” ${translator.get('mail_body_shared_addressbook_title_suffix')}`)
++line()
++line(`${translator.get('mail_body_shared_addressbook_body_prefix')} ${translator.get('mail_body_shared_addressbook_body_link')}: ${content.contactsUrl}`)
