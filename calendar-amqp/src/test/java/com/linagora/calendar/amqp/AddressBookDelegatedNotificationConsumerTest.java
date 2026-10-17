@@ -20,6 +20,7 @@ package com.linagora.calendar.amqp;
 
 import static com.linagora.calendar.amqp.TestFixture.awaitAtMost;
 import static com.linagora.calendar.amqp.TestFixture.extractSubject;
+import static com.linagora.calendar.amqp.TestFixture.toMessage;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static com.linagora.calendar.storage.configuration.EntryIdentifier.LANGUAGE_IDENTIFIER;
 import static io.restassured.RestAssured.given;
@@ -48,6 +49,9 @@ import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
 import org.apache.james.metrics.api.NoopGaugeRegistry;
 import org.apache.james.metrics.tests.RecordingMetricFactory;
+import org.apache.james.mime4j.dom.Entity;
+import org.apache.james.mime4j.dom.Message;
+import org.apache.james.mime4j.dom.Multipart;
 import org.apache.james.server.core.filesystem.FileSystemImpl;
 import org.apache.james.util.Port;
 import org.awaitility.Awaitility;
@@ -256,6 +260,17 @@ public class AddressBookDelegatedNotificationConsumerTest {
             .isEqualTo("{owner} shared the “{addressBookName}” address book with you"
                 .replace("{addressBookName}", expectedAddressBookName)
                 .replace("{owner}", alice.fullName()));
+
+        Message message = toMessage(mails.getString("[0].message"));
+        Multipart mixed = (Multipart) message.getBody();
+        assertThat(mixed.getBodyParts()).extracting(Entity::getMimeType)
+            .containsExactly("multipart/alternative");
+        Multipart alternative = (Multipart) mixed.getBodyParts().getFirst().getBody();
+        assertThat(alternative.getBodyParts()).extracting(Entity::getMimeType)
+            .containsExactly("text/plain", "multipart/related");
+        Multipart related = (Multipart) alternative.getBodyParts().get(1).getBody();
+        assertThat(related.getBodyParts()).extracting(Entity::getMimeType)
+            .containsExactly("text/html", "image/png");
     }
 
     @ParameterizedTest
