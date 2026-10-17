@@ -261,10 +261,13 @@ public class AddressBookDelegatedNotificationConsumerTest {
     @ParameterizedTest
     @ValueSource(strings = {"", "   ", DEFAULT_ADDRESS_BOOK_DAV_NAME})
     void shouldUseDefaultDisplayNameWhenAddressBookNameIsBlankOrDefault(String addressBookName) throws Exception {
-        // Roles: Alice owns the source with a blank or internal name; Bob receives READ delegation.
-        cardDavClient.updateAddressBookProperties(alice.username(), source,
-            new AddressBookPropertiesUpdate(Optional.of(addressBookName), Optional.empty()))
+        // Create legacy data directly in DAV: property updates reject blank names.
+        source = new AddressBookURL(alice.id(), UUID.randomUUID().toString());
+        cardDavClient.createUserAddressBook(alice.username(), alice.id(),
+            new NewAddressBook(source.addressBookId(), addressBookName, "Shared contacts"))
             .block();
+        assertThat(cardDavClient.fetchAddressBookMetadata(alice.username(), source).block().path("dav:name").asText())
+            .isEqualTo(addressBookName);
         cardDavClient.updateAddressBookShares(alice.username(), source,
             List.of(new AddressBookSharee(MAILTO_PREFIX + bob.username().asString(), DavRight.READ.access())))
             .block();
