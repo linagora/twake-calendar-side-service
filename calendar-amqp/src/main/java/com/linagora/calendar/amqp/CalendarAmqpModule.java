@@ -66,6 +66,8 @@ public class CalendarAmqpModule extends AbstractModule {
         bind(AddressBookDelegatedNotificationConsumer.class).in(Scopes.SINGLETON);
         bind(CalendarListNotificationConsumer.class).in(Scopes.SINGLETON);
         bind(CalendarListNotificationHandler.class).in(Scopes.SINGLETON);
+        bind(AddressBookListNotificationConsumer.class).in(Scopes.SINGLETON);
+        bind(AddressBookListNotificationHandler.class).in(Scopes.SINGLETON);
         bind(ItipLocalDeliveryConsumer.class).in(Scopes.SINGLETON);
         bind(EventAuditLogConsumer.class).in(Scopes.SINGLETON);
 
@@ -223,6 +225,18 @@ public class CalendarAmqpModule extends AbstractModule {
     public InitializationOperation initializeEventContactNotificationConsumer(EventContactNotificationConsumer instance) {
         return InitilizationOperationBuilder
             .forClass(EventContactNotificationConsumer.class)
+            .init(instance::init);
+    }
+
+    @ProvidesIntoSet
+    SimpleConnectionPool.ReconnectionHandler provideAddressBookListNotificationReconnectionHandler(AddressBookListNotificationConsumer consumer) {
+        return new ConsumerReconnectionHandler(consumer::restart, "Error while handling reconnection for AddressBookListNotificationConsumer");
+    }
+
+    @ProvidesIntoSet
+    public InitializationOperation initializeAddressBookListNotificationConsumer(AddressBookListNotificationConsumer instance) {
+        return InitilizationOperationBuilder
+            .forClass(AddressBookListNotificationConsumer.class)
             .init(instance::init);
     }
 

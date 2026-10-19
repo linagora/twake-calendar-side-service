@@ -9,13 +9,35 @@ package com.linagora.calendar.restapi.routes;
 
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 
+import java.util.Locale;
+
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import com.linagora.calendar.dav.SyncToken;
 import com.linagora.calendar.storage.AddressBookURL;
+import com.linagora.calendar.storage.AddressBookListChangedEvent.ChangeType;
 import com.linagora.calendar.storage.OpenPaaSId;
 
 class WebSocketNotificationListenerTest {
+
+    @ParameterizedTest
+    @EnumSource(ChangeType.class)
+    void addressBookListChangeMessageShouldSerializeWithoutSyncToken(ChangeType changeType) throws Exception {
+        AddressBookURL addressBookURL = new AddressBookURL(new OpenPaaSId("base-id"), "contacts");
+
+        String serialized = new DefaultWebSocketNotificationListener.AddressBookListChangeMessage(addressBookURL, changeType)
+            .serialize();
+
+        assertThatJson(serialized).isEqualTo("""
+            {
+                "addressBookList": {
+                    "{change}": ["/addressbooks/base-id/contacts"]
+                }
+            }
+            """.replace("{change}", changeType.name().toLowerCase(Locale.ROOT)));
+    }
 
     @Test
     void addressBookChangeMessageShouldSerializeSyncToken() throws Exception {
