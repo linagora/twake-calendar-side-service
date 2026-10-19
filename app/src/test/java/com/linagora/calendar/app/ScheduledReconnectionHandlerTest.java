@@ -139,6 +139,7 @@ public class ScheduledReconnectionHandlerTest {
                 "tcalendar:calendar:delegated:created",
                 "tcalendar:addressbook:delegated:created",
                 "tcalendar:calendar:list:notification",
+                "tcalendar:addressbook:list:notification",
                 "tcalendar:itip:localDelivery",
                 "tcalendar:audit");
     }
