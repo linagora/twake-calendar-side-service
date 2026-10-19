@@ -269,6 +269,7 @@ class ContactDavToWebsocketFlowIntegrationTest {
 
     private void assertAddressBookSyncToken(BlockingQueue<String> messages, String addressBookUri, SyncToken syncToken) {
         String pushMessage = awaitMessage(messages, message -> message.contains(addressBookUri)
+            && message.contains("\"syncToken\"")
             && message.contains(syncToken.value()));
 
         assertThatJson(pushMessage)

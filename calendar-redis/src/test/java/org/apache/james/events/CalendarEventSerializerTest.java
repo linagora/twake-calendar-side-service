@@ -26,8 +26,11 @@ import java.time.Instant;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import com.linagora.calendar.storage.AddressBookChangeEvent;
+import com.linagora.calendar.storage.AddressBookListChangedEvent;
 import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.BookingLinkStateChangedEvent;
 import com.linagora.calendar.storage.CalendarChangeEvent;
@@ -181,6 +184,27 @@ public class CalendarEventSerializerTest {
     void shouldDeserializeJsonToAlarmEvent() {
         Event event = serializer.asEvent(ALARM_EVENT_JSON).event();
         assertThat(event).isEqualTo(ALARM_EVENT);
+    }
+
+    @ParameterizedTest
+    @EnumSource(AddressBookListChangedEvent.ChangeType.class)
+    void shouldRoundTripAddressBookListChangeThroughRedis(AddressBookListChangedEvent.ChangeType changeType) {
+        AddressBookListChangedEvent event = new AddressBookListChangedEvent(
+            Event.EventId.of("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"), Username.of("alice@example.org"),
+            AddressBookURL.parse("/addressbooks/base-id/contacts"), changeType);
+
+        String json = serializer.toJson(event).json();
+
+        assertThatJson(json).isEqualTo("""
+            {
+                "type": "CalendarEventSerializer$AddressBookListChangedDTO",
+                "eventId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                "username": "alice@example.org",
+                "addressBookUrl": "/addressbooks/base-id/contacts",
+                "changeType": "{changeType}"
+            }
+            """.replace("{changeType}", changeType.name()));
+        assertThat(serializer.asEvent(json).event()).isEqualTo(event);
     }
 
     @Test

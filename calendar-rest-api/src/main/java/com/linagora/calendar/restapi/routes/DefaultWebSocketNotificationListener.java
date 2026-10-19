@@ -21,6 +21,7 @@ package com.linagora.calendar.restapi.routes;
 import static com.linagora.calendar.restapi.routes.WebsocketRoute.MAPPER;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import org.apache.james.events.Event;
@@ -29,6 +30,8 @@ import org.reactivestreams.Publisher;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.linagora.calendar.storage.AddressBookListChangedEvent;
+import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.BookingLinkStateChangedEvent;
 import com.linagora.calendar.storage.CalendarListChangedEvent;
 import com.linagora.calendar.storage.CalendarListChangedEvent.ChangeType;
@@ -44,6 +47,7 @@ public record DefaultWebSocketNotificationListener(Sinks.Many<WebsocketRoute.Web
     @Override
     public boolean isHandling(Event event) {
         return event instanceof CalendarListChangedEvent
+            || event instanceof AddressBookListChangedEvent
             || event instanceof BookingLinkStateChangedEvent;
     }
 
@@ -54,6 +58,10 @@ public record DefaultWebSocketNotificationListener(Sinks.Many<WebsocketRoute.Web
         }
         if (event instanceof BookingLinkStateChangedEvent) {
             return Mono.fromRunnable(() -> emit(new BookingLinkStateChangedMessage())).then();
+        }
+        if (event instanceof AddressBookListChangedEvent addressBookListChangedEvent) {
+            return Mono.fromRunnable(() -> emit(new AddressBookListChangeMessage(
+                addressBookListChangedEvent.addressBookURL(), addressBookListChangedEvent.changeType()))).then();
         }
         return Mono.empty();
     }
@@ -76,6 +84,21 @@ public record DefaultWebSocketNotificationListener(Sinks.Many<WebsocketRoute.Web
         @Override
         public WebSocketFrame asWebSocketFrame() {
             return new TextWebSocketFrame(PAYLOAD);
+        }
+    }
+
+    public record AddressBookListChangeMessage(AddressBookURL addressBookURL,
+                                               AddressBookListChangedEvent.ChangeType changeType) implements WebsocketRoute.WebsocketMessage {
+        private static final String ADDRESS_BOOK_LIST_PROPERTY = "addressBookList";
+
+        @Override
+        public WebSocketFrame asWebSocketFrame() throws JsonProcessingException {
+            return new TextWebSocketFrame(serialize());
+        }
+
+        public String serialize() throws JsonProcessingException {
+            return MAPPER.writeValueAsString(Map.of(ADDRESS_BOOK_LIST_PROPERTY,
+                Map.of(changeType.name().toLowerCase(Locale.ROOT), List.of(addressBookURL.asUri().toASCIIString()))));
         }
     }
 

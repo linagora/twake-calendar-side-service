@@ -48,6 +48,7 @@ public class CalendarQueueUtil {
             .add(CalendarDelegatedNotificationConsumer.QUEUE)
             .add(AddressBookDelegatedNotificationConsumer.QUEUE)
             .add(CalendarListNotificationConsumer.QUEUE_NAME)
+            .add(AddressBookListNotificationConsumer.QUEUE_NAME)
             .add(ItipLocalDeliveryConsumer.QUEUE_NAME)
             .add(EventAuditLogConsumer.AUDIT_QUEUE)
             .build();
@@ -77,6 +78,7 @@ public class CalendarQueueUtil {
             .add(CalendarDelegatedNotificationConsumer.DEAD_LETTER_QUEUE)
             .add(AddressBookDelegatedNotificationConsumer.DEAD_LETTER_QUEUE)
             .add(CalendarListNotificationConsumer.DEAD_LETTER_QUEUE)
+            .add(AddressBookListNotificationConsumer.DEAD_LETTER_QUEUE)
             .add(ItipLocalDeliveryConsumer.DEAD_LETTER_QUEUE)
             .add(EventAuditLogConsumer.AUDIT_DEAD_LETTER)
             .build();

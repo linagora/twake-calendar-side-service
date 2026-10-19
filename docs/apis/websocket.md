@@ -5,7 +5,8 @@ The Side server exposes a WebSocket endpoint allowing clients to subscribe to
 
 This includes:
 
-- Calendar sync token updates
+- Calendar and address book list changes
+- Calendar event and address book contact sync token updates
 - Calendar import events (ICS)
 - Address Book import events (vCard)
 - Display alarm notifications
@@ -97,8 +98,8 @@ Disable:
 
 ### Server → Client
 
-#### Calendar list default subscription
-When a WebSocket connection is established, the server automatically subscribes the user to `calendarList` notifications.
+#### Calendar and address book list default subscription
+When a WebSocket connection is established, the server automatically subscribes the user to `calendarList` and `addressBookList` notifications.
 
 Ack message:
 ```json
@@ -164,6 +165,35 @@ Subscription behavior:
 - Subscriber renames subscribed calendar metadata (for example display name) → subscriber receives `updated`
 - Subscriber deletes subscribed calendar from their list → subscriber receives `deleted`
 - Owner hides/restricts source shared calendar so subscriber loses visibility → subscriber receives `deleted`
+
+#### Address book list push
+
+`addressBookList` reports changes in the connected user's address book list without a `register` request.
+
+```json
+{
+  "addressBookList": {
+    "updated": ["/addressbooks/userA/collected"]
+  }
+}
+```
+
+Supported change keys:
+
+- `created`: a personal address book is created
+- `updated`: address book metadata or delegation rights change
+- `deleted`: an address book or delegated/subscribed copy is removed, including unsubscribe or revocation
+- `delegated`: a delegated copy is added or the user resubscribes to an existing delegation
+- `subscribed`: the user subscribes to a public address book
+
+Notifications go to the user whose list contains the affected path. Granting, changing or revoking delegation
+also sends `updated` to the source owner. Domain-owned books, including `domain-members`, are excluded.
+
+Unsubscribing removes the sharee's copy while retaining delegation rights. Later rights changes or revocation
+send no further notifications for that copy's old URI.
+
+These messages contain paths only. Contact changes use the separate [sync token push](#address-book-contact-change-push),
+which requires registering the address book URI.
 
 #### Booking link push
 
