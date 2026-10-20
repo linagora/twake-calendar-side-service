@@ -301,7 +301,9 @@ class ItipEmailNotificationPublisher {
             if (EventParseUtils.isAllDay(masterEvent) && (temporal instanceof LocalDate localDate)) {
                 return localDate;
             }
+            // Independent parses of VTIMEZONE can assign different ZoneIds to the same instant.
             return EventParseUtils.temporalToZonedDateTime(temporal)
+                .map(ChronoZonedDateTime::toInstant)
                 .orElseThrow(() -> new IllegalStateException("Cannot convert EXDATE: " + temporal));
         }
 

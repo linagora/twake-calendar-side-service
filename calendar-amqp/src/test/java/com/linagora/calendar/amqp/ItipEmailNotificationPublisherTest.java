@@ -613,6 +613,53 @@ class ItipEmailNotificationPublisherTest {
         }
 
         @Test
+        void addedExDateShouldOnlyCancelTheNewOccurrenceWithEmbeddedTimezone() {
+            String current = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Linagora//Twake-Calendar//EN
+                BEGIN:VTIMEZONE
+                TZID:Europe/Paris
+                BEGIN:DAYLIGHT
+                TZOFFSETFROM:+0100
+                TZOFFSETTO:+0200
+                TZNAME:CEST
+                DTSTART:19700329T020000
+                RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU
+                END:DAYLIGHT
+                BEGIN:STANDARD
+                TZOFFSETFROM:+0200
+                TZOFFSETTO:+0100
+                TZNAME:CET
+                DTSTART:19701025T030000
+                RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU
+                END:STANDARD
+                END:VTIMEZONE
+                BEGIN:VEVENT
+                UID:event-uid@test
+                DTSTART;TZID=Europe/Paris:20261013T140000
+                DTEND;TZID=Europe/Paris:20261013T150000
+                RRULE:FREQ=WEEKLY;BYDAY=TU
+                SUMMARY:Weekly meeting
+                ORGANIZER:mailto:bob@example.com
+                ATTENDEE:mailto:alice@example.com
+                EXDATE;TZID=Europe/Paris:20261013T140000
+                EXDATE;TZID=Europe/Paris:20261020T140000
+                END:VEVENT
+                END:VCALENDAR
+                """;
+            String previous = current.replace("EXDATE;TZID=Europe/Paris:20261020T140000\n", "");
+
+            List<NotificationEmailDTO> notifications = testee.buildNotificationMessages(
+                dto(Method.VALUE_REQUEST, current, Optional.of(previous)), EVENT_PATH, Optional.of(parseIcs(previous)));
+
+            assertThat(notifications).singleElement().satisfies(notification -> {
+                assertThat(notification.method()).isEqualTo(Method.VALUE_CANCEL);
+                assertThat(notification.event()).contains("RECURRENCE-ID;TZID=Europe/Paris:20261020T140000");
+            });
+        }
+
+        @Test
         void requestWithOldAndNewExDateShouldGenerateCancelNotification() {
             String recurringNewWithExDate = """
                 BEGIN:VCALENDAR
