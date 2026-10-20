@@ -21,6 +21,7 @@ package com.linagora.calendar.dav;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Collection;
@@ -145,6 +146,7 @@ public class CalDavClient extends DavClient {
     private static final DateTimeFormatter CALDAV_UTC_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
         .withZone(ZoneOffset.UTC);
     private static final String FREE_BUSY_BULK_PATH = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/freebusy";
+    private static final ZoneId UTC = ZoneId.of("UTC");
 
     /**
      * Only the {@code DAV:href} of each calendar object is needed to derive its event id. Asking for the single
@@ -162,11 +164,13 @@ public class CalDavClient extends DavClient {
     /**
      * 'uids' names the events to leave out of the answer. It is sent empty rather than omitted: the calendar
      * server only rebuilds a proper JSON array of busy periods when that filter is present.
+     * 'timezone' is the one floating dates and times, such as those of all-day events, are read in.
      */
     private record FreeBusyBulkRequest(@JsonProperty("start") String start,
                                        @JsonProperty("end") String end,
                                        @JsonProperty("users") List<String> users,
-                                       @JsonProperty("uids") List<String> uids) {
+                                       @JsonProperty("uids") List<String> uids,
+                                       @JsonProperty("timezone") String timezone) {
     }
 
     public CalDavClient(DavConfiguration config, TechnicalTokenService technicalTokenService) throws SSLException {
@@ -1076,19 +1080,28 @@ public class CalDavClient extends DavClient {
      * calendar, sabre implementing it on a calendar collection only.
      */
     public Flux<BusyInterval> findBusyIntervals(Username requester, OpenPaaSId userId, Instant from, Instant to) {
+        return findBusyIntervals(requester, userId, from, to, UTC);
+    }
+
+    /**
+     * Same as {@link #findBusyIntervals(Username, OpenPaaSId, Instant, Instant)}, floating dates and times being
+     * read in the given time zone: an all-day event is a whole day of that zone, from its midnight to the next.
+     */
+    public Flux<BusyInterval> findBusyIntervals(Username requester, OpenPaaSId userId, Instant from, Instant to, ZoneId zoneId) {
         Preconditions.checkArgument(requester != null, "requester must not be null");
         Preconditions.checkArgument(userId != null, "userId must not be null");
         Preconditions.checkArgument(from != null, "from must not be null");
         Preconditions.checkArgument(to != null, "to must not be null");
+        Preconditions.checkArgument(zoneId != null, "zoneId must not be null");
         Preconditions.checkArgument(from.isBefore(to), "from must be before to");
 
-        return freeBusyBulkQuery(requester, userId, from, to)
+        return freeBusyBulkQuery(requester, userId, from, to, zoneId)
             .flatMapIterable(FreeBusyBulkResponse::busyIntervals);
     }
 
-    private Mono<FreeBusyBulkResponse> freeBusyBulkQuery(Username requester, OpenPaaSId userId, Instant from, Instant to) {
+    private Mono<FreeBusyBulkResponse> freeBusyBulkQuery(Username requester, OpenPaaSId userId, Instant from, Instant to, ZoneId zoneId) {
         FreeBusyBulkRequest request = new FreeBusyBulkRequest(CALDAV_UTC_FORMAT.format(from), CALDAV_UTC_FORMAT.format(to),
-            List.of(userId.value()), List.of());
+            List.of(userId.value()), List.of(), zoneId.getId());
 
         return httpClientWithImpersonation(requester)
             .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_JSON)
