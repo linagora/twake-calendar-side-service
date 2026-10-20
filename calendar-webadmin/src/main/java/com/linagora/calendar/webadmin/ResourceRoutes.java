@@ -263,7 +263,7 @@ public class ResourceRoutes implements Routes {
         return dto.administrators()
             .map(administrators -> resourceService.updateAdmins(resource, toResourceAdministrators(administrators)))
             .orElse(Mono.empty())
-            .then(resourceService.update(resource.id(), dto.toUpdateRequest()));
+            .then(resourceService.update(resource, dto.toUpdateRequest()));
     }
 
     private <T> T validate(T dto, UnaryOperator<T> validation) {

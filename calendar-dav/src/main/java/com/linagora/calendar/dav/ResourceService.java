@@ -182,8 +182,11 @@ public class ResourceService {
             .filter(resource -> resource.domain().equals(domainId));
     }
 
-    public Mono<Void> update(ResourceId resourceId, ResourceUpdateRequest request) {
-        return resourceDAO.update(resourceId, request)
+    public Mono<Void> update(Resource resource, ResourceUpdateRequest request) {
+        return request.name()
+            .map(name -> renameCalendar(resource, name))
+            .orElse(Mono.empty())
+            .then(resourceDAO.update(resource.id(), request))
             .then();
     }
 
@@ -210,6 +213,13 @@ public class ResourceService {
                     .revokeAll(changes.listRemoveSharees())
                     .build())
             .doOnError(err -> LOGGER.error("Error patching CalDAV delegation for resource {}", resourceId.value(), err));
+    }
+
+    // Sabre propagates the new name to the administrators' delegated copies that still bear the old one
+    private Mono<Void> renameCalendar(Resource resource, String name) {
+        return calDavClient.updateCalendarProperties(resource.domain(), CalendarURL.from(resource.id().asOpenPaaSId()),
+                CalDavClient.CalendarPropertiesUpdate.withName(name))
+            .doOnError(err -> LOGGER.error("Error renaming CalDAV calendar of resource {}", resource.id().value(), err));
     }
 
     private Flux<ResourceAdministrator> fetchAdministratorsFromSabre(OpenPaaSId domainId, ResourceId resourceId) {
