@@ -22,11 +22,13 @@ import static com.linagora.calendar.dav.ResourceService.ResourceAdministrator;
 import static com.linagora.calendar.dav.ResourceService.ResourceWithAdministration.ResolvedAdministrator;
 import static com.linagora.calendar.dav.ResourceService.ONLY_ACTIVE;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
+import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Clock;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -38,17 +40,23 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.linagora.calendar.dav.CalDavClient.CalendarPropertiesUpdate;
 import com.linagora.calendar.dav.CalendarSharingUpdate.AddSharee;
+import com.linagora.calendar.dav.dto.CalendarMirrorSource;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.MemoryOpenPaaSUserDAO;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.ResourceInsertRequest;
+import com.linagora.calendar.storage.ResourceUpdateRequest;
 import com.linagora.calendar.storage.model.Resource;
 import com.linagora.calendar.storage.model.ResourceId;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
+
+import reactor.core.publisher.Flux;
 
 class ResourceServiceTest {
     @RegisterExtension
@@ -58,6 +66,7 @@ class ResourceServiceTest {
     private MongoDBResourceDAO resourceDAO;
     private MongoDBOpenPaaSUserDAO userDAO;
     private CalDavClient calDavClient;
+    private DavTestHelper davTestHelper;
     private ResourceService testee;
 
     @BeforeEach
@@ -70,6 +79,7 @@ class ResourceServiceTest {
         resourceDAO = new MongoDBResourceDAO(sabreDavExtension.dockerSabreDavSetup().getMongoDB(), Clock.systemUTC());
         userDAO = new MongoDBOpenPaaSUserDAO(sabreDavExtension.dockerSabreDavSetup().getMongoDB(), domainDAO);
         calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
+        davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         testee = new ResourceService(userDAO, resourceDAO, calDavClient);
     }
 
@@ -196,6 +206,94 @@ class ResourceServiceTest {
         assertThatThrownBy(() -> testee.updateAdmins(resource, List.of(missingAdministrator)).block())
             .isInstanceOf(ResourceAdministratorNotFoundException.class)
             .hasMessage("Resource administrator '%s' must exist".formatted(missingAdministrator.asString()));
+    }
+
+    @Test
+    void updateShouldStoreNewName() {
+        // Given a resource
+        OpenPaaSUser creator = sabreDavExtension.newTestUser(Optional.of("creator_"));
+        Resource resource = createResource(creator);
+
+        // When the resource is renamed
+        testee.update(resource, new ResourceUpdateRequest(Optional.of("Renamed resource"), Optional.empty(), Optional.empty())).block();
+
+        // Then the stored resource bears the new name
+        assertThat(resourceDAO.findById(resource.id()).block().name())
+            .isEqualTo("Renamed resource");
+    }
+
+    @Test
+    void updateShouldRenameResourceCalendar() {
+        // Given a resource
+        OpenPaaSUser creator = sabreDavExtension.newTestUser(Optional.of("creator_"));
+        Resource resource = createResource(creator);
+
+        // When the resource is renamed
+        testee.update(resource, new ResourceUpdateRequest(Optional.of("Renamed resource"), Optional.empty(), Optional.empty())).block();
+
+        // Then the resource calendar bears the new name
+        String metadata = davTestHelper.getCalendarMetadata(domain.id(), CalendarURL.from(resource.id().asOpenPaaSId())).block();
+        assertThatJson(metadata).node("dav:name").isStringEqualTo("Renamed resource");
+    }
+
+    @Test
+    void updateShouldRenameDelegatedCopiesOfAdministrators() {
+        // Given a resource whose administrator kept the default name of their delegated copy
+        OpenPaaSUser creator = sabreDavExtension.newTestUser(Optional.of("creator_"));
+        OpenPaaSUser administrator = sabreDavExtension.newTestUser(Optional.of("admin_"));
+        Resource resource = createResource(creator);
+        share(resource.id(), AddSharee.of(administrator.username(), DavRight.READ_WRITE));
+
+        // When the resource is renamed
+        testee.update(resource, new ResourceUpdateRequest(Optional.of("Renamed resource"), Optional.empty(), Optional.empty())).block();
+
+        // Then the delegated copy of the administrator bears the new name
+        assertThat(delegatedCopy(administrator, resource).getValue().path("dav:name").asText())
+            .isEqualTo("Renamed resource");
+    }
+
+    @Test
+    void updateShouldApplyNewNameToAdministratorsAddedLater() {
+        // Given a resource without administrator
+        OpenPaaSUser creator = sabreDavExtension.newTestUser(Optional.of("creator_"));
+        OpenPaaSUser administrator = sabreDavExtension.newTestUser(Optional.of("admin_"));
+        Resource resource = createResource(creator);
+
+        // When the resource is renamed, then an administrator is added
+        testee.update(resource, new ResourceUpdateRequest(Optional.of("Renamed resource"), Optional.empty(), Optional.empty())).block();
+        share(resource.id(), AddSharee.of(administrator.username(), DavRight.READ_WRITE));
+
+        // Then the delegated copy of the new administrator bears the new name
+        assertThat(delegatedCopy(administrator, resource).getValue().path("dav:name").asText())
+            .isEqualTo("Renamed resource");
+    }
+
+    @Test
+    void updateShouldKeepNameOfDelegatedCopiesRenamedByAdministrators() {
+        // Given a resource whose administrator renamed their delegated copy
+        OpenPaaSUser creator = sabreDavExtension.newTestUser(Optional.of("creator_"));
+        OpenPaaSUser administrator = sabreDavExtension.newTestUser(Optional.of("admin_"));
+        Resource resource = createResource(creator);
+        share(resource.id(), AddSharee.of(administrator.username(), DavRight.READ_WRITE));
+        calDavClient.updateCalendarProperties(administrator.username(), delegatedCopy(administrator, resource).getKey(),
+            CalendarPropertiesUpdate.withName("My meeting room")).block();
+
+        // When the resource is renamed
+        testee.update(resource, new ResourceUpdateRequest(Optional.of("Renamed resource"), Optional.empty(), Optional.empty())).block();
+
+        // Then the delegated copy keeps the name chosen by the administrator
+        assertThat(delegatedCopy(administrator, resource).getValue().path("dav:name").asText())
+            .isEqualTo("My meeting room");
+    }
+
+    private Map.Entry<CalendarURL, JsonNode> delegatedCopy(OpenPaaSUser administrator, Resource resource) {
+        CalendarURL resourceCalendar = CalendarURL.from(resource.id().asOpenPaaSId());
+        return calDavClient.findUserCalendarList(administrator)
+            .flatMapMany(calendars -> Flux.fromIterable(calendars.calendars().entrySet()))
+            .filter(calendar -> CalendarMirrorSource.parse(calendar.getValue()).delegatedSource()
+                .filter(resourceCalendar::equals).isPresent())
+            .single()
+            .block();
     }
 
     private Resource createResource(OpenPaaSUser creator) {
