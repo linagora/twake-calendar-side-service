@@ -1005,9 +1005,10 @@ public class EventIndexerConsumerTest {
 
         awaitAtMost.untilAsserted(() -> assertEventExistsInSearch(openPaasUser.username(), summary, eventUid));
 
-        // Update recurrence instance DTSTART
+        // Update recurrence instance DTSTART, shifting DTEND along so that DTEND stays after DTSTART
         String updatedCalendar = initialCalendar
             .replace("20250517T080000Z", "20250518T080000Z")
+            .replace("20250517T090000Z", "20250518T090000Z")
             .replace("SEQUENCE:1", "SEQUENCE:2");
 
         davTestHelper.updateCalendar(openPaasUser, updatedCalendar, eventUid);
