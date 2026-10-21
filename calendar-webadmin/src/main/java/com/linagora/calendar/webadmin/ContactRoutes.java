@@ -181,7 +181,7 @@ public class ContactRoutes implements Routes {
                 .map(Integer::parseInt)
                 .map(value -> {
                     Preconditions.checkArgument(value > 0,
-                        "Query parameter '%s' must be strictly positive, got: %d", CONTACTS_PER_SECOND_PARAMETER, value);
+                        "Query parameter '%s' must be strictly positive, got: %s", CONTACTS_PER_SECOND_PARAMETER, value);
                     return value;
                 })
                 .orElse(DEFAULT_CONTACTS_PER_SECOND);

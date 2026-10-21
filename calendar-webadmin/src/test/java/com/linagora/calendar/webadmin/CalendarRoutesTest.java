@@ -168,6 +168,36 @@ public class CalendarRoutesTest {
     }
 
     @Test
+    void reindexShouldRejectNonPositiveEventsPerSecondWithReadableMessage() {
+        // Given a reindex request with a negative eventsPerSecond
+        // When the request is posted
+        // Then it is rejected with the actual value substituted in the message
+        given()
+            .queryParam("task", "reindex")
+            .queryParam("eventsPerSecond", -5)
+            .when()
+            .post()
+            .then()
+            .statusCode(400)
+            .body("details", is("Query parameter 'eventsPerSecond' must be strictly positive, got: -5"));
+    }
+
+    @Test
+    void reindexShouldRejectNonPositiveCalendarsConcurrencyWithReadableMessage() {
+        // Given a reindex request with calendarsConcurrency set to zero
+        // When the request is posted
+        // Then it is rejected with the actual value substituted in the message
+        given()
+            .queryParam("task", "reindex")
+            .queryParam("calendarsConcurrency", 0)
+            .when()
+            .post()
+            .then()
+            .statusCode(400)
+            .body("details", is("Query parameter 'calendarsConcurrency' must be strictly positive, got: 0"));
+    }
+
+    @Test
     void reindexShouldIndexEvent() throws AddressException {
         String eventId = "event-1";
         String ics = """

@@ -22,6 +22,7 @@ import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_
 import static io.restassured.RestAssured.given;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -768,6 +769,20 @@ public class ContactRoutesTest {
             .post(ContactRoutes.BASE_PATH)
         .then()
             .statusCode(400);
+    }
+
+    @Test
+    void republishShouldRejectNonPositiveContactsPerSecondWithReadableMessage() {
+        // Given a republish request with a negative contactsPerSecond
+        // When the request is posted
+        // Then it is rejected with the actual value substituted in the message
+        given()
+            .queryParam("action", "republish")
+            .queryParam("contactsPerSecond", "-5")
+            .post(ContactRoutes.BASE_PATH)
+        .then()
+            .statusCode(400)
+            .body("details", is("Query parameter 'contactsPerSecond' must be strictly positive, got: -5"));
     }
 
     private void upsertUserContact(String addressBookId, String uid, String fullName) {
