@@ -188,7 +188,7 @@ public class CalendarRoutes implements Routes {
                 .map(Integer::parseInt)
                 .map(value -> {
                     Preconditions.checkArgument(value > 0,
-                        "Query parameter '%s' must be strictly positive, got: %d", parameterName, value);
+                        "Query parameter '%s' must be strictly positive, got: %s", parameterName, value);
                     return value;
                 })
                 .orElse(defaultValue);
