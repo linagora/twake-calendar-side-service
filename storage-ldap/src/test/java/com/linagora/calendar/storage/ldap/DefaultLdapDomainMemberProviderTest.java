@@ -55,7 +55,8 @@ public class DefaultLdapDomainMemberProviderTest {
         LdapRepositoryConfiguration configuration = LdapRepositoryConfiguration.from(ldapRepositoryConfiguration(ldapExtension.ldapContainer(), Optional.of(ADMIN)));
         ldapDomainMemberProvider = new DefaultLdapDomainMemberProvider(
             configuration,
-            new LDAPConnectionFactory(configuration).getLdapConnectionPool());
+            new LDAPConnectionFactory(configuration).getLdapConnectionPool(),
+            LdapVCardPropertiesConfiguration.EMPTY);
     }
 
     @Test

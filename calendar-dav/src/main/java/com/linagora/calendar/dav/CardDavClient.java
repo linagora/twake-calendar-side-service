@@ -209,7 +209,11 @@ public class CardDavClient extends DavClient {
     }
 
     public Mono<byte[]> retrieveContact(Username username, AddressBookURL addressBookURL, ContactUid contactUid) {
-        return httpClientWithImpersonation(username)
+        return retrieveContact(httpClientWithImpersonation(username), addressBookURL, contactUid);
+    }
+
+    private Mono<byte[]> retrieveContact(HttpClient client, AddressBookURL addressBookURL, ContactUid contactUid) {
+        return client
             .get()
             .uri(addressBookURL.vcardUri(contactUid.value()).toASCIIString())
             .responseSingle((response, byteBufMono) -> {
@@ -346,6 +350,14 @@ public class CardDavClient extends DavClient {
                     }
                     return Mono.error(exception);
                 }));
+    }
+
+    public Mono<byte[]> retrieveContactDomainMembers(OpenPaaSId domainId, String vcardUid) {
+        Preconditions.checkArgument(StringUtils.isNotEmpty(vcardUid), "vcardUid must not be empty");
+
+        AddressBookURL addressBookURL = new AddressBookURL(domainId, DOMAIN_MEMBERS_ADDRESS_BOOK_ID);
+        return httpClientWithTechnicalToken(domainId)
+            .flatMap(client -> retrieveContact(client, addressBookURL, new ContactUid(vcardUid)));
     }
 
     public Mono<Void> deleteContactDomainMembers(OpenPaaSId domainId, String vcardUid) {

@@ -36,6 +36,7 @@ import com.google.inject.Provides;
 import com.google.inject.Scopes;
 import com.google.inject.Singleton;
 import com.google.inject.multibindings.Multibinder;
+import com.linagora.calendar.storage.UserContactResolver;
 import com.linagora.calendar.storage.UserNameResolver;
 
 public class MemoryUserModule extends AbstractModule {
@@ -56,6 +57,7 @@ public class MemoryUserModule extends AbstractModule {
 
         Multibinder.newSetBinder(binder(), GuiceProbe.class).addBinding().to(CalendarDataProbe.class);
         bind(UserNameResolver.class).to(UserNameResolver.Noop.class);
+        bind(UserContactResolver.class).to(UserContactResolver.Noop.class);
     }
 
     @Provides

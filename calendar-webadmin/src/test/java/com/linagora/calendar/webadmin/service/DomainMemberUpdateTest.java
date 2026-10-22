@@ -28,6 +28,7 @@ import org.apache.james.core.MailAddress;
 import org.junit.jupiter.api.Test;
 
 import com.github.fge.lambdas.Throwing;
+import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.dav.AddressBookContact;
 import com.linagora.calendar.storage.ldap.LdapUser;
 
@@ -221,6 +222,79 @@ public class DomainMemberUpdateTest {
         DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(ldap), List.of(dav));
 
         assertThat(result.updated()).containsExactly(toAddressBookContact(ldap, dav.uid()));
+    }
+
+    @Test
+    void computeShouldDetectUpdatedWhenExtraPropertyAppears() {
+        // Given an LDAP member whose workspace now exists, and its DAV card written before
+        LdapUser ldap = LdapUser.builder()
+            .uid("uid123")
+            .cn("Ho F")
+            .sn("Ho")
+            .givenName("F")
+            .mail(mailAddress("user7@example.com"))
+            .displayName("Ho F")
+            .extraProperties(ImmutableMap.of("X-TWAKE-WORKPLACE-FQDN", "user7.example.com"))
+            .build();
+        AddressBookContact dav = AddressBookContact.builder()
+            .uid("uid456")
+            .mail(mailAddress("user7@example.com"))
+            .familyName("Ho")
+            .givenName("F")
+            .displayName("Ho F")
+            .build();
+
+        // When LDAP and DAV are compared
+        DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(ldap), List.of(dav));
+
+        // Then the card is updated with the workspace
+        assertThat(result.updated()).containsExactly(toAddressBookContact(ldap, dav.uid()));
+    }
+
+    @Test
+    void computeShouldDetectNoChangeWhenExtraPropertiesAreEqual() {
+        // Given an LDAP member and its DAV card carrying the same workspace
+        LdapUser ldap = LdapUser.builder()
+            .uid("uid123")
+            .cn("Ho F")
+            .sn("Ho")
+            .givenName("F")
+            .mail(mailAddress("user8@example.com"))
+            .displayName("Ho F")
+            .extraProperties(ImmutableMap.of("X-TWAKE-WORKPLACE-FQDN", "user8.example.com"))
+            .build();
+        AddressBookContact dav = AddressBookContact.builder()
+            .uid("uid456")
+            .mail(mailAddress("user8@example.com"))
+            .familyName("Ho")
+            .givenName("F")
+            .displayName("Ho F")
+            .extraProperties(ImmutableMap.of("X-TWAKE-WORKPLACE-FQDN", "user8.example.com"))
+            .build();
+
+        // When LDAP and DAV are compared
+        DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(ldap), List.of(dav));
+
+        // Then nothing is to be updated
+        assertThat(result.updated()).isEmpty();
+    }
+
+    @Test
+    void toAddressBookContactShouldCarryExtraProperties() {
+        // Given an LDAP member with a workspace
+        LdapUser ldap = LdapUser.builder()
+            .uid("uid123")
+            .cn("Ho F")
+            .sn("Ho")
+            .mail(mailAddress("user9@example.com"))
+            .extraProperties(ImmutableMap.of("X-TWAKE-WORKPLACE-FQDN", "user9.example.com"))
+            .build();
+
+        // When it is converted to a DAV card
+        AddressBookContact contact = toAddressBookContact(ldap, ldap.uid());
+
+        // Then the card carries the workspace
+        assertThat(contact.extraProperties()).isEqualTo(ImmutableMap.of("X-TWAKE-WORKPLACE-FQDN", "user9.example.com"));
     }
 
     @Test

@@ -19,6 +19,7 @@
 package com.linagora.calendar.saas.contact;
 
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
+import static net.javacrumbs.jsonunit.assertj.JsonAssertions.json;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -112,6 +113,33 @@ class CommonContactOutboundEventConverterTest {
                 """)).block();
 
         assertThat(event.audience()).isEqualTo(new Domain(domain.domain()));
+    }
+
+    @Test
+    void shouldConvertWorkplaceFqdnToVCardProps() throws Exception {
+        // Given a domain member card carrying the workspace host of the member
+        OpenPaaSDomain domain = domainDAO.add(org.apache.james.core.Domain.of("org.example.com")).block();
+
+        // When the Sabre notification of that card is converted
+        CommonContactOutboundEvent event = testee.convert(Action.ADD,
+            new SabreContactNotificationDTO(CONTACT_PATH, "principals/domains/" + domain.id().value(), """
+                BEGIN:VCARD
+                VERSION:4.0
+                UID:contact-uid
+                FN:Alice Martin
+                N:Martin;Alice;;;
+                EMAIL:alice@org.example.com
+                X-TWAKE-WORKPLACE-FQDN:alice.org.example.com
+                END:VCARD
+                """)).block();
+
+        // Then the workspace host is published among the vCard properties, for the stack to build the cozy URL
+        assertThatJson(new String(event.serialize(), StandardCharsets.UTF_8))
+            .inPath("$.payload.vCardProps")
+            .isArray()
+            .contains(json("""
+                ["x-twake-workplace-fqdn", {}, "unknown", "alice.org.example.com"]
+                """));
     }
 
     @Test
