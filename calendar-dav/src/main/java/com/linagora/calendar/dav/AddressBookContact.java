@@ -20,15 +20,22 @@ package com.linagora.calendar.dav;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.apache.james.core.MailAddress;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableMap;
+import com.linagora.calendar.storage.UserContactResolver.UserContact;
 
 import ezvcard.Ezvcard;
 import ezvcard.VCard;
@@ -46,7 +53,10 @@ public record AddressBookContact(Optional<String> uid,
                                  Optional<String> givenName,
                                  Optional<String> displayName,
                                  Optional<MailAddress> mail,
-                                 Optional<String> telephoneNumber) {
+                                 Optional<String> telephoneNumber,
+                                 ImmutableMap<String, String> extraProperties) {
+
+    private static final String EXTENDED_PROPERTY_PREFIX = "X-";
 
     public static class DavContactCardParseException extends RuntimeException {
         public DavContactCardParseException(String message, Throwable cause) {
@@ -61,6 +71,7 @@ public record AddressBookContact(Optional<String> uid,
         private Optional<String> displayName = Optional.empty();
         private Optional<MailAddress> mail = Optional.empty();
         private Optional<String> telephoneNumber = Optional.empty();
+        private ImmutableMap<String, String> extraProperties = ImmutableMap.of();
 
         public Builder uid(String uid) {
             this.uid = Optional.of(uid);
@@ -127,8 +138,21 @@ public record AddressBookContact(Optional<String> uid,
             return this;
         }
 
+        public Builder extraProperties(ImmutableMap<String, String> extraProperties) {
+            this.extraProperties = extraProperties;
+            return this;
+        }
+
+        public Builder userContact(UserContact userContact) {
+            return familyName(userContact.familyName())
+                .givenName(userContact.givenName())
+                .displayName(userContact.displayName())
+                .telephoneNumber(userContact.telephoneNumber())
+                .extraProperties(userContact.extraProperties());
+        }
+
         public AddressBookContact build() {
-            return new AddressBookContact(uid, familyName, givenName, displayName, mail, telephoneNumber);
+            return new AddressBookContact(uid, familyName, givenName, displayName, mail, telephoneNumber, extraProperties);
         }
     }
 
@@ -191,7 +215,29 @@ public record AddressBookContact(Optional<String> uid,
             .displayName(displayName)
             .mail(mail)
             .telephoneNumber(telephone)
+            .extraProperties(extraProperties(vcard))
             .build();
+    }
+
+    private static ImmutableMap<String, String> extraProperties(VCard vcard) {
+        Map<String, String> properties = new LinkedHashMap<>();
+        vcard.getExtendedProperties().stream()
+            .filter(property -> Strings.CI.startsWith(property.getPropertyName(), EXTENDED_PROPERTY_PREFIX))
+            .filter(property -> StringUtils.isNotEmpty(property.getValue()))
+            .forEach(property -> properties.putIfAbsent(property.getPropertyName().toUpperCase(Locale.US), property.getValue()));
+        return ImmutableMap.copyOf(properties);
+    }
+
+    /**
+     * Whether both contacts carry the same details, regardless of their uid.
+     */
+    public boolean hasSameContentAs(AddressBookContact other) {
+        return Objects.equals(familyName, other.familyName)
+            && Objects.equals(givenName, other.givenName)
+            && Objects.equals(displayName, other.displayName)
+            && Objects.equals(mail, other.mail)
+            && Objects.equals(telephoneNumber, other.telephoneNumber)
+            && Objects.equals(extraProperties, other.extraProperties);
     }
 
     public String vcardUid() {
@@ -226,6 +272,10 @@ public record AddressBookContact(Optional<String> uid,
                 tel.getTypes().add(TelephoneType.WORK);
                 vcard.addTelephoneNumber(tel);
             });
+
+        this.extraProperties()
+            .forEach((name, value) -> Optional.ofNullable(StringUtils.trimToNull(value))
+                .ifPresent(trimmedValue -> vcard.addExtendedProperty(name, trimmedValue)));
 
         vcard.setVersion(VCardVersion.V4_0);
         return vcard;

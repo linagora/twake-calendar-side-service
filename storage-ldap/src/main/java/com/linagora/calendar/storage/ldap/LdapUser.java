@@ -18,13 +18,19 @@
 
 package com.linagora.calendar.storage.ldap;
 
+import java.util.Map;
 import java.util.Optional;
 
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.apache.james.core.MailAddress;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableMap;
+import com.linagora.calendar.storage.UserContactResolver.UserContact;
+import com.linagora.calendar.storage.UserNameResolver.UserNames;
 import com.unboundid.ldap.sdk.SearchResultEntry;
 
 public record LdapUser(Optional<String> uid,
@@ -33,7 +39,8 @@ public record LdapUser(Optional<String> uid,
                        Optional<String> givenName,
                        Optional<MailAddress> mail,
                        Optional<String> telephoneNumber,
-                       Optional<String> displayName) {
+                       Optional<String> displayName,
+                       ImmutableMap<String, String> extraProperties) {
     public static class Builder {
         private Optional<String> uid = Optional.empty();
         private Optional<String> cn = Optional.empty();
@@ -42,6 +49,7 @@ public record LdapUser(Optional<String> uid,
         private Optional<MailAddress> mail = Optional.empty();
         private Optional<String> telephoneNumber = Optional.empty();
         private Optional<String> displayName = Optional.empty();
+        private ImmutableMap<String, String> extraProperties = ImmutableMap.of();
 
         public Builder uid(String uid) {
             this.uid = Optional.of(uid);
@@ -78,8 +86,13 @@ public record LdapUser(Optional<String> uid,
             return this;
         }
 
+        public Builder extraProperties(ImmutableMap<String, String> extraProperties) {
+            this.extraProperties = extraProperties;
+            return this;
+        }
+
         public LdapUser build() {
-            return new LdapUser(uid, cn, sn, givenName, mail, telephoneNumber, displayName);
+            return new LdapUser(uid, cn, sn, givenName, mail, telephoneNumber, displayName, extraProperties);
         }
     }
 
@@ -94,7 +107,7 @@ public record LdapUser(Optional<String> uid,
         Preconditions.checkArgument(sn != null, "sn must not be null");
     }
 
-    public static LdapUser fromLdapEntry(SearchResultEntry entry) {
+    public static LdapUser fromLdapEntry(SearchResultEntry entry, LdapVCardPropertiesConfiguration vcardPropertiesConfiguration) {
         LdapUser.Builder builder = LdapUser.builder();
         Optional.ofNullable(entry.getAttributeValue("uid")).ifPresent(builder::uid);
         Optional.ofNullable(entry.getAttributeValue("cn")).ifPresent(builder::cn);
@@ -111,6 +124,50 @@ public record LdapUser(Optional<String> uid,
             }).ifPresent(builder::mail);
         Optional.ofNullable(entry.getAttributeValue("telephoneNumber")).ifPresent(builder::telephoneNumber);
         Optional.ofNullable(entry.getAttributeValue("displayName")).ifPresent(builder::displayName);
+        builder.extraProperties(readExtraProperties(entry, vcardPropertiesConfiguration));
         return builder.build();
+    }
+
+    private static ImmutableMap<String, String> readExtraProperties(SearchResultEntry entry, LdapVCardPropertiesConfiguration vcardPropertiesConfiguration) {
+        return vcardPropertiesConfiguration.vcardPropertyByLdapAttribute().entrySet().stream()
+            .flatMap(mapping -> Optional.ofNullable(StringUtils.trimToNull(entry.getAttributeValue(mapping.getKey())))
+                .map(value -> Map.entry(mapping.getValue(), value))
+                .stream())
+            .collect(ImmutableMap.toImmutableMap(Map.Entry::getKey, Map.Entry::getValue));
+    }
+
+    public UserNames toUserNames() {
+        String lastname = sn.orElse("");
+        String commonName = cn.orElse("");
+        String firstname = lastname.isEmpty() ? commonName : commonName.replace(lastname, "").trim();
+        return new UserNames(firstname, lastname);
+    }
+
+    public UserContact toUserContact() {
+        return UserContact.builder()
+            .names(Optional.of(toUserNames()))
+            .familyName(sn)
+            .givenName(resolveGivenName())
+            .displayName(resolveDisplayName())
+            .telephoneNumber(telephoneNumber)
+            .extraProperties(extraProperties)
+            .build();
+    }
+
+    private Optional<String> resolveDisplayName() {
+        return displayName
+            .or(this::cn)
+            .or(() -> mail.map(MailAddress::asString));
+    }
+
+    private Optional<String> resolveGivenName() {
+        return givenName
+            .or(this::extractGivenNameFromCommonName);
+    }
+
+    private Optional<String> extractGivenNameFromCommonName() {
+        return cn
+            .map(commonName -> Strings.CS.remove(commonName, sn.orElse("")))
+            .map(StringUtils::trimToNull);
     }
 }

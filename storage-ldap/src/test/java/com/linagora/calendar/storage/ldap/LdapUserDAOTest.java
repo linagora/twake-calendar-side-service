@@ -39,6 +39,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import com.google.common.collect.ImmutableMap;
 import com.unboundid.ldap.sdk.LDAPException;
 
 public class LdapUserDAOTest {
@@ -53,7 +54,8 @@ public class LdapUserDAOTest {
         LdapRepositoryConfiguration configuration = LdapRepositoryConfiguration.from(ldapRepositoryConfiguration(ldapExtension.ldapContainer(), Optional.of(ADMIN)));
         ldapUserDAO = new LdapUserDAO(
             configuration,
-            new LDAPConnectionFactory(configuration).getLdapConnectionPool());
+            new LDAPConnectionFactory(configuration).getLdapConnectionPool(),
+            LdapVCardPropertiesConfiguration.EMPTY);
     }
 
     @Test
@@ -69,6 +71,21 @@ public class LdapUserDAOTest {
             .telephoneNumber("+33612345678")
             .displayName("James User")
             .build());
+    }
+
+    @Test
+    void findByMailShouldReadMappedExtraProperties() throws Exception {
+        // Given description mapped to X-DESCRIPTION
+        LdapRepositoryConfiguration configuration = LdapRepositoryConfiguration.from(ldapRepositoryConfiguration(ldapExtension.ldapContainer(), Optional.of(ADMIN)));
+        LdapUserDAO mappingDAO = new LdapUserDAO(configuration,
+            new LDAPConnectionFactory(configuration).getLdapConnectionPool(),
+            new LdapVCardPropertiesConfiguration(ImmutableMap.of("description", "X-DESCRIPTION")));
+
+        // When james-user is looked up
+        Optional<LdapUser> actual = mappingDAO.findByMail(Username.of("james-user@james.org"));
+
+        // Then its description is read as the X-DESCRIPTION property
+        assertThat(actual.map(LdapUser::extraProperties)).contains(ImmutableMap.of("X-DESCRIPTION", "abcdef"));
     }
 
     @Test

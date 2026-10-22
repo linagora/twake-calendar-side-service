@@ -50,7 +50,7 @@ public class LdapUserNameResolverTest {
     @BeforeEach
     void setUp() throws ConfigurationException, LDAPException {
         LdapRepositoryConfiguration configuration = LdapRepositoryConfiguration.from(ldapRepositoryConfiguration(ldapExtension.ldapContainer(), Optional.of(ADMIN)));
-        LdapUserDAO ldapUserDAO = new LdapUserDAO(configuration, new LDAPConnectionFactory(configuration).getLdapConnectionPool());
+        LdapUserDAO ldapUserDAO = new LdapUserDAO(configuration, new LDAPConnectionFactory(configuration).getLdapConnectionPool(), LdapVCardPropertiesConfiguration.EMPTY);
         resolver = new LdapUserNameResolver(ldapUserDAO);
     }
 
