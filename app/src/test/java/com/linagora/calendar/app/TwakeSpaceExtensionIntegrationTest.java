@@ -394,6 +394,66 @@ class TwakeSpaceExtensionIntegrationTest {
     }
 
     @Test
+    void spaceUpdatedOfAnUnknownSpaceShouldPublishTheProvisionedTeamCalendar() throws Exception {
+        String spaceId = UUID.randomUUID().toString();
+
+        publish("twake.space.updated", updatedIn(DOMAIN, spaceId, "Sales"));
+
+        JsonNode provisioned = awaitActivity("com.twake.calendar.space.provisioned.v1");
+        assertThat(provisioned.path("twakeorg").asText()).isEqualTo("org");
+        assertThat(provisioned.path("data").path("space_id").asText()).isEqualTo(spaceId);
+        assertThat(provisioned.path("data").path("resource").path("id").asText()).isEqualTo(teamCalendar(spaceId).path("id").asText());
+    }
+
+    @Test
+    void memberAddedToAnUnknownSpaceShouldPublishTheProvisionedTeamCalendar() throws Exception {
+        String spaceId = UUID.randomUUID().toString();
+
+        publish("twake.space.member.added", memberEventIn(DOMAIN, spaceId, member("bob", "viewer")));
+
+        JsonNode provisioned = awaitActivity("com.twake.calendar.space.provisioned.v1");
+        assertThat(provisioned.path("twakeorg").asText()).isEqualTo("org");
+        assertThat(provisioned.path("data").path("space_id").asText()).isEqualTo(spaceId);
+        assertThat(provisioned.path("data").path("resource").path("id").asText()).isEqualTo(teamCalendar(spaceId).path("id").asText());
+    }
+
+    @Test
+    void eventWithoutOrganizationShouldPublishTheStoredOrganization() throws Exception {
+        String spaceId = UUID.randomUUID().toString();
+        publish("twake.space.member.added", memberEventIn(DOMAIN, spaceId, member("bob", "viewer")));
+        JsonNode first = awaitActivity("com.twake.calendar.space.provisioned.v1");
+
+        publish("twake.space.updated", updatedWithoutOrganizationIn(DOMAIN, spaceId, "Sales"));
+
+        JsonNode second = awaitActivity("com.twake.calendar.space.provisioned.v1");
+        assertThat(second.path("twakeorg").asText()).isEqualTo("org");
+        assertThat(second.path("id").asText()).isEqualTo(first.path("id").asText());
+    }
+
+    @Test
+    void spaceOfAnUnknownOrganizationShouldPublishNoProvisionedEvent() throws Exception {
+        String spaceId = UUID.randomUUID().toString();
+
+        publish("twake.space.updated", updatedWithoutOrganizationIn(DOMAIN, spaceId, "Sales"));
+        awaitConsumed();
+
+        assertThat(teamCalendar(spaceId).path("displayName").asText()).isEqualTo("Sales");
+        assertThat(provisionedSpaceIds()).doesNotContain(spaceId);
+    }
+
+    @Test
+    void spaceDeletedShouldPublishNoProvisionedEvent() throws Exception {
+        String spaceId = UUID.randomUUID().toString();
+        publish("twake.space.created", created(spaceId, "Marketing", member("alice", "admin")));
+        awaitActivity("com.twake.calendar.space.provisioned.v1");
+
+        publish("twake.space.deleted", deleted(spaceId));
+        awaitConsumed();
+
+        assertThat(provisionedSpaceIds()).doesNotContain(spaceId);
+    }
+
+    @Test
     void eventCreatedInTheTeamCalendarShouldPublishEventCreated() throws Exception {
         String spaceId = provisionedSpace(member("alice", "admin"), member("bob", "editor"));
         String teamCalendarId = teamCalendar(spaceId).path("id").asText();
@@ -939,6 +999,18 @@ class TwakeSpaceExtensionIntegrationTest {
             .formatted(spaceId, name, DOMAIN.asString(), timestamp());
     }
 
+    private static String updatedIn(Domain organizationDomain, String spaceId, String name) {
+        return """
+            {"organizationId": "org", "organizationDomain": "%s", "id": "%s", "name": "%s", "actor": "alice@%s", "timestamp": "%s"}"""
+            .formatted(organizationDomain.asString(), spaceId, name, DOMAIN.asString(), timestamp());
+    }
+
+    private static String updatedWithoutOrganizationIn(Domain organizationDomain, String spaceId, String name) {
+        return """
+            {"organizationDomain": "%s", "id": "%s", "name": "%s", "actor": "alice@%s", "timestamp": "%s"}"""
+            .formatted(organizationDomain.asString(), spaceId, name, DOMAIN.asString(), timestamp());
+    }
+
     private static String deleted(String spaceId) {
         return """
             {"organizationId": "org", "id": "%s", "actor": "alice@%s", "timestamp": "%s"}"""
@@ -998,6 +1070,18 @@ class TwakeSpaceExtensionIntegrationTest {
             }
             return new Delivery(response.getEnvelope(), response.getProps(), response.getBody());
         }
+    }
+
+    private List<String> provisionedSpaceIds() throws Exception {
+        List<String> spaceIds = new ArrayList<>();
+        Delivery delivery;
+        while ((delivery = nextActivity()) != null) {
+            JsonNode event = OBJECT_MAPPER.readTree(delivery.getBody());
+            if (event.path("type").asText().equals("com.twake.calendar.space.provisioned.v1")) {
+                spaceIds.add(event.path("data").path("space_id").asText());
+            }
+        }
+        return spaceIds;
     }
 
     private String provisionedSpace(String... members) throws Exception {

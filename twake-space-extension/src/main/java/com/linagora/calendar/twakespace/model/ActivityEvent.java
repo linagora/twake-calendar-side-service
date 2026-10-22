@@ -72,7 +72,7 @@ public record ActivityEvent(String id, String type, Instant time, OrganizationId
     private static final int MAX_PREVIEW_LENGTH = 280;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
-    // Named after the space and its calendar, so that a redelivered created publishes the same event.
+    // Named after the space and its calendar, so that every event of the space publishes the same one.
     public static ActivityEvent provisioned(OrganizationId organization, SpaceId spaceId, TeamCalendarId teamCalendarId, Instant time) {
         ObjectNode data = OBJECT_MAPPER.createObjectNode().put("space_id", spaceId.value());
         data.putObject("resource")

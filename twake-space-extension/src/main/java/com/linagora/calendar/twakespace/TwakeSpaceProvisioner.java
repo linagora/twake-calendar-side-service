@@ -62,24 +62,37 @@ public class TwakeSpaceProvisioner {
         this.clock = clock;
     }
 
-    // A redelivered created publishes the provisioned event again, as its first publication may have failed.
+    // Every event of a live space publishes the provisioned event again: TwakeSpace may have missed the created one,
+    // or its publication may have failed. Only the created event has to name the organization, so the stored one is used.
     public Mono<ActivityEvent> handle(SpaceEventType type, SpaceEvent event) {
         return Mono.fromCallable(() -> change(type, event))
             .flatMap(spaceRepository::merge)
             .flatMap(space -> apply(space, MAX_APPLY_ATTEMPTS))
-            .filter(_ -> type == SpaceEventType.CREATED)
-            .map(teamCalendar -> ActivityEvent.provisioned(event.organizationId(), event.id(), teamCalendar.id(), clock.instant()));
+            .filter(applied -> !applied.space().isDeleted())
+            .flatMap(this::provisioned);
+    }
+
+    private Mono<ActivityEvent> provisioned(AppliedSpace applied) {
+        TwakeSpace space = applied.space();
+        if (space.organization().isEmpty()) {
+            LOGGER.info("Space {} has no known organization yet: its provisioned event waits for an event naming one", space.id());
+            return Mono.empty();
+        }
+        return Mono.just(ActivityEvent.provisioned(space.organization().get(), space.id(), applied.teamCalendar().id(), clock.instant()));
+    }
+
+    private record AppliedSpace(TwakeSpace space, TeamCalendar teamCalendar) {
     }
 
     // Another event of the space may have been merged while this one was applied, and its own apply may have
     // finished first: applying again until the space stays the same makes the last write follow the stored space.
-    private Mono<TeamCalendar> apply(TwakeSpace space, int attempts) {
+    private Mono<AppliedSpace> apply(TwakeSpace space, int attempts) {
         if (attempts == 0) {
             return Mono.error(new IllegalStateException("Space " + space.id() + " kept changing while its team calendar was updated"));
         }
         return applyOnce(space)
             .flatMap(teamCalendar -> spaceRepository.retrieve(space.id())
-                .flatMap(latest -> latest.equals(space) ? Mono.just(teamCalendar) : apply(latest, attempts - 1)));
+                .flatMap(latest -> latest.equals(space) ? Mono.just(new AppliedSpace(space, teamCalendar)) : apply(latest, attempts - 1)));
     }
 
     // A deleted space keeps its team calendar, shared with no one, and does not get one if it had none.
