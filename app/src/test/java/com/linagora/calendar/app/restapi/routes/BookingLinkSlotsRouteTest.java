@@ -581,6 +581,72 @@ class BookingLinkSlotsRouteTest {
     }
 
     @Test
+    void shouldExcludeAllDayEventsFromMidnightToMidnightOfTheOwnerTimeZone(TwakeCalendarGuiceServer server) {
+        // Given: an owner living in Paris (UTC+1 in January), whose booking link is available around Paris midnights.
+        given()
+            .auth().preemptive().basic(openPaaSUser.username().asString(), PASSWORD)
+            .body("""
+                [{ "name": "core", "configurations": [{ "name": "datetime", "value": { "timeZone": "Europe/Paris" } }] }]
+                """)
+        .when()
+            .put("/api/configurations?scope=user")
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        AvailabilityRules aroundParisMidnights = AvailabilityRules.of(
+            new FixedAvailabilityRule(ZonedDateTime.parse("2036-01-25T22:00:00Z"), ZonedDateTime.parse("2036-01-26T01:00:00Z")),
+            new FixedAvailabilityRule(ZonedDateTime.parse("2036-01-26T22:00:00Z"), ZonedDateTime.parse("2036-01-27T01:00:00Z")));
+        BookingLinkInsertRequest insertRequest = BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(DURATION_30_MINUTES).availabilityRules(aroundParisMidnights).build();
+        BookingLink inserted = server.getProbe(BookingLinkProbe.class).insert(openPaaSUser.username(), insertRequest);
+
+        // Given: an all-day event on January 26th, that is from 2036-01-25T23:00Z to 2036-01-26T23:00Z in Paris.
+        String uid = UUID.randomUUID().toString();
+        davTestHelper.upsertCalendar(openPaaSUser, """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Twake//BookingSlotsTest//EN
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20360101T000000Z
+            DTSTART;VALUE=DATE:20360126
+            DTEND;VALUE=DATE:20360127
+            SUMMARY:day-off
+            TRANSP:OPAQUE
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uid), uid);
+
+        // When: requesting available slots around both Paris midnights.
+        String response = given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .queryParam("from", "2036-01-25T22:00:00Z")
+            .queryParam("to", "2036-01-27T01:00:00Z")
+        .when()
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(JSON)
+            .extract()
+            .body()
+            .asString();
+
+        // Then: the slots are busy from the Paris midnight starting the day off to the one ending it.
+        assertThatJson(response)
+            .describedAs("should apply all-day events from the owner's midnights, not UTC ones")
+            .inPath("$.slots")
+            .isEqualTo("""
+                [
+                  { "start": "2036-01-25T22:00:00Z" },
+                  { "start": "2036-01-25T22:30:00Z" },
+                  { "start": "2036-01-26T23:00:00Z" },
+                  { "start": "2036-01-26T23:30:00Z" },
+                  { "start": "2036-01-27T00:00:00Z" },
+                  { "start": "2036-01-27T00:30:00Z" }
+                ]
+                """);
+    }
+
+    @Test
     void shouldExcludeBusyIntervalsLivingInAnotherCalendarOfTheOwner(TwakeCalendarGuiceServer server) {
         // Given: a booking link writing into the owner's main calendar, the owner also owning a 'Perso' calendar.
         BookingLinkInsertRequest insertRequest = BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(DURATION_30_MINUTES).availabilityRules(AVAILABILITY_RULE).build();

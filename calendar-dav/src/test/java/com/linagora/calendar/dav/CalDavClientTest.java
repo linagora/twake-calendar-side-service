@@ -29,6 +29,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -1667,6 +1668,66 @@ public class CalDavClientTest {
             new BusyInterval(Instant.parse("2025-01-10T10:00:00Z"), Instant.parse("2025-01-10T10:30:00Z")),
             new BusyInterval(Instant.parse("2025-01-11T10:00:00Z"), Instant.parse("2025-01-11T10:30:00Z")),
             new BusyInterval(Instant.parse("2025-01-12T10:00:00Z"), Instant.parse("2025-01-12T10:30:00Z")));
+    }
+
+    @Test
+    void findBusyIntervalsShouldResolveAllDayEventsInTheGivenTimeZone() {
+        // GIVEN: An all-day event of a Paris user, stored as floating dates
+        OpenPaaSUser user = createOpenPaaSUser();
+
+        String uid = UUID.randomUUID().toString();
+        davTestHelper.upsertCalendar(user, """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20261001T100000Z
+            DTSTART;VALUE=DATE:20261019
+            DTEND;VALUE=DATE:20261022
+            TRANSP:OPAQUE
+            SUMMARY:Day off
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uid), uid);
+
+        // WHEN: Querying their busy intervals in their time zone
+        List<BusyInterval> busyIntervals = testee.findBusyIntervals(user.username(), user.id(),
+                Instant.parse("2026-10-01T00:00:00Z"), Instant.parse("2026-11-01T00:00:00Z"), ZoneId.of("Europe/Paris"))
+            .collectList()
+            .block();
+
+        // THEN: The event spans from Paris midnight to Paris midnight, not from UTC midnights
+        assertThat(busyIntervals)
+            .containsExactly(new BusyInterval(Instant.parse("2026-10-18T22:00:00Z"), Instant.parse("2026-10-21T22:00:00Z")));
+    }
+
+    @Test
+    void findBusyIntervalsShouldReturnAllDayEventStartingRightAfterTheRangeInUtc() {
+        // GIVEN: An all-day event of a Paris user on the 19th, starting on the 18th at 22:00 UTC
+        OpenPaaSUser user = createOpenPaaSUser();
+
+        String uid = UUID.randomUUID().toString();
+        davTestHelper.upsertCalendar(user, """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20261001T100000Z
+            DTSTART;VALUE=DATE:20261019
+            DTEND;VALUE=DATE:20261020
+            TRANSP:OPAQUE
+            SUMMARY:Day off
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uid), uid);
+
+        // WHEN: Querying a range ending before UTC midnight but after Paris midnight
+        List<BusyInterval> busyIntervals = testee.findBusyIntervals(user.username(), user.id(),
+                Instant.parse("2026-10-18T20:00:00Z"), Instant.parse("2026-10-18T23:00:00Z"), ZoneId.of("Europe/Paris"))
+            .collectList()
+            .block();
+
+        // THEN: The event is reported as busy
+        assertThat(busyIntervals)
+            .containsExactly(new BusyInterval(Instant.parse("2026-10-18T22:00:00Z"), Instant.parse("2026-10-19T22:00:00Z")));
     }
 
     @Test

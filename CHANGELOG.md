@@ -27,6 +27,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 
 ### Fixes
 
+ - ISSUE-1200 Booking links: all-day events of the owner (and of the extra attendees) block their whole day in their own time zone (`datetime.timeZone` setting), instead of from UTC midnight to UTC midnight, which left the first hours of a Paris owner's day off open to booking. Requires an esn-sabre whose bulk free/busy route honours `timezone`
  - ISSUE-1074 `POST /api/import` now shares its parsing with the webadmin import: imported events keep the calendar level properties and time zones they rely on, and re-importing the same vCard file updates the contacts rather than duplicating them.
  - Mail templates: a language without translations now falls back to English instead of the JVM default locale
 
