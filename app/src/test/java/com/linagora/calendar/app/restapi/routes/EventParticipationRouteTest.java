@@ -1235,7 +1235,7 @@ class EventParticipationRouteTest {
                 ]
                 """.formatted(locale.getLanguage()))
             .when()
-            .put("/api/configurations?scope=user")
+            .patch("/api/configurations?scope=user")
             .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
     }
