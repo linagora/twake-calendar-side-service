@@ -49,6 +49,7 @@ import com.linagora.calendar.storage.MemoryUserConfigurationDAO;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.SimpleSessionProvider;
+import com.linagora.calendar.storage.UserContactResolver;
 import com.linagora.calendar.storage.UserNameResolver;
 import com.linagora.calendar.storage.configuration.ConfigurationEntry;
 import com.linagora.calendar.storage.configuration.EntryIdentifier;
@@ -92,7 +93,7 @@ public class CalendarSettingUpdaterTest {
         DomainSettingsResolver domainSettingsResolver = new DomainSettingsResolver(
             new MemoryDomainSettingsDAO(), Set.of(USER.getDomainPart().get()), Set.of(), new MapConfiguration(Map.of()));
         SaaSUserProvisioner userProvisioner = new SaaSUserProvisioner(openPaaSUserDAO,
-            new MemoryOpenPaaSDomainDAO(), null, domainSettingsResolver, userNameResolver);
+            new MemoryOpenPaaSDomainDAO(), null, domainSettingsResolver, userNameResolver, new UserContactResolver.Noop());
         testee = new CalendarSettingUpdater(userConfigurationDAO, openPaaSUserDAO, userProvisioner, sessionProvider);
         openPaaSUserDAO.add(USER).block();
     }

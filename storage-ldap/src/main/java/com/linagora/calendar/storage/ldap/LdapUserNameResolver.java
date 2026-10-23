@@ -47,20 +47,11 @@ public class LdapUserNameResolver implements UserNameResolver {
         return Mono.fromCallable(() -> {
             try {
                 return ldapUserDAO.findByMail(username)
-                    .map(ldapUser -> new UserNames(getFirstName(ldapUser), ldapUser.sn().orElse("")));
+                    .map(LdapUser::toUserNames);
             } catch (Exception e) {
                 LOGGER.error("Error looking up LDAP names for {}", username.asString(), e);
                 return Optional.<UserNames>empty();
             }
         }).subscribeOn(Schedulers.boundedElastic());
-    }
-
-    private String getFirstName(LdapUser ldapUser) {
-        String sn = ldapUser.sn().orElse("");
-        String cn = ldapUser.cn().orElse("");
-        if (!sn.isEmpty()) {
-            return cn.replace(sn, "").trim();
-        }
-        return cn;
     }
 }

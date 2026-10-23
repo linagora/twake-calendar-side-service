@@ -18,8 +18,16 @@
 
 package com.linagora.calendar.storage.ldap;
 
+import java.io.FileNotFoundException;
+
+import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.james.utils.PropertiesProvider;
+
 import com.google.inject.AbstractModule;
+import com.google.inject.Provides;
 import com.google.inject.Scopes;
+import com.google.inject.Singleton;
+import com.linagora.calendar.storage.UserContactResolver;
 import com.linagora.calendar.storage.UserNameResolver;
 
 public class LdapStorageModule extends AbstractModule {
@@ -30,5 +38,17 @@ public class LdapStorageModule extends AbstractModule {
         bind(LdapDomainMemberProvider.class).to(DefaultLdapDomainMemberProvider.class);
         bind(LdapUserNameResolver.class).in(Scopes.SINGLETON);
         bind(UserNameResolver.class).to(LdapUserNameResolver.class);
+        bind(LdapUserContactResolver.class).in(Scopes.SINGLETON);
+        bind(UserContactResolver.class).to(LdapUserContactResolver.class);
+    }
+
+    @Provides
+    @Singleton
+    LdapVCardPropertiesConfiguration provideLdapVCardPropertiesConfiguration(PropertiesProvider propertiesProvider) throws ConfigurationException {
+        try {
+            return LdapVCardPropertiesConfiguration.from(propertiesProvider.getConfiguration("configuration"));
+        } catch (FileNotFoundException e) {
+            return LdapVCardPropertiesConfiguration.EMPTY;
+        }
     }
 }

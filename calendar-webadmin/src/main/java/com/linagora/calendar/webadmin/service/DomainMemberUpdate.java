@@ -22,14 +22,11 @@ import static com.linagora.calendar.dav.AddressBookContact.computeUid;
 
 import java.util.Collection;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
 import org.apache.james.core.MailAddress;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -89,13 +86,7 @@ public record DomainMemberUpdate(Set<AddressBookContact> added,
     }
 
     private static boolean isChanged(LdapUser ldapUser, AddressBookContact davContact) {
-        AddressBookContact ldapAsContact = toAddressBookContact(ldapUser, davContact);
-
-        return !Objects.equals(ldapAsContact.givenName(), davContact.givenName())
-            || !Objects.equals(ldapAsContact.familyName(), davContact.familyName())
-            || !Objects.equals(ldapAsContact.mail(), davContact.mail())
-            || !Objects.equals(ldapAsContact.telephoneNumber(), davContact.telephoneNumber())
-            || (ldapAsContact.displayName().isPresent() && !Objects.equals(ldapAsContact.displayName(), davContact.displayName()));
+        return !toAddressBookContact(ldapUser, davContact).hasSameContentAs(davContact);
     }
 
     private static AddressBookContact toAddressBookContact(LdapUser ldap) {
@@ -110,28 +101,8 @@ public record DomainMemberUpdate(Set<AddressBookContact> added,
                                                           Optional<String> uid) {
         return AddressBookContact.builder()
             .uid(uid)
-            .familyName(ldap.sn())
-            .givenName(resolveGivenName(ldap))
-            .displayName(resolveDisplayName(ldap))
             .mail(ldap.mail())
-            .telephoneNumber(ldap.telephoneNumber())
+            .userContact(ldap.toUserContact())
             .build();
-    }
-
-    private static Optional<String> resolveDisplayName(LdapUser ldap) {
-        return ldap.displayName()
-            .or(ldap::cn)
-            .or(() -> ldap.mail().map(MailAddress::asString));
-    }
-
-    private static Optional<String> resolveGivenName(LdapUser ldap) {
-        return ldap.givenName()
-            .or(() -> extractGivenNameFromCommonName(ldap));
-    }
-
-    private static Optional<String> extractGivenNameFromCommonName(LdapUser ldap) {
-        return ldap.cn()
-            .map(cn -> Strings.CS.remove(cn, ldap.sn().orElse("")))
-            .map(StringUtils::trimToNull);
     }
 }
