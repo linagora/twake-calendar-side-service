@@ -19,6 +19,7 @@
 package com.linagora.calendar.dav.dto;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.charset.StandardCharsets;
 
@@ -28,6 +29,29 @@ class AddressBookReportXmlResponseTest {
 
     private static AddressBookReportXmlResponse response(String xml) {
         return new AddressBookReportXmlResponse(xml.getBytes(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void extractCompleteContactObjectsShouldRejectFailedResources() {
+        AddressBookReportXmlResponse report = response("""
+            <d:multistatus xmlns:d="DAV:">
+              <d:response>
+                <d:href>/addressbooks/domain-id/domain-members/contact-1.vcf</d:href>
+                <d:status>HTTP/1.1 500 Internal Server Error</d:status>
+              </d:response>
+            </d:multistatus>
+            """);
+
+        assertThatThrownBy(report::extractCompleteContactObjects)
+            .isInstanceOf(IllegalStateException.class)
+            .hasRootCauseMessage("Unsuccessful resource in address book REPORT");
+    }
+
+    @Test
+    void extractCompleteContactObjectsShouldRejectUnexpectedReportBody() {
+        assertThatThrownBy(() -> response("<error/>").extractCompleteContactObjects())
+            .isInstanceOf(IllegalStateException.class)
+            .hasRootCauseMessage("Expected DAV:multistatus REPORT");
     }
 
     @Test

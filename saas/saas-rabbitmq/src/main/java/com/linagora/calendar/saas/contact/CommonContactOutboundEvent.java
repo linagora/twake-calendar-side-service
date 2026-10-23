@@ -39,9 +39,19 @@ public record CommonContactOutboundEvent(Audience audience,
                                          Action action,
                                          URI path,
                                          @JsonIgnore ContactUid uid,
-                                         @JsonInclude(JsonInclude.Include.NON_NULL) JsonNode payload) {
+                                         @JsonInclude(JsonInclude.Include.NON_NULL) JsonNode payload,
+                                         @JsonInclude(JsonInclude.Include.NON_NULL) String syncId) implements CommonContactMessage {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
+    public CommonContactOutboundEvent(Audience audience, Action action, URI path, ContactUid uid, JsonNode payload) {
+        this(audience, action, path, uid, payload, null);
+    }
+
+    public CommonContactOutboundEvent withSyncId(String syncId) {
+        return new CommonContactOutboundEvent(audience, action, path, uid, payload, syncId);
+    }
+
+    @Override
     public byte[] serialize() throws JsonProcessingException {
         return OBJECT_MAPPER.writeValueAsBytes(this);
     }
