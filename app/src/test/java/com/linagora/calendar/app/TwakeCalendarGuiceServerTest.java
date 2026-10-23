@@ -200,6 +200,35 @@ class TwakeCalendarGuiceServerTest  {
     }
 
     @Test
+    void webAdminDomainCreationShouldBeIdempotent() {
+        given()
+        .when()
+            .put("/domains/linagora.com")
+        .then()
+            .statusCode(204);
+
+        String body = given()
+        .when()
+            .get("/domains")
+        .then()
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(body).isEqualTo("""
+            ["linagora.com"]""");
+    }
+
+    @Test
+    void webAdminDomainCreationShouldBeIdempotentRegardlessOfCase() {
+        given()
+        .when()
+            .put("/domains/LINAGORA.COM")
+        .then()
+            .statusCode(204);
+    }
+
+    @Test
     void shouldExposeWebAdminUsers() {
         String body = given()
         .when()

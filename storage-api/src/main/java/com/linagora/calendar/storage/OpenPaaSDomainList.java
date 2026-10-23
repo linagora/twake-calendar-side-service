@@ -24,6 +24,7 @@ import jakarta.inject.Inject;
 
 import org.apache.james.core.Domain;
 import org.apache.james.domainlist.api.DomainList;
+import org.apache.james.domainlist.api.DomainListException;
 import org.apache.james.lifecycle.api.Startable;
 import org.reactivestreams.Publisher;
 import org.slf4j.Logger;
@@ -57,8 +58,12 @@ public class OpenPaaSDomainList implements DomainList, Startable {
             .hasElement();
     }
 
-    public void addDomain(Domain domain) {
-        domainDAO.add(domain).block();
+    public void addDomain(Domain domain) throws DomainListException {
+        try {
+            domainDAO.add(domain).block();
+        } catch (IllegalStateException e) {
+            throw new DomainListException(domain.name() + " already exists", e);
+        }
     }
 
     public void addDomainLenient(Domain domain) {
