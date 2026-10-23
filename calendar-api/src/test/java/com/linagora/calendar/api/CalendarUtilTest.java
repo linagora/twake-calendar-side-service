@@ -19,10 +19,18 @@
 package com.linagora.calendar.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+
+import java.time.Instant;
+import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
 import net.fortuna.ical4j.model.Calendar;
+import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.property.immutable.ImmutableMethod;
 
 class CalendarUtilTest {
@@ -39,6 +47,82 @@ class CalendarUtilTest {
         END:VEVENT
         END:VCALENDAR
         """;
+
+    private static final String ICS_WITH_TIMEZONE_TEMPLATE = """
+        BEGIN:VCALENDAR
+        VERSION:2.0
+        PRODID:-//Sabre//Sabre VObject 5.0.0//EN
+        CALSCALE:GREGORIAN
+        BEGIN:VTIMEZONE
+        TZID:%s
+        BEGIN:DAYLIGHT
+        TZOFFSETFROM:+0100
+        TZOFFSETTO:+0200
+        TZNAME:CEST
+        DTSTART:19700329T020000
+        RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU
+        END:DAYLIGHT
+        BEGIN:STANDARD
+        TZOFFSETFROM:+0200
+        TZOFFSETTO:+0100
+        TZNAME:CET
+        DTSTART:19701025T030000
+        RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU
+        END:STANDARD
+        END:VTIMEZONE
+        BEGIN:VEVENT
+        UID:00000000-0000-0000-0000-000000000001
+        DTSTAMP:20261023T113502Z
+        DTSTART;TZID=%s:20261026T114500
+        DTEND;TZID=%s:20261026T123000
+        SUMMARY:Test
+        END:VEVENT
+        END:VCALENDAR
+        """;
+
+    private static String icsWithTimezone(String tzId) {
+        return ICS_WITH_TIMEZONE_TEMPLATE.formatted(tzId, tzId, tzId);
+    }
+
+    private static Instant start(Calendar calendar) {
+        VEvent vEvent = (VEvent) calendar.getComponent(Component.VEVENT).orElseThrow();
+        return ((ZonedDateTime) vEvent.getDateTimeStart().getDate()).toInstant();
+    }
+
+    @Test
+    void parseIcsShouldNotExhaustTimezoneIdPool() {
+        // ical4j allocates one id per registered VTIMEZONE out of a pool of 1500, released only once
+        // the registry is garbage collected. Parsed calendars reference their registry, so retaining them pins those ids.
+        List<Calendar> retainedCalendars = new ArrayList<>();
+
+        assertThatCode(() -> {
+            for (int i = 0; i < 2000; i++) {
+                retainedCalendars.add(CalendarUtil.parseIcs(icsWithTimezone("Europe/Paris")));
+            }
+        }).doesNotThrowAnyException();
+        assertThat(retainedCalendars).hasSize(2000);
+    }
+
+    @Test
+    void parseIcsShouldResolveKnownTimezone() {
+        Calendar calendar = CalendarUtil.parseIcs(icsWithTimezone("Europe/Paris"));
+
+        assertThat(start(calendar)).isEqualTo(Instant.parse("2026-10-26T10:45:00Z"));
+    }
+
+    @Test
+    void parseIcsShouldResolveWindowsTimezoneAlias() {
+        Calendar calendar = CalendarUtil.parseIcs(icsWithTimezone("Romance Standard Time"));
+
+        assertThat(start(calendar)).isEqualTo(Instant.parse("2026-10-26T10:45:00Z"));
+    }
+
+    @Test
+    void parseIcsShouldResolveCustomTimezoneFromItsDefinition() {
+        Calendar calendar = CalendarUtil.parseIcs(icsWithTimezone("Custom Linagora Time"));
+
+        assertThat(start(calendar)).isEqualTo(Instant.parse("2026-10-26T10:45:00Z"));
+    }
 
     @Test
     void withMethodShouldAddMethodWhenMissing() {

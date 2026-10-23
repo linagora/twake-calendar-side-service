@@ -31,7 +31,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.DateTimeException;
 import java.time.ZoneId;
+import java.time.zone.ZoneRules;
 import java.util.List;
+import java.util.Map;
 
 import net.fortuna.ical4j.data.CalendarBuilder;
 import net.fortuna.ical4j.data.CalendarParserFactory;
@@ -40,6 +42,7 @@ import net.fortuna.ical4j.data.ParserException;
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.Property;
+import net.fortuna.ical4j.model.TimeZone;
 import net.fortuna.ical4j.model.TimeZoneRegistry;
 import net.fortuna.ical4j.model.TimeZoneRegistryImpl;
 import net.fortuna.ical4j.model.component.VEvent;
@@ -49,13 +52,62 @@ import net.fortuna.ical4j.util.MapTimeZoneCache;
 
 public class CalendarUtil {
 
-    public static class CustomizedTimeZoneRegistry extends TimeZoneRegistryImpl {
+    /**
+     * ical4j allocates a global zone id to each registered VTIMEZONE, out of a JVM wide pool of 1500 ids
+     * (`net.fortuna.ical4j.timezone.id.pool.size`) that are only given back once the registry is garbage collected.
+     * Parsed calendars reference their registry, thus a burst of parsing between two garbage collections empties the
+     * pool and any subsequent VTIMEZONE fails to parse.
+     *
+     * <p>To avoid this, VTIMEZONE whose TZID is known by the JVM, either directly or through the ical4j aliases (Windows
+     * zone names...), are not registered: they resolve to the JVM zone. Only custom TZIDs are registered and resolved
+     * from their own definition.
+     */
+    public static class CustomizedTimeZoneRegistry implements TimeZoneRegistry {
+        private final TimeZoneRegistryImpl delegate = new TimeZoneRegistryImpl();
+
+        @Override
+        public void register(TimeZone timezone) {
+            if (!isGloballyKnown(timezone.getID())) {
+                delegate.register(timezone);
+            }
+        }
+
+        @Override
+        public void register(TimeZone timezone, boolean update) {
+            if (!isGloballyKnown(timezone.getID())) {
+                delegate.register(timezone, update);
+            }
+        }
+
+        private boolean isGloballyKnown(String tzId) {
+            try {
+                TimeZoneRegistry.getGlobalZoneId(tzId);
+                return true;
+            } catch (DateTimeException e) {
+                return false;
+            }
+        }
+
+        @Override
+        public void clear() {
+            delegate.clear();
+        }
+
+        @Override
+        public TimeZone getTimeZone(String id) {
+            return delegate.getTimeZone(id);
+        }
+
+        @Override
+        public Map<String, ZoneRules> getZoneRules() {
+            return delegate.getZoneRules();
+        }
 
         @Override
         public ZoneId getZoneId(String tzId) {
             try {
-                // Attempt to get the zone ID from the parent class first
-                return super.getZoneId(tzId);
+                // Attempt to get the zone ID from the registered timezones first
+                return delegate.getZoneId(tzId);
             } catch (DateTimeException e) {
                 // If it fails, we try to get the global zone ID
                 if (e.getMessage().contains("Unknown timezone identifier")) {
@@ -63,6 +115,11 @@ public class CalendarUtil {
                 }
                 throw e;
             }
+        }
+
+        @Override
+        public String getTzId(String zoneId) {
+            return delegate.getTzId(zoneId);
         }
     }
 
