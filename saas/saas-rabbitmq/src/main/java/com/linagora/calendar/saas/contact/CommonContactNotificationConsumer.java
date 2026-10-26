@@ -47,7 +47,8 @@ public class CommonContactNotificationConsumer implements Closeable, Startable {
     private enum ContactNotificationExchange {
         CREATE("sabre:contact:created", Action.ADD),
         UPDATE("sabre:contact:updated", Action.UPDATE),
-        DELETE("sabre:contact:deleted", Action.DELETE);
+        DELETE("sabre:contact:deleted", Action.DELETE),
+        ADDRESS_BOOK_DELETE("sabre:addressbook:deleted", Action.DELETE);
 
         private final String exchange;
         private final Action action;
@@ -108,12 +109,19 @@ public class CommonContactNotificationConsumer implements Closeable, Startable {
     }
 
     private Mono<Void> handleDelivery(AcknowledgableDelivery delivery) {
-        Action action = ContactNotificationExchange.from(delivery.getEnvelope().getExchange())
-            .orElseThrow(() -> new IllegalArgumentException("Unsupported contact notification exchange: " + delivery.getEnvelope().getExchange()))
-            .action;
-        return Mono.fromCallable(() -> SabreContactNotificationDTO.deserialize(delivery.getBody()))
-            .flatMap(notificationDTO -> converter.convert(action, notificationDTO))
+        return convertDelivery(delivery)
             .flatMap(publisher::publish);
+    }
+
+    private Mono<? extends CommonContactOutboundEvent> convertDelivery(AcknowledgableDelivery delivery) {
+        ContactNotificationExchange exchange = ContactNotificationExchange.from(delivery.getEnvelope().getExchange())
+            .orElseThrow(() -> new IllegalArgumentException("Unsupported contact notification exchange: " + delivery.getEnvelope().getExchange()));
+        return switch (exchange) {
+            case ADDRESS_BOOK_DELETE -> Mono.fromCallable(() -> SabreAddressBookDeletedNotificationDTO.deserialize(delivery.getBody()))
+                .flatMap(converter::convertAddressBookDeletion);
+            case CREATE, UPDATE, DELETE -> Mono.fromCallable(() -> SabreContactNotificationDTO.deserialize(delivery.getBody()))
+                .flatMap(notificationDTO -> converter.convert(exchange.action, notificationDTO));
+        };
     }
 
 }

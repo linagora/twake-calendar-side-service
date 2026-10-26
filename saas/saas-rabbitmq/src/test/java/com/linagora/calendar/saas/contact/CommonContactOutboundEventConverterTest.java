@@ -24,12 +24,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.charset.StandardCharsets;
 
+import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.Action;
-import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.Audience.Domain;
+import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.AddressBookDeletedEvent;
 import com.linagora.calendar.storage.MemoryOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.MemoryOpenPaaSUserDAO;
 import com.linagora.calendar.storage.OpenPaaSDomain;
@@ -47,6 +48,39 @@ class CommonContactOutboundEventConverterTest {
         userDAO = new MemoryOpenPaaSUserDAO();
         domainDAO = new MemoryOpenPaaSDomainDAO();
         testee = new CommonContactEventConverter(userDAO, domainDAO);
+    }
+
+    @Test
+    void shouldConvertAddressBookDeletionWithoutContactData() throws Exception {
+        OpenPaaSUser owner = userDAO.add(Username.of("owner@linagora.com")).block();
+
+        AddressBookDeletedEvent event = testee.convertAddressBookDeletion(
+            new SabreAddressBookDeletedNotificationDTO("addressbooks/principal/custom", "principals/users/" + owner.id().value())).block();
+
+        assertThatJson(new String(event.serialize(), StandardCharsets.UTF_8)).isEqualTo("""
+            {
+              "audience": { "user": "owner@linagora.com" },
+              "action": "DELETE",
+              "path": "addressbooks/principal/custom"
+            }
+            """);
+    }
+
+    @Test
+    void shouldResolveDomainAudienceForAddressBookDeletion() {
+        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
+
+        AddressBookDeletedEvent event = testee.convertAddressBookDeletion(
+            new SabreAddressBookDeletedNotificationDTO("addressbooks/principal/custom", "principals/domains/" + domain.id().value())).block();
+
+        assertThat(event.audience()).isEqualTo(new CommonContactOutboundEvent.Audience.Domain(domain.domain()));
+    }
+
+    @Test
+    void shouldThrowWhenDeletedAddressBookOwnerCannotBeResolved() {
+        assertThatThrownBy(() -> testee.convertAddressBookDeletion(
+            new SabreAddressBookDeletedNotificationDTO("addressbooks/principal/custom", "principals/users/unknown")).block())
+            .isInstanceOf(CommonContactEventConversionException.class);
     }
 
     @Test
@@ -100,7 +134,7 @@ class CommonContactOutboundEventConverterTest {
 
     @Test
     void shouldResolveDomainAudienceFromDomainOwner() {
-        OpenPaaSDomain domain = domainDAO.add(org.apache.james.core.Domain.of("linagora.com")).block();
+        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
 
         CommonContactOutboundEvent event = testee.convert(Action.ADD,
             new SabreContactNotificationDTO(CONTACT_PATH, "principals/domains/" + domain.id().value(), """
@@ -111,7 +145,7 @@ class CommonContactOutboundEventConverterTest {
                 END:VCARD
                 """)).block();
 
-        assertThat(event.audience()).isEqualTo(new Domain(domain.domain()));
+        assertThat(event.audience()).isEqualTo(new CommonContactOutboundEvent.Audience.Domain(domain.domain()));
     }
 
     @Test

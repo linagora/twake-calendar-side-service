@@ -12,7 +12,7 @@ RabbitMQ connection properties are configured in `rabbitmq.properties`.
 
 ## Outbound: Calendar -> Twake Workplace
 
-### Source: Sabre contact notifications
+### Source: Sabre contact and address book notifications
 
 - Broker: standard Calendar/DAV RabbitMQ connection (`uri`).
 - Exchange type: `fanout`, durable.
@@ -21,7 +21,8 @@ RabbitMQ connection properties are configured in `rabbitmq.properties`.
   - `sabre:contact:created`
   - `sabre:contact:updated`
   - `sabre:contact:deleted`
-- Shared queue for the three exchanges: `tcalendar:common-contact`.
+  - `sabre:addressbook:deleted`
+- Shared queue for the four exchanges: `tcalendar:common-contact`.
 - Dead-letter queue: `tcalendar:common-contact:dead-letter`.
 
 ### Destination: Common Contacts exchange
@@ -59,6 +60,20 @@ Sample payload:
   - `path`: the contact resource path supplied by Sabre.
   - `uid`: the vCard UID.
   - `payload`: the JSContact `Card` (RFC 9553).
+
+Deleting an address book emits one `DELETE` event for the whole address book. Its `audience` is resolved
+from the Sabre `owner`, and its `path` identifies the address book. The event omits `uid` and `payload`:
+
+```json
+{
+  "audience": { "user": "owner@example.com" },
+  "action": "DELETE",
+  "path": "addressbooks/64d2a99f1d4ddc4e88e4e001/custom"
+}
+```
+
+Applications must remove every contact under that address book path. Sabre does not emit individual
+contact deletion notifications when deleting the address book.
 
 ## Inbound: Twake Workplace -> Calendar
 
