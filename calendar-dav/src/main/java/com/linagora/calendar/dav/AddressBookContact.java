@@ -20,10 +20,8 @@ package com.linagora.calendar.dav;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -34,7 +32,7 @@ import org.apache.james.core.MailAddress;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableListMultimap;
 import com.linagora.calendar.storage.UserContactResolver.UserContact;
 
 import ezvcard.Ezvcard;
@@ -43,6 +41,7 @@ import ezvcard.VCardVersion;
 import ezvcard.parameter.TelephoneType;
 import ezvcard.property.Email;
 import ezvcard.property.FormattedName;
+import ezvcard.property.RawProperty;
 import ezvcard.property.StructuredName;
 import ezvcard.property.Telephone;
 import ezvcard.property.Uid;
@@ -54,7 +53,7 @@ public record AddressBookContact(Optional<String> uid,
                                  Optional<String> displayName,
                                  Optional<MailAddress> mail,
                                  Optional<String> telephoneNumber,
-                                 ImmutableMap<String, String> extraProperties) {
+                                 ImmutableListMultimap<String, String> extraProperties) {
 
     private static final String EXTENDED_PROPERTY_PREFIX = "X-";
 
@@ -71,7 +70,7 @@ public record AddressBookContact(Optional<String> uid,
         private Optional<String> displayName = Optional.empty();
         private Optional<MailAddress> mail = Optional.empty();
         private Optional<String> telephoneNumber = Optional.empty();
-        private ImmutableMap<String, String> extraProperties = ImmutableMap.of();
+        private ImmutableListMultimap<String, String> extraProperties = ImmutableListMultimap.of();
 
         public Builder uid(String uid) {
             this.uid = Optional.of(uid);
@@ -138,7 +137,7 @@ public record AddressBookContact(Optional<String> uid,
             return this;
         }
 
-        public Builder extraProperties(ImmutableMap<String, String> extraProperties) {
+        public Builder extraProperties(ImmutableListMultimap<String, String> extraProperties) {
             this.extraProperties = extraProperties;
             return this;
         }
@@ -219,13 +218,14 @@ public record AddressBookContact(Optional<String> uid,
             .build();
     }
 
-    private static ImmutableMap<String, String> extraProperties(VCard vcard) {
-        Map<String, String> properties = new LinkedHashMap<>();
-        vcard.getExtendedProperties().stream()
+    // An extended property may occur several times: every value is kept, in the card order.
+    private static ImmutableListMultimap<String, String> extraProperties(VCard vcard) {
+        return vcard.getExtendedProperties().stream()
             .filter(property -> Strings.CI.startsWith(property.getPropertyName(), EXTENDED_PROPERTY_PREFIX))
             .filter(property -> StringUtils.isNotEmpty(property.getValue()))
-            .forEach(property -> properties.putIfAbsent(property.getPropertyName().toUpperCase(Locale.US), property.getValue()));
-        return ImmutableMap.copyOf(properties);
+            .collect(ImmutableListMultimap.toImmutableListMultimap(
+                property -> property.getPropertyName().toUpperCase(Locale.US),
+                RawProperty::getValue));
     }
 
     /**

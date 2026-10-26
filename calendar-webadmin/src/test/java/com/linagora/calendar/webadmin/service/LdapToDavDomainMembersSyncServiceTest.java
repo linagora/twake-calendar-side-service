@@ -56,6 +56,8 @@ import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.ldap.LdapDomainMemberProvider;
 import com.linagora.calendar.storage.ldap.LdapUser;
+import com.linagora.calendar.storage.ldap.LdapUserContactMapper;
+import com.linagora.calendar.storage.ldap.LdapVCardPropertiesConfiguration;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.webadmin.service.DavDomainMemberUpdateApplier.ContactUpdateContext;
 import com.linagora.calendar.webadmin.service.DavDomainMemberUpdateApplier.UpdateResult;
@@ -89,7 +91,8 @@ public class LdapToDavDomainMembersSyncServiceTest {
         cardDavClient = spy(cardDavClientActual);
 
         ldapDomainMemberProvider = mock(LdapDomainMemberProvider.class);
-        testee = new LdapToDavDomainMembersSyncService(ldapDomainMemberProvider, cardDavClient);
+        testee = new LdapToDavDomainMembersSyncService(ldapDomainMemberProvider, cardDavClient,
+            new LdapUserContactMapper(LdapVCardPropertiesConfiguration.EMPTY));
         openPaaSDomain = createNewDomainMemberAddressBook();
     }
 

@@ -66,6 +66,8 @@ import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.ldap.LdapDomainMemberProvider;
 import com.linagora.calendar.storage.ldap.LdapFilter;
 import com.linagora.calendar.storage.ldap.LdapUser;
+import com.linagora.calendar.storage.ldap.LdapUserContactMapper;
+import com.linagora.calendar.storage.ldap.LdapVCardPropertiesConfiguration;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.webadmin.service.AddressBookImportService;
 import com.linagora.calendar.webadmin.service.DomainAddressBookClearService;
@@ -102,7 +104,8 @@ public class DomainAddressBookRoutesTest {
         domain = domainDAO.add(Domain.of("new-domain" + UUID.randomUUID() + ".tld")).block();
         sourceDomain = domainDAO.add(Domain.of("student" + UUID.randomUUID() + ".tld")).block();
 
-        startWebAdminServer(Optional.of(new DomainAddressBookCopyService(cardDavClient, ldapDomainMemberProvider)));
+        startWebAdminServer(Optional.of(new DomainAddressBookCopyService(cardDavClient, ldapDomainMemberProvider,
+            new LdapUserContactMapper(LdapVCardPropertiesConfiguration.EMPTY))));
     }
 
     private void startWebAdminServer(Optional<DomainAddressBookCopyService> addressBookCopyService) {

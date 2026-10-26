@@ -22,7 +22,7 @@ import java.util.Optional;
 
 import org.apache.james.core.Username;
 
-import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableListMultimap;
 import com.linagora.calendar.storage.UserNameResolver.UserNames;
 
 import reactor.core.publisher.Mono;
@@ -36,7 +36,7 @@ public interface UserContactResolver {
                        Optional<String> familyName,
                        Optional<String> displayName,
                        Optional<String> telephoneNumber,
-                       ImmutableMap<String, String> extraProperties) {
+                       ImmutableListMultimap<String, String> extraProperties) {
 
         public static class Builder {
             private Optional<UserNames> names = Optional.empty();
@@ -44,7 +44,7 @@ public interface UserContactResolver {
             private Optional<String> familyName = Optional.empty();
             private Optional<String> displayName = Optional.empty();
             private Optional<String> telephoneNumber = Optional.empty();
-            private ImmutableMap<String, String> extraProperties = ImmutableMap.of();
+            private ImmutableListMultimap<String, String> extraProperties = ImmutableListMultimap.of();
 
             public Builder names(Optional<UserNames> names) {
                 this.names = names;
@@ -71,7 +71,7 @@ public interface UserContactResolver {
                 return this;
             }
 
-            public Builder extraProperties(ImmutableMap<String, String> extraProperties) {
+            public Builder extraProperties(ImmutableListMultimap<String, String> extraProperties) {
                 this.extraProperties = extraProperties;
                 return this;
             }

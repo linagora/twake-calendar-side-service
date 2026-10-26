@@ -64,7 +64,7 @@ public class DefaultLdapDomainMemberProvider implements LdapDomainMemberProvider
                 Filter filter = buildFilter(domain, additionalFilter);
                 SearchResult searchResult = ldapConnectionPool.search(baseDn, SearchScope.SUB, filter);
                 return Flux.fromIterable(searchResult.getSearchEntries())
-                    .flatMap(entry -> Mono.fromCallable(() -> LdapUser.fromLdapEntry(entry, vcardPropertiesConfiguration)));
+                    .flatMap(entry -> Mono.fromCallable(() -> LdapUser.fromLdapEntry(entry, vcardPropertiesConfiguration.ldapAttributes())));
             } catch (LDAPSearchException e) {
                 return Flux.error(e);
             }

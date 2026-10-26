@@ -29,6 +29,7 @@ import org.apache.commons.lang3.Strings;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 
 /**
  * Maps LDAP attributes to the extended vCard properties of the domain member cards,
@@ -58,5 +59,9 @@ public record LdapVCardPropertiesConfiguration(ImmutableMap<String, String> vcar
         Preconditions.checkArgument(Strings.CS.startsWith(vcardProperty, EXTENDED_PROPERTY_PREFIX),
             "Invalid '%s' entry '%s', the vCard property must start with '%s'", LDAP_VCARD_EXTRA_PROPERTIES, entry, EXTENDED_PROPERTY_PREFIX);
         return List.of(parts.getFirst(), vcardProperty);
+    }
+
+    public ImmutableSet<String> ldapAttributes() {
+        return vcardPropertyByLdapAttribute.keySet();
     }
 }
