@@ -27,6 +27,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -59,6 +60,9 @@ import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.saas.contact.CommonContactEventConverter;
 import com.linagora.calendar.saas.contact.CommonContactOutboundEvent;
+import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.Audience;
+import com.linagora.calendar.saas.contact.CommonContactMessage;
+import com.linagora.calendar.saas.contact.CommonContactSyncEvent;
 import com.linagora.calendar.saas.contact.CommonContactPublisher;
 import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.OpenPaaSDomain;
@@ -90,6 +94,7 @@ public class ContactRoutesTest {
     private OpenPaaSUserDAO userDAO;
     private OpenPaaSUser user;
     private List<CommonContactOutboundEvent> publishedEvents;
+    private List<CommonContactMessage> publishedMessages;
 
     @BeforeEach
     void setUp() throws SSLException {
@@ -100,9 +105,14 @@ public class ContactRoutesTest {
         davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
 
         publishedEvents = new CopyOnWriteArrayList<>();
+        publishedMessages = new CopyOnWriteArrayList<>();
         CommonContactPublisher publisher = mock(CommonContactPublisher.class);
         when(publisher.publish(any())).thenAnswer(invocation -> {
-            publishedEvents.add(invocation.getArgument(0));
+            CommonContactMessage message = invocation.getArgument(0);
+            publishedMessages.add(message);
+            if (message instanceof CommonContactOutboundEvent contact) {
+                publishedEvents.add(contact);
+            }
             return Mono.empty();
         });
 
@@ -130,6 +140,48 @@ public class ContactRoutesTest {
     }
 
     @Test
+    void republishShouldBracketEachAddressBookWithItsOwnSyncId() {
+        String emptyBookId = "empty-sync-book";
+        cardDavClient.createUserAddressBook(user.username(), user.id(), emptyBookId, "Empty sync book").block();
+        String uid = UUID.randomUUID().toString();
+        upsertUserContact(COLLECTED_ADDRESS_BOOK, uid, "Republished contact");
+
+        String taskId = republishTaskId();
+        awaitTask(taskId);
+
+        Audience audience = new Audience.User(user.username());
+        String collectedBookPath = "addressbooks/" + user.id().value() + "/" + COLLECTED_ADDRESS_BOOK;
+        String emptyBookPath = "addressbooks/" + user.id().value() + "/" + emptyBookId;
+        String collectedSyncId = taskId + ":" + collectedBookPath;
+        String emptySyncId = taskId + ":" + emptyBookPath;
+
+        List<CommonContactMessage> collectedBookMessages = publishedMessages.stream()
+            .filter(message -> message.path().toString().equals(collectedBookPath)
+                || message.path().toString().startsWith(collectedBookPath + "/"))
+            .toList();
+
+        assertThat(collectedBookMessages).hasSize(3);
+        assertThat(collectedBookMessages.getFirst())
+            .isEqualTo(CommonContactSyncEvent.start(audience, URI.create(collectedBookPath), collectedSyncId));
+        assertThat(collectedBookMessages.get(1))
+            .isInstanceOfSatisfying(CommonContactOutboundEvent.class, contact ->
+                assertThat(contact.syncId()).isEqualTo(collectedSyncId));
+        assertThat(collectedBookMessages.getLast())
+            .isEqualTo(CommonContactSyncEvent.end(audience, URI.create(collectedBookPath), collectedSyncId, true, 1));
+
+        List<String> startedSyncIds = publishedMessages.stream()
+            .filter(CommonContactSyncEvent.class::isInstance)
+            .map(CommonContactSyncEvent.class::cast)
+            .filter(event -> event.action() == CommonContactSyncEvent.Action.SYNC_START)
+            .map(CommonContactSyncEvent::syncId)
+            .toList();
+
+        assertThat(startedSyncIds)
+            .contains(collectedSyncId, emptySyncId)
+            .doesNotHaveDuplicates();
+    }
+
+    @Test
     void republishShouldPublishUserContacts() {
         String uid = UUID.randomUUID().toString();
         upsertUserContact(COLLECTED_ADDRESS_BOOK, uid, "John Doe");
@@ -141,6 +193,7 @@ public class ContactRoutesTest {
                 {
                   "audience": { "user": "%s" },
                   "action": "ADD",
+                  "syncId": "${json-unit.any-string}",
                   "path": "addressbooks/%s/%s/%s.vcf",
                   "uid": "%s",
                   "payload": {
@@ -173,6 +226,7 @@ public class ContactRoutesTest {
                 {
                   "audience": { "user": "%s" },
                   "action": "ADD",
+                  "syncId": "${json-unit.any-string}",
                   "path": "addressbooks/%s/%s/%s.vcf",
                   "uid": "%s",
                   "payload": {
@@ -193,6 +247,7 @@ public class ContactRoutesTest {
                 {
                   "audience": { "user": "%s" },
                   "action": "ADD",
+                  "syncId": "${json-unit.any-string}",
                   "path": "addressbooks/%s/%s/%s.vcf",
                   "uid": "%s",
                   "payload": {
@@ -223,6 +278,7 @@ public class ContactRoutesTest {
                 {
                   "audience": { "user": "%s" },
                   "action": "ADD",
+                  "syncId": "${json-unit.any-string}",
                   "path": "addressbooks/%s/%s/%s.vcf",
                   "uid": "%s",
                   "payload": {
@@ -270,6 +326,7 @@ public class ContactRoutesTest {
                 {
                   "audience": { "domain": "%s" },
                   "action": "ADD",
+                  "syncId": "${json-unit.any-string}",
                   "path": "addressbooks/%s/%s/%s.vcf",
                   "uid": "%s",
                   "payload": {
@@ -301,6 +358,7 @@ public class ContactRoutesTest {
                 {
                   "audience": { "domain": "%s" },
                   "action": "ADD",
+                  "syncId": "${json-unit.any-string}",
                   "path": "addressbooks/%s/%s/%s.vcf",
                   "uid": "%s",
                   "payload": {
@@ -357,6 +415,7 @@ public class ContactRoutesTest {
                 {
                   "audience": { "user": "%s" },
                   "action": "ADD",
+                  "syncId": "${json-unit.any-string}",
                   "path": "addressbooks/%s/%s/%s.vcf",
                   "uid": "%s",
                   "payload": {
@@ -428,6 +487,7 @@ public class ContactRoutesTest {
                 {
                   "audience": { "user": "%s" },
                   "action": "ADD",
+                  "syncId": "${json-unit.any-string}",
                   "path": "addressbooks/%s/%s/%s.vcf",
                   "uid": "%s",
                   "payload": {
@@ -458,6 +518,7 @@ public class ContactRoutesTest {
                 {
                   "audience": { "domain": "%s" },
                   "action": "ADD",
+                  "syncId": "${json-unit.any-string}",
                   "path": "addressbooks/%s/%s/%s.vcf",
                   "uid": "%s",
                   "payload": {
@@ -502,6 +563,7 @@ public class ContactRoutesTest {
                 {
                   "audience": { "domain": "%s" },
                   "action": "ADD",
+                  "syncId": "${json-unit.any-string}",
                   "path": "addressbooks/%s/%s/%s.vcf",
                   "uid": "%s",
                   "payload": {
@@ -545,6 +607,7 @@ public class ContactRoutesTest {
                 {
                   "audience": { "user": "%s" },
                   "action": "ADD",
+                  "syncId": "${json-unit.any-string}",
                   "path": "addressbooks/%s/%s/%s.vcf",
                   "uid": "%s",
                   "payload": {
@@ -653,6 +716,7 @@ public class ContactRoutesTest {
                 {
                   "audience": { "user": "%s" },
                   "action": "ADD",
+                  "syncId": "${json-unit.any-string}",
                   "path": "addressbooks/%s/%s/%s.vcf",
                   "uid": "%s",
                   "payload": {
@@ -696,6 +760,7 @@ public class ContactRoutesTest {
                 {
                   "audience": { "domain": "%s" },
                   "action": "ADD",
+                  "syncId": "${json-unit.any-string}",
                   "path": "addressbooks/%s/%s/%s.vcf",
                   "uid": "%s",
                   "payload": {

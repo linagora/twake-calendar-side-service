@@ -529,7 +529,7 @@ class CommonContactNotificationConsumerTest {
         CommonContactPublisher failingPublisher = new CommonContactPublisher(channelPool,
             new CommonContactsConfiguration(COMMON_CONTACT_EXCHANGE, CommonContactsConfiguration.DEFAULT_COLLECTED_CONTACTS_EXCHANGE)) {
             @Override
-            public Mono<Void> publish(CommonContactOutboundEvent event) {
+            public Mono<Void> publish(CommonContactMessage event) {
                 return Mono.error(new RuntimeException("Publication failure"));
             }
         };
