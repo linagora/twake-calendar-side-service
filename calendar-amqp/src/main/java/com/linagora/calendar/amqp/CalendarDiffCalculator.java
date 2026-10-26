@@ -152,9 +152,38 @@ public class CalendarDiffCalculator {
         VEvent previousMasterEvent = previousEventsByRecurrenceId.get(MASTER_RECURRENCE_ID);
         Map<String, VEvent> currentEventsByRecurrenceId = indexByRecurrenceId(newCalendar);
 
-        return currentEventsByRecurrenceId.entrySet().stream()
+        return Stream.concat(currentEventsByRecurrenceId.entrySet().stream(),
+                revertedOccurrences(previousEventsByRecurrenceId, currentEventsByRecurrenceId))
             .flatMap(entry -> computeDiffForEvent(recipient, previousEventsByRecurrenceId, previousMasterEvent, entry).stream())
             .toList();
+    }
+
+    /**
+     * Overrides dropped from a series whose RRULE is unchanged: their occurrences go back to the master values.
+     */
+    private static Stream<Map.Entry<String, VEvent>> revertedOccurrences(Map<String, VEvent> previousEventsByRecurrenceId,
+                                                                        Map<String, VEvent> currentEventsByRecurrenceId) {
+        VEvent previousMasterEvent = previousEventsByRecurrenceId.get(MASTER_RECURRENCE_ID);
+        VEvent currentMasterEvent = currentEventsByRecurrenceId.get(MASTER_RECURRENCE_ID);
+        if (previousMasterEvent == null || currentMasterEvent == null || recurrenceRuleChanged(previousMasterEvent, currentMasterEvent)) {
+            return Stream.empty();
+        }
+
+        return previousEventsByRecurrenceId.entrySet().stream()
+            .filter(entry -> !currentEventsByRecurrenceId.containsKey(entry.getKey()))
+            .flatMap(entry -> revertedOccurrence(currentMasterEvent, entry.getValue()).stream()
+                .map(occurrence -> Map.entry(entry.getKey(), occurrence)));
+    }
+
+    /**
+     * Empty when the occurrence is now excluded from the series: its cancellation is notified instead.
+     */
+    private static Optional<VEvent> revertedOccurrence(VEvent currentMasterEvent, VEvent previousOverride) {
+        try {
+            return Optional.of(occurrenceFromMaster(currentMasterEvent, previousOverride));
+        } catch (IllegalArgumentException exception) {
+            return Optional.empty();
+        }
     }
 
     private static Optional<EventDiff> computeDiffForEvent(String recipient,
@@ -189,7 +218,7 @@ public class CalendarDiffCalculator {
      * A master whose RRULE appeared, vanished or changed describes another series: the attendee is invited to it
      * again, as the update email does not render recurrence changes.
      */
-    private static boolean recurrenceRuleChanged(VEvent previousEvent, VEvent currentEvent) {
+    static boolean recurrenceRuleChanged(VEvent previousEvent, VEvent currentEvent) {
         return previousEvent != null
             && currentEvent.getRecurrenceId() == null
             && !recurrenceRule(previousEvent).equals(recurrenceRule(currentEvent));
@@ -215,12 +244,15 @@ public class CalendarDiffCalculator {
         }
 
         try {
-            return Optional.of(EventParseUtils.createInstanceVEvent(previousMasterEvent,
-                currentOccurrence.getRecurrenceId().getDate()));
+            return Optional.of(occurrenceFromMaster(previousMasterEvent, currentOccurrence));
         } catch (IllegalArgumentException exception) {
             LOGGER.warn("Failed to resolve recurring override", exception);
             return Optional.empty();
         }
+    }
+
+    private static VEvent occurrenceFromMaster(VEvent masterEvent, VEvent occurrence) {
+        return EventParseUtils.createInstanceVEvent(masterEvent, occurrence.getRecurrenceId().getDate());
     }
 
     private static boolean organizerAcceptedTransition(VEvent previousEvent, VEvent currentEvent) {

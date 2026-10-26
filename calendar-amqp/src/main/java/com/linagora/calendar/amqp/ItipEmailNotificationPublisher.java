@@ -35,6 +35,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -62,6 +64,7 @@ import reactor.rabbitmq.OutboundMessage;
 import reactor.rabbitmq.Sender;
 
 class ItipEmailNotificationPublisher {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ItipEmailNotificationPublisher.class);
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module());
     private static final boolean MARK_AS_NEW_EVENT = true;
@@ -196,7 +199,10 @@ class ItipEmailNotificationPublisher {
                                                                       URI eventPath,
                                                                       Calendar newCalendar,
                                                                       Calendar oldCalendar) {
-            Map<Temporal, Calendar> cancelCalendarsByRecurrence = computeCancelledCalendars(newCalendar, oldCalendar);
+            Optional<ExDateChanges> exDateChanges = computeExDateChanges(newCalendar, oldCalendar);
+            Map<Temporal, Calendar> cancelCalendarsByRecurrence = exDateChanges
+                .map(changes -> computeCancelledCalendars(changes, newCalendar))
+                .orElseGet(Map::of);
 
             List<NotificationEmailDTO> requestNotifications = CalendarDiffCalculator.calculate(localDelivery.strippedRecipient(), newCalendar, oldCalendar)
                 .stream()
@@ -213,7 +219,17 @@ class ItipEmailNotificationPublisher {
                     .build())
                 .toList();
 
-            return Stream.concat(cancelNotifications.stream(), requestNotifications.stream())
+            List<NotificationEmailDTO> restoredNotifications = exDateChanges.stream()
+                .flatMap(changes -> computeRestoredCalendars(changes, newCalendar))
+                .map(restoredCalendar -> NotificationEmailDTO.builder(localDelivery)
+                    .withEventPath(eventPath)
+                    .withEvent(restoredCalendar.toString())
+                    .isNewEvent(MARK_AS_NEW_EVENT)
+                    .build())
+                .toList();
+
+            return Stream.of(cancelNotifications, requestNotifications, restoredNotifications)
+                .flatMap(List::stream)
                 .toList();
         }
 
@@ -265,38 +281,79 @@ class ItipEmailNotificationPublisher {
             return payloadBuilder.build();
         }
 
-        /**
-         * Without a recurring master on both sides (e.g. a single event turned into a recurring one), there are no
-         * previously excluded occurrences to compare with: nothing to cancel.
-         */
-        private Map<Temporal, Calendar> computeCancelledCalendars(Calendar newCalendar, Calendar oldCalendar) {
-            return EventParseUtils.findMasterRecurrenceEvent(oldCalendar)
-                .flatMap(previousMaster -> EventParseUtils.findMasterRecurrenceEvent(newCalendar)
-                    .map(currentMaster -> computeCancelledCalendars(previousMaster, currentMaster, newCalendar)))
-                .orElseGet(Map::of);
+        private record ExDateChanges(VEvent previousMaster, VEvent currentMaster,
+                                     Set<Temporal> addedExDates, Set<Temporal> removedExDates) {
         }
 
-        private Map<Temporal, Calendar> computeCancelledCalendars(VEvent previousMaster, VEvent currentMaster, Calendar newCalendar) {
+        /**
+         * EXDATE changes are only meaningful within the same series. Without a recurring master on both sides (e.g. a
+         * single event turned into a recurring one) or when the RRULE changed, the attendee is invited to the whole
+         * series again, EXDATEs included: there is no occurrence to cancel or restore.
+         */
+        private Optional<ExDateChanges> computeExDateChanges(Calendar newCalendar, Calendar oldCalendar) {
+            return EventParseUtils.findMasterRecurrenceEvent(oldCalendar)
+                .flatMap(previousMaster -> EventParseUtils.findMasterRecurrenceEvent(newCalendar)
+                    .filter(currentMaster -> !CalendarDiffCalculator.recurrenceRuleChanged(previousMaster, currentMaster))
+                    .map(currentMaster -> computeExDateChanges(previousMaster, currentMaster, overriddenRecurrences(newCalendar))));
+        }
+
+        private ExDateChanges computeExDateChanges(VEvent previousMaster, VEvent currentMaster, Set<Temporal> overriddenRecurrences) {
             Set<Temporal> previousExDates = indexExDates(previousMaster);
             Set<Temporal> currentExDates = indexExDates(currentMaster);
 
-            return Sets.difference(currentExDates, previousExDates)
+            return new ExDateChanges(previousMaster, currentMaster,
+                Sets.difference(currentExDates, previousExDates),
+                Sets.difference(Sets.difference(previousExDates, currentExDates), overriddenRecurrences));
+        }
+
+        private Set<Temporal> overriddenRecurrences(Calendar calendar) {
+            return calendar.getComponents(Component.VEVENT).stream()
+                .map(VEvent.class::cast)
+                .flatMap(vevent -> recurrenceKey(vevent).stream())
+                .collect(Collectors.toSet());
+        }
+
+        private Map<Temporal, Calendar> computeCancelledCalendars(ExDateChanges changes, Calendar newCalendar) {
+            return changes.addedExDates()
                 .stream()
+                .flatMap(temporal -> buildCancelCalendar(temporal, changes.previousMaster(), newCalendar)
+                    .map(calendar -> Map.entry(temporal, calendar))
+                    .stream())
                 .collect(LinkedHashMap::new,
-                    (map, temporal) ->
-                        map.put(temporal, buildCancelCalendar(temporal, previousMaster, newCalendar)),
+                    (map, entry) -> map.put(entry.getKey(), entry.getValue()),
                     Map::putAll);
         }
 
-        private Calendar buildCancelCalendar(Temporal temporal, VEvent previousMaster, Calendar templateCalendar) {
-            VEvent cancelledEvent = createInstanceVEvent(previousMaster, temporal);
-            cancelledEvent.removeAll(Property.STATUS);
-            cancelledEvent.add(new Status(Status.VALUE_CANCELLED));
+        private Optional<Calendar> buildCancelCalendar(Temporal temporal, VEvent previousMaster, Calendar templateCalendar) {
+            return occurrence(previousMaster, temporal)
+                .map(cancelledEvent -> {
+                    cancelledEvent.removeAll(Property.STATUS);
+                    cancelledEvent.add(new Status(Status.VALUE_CANCELLED));
 
-            Calendar calendar = CalendarUtil.withSingleVEvent(templateCalendar, cancelledEvent);
-            calendar.removeAll(Property.METHOD);
-            calendar.add(new Method(Method.VALUE_CANCEL));
-            return calendar;
+                    Calendar calendar = CalendarUtil.withSingleVEvent(templateCalendar, cancelledEvent);
+                    calendar.removeAll(Property.METHOD);
+                    calendar.add(new Method(Method.VALUE_CANCEL));
+                    return calendar;
+                });
+        }
+
+        /**
+         * Occurrences no longer excluded (and not overridden) are back in the series: the attendee is invited to them.
+         */
+        private Stream<Calendar> computeRestoredCalendars(ExDateChanges changes, Calendar newCalendar) {
+            return changes.removedExDates()
+                .stream()
+                .flatMap(temporal -> occurrence(changes.currentMaster(), temporal).stream())
+                .map(restoredEvent -> CalendarUtil.withSingleVEvent(newCalendar, restoredEvent));
+        }
+
+        private Optional<VEvent> occurrence(VEvent master, Temporal recurrenceId) {
+            try {
+                return Optional.of(createInstanceVEvent(master, recurrenceId));
+            } catch (IllegalArgumentException exception) {
+                LOGGER.warn("Skipping notification for occurrence {} not part of the series", recurrenceId, exception);
+                return Optional.empty();
+            }
         }
 
         private Set<Temporal> indexExDates(VEvent masterEvent) {
