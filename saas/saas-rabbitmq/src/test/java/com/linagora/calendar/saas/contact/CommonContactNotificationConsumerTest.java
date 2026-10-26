@@ -45,6 +45,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -70,6 +72,7 @@ import reactor.core.publisher.Mono;
 class CommonContactNotificationConsumerTest {
     private static final String COMMON_CONTACT_EXCHANGE = "twake:contacts:common";
     private static final String CONTACT_CREATED_EXCHANGE = "sabre:contact:created";
+    private static final String ADDRESS_BOOK_DELETED_EXCHANGE = "sabre:addressbook:deleted";
     private static final String COMMON_CONTACT_DEAD_LETTER_QUEUE = "tcalendar:common-contact:dead-letter";
     private static final String ADDRESS_BOOK = "collected";
     private static final String DOMAIN_ADDRESS_BOOK = "dab";
@@ -156,6 +159,88 @@ class CommonContactNotificationConsumerTest {
     void tearDown() throws Exception {
         consumer.close();
         channel.queueDelete(queueName);
+    }
+
+    @Test
+    void shouldPublishAddressBookDeletion() {
+        String addressBookId = UUID.randomUUID().toString();
+        AddressBookURL addressBookURL = new AddressBookURL(user.id(), addressBookId);
+        cardDavClient.createUserAddressBook(user.username(), user.id(), addressBookId, "Custom address book").block();
+        for (int i = 0; i < 2; i++) {
+            String uid = UUID.randomUUID().toString();
+            cardDavClient.upsertContact(user.username(), addressBookURL, uid, """
+                BEGIN:VCARD
+                VERSION:4.0
+                UID:{uid}
+                FN:Contact in deleted address book
+                END:VCARD
+                """.replace("{uid}", uid).getBytes(StandardCharsets.UTF_8)).block();
+        }
+        String addressBookPath = "addressbooks/" + user.id().value() + "/" + addressBookId;
+        AWAIT_AT_MOST.untilAsserted(() -> assertThat(commonContactEvents)
+            .filteredOn(event -> event.path("action").asText().equals("ADD")
+                && event.path("path").asText().startsWith(addressBookPath + "/"))
+            .hasSize(2));
+
+        cardDavClient.deleteUserAddressBook(user.username(), addressBookURL).block();
+
+        AWAIT_AT_MOST.untilAsserted(() -> assertThat(commonContactEvents)
+            .filteredOn(event -> event.path("action").asText().equals("DELETE")
+                && event.path("path").asText().equals(addressBookPath))
+            .singleElement()
+            .satisfies(event -> assertThatJson(event.toString()).isEqualTo("""
+                {
+                  "audience": { "user": "{user}" },
+                  "action": "DELETE",
+                  "path": "{path}"
+                }
+                """.replace("{user}", user.username().asString())
+                .replace("{path}", addressBookPath))));
+        AWAIT_AT_MOST.during(Duration.ofSeconds(1)).untilAsserted(() -> assertThat(commonContactEvents)
+            .filteredOn(event -> event.path("action").asText().equals("DELETE")
+                && (event.path("path").asText().equals(addressBookPath)
+                    || event.path("path").asText().startsWith(addressBookPath + "/")))
+            .hasSize(1));
+    }
+
+    @Test
+    void shouldPublishEmptyAddressBookDeletion() {
+        String addressBookId = UUID.randomUUID().toString();
+        cardDavClient.createUserAddressBook(user.username(), user.id(), addressBookId, "Empty address book").block();
+
+        cardDavClient.deleteUserAddressBook(user.username(), new AddressBookURL(user.id(), addressBookId)).block();
+
+        AWAIT_AT_MOST.untilAsserted(() -> assertThat(commonContactEvents)
+            .filteredOn(event -> event.path("action").asText().equals("DELETE")
+                && event.path("path").asText().equals("addressbooks/" + user.id().value() + "/" + addressBookId))
+            .singleElement()
+            .satisfies(event -> assertThatJson(event.toString()).isEqualTo("""
+                {
+                  "audience": { "user": "{user}" },
+                  "action": "DELETE",
+                  "path": "addressbooks/{userId}/{addressBookId}"
+                }
+                """.replace("{user}", user.username().asString())
+                .replace("{userId}", user.id().value())
+                .replace("{addressBookId}", addressBookId))));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "not-json",
+        "{\"path\":\"addressbooks/unknown/custom\"}",
+        "{\"owner\":\"principals/users/unknown\"}",
+        "{\"path\":\"addressbooks/000000000000000000000000/custom\",\"owner\":\"principals/users/000000000000000000000000\"}"
+    })
+    void shouldDeadLetterInvalidAddressBookDeletion(String notification) throws IOException {
+        channel.basicPublish(ADDRESS_BOOK_DELETED_EXCHANGE, "", null, notification.getBytes(StandardCharsets.UTF_8));
+
+        AWAIT_AT_MOST.untilAsserted(() -> {
+            GetResponse deadLetter = channel.basicGet(COMMON_CONTACT_DEAD_LETTER_QUEUE, true);
+            assertThat(deadLetter).isNotNull();
+            assertThat(new String(deadLetter.getBody(), StandardCharsets.UTF_8)).isEqualTo(notification);
+        });
+        assertThat(commonContactEvents).isEmpty();
     }
 
     @Test

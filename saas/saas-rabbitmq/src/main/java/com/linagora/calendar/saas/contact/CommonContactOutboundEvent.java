@@ -31,32 +31,51 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectWriter;
 import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.linagora.calendar.dav.ContactUid;
+import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.AddressBookDeletedEvent;
+import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.ContactChangedEvent;
 
-public record CommonContactOutboundEvent(Audience audience,
-                                         Action action,
-                                         URI path,
-                                         @JsonIgnore ContactUid uid,
-                                         @JsonInclude(JsonInclude.Include.NON_NULL) JsonNode payload) {
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+public sealed interface CommonContactOutboundEvent permits ContactChangedEvent, AddressBookDeletedEvent {
+    ObjectWriter JSON_WRITER = new ObjectMapper().writer();
 
-    public byte[] serialize() throws JsonProcessingException {
-        return OBJECT_MAPPER.writeValueAsBytes(this);
+    Audience audience();
+
+    Action action();
+
+    URI path();
+
+    default byte[] serialize() throws JsonProcessingException {
+        return JSON_WRITER.writeValueAsBytes(this);
     }
 
-    @JsonGetter("uid")
-    public String uidAsString() {
-        return uid.value();
+    record ContactChangedEvent(Audience audience,
+                               Action action,
+                               URI path,
+                               @JsonIgnore ContactUid uid,
+                               @JsonInclude(JsonInclude.Include.NON_NULL) JsonNode payload) implements CommonContactOutboundEvent {
+        @JsonGetter("uid")
+        public String uidAsString() {
+            return uid.value();
+        }
     }
 
-    public enum Action {
+    record AddressBookDeletedEvent(Audience audience, URI path) implements CommonContactOutboundEvent {
+        @Override
+        @JsonGetter("action")
+        public Action action() {
+            return Action.DELETE;
+        }
+    }
+
+    enum Action {
         ADD, UPDATE, DELETE
     }
 
     @JsonSerialize(using = AudienceSerializer.class)
-    public sealed interface Audience permits Audience.User, Audience.Domain, Audience.Unknown {
+    sealed interface Audience permits Audience.User, Audience.Domain, Audience.Unknown {
 
         record User(Username username) implements Audience {
         }
@@ -68,7 +87,7 @@ public record CommonContactOutboundEvent(Audience audience,
         }
     }
 
-    public static class AudienceSerializer extends JsonSerializer<Audience> {
+    class AudienceSerializer extends JsonSerializer<Audience> {
         @Override
         public void serialize(Audience audience, JsonGenerator generator, SerializerProvider serializers) throws IOException {
             generator.writeStartObject();

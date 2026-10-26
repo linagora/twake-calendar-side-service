@@ -58,7 +58,7 @@ import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.saas.contact.CommonContactEventConverter;
-import com.linagora.calendar.saas.contact.CommonContactOutboundEvent;
+import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.ContactChangedEvent;
 import com.linagora.calendar.saas.contact.CommonContactPublisher;
 import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.OpenPaaSDomain;
@@ -89,7 +89,7 @@ public class ContactRoutesTest {
     private MongoDBOpenPaaSDomainDAO domainDAO;
     private OpenPaaSUserDAO userDAO;
     private OpenPaaSUser user;
-    private List<CommonContactOutboundEvent> publishedEvents;
+    private List<ContactChangedEvent> publishedEvents;
 
     @BeforeEach
     void setUp() throws SSLException {
@@ -826,7 +826,7 @@ public class ContactRoutesTest {
     }
 
     private String publishedEvent(String uid) {
-        List<CommonContactOutboundEvent> events = publishedEvents.stream()
+        List<ContactChangedEvent> events = publishedEvents.stream()
             .filter(event -> event.uid().value().equals(uid))
             .toList();
 
