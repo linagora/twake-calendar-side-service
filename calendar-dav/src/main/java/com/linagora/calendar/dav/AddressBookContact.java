@@ -22,6 +22,7 @@ import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -150,8 +151,23 @@ public record AddressBookContact(Optional<String> uid,
                 .extraProperties(userContact.extraProperties());
         }
 
+        // Text values are normalized, blank ones being dropped, so that a contact equals the card it is written to and read back from.
         public AddressBookContact build() {
-            return new AddressBookContact(uid, familyName, givenName, displayName, mail, telephoneNumber, extraProperties);
+            return new AddressBookContact(uid, normalize(familyName), normalize(givenName), normalize(displayName), mail,
+                normalize(telephoneNumber), normalize(extraProperties));
+        }
+
+        private static Optional<String> normalize(Optional<String> value) {
+            return value.map(StringUtils::normalizeSpace)
+                .filter(StringUtils::isNotEmpty);
+        }
+
+        private static ImmutableListMultimap<String, String> normalize(ImmutableListMultimap<String, String> properties) {
+            return properties.entries().stream()
+                .flatMap(property -> normalize(Optional.ofNullable(property.getValue()))
+                    .map(value -> Map.entry(property.getKey(), value))
+                    .stream())
+                .collect(ImmutableListMultimap.toImmutableListMultimap(Map.Entry::getKey, Map.Entry::getValue));
         }
     }
 
@@ -250,11 +266,8 @@ public record AddressBookContact(Optional<String> uid,
         vcard.setUid(new Uid(vcardUid()));
 
         this.displayName()
-            .map(StringUtils::trimToNull)
             .ifPresent(vcard::setFormattedName);
 
-        Optional<String> familyName = this.familyName().map(StringUtils::trimToNull);
-        Optional<String> givenName = this.givenName().map(StringUtils::trimToNull);
         if (familyName.isPresent() || givenName.isPresent()) {
             StructuredName name = new StructuredName();
             familyName.ifPresent(name::setFamily);
@@ -266,7 +279,6 @@ public record AddressBookContact(Optional<String> uid,
             .ifPresent(email -> vcard.addEmail(new Email(email)));
 
         this.telephoneNumber()
-            .map(StringUtils::trimToNull)
             .ifPresent(phone -> {
                 Telephone tel = new Telephone(phone);
                 tel.getTypes().add(TelephoneType.WORK);
@@ -274,8 +286,7 @@ public record AddressBookContact(Optional<String> uid,
             });
 
         this.extraProperties()
-            .forEach((name, value) -> Optional.ofNullable(StringUtils.trimToNull(value))
-                .ifPresent(trimmedValue -> vcard.addExtendedProperty(name, trimmedValue)));
+            .forEach(vcard::addExtendedProperty);
 
         vcard.setVersion(VCardVersion.V4_0);
         return vcard;

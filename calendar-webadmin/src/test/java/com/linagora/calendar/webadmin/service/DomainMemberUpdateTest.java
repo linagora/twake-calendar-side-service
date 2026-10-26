@@ -294,6 +294,44 @@ public class DomainMemberUpdateTest {
     }
 
     @Test
+    void computeShouldDetectNoChangeWhenLdapValuesDifferOnlyBySpaces() {
+        // Given an LDAP member whose values hold extra spaces, and the DAV card previously written from it
+        LdapUser ldap = LdapUser.builder()
+            .uid("uid123")
+            .cn("Ho  F ")
+            .sn(" Ho ")
+            .mail(mailAddress("user10@example.com"))
+            .telephoneNumber(" 123 ")
+            .build();
+        AddressBookContact dav = AddressBookContact.parse(toAddressBookContact(ldap, ldap.uid()).toVcardBytes()).getFirst();
+
+        // When LDAP and DAV are compared
+        DomainMemberUpdate result = compute(List.of(ldap), List.of(dav));
+
+        // Then nothing is to be updated
+        assertThat(result.updated()).isEmpty();
+    }
+
+    @Test
+    void computeShouldDetectNoChangeWhenLdapValuesAreEmpty() {
+        // Given an LDAP member with an empty surname and telephone number, and the DAV card previously written from it
+        LdapUser ldap = LdapUser.builder()
+            .uid("uid123")
+            .cn("Ho F")
+            .sn("")
+            .mail(mailAddress("user11@example.com"))
+            .telephoneNumber("")
+            .build();
+        AddressBookContact dav = AddressBookContact.parse(toAddressBookContact(ldap, ldap.uid()).toVcardBytes()).getFirst();
+
+        // When LDAP and DAV are compared
+        DomainMemberUpdate result = compute(List.of(ldap), List.of(dav));
+
+        // Then nothing is to be updated
+        assertThat(result.updated()).isEmpty();
+    }
+
+    @Test
     void toAddressBookContactShouldCarryExtraProperties() {
         // Given an LDAP member with a workspace
         LdapUser ldap = LdapUser.builder()
