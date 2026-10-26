@@ -265,10 +265,20 @@ class ItipEmailNotificationPublisher {
             return payloadBuilder.build();
         }
 
+        /**
+         * Without a recurring master on both sides (e.g. a single event turned into a recurring one), there are no
+         * previously excluded occurrences to compare with: nothing to cancel.
+         */
         private Map<Temporal, Calendar> computeCancelledCalendars(Calendar newCalendar, Calendar oldCalendar) {
-            VEvent previousMaster = EventParseUtils.getMasterRecurrenceEvent(oldCalendar);
+            return EventParseUtils.findMasterRecurrenceEvent(oldCalendar)
+                .flatMap(previousMaster -> EventParseUtils.findMasterRecurrenceEvent(newCalendar)
+                    .map(currentMaster -> computeCancelledCalendars(previousMaster, currentMaster, newCalendar)))
+                .orElseGet(Map::of);
+        }
+
+        private Map<Temporal, Calendar> computeCancelledCalendars(VEvent previousMaster, VEvent currentMaster, Calendar newCalendar) {
             Set<Temporal> previousExDates = indexExDates(previousMaster);
-            Set<Temporal> currentExDates = indexExDates(EventParseUtils.getMasterRecurrenceEvent(newCalendar));
+            Set<Temporal> currentExDates = indexExDates(currentMaster);
 
             return Sets.difference(currentExDates, previousExDates)
                 .stream()

@@ -706,6 +706,109 @@ class ItipEmailNotificationPublisherTest {
                 .satisfies(cancel -> assertThat(cancel.event()).isEqualToIgnoringNewLines(expectedCancelEvent));
         }
 
+        @Test
+        void singleEventBecomingRecurringShouldInviteAttendeeToTheSeries() {
+            String timezone = """
+                BEGIN:VTIMEZONE
+                TZID:Europe/Moscow
+                BEGIN:STANDARD
+                TZOFFSETFROM:+0300
+                TZOFFSETTO:+0300
+                TZNAME:MSK
+                DTSTART:19700101T000000
+                END:STANDARD
+                END:VTIMEZONE""";
+            String singleOld = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Linagora//Twake-Calendar//EN
+                %s
+                BEGIN:VEVENT
+                UID:recurring-uid@test
+                DTSTART;TZID=Europe/Moscow:20261026T123000
+                DTEND;TZID=Europe/Moscow:20261026T130000
+                SEQUENCE:1
+                SUMMARY:Weekly sync
+                ORGANIZER:mailto:bob@example.com
+                ATTENDEE;PARTSTAT=ACCEPTED;ROLE=CHAIR:mailto:bob@example.com
+                ATTENDEE;PARTSTAT=NEEDS-ACTION;SCHEDULE-STATUS=1.0:mailto:alice@example.com
+                END:VEVENT
+                END:VCALENDAR
+                """.formatted(timezone);
+            String recurringNew = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Sabre//Sabre VObject 5.0.0//EN
+                METHOD:REQUEST
+                %s
+                BEGIN:VEVENT
+                UID:recurring-uid@test
+                DTSTART;TZID=Europe/Moscow:20261026T123000
+                DTEND;TZID=Europe/Moscow:20261026T130000
+                SEQUENCE:2
+                SUMMARY:Weekly sync
+                ORGANIZER:mailto:bob@example.com
+                RRULE:FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,TU,WE,TH,FR
+                ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:alice@example.com
+                ATTENDEE;PARTSTAT=ACCEPTED;ROLE=CHAIR:mailto:bob@example.com
+                END:VEVENT
+                END:VCALENDAR
+                """.formatted(timezone);
+
+            List<NotificationEmailDTO> notifications = testee.buildNotificationMessages(
+                dto(Method.VALUE_REQUEST, recurringNew, Optional.of(singleOld)), EVENT_PATH, Optional.of(parseIcs(singleOld)));
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST);
+                    assertThat(notification.isNewEvent()).isTrue();
+                    assertThat(notification.event()).contains("RRULE:FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,TU,WE,TH,FR");
+                });
+        }
+
+        @Test
+        void recurrenceRuleOnlyChangeShouldInviteAttendeeToTheNewSeries() {
+            String recurringDaily = RECURRING_OLD_NO_EXDATE.replace("RRULE:FREQ=WEEKLY;COUNT=3", "RRULE:FREQ=DAILY;COUNT=3");
+
+            List<NotificationEmailDTO> notifications = testee.buildNotificationMessages(
+                dto(Method.VALUE_REQUEST, recurringDaily, Optional.of(RECURRING_OLD_NO_EXDATE)), EVENT_PATH,
+                Optional.of(parseIcs(RECURRING_OLD_NO_EXDATE)));
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST);
+                    assertThat(notification.isNewEvent()).isTrue();
+                    assertThat(notification.event()).contains("RRULE:FREQ=DAILY;COUNT=3");
+                });
+        }
+
+        @Test
+        void requestWithOnlyOverridesShouldNotFailOnMissingMaster() {
+            String overridesOnly = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Test//Calendar//EN
+                METHOD:REQUEST
+                %s
+                %s
+                END:VCALENDAR
+                """.formatted(OVERRIDE_VEVENT, OVERRIDE_VEVENT
+                    .replace("20260408T1", "20260415T1")
+                    .replace("SUMMARY:Weekly sync moved", "SUMMARY:Weekly sync moved again"));
+            String previousOverrides = overridesOnly.replace("SUMMARY:Weekly sync moved again", "SUMMARY:Weekly sync moved");
+
+            List<NotificationEmailDTO> notifications = testee.buildNotificationMessages(
+                dto(Method.VALUE_REQUEST, overridesOnly, Optional.of(previousOverrides)), EVENT_PATH,
+                Optional.of(parseIcs(previousOverrides)));
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST);
+                    assertThat(notification.isNewEvent()).isFalse();
+                    assertThat(notification.event()).contains("RECURRENCE-ID:20260415T100000Z");
+                });
+        }
+
     }
 
     private ItipLocalDeliveryDTO dto(String method, String message, Optional<String> oldMessage) {

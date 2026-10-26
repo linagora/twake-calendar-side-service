@@ -240,8 +240,8 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
         Optional<PartStat> oldPartStat = oldCalendar.flatMap(oldCal -> {
             if (newRecurrenceId.isPresent()) {
                 return EventParseUtils.findInstanceByRecurrenceId(oldCal, newRecurrenceId.get())
-                    .map(instance -> EventParseUtils.findAttendeePartStat(instance, attendee))
-                    .orElseGet(() -> EventParseUtils.findAttendeePartStat(EventParseUtils.getMasterRecurrenceEvent(oldCal), attendee));
+                    .or(() -> EventParseUtils.findMasterRecurrenceEvent(oldCal))
+                    .flatMap(previousEvent -> EventParseUtils.findAttendeePartStat(previousEvent, attendee));
             }
             return EventParseUtils.findAttendeePartStat(EventParseUtils.getFirstEvent(oldCal), attendee);
         });

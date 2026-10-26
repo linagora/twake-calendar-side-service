@@ -383,11 +383,16 @@ public class EventParseUtils {
             .orElseThrow(() -> new IllegalStateException("No VEVENT found in the calendar"));
     }
 
-        public static VEvent getMasterRecurrenceEvent(Calendar calendar) {
-        return calendar.getComponent(Component.VEVENT)
+    public static VEvent getMasterRecurrenceEvent(Calendar calendar) {
+        return findMasterRecurrenceEvent(calendar)
+            .orElseThrow(() -> new IllegalStateException("No recurring master VEVENT found in the calendar"));
+    }
+
+    public static Optional<VEvent> findMasterRecurrenceEvent(Calendar calendar) {
+        return calendar.getComponents(Component.VEVENT).stream()
             .map(VEvent.class::cast)
             .filter(vEvent -> isRecurrentMaster(vEvent).orElse(false))
-            .orElseThrow(() -> new IllegalStateException("No VEVENT found in the calendar"));
+            .findFirst();
     }
 
     public static Optional<Integer> maxSequenceNo(Calendar calendar) {

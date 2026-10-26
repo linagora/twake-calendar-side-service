@@ -176,12 +176,28 @@ public class CalendarDiffCalculator {
 
         Optional<List<PropertyChange>> changes = computePropertyChanges(previousEventForRecipient, currentOccurrence);
         boolean organizerAcceptedTransition = organizerAcceptedTransition(previousEventForRecipient, currentOccurrence);
-        boolean hasNoRelevantChanges = hasPreviousOccurrence && changes.isEmpty() && !organizerAcceptedTransition;
+        boolean recurrenceRuleChanged = recurrenceRuleChanged(previousEventForRecipient, currentOccurrence);
+        boolean hasNoRelevantChanges = hasPreviousOccurrence && changes.isEmpty() && !organizerAcceptedTransition && !recurrenceRuleChanged;
         if (hasNoRelevantChanges) {
             return Optional.empty();
         }
 
-        return Optional.of(new EventDiff(currentOccurrence, !recipientWasAttending, changes));
+        return Optional.of(new EventDiff(currentOccurrence, !recipientWasAttending || recurrenceRuleChanged, changes));
+    }
+
+    /**
+     * A master whose RRULE appeared, vanished or changed describes another series: the attendee is invited to it
+     * again, as the update email does not render recurrence changes.
+     */
+    private static boolean recurrenceRuleChanged(VEvent previousEvent, VEvent currentEvent) {
+        return previousEvent != null
+            && currentEvent.getRecurrenceId() == null
+            && !recurrenceRule(previousEvent).equals(recurrenceRule(currentEvent));
+    }
+
+    private static Optional<String> recurrenceRule(VEvent vEvent) {
+        return vEvent.getProperty(Property.RRULE)
+            .map(Property::getValue);
     }
 
     private static boolean attendeePartStatChanged(String recipient, VEvent previousEvent, VEvent currentEvent) {
