@@ -589,6 +589,64 @@ public class AddressBookContactTest {
     }
 
     @Nested
+    class Normalization {
+        @Test
+        void shouldNormalizeSpacesOfTextValues() {
+            // Given text values surrounded by and holding repeated spaces
+            // When a contact is built with them
+            AddressBookContact contact = AddressBookContact.builder()
+                .familyName(" Martin ")
+                .givenName("Alice  Marie")
+                .displayName("  Alice   Martin ")
+                .telephoneNumber(" +33 6 00 ")
+                .extraProperties(ImmutableListMultimap.of("X-TWAKE-WORKPLACE-FQDN", " alice.example.com "))
+                .build();
+
+            // Then the spaces are normalized
+            assertThat(contact).isEqualTo(AddressBookContact.builder()
+                .familyName("Martin")
+                .givenName("Alice Marie")
+                .displayName("Alice Martin")
+                .telephoneNumber("+33 6 00")
+                .extraProperties(ImmutableListMultimap.of("X-TWAKE-WORKPLACE-FQDN", "alice.example.com"))
+                .build());
+        }
+
+        @Test
+        void shouldDropBlankTextValues() {
+            // Given blank text values
+            // When a contact is built with them
+            AddressBookContact contact = AddressBookContact.builder()
+                .familyName("")
+                .givenName("  ")
+                .displayName(" ")
+                .telephoneNumber("")
+                .extraProperties(ImmutableListMultimap.of("X-TWAKE-WORKPLACE-FQDN", "  "))
+                .build();
+
+            // Then the contact holds none of them
+            assertThat(contact).isEqualTo(AddressBookContact.builder().build());
+        }
+
+        @Test
+        void shouldEqualTheContactReadBackFromItsCard() {
+            // Given a contact built from values holding extra spaces
+            AddressBookContact contact = AddressBookContact.builder()
+                .uid("uid-spaces")
+                .mail("alice@example.com")
+                .familyName(" Martin ")
+                .displayName("Alice  Martin")
+                .build();
+
+            // When its card is written then parsed back
+            List<AddressBookContact> contacts = AddressBookContact.parse(contact.toVcardBytes());
+
+            // Then the parsed contact equals the built one
+            assertThat(contacts).containsExactly(contact);
+        }
+    }
+
+    @Nested
     class HasSameContentAs {
         private final AddressBookContact contact = AddressBookContact.builder()
             .uid("uid-1")
