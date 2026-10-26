@@ -41,6 +41,7 @@ import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.exception.DomainNotFoundException;
 import com.linagora.calendar.storage.exception.UserConflictException;
 import com.linagora.calendar.storage.exception.UserNotFoundException;
+import com.linagora.calendar.webadmin.service.RegisteredUserDeletionService;
 
 import reactor.core.publisher.Mono;
 import spark.Request;
@@ -55,13 +56,16 @@ public class DomainRegisteredUsersRoutes implements Routes {
 
     private final OpenPaaSUserDAO userDAO;
     private final OpenPaaSDomainDAO domainDAO;
+    private final RegisteredUserDeletionService userDeletionService;
     private final JsonTransformer jsonTransformer;
     private final JsonExtractor<CalendarUserRoutes.CalendarUserDTO> jsonExtractor;
 
     @Inject
-    public DomainRegisteredUsersRoutes(OpenPaaSUserDAO userDAO, OpenPaaSDomainDAO domainDAO, JsonTransformer jsonTransformer) {
+    public DomainRegisteredUsersRoutes(OpenPaaSUserDAO userDAO, OpenPaaSDomainDAO domainDAO,
+                                       RegisteredUserDeletionService userDeletionService, JsonTransformer jsonTransformer) {
         this.userDAO = userDAO;
         this.domainDAO = domainDAO;
+        this.userDeletionService = userDeletionService;
         this.jsonTransformer = jsonTransformer;
         this.jsonExtractor = new JsonExtractor<>(CalendarUserRoutes.CalendarUserDTO.class);
     }
@@ -173,7 +177,7 @@ public class DomainRegisteredUsersRoutes implements Routes {
             .switchIfEmpty(Mono.error(this::userDoesNotExist))
             .flatMap(username -> userDAO.retrieve(username)
                 .switchIfEmpty(Mono.error(this::userDoesNotExist))
-                .then(userDAO.delete(username)))
+                .flatMap(userDeletionService::delete))
             .doOnSuccess(any -> response.status(HttpStatus.NO_CONTENT_204))
             .thenReturn(Constants.EMPTY_BODY)
             .block();
