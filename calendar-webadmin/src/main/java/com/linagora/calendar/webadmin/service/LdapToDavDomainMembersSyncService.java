@@ -34,6 +34,7 @@ import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.ldap.LdapDomainMemberProvider;
 import com.linagora.calendar.storage.ldap.LdapFilter;
 import com.linagora.calendar.storage.ldap.LdapUser;
+import com.linagora.calendar.storage.ldap.LdapUserContactMapper;
 import com.linagora.calendar.webadmin.service.DavDomainMemberUpdateApplier.ContactUpdateContext;
 import com.linagora.calendar.webadmin.service.DavDomainMemberUpdateApplier.UpdateResult;
 
@@ -45,13 +46,16 @@ public class LdapToDavDomainMembersSyncService {
 
     private final LdapDomainMemberProvider ldapDomainMemberProvider;
     private final CardDavClient davClient;
+    private final LdapUserContactMapper ldapUserContactMapper;
     private final Function<OpenPaaSId, DavDomainMemberUpdateApplier> davDomainMemberUpdateApplierFactory;
 
     @Inject
     public LdapToDavDomainMembersSyncService(LdapDomainMemberProvider ldapDomainMemberProvider,
-                                             CardDavClient davClient) {
+                                             CardDavClient davClient,
+                                             LdapUserContactMapper ldapUserContactMapper) {
         this.ldapDomainMemberProvider = ldapDomainMemberProvider;
         this.davClient = davClient;
+        this.ldapUserContactMapper = ldapUserContactMapper;
         this.davDomainMemberUpdateApplierFactory = openPaaSId -> new DavDomainMemberUpdateApplier.Default(davClient, openPaaSId);
     }
 
@@ -64,7 +68,7 @@ public class LdapToDavDomainMembersSyncService {
             .flatMap(tuple -> {
                 List<LdapUser> ldapMembers = tuple.getT1();
                 List<AddressBookContact> davContacts = tuple.getT2();
-                DomainMemberUpdate domainMemberUpdate = DomainMemberUpdate.compute(ldapMembers, davContacts);
+                DomainMemberUpdate domainMemberUpdate = DomainMemberUpdate.compute(ldapMembers, davContacts, ldapUserContactMapper);
                 return davDomainMemberUpdateApplierFactory.apply(openPaaSDomain.id()).apply(domainMemberUpdate, contexts);
             })
             .doOnSubscribe(sub -> LOGGER.info("Syncing domain: {}{}", openPaaSDomain.domain(),

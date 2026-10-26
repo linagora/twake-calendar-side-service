@@ -31,7 +31,7 @@ import org.apache.james.core.MailAddress;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableListMultimap;
 
 public class AddressBookContactTest {
 
@@ -345,7 +345,27 @@ public class AddressBookContactTest {
 
             // Then the extended property is read along the standard ones
             assertThat(contacts.getFirst().extraProperties())
-                .isEqualTo(ImmutableMap.of("X-TWAKE-WORKPLACE-FQDN", "alice.example.com"));
+                .isEqualTo(ImmutableListMultimap.of("X-TWAKE-WORKPLACE-FQDN", "alice.example.com"));
+        }
+
+        @Test
+        void shouldParseEveryValueOfRepeatedExtraProperty() {
+            // Given a card carrying the same extended property twice
+            String vcard = """
+                BEGIN:VCARD
+                VERSION:4.0
+                UID:1234
+                X-INFO:abcdef
+                X-INFO:R&D
+                END:VCARD
+                """;
+
+            // When the card is parsed
+            List<AddressBookContact> contacts = AddressBookContact.parse(vcard.getBytes(StandardCharsets.UTF_8));
+
+            // Then both values are kept, in the card order
+            assertThat(contacts.getFirst().extraProperties())
+                .isEqualTo(ImmutableListMultimap.of("X-INFO", "abcdef", "X-INFO", "R&D"));
         }
 
         @Test
@@ -364,7 +384,7 @@ public class AddressBookContactTest {
 
             // Then the property name is normalized to upper case
             assertThat(contacts.getFirst().extraProperties())
-                .isEqualTo(ImmutableMap.of("X-TWAKE-WORKPLACE-FQDN", "alice.example.com"));
+                .isEqualTo(ImmutableListMultimap.of("X-TWAKE-WORKPLACE-FQDN", "alice.example.com"));
         }
 
         @Test
@@ -382,7 +402,7 @@ public class AddressBookContactTest {
             List<AddressBookContact> contacts = AddressBookContact.parse(vcard.getBytes(StandardCharsets.UTF_8));
 
             // Then that property is not taken as an extra property
-            assertThat(contacts.getFirst().extraProperties()).isEmpty();
+            assertThat(contacts.getFirst().extraProperties()).isEqualTo(ImmutableListMultimap.of());
         }
     }
 
@@ -518,7 +538,7 @@ public class AddressBookContactTest {
             AddressBookContact card = AddressBookContact.builder()
                 .uid("uid-fqdn")
                 .mail("alice@example.com")
-                .extraProperties(ImmutableMap.of("X-TWAKE-WORKPLACE-FQDN", "alice.example.com"))
+                .extraProperties(ImmutableListMultimap.of("X-TWAKE-WORKPLACE-FQDN", "alice.example.com"))
                 .build();
 
             // When the card is written
@@ -540,13 +560,30 @@ public class AddressBookContactTest {
             AddressBookContact card = AddressBookContact.builder()
                 .uid("uid-fqdn")
                 .mail("alice@example.com")
-                .extraProperties(ImmutableMap.of("X-TWAKE-WORKPLACE-FQDN", "alice.example.com"))
+                .extraProperties(ImmutableListMultimap.of("X-TWAKE-WORKPLACE-FQDN", "alice.example.com"))
                 .build();
 
             // When the card is written then parsed back
             List<AddressBookContact> contacts = AddressBookContact.parse(card.toVcardBytes());
 
             // Then the parsed contact equals the original one
+            assertThat(contacts).containsExactly(card);
+        }
+
+        @Test
+        void shouldRoundTripRepeatedExtraProperty() {
+            // Given a contact carrying two values for the same extended property
+            AddressBookContact card = AddressBookContact.builder()
+                .uid("uid-info")
+                .mail("alice@example.com")
+                .extraProperties(ImmutableListMultimap.of("X-INFO", "abcdef", "X-INFO", "R&D"))
+                .build();
+
+            // When the card is written then parsed back
+            List<AddressBookContact> contacts = AddressBookContact.parse(card.toVcardBytes());
+
+            // Then both values are written as two properties and read back in the same order
+            assertThat(card.toVcardString()).contains("X-INFO:abcdef\r\nX-INFO:R&D\r\n");
             assertThat(contacts).containsExactly(card);
         }
     }
@@ -560,7 +597,7 @@ public class AddressBookContactTest {
             .displayName("Alice Martin")
             .mail("alice@example.com")
             .telephoneNumber("+33600000000")
-            .extraProperties(ImmutableMap.of("X-TWAKE-WORKPLACE-FQDN", "alice.example.com"))
+            .extraProperties(ImmutableListMultimap.of("X-TWAKE-WORKPLACE-FQDN", "alice.example.com"))
             .build();
 
         private AddressBookContact.Builder copy() {
@@ -649,7 +686,7 @@ public class AddressBookContactTest {
         @Test
         void shouldCompareExtraProperties() {
             // Given the same contact whose workplace is not known yet
-            AddressBookContact other = copy().extraProperties(ImmutableMap.of()).build();
+            AddressBookContact other = copy().extraProperties(ImmutableListMultimap.of()).build();
 
             // When both contacts are compared
             boolean sameContent = contact.hasSameContentAs(other);

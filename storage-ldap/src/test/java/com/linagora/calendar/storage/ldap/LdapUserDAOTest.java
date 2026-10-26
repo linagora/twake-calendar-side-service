@@ -74,7 +74,7 @@ public class LdapUserDAOTest {
     }
 
     @Test
-    void findByMailShouldReadMappedExtraProperties() throws Exception {
+    void findByMailShouldReadMappedExtraAttributes() throws Exception {
         // Given description mapped to X-DESCRIPTION
         LdapRepositoryConfiguration configuration = LdapRepositoryConfiguration.from(ldapRepositoryConfiguration(ldapExtension.ldapContainer(), Optional.of(ADMIN)));
         LdapUserDAO mappingDAO = new LdapUserDAO(configuration,
@@ -84,8 +84,8 @@ public class LdapUserDAOTest {
         // When james-user is looked up
         Optional<LdapUser> actual = mappingDAO.findByMail(Username.of("james-user@james.org"));
 
-        // Then its description is read as the X-DESCRIPTION property
-        assertThat(actual.map(LdapUser::extraProperties)).contains(ImmutableMap.of("X-DESCRIPTION", "abcdef"));
+        // Then its description is read under its LDAP attribute name
+        assertThat(actual.map(LdapUser::extraAttributes)).contains(ImmutableMap.of("description", "abcdef"));
     }
 
     @Test

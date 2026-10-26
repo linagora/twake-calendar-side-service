@@ -37,7 +37,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
-import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableListMultimap;
 import com.linagora.calendar.dav.AddressBookContact;
 import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.dav.SabreDavExtension;
@@ -309,7 +309,7 @@ class SaaSUserSubscriptionHandlerTest {
                 .familyName("Martin")
                 .displayName("Alice Martin")
                 .telephoneNumber("+33600000000")
-                .extraProperties(ImmutableMap.of("X-TWAKE-WORKPLACE-FQDN", "alice.example.com"))
+                .extraProperties(ImmutableListMultimap.of("X-TWAKE-WORKPLACE-FQDN", "alice.example.com"))
                 .build());
     }
 
@@ -317,13 +317,13 @@ class SaaSUserSubscriptionHandlerTest {
     void shouldNotWriteWorkplaceFqdnWhenDirectoryHasNone() {
         // Given a calendar user whose workspace does not exist yet
         Username alice = aliceOfTestDomain();
-        userContactResolver.register(alice, aliceContact().extraProperties(ImmutableMap.of()).build());
+        userContactResolver.register(alice, aliceContact().extraProperties(ImmutableListMultimap.of()).build());
 
         // When the subscription of that user is handled
         handleCalendarSubscription(alice);
 
         // Then the domain member card has no workspace host
-        assertThat(readDomainMemberCard(alice).extraProperties()).isEmpty();
+        assertThat(readDomainMemberCard(alice).extraProperties()).isEqualTo(ImmutableListMultimap.of());
     }
 
     @Test
@@ -347,7 +347,7 @@ class SaaSUserSubscriptionHandlerTest {
     void shouldUpdateCardWhenDirectoryChanged() {
         // Given a domain member card written before the user got a workspace
         Username alice = aliceOfTestDomain();
-        userContactResolver.register(alice, aliceContact().extraProperties(ImmutableMap.of()).build());
+        userContactResolver.register(alice, aliceContact().extraProperties(ImmutableListMultimap.of()).build());
         handleCalendarSubscription(alice);
 
         // When the workspace exists and the subscription of that user is handled again
@@ -356,7 +356,7 @@ class SaaSUserSubscriptionHandlerTest {
 
         // Then the card carries the workspace host
         assertThat(readDomainMemberCard(alice).extraProperties())
-            .isEqualTo(ImmutableMap.of("X-TWAKE-WORKPLACE-FQDN", "alice.example.com"));
+            .isEqualTo(ImmutableListMultimap.of("X-TWAKE-WORKPLACE-FQDN", "alice.example.com"));
     }
 
     @Test
@@ -430,7 +430,7 @@ class SaaSUserSubscriptionHandlerTest {
             .familyName(Optional.of("Martin"))
             .displayName(Optional.of("Alice Martin"))
             .telephoneNumber(Optional.of("+33600000000"))
-            .extraProperties(ImmutableMap.of("X-TWAKE-WORKPLACE-FQDN", "alice.example.com"));
+            .extraProperties(ImmutableListMultimap.of("X-TWAKE-WORKPLACE-FQDN", "alice.example.com"));
     }
 
     private void handleCalendarSubscription(Username username) {

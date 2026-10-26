@@ -34,6 +34,7 @@ import org.slf4j.LoggerFactory;
 import com.google.common.collect.Sets;
 import com.linagora.calendar.dav.AddressBookContact;
 import com.linagora.calendar.storage.ldap.LdapUser;
+import com.linagora.calendar.storage.ldap.LdapUserContactMapper;
 
 public record DomainMemberUpdate(Set<AddressBookContact> added,
                                  Set<AddressBookContact> deleted,
@@ -42,7 +43,8 @@ public record DomainMemberUpdate(Set<AddressBookContact> added,
     private static final Logger LOGGER = LoggerFactory.getLogger(DomainMemberUpdate.class);
 
     public static DomainMemberUpdate compute(Collection<LdapUser> sourceOfTruth,
-                                             Collection<AddressBookContact> projectionContent) {
+                                             Collection<AddressBookContact> projectionContent,
+                                             LdapUserContactMapper ldapUserContactMapper) {
 
         Map<MailAddress, LdapUser> sourceByMail = sourceOfTruth.stream()
             .filter(m -> m.mail().isPresent())
@@ -70,7 +72,7 @@ public record DomainMemberUpdate(Set<AddressBookContact> added,
         Set<MailAddress> commonKeys = Sets.intersection(sourceByMail.keySet(), projectionByMail.keySet());
 
         Set<AddressBookContact> added = toAddKeys.stream()
-            .map(mail -> toAddressBookContact(sourceByMail.get(mail)))
+            .map(mail -> toAddressBookContact(sourceByMail.get(mail), ldapUserContactMapper))
             .collect(Collectors.toSet());
 
         Set<AddressBookContact> deleted = toDeleteKeys.stream()
@@ -78,31 +80,32 @@ public record DomainMemberUpdate(Set<AddressBookContact> added,
             .collect(Collectors.toSet());
 
         Set<AddressBookContact> updated = commonKeys.stream()
-            .filter(mail -> isChanged(sourceByMail.get(mail), projectionByMail.get(mail)))
-            .map(mail -> toAddressBookContact(sourceByMail.get(mail), projectionByMail.get(mail)))
+            .filter(mail -> isChanged(sourceByMail.get(mail), projectionByMail.get(mail), ldapUserContactMapper))
+            .map(mail -> toAddressBookContact(sourceByMail.get(mail), projectionByMail.get(mail), ldapUserContactMapper))
             .collect(Collectors.toSet());
 
         return new DomainMemberUpdate(added, deleted, updated);
     }
 
-    private static boolean isChanged(LdapUser ldapUser, AddressBookContact davContact) {
-        return !toAddressBookContact(ldapUser, davContact).hasSameContentAs(davContact);
+    private static boolean isChanged(LdapUser ldapUser, AddressBookContact davContact, LdapUserContactMapper ldapUserContactMapper) {
+        return !toAddressBookContact(ldapUser, davContact, ldapUserContactMapper).hasSameContentAs(davContact);
     }
 
-    private static AddressBookContact toAddressBookContact(LdapUser ldap) {
-        return toAddressBookContact(ldap, computeUid(ldap.uid(), ldap.mail()));
+    private static AddressBookContact toAddressBookContact(LdapUser ldap, LdapUserContactMapper ldapUserContactMapper) {
+        return toAddressBookContact(ldap, computeUid(ldap.uid(), ldap.mail()), ldapUserContactMapper);
     }
 
-    private static AddressBookContact toAddressBookContact(LdapUser ldap, AddressBookContact existing) {
-        return toAddressBookContact(ldap, computeUid(existing.uid(), existing.mail()));
+    private static AddressBookContact toAddressBookContact(LdapUser ldap, AddressBookContact existing, LdapUserContactMapper ldapUserContactMapper) {
+        return toAddressBookContact(ldap, computeUid(existing.uid(), existing.mail()), ldapUserContactMapper);
     }
 
     public static AddressBookContact toAddressBookContact(LdapUser ldap,
-                                                          Optional<String> uid) {
+                                                          Optional<String> uid,
+                                                          LdapUserContactMapper ldapUserContactMapper) {
         return AddressBookContact.builder()
             .uid(uid)
             .mail(ldap.mail())
-            .userContact(ldap.toUserContact())
+            .userContact(ldapUserContactMapper.toUserContact(ldap))
             .build();
     }
 }

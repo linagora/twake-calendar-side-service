@@ -71,6 +71,20 @@ class LdapVCardPropertiesConfigurationTest {
     }
 
     @Test
+    void fromShouldAcceptSeveralAttributesMappedToTheSameProperty() {
+        // Given two LDAP attributes mapped to the same vCard property
+        MapConfiguration configuration = new MapConfiguration(Map.of(
+            "ldap.vcard.extra.properties", "description:X-INFO,departmentNumber:X-INFO"));
+
+        // When the configuration is read
+        LdapVCardPropertiesConfiguration actual = LdapVCardPropertiesConfiguration.from(configuration);
+
+        // Then both attributes are mapped to that property, in the configuration order
+        assertThat(actual.vcardPropertyByLdapAttribute())
+            .containsExactly(Map.entry("description", "X-INFO"), Map.entry("departmentNumber", "X-INFO"));
+    }
+
+    @Test
     void fromShouldUpperCaseVCardProperty() {
         // Given a vCard property written in lower case
         MapConfiguration configuration = new MapConfiguration(Map.of(

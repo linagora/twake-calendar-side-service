@@ -31,16 +31,18 @@ import reactor.core.scheduler.Schedulers;
 
 public class LdapUserContactResolver implements UserContactResolver {
     private final LdapUserDAO ldapUserDAO;
+    private final LdapUserContactMapper ldapUserContactMapper;
 
     @Inject
-    public LdapUserContactResolver(LdapUserDAO ldapUserDAO) {
+    public LdapUserContactResolver(LdapUserDAO ldapUserDAO, LdapUserContactMapper ldapUserContactMapper) {
         this.ldapUserDAO = ldapUserDAO;
+        this.ldapUserContactMapper = ldapUserContactMapper;
     }
 
     @Override
     public Mono<Optional<UserContact>> resolve(Username username) {
         return Mono.fromCallable(() -> ldapUserDAO.findByMail(username)
-                .map(LdapUser::toUserContact))
+                .map(ldapUserContactMapper::toUserContact))
             .subscribeOn(Schedulers.boundedElastic());
     }
 }

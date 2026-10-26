@@ -37,6 +37,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import com.google.common.collect.ImmutableListMultimap;
 import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.storage.UserContactResolver.UserContact;
 import com.linagora.calendar.storage.UserNameResolver.UserNames;
@@ -59,7 +60,7 @@ public class LdapUserContactResolverTest {
             "description", "X-DESCRIPTION",
             "employeeNumber", "X-EMPLOYEE-NUMBER"));
         LdapUserDAO ldapUserDAO = new LdapUserDAO(configuration, new LDAPConnectionFactory(configuration).getLdapConnectionPool(), vcardPropertiesConfiguration);
-        resolver = new LdapUserContactResolver(ldapUserDAO);
+        resolver = new LdapUserContactResolver(ldapUserDAO, new LdapUserContactMapper(vcardPropertiesConfiguration));
     }
 
     @Test
@@ -76,7 +77,7 @@ public class LdapUserContactResolverTest {
             .familyName(Optional.of("User"))
             .displayName(Optional.of("James User"))
             .telephoneNumber(Optional.of("+33612345678"))
-            .extraProperties(ImmutableMap.of("X-DESCRIPTION", "abcdef"))
+            .extraProperties(ImmutableListMultimap.of("X-DESCRIPTION", "abcdef"))
             .build());
     }
 
@@ -93,7 +94,7 @@ public class LdapUserContactResolverTest {
             .givenName(Optional.of("James"))
             .familyName(Optional.of("User2"))
             .displayName(Optional.of("James User2"))
-            .extraProperties(ImmutableMap.of("X-DESCRIPTION", "cn=active,ou=accountStatus,ou=whatever,o=gov,c=vn"))
+            .extraProperties(ImmutableListMultimap.of("X-DESCRIPTION", "cn=active,ou=accountStatus,ou=whatever,o=gov,c=vn"))
             .build());
     }
 

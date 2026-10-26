@@ -56,7 +56,7 @@ public class LdapUserDAO {
         Filter filter = Filter.createEqualityFilter("objectClass", ldapRepositoryConfiguration.getUserObjectClass());
         SearchResult searchResult = ldapConnectionPool.search(baseDn, SearchScope.SUB, filter);
         return searchResult.getSearchEntries().stream()
-            .map(entry -> LdapUser.fromLdapEntry(entry, vcardPropertiesConfiguration))
+            .map(entry -> LdapUser.fromLdapEntry(entry, vcardPropertiesConfiguration.ldapAttributes()))
             .toList();
     }
 
@@ -67,7 +67,7 @@ public class LdapUserDAO {
             Filter.createEqualityFilter("mail", username.asString()));
         SearchResult searchResult = ldapConnectionPool.search(baseDn, SearchScope.SUB, filter);
         return searchResult.getSearchEntries().stream()
-            .map(entry -> LdapUser.fromLdapEntry(entry, vcardPropertiesConfiguration))
+            .map(entry -> LdapUser.fromLdapEntry(entry, vcardPropertiesConfiguration.ldapAttributes()))
             .findFirst();
     }
 }
