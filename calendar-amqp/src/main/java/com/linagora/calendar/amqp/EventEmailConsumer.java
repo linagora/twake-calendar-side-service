@@ -30,11 +30,13 @@ import java.util.function.Supplier;
 
 import jakarta.annotation.PreDestroy;
 import jakarta.inject.Inject;
+import jakarta.mail.internet.AddressException;
 
 import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.Strings;
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
+import org.apache.james.core.MailAddress;
 import org.apache.james.lifecycle.api.Startable;
 import org.apache.james.metrics.api.Metric;
 import org.apache.james.metrics.api.MetricFactory;
@@ -43,6 +45,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.inject.name.Named;
@@ -72,6 +75,7 @@ public class EventEmailConsumer implements Closeable, Startable {
     public static final String DEAD_LETTER_QUEUE = "tcalendar:event:notificationEmail:send:dead-letter";
     public static final String X_PUBLICLY_CREATED_HEADER = "X-PUBLICLY-CREATED";
     public static final String X_PUBLICLY_CANCELLED_BY_HEADER = "X-PUBLICLY-CANCELLED-BY";
+    private static final String RECIPIENT_EMAIL_FIELD = "recipientEmail";
 
     private static final boolean PUBLIC_AGENDA_EVENT = true;
     private static final Logger LOGGER = LoggerFactory.getLogger(EventEmailConsumer.class);
@@ -135,10 +139,42 @@ public class EventEmailConsumer implements Closeable, Startable {
 
     private Mono<Void> consumeMessage(AcknowledgableDelivery ackDelivery) {
         return Mono.from(metricFactory.decoratePublisherWithTimerMetric("calendar.imip",
-            Mono.fromCallable(() -> OBJECT_MAPPER.readValue(ackDelivery.getBody(), CalendarEventNotificationEmailDTO.class))
-                .filter(dto -> eventEmailFilter.shouldProcess(dto.recipientEmail()))
-                .flatMap(message -> handleMessage(message)
-                    .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed calendar mail event message successfully {} '{}'", message.getClass().getSimpleName(), message.eventPath()))))));
+            Mono.fromCallable(() -> OBJECT_MAPPER.readTree(ackDelivery.getBody()))
+                .flatMap(json -> {
+                    if (hasValidRecipient(json)) {
+                        return consumeValidMessage(json);
+                    }
+                    return consumeInvalidRecipientMessage(json);
+                })));
+    }
+
+    private boolean hasValidRecipient(JsonNode json) {
+        try {
+            new MailAddress(json.path(RECIPIENT_EMAIL_FIELD).asText());
+            return true;
+        } catch (AddressException e) {
+            return false;
+        }
+    }
+
+    private Mono<Void> consumeValidMessage(JsonNode json) {
+        return Mono.fromCallable(() -> OBJECT_MAPPER.treeToValue(json, CalendarEventNotificationEmailDTO.class))
+            .filter(dto -> eventEmailFilter.shouldProcess(dto.recipientEmail()))
+            .flatMap(message -> handleMessage(message)
+                .then(ReactorUtils.logAsMono(() -> LOGGER.debug("Consumed calendar mail event message successfully {} '{}'", message.getClass().getSimpleName(), message.eventPath()))));
+    }
+
+    /**
+     * No mail can be sent to an invalid address and retrying cannot help: we log and ack the message
+     * rather than dead-lettering it. For a new invitation, the organizer is warned that the attendee
+     * will not receive it.
+     */
+    private Mono<Void> consumeInvalidRecipientMessage(JsonNode json) {
+        return Mono.fromCallable(() -> OBJECT_MAPPER.treeToValue(json, InvalidRecipientNotificationEmailDTO.class))
+            .doOnNext(message -> LOGGER.warn("Ignoring calendar mail event message {} for eventPath {}: invalid recipient address '{}'",
+                message.method().getValue(), message.eventPath(), message.recipientEmail()))
+            .filter(InvalidRecipientNotificationEmailDTO::isNewInvitation)
+            .flatMap(eventMailHandler::handleInvalidRecipientInvitation);
     }
 
     private Mono<Void> handleMessage(CalendarEventNotificationEmailDTO calendarEventMessage) {

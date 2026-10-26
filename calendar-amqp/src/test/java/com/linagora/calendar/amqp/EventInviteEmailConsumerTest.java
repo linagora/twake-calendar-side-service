@@ -22,6 +22,7 @@ import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_
 import static com.linagora.calendar.storage.configuration.EntryIdentifier.LANGUAGE_IDENTIFIER;
 import static com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.TimeZoneSettingReader.TIMEZONE_IDENTIFIER;
 import static io.restassured.RestAssured.given;
+import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.mockito.ArgumentMatchers.any;
@@ -72,7 +73,9 @@ import org.mockito.Mockito;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionFactory;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.fge.lambdas.Throwing;
+import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.smtp.EventEmailFilter;
 import com.linagora.calendar.api.EventParticipationActionLinkFactory;
 import com.linagora.calendar.api.Participation;
@@ -93,16 +96,21 @@ import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
 import com.mongodb.reactivestreams.client.MongoDatabase;
+import com.rabbitmq.client.Channel;
 
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.path.json.JsonPath;
 import io.restassured.specification.RequestSpecification;
 import net.fortuna.ical4j.model.parameter.PartStat;
+import net.fortuna.ical4j.model.property.Method;
 import reactor.core.publisher.Mono;
+import reactor.rabbitmq.OutboundMessage;
 
 public class EventInviteEmailConsumerTest {
     static final boolean INTERNAL_USER = true;
     static final boolean EXTERNAL_USER = false;
+    static final boolean IS_NEW_EVENT = true;
+    static final String INVALID_RECIPIENT = "pro";
 
     private final ConditionFactory calmlyAwait = Awaitility.with()
         .pollInterval(Duration.ofMillis(500))
@@ -340,6 +348,35 @@ public class EventInviteEmailConsumerTest {
     }
 
     @Test
+    void shouldNotifyOrganizerWhenInvitationRecipientIsNotAValidAddress() throws Exception {
+        publishNotificationEmailMessage(invalidRecipientMessage(Method.VALUE_REQUEST, IS_NEW_EVENT));
+
+        awaitAtMost.atMost(Duration.ofSeconds(20))
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
+        assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+        assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(organizer.username().asString());
+        assertThat(TestFixture.extractSubject(smtpMailsResponse.getString("[0].message"))).isEqualTo("Email delivery failed");
+        assertThat(getHtml(smtpMailsResponse))
+            .contains(">Subject</p>", "Twake Calendar - Sprint planning #04")
+            .contains(">Recipient address</p>", INVALID_RECIPIENT);
+        assertThat(deadLetteredMessageCount()).isZero();
+    }
+
+    @Test
+    void shouldAckUpdateWhoseRecipientIsNotAValidAddressWithoutSendingAnyMail() throws Exception {
+        publishNotificationEmailMessage(invalidRecipientMessage(Method.VALUE_REQUEST, !IS_NEW_EVENT));
+        publishNotificationEmailMessage(invalidRecipientMessage(Method.VALUE_CANCEL, !IS_NEW_EVENT));
+
+        calmlyAwait.during(Duration.ofSeconds(3)).atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> {
+                assertThat(deadLetteredMessageCount()).isZero();
+                assertThat(smtpMailsResponseSupplier.get().getList("")).isEmpty();
+            });
+    }
+
+    @Test
     void shouldNotIncludeSeeInCalendarLinkEmailWhenRecipientIsNotInternal() {
         when(usersRepository.containsReactive(Username.of("externaluser@gg.com"))).thenReturn(Mono.just(EXTERNAL_USER));
 
@@ -442,6 +479,30 @@ public class EventInviteEmailConsumerTest {
                 .contains("Van Tung TRAN")
                 .contains(attendee.username().asString());
         }));
+    }
+
+    private String invalidRecipientMessage(String method, boolean isNewEvent) throws Exception {
+        String eventUid = UUID.randomUUID().toString();
+        return new ObjectMapper().writeValueAsString(ImmutableMap.of(
+            "senderEmail", organizer.username().asString(),
+            "recipientEmail", INVALID_RECIPIENT,
+            "method", method,
+            "event", generateCalendarData(eventUid, organizer.username().asString(), "Pro", PartStat.NEEDS_ACTION),
+            "eventPath", "/calendars/" + organizer.id().value() + "/" + organizer.id().value() + "/" + eventUid + ".ics",
+            "isNewEvent", isNewEvent,
+            "changes", ImmutableMap.of("summary", ImmutableMap.of("previous", "Old summary", "current", "Twake Calendar - Sprint planning #04"))));
+    }
+
+    private void publishNotificationEmailMessage(String payload) {
+        channelPool.getSender()
+            .send(Mono.just(new OutboundMessage(EventEmailConsumer.EXCHANGE_NAME, EMPTY_ROUTING_KEY, payload.getBytes(StandardCharsets.UTF_8))))
+            .block();
+    }
+
+    private long deadLetteredMessageCount() throws Exception {
+        try (Channel channel = connectionPool.getResilientConnection().block().createChannel()) {
+            return channel.messageCount(EventEmailConsumer.DEAD_LETTER_QUEUE);
+        }
     }
 
     private String getHtml(JsonPath smtpMailsResponse) {
