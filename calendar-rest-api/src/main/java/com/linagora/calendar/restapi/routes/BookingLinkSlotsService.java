@@ -19,7 +19,9 @@
 package com.linagora.calendar.restapi.routes;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.List;
@@ -27,7 +29,9 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import jakarta.inject.Inject;
+import jakarta.inject.Named;
 
+import org.apache.james.core.Username;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -50,6 +54,8 @@ import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.booking.BookingLinkNotActiveException;
 import com.linagora.calendar.storage.booking.BookingLinkNotFoundException;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
+import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
+import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.ResolvedSettings;
 import com.linagora.calendar.storage.model.Resource;
 
 import reactor.core.publisher.Flux;
@@ -57,6 +63,9 @@ import reactor.core.publisher.Mono;
 
 public class BookingLinkSlotsService {
     private static final Logger LOGGER = LoggerFactory.getLogger(BookingLinkSlotsService.class);
+    // Wider than any UTC offset: an all-day event the calendar server matches against UTC midnights may
+    // still overlap the queried range once anchored to the midnights of its owner's time zone.
+    private static final Duration ALL_DAY_EVENT_MARGIN = Duration.ofDays(1);
 
     public record SlotsResult(BookingLink bookingLink, OpenPaaSUser owner, Set<AvailabilitySlot> slots,
                               List<Resource> resources, List<OpenPaaSUser> extraAttendees) {
@@ -69,13 +78,15 @@ public class BookingLinkSlotsService {
     private final BookingLinkResourceResolver resourceResolver;
     private final BookingLinkExtraAttendeeResolver extraAttendeeResolver;
     private final CalendarSearchSourceResolver calendarSourceResolver;
+    private final SettingsBasedResolver timeZoneResolver;
     private final AvailableSlotsCalculator availableSlotsCalculator;
 
     @Inject
     public BookingLinkSlotsService(Clock clock, BookingLinkDAO bookingLinkDAO, OpenPaaSUserDAO openPaaSUserDAO,
                                    CalDavClient calDavClient, BookingLinkResourceResolver resourceResolver,
                                    BookingLinkExtraAttendeeResolver extraAttendeeResolver,
-                                   CalendarSearchSourceResolver calendarSourceResolver) {
+                                   CalendarSearchSourceResolver calendarSourceResolver,
+                                   @Named("timezone") SettingsBasedResolver timeZoneResolver) {
         this.clock = clock;
         this.bookingLinkDAO = bookingLinkDAO;
         this.openPaaSUserDAO = openPaaSUserDAO;
@@ -83,6 +94,7 @@ public class BookingLinkSlotsService {
         this.resourceResolver = resourceResolver;
         this.extraAttendeeResolver = extraAttendeeResolver;
         this.calendarSourceResolver = calendarSourceResolver;
+        this.timeZoneResolver = timeZoneResolver;
         this.availableSlotsCalculator = new AvailableSlotsCalculator.Default();
     }
 
@@ -143,12 +155,19 @@ public class BookingLinkSlotsService {
      * querying only the target calendar would ignore the events living in the other calendars of that home.
      * That home is the owner's for a personal booking link, and the team calendar for a link pointing at one,
      * whose availability is the team's rather than its author's.
+     *
+     * <p>All-day events are days of whoever owns the calendar, from their local midnight to their local
+     * midnight - the owner's for the availability home, each extra attendee's for their own calendars.
      */
     private Mono<UnavailableTimeRanges> retrieveUnavailableTimeRanges(BookingLink bookingLink, OpenPaaSUser owner, Instant from, Instant to) {
-        return availabilityHome(bookingLink, owner)
-            .flatMapMany(availabilityHome -> Flux.concat(
-                calDavClient.findBusyIntervals(bookingLink.username(), availabilityHome, from, to),
-                extraAttendeesBusyIntervals(bookingLink, from, to)))
+        Instant widenedFrom = from.minus(ALL_DAY_EVENT_MARGIN);
+        Instant widenedTo = to.plus(ALL_DAY_EVENT_MARGIN);
+
+        return Mono.zip(availabilityHome(bookingLink, owner), timeZoneOf(owner.username()))
+            .flatMapMany(homeAndZone -> Flux.concat(
+                calDavClient.findBusyIntervals(bookingLink.username(), homeAndZone.getT1(), widenedFrom, widenedTo)
+                    .map(busyInterval -> busyInterval.anchorAllDayIn(homeAndZone.getT2())),
+                extraAttendeesBusyIntervals(bookingLink, widenedFrom, widenedTo)))
             .map(busyInterval -> new TimeRange(busyInterval.start(), busyInterval.end()))
             .collectList()
             .map(UnavailableTimeRanges::new);
@@ -181,14 +200,27 @@ public class BookingLinkSlotsService {
      */
     private Flux<BusyInterval> extraAttendeesBusyIntervals(BookingLink bookingLink, Instant from, Instant to) {
         return Flux.fromIterable(bookingLink.extraAttendees().participants())
-            .concatMap(extraAttendee -> calDavClient.findBusyIntervals(bookingLink.username(), extraAttendee, from, to)
-                .collectList()
+            .concatMap(extraAttendee -> timeZoneOf(extraAttendee)
+                .flatMap(zoneId -> calDavClient.findBusyIntervals(bookingLink.username(), extraAttendee, from, to)
+                    .map(busyInterval -> busyInterval.anchorAllDayIn(zoneId))
+                    .collectList())
                 .onErrorResume(error -> {
                     LOGGER.warn("Booking link {} could not read the calendars of extra attendee {} as {}: treating them as free",
                         bookingLink.publicId().value(), extraAttendee.value(), bookingLink.username().asString(), error);
                     return Mono.just(List.of());
                 })
                 .flatMapIterable(busyIntervals -> busyIntervals));
+    }
+
+    private Mono<ZoneId> timeZoneOf(OpenPaaSId userId) {
+        return openPaaSUserDAO.retrieve(userId)
+            .flatMap(user -> timeZoneOf(user.username()))
+            .defaultIfEmpty(ZoneOffset.UTC);
+    }
+
+    private Mono<ZoneId> timeZoneOf(Username username) {
+        return timeZoneResolver.resolveOrDefault(username)
+            .map(ResolvedSettings::zoneId);
     }
 
     Mono<BookingLink> getBookingLink(BookingLinkPublicId publicId) {
